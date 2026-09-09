@@ -46,7 +46,7 @@ Each app is independently deployable and has its own `README.md` and `.agent.md`
 | **reporting-ui** | Angular 22.1 | Analytics & reporting dashboard (WIP) |
 | **business-backend** | Spring Boot 3.3.4 | REST API, authentication, order processing |
 | **reporting-service** | Spring Boot | Analytics & reporting engine (WIP) |
-| **auth-service** | Next.js | Centralized authentication (WIP) |
+| **auth-service** | NestJS | Centralized authentication (WIP) |
 
 ### **`packages/`** — Shared Libraries
 Reusable code shared across apps.
@@ -341,7 +341,7 @@ dualeapa-sprint1-project/
 │   │   ├── src/
 │   │   └── Dockerfile
 │   │
-│   └── auth-service/                          ← Next.js Authentication Service
+│   └── auth-service/                          ← NestJS Authentication Service
 │       ├── README.md
 │       ├── .agent.md
 │       ├── src/

@@ -1,4 +1,4 @@
-# Auth Service - Next.js (Work in Progress)
+# Auth Service - NestJS (Work in Progress)
 
 Centralized authentication and authorization service for the DuaLEAPa platform.
 
@@ -30,7 +30,7 @@ POST   /api/auth/mfa        — MFA challenge
 
 ## 🛠️ Tech Stack
 
-- Next.js 14+
+- NestJS 11+
 - TypeScript
 - Node.js 22+
 - PostgreSQL 16 (shared)
