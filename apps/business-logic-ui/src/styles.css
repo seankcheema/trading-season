@@ -1,12 +1,17 @@
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;500;600;700&display=swap');
 
-/* Tailwind CSS v3 */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind CSS v4 */
+@import 'tailwindcss';
 
-/* SpartanNG preset */
+/* SpartanNG preset. Must follow the Tailwind import: it defines the theme in
+   `@theme inline` blocks that map --color-* onto the tokens declared below. */
 @import '@spartan-ng/brain/hlm-tailwind-preset.css';
+
+/* v4 discovers utility classes by scanning from this file's directory, which
+   stops at the app. The hlm-* components live in a sibling workspace package,
+   so their classes have to be pointed at explicitly or they get tree-shaken
+   out of the generated CSS. */
+@source '../../../packages/shared-ui-components/src';
 
 /* You can add global styles to this file, and also import other style files */
 

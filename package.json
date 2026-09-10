@@ -1,42 +1,45 @@
 {
-    "name":  "dualeapa-sprint1-project",
-    "version":  "0.1.0",
-    "description":  "DuaLEAPa Sprint 1 - Full-stack trading simulation platform",
-    "private":  true,
-    "scripts":  {
-                    "install:all":  "npm install \u0026\u0026 npm install --prefix apps/business-logic-ui \u0026\u0026 npm install --prefix apps/reporting-ui",
-                    "dev":  "turbo run dev",
-                    "build":  "turbo run build",
-                    "test":  "turbo run test",
-                    "lint":  "turbo run lint",
-                    "clean":  "turbo run clean \u0026\u0026 rm -rf node_modules apps/*/node_modules packages/*/node_modules"
-                },
-    "workspaces":  [
-                       "apps/business-logic-ui",
-                       "apps/reporting-ui",
-                       "packages/shared-ui-components",
-                       "packages/api-contracts"
-                   ],
-    "devDependencies":  {
-                            "turbo":  "^2.0.0"
-                        },
-    "keywords":  [
-                     "trading",
-                     "simulation",
-                     "angular",
-                     "spring-boot",
-                     "postgresql",
-                     "monorepo"
-                 ],
-    "engines":  {
-                    "node":  "\u003e=22.0.0",
-                    "npm":  "\u003e=10.0.0"
-                },
-    "repository":  {
-                       "type":  "git",
-                       "url":  "https://github.com/yourusername/dualeapa-sprint1-project.git"
-                   },
-    "author":  "DuaLEAPa Team",
-    "license":  "MIT",
-    "packageManager":  "npm@11.16.0"
+  "name": "dualeapa-sprint1-project",
+  "version": "0.1.0",
+  "description": "DuaLEAPa Sprint 1 - Full-stack trading simulation platform",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install && npm install --prefix apps/business-logic-ui && npm install --prefix apps/reporting-ui",
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules apps/*/node_modules packages/*/node_modules"
+  },
+  "workspaces": [
+    "apps/business-logic-ui",
+    "apps/reporting-ui",
+    "packages/shared-ui-components",
+    "packages/api-contracts"
+  ],
+  "devDependencies": {
+    "turbo": "^2.0.0"
+  },
+  "keywords": [
+    "trading",
+    "simulation",
+    "angular",
+    "spring-boot",
+    "postgresql",
+    "monorepo"
+  ],
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/dualeapa-sprint1-project.git"
+  },
+  "author": "DuaLEAPa Team",
+  "license": "MIT",
+  "packageManager": "npm@11.16.0",
+  "overrides": {
+    "vite": "8.1.5"
+  }
 }
