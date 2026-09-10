@@ -2,7 +2,11 @@ pipeline {
     agent any
     
     tools {
-        maven 'Maven'
+        // Must match a Maven installation configured in Jenkins under
+        // Manage Jenkins > Tools. Maven is not baked into the agent image
+        // (infrastructure/docker/Dockerfile.jenkins installs only Node), so
+        // this name is the only way the backend build finds mvn.
+        maven 'Maven3'
     }
 
     environment {
