@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service.js';
 import { AuthController } from './auth.controller.js';
+import { WellKnownController } from './well-known.controller.js';
 import { LocalStrategy } from './strategies/local.strategy.js';
 import { JwtKeysService, normalizePem } from './services/jwt-keys.service.js';
 import { UsersModule } from '../users/users.module.js';
@@ -29,7 +30,7 @@ import { UsersModule } from '../users/users.module.js';
     AuthService,
     LocalStrategy,
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, WellKnownController],
   exports: [AuthService, JwtKeysService],
 })
 export class AuthModule {}

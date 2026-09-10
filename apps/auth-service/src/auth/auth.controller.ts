@@ -78,15 +78,6 @@ export class AuthController {
     return { message: 'Logged out successfully' };
   }
 
-  /**
-   * JWKS endpoint - publishes the public key in JWK format
-   * Used by other services to verify tokens without having access to private key
-   * See: https://tools.ietf.org/html/rfc5869
-   */
-  @Get('.well-known/jwks.json')
-  async getJwks(): Promise<Jwks> {
-    return this.jwtKeysService.getJwks();
-  }
 
   /**
    * Extract JWT from Authorization header
