@@ -22,7 +22,8 @@
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
     "migration:run": "typeorm-ts-node-esm migration:run -d src/database/data-source.ts",
     "migration:revert": "typeorm-ts-node-esm migration:revert -d src/database/data-source.ts",
-    "migration:show": "typeorm-ts-node-esm migration:show -d src/database/data-source.ts"
+    "migration:show": "typeorm-ts-node-esm migration:show -d src/database/data-source.ts",
+    "test:ci": "vitest run --coverage"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",

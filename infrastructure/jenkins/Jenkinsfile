@@ -54,16 +54,6 @@ pipeline {
                     // Check if npm is available before running Node-based tests
                     def npmExists = sh(script: 'command -v npm', returnStatus: true) == 0
                     if (npmExists) {
-                        // Run Auth Service Tests
-                        dir('apps/auth-service') {
-                            sh '''
-                                echo "🧪 Running Auth Service Tests (Vitest)..."
-                                npm install
-                                npm run test:cov
-                                echo "✓ Auth service tests completed"
-                            '''
-                        }
-                        
                         // Run Frontend Tests
                         dir('apps/business-logic-ui') {
                             sh '''
@@ -74,8 +64,44 @@ pipeline {
                             '''
                         }
                     } else {
-                        echo "⚠️  npm not found - Node-based tests skipped. Install Node.js on Jenkins agent to enable auth service and frontend tests."
+                        echo "⚠️  npm not found - Frontend tests skipped. Install Node.js on Jenkins agent to enable frontend tests."
                     }
+                }
+            }
+        }
+
+        stage('Auth Service Tests') {
+            // Deliberately NOT wrapped in a `command -v npm` check like the
+            // frontend block above. A missing toolchain is a broken pipeline,
+            // not a reason to pass: `node --version` fails the build instead of
+            // quietly skipping, which is what the acceptance criteria require.
+            environment {
+                CI = 'true'
+            }
+            steps {
+                // No JWT credentials needed: the specs generate an ephemeral
+                // RSA keypair per run. A committed or injected test key would
+                // eventually be copied into a deployment config.
+                dir('apps/auth-service') {
+                    sh '''
+                        set -eu
+                        echo "🧪 Running Auth Service Tests (Vitest)..."
+                        node --version
+                        npm --version
+                        npm ci
+                        npm run test:ci
+                        echo "✓ Auth service tests completed"
+                    '''
+                }
+            }
+            post {
+                always {
+                    // allowEmptyResults: false is what makes "tests never ran"
+                    // a failure rather than a silent pass. Published from post
+                    // so results still appear when the sh step above fails.
+                    junit testResults: 'apps/auth-service/reports/junit/*.xml',
+                          allowEmptyResults: false,
+                          healthScaleFactor: 1.0
                 }
             }
         }
@@ -86,8 +112,8 @@ pipeline {
                 archiveArtifacts artifacts: 'apps/business-backend/target/surefire-reports/**/*',
                                   allowEmptyArchive: true
                 
-                // Archive Auth Service coverage reports
-                archiveArtifacts artifacts: 'apps/auth-service/coverage/**/*',
+                // Archive Auth Service coverage and JUnit reports
+                archiveArtifacts artifacts: 'apps/auth-service/coverage/**/*, apps/auth-service/reports/**/*',
                                   allowEmptyArchive: true
                 
                 // Archive Frontend coverage reports
