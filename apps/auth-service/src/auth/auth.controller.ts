@@ -46,7 +46,8 @@ export class AuthController {
     return this.authService.login(loginDto.email, loginDto.password);
   }
 
-  @UseGuards(JwtAuthGuard)
+  // Deliberately unguarded. Refresh exists for when the access token has
+  // already expired, so requiring a valid one made the route unusable.
   @Post('refresh')
   async refresh(@Req() req: RequestWithUser): Promise<AuthTokenDto> {
     const refreshToken = this.extractRefreshToken(req);

@@ -5,11 +5,13 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AuthService } from './auth.service.js';
 import { UsersService } from '../users/users.service.js';
 import { User } from '../users/user.entity.js';
+import { RefreshTokensService } from '../refresh-tokens/refresh-tokens.service.js';
 
 describe('AuthService', () => {
   let service: AuthService;
   let mockUsersService: any;
   let mockJwtService: any;
+  let mockRefreshTokens: any;
 
   beforeEach(async () => {
     mockUsersService = {
@@ -28,6 +30,19 @@ describe('AuthService', () => {
       verify: vi.fn(),
     };
 
+    // Refresh tokens are opaque strings held in the database, so the service
+    // hands issuing and revocation to RefreshTokensService rather than signing
+    // a second JWT. Defaults here cover the happy path; individual tests
+    // override them.
+    mockRefreshTokens = {
+      issue: vi.fn().mockResolvedValue('opaque-refresh-token'),
+      findByToken: vi.fn(),
+      isUsable: vi.fn().mockReturnValue(true),
+      rotate: vi.fn().mockResolvedValue('rotated-refresh-token'),
+      revoke: vi.fn().mockResolvedValue(undefined),
+      revokeAllForUser: vi.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -38,6 +53,10 @@ describe('AuthService', () => {
         {
           provide: JwtService,
           useValue: mockJwtService,
+        },
+        {
+          provide: RefreshTokensService,
+          useValue: mockRefreshTokens,
         },
       ],
     }).compile();
@@ -73,7 +92,8 @@ describe('AuthService', () => {
       );
 
       expect(result.accessToken).toBe('token');
-      expect(result.refreshToken).toBe('token');
+      expect(result.refreshToken).toBe('opaque-refresh-token');
+      expect(mockRefreshTokens.issue).toHaveBeenCalledWith('123');
       expect(result.expiresIn).toBe(900); // 15 minutes
     });
 
@@ -115,7 +135,7 @@ describe('AuthService', () => {
       const result = await service.login('test@example.com', 'password123');
 
       expect(result.accessToken).toBe('token');
-      expect(result.refreshToken).toBe('token');
+      expect(result.refreshToken).toBe('opaque-refresh-token');
       expect(mockUsersService.resetFailedAttempts).toHaveBeenCalledWith('123');
     });
 
@@ -268,13 +288,11 @@ describe('AuthService', () => {
   });
 
   describe('refreshToken', () => {
-    it('should return new tokens on valid refresh token', async () => {
-      const mockPayload = {
-        sub: '123',
-        email: 'test@example.com',
-        exp: Math.floor(Date.now() / 1000) + 604800,
-      };
+    // Refresh tokens are opaque strings looked up in the database, so these
+    // tests stub the stored row rather than a JWT payload.
+    const storedRow = { id: 'row-1', userId: '123', revokedAt: null };
 
+    it('should return new tokens on valid refresh token', async () => {
       const mockUser = {
         id: '123',
         email: 'test@example.com',
@@ -282,95 +300,82 @@ describe('AuthService', () => {
         role: 'TRADER',
       };
 
-      mockJwtService.verify.mockReturnValue(mockPayload);
+      mockRefreshTokens.findByToken.mockResolvedValue(storedRow);
+      mockRefreshTokens.isUsable.mockReturnValue(true);
       mockUsersService.findById.mockResolvedValue(mockUser);
       mockJwtService.sign.mockReturnValue('newtoken');
 
-      const result = await service.refreshToken('valid.refresh.token');
+      const result = await service.refreshToken('opaque-refresh-token');
 
       expect(result.accessToken).toBe('newtoken');
-      expect(result.refreshToken).toBe('newtoken');
+      expect(result.refreshToken).toBe('rotated-refresh-token');
+      expect(mockRefreshTokens.rotate).toHaveBeenCalledWith(storedRow);
     });
 
-    it('should throw UnauthorizedException on invalid refresh token', async () => {
-      mockJwtService.verify.mockImplementation(() => {
-        throw new Error('Invalid token');
-      });
+    it('should throw UnauthorizedException on unknown refresh token', async () => {
+      mockRefreshTokens.findByToken.mockResolvedValue(null);
 
       await expect(
-        service.refreshToken('invalid.token'),
+        service.refreshToken('never-issued'),
       ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should revoke every session when a spent token is replayed', async () => {
+      // A token that exists but is no longer usable was already rotated or
+      // revoked. Seeing it again means it leaked, so every live session for
+      // that user is ended rather than just refusing this one request.
+      mockRefreshTokens.findByToken.mockResolvedValue(storedRow);
+      mockRefreshTokens.isUsable.mockReturnValue(false);
+
+      await expect(
+        service.refreshToken('already-rotated'),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(mockRefreshTokens.revokeAllForUser).toHaveBeenCalledWith('123');
     });
 
     it('should reject refresh token for deactivated user (KAN-86)', async () => {
-      const mockPayload = {
-        sub: '123',
-        email: 'test@example.com',
-        exp: Math.floor(Date.now() / 1000) + 604800,
-      };
-
-      const deactivatedUser = {
+      mockRefreshTokens.findByToken.mockResolvedValue(storedRow);
+      mockRefreshTokens.isUsable.mockReturnValue(true);
+      mockUsersService.findById.mockResolvedValue({
         id: '123',
         email: 'test@example.com',
         isActive: false,
-      };
-
-      mockJwtService.verify.mockReturnValue(mockPayload);
-      mockUsersService.findById.mockResolvedValue(deactivatedUser);
+      });
 
       await expect(
         service.refreshToken('valid.but.user.deactivated'),
       ).rejects.toThrow(UnauthorizedException);
-      await expect(
-        service.refreshToken('valid.but.user.deactivated'),
-      ).rejects.toThrow('User is no longer valid');
+      expect(mockRefreshTokens.revoke).toHaveBeenCalledWith(storedRow);
     });
 
     it('should reject refresh token for deleted user', async () => {
-      const mockPayload = {
-        sub: '123',
-        email: 'test@example.com',
-        exp: Math.floor(Date.now() / 1000) + 604800,
-      };
-
-      mockJwtService.verify.mockReturnValue(mockPayload);
-      mockUsersService.findById.mockResolvedValue(null);
+      mockRefreshTokens.findByToken.mockResolvedValue(storedRow);
+      mockRefreshTokens.isUsable.mockReturnValue(true);
+      mockUsersService.findById.mockRejectedValue(new Error('User not found'));
 
       await expect(
         service.refreshToken('valid.but.user.deleted'),
       ).rejects.toThrow(UnauthorizedException);
-      await expect(
-        service.refreshToken('valid.but.user.deleted'),
-      ).rejects.toThrow('User is no longer valid');
     });
   });
 
   describe('logout', () => {
-    it('should invalidate token on logout', async () => {
-      const mockPayload = {
-        sub: '123',
-        email: 'test@example.com',
-        exp: Math.floor(Date.now() / 1000) + 900,
-      };
+    it('should revoke the refresh token on logout', async () => {
+      const row = { id: 'row-1', userId: '123', revokedAt: null };
+      mockRefreshTokens.findByToken.mockResolvedValue(row);
 
-      const token = 'valid.token.to.invalidate';
-      mockJwtService.verify.mockReturnValue(mockPayload);
+      await service.logout('opaque-refresh-token');
 
-      await service.logout(token);
-
-      // Token should now be in blacklist
-      expect(() => service.isTokenInvalidated(token)).not.toThrow();
+      expect(mockRefreshTokens.revoke).toHaveBeenCalledWith(row);
     });
 
-    it('should not throw error if token is already invalid', async () => {
-      const invalidToken = 'already.invalid.token';
-      mockJwtService.verify.mockImplementation(() => {
-        throw new Error('Invalid token');
-      });
+    it('should not throw when the token is unknown', async () => {
+      // Reporting "no such token" would let a caller probe which values are
+      // live, so logout succeeds either way.
+      mockRefreshTokens.findByToken.mockResolvedValue(null);
 
-      await expect(
-        service.logout(invalidToken),
-      ).resolves.not.toThrow();
+      await expect(service.logout('never-issued')).resolves.not.toThrow();
+      expect(mockRefreshTokens.revoke).not.toHaveBeenCalled();
     });
   });
 
@@ -419,7 +424,7 @@ describe('AuthService', () => {
       );
 
       expect(result.accessToken).toBe('newtoken');
-      expect(result.refreshToken).toBe('newtoken');
+      expect(result.refreshToken).toBe('opaque-refresh-token');
     });
   });
 
@@ -534,7 +539,10 @@ describe('AuthService', () => {
       expect(expirationDelta).toBe(900);
     });
 
-    it('should set refresh token expiration to 7 days', async () => {
+    it('should sign exactly one JWT, the access token', async () => {
+      // The refresh token is an opaque database-backed string, so only the
+      // access token is signed. Its 7-day expiry is asserted in
+      // refresh-tokens.service.spec.ts, which is where that value now lives.
       const mockUser = {
         id: '123',
         email: 'test@example.com',
@@ -550,7 +558,7 @@ describe('AuthService', () => {
       mockUsersService.validatePassword.mockResolvedValue(true);
       mockUsersService.resetFailedAttempts.mockResolvedValue(undefined);
 
-      let capturedPayloads: any[] = [];
+      const capturedPayloads: any[] = [];
       mockJwtService.sign.mockImplementation((payload: any) => {
         capturedPayloads.push(payload);
         return 'token';
@@ -558,60 +566,39 @@ describe('AuthService', () => {
 
       await service.login('test@example.com', 'password123');
 
-      // Second call is refresh token
-      const refreshPayload = capturedPayloads[1];
-      const expirationDelta = refreshPayload.exp - refreshPayload.iat;
-      expect(expirationDelta).toBe(604800); // 7 days in seconds
+      expect(capturedPayloads).toHaveLength(1);
+      expect(capturedPayloads[0].exp - capturedPayloads[0].iat).toBe(900);
+      expect(mockRefreshTokens.issue).toHaveBeenCalledWith('123');
     });
   });
 
-  describe('Token Blacklist', () => {
-    it('should prevent use of invalidated access token', async () => {
-      const tokenToInvalidate = 'token.to.invalidate';
-      const mockPayload = {
-        sub: '123',
-        email: 'test@example.com',
-        exp: Math.floor(Date.now() / 1000) + 900,
-      };
-
-      mockJwtService.verify.mockReturnValue(mockPayload);
-
-      // Logout to invalidate
-      await service.logout(tokenToInvalidate);
-
-      // Try to use it - should be in blacklist
-      mockJwtService.verify.mockReturnValue(mockPayload);
+  describe('Refresh token revocation', () => {
+    // Replaces an earlier in-memory blacklist. That was lost on restart and
+    // wrong with more than one replica, and it invalidated the access token
+    // rather than the refresh token the acceptance criteria name.
+    it('should prevent reuse of a revoked refresh token', async () => {
+      const row = { id: 'row-1', userId: '123', revokedAt: new Date() };
+      mockRefreshTokens.findByToken.mockResolvedValue(row);
+      mockRefreshTokens.isUsable.mockReturnValue(false);
 
       await expect(
-        service.validateToken(tokenToInvalidate),
+        service.refreshToken('revoked-token'),
       ).rejects.toThrow(UnauthorizedException);
-      await expect(
-        service.validateToken(tokenToInvalidate),
-      ).rejects.toThrow('Token has been invalidated');
     });
 
-    it('should prevent use of invalidated refresh token', async () => {
-      const refreshToken = 'refresh.token.to.invalidate';
-      const mockPayload = {
-        sub: '123',
-        email: 'test@example.com',
-        exp: Math.floor(Date.now() / 1000) + 604800,
-      };
-
-      mockJwtService.verify.mockReturnValue(mockPayload);
-
-      // Logout to invalidate
-      await service.logout(refreshToken);
-
-      // Try to refresh with invalidated token
-      mockJwtService.verify.mockReturnValue(mockPayload);
+    it('should survive a restart because state lives in the database', async () => {
+      // A fresh service instance still sees the revocation, because the check
+      // is a database lookup rather than process memory.
+      mockRefreshTokens.findByToken.mockResolvedValue({
+        id: 'row-1',
+        userId: '123',
+        revokedAt: new Date(),
+      });
+      mockRefreshTokens.isUsable.mockReturnValue(false);
 
       await expect(
-        service.refreshToken(refreshToken),
+        service.refreshToken('revoked-before-restart'),
       ).rejects.toThrow(UnauthorizedException);
-      await expect(
-        service.refreshToken(refreshToken),
-      ).rejects.toThrow('Refresh token has been invalidated');
     });
   });
 });

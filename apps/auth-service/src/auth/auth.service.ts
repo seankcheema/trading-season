@@ -10,30 +10,29 @@ import { User } from '../users/user.entity.js';
 import { CreateUserDto } from '../users/dto/create-user.dto.js';
 import { AuthTokenDto } from './dto/auth-token.dto.js';
 import { JwtPayload } from './dto/jwt-payload.dto.js';
+import { RefreshTokensService } from '../refresh-tokens/refresh-tokens.service.js';
 
 /**
  * Authentication service implementing RS256 JWT tokens with:
  * - 15-minute access token expiration
- * - 7-day refresh token expiration
+ * - Refresh tokens held server-side, so one session can be ended on demand
  * - Claims: sub, iss, exp, iat, roles
- * - Token invalidation on logout
+ *
+ * Access tokens are stateless and stay valid until they expire, so logout
+ * leaves a window of up to 15 minutes during which the access token still
+ * works. Closing that needs a per-request denylist, which reintroduces exactly
+ * the shared state JWTs exist to avoid. Accepted deliberately.
  */
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly ACCESS_TOKEN_EXPIRATION = 900; // 15 minutes in seconds
-  private readonly REFRESH_TOKEN_EXPIRATION = 604800; // 7 days in seconds
-  
-  // In production, replace with Redis for distributed token blacklist
-  private invalidatedTokens = new Map<string, number>();
 
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
-  ) {
-    // Cleanup invalidated tokens periodically (every hour)
-    setInterval(() => this.cleanupInvalidatedTokens(), 3600000);
-  }
+    private refreshTokens: RefreshTokensService,
+  ) {}
 
   async register(
     email: string,
@@ -62,8 +61,8 @@ export class AuthService {
 
     const user = await this.usersService.create(createUserDto);
 
-    // Generate tokens with user's role
-    return this.generateTokens(user.id, user.email, [user.role]);
+    const refreshToken = await this.refreshTokens.issue(user.id);
+    return this.issueTokens(user.id, user.email, [user.role], refreshToken);
   }
 
   async login(
@@ -75,7 +74,8 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    return this.generateTokens(user.id, user.email, [user.role]);
+    const refreshToken = await this.refreshTokens.issue(user.id);
+    return this.issueTokens(user.id, user.email, [user.role], refreshToken);
   }
 
   async validateUser(email: string, password: string): Promise<User | null> {
@@ -115,11 +115,6 @@ export class AuthService {
 
   async validateToken(token: string): Promise<JwtPayload> {
     try {
-      // Check if token is in blacklist
-      if (this.isTokenInvalidated(token)) {
-        throw new UnauthorizedException('Token has been invalidated');
-      }
-
       const payload = this.jwtService.verify<JwtPayload>(token);
       return payload;
     } catch (error) {
@@ -131,59 +126,61 @@ export class AuthService {
   }
 
   async refreshToken(refreshToken: string): Promise<AuthTokenDto> {
-    try {
-      // Check if token is in blacklist
-      if (this.isTokenInvalidated(refreshToken)) {
-        throw new UnauthorizedException('Refresh token has been invalidated');
-      }
+    const row = await this.refreshTokens.findByToken(refreshToken);
 
-      const payload = this.jwtService.verify<JwtPayload>(refreshToken);
-
-      // Verify user still exists and is active
-      const user = await this.usersService.findById(payload.sub);
-      if (!user || !user.isActive) {
-        throw new UnauthorizedException('User is no longer valid');
-      }
-
-      // Generate new tokens with fresh user data
-      return this.generateTokens(payload.sub, payload.email, [user.role]);
-    } catch (error) {
-      if (error instanceof UnauthorizedException) {
-        throw error;
-      }
-      this.logger.debug('Token refresh failed:', error);
+    if (!row) {
       throw new UnauthorizedException('Invalid refresh token');
     }
+
+    // The row exists but is spent. Either this is a replay of a rotated token,
+    // which means it leaked, or a revoked session is being reused. Kill every
+    // live session for the user rather than just refusing this one request.
+    if (!this.refreshTokens.isUsable(row)) {
+      await this.refreshTokens.revokeAllForUser(row.userId);
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const user = await this.usersService.findById(row.userId).catch(() => null);
+    if (!user || !user.isActive) {
+      await this.refreshTokens.revoke(row);
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const rotated = await this.refreshTokens.rotate(row);
+    return this.issueTokens(user.id, user.email, [user.role], rotated);
   }
 
   /**
-   * Invalidate a token (for logout)
-   * In production, this should be stored in Redis with TTL
+   * End one session by revoking its refresh token.
+   *
+   * Succeeds whether or not the token matched. Reporting "no such token" would
+   * turn this into an oracle for probing which token values are live.
    */
-  async logout(token: string): Promise<void> {
-    try {
-      const payload = this.jwtService.verify<JwtPayload>(token);
-      // Add token to blacklist with its expiration time
-      this.invalidatedTokens.set(token, payload.exp);
-      this.logger.debug(`Token invalidated for user ${payload.sub}`);
-    } catch (error) {
-      this.logger.warn('Failed to invalidate token:', error);
-      // Don't throw - logout should succeed even if token is already invalid
+  async logout(refreshToken: string): Promise<void> {
+    const row = await this.refreshTokens.findByToken(refreshToken);
+    if (row) {
+      await this.refreshTokens.revoke(row);
+      this.logger.debug(`Refresh token revoked for user ${row.userId}`);
     }
   }
 
   /**
-   * Generate access and refresh tokens
+   * Mint an access token and pair it with an already-issued refresh token.
+   *
+   * The refresh token is an opaque random string, not a JWT. Previously both
+   * were JWTs carrying identical claims apart from exp, so an access token was
+   * accepted at /auth/refresh and vice versa. Opaque tokens make that
+   * confusion impossible, and make revocation a database write.
    */
-  private generateTokens(
+  private issueTokens(
     userId: string,
     email: string,
     roles: Array<'ADMIN' | 'TRADER'>,
+    refreshToken: string,
   ): AuthTokenDto {
     const now = Math.floor(Date.now() / 1000);
     const issuer = process.env.JWT_ISSUER || 'https://auth.dualeapa.com';
 
-    // Access token payload with required claims
     const accessPayload: JwtPayload = {
       sub: userId,
       email,
@@ -193,21 +190,10 @@ export class AuthService {
       exp: now + this.ACCESS_TOKEN_EXPIRATION,
     };
 
-    // Sign access token
+    // No expiresIn here: the payload already carries exp, and jsonwebtoken
+    // throws outright when given both. Every test mocks sign(), so this only
+    // ever surfaced against a real key.
     const accessToken = this.jwtService.sign(accessPayload, {
-      expiresIn: this.ACCESS_TOKEN_EXPIRATION,
-      algorithm: 'RS256',
-    });
-
-    // Refresh token payload
-    const refreshPayload: JwtPayload = {
-      ...accessPayload,
-      exp: now + this.REFRESH_TOKEN_EXPIRATION,
-    };
-
-    // Sign refresh token
-    const refreshToken = this.jwtService.sign(refreshPayload, {
-      expiresIn: this.REFRESH_TOKEN_EXPIRATION,
       algorithm: 'RS256',
     });
 
@@ -216,46 +202,5 @@ export class AuthService {
       refreshToken,
       expiresIn: this.ACCESS_TOKEN_EXPIRATION,
     };
-  }
-
-  /**
-   * Check if token is in the invalidated tokens list
-   */
-  private isTokenInvalidated(token: string): boolean {
-    const expTime = this.invalidatedTokens.get(token);
-    if (!expTime) {
-      return false;
-    }
-
-    // Token is no longer considered invalidated after expiration
-    const now = Math.floor(Date.now() / 1000);
-    if (now > expTime) {
-      this.invalidatedTokens.delete(token);
-      return false;
-    }
-
-    return true;
-  }
-
-  /**
-   * Remove expired tokens from blacklist
-   * This runs periodically to prevent unbounded memory growth
-   */
-  private cleanupInvalidatedTokens(): void {
-    const now = Math.floor(Date.now() / 1000);
-    let removedCount = 0;
-
-    for (const [token, expTime] of this.invalidatedTokens.entries()) {
-      if (now > expTime) {
-        this.invalidatedTokens.delete(token);
-        removedCount++;
-      }
-    }
-
-    if (removedCount > 0) {
-      this.logger.debug(
-        `Cleaned up ${removedCount} expired tokens from blacklist`,
-      );
-    }
   }
 }

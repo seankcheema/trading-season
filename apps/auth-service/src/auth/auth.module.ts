@@ -5,8 +5,10 @@ import { AuthService } from './auth.service.js';
 import { AuthController } from './auth.controller.js';
 import { WellKnownController } from './well-known.controller.js';
 import { LocalStrategy } from './strategies/local.strategy.js';
+import { JwtStrategy } from './strategies/jwt.strategy.js';
 import { JwtKeysService, normalizePem } from './services/jwt-keys.service.js';
 import { UsersModule } from '../users/users.module.js';
+import { RefreshTokensModule } from '../refresh-tokens/refresh-tokens.module.js';
 
 @Module({
   imports: [
@@ -24,11 +26,16 @@ import { UsersModule } from '../users/users.module.js';
       },
     }),
     UsersModule,
+    RefreshTokensModule,
   ],
   providers: [
     JwtKeysService,
     AuthService,
     LocalStrategy,
+    // Passport only learns a strategy when Nest instantiates it. Omitting
+    // JwtStrategy here made every AuthGuard('jwt') route fail at runtime with
+    // "Unknown authentication strategy" while still compiling cleanly.
+    JwtStrategy,
   ],
   controllers: [AuthController, WellKnownController],
   exports: [AuthService, JwtKeysService],

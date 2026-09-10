@@ -1,5 +1,6 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { User } from '../users/user.entity.js';
+import { RefreshToken } from '../refresh-tokens/refresh-token.entity.js';
 import { InitialAuthSchema1789051037692 } from '../database/migrations/1789051037692-InitialAuthSchema.js';
 
 export const databaseConfig: TypeOrmModuleOptions = {
@@ -9,7 +10,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
   username: process.env.DB_USER || 'authuser',
   password: process.env.DB_PASSWORD || 'changeme',
   database: process.env.DB_NAME || 'auth_db',
-  entities: [User],
+  entities: [User, RefreshToken],
 
   // The schema is owned by the migrations below, in every environment.
   // synchronize would let TypeORM silently alter tables to match the entities,
