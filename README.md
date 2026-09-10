@@ -1,8 +1,7 @@
-# DuaLEAPa Sprint 1 - Trading Simulation Platform
+# DuaLEAPa - Trading Simulation Platform
 
-Welcome to the **DuaLEAPa Sprint 1** monorepo! This is a full-stack trading simulation platform built with Angular, Spring Boot, PostgreSQL, and Docker.
+Welcome to the **DuaLEAPa** ! This is a full-stack trading simulation platform built with Angular, Spring Boot, PostgreSQL, and Docker.
 
-## 🚀 Quick Start
 
 ### Prerequisites
 - **Node.js 22.x** (for Angular frontend)
@@ -35,7 +34,7 @@ npm run dev
 
 ---
 
-## 📁 Directory Structure
+## Directory Structure
 
 ### **`apps/`** — Deployable Applications
 Each app is independently deployable and has its own `README.md` and `.agent.md`.
@@ -92,7 +91,7 @@ CI/CD pipelines (GitHub Actions).
 
 ---
 
-## 🛠️ Development Workflow
+## Development Workflow
 
 ### 1. **Set Up Local Environment**
 See [docs/DEVELOPMENTWORKFLOW.md](docs/DEVELOPMENTWORKFLOW.md) for detailed setup.
@@ -149,7 +148,7 @@ docker-compose -f infrastructure/docker-compose/docker-compose.prod.yml up -d
 
 ---
 
-## 📚 Documentation Guide
+## Documentation Guide
 
 | Need | See |
 |------|-----|
@@ -163,7 +162,7 @@ docker-compose -f infrastructure/docker-compose/docker-compose.prod.yml up -d
 
 ---
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -193,7 +192,7 @@ docker-compose -f infrastructure/docker-compose/docker-compose.prod.yml up -d
 
 ---
 
-## 🔐 Technology Stack
+## Technology Stack
 
 | Layer | Technology |
 |-------|-----------|
@@ -205,12 +204,11 @@ docker-compose -f infrastructure/docker-compose/docker-compose.prod.yml up -d
 
 ---
 
-## 👥 Team
+## Team
 
 | Name | Role |
 |------|------|
 | Sean Cheema | Team Lead/Front End Developer |
-
 | Chris Chang | Full Stack Engineer |
 | Soli Ateefa | Data Engineer |
 | Prisca Olose | Full Stack / Security |
@@ -219,7 +217,7 @@ docker-compose -f infrastructure/docker-compose/docker-compose.prod.yml up -d
 ---
 
 
-## 📋 Contributing
+## Contributing
 
 ### Branch Strategy
 - `main` — Production-ready code
@@ -232,7 +230,7 @@ Follow conventional commits:
 ```
 feat: Add login form validation
 fix: Correct order processing logic
-docs: Update database schema
+docs: Update database schema and general documentation
 test: Add unit tests for AuthService
 ```
 
@@ -252,7 +250,7 @@ test: Add unit tests for AuthService
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Backend won't start
 - Check Java 21 is installed: `java -version`
@@ -274,19 +272,13 @@ See [docs/DEVELOPMENTWORKFLOW.md](docs/DEVELOPMENTWORKFLOW.md) for more troubles
 
 ---
 
-## 📞 Support & Questions
+## Support & Questions
 
 - **Architecture Questions:** See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - **Database Questions:** See [docs/DATABASE.md](docs/DATABASE.md)
 - **API Questions:** See [docs/APIREFERENCE.md](docs/APIREFERENCE.md)
 - **Development Setup:** See [docs/DEVELOPMENTWORKFLOW.md](docs/DEVELOPMENTWORKFLOW.md)
 - **Deployment:** See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
-
----
-
-## 📄 License
-
-[Add your license here]
 
 ---
 ## Project Topic
@@ -392,30 +384,34 @@ dualeapa-sprint1-project/
 ├── package.json                               ← Monorepo Configuration
 └── turbo.json                                 ← Turborepo Task Runner
 
+```
 
-## Our Entity-Relationships (ER) Diagram
+## Our Entity-relationship (ER) diagram
+
+Column tags/sensitivity labels follow the legend above; enum values and long-form notes live in [dua-leapa-schema.sql](./dua-leapa-schema.sql) comments, not repeated here to keep this compact.
 
 ```mermaid
+%%{init: {"themeVariables": {"fontSize": "22px"}}}%%
 erDiagram
-    USERS ||--o{ SESSIONS : "has"
-    USERS ||--o{ ACCOUNTS : "owns"
-    ACCOUNTS ||--o{ ORDERS : "places"
-    ACCOUNTS ||--o{ HOLDINGS : "holds"
-    ACCOUNTS ||--o{ CASH_TRANSACTIONS : "records"
-    ACCOUNTS ||--o{ HOLDING_MOVEMENTS : "records"
-    INSTRUMENTS ||--o| STOCKS : "has sim data"
-    INSTRUMENTS ||--o{ PRICE_POINTS : "generates"
-    INSTRUMENTS ||--o{ MARKET_TICKS : "generates"
-    INSTRUMENTS ||--o{ QUOTES : "generates"
-    INSTRUMENTS ||--o{ CANDLES : "generates"
-    INSTRUMENTS ||--o{ MARKET_STATE : "has"
+    USERS ||--o{ SESSIONS : has
+    USERS ||--o{ ACCOUNTS : owns
+    ACCOUNTS ||--o{ ORDERS : places
+    ACCOUNTS ||--o{ HOLDINGS : holds
+    ACCOUNTS ||--o{ CASH_TRANSACTIONS : records
+    ACCOUNTS ||--o{ HOLDING_MOVEMENTS : records
+    INSTRUMENTS ||--o| STOCKS : "sim data"
+    INSTRUMENTS ||--o{ PRICE_POINTS : generates
+    INSTRUMENTS ||--o{ MARKET_TICKS : generates
+    INSTRUMENTS ||--o{ QUOTES : generates
+    INSTRUMENTS ||--o{ CANDLES : generates
+    INSTRUMENTS ||--o{ MARKET_STATE : has
     INSTRUMENTS ||--o{ HOLDINGS : "held as"
     INSTRUMENTS ||--o{ ORDERS : "traded in"
-    INSTRUMENTS ||--o{ HOLDING_MOVEMENTS : "moves"
+    INSTRUMENTS ||--o{ HOLDING_MOVEMENTS : moves
     ORDERS ||--o| FILLS : "executes as"
-    ORDERS ||--o{ AUDIT_TRAIL : "logs"
-    FILLS ||--o| CASH_TRANSACTIONS : "produces"
-    FILLS ||--|| HOLDING_MOVEMENTS : "produces"
+    ORDERS ||--o{ AUDIT_TRAIL : logs
+    FILLS ||--o| CASH_TRANSACTIONS : produces
+    FILLS ||--|| HOLDING_MOVEMENTS : produces
 
     USERS {
         uuid user_id PK
@@ -424,10 +420,10 @@ erDiagram
         text email UK
         text ssn "PII"
         date date_of_birth "PII"
-        text trader_level "BEGINNER/INTERMEDIATE/ADVANCED"
+        text trader_level
         numeric available_funds "financial"
-        text user_role "ADMIN/TRADER"
-        text account_status "ACTIVE/DEACTIVATED"
+        text user_role
+        text account_status
         int session_timeout_minutes
         numeric execution_buffer_percent
         int failed_login_attempts "internal"
@@ -452,14 +448,14 @@ erDiagram
         int instrument_id PK
         text ticker UK
         text name
-        text asset_class "Equity/FX/Crypto"
-        text market "UK/US/IN, equities only"
+        text asset_class
+        text market
         text currency
         bool is_tradable
     }
 
     STOCKS {
-        int instrument_id PK_FK
+        int instrument_id PK, FK
         text company_name
         numeric starting_price
         text sector
@@ -470,7 +466,7 @@ erDiagram
     ACCOUNTS {
         int account_id PK
         uuid user_id FK
-        numeric cash_balance "financial, cache of cash_transactions"
+        numeric cash_balance "financial"
         date opened_date
         text currency
     }
@@ -479,7 +475,7 @@ erDiagram
         int price_point_id PK
         int instrument_id FK
         numeric price
-        bigint sequence_number UK "per-instrument, monotonic"
+        bigint sequence_number UK
         timestamptz observed_at
     }
 
@@ -509,7 +505,7 @@ erDiagram
     CANDLES {
         int candle_id PK
         int instrument_id FK
-        text interval UK "e.g. 1m, 5m, 1h, 1d"
+        text interval UK
         timestamptz period_start UK
         numeric open
         numeric high
@@ -522,10 +518,10 @@ erDiagram
     MARKET_STATE {
         int market_state_id PK
         int instrument_id FK
-        text trend "normal/uptrend/downtrend/sideways"
+        text trend
         numeric volatility "internal"
-        double liquidity "internal, 0.0-1.0"
-        double momentum "internal, -1.0-1.0"
+        double liquidity "internal"
+        double momentum "internal"
         timestamptz as_of
     }
 
@@ -533,7 +529,7 @@ erDiagram
         int holding_id PK
         int account_id FK
         int instrument_id FK
-        numeric quantity "financial, cache of holding_movements"
+        numeric quantity "financial"
         timestamptz updated_at
     }
 
@@ -541,9 +537,9 @@ erDiagram
         int order_id PK
         int account_id FK
         int instrument_id FK
-        uuid client_reference UK "idempotency key"
-        text order_type "BUY/SELL"
-        text status "SUBMITTED/ACCEPTED/REJECTED/FILLED/EXECUTION_FAILED"
+        uuid client_reference UK
+        text order_type
+        text status
         numeric quantity
         numeric indicative_price
         numeric buffer_percent
@@ -555,7 +551,7 @@ erDiagram
 
     FILLS {
         int fill_id PK
-        int order_id FK_UK "1:1 with orders"
+        int order_id FK, UK
         numeric quote_price
         numeric quantity
         timestamptz filled_at
@@ -564,9 +560,9 @@ erDiagram
     CASH_TRANSACTIONS {
         int cash_transaction_id PK
         int account_id FK
-        int fill_id FK_UK "null for deposit/withdrawal"
-        numeric amount "financial, signed"
-        text reason "ORDER_FILL/DEPOSIT/WITHDRAWAL"
+        int fill_id FK, UK
+        numeric amount "financial"
+        text reason
         timestamptz created_at
     }
 
@@ -574,20 +570,19 @@ erDiagram
         int holding_movement_id PK
         int account_id FK
         int instrument_id FK
-        int fill_id FK_UK "1:1 with fills"
-        numeric quantity_delta "financial, signed"
+        int fill_id FK, UK
+        numeric quantity_delta "financial"
         timestamptz created_at
     }
 
     AUDIT_TRAIL {
         int audit_id PK
         int order_id FK
-        text event_type "SUBMITTED/ACCEPTED/REJECTED/FILLED/EXECUTION_FAILED"
+        text event_type
         text detail
-        timestamptz recorded_at "insert-only, never updated/deleted"
+        timestamptz recorded_at "internal"
     }
 ```
-
 ## Our Branching Strategy
 Our branching strategy is trunking
 
@@ -598,4 +593,4 @@ Figma - UI design mockups and prototypes
 Claude Design 
 
 **Last Updated:** 2026-09-09  
-**Version:** Sprint 1 (v0.1.0)
+**Version:** 1 (v0.1.0)
