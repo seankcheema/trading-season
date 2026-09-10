@@ -112,10 +112,15 @@ pipeline {
                     archiveArtifacts artifacts: 'apps/auth-service/coverage/**/*, apps/auth-service/reports/**/*',
                                       allowEmptyArchive: true
                     // allowEmptyResults: false is what makes "tests never ran"
-                    // a failure rather than a silent pass.
-                    junit testResults: 'apps/auth-service/reports/junit/*.xml',
-                          allowEmptyResults: false,
-                          healthScaleFactor: 1.0
+                    // a failure rather than a silent pass. It throws to do so,
+                    // and an uncaught throw in `post` aborts the whole run --
+                    // which skipped the frontend stage. catchError keeps the
+                    // build red without taking the later stages down with it.
+                    catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                        junit testResults: 'apps/auth-service/reports/junit/*.xml',
+                              allowEmptyResults: false,
+                              healthScaleFactor: 1.0
+                    }
                 }
             }
         }
