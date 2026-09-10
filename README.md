@@ -390,6 +390,8 @@ dualeapa-sprint1-project/
 
 Column tags/sensitivity labels follow the legend above; enum values and long-form notes live in [dua-leapa-schema.sql](./dua-leapa-schema.sql) comments, not repeated here to keep this compact.
 
+
+## Our Entity-Relationships (ER) Diagram
 ```mermaid
 %%{init: {"themeVariables": {"fontSize": "22px"}}}%%
 erDiagram
