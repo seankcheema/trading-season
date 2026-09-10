@@ -45,7 +45,11 @@ pipeline {
             }
         }
 
-        stage('Run Tests') {
+        // Each test suite below gets its own stage, and each publishes its own
+        // results from `post`. An earlier layout ran every suite inside one
+        // stage, so the first failure skipped Archive and Publish and threw
+        // away results from suites that had already passed.
+        stage('Backend Tests') {
             steps {
                 dir('apps/business-backend') {
                     sh '''
@@ -54,96 +58,90 @@ pipeline {
                         echo "✓ Backend tests completed"
                     '''
                 }
-                
-                script {
-                    // Check if npm is available before running Node-based tests
-                    def npmExists = sh(script: 'command -v npm', returnStatus: true) == 0
-                    if (npmExists) {
-                        // Run Frontend Tests
-                        dir('apps/business-logic-ui') {
-                            sh '''
-                                echo "🧪 Running Frontend Tests (Vitest)..."
-                                npm install --legacy-peer-deps
-                                npm test -- --run --coverage
-                                echo "✓ Frontend tests completed"
-                            '''
-                        }
-                    } else {
-                        echo "⚠️  npm not found - Frontend tests skipped. Install Node.js on Jenkins agent to enable frontend tests."
-                    }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'apps/business-backend/target/surefire-reports/**/*',
+                                      allowEmptyArchive: true
+                    junit testResults: 'apps/business-backend/target/surefire-reports/**/*.xml',
+                          allowEmptyResults: true,
+                          healthScaleFactor: 1.0
+                    echo "✓ Backend test results published"
                 }
-            }
-        }
-
-        stage('Archive Test Results') {
-            steps {
-                // Archive Backend test reports
-                archiveArtifacts artifacts: 'apps/business-backend/target/surefire-reports/**/*',
-                                  allowEmptyArchive: true
-                
-                // Archive Auth Service coverage and JUnit reports
-                archiveArtifacts artifacts: 'apps/auth-service/coverage/**/*, apps/auth-service/reports/**/*',
-                                  allowEmptyArchive: true
-                
-                // Archive Frontend coverage reports
-                archiveArtifacts artifacts: 'apps/business-logic-ui/coverage/**/*',
-                                  allowEmptyArchive: true
-                
-                echo "✓ Test reports archived"
-            }
-        }
-
-        stage('Publish Test Results') {
-            steps {
-                // Publish JUnit test results from backend
-                junit testResults: 'apps/business-backend/target/surefire-reports/**/*.xml',
-                      allowEmptyResults: true,
-                      healthScaleFactor: 1.0
-                
-                echo "✓ Test results published to Jenkins dashboard"
             }
         }
 
         stage('Auth Service Tests') {
-            // Deliberately NOT wrapped in a `command -v npm` check like the
-            // frontend block above. A missing toolchain is a broken pipeline,
-            // not a reason to pass: `node --version` fails the build instead of
-            // quietly skipping, which is what the acceptance criteria require.
+            // Deliberately NOT wrapped in a `command -v npm` check. A missing
+            // toolchain is a broken pipeline, not a reason to pass: the build
+            // fails instead of quietly skipping, which is what the acceptance
+            // criteria require.
             environment {
                 CI = 'true'
             }
             steps {
-                // No JWT credentials needed: the specs generate an ephemeral
-                // RSA keypair per run. A committed or injected test key would
-                // eventually be copied into a deployment config.
-                dir('apps/auth-service') {
-                    sh '''
-                        set -eu
-                        echo "🧪 Running Auth Service Tests (Vitest)..."
-                        if ! command -v node > /dev/null; then
-                            echo "✗ Node.js is not installed on this Jenkins agent."
-                            echo "  The auth service tests cannot run without it, and this"
-                            echo "  stage fails rather than skipping so the gap is visible."
-                            echo "  Fix: install Node.js 20+ on the agent, or run Jenkins from"
-                            echo "  infrastructure/docker/Dockerfile.jenkins, which includes it."
-                            exit 1
-                        fi
-                        node --version
-                        npm --version
-                        npm ci
-                        npm run test:ci
-                        echo "✓ Auth service tests completed"
-                    '''
+                // catchError marks this stage and the build as failed but lets
+                // later stages run, so one red suite cannot hide another.
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                    // No JWT credentials needed: the specs generate an ephemeral
+                    // RSA keypair per run. A committed or injected test key would
+                    // eventually be copied into a deployment config.
+                    dir('apps/auth-service') {
+                        sh '''
+                            set -eu
+                            echo "🧪 Running Auth Service Tests (Vitest)..."
+                            if ! command -v node > /dev/null; then
+                                echo "✗ Node.js is not installed on this Jenkins agent."
+                                echo "  The auth service tests cannot run without it, and this"
+                                echo "  stage fails rather than skipping so the gap is visible."
+                                echo "  Fix: install Node.js 20+ on the agent, or run Jenkins from"
+                                echo "  infrastructure/docker/Dockerfile.jenkins, which includes it."
+                                exit 1
+                            fi
+                            node --version
+                            npm --version
+                            npm ci
+                            npm run test:ci
+                            echo "✓ Auth service tests completed"
+                        '''
+                    }
                 }
             }
             post {
                 always {
+                    archiveArtifacts artifacts: 'apps/auth-service/coverage/**/*, apps/auth-service/reports/**/*',
+                                      allowEmptyArchive: true
                     // allowEmptyResults: false is what makes "tests never ran"
-                    // a failure rather than a silent pass. Published from post
-                    // so results still appear when the sh step above fails.
+                    // a failure rather than a silent pass.
                     junit testResults: 'apps/auth-service/reports/junit/*.xml',
                           allowEmptyResults: false,
                           healthScaleFactor: 1.0
+                }
+            }
+        }
+
+        stage('Frontend Tests') {
+            steps {
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                    dir('apps/business-logic-ui') {
+                        sh '''
+                            set -eu
+                            echo "🧪 Running Frontend Tests (Angular + Vitest)..."
+                            # --no-watch and --coverage are options of the
+                            # @angular/build:unit-test builder. Vitest's own
+                            # --run is not: `ng test --run` fails with
+                            # "Unknown argument: run" before any test executes.
+                            npm install --legacy-peer-deps
+                            npm test -- --no-watch --coverage
+                            echo "✓ Frontend tests completed"
+                        '''
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'apps/business-logic-ui/coverage/**/*',
+                                      allowEmptyArchive: true
                 }
             }
         }
