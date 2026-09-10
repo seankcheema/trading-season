@@ -53,7 +53,13 @@ services:
       DB_NAME: auth_db
       DB_USER: authuser
       DB_PASSWORD: ${AUTH_DB_PASSWORD:-changeme}
-      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+      # RS256 keypair. No default on purpose — the service refuses to start
+      # without them, and a committed fallback key is how private keys reach
+      # production. Generate with:
+      #   node apps/auth-service/scripts/generate-dev-keys.mjs >> .env
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:?run apps/auth-service/scripts/generate-dev-keys.mjs and append to .env}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?run apps/auth-service/scripts/generate-dev-keys.mjs and append to .env}
+      JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
 
   auth-db:
     image: postgres:16-alpine

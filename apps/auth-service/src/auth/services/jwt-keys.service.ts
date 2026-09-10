@@ -15,6 +15,18 @@ export interface Jwks {
 }
 
 /**
+ * Convert a PEM carried in an environment variable into a usable one.
+ *
+ * .env files, shells and docker-compose all mangle real newlines inside a
+ * value, so keys are stored with literal \n escapes. Exported because
+ * AuthModule needs the identical treatment when configuring JwtModule — if the
+ * two ever diverge, verification works while signing fails.
+ */
+export function normalizePem(key: string | undefined): string {
+  return (key ?? '').replace(/\\n/g, '\n');
+}
+
+/**
  * Service for managing JWT signing and verification keys.
  * Loads RSA keys from environment variables and exposes them for:
  * - Token signing (private key)
@@ -269,10 +281,10 @@ export class JwtKeysService {
   }
 
   /**
-   * Normalize PEM key format (handle both literal \n and actual newlines)
+   * Normalize PEM key format (handle both literal \n and actual newlines).
+   * Delegates to the exported helper so AuthModule can apply the same rule.
    */
   private normalizeKey(key: string): string {
-    // Replace literal \n with actual newlines
-    return key.replace(/\\n/g, '\n');
+    return normalizePem(key);
   }
 }
