@@ -52,6 +52,48 @@ export class UsersService {
     return bcrypt.compare(plainPassword, hashedPassword);
   }
 
+  async incrementFailedAttempts(userId: string): Promise<void> {
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    user.failedAttempts += 1;
+    await this.usersRepository.save(user);
+  }
+
+  async lockAccount(userId: string): Promise<void> {
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Lock for 15 minutes
+    const lockedUntil = new Date();
+    lockedUntil.setMinutes(lockedUntil.getMinutes() + 15);
+
+    user.lockedUntil = lockedUntil;
+    await this.usersRepository.save(user);
+  }
+
+  async resetFailedAttempts(userId: string): Promise<void> {
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    user.failedAttempts = 0;
+    user.lockedUntil = null;
+    await this.usersRepository.save(user);
+  }
+
+  isAccountLocked(user: User): boolean {
+    if (!user.lockedUntil) {
+      return false;
+    }
+    return user.lockedUntil > new Date();
+  }
+
   private mapToDto(user: User): UserDto {
     return {
       id: user.id,
@@ -60,6 +102,7 @@ export class UsersService {
       lastName: user.lastName,
       isActive: user.isActive,
       emailVerified: user.emailVerified,
+      role: user.role,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

@@ -5,6 +5,7 @@ export class UserDto {
   lastName: string;
   isActive: boolean;
   emailVerified: boolean;
+  role: 'ADMIN' | 'TRADER';
   createdAt: Date;
   updatedAt: Date;
 }

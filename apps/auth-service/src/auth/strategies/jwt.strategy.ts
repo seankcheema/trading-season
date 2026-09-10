@@ -1,20 +1,22 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-
-export interface JwtPayload {
-  sub: string;
-  email: string;
-}
+import { JwtKeysService } from '../services/jwt-keys.service.js';
+import { JwtPayload } from '../dto/jwt-payload.dto.js';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor() {
+  private readonly logger = new Logger(JwtStrategy.name);
+
+  constructor(jwtKeysService: JwtKeysService) {
+    const publicKey = jwtKeysService?.getPublicKeyObject();
+    
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'your-secret-key',
-    });
+      algorithms: ['RS256'],
+      secretOrPublicKey: publicKey,
+    } as any);
   }
 
   validate(payload: JwtPayload): JwtPayload {
