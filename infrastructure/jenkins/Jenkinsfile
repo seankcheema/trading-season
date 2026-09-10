@@ -51,9 +51,20 @@ pipeline {
                 }
                 
                 script {
-                    // Check if npm is available before running frontend tests
+                    // Check if npm is available before running Node-based tests
                     def npmExists = sh(script: 'command -v npm', returnStatus: true) == 0
                     if (npmExists) {
+                        // Run Auth Service Tests
+                        dir('apps/auth-service') {
+                            sh '''
+                                echo "🧪 Running Auth Service Tests (Vitest)..."
+                                npm install
+                                npm run test:cov
+                                echo "✓ Auth service tests completed"
+                            '''
+                        }
+                        
+                        // Run Frontend Tests
                         dir('apps/business-logic-ui') {
                             sh '''
                                 echo "🧪 Running Frontend Tests (Vitest)..."
@@ -63,7 +74,7 @@ pipeline {
                             '''
                         }
                     } else {
-                        echo "⚠️  npm not found - Frontend tests skipped. Install Node.js on Jenkins agent to enable frontend tests."
+                        echo "⚠️  npm not found - Node-based tests skipped. Install Node.js on Jenkins agent to enable auth service and frontend tests."
                     }
                 }
             }
@@ -73,6 +84,10 @@ pipeline {
             steps {
                 // Archive Backend test reports
                 archiveArtifacts artifacts: 'apps/business-backend/target/surefire-reports/**/*',
+                                  allowEmptyArchive: true
+                
+                // Archive Auth Service coverage reports
+                archiveArtifacts artifacts: 'apps/auth-service/coverage/**/*',
                                   allowEmptyArchive: true
                 
                 // Archive Frontend coverage reports
