@@ -3,9 +3,10 @@ pipeline {
     
     tools {
         // Must match a Maven installation configured in Jenkins under
-        // Manage Jenkins > Tools. Maven is not baked into the agent image
-        // (infrastructure/docker/Dockerfile.jenkins installs only Node), so
-        // this name is the only way the backend build finds mvn.
+        // Manage Jenkins > Tools. The agent this runs on is a native install
+        // at /var/lib/jenkins, not the container built from
+        // infrastructure/docker/Dockerfile.jenkins, so nothing in this repo
+        // controls which tools exist there.
         maven 'Maven3'
     }
 
@@ -74,42 +75,6 @@ pipeline {
             }
         }
 
-        stage('Auth Service Tests') {
-            // Deliberately NOT wrapped in a `command -v npm` check like the
-            // frontend block above. A missing toolchain is a broken pipeline,
-            // not a reason to pass: `node --version` fails the build instead of
-            // quietly skipping, which is what the acceptance criteria require.
-            environment {
-                CI = 'true'
-            }
-            steps {
-                // No JWT credentials needed: the specs generate an ephemeral
-                // RSA keypair per run. A committed or injected test key would
-                // eventually be copied into a deployment config.
-                dir('apps/auth-service') {
-                    sh '''
-                        set -eu
-                        echo "🧪 Running Auth Service Tests (Vitest)..."
-                        node --version
-                        npm --version
-                        npm ci
-                        npm run test:ci
-                        echo "✓ Auth service tests completed"
-                    '''
-                }
-            }
-            post {
-                always {
-                    // allowEmptyResults: false is what makes "tests never ran"
-                    // a failure rather than a silent pass. Published from post
-                    // so results still appear when the sh step above fails.
-                    junit testResults: 'apps/auth-service/reports/junit/*.xml',
-                          allowEmptyResults: false,
-                          healthScaleFactor: 1.0
-                }
-            }
-        }
-
         stage('Archive Test Results') {
             steps {
                 // Archive Backend test reports
@@ -136,6 +101,50 @@ pipeline {
                       healthScaleFactor: 1.0
                 
                 echo "✓ Test results published to Jenkins dashboard"
+            }
+        }
+
+        stage('Auth Service Tests') {
+            // Deliberately NOT wrapped in a `command -v npm` check like the
+            // frontend block above. A missing toolchain is a broken pipeline,
+            // not a reason to pass: `node --version` fails the build instead of
+            // quietly skipping, which is what the acceptance criteria require.
+            environment {
+                CI = 'true'
+            }
+            steps {
+                // No JWT credentials needed: the specs generate an ephemeral
+                // RSA keypair per run. A committed or injected test key would
+                // eventually be copied into a deployment config.
+                dir('apps/auth-service') {
+                    sh '''
+                        set -eu
+                        echo "🧪 Running Auth Service Tests (Vitest)..."
+                        if ! command -v node > /dev/null; then
+                            echo "✗ Node.js is not installed on this Jenkins agent."
+                            echo "  The auth service tests cannot run without it, and this"
+                            echo "  stage fails rather than skipping so the gap is visible."
+                            echo "  Fix: install Node.js 20+ on the agent, or run Jenkins from"
+                            echo "  infrastructure/docker/Dockerfile.jenkins, which includes it."
+                            exit 1
+                        fi
+                        node --version
+                        npm --version
+                        npm ci
+                        npm run test:ci
+                        echo "✓ Auth service tests completed"
+                    '''
+                }
+            }
+            post {
+                always {
+                    // allowEmptyResults: false is what makes "tests never ran"
+                    // a failure rather than a silent pass. Published from post
+                    // so results still appear when the sh step above fails.
+                    junit testResults: 'apps/auth-service/reports/junit/*.xml',
+                          allowEmptyResults: false,
+                          healthScaleFactor: 1.0
+                }
             }
         }
     }
