@@ -13,6 +13,15 @@ import { JwtPayload } from './dto/jwt-payload.dto.js';
 import { RefreshTokensService } from '../refresh-tokens/refresh-tokens.service.js';
 
 /**
+ * A valid bcrypt hash of a value nobody knows, compared against when no real
+ * hash is available. Keeps every failed-login path costing the same time as a
+ * successful one, so response latency does not reveal whether an account
+ * exists. The cost factor matches the one used when hashing real passwords.
+ */
+const DUMMY_BCRYPT_HASH =
+  '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+
+/**
  * Authentication service implementing RS256 JWT tokens with:
  * - 15-minute access token expiration
  * - Refresh tokens held server-side, so one session can be ended on demand
@@ -35,13 +44,14 @@ export class AuthService {
   ) {}
 
   async register(
+    username: string,
     email: string,
     password: string,
     firstName: string,
     lastName: string,
   ): Promise<AuthTokenDto> {
     // Validate input
-    if (!email || !password || !firstName || !lastName) {
+    if (!username || !email || !password || !firstName || !lastName) {
       throw new BadRequestException('Missing required fields');
     }
 
@@ -53,6 +63,7 @@ export class AuthService {
 
     // Create user
     const createUserDto: CreateUserDto = {
+      username,
       email,
       password,
       firstName,
@@ -78,20 +89,38 @@ export class AuthService {
     return this.issueTokens(user.id, user.email, [user.role], refreshToken);
   }
 
+  /**
+   * Validate credentials, returning null on any failure.
+   *
+   * Every rejection path is indistinguishable to the caller: unknown account,
+   * wrong password, deactivated and locked all produce the same generic 401.
+   * Reporting "account is deactivated" or "temporarily locked" is only
+   * reachable once the email exists, which makes each one a precise
+   * account-enumeration oracle. The reason is logged instead, where operators
+   * can see it and callers cannot.
+   */
   async validateUser(email: string, password: string): Promise<User | null> {
     const user = await this.usersService.findByEmail(email);
+
     if (!user) {
+      // Compare against a throwaway hash anyway. Returning early here would
+      // answer in microseconds while a real account costs a bcrypt compare,
+      // and that timing difference undoes the generic message above.
+      await this.usersService.validatePassword(password, DUMMY_BCRYPT_HASH);
+      this.logger.debug(`Login failed: no account for ${email}`);
       return null;
     }
 
-    // Check if account is deactivated
     if (!user.isActive) {
-      throw new UnauthorizedException('Account is deactivated');
+      await this.usersService.validatePassword(password, DUMMY_BCRYPT_HASH);
+      this.logger.debug(`Login failed: account ${user.id} is deactivated`);
+      return null;
     }
 
-    // Check if account is locked
     if (this.usersService.isAccountLocked(user)) {
-      throw new UnauthorizedException('Account is temporarily locked');
+      await this.usersService.validatePassword(password, DUMMY_BCRYPT_HASH);
+      this.logger.debug(`Login failed: account ${user.id} is locked`);
+      return null;
     }
 
     const isPasswordValid = await this.usersService.validatePassword(
@@ -105,6 +134,7 @@ export class AuthService {
       if (user.failedAttempts + 1 >= 5) {
         await this.usersService.lockAccount(user.id);
       }
+      this.logger.debug(`Login failed: bad password for account ${user.id}`);
       return null;
     }
 

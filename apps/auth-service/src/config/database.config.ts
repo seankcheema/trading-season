@@ -1,6 +1,7 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { User } from '../users/user.entity.js';
 import { RefreshToken } from '../refresh-tokens/refresh-token.entity.js';
+import { RequireUsername1789067284157 } from '../database/migrations/1789067284157-RequireUsername.js';
 import { InitialAuthSchema1789051037692 } from '../database/migrations/1789051037692-InitialAuthSchema.js';
 
 export const databaseConfig: TypeOrmModuleOptions = {
@@ -20,7 +21,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
   // Migration classes are listed explicitly rather than matched by a glob.
   // Globs resolve against compiled output, which differs between `nest start`
   // and `node dist/main.js` under ESM; an explicit list cannot drift.
-  migrations: [InitialAuthSchema1789051037692],
+  migrations: [InitialAuthSchema1789051037692, RequireUsername1789067284157],
   migrationsRun: true,
 
   logging: process.env.NODE_ENV === 'development',

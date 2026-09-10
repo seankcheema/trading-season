@@ -22,14 +22,9 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  /**
-   * Nullable for now: registration does not yet collect a username, so making
-   * this NOT NULL would break POST /auth/register. The unique index already
-   * prevents duplicates. Tighten to NOT NULL in a follow-up migration once the
-   * register flow supplies it.
-   */
-  @Column({ name: 'username', type: 'text', unique: true, nullable: true })
-  username: string | null;
+  /** Required and unique. Collected at registration. */
+  @Column({ name: 'username', type: 'text', unique: true })
+  username: string;
 
   @Column({ name: 'email', type: 'text', unique: true })
   email: string;

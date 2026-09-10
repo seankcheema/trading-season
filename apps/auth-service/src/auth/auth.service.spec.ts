@@ -67,6 +67,7 @@ describe('AuthService', () => {
   describe('register', () => {
     it('should register a new user and return tokens', async () => {
       const registerDto = {
+        username: 'testuser',
         email: 'test@example.com',
         password: 'password123',
         firstName: 'John',
@@ -85,6 +86,7 @@ describe('AuthService', () => {
       mockJwtService.sign.mockReturnValue('token');
 
       const result = await service.register(
+        registerDto.username,
         registerDto.email,
         registerDto.password,
         registerDto.firstName,
@@ -224,13 +226,14 @@ describe('AuthService', () => {
 
       mockUsersService.findByEmail.mockResolvedValue(mockUser);
       mockUsersService.isAccountLocked.mockReturnValue(true);
+      mockUsersService.validatePassword.mockResolvedValue(false);
 
+      // Returns null rather than throwing "Account is temporarily locked".
+      // That message is only reachable once the email exists, so it confirms
+      // the account to anyone probing.
       await expect(
         service.validateUser('test@example.com', 'password123'),
-      ).rejects.toThrow(UnauthorizedException);
-      await expect(
-        service.validateUser('test@example.com', 'password123'),
-      ).rejects.toThrow('Account is temporarily locked');
+      ).resolves.toBeNull();
     });
 
     it('should reject login when account is deactivated (KAN-86)', async () => {
@@ -244,13 +247,13 @@ describe('AuthService', () => {
       };
 
       mockUsersService.findByEmail.mockResolvedValue(mockUser);
+      mockUsersService.validatePassword.mockResolvedValue(false);
 
+      // Same reasoning as the locked case: indistinguishable from any other
+      // failure to the caller, logged for operators.
       await expect(
         service.validateUser('test@example.com', 'password123'),
-      ).rejects.toThrow(UnauthorizedException);
-      await expect(
-        service.validateUser('test@example.com', 'password123'),
-      ).rejects.toThrow('Account is deactivated');
+      ).resolves.toBeNull();
     });
 
     it('should return null when user not found', async () => {
@@ -381,42 +384,71 @@ describe('AuthService', () => {
 
   describe('register - Duplicate Detection', () => {
     it('should reject registration with duplicate email (409)', async () => {
-      mockUsersService.create.mockImplementation(() => {
-        const error = new ConflictException('Email already exists');
-        (error as any).code = '23505'; // PostgreSQL unique constraint violation
-        throw error;
-      });
+      mockUsersService.create.mockRejectedValue(
+        new ConflictException('Username or email is already in use'),
+      );
 
       await expect(
-        service.register('duplicate@example.com', 'password123', 'John', 'Doe'),
+        service.register(
+          'someone',
+          'duplicate@example.com',
+          'password123',
+          'John',
+          'Doe',
+        ),
       ).rejects.toThrow(ConflictException);
     });
 
     it('should reject registration with duplicate username (409)', async () => {
-      mockUsersService.create.mockImplementation(() => {
-        const error = new ConflictException('Username already exists');
-        (error as any).code = '23505'; // PostgreSQL unique constraint violation
-        throw error;
-      });
+      mockUsersService.create.mockRejectedValue(
+        new ConflictException('Username or email is already in use'),
+      );
 
       await expect(
-        service.register('new@example.com', 'password123', 'John', 'Doe'),
+        service.register(
+          'taken',
+          'new@example.com',
+          'password123',
+          'John',
+          'Doe',
+        ),
       ).rejects.toThrow(ConflictException);
     });
 
+    it('should use one message for both, so it cannot be used to enumerate accounts', async () => {
+      const messages: string[] = [];
+      mockUsersService.create.mockRejectedValue(
+        new ConflictException('Username or email is already in use'),
+      );
+
+      for (const [username, email] of [
+        ['taken', 'fresh@example.com'],
+        ['fresh', 'taken@example.com'],
+      ]) {
+        await service
+          .register(username, email, 'password123', 'John', 'Doe')
+          .catch((e: Error) => messages.push(e.message));
+      }
+
+      expect(messages).toHaveLength(2);
+      // Identical either way, and phrased to cover both fields at once, so it
+      // never reveals which one actually collided.
+      expect(messages[0]).toBe(messages[1]);
+      expect(messages[0]).toMatch(/username or email/i);
+    });
+
     it('should accept registration with unique email and username', async () => {
-      const mockUser = {
+      mockUsersService.create.mockResolvedValue({
         id: '456',
         email: 'unique@example.com',
         firstName: 'Jane',
         lastName: 'Smith',
         role: 'TRADER',
-      };
-
-      mockUsersService.create.mockResolvedValue(mockUser);
+      });
       mockJwtService.sign.mockReturnValue('newtoken');
 
       const result = await service.register(
+        'uniqueuser',
         'unique@example.com',
         'password123',
         'Jane',

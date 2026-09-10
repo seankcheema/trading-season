@@ -33,6 +33,7 @@ export class AuthController {
   @Post('register')
   async register(@Body() registerDto: RegisterDto): Promise<AuthTokenDto> {
     return this.authService.register(
+      registerDto.username,
       registerDto.email,
       registerDto.password,
       registerDto.firstName,

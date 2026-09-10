@@ -83,7 +83,7 @@ describe('UsersService', () => {
         ConflictException,
       );
       await expect(service.create(createUserDto)).rejects.toThrow(
-        'Email already exists',
+        'Username or email is already in use',
       );
     });
   });
