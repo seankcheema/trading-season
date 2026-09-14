@@ -1,0 +1,118 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;500;600;700&display=swap');
+
+/* Tailwind CSS v4 */
+@import 'tailwindcss';
+
+/* SpartanNG preset. Must follow the Tailwind import: it defines the theme in
+   `@theme inline` blocks that map --color-* onto the tokens declared below. */
+@import '@spartan-ng/brain/hlm-tailwind-preset.css';
+
+/* v4 discovers utility classes by scanning from this file's directory, which
+   stops at the app. The hlm-* components live in a sibling workspace package,
+   so their classes have to be pointed at explicitly or they get tree-shaken
+   out of the generated CSS. */
+@source '../../../packages/shared-ui-components/src';
+
+/* You can add global styles to this file, and also import other style files */
+
+* {
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family:
+    'Archivo',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    'Roboto',
+    'Oxygen',
+    'Ubuntu',
+    'Cantarell',
+    'Fira Sans',
+    'Droid Sans',
+    'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:root {
+  color-scheme: light;
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans',
+    sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+:root.dark {
+  color-scheme: dark;
+
+  --background: #0e0e0e;
+  --foreground: #eefaff;
+  --card: #141414;
+  --card-foreground: #eefaff;
+  --popover: #141414;
+  --popover-foreground: #eefaff;
+  --primary: #00bbff;
+  --primary-foreground: #0e0e0e;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #eefaff;
+  --muted: #1a1a1a;
+  --muted-foreground: rgba(238, 250, 255, 0.5);
+  --accent: #1a1a1a;
+  --accent-foreground: #eefaff;
+  --destructive: #ff0037;
+  --border: rgba(238, 250, 255, 0.15);
+  --input: rgba(238, 250, 255, 0.15);
+  --ring: #00bbff;
+  --sidebar: #141414;
+  --sidebar-foreground: #eefaff;
+  --sidebar-primary: #00bbff;
+  --sidebar-primary-foreground: #0e0e0e;
+  --sidebar-accent: #1a1a1a;
+  --sidebar-accent-foreground: #eefaff;
+  --sidebar-border: rgba(238, 250, 255, 0.1);
+  --sidebar-ring: #00bbff;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

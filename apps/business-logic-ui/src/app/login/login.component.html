@@ -1,0 +1,87 @@
+<div class="bg-background relative flex min-h-screen items-center justify-center px-4 py-12">
+  <img
+    src="2b-waves-lockup-reversed.svg"
+    alt="TradingSeason"
+    class="fixed top-0 left-0 z-10 h-36 w-auto"
+  />
+
+  <div hlmCard class="w-full max-w-sm rounded-[10px]">
+    <div hlmCardHeader class="text-center">
+      <h1 hlmCardTitle class="text-xl">Welcome back</h1>
+      <p hlmCardDescription>Sign in to your Trading Season account</p>
+    </div>
+
+    <div hlmCardContent>
+      <form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate class="flex flex-col gap-5">
+        <div hlmField>
+          <label hlmFieldLabel for="email" class="text-foreground">Email</label>
+          <div class="relative">
+            <ng-icon
+              name="lucideMail"
+              class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[16px]"
+            />
+            <input
+              hlmInput
+              id="email"
+              type="email"
+              autocomplete="email"
+              placeholder="you@example.com"
+              class="rounded-[5px] pl-8"
+              formControlName="email"
+            />
+          </div>
+          @if (form.controls.email.invalid && form.controls.email.touched) {
+            <p class="text-destructive text-sm">Enter a valid email address.</p>
+          }
+        </div>
+
+        <div hlmField>
+          <label hlmFieldLabel for="password" class="text-foreground">Password</label>
+          <div class="relative">
+            <ng-icon
+              name="lucideLock"
+              class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[16px]"
+            />
+            <input
+              hlmInput
+              id="password"
+              [type]="showPassword() ? 'text' : 'password'"
+              autocomplete="current-password"
+              placeholder="••••••••"
+              class="rounded-[5px] px-8"
+              formControlName="password"
+            />
+            <button
+              type="button"
+              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 flex -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 transition-colors"
+              (click)="togglePasswordVisibility()"
+              [attr.aria-label]="showPassword() ? 'Hide password' : 'Show password'"
+            >
+              <ng-icon [name]="showPassword() ? 'lucideEyeOff' : 'lucideEye'" class="text-[16px]" />
+            </button>
+          </div>
+          @if (form.controls.password.invalid && form.controls.password.touched) {
+            <p class="text-destructive text-sm">Password is required.</p>
+          }
+        </div>
+
+        <button
+          hlmBtn
+          type="submit"
+          class="mt-1 w-full cursor-pointer rounded-[5px] transition-colors hover:bg-primary/80"
+        >
+          <ng-icon name="lucideLogIn" />
+          Sign in
+        </button>
+      </form>
+    </div>
+
+
+    <div hlmCardFooter class="justify-center">
+      <p class="text-muted-foreground text-sm">
+        Don't have an account?
+        <a routerLink="/register" class="text-primary font-medium hover:underline">Create one</a>
+      </p>
+    </div>
+  </div>
+</div>

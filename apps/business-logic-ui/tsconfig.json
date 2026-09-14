@@ -1,0 +1,42 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "experimentalDecorators": true,
+    "importHelpers": true,
+    "target": "ES2022",
+    "module": "preserve",
+    "paths": {
+      "@spartan-ng/helm/utils": ["../../packages/shared-ui-components/src/lib/utils/src/index.ts"],
+      "@spartan-ng/helm/label": ["../../packages/shared-ui-components/src/lib/label/src/index.ts"],
+      "@spartan-ng/helm/separator": ["../../packages/shared-ui-components/src/lib/separator/src/index.ts"],
+      "@shared/ui-components/button": ["../../packages/shared-ui-components/src/lib/button/src/index.ts"],
+      "@shared/ui-components/card": ["../../packages/shared-ui-components/src/lib/card/src/index.ts"],
+      "@shared/ui-components/field": ["../../packages/shared-ui-components/src/lib/field/src/index.ts"],
+      "@shared/ui-components/input": ["../../packages/shared-ui-components/src/lib/input/src/index.ts"],
+      "@shared/ui-components/label": ["../../packages/shared-ui-components/src/lib/label/src/index.ts"],
+      "@shared/ui-components/separator": ["../../packages/shared-ui-components/src/lib/separator/src/index.ts"],
+      "@shared/ui-components/select": ["../../packages/shared-ui-components/src/lib/select/src/index.ts"],
+      "@shared/ui-components/native-select": ["../../packages/shared-ui-components/src/lib/native-select/src/index.ts"]
+    }
+  },
+  "angularCompilerOptions": {
+    "enableI18nLegacyMessageIdFormat": false,
+    "strictInjectionParameters": true,
+    "strictInputAccessModifiers": true
+  },
+  "files": [],
+  "references": [
+    {
+      "path": "./tsconfig.app.json"
+    },
+    {
+      "path": "./tsconfig.spec.json"
+    }
+  ]
+}

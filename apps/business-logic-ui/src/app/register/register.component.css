@@ -1,0 +1,9 @@
+:host {
+  display: contents;
+}
+
+@media (max-width: 1099px) {
+  .TS-logo {
+    position: unset;
+  }
+}

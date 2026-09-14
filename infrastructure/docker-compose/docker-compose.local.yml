@@ -1,0 +1,91 @@
+services:
+  # frontend (trading-season-app) has no Dockerfile yet — add one and
+  # uncomment this service once it exists.
+  # frontend:
+  #   build: ./trading-season-app
+  #   ports:
+  #     - "4200:80"
+  #   depends_on:
+  #     - backend
+
+  backend:
+    # Dockerfile lives at the repo root (builds the Maven project in src/).
+    build: .
+    ports:
+      - "8081:8081"
+    depends_on:
+      - db
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/paysprint
+      SPRING_DATASOURCE_USERNAME: paysprint
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-changeme}
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: paysprint
+      POSTGRES_USER: paysprint
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    ports:
+      # Db is reachable from the host too, for DBA tooling on the developer's
+      # machine during development (frontend/backend never call db directly
+      # from the browser — only the backend container talks to db).
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  auth-service:
+    # Authentication and authorization service (KAN-79). Owns credentials and
+    # token issuance; the business backend never sees a password.
+    build:
+      context: ../../apps/auth-service
+    ports:
+      - "3001:3001"
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      # Its own database — deliberately not the paysprint db above.
+      DB_HOST: auth-db
+      DB_PORT: 5432
+      DB_NAME: auth_db
+      DB_USER: authuser
+      DB_PASSWORD: ${AUTH_DB_PASSWORD:-changeme}
+      # RS256 keypair. No default on purpose — the service refuses to start
+      # without them, and a committed fallback key is how private keys reach
+      # production. Generate with:
+      #   node apps/auth-service/scripts/generate-dev-keys.mjs >> .env
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:?run apps/auth-service/scripts/generate-dev-keys.mjs and append to .env}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?run apps/auth-service/scripts/generate-dev-keys.mjs and append to .env}
+      JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
+
+  auth-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: authuser
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-changeme}
+    ports:
+      # 5432 on the host is already taken by the application db above, so the
+      # auth db is published on 5433. In-container it is still 5432.
+      - "5433:5432"
+    volumes:
+      - auth_db_data:/var/lib/postgresql/data
+    healthcheck:
+      # auth-service waits on this before starting, so it never boots against a
+      # Postgres that is still initialising.
+      test: ["CMD-SHELL", "pg_isready -U authuser -d auth_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  db_data:
+    # Named volume: persists Postgres data across `docker compose down` and
+    # `docker compose up`. Use `docker compose down -v` to also remove this
+    # volume, which wipes the database and starts fresh on the next `up`.
+  auth_db_data:
+    # Separate volume so the auth database can be reset independently of the
+    # application database.

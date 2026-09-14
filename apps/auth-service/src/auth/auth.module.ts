@@ -1,0 +1,43 @@
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { AuthService } from './auth.service.js';
+import { AuthController } from './auth.controller.js';
+import { WellKnownController } from './well-known.controller.js';
+import { LocalStrategy } from './strategies/local.strategy.js';
+import { JwtStrategy } from './strategies/jwt.strategy.js';
+import { JwtKeysService, normalizePem } from './services/jwt-keys.service.js';
+import { UsersModule } from '../users/users.module.js';
+import { RefreshTokensModule } from '../refresh-tokens/refresh-tokens.module.js';
+
+@Module({
+  imports: [
+    PassportModule,
+    JwtModule.register({
+      // normalizePem is the same helper JwtKeysService uses. Reading the raw
+      // env value here instead would mean the two disagreed about escaped
+      // newlines: verification would work while signing silently failed.
+      privateKey: normalizePem(process.env.JWT_PRIVATE_KEY),
+      publicKey: normalizePem(process.env.JWT_PUBLIC_KEY),
+      signOptions: {
+        algorithm: 'RS256',
+        expiresIn: '15m',
+        issuer: process.env.JWT_ISSUER || 'https://auth.dualeapa.com',
+      },
+    }),
+    UsersModule,
+    RefreshTokensModule,
+  ],
+  providers: [
+    JwtKeysService,
+    AuthService,
+    LocalStrategy,
+    // Passport only learns a strategy when Nest instantiates it. Omitting
+    // JwtStrategy here made every AuthGuard('jwt') route fail at runtime with
+    // "Unknown authentication strategy" while still compiling cleanly.
+    JwtStrategy,
+  ],
+  controllers: [AuthController, WellKnownController],
+  exports: [AuthService, JwtKeysService],
+})
+export class AuthModule {}

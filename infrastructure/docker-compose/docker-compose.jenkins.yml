@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  jenkins:
+    build:
+      context: ../docker
+      dockerfile: Dockerfile.jenkins
+    container_name: jenkins-with-nodejs
+    ports:
+      - "8888:8080"
+      - "50000:50000"
+    volumes:
+      # Persist Jenkins data across container restarts
+      - jenkins_home:/var/jenkins_home
+      # Allow Jenkins to access Docker daemon for container builds (DooD)
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      JAVA_OPTS: "-Xmx2g -Xms512m"
+      JENKINS_OPTS: "--argumentsRealm.passwd.admin=admin --argumentsRealm.roles.admin=admin"
+    restart: unless-stopped
+    networks:
+      - dev-network
+
+  # Note: Backend service is built by the Jenkinsfile during pipeline execution
+  # Uncomment below if you want to run backend locally during development
+  # backend:
+  #   build:
+  #     context: ../../apps/business-backend
+  #     dockerfile: Dockerfile
+  #   container_name: backend-service
+  #   ports:
+  #     - "8081:8081"
+  #   depends_on:
+  #     - db
+  #   environment:
+  #     SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/paysprint
+  #     SPRING_DATASOURCE_USERNAME: paysprint
+  #     SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-changeme}
+  #   networks:
+  #     - dev-network
+
+  db:
+    image: postgres:16-alpine
+    container_name: postgres-db
+    environment:
+      POSTGRES_DB: paysprint
+      POSTGRES_USER: paysprint
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - dev-network
+
+volumes:
+  jenkins_home:
+  db_data:
+
+networks:
+  dev-network:
+    driver: bridge

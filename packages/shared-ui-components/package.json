@@ -1,0 +1,36 @@
+{
+  "name": "@shared/ui-components",
+  "version": "0.0.1",
+  "description": "Shared UI components for Trading Season",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./button": {
+      "import": "./src/lib/button/src/index.ts"
+    },
+    "./card": {
+      "import": "./src/lib/card/src/index.ts"
+    },
+    "./field": {
+      "import": "./src/lib/field/src/index.ts"
+    },
+    "./input": {
+      "import": "./src/lib/input/src/index.ts"
+    },
+    "./label": {
+      "import": "./src/lib/label/src/index.ts"
+    },
+    "./separator": {
+      "import": "./src/lib/separator/src/index.ts"
+    },
+    "./select": {
+      "import": "./src/lib/select/src/index.ts"
+    },
+    "./native-select": {
+      "import": "./src/lib/native-select/src/index.ts"
+    },
+    "./utils": {
+      "import": "./src/lib/utils/src/index.ts"
+    }
+  }
+}

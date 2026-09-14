@@ -1,0 +1,174 @@
+pipeline {
+    agent any
+    
+    tools {
+        // Must match a Maven installation configured in Jenkins under
+        // Manage Jenkins > Tools. The agent this runs on is a native install
+        // at /var/lib/jenkins, not the container built from
+        // infrastructure/docker/Dockerfile.jenkins, so nothing in this repo
+        // controls which tools exist there.
+        maven 'Maven3'
+    }
+
+    environment {
+        JAVA_HOME = '/usr/lib/jvm/java-21-amazon-corretto'
+        PATH = "${JAVA_HOME}/bin:${PATH}"
+    }
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 1, unit: 'HOURS')
+        timestamps()
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                echo "✓ Repository checked out"
+            }
+        }
+
+        stage('Setup Dependencies') {
+            steps {
+                dir('apps/business-backend') {
+                    sh '''
+                        # Aggressive Maven cache cleanup to avoid dependency resolution issues
+                        echo "🧹 Clearing Maven cache..."
+                        rm -rf ~/.m2/repository/org/junit/platform ~/.m2/repository/org/apache/maven/plugins/maven-surefire-plugin
+                        rm -rf ~/.m2/repository/org/junit
+                        # Warm up Maven cache with fresh dependencies
+                        mvn -B dependency:resolve dependency:resolve-plugins -U
+                        echo "✓ Maven dependencies cached"
+                    '''
+                }
+            }
+        }
+
+        // Each test suite below gets its own stage, and each publishes its own
+        // results from `post`. An earlier layout ran every suite inside one
+        // stage, so the first failure skipped Archive and Publish and threw
+        // away results from suites that had already passed.
+        stage('Backend Tests') {
+            steps {
+                dir('apps/business-backend') {
+                    sh '''
+                        echo "🧪 Running Backend Tests (Unit + Integration)..."
+                        mvn -B clean test
+                        echo "✓ Backend tests completed"
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'apps/business-backend/target/surefire-reports/**/*',
+                                      allowEmptyArchive: true
+                    junit testResults: 'apps/business-backend/target/surefire-reports/**/*.xml',
+                          allowEmptyResults: true,
+                          healthScaleFactor: 1.0
+                    echo "✓ Backend test results published"
+                }
+            }
+        }
+
+        stage('Auth Service Tests') {
+            // Deliberately NOT wrapped in a `command -v npm` check. A missing
+            // toolchain is a broken pipeline, not a reason to pass: the build
+            // fails instead of quietly skipping, which is what the acceptance
+            // criteria require.
+            environment {
+                CI = 'true'
+            }
+            steps {
+                // catchError marks this stage and the build as failed but lets
+                // later stages run, so one red suite cannot hide another.
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                    // No JWT credentials needed: the specs generate an ephemeral
+                    // RSA keypair per run. A committed or injected test key would
+                    // eventually be copied into a deployment config.
+                    dir('apps/auth-service') {
+                        sh '''
+                            set -eu
+                            echo "🧪 Running Auth Service Tests (Vitest)..."
+                            if ! command -v node > /dev/null; then
+                                echo "✗ Node.js is not installed on this Jenkins agent."
+                                echo "  The auth service tests cannot run without it, and this"
+                                echo "  stage fails rather than skipping so the gap is visible."
+                                echo "  Fix: install Node.js 20+ on the agent, or run Jenkins from"
+                                echo "  infrastructure/docker/Dockerfile.jenkins, which includes it."
+                                exit 1
+                            fi
+                            node --version
+                            npm --version
+                            npm ci
+                            npm run test:ci
+                            echo "✓ Auth service tests completed"
+                        '''
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'apps/auth-service/coverage/**/*, apps/auth-service/reports/**/*',
+                                      allowEmptyArchive: true
+                    // allowEmptyResults: false is what makes "tests never ran"
+                    // a failure rather than a silent pass. It throws to do so,
+                    // and an uncaught throw in `post` aborts the whole run --
+                    // which skipped the frontend stage. catchError keeps the
+                    // build red without taking the later stages down with it.
+                    catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                        junit testResults: 'apps/auth-service/reports/junit/*.xml',
+                              allowEmptyResults: false,
+                              healthScaleFactor: 1.0
+                    }
+                }
+            }
+        }
+
+        stage('Frontend Tests') {
+            steps {
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                    dir('apps/business-logic-ui') {
+                        sh '''
+                            set -eu
+                            echo "🧪 Running Frontend Tests (Angular + Vitest)..."
+                            # --no-watch and --coverage are options of the
+                            # @angular/build:unit-test builder. Vitest's own
+                            # --run is not: `ng test --run` fails with
+                            # "Unknown argument: run" before any test executes.
+                            npm install --legacy-peer-deps
+                            npm test -- --no-watch --coverage
+                            echo "✓ Frontend tests completed"
+                        '''
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'apps/business-logic-ui/coverage/**/*',
+                                      allowEmptyArchive: true
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            // Optional: Remove Maven and npm cache to free disk space (comment out if not needed)
+            // sh 'rm -rf ~/.m2/repository ~/.npm'
+            echo "ℹ️  Build workspace preserved for debugging. To save disk space, manually delete workspace or adjust retention policy."
+        }
+        
+        success {
+            echo "✅ All Tests PASSED"
+        }
+        
+        failure {
+            echo "❌ Tests FAILED - Review test results above"
+        }
+        
+        unstable {
+            echo "⚠️  Build is UNSTABLE - Some tests may have failed or timed out"
+        }
+    }
+}

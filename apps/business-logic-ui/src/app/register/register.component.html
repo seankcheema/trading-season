@@ -1,0 +1,314 @@
+<div class="bg-background relative flex flex-col min-h-screen items-center justify-center px-4 py-12">
+  <img
+    src="2b-waves-lockup-reversed.svg"
+    alt="TradingSeason"
+    class="TS-logo fixed top-0 left-0 z-10 h-36 w-auto"
+  />
+
+  <div hlmCard class="w-full max-w-md rounded-[10px]">
+    <div hlmCardHeader class="text-center">
+      <h1 hlmCardTitle class="text-xl">Create an account</h1>
+      <p hlmCardDescription>Join Trading Season to get started</p>
+    </div>
+
+    <div hlmCardContent>
+      <form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate class="flex flex-col gap-5">
+        <div class="grid grid-cols-2 gap-3">
+          <div hlmField>
+            <label hlmFieldLabel for="firstName" class="text-foreground">First name</label>
+            <input
+              hlmInput
+              id="firstName"
+              type="text"
+              autocomplete="given-name"
+              placeholder="Jane"
+              class="rounded-[5px]"
+              formControlName="firstName"
+            />
+            @if (form.controls.firstName.invalid && form.controls.firstName.touched) {
+              <p class="text-destructive text-sm">First name is required.</p>
+            }
+          </div>
+
+          <div hlmField>
+            <label hlmFieldLabel for="middleName" class="text-foreground">Middle name</label>
+            <input
+              hlmInput
+              id="middleName"
+              type="text"
+              autocomplete="additional-name"
+              placeholder="Optional"
+              class="rounded-[5px]"
+              formControlName="middleName"
+            />
+          </div>
+        </div>
+
+        <div hlmField>
+          <label hlmFieldLabel for="lastName" class="text-foreground">Last name</label>
+          <input
+            hlmInput
+            id="lastName"
+            type="text"
+            autocomplete="family-name"
+            placeholder="Doe"
+            class="rounded-[5px]"
+            formControlName="lastName"
+          />
+          @if (form.controls.lastName.invalid && form.controls.lastName.touched) {
+            <p class="text-destructive text-sm">Last name is required.</p>
+          }
+        </div>
+
+        <div hlmField>
+          <label hlmFieldLabel for="username" class="text-foreground">Username</label>
+          <div class="relative">
+            <ng-icon
+              name="lucideUser"
+              class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[16px]"
+            />
+            <input
+              hlmInput
+              id="username"
+              type="text"
+              autocomplete="username"
+              placeholder="janedoe"
+              class="rounded-[5px] pl-8"
+              formControlName="username"
+              (input)="onUsernameInput($event)"
+            />
+          </div>
+          @if (form.controls.username.invalid && form.controls.username.touched) {
+            <p class="text-destructive text-sm">
+              Username must be at least 3 characters, with no spaces or special characters.
+            </p>
+          }
+        </div>
+
+        <div hlmField>
+          <label hlmFieldLabel for="email" class="text-foreground">Email</label>
+          <div class="relative">
+            <ng-icon
+              name="lucideMail"
+              class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[16px]"
+            />
+            <input
+              hlmInput
+              id="email"
+              type="email"
+              autocomplete="email"
+              placeholder="you@example.com"
+              class="rounded-[5px] pl-8"
+              formControlName="email"
+            />
+          </div>
+          @if (form.controls.email.invalid && form.controls.email.touched) {
+            <p class="text-destructive text-sm">Enter a valid email address.</p>
+          }
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div hlmField>
+            <label hlmFieldLabel for="dateOfBirth" class="text-foreground">Date of birth</label>
+            <input
+              hlmInput
+              id="dateOfBirth"
+              type="date"
+              autocomplete="bday"
+              class="rounded-[5px]"
+              formControlName="dateOfBirth"
+            />
+            @if (form.controls.dateOfBirth.invalid && form.controls.dateOfBirth.touched) {
+              <p class="text-destructive text-sm">Date of birth is required.</p>
+            }
+          </div>
+
+          <div hlmField>
+            <label hlmFieldLabel for="ssn" class="text-foreground">SSN</label>
+            <input
+              hlmInput
+              id="ssn"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              maxlength="11"
+              placeholder="XXX-XX-XXXX"
+              class="rounded-[5px]"
+              formControlName="ssn"
+              (input)="onSsnInput($event)"
+            />
+            @if (form.controls.ssn.invalid && form.controls.ssn.touched) {
+              <p class="text-destructive text-sm">Enter SSN as XXX-XX-XXXX.</p>
+            }
+          </div>
+        </div>
+
+        <div hlmField>
+          <label hlmFieldLabel for="address" class="text-foreground">Address</label>
+          <div class="relative">
+            <ng-icon
+              name="lucideMapPin"
+              class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[16px]"
+            />
+            <input
+              hlmInput
+              id="address"
+              type="text"
+              autocomplete="street-address"
+              placeholder="123 Main St, Springfield"
+              class="rounded-[5px] pl-8"
+              formControlName="address"
+            />
+          </div>
+          @if (form.controls.address.invalid && form.controls.address.touched) {
+            <p class="text-destructive text-sm">Address is required.</p>
+          }
+        </div>
+
+        <div hlmField>
+          <label hlmFieldLabel for="traderLevel" class="text-foreground">Trader level</label>
+          <hlm-native-select
+            [selectId]="'traderLevel'"
+            [selectClass]="'cursor-pointer rounded-[5px]'"
+            formControlName="traderLevel"
+          >
+            @for (level of traderLevels; track level) {
+              <option [value]="level" hlmNativeSelectOption>{{ level }}</option>
+            }
+          </hlm-native-select>
+        </div>
+
+        <div hlmField>
+          <label hlmFieldLabel for="availableFunds" class="text-foreground">Available funds</label>
+          <div class="relative">
+            <ng-icon
+              name="lucideDollarSign"
+              class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[16px]"
+            />
+            <input
+              hlmInput
+              id="availableFunds"
+              type="number"
+              [min]="minimumAvailableFunds"
+              step="100"
+              placeholder="5000"
+              class="rounded-[5px] pl-8"
+              formControlName="availableFunds"
+              (keydown)="onAvailableFundsKeydown($event)"
+            />
+          </div>
+          <p class="text-muted-foreground text-xs">
+            This is just a starting point, not a commitment — you can deposit or withdraw later. A
+            minimum of $5,000 is required to open an account.
+          </p>
+          @if (form.controls.availableFunds.invalid && form.controls.availableFunds.touched) {
+            <p class="text-destructive text-sm">Enter at least $5,000.</p>
+          }
+        </div>
+
+        <div hlmField>
+          <label hlmFieldLabel for="password" class="text-foreground">Password</label>
+          <div class="relative">
+            <ng-icon
+              name="lucideLock"
+              class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[16px]"
+            />
+            <input
+              hlmInput
+              id="password"
+              [type]="showPassword() ? 'text' : 'password'"
+              autocomplete="new-password"
+              placeholder="••••••••"
+              class="rounded-[5px] px-8"
+              formControlName="password"
+            />
+            <button
+              type="button"
+              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 flex -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 transition-colors"
+              (click)="togglePasswordVisibility()"
+              [attr.aria-label]="showPassword() ? 'Hide password' : 'Show password'"
+            >
+              <ng-icon [name]="showPassword() ? 'lucideEyeOff' : 'lucideEye'" class="text-[16px]" />
+            </button>
+          </div>
+          <ul class="mt-1 flex flex-col gap-0.5">
+            <li
+              class="flex items-center gap-1.5 text-xs"
+              [class.text-muted-foreground]="!hasMinLength()"
+              [class.text-[#33FF00]]="hasMinLength()"
+            >
+              <ng-icon [name]="hasMinLength() ? 'lucideCheck' : 'lucideX'" class="text-[12px]" />
+              At least 8 characters
+            </li>
+            <li
+              class="flex items-center gap-1.5 text-xs"
+              [class.text-muted-foreground]="!hasNumber()"
+              [class.text-[#33FF00]]="hasNumber()"
+            >
+              <ng-icon [name]="hasNumber() ? 'lucideCheck' : 'lucideX'" class="text-[12px]" />
+              At least 1 number
+            </li>
+            <li
+              class="flex items-center gap-1.5 text-xs"
+              [class.text-muted-foreground]="!hasSpecialCharacter()"
+              [class.text-[#33FF00]]="hasSpecialCharacter()"
+            >
+              <ng-icon [name]="hasSpecialCharacter() ? 'lucideCheck' : 'lucideX'" class="text-[12px]" />
+              At least 1 special character
+            </li>
+          </ul>
+        </div>
+
+        <div hlmField>
+          <label hlmFieldLabel for="confirmPassword" class="text-foreground">Confirm password</label>
+          <div class="relative">
+            <ng-icon
+              name="lucideLock"
+              class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[16px]"
+            />
+            <input
+              hlmInput
+              id="confirmPassword"
+              [type]="showConfirmPassword() ? 'text' : 'password'"
+              autocomplete="new-password"
+              placeholder="••••••••"
+              class="rounded-[5px] px-8"
+              formControlName="confirmPassword"
+            />
+            <button
+              type="button"
+              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 flex -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 transition-colors"
+              (click)="toggleConfirmPasswordVisibility()"
+              [attr.aria-label]="showConfirmPassword() ? 'Hide password' : 'Show password'"
+            >
+              <ng-icon
+                [name]="showConfirmPassword() ? 'lucideEyeOff' : 'lucideEye'"
+                class="text-[16px]"
+              />
+            </button>
+          </div>
+          @if (form.controls.confirmPassword.touched && form.errors?.['passwordMismatch']) {
+            <p class="text-destructive text-sm">Passwords do not match.</p>
+          }
+        </div>
+
+        <button
+          hlmBtn
+          type="submit"
+          class="mt-1 w-full cursor-pointer rounded-[5px] transition-colors hover:bg-primary/80"
+        >
+          <ng-icon name="lucideUserPlus" />
+          Create account
+        </button>
+      </form>
+    </div>
+
+    <div hlmCardFooter class="justify-center">
+      <p class="text-muted-foreground text-sm">
+        Already have an account?
+        <a routerLink="/login" class="text-primary font-medium hover:underline">Sign in</a>
+      </p>
+    </div>
+  </div>
+</div>
+
