@@ -37,7 +37,12 @@ pipeline {
                     if command -v node > /dev/null; then
                         node --version
                         npm --version
-                        npm ci
+                        # Use npm install if package-lock.json doesn't exist
+                        if [ -f package-lock.json ]; then
+                            npm ci
+                        else
+                            npm install
+                        fi
                         npm --prefix apps/auth-service ci
                         echo "✓ Root workspace dependencies installed"
                     else
