@@ -68,28 +68,22 @@ export class AuthController {
   }
 
   /**
-   * Logout endpoint - invalidates the access token
-   * The token is extracted from Authorization header
+   * End one session by revoking its refresh token.
+   *
+   * Takes the refresh token from the body, not the access token from the
+   * Authorization header. It previously took the latter and passed it to
+   * AuthService.logout, which looks the value up against refresh token hashes —
+   * so it matched nothing, revoked nothing, and reported success anyway.
+   *
+   * Unguarded for the same reason /auth/refresh is: a client whose access token
+   * has already expired still needs to be able to end its session. Possession
+   * of the refresh token is the credential here.
    */
-  @UseGuards(JwtAuthGuard)
   @Post('logout')
   async logout(@Req() req: RequestWithUser): Promise<{ message: string }> {
-    const token = this.extractToken(req);
-    await this.authService.logout(token);
-    this.logger.debug(`User ${req.user?.sub} logged out`);
+    const refreshToken = this.extractRefreshToken(req);
+    await this.authService.logout(refreshToken);
     return { message: 'Logged out successfully' };
-  }
-
-
-  /**
-   * Extract JWT from Authorization header
-   */
-  private extractToken(req: RequestWithUser): string {
-    const authHeader = (req as any).headers?.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedException('No authorization token provided');
-    }
-    return authHeader.substring(7);
   }
 
   /**
