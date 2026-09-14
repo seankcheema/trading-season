@@ -1,0 +1,24 @@
+:host {
+  display: contents;
+}
+
+.net-worth-card {
+  background:
+    radial-gradient(120% 140% at 100% 100%, #0b5a78 0%, transparent 60%),
+    linear-gradient(135deg, #10161a 0%, #0b3e52 100%);
+}
+
+.net-worth-action {
+  height: 3rem;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: rgba(14, 14, 14, 0.3);
+  font-size: 1.25rem;
+  font-weight: 600;
+  transition: background-color 150ms;
+}
+
+.net-worth-action:hover {
+  background: rgba(14, 14, 14, 0.55);
+}

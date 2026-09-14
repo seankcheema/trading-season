@@ -1,0 +1,52 @@
+:host {
+  display: contents;
+}
+
+/* Hide the number spinner so the share count reads like the mockup's large figure. */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+.share-slider {
+  appearance: none;
+  height: 20px;
+  background: transparent;
+  cursor: pointer;
+}
+.share-slider:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.share-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--foreground);
+}
+.share-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--foreground);
+}
+.share-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -8px;
+  border-radius: 9999px;
+  background: var(--primary);
+}
+.share-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--primary);
+}
+.share-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--ring) 50%, transparent);
+}

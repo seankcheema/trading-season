@@ -13,6 +13,12 @@
    out of the generated CSS. */
 @source '../../../packages/shared-ui-components/src';
 
+/* Market up/down colors, e.g. `text-gain`, `stroke-loss`, `bg-loss/15`. */
+@theme {
+  --color-gain: #33ff00;
+  --color-loss: #ff0037;
+}
+
 /* You can add global styles to this file, and also import other style files.
 
    Keep global element rules inside `@layer base`. v4 emits utilities into a real
