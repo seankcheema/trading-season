@@ -1,0 +1,126 @@
+<div class="bg-background relative flex min-h-screen flex-col overflow-hidden px-4 md:px-8">
+  <!-- Faint vertical line texture behind the hero -->
+  <div class="landing-texture pointer-events-none absolute inset-x-0 top-0 h-[70vh]" aria-hidden="true"></div>
+
+  <header class="relative mx-auto flex h-24 w-full max-w-6xl items-center md:h-28">
+    <a routerLink="/" class="flex items-center gap-3 cursor-default" aria-label="TradingSeason home">
+      <img src="2b-waves.svg" alt="" class="size-11 md:size-14" />
+      <span class="text-2xl font-semibold tracking-tight md:text-3xl">TradingSeason</span>
+    </a>
+  </header>
+
+  <main class="relative flex flex-1 flex-col">
+    <section class="flex flex-col items-center px-2 pt-14 text-center md:pt-20">
+      <h1 class="text-6xl font-semibold tracking-tight md:text-8xl">Ride the market.</h1>
+      <p class="text-muted-foreground mt-6 max-w-xl text-base text-balance md:text-lg">
+        Live prices, instant trades, smarter portfolios. Stay ahead of the market.
+      </p>
+
+      <div class="mt-10 flex flex-wrap items-center justify-center gap-4">
+        <a
+          routerLink="/register"
+          class="auth-button h-12 rounded-[5px] px-8 text-base font-semibold hover:bg-primary/80"
+        >
+          Get started
+        </a>
+        <a
+          routerLink="/login"
+          class="border-border bg-background hover:bg-muted flex h-12 items-center rounded-[5px] border px-8 text-base transition-colors"
+        >
+          Sign in
+        </a>
+      </div>
+    </section>
+
+    <!-- Decorative, abstract stock graph -->
+    <div class="relative mt-auto -mx-4 h-[45vh] min-h-60 md:-mx-8" aria-hidden="true">
+      <svg
+        [attr.viewBox]="viewBox"
+        preserveAspectRatio="none"
+        class="landing-graph absolute inset-0 h-full w-full overflow-visible"
+      >
+        <defs>
+          <linearGradient id="graph-area" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stop-color="#00bbff" stop-opacity="0.28" />
+            <stop offset="1" stop-color="#00bbff" stop-opacity="0" />
+          </linearGradient>
+          <linearGradient id="graph-line" gradientUnits="userSpaceOnUse" x1="0" x2="1440" y1="0" y2="0">
+            <stop offset="0" stop-color="#c6e8f5" />
+            <stop offset="0.45" stop-color="#58c9f4" />
+            <stop [attr.offset]="lineEndX / 1440" stop-color="#00bbff" />
+          </linearGradient>
+          <!-- Softens the fill's right edge so it doesn't end in a hard vertical cut -->
+          <linearGradient
+            id="graph-area-fade"
+            gradientUnits="userSpaceOnUse"
+            [attr.x1]="lineEndX - 240"
+            [attr.x2]="lineEndX"
+            y1="0"
+            y2="0"
+          >
+            <stop offset="0" stop-color="#fff" />
+            <stop offset="1" stop-color="#fff" stop-opacity="0" />
+          </linearGradient>
+          <mask id="graph-area-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="1440" height="420">
+            <rect width="1440" height="420" fill="url(#graph-area-fade)" />
+          </mask>
+          <filter id="graph-glow" x="-10%" y="-50%" width="120%" height="200%">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
+        </defs>
+
+        @for (y of gridLines; track y) {
+          <line
+            x1="0"
+            x2="1440"
+            [attr.y1]="y"
+            [attr.y2]="y"
+            stroke="#eefaff"
+            stroke-opacity="0.06"
+            stroke-dasharray="2 6"
+            vector-effect="non-scaling-stroke"
+          />
+        }
+
+        <path
+          [attr.d]="ghost.line"
+          fill="none"
+          stroke="#58c9f4"
+          stroke-opacity="0.22"
+          stroke-width="1.5"
+          stroke-linejoin="round"
+          vector-effect="non-scaling-stroke"
+        />
+
+        <path [attr.d]="primary.area" fill="url(#graph-area)" mask="url(#graph-area-mask)" />
+        <path
+          [attr.d]="primary.line"
+          fill="none"
+          stroke="#00bbff"
+          stroke-opacity="0.5"
+          stroke-width="6"
+          stroke-linejoin="round"
+          filter="url(#graph-glow)"
+        />
+        <path
+          [attr.d]="primary.line"
+          fill="none"
+          stroke="url(#graph-line)"
+          stroke-width="2.5"
+          stroke-linejoin="round"
+          vector-effect="non-scaling-stroke"
+        />
+      </svg>
+
+      <!-- Latest point, drawn in HTML so it stays round while the SVG stretches -->
+      <span
+        class="absolute size-3 -translate-x-1/2 -translate-y-1/2"
+        [style.left.%]="primary.end.x"
+        [style.top.%]="primary.end.y"
+      >
+        <span class="landing-pulse bg-primary absolute inset-0 rounded-full"></span>
+        <span class="bg-primary ring-background absolute inset-0 rounded-full ring-4"></span>
+      </span>
+    </div>
+  </main>
+</div>

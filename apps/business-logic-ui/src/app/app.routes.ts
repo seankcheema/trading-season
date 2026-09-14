@@ -3,7 +3,11 @@ import { LoginComponent } from './login/login.component';
 import { RegisterComponent } from './register/register.component';
 
 export const routes: Routes = [
-  { path: '', component: LoginComponent },
+  {
+    path: '',
+    pathMatch: 'full',
+    loadComponent: () => import('./landing/landing.component').then((m) => m.LandingComponent),
+  },
   { path: 'login', component: LoginComponent },
   { path: 'register', component: RegisterComponent },
   {
