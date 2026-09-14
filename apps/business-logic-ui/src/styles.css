@@ -13,32 +13,37 @@
    out of the generated CSS. */
 @source '../../../packages/shared-ui-components/src';
 
-/* You can add global styles to this file, and also import other style files */
+/* You can add global styles to this file, and also import other style files.
 
-* {
-  margin: 0;
-  padding: 0;
-}
+   Keep global element rules inside `@layer base`. v4 emits utilities into a real
+   `@layer utilities`, and unlayered CSS beats *any* layer regardless of
+   specificity -- so a bare `html, body { ... }` here would silently outrank every
+   utility that sets the same property. (v3 had no real layers, which is why
+   rules like this were harmless before the migration.)
 
-html,
-body {
-  margin: 0;
-  padding: 0;
-  font-family:
-    'Archivo',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    'Roboto',
-    'Oxygen',
-    'Ubuntu',
-    'Cantarell',
-    'Fira Sans',
-    'Droid Sans',
-    'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+   The `* { margin: 0; padding: 0 }` reset that used to live here is gone: it was
+   unlayered, so it beat every padding and margin utility in the app, and
+   preflight already zeroes both on `*`. */
+
+@layer base {
+  html,
+  body {
+    font-family:
+      'Archivo',
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      'Roboto',
+      'Oxygen',
+      'Ubuntu',
+      'Cantarell',
+      'Fira Sans',
+      'Droid Sans',
+      'Helvetica Neue',
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 }
 
 :root {
@@ -114,5 +119,26 @@ body {
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* Shared look for the primary submit buttons on the login and register forms.
+
+   In `@layer components` so page-level utilities in the template still win --
+   e.g. the `hover:bg-primary/80` on those buttons overrides the background
+   below on hover, which is what you want. */
+@layer components {
+  .auth-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 6px;
+    background: #00bbff;
+    /* Not in the original snippet, but the inherited text color is near-white
+       (--foreground), which is ~1.6:1 on this cyan. --primary-foreground is the
+       dark ink the theme pairs with --primary. Drop this line if you want the
+       light label back. */
+    color: var(--primary-foreground);
   }
 }
