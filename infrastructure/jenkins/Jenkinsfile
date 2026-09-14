@@ -8,7 +8,7 @@ pipeline {
         // infrastructure/docker/Dockerfile.jenkins, so nothing in this repo
         // controls which tools exist there.
         maven 'Maven3'
-        nodejs 'NodeJS24'
+        nodejs 'NodeJS'
     }
 
     environment {
