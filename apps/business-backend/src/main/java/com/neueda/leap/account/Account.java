@@ -49,6 +49,10 @@ public class Account {
         this.id = id;
     }
 
+    public Integer getAccountId() {
+        return id;
+    }
+
     public UUID getUserId() {
         return userId;
     }
