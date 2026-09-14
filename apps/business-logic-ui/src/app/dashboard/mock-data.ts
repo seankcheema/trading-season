@@ -95,20 +95,71 @@ export function searchInstruments(query: string): Instrument[] {
   );
 }
 
-// Deterministic fake price history so charts look stable across renders (and SSR/hydration).
-export function mockPriceSeries(seed: string, timeframe: Timeframe, points = 12): number[] {
+export interface PricePoint {
+  time: Date;
+  value: number;
+}
+
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+
+// Fixed "latest market close" rather than `new Date()`, so prerendered HTML matches what the
+// client hydrates. Times are market wall-clock values stored as UTC; format them with the
+// 'UTC' timezone to display them as-is.
+const MOCK_LAST_CLOSE = Date.UTC(2026, 8, 14, 16, 0);
+
+// `count` timestamps ending at `end`, `step` ms apart, oldest first.
+function steps(end: number, step: number, count: number): number[] {
+  return Array.from({ length: count }, (_, i) => end - (count - 1 - i) * step);
+}
+
+// Closing times of the weekdays within the last `calendarDays` days, oldest first.
+function tradingDayCloses(calendarDays: number): number[] {
+  return steps(MOCK_LAST_CLOSE, DAY, calendarDays).filter((time) => {
+    const weekday = new Date(time).getUTCDay();
+    return weekday !== 0 && weekday !== 6;
+  });
+}
+
+function mockTimestamps(timeframe: Timeframe): number[] {
+  switch (timeframe) {
+    case '1D':
+      // 9:30am to 4:00pm in 15 minute bars.
+      return steps(MOCK_LAST_CLOSE, 15 * MINUTE, 27);
+    case '5D':
+      return tradingDayCloses(7)
+        .slice(-5)
+        .flatMap((close) => steps(close, HOUR, 7));
+    case '1W':
+      return tradingDayCloses(7).flatMap((close) => steps(close, 30 * MINUTE, 14));
+    case '1M':
+      return tradingDayCloses(30);
+    case '1Y':
+      return steps(MOCK_LAST_CLOSE, 7 * DAY, 53);
+  }
+}
+
+// Deterministic fake price history ending at `endValue`, so charts look stable across renders
+// (and SSR/hydration).
+export function mockPriceSeries(seed: string, timeframe: Timeframe, endValue: number): PricePoint[] {
+  const timestamps = mockTimestamps(timeframe);
+
   let state = 0;
   for (const char of seed + timeframe) {
     state = (state * 31 + char.charCodeAt(0)) >>> 0;
   }
 
-  const series: number[] = [];
+  const walk: number[] = [];
   let value = 100;
-  for (let i = 0; i < points; i++) {
+  for (let i = 0; i < timestamps.length; i++) {
     state = (state * 1664525 + 1013904223) >>> 0;
-    // Slight upward drift so most charts trend up like the mockups.
-    value += (state / 2 ** 32 - 0.4) * 10;
-    series.push(value);
+    // Slight upward drift so most charts trend up like the mockups; scaled by length so
+    // denser series swing about as much as sparse ones.
+    value += ((state / 2 ** 32 - 0.45) * 20) / Math.sqrt(timestamps.length);
+    walk.push(value);
   }
-  return series;
+
+  const scale = endValue / walk[walk.length - 1];
+  return timestamps.map((time, i) => ({ time: new Date(time), value: walk[i] * scale }));
 }

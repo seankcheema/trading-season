@@ -87,7 +87,7 @@ export class DashboardComponent {
   );
 
   protected readonly portfolioChart = computed(() =>
-    mockPriceSeries(`portfolio-${this.selectedAccountId()}`, this.portfolioTimeframe()),
+    mockPriceSeries(`portfolio-${this.selectedAccountId()}`, this.portfolioTimeframe(), this.netWorth()),
   );
 
   protected onAccountChange(event: Event): void {

@@ -49,7 +49,7 @@ export class OrderSubmissionComponent {
   protected readonly timeframe = signal<Timeframe>('1D');
 
   protected readonly chartPoints = computed(() =>
-    mockPriceSeries(this.activeInstrument().symbol, this.timeframe()),
+    mockPriceSeries(this.activeInstrument().symbol, this.timeframe(), this.activeInstrument().price),
   );
 
   protected readonly sharesHeld = computed(

@@ -137,7 +137,7 @@
           </div>
           <app-timeframe-toggle [(value)]="portfolioTimeframe" />
         </div>
-        <app-price-chart class="mt-4 h-40" [points]="portfolioChart()" />
+        <app-price-chart class="mt-2 h-56" [points]="portfolioChart()" [timeframe]="portfolioTimeframe()" />
       </section>
 
       <section class="border-border bg-card flex-1 rounded-[5px] border p-4">

@@ -50,7 +50,7 @@
         <div class="mt-4 flex justify-end">
           <app-timeframe-toggle [(value)]="timeframe" />
         </div>
-        <app-price-chart class="mt-4 h-48" [points]="chartPoints()" />
+        <app-price-chart class="mt-2 h-64" [points]="chartPoints()" [timeframe]="timeframe()" />
       </div>
 
       <!-- Order ticket -->
