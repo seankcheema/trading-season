@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
+import { JwtModule, JwtModuleOptions } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service.js';
 import { AuthController } from './auth.controller.js';
@@ -10,21 +10,40 @@ import { JwtKeysService, normalizePem } from './services/jwt-keys.service.js';
 import { UsersModule } from '../users/users.module.js';
 import { RefreshTokensModule } from '../refresh-tokens/refresh-tokens.module.js';
 
+/**
+ * The signing configuration the service actually runs on.
+ *
+ * Exported, and built by a function rather than declared inline, so that tests
+ * can sign through this exact configuration instead of a hand-rolled JwtService
+ * of their own. Every existing spec built its own, which is why a module that
+ * could not issue a single token passed 62 tests.
+ */
+export function buildJwtOptions(): JwtModuleOptions {
+  return {
+    // normalizePem is the same helper JwtKeysService uses. Reading the raw
+    // env value here instead would mean the two disagreed about escaped
+    // newlines: verification would work while signing silently failed.
+    privateKey: normalizePem(process.env.JWT_PRIVATE_KEY),
+    publicKey: normalizePem(process.env.JWT_PUBLIC_KEY),
+    // Only the algorithm belongs here. AuthService.issueTokens sets exp and
+    // iss as payload claims, and @nestjs/jwt merges these module options into
+    // every sign() call — so an expiresIn or issuer here reaches jsonwebtoken
+    // alongside the claims it duplicates, and it rejects that outright with
+    // `Bad "options.expiresIn" option the payload already has an "exp"
+    // property`. That made every login and register a 500.
+    signOptions: {
+      algorithm: 'RS256',
+    },
+  };
+}
+
 @Module({
   imports: [
     PassportModule,
-    JwtModule.register({
-      // normalizePem is the same helper JwtKeysService uses. Reading the raw
-      // env value here instead would mean the two disagreed about escaped
-      // newlines: verification would work while signing silently failed.
-      privateKey: normalizePem(process.env.JWT_PRIVATE_KEY),
-      publicKey: normalizePem(process.env.JWT_PUBLIC_KEY),
-      signOptions: {
-        algorithm: 'RS256',
-        expiresIn: '15m',
-        issuer: process.env.JWT_ISSUER || 'https://auth.dualeapa.com',
-      },
-    }),
+    // registerAsync so the options are built at injection time, after the
+    // process has its environment. register() would capture process.env as the
+    // file is imported.
+    JwtModule.registerAsync({ useFactory: buildJwtOptions }),
     UsersModule,
     RefreshTokensModule,
   ],
