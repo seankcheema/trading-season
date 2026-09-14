@@ -1,36 +1,5 @@
-# Reporting Service - Spring Boot (Work in Progress)
+# Reporting service
 
-Analytics and reporting backend service for the DuaLEAPa trading simulation platform.
+Status: proposed; this directory has no runnable application yet.
 
-## 📋 Status
-
-**Current Status:** 🚧 Work in Progress (Not yet implemented)
-
-This service is planned for a future sprint. It will provide data aggregation, analytics processing, and report generation.
-
-## 🎯 Planned Features
-
-- Trading analytics calculations
-- Portfolio performance metrics
-- Report generation & scheduling
-- Data aggregation pipeline
-- CSV/PDF export
-
-## 🛠️ Tech Stack
-
-- Spring Boot 3.3.4
-- PostgreSQL 16
-- Flyway migrations
-- Maven
-- Java 21
-
-## 📚 Documentation
-
-For now, refer to:
-- [apps/business-backend/README.md](../business-backend/README.md) — Backend setup guide
-- [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md) — System architecture
-- [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md) — Deployment guide
-
----
-
-**Last Updated:** 2026-09-09
+Read the [reporting proposal](../../docs/reference/reporting.md) for intended responsibilities and unresolved decisions. Follow the [root agent instructions](../../AGENTS.md) when implementing the first slice. Add local setup commands only when an implementation exists.
