@@ -1,26 +1,9 @@
-# Auth Service - AI Agent Guidance
+# Auth service instructions
 
-**Status:** 🚧 Work in Progress (Not yet implemented)
-
-This app scaffolding is prepared for future development.
-
-## Planned Purpose
-
-NestJS-based centralized authentication service with OAuth2/OIDC support, MFA, and session management.
-
-## Planned Tech Stack
-
-- NestJS 11+
-- TypeScript
-- Node.js 22+
-- PostgreSQL 16
-
-## Quick Links
-
-- [Root Monorepo Guidance](.../.agent.md)
-- [API Reference](../../docs/APIREFERENCE.md)
-- [Development Workflow](../../docs/DEVELOPMENTWORKFLOW.md)
-
----
-
-**Last Updated:** 2026-09-09
+- Preserve ESM .js extensions in local TypeScript imports and follow existing NestJS module/provider patterns.
+- Keep credentials and token persistence in this service's database; Java users are separate.
+- Keep runtime and CLI migration lists aligned, add migrations instead of editing applied ones, and leave synchronize disabled.
+- Access tokens are RS256 JWTs; refresh tokens are opaque, hashed server-side, rotated, and revocable. Do not interchange them.
+- Preserve generic credential errors and existing failed-login protections. Never add fallback signing keys.
+- Use ephemeral keys in tests. Verify contract changes against controller, strategy, service, and tests together; the existing logout mismatch is documented in the [API reference](../../docs/reference/api.md#current-logout-limitation).
+- Use the [local README](README.md) for setup and commands.

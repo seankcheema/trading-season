@@ -1,651 +1,77 @@
-# Development Workflow Guide
+# Development
 
-## Prerequisites
+## Toolchain and installation
 
-### System Requirements
-- **OS:** Windows 10+, macOS 10.15+, or Linux (Ubuntu 20.04+)
-- **RAM:** 8GB minimum, 16GB recommended
-- **Disk Space:** 20GB available for Docker images and databases
+Use Node.js 22.22.3+ on the 22.x line, npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. Check exact dependency requirements in [root package.json](../../package.json), the [UI manifest](../../apps/business-logic-ui/package.json), and the [Java POM](../../apps/business-backend/pom.xml).
 
-### Required Software
-- **Git:** Latest version (for version control)
-- **Node.js:** 22.x LTS (frontend builds)
-- **npm:** 10.x (npm workspaces support)
-- **Java:** JDK 21 (backend compilation)
-- **Maven:** 3.9+ (build tool)
-- **Docker:** 24.0+ with Docker Compose
-- **Docker Compose:** Included with Docker Desktop
+From repository root:
 
-### Optional Tools
-- **VS Code:** Latest version with extensions
-  - ES7+ React/Redux/React-Native snippets
-  - Prettier - Code formatter
-  - ESLint
-  - Java Extension Pack
-  - Spring Boot Extension Pack
-- **Postman or Insomnia:** REST API testing
-- **DBeaver:** Database client for PostgreSQL
-- **Git GUI:** SourceTree or GitHub Desktop
-
-## Setup Instructions
-
-### 1. Clone Repository
-
-```bash
-cd ~/projects
-git clone https://github.com/your-org/dualeapa-sprint1-project.git
-cd dualeapa-sprint1-project
+```sh
+npm ci
+npm --prefix apps/auth-service ci
 ```
 
-### 2. Install Backend Dependencies
+The auth service has its own lockfile and is not a root workspace. Reporting has no runnable application yet. Avoid the root install:all helper, which targets the placeholder reporting UI.
 
-```bash
-# Navigate to backend
-cd apps/business-backend
+## Run locally
 
-# Install Maven dependencies
-mvn clean install
+1. Follow the [auth setup](../../apps/auth-service/README.md) to create a local environment file and RSA keys.
+2. Start only the databases from repository root:
 
-# This will download all required Java libraries (may take 2-3 minutes first time)
+```sh
+docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml up -d db auth-db
 ```
 
-### 3. Install Frontend Dependencies
+Compose validates JWT variables even when selecting database services, so provide the environment file. If changing the two database passwords, use root Compose variables DB_PASSWORD for the business database and AUTH_DB_PASSWORD for the auth database; the auth app uses DB_PASSWORD for its own connection. Keep these separate when credentials differ.
 
-```bash
-# Install all npm dependencies across workspaces
-npm install
+3. Initialize the business database only if you need the Java API, following the [database guide](../reference/database.md). Auth migrations run on auth-service startup.
+4. Start each application in its own terminal:
 
-# This installs:
-# - apps/business-logic-ui dependencies
-# - packages/shared-ui-components dependencies
-# - root-level dev dependencies
+| Working directory | Command | Port |
+| --- | --- | --- |
+| Repository root | npm --workspace business-logic-ui start | 4200 |
+| apps/business-backend | mvn spring-boot:run | 8080 |
+| apps/auth-service | npm run start:dev | 3001 |
+
+Do not use an unqualified Compose up for the full stack: its backend build context and port mapping are stale. Frontend API wiring is also unfinished; rendering forms does not demonstrate end-to-end authentication.
+
+## Checks
+
+Run from repository root after dependency installation:
+
+| Area | Command | Notes |
+| --- | --- | --- |
+| UI | npm --workspace business-logic-ui run build | Angular production build |
+| UI | npm --workspace business-logic-ui test -- --no-watch --coverage | Angular unit-test builder; do not pass Vitest's --run |
+| Java | mvn -B -f apps/business-backend/pom.xml test | Unit/integration tests use H2 test configuration |
+| Auth | npm --prefix apps/auth-service run build | NestJS compilation |
+| Auth | npm --prefix apps/auth-service run test:ci | Vitest coverage and JUnit reports; tests generate ephemeral keys |
+| Auth | npm --prefix apps/auth-service run lint | Oxlint |
+
+Root Turborepo commands only cover configured workspaces and available scripts. Run Java and auth checks explicitly. See [operations](operations.md) for CI differences and artifact locations.
+
+## Javadocs
+
+When Java code changes, update affected Javadoc comments in the same change, including behavior, parameters, return values, and exceptions. From repository root run:
+
+```sh
+mvn -B -f apps/business-backend/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc
 ```
 
-### 4. Configure Environment Variables
+Open apps/business-backend/target/reports/apidocs/index.html locally and review pages for changed types and members. This pinned plugin command generates documentation from current source. It needs a JDK and Maven dependency access on first run. The target directory is temporary and ignored. Keep the published [Javadocs](../JAVA_DOCS/index.html) checked in under docs/JAVA_DOCS. After successful generation for a Java change, replace that directory’s contents with the complete generated apidocs output, including assets and legal notices; remove obsolete generated pages and include the refreshed copy in the same change. Never replace the checked-in copy after failed generation.
 
-Create `.env` file in project root:
+Fix generation errors and newly introduced warnings before completing a Java change. Existing missing-comment/tag warnings are visible technical debt, not evidence that a changed API is documented. Generation was verified during this consolidation on JDK 25 with the Java 21 source configuration; JDK 21 remains the project toolchain.
 
-```bash
-# Backend Configuration
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/paysprint
-SPRING_DATASOURCE_USERNAME=paysprint
-SPRING_DATASOURCE_PASSWORD=changeme
-JWT_SECRET=your-dev-secret-key-here
-SPRING_PROFILES_ACTIVE=dev
+## Contribution workflow
 
-# Frontend Configuration
-API_URL=http://localhost:8080
-API_TIMEOUT=30000
+Keep changes focused on one behavior, use a short-lived branch, and submit a review with the problem, resulting behavior, and checks performed. Preserve unrelated work and use git mv for tracked moves. Review existing tests and local AGENTS.md before editing.
 
-# Docker
-DOCKER_BUILDKIT=1
-COMPOSE_DOCKER_CLI_BUILD=1
-```
-
-### 5. Start Database
-
-```bash
-# Start PostgreSQL container only
-docker-compose -f infrastructure/docker-compose/docker-compose.local.yml up -d postgres
-
-# Verify database is running
-docker-compose -f infrastructure/docker-compose/docker-compose.local.yml exec postgres pg_isready
-
-# Expected output: "accepting connections"
-```
-
-### 6. Run Database Migrations
-
-```bash
-# Option A: Using Spring Boot (automatic on startup)
-# When you run the backend, Flyway migrations run automatically
-
-# Option B: Manual migration
-cd apps/business-backend
-mvn flyway:migrate
-```
-
-## Running Services
-
-### Option A: Full Stack with Docker Compose
-
-Start all services (PostgreSQL, Spring Boot, Angular):
-
-```bash
-docker-compose -f infrastructure/docker-compose/docker-compose.local.yml up -d
-
-# View logs
-docker-compose -f infrastructure/docker-compose/docker-compose.local.yml logs -f
-
-# Access:
-# - Frontend: http://localhost:4200
-# - Backend: http://localhost:8080
-# - Database: localhost:5432
-```
-
-### Option B: Selective Service Startup
-
-This approach provides better debugging and faster feedback loops.
-
-#### Start Database Only
-
-```bash
-docker-compose -f infrastructure/docker-compose/docker-compose.local.yml up -d postgres
-
-# Verify connectivity
-psql -h localhost -U paysprint -d paysprint -c "SELECT 1"
-```
-
-#### Run Backend (Spring Boot)
-
-Terminal 1 - Backend:
-```bash
-cd apps/business-backend
-
-# Run with Maven
-mvn spring-boot:run
-
-# Or run with IDE (VS Code - F5)
-# Spring Boot Extension Pack provides debugging
-
-# Output shows:
-# - Flyway migrations running
-# - Spring Boot startup messages
-# - Listening on http://localhost:8080
-```
-
-#### Run Frontend (Angular)
-
-Terminal 2 - Frontend:
-```bash
-cd apps/business-logic-ui
-
-# Start development server
-npm start
-
-# Or with live reload
-ng serve
-
-# Output shows:
-# - Development Server URL: http://localhost:4200
-# - Listening for changes
-# - Auto-recompile on file changes
-```
-
-### Option C: IDE Integration
-
-#### VS Code Debugging
-
-**Backend Debugging (Java):**
-1. Open VS Code
-2. Install Java Extension Pack
-3. Open `apps/business-backend/`
-4. Click Debug icon (Ctrl+Shift+D)
-5. Select "Spring Boot App" from dropdown
-6. Press F5 or click Run
-7. Set breakpoints and step through code
-
-**Frontend Debugging (Angular):**
-1. Click Debug icon (Ctrl+Shift+D)
-2. Select "ng serve" configuration
-3. Opens Chrome DevTools
-4. Set breakpoints in TypeScript code
-5. View component state and props
-
-## Testing
-
-### Backend Unit Tests
-
-```bash
-cd apps/business-backend
-
-# Run all tests
-mvn test
-
-# Run specific test class
-mvn test -Dtest=AuthServiceTest
-
-# Run with coverage
-mvn clean test jacoco:report
-# Coverage report: target/site/jacoco/index.html
-
-# Run only integration tests
-mvn verify -Pintegration-tests
-```
-
-### Backend Integration Tests
-
-```bash
-cd apps/business-backend
-
-# Start test database
-docker-compose -f infrastructure/docker-compose/docker-compose.local.yml up -d postgres
-
-# Run integration tests (requires database)
-mvn verify
-
-# Test output shows:
-# - Database initialization
-# - Test execution
-# - Coverage results
-```
-
-### Frontend Unit Tests
-
-```bash
-cd apps/business-logic-ui
-
-# Run tests once
-npm test
-
-# Run tests in watch mode
-npm run test -- --watch
-
-# Generate coverage report
-npm run test:coverage
-# Report: coverage/index.html
-```
-
-### Frontend End-to-End Tests
-
-```bash
-cd apps/business-logic-ui
-
-# Run e2e tests
-npm run e2e
-
-# Requires backend running on port 8080
-# Tests actual user workflows
-```
-
-## Debugging
-
-### Backend Debugging
-
-#### Viewing Logs
-```bash
-# Stream logs from running container
-docker-compose -f infrastructure/docker-compose/docker-compose.local.yml logs -f backend
-
-# Filter by logger
-docker-compose logs backend | grep "AuthController"
-
-# Last 100 lines
-docker-compose logs backend --tail 100
-```
-
-#### Database Queries
-```bash
-# Connect to PostgreSQL
-docker-compose -f infrastructure/docker-compose/docker-compose.local.yml exec postgres psql -U paysprint -d paysprint
-
-# Common queries
-SELECT * FROM users;
-SELECT * FROM orders WHERE user_id = '...';
-SELECT * FROM audit_log ORDER BY changed_at DESC LIMIT 10;
-```
-
-#### Debug Endpoints
-```bash
-# Health check
-curl http://localhost:8080/actuator/health
-
-# Detailed metrics
-curl http://localhost:8080/actuator/metrics
-
-# Environment variables
-curl http://localhost:8080/actuator/env
-
-# Application properties
-curl http://localhost:8080/actuator/configprops
-```
-
-### Frontend Debugging
-
-#### Chrome DevTools
-1. Open http://localhost:4200 in Chrome
-2. Press F12 to open DevTools
-3. View:
-   - Network tab: HTTP requests/responses
-   - Console: JavaScript errors and logs
-   - Sources: Set breakpoints in TypeScript
-   - Application: LocalStorage, SessionStorage
-   - Performance: Profile load time
-
-#### Angular DevTools Extension
-1. Install Angular DevTools Chrome extension
-2. Click extension icon when on Angular app
-3. View component tree
-4. Inspect component properties
-5. View change detection cycles
-
-#### VS Code Debugging
-```typescript
-// Add console logs
-console.log('User data:', this.user);
-
-// Add breakpoints
-// Click line number in editor
-
-// Debug browser processes
-// Debug tab -> "ng serve" -> Set breakpoints
-```
-
-### Network Debugging
-
-#### Proxy Network Requests
-```bash
-# Using Postman
-1. Open Postman
-2. Create GET request: http://localhost:8080/api/auth/login
-3. View response headers and body
-4. Save requests in collections
-
-# Using curl
-curl -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"test","password":"test"}'
-```
-
-#### Monitor Database Queries
-```bash
-# Enable query logging in Spring Boot
-# application.properties
-spring.jpa.properties.hibernate.generate_statistics=true
-logging.level.org.hibernate.stat=DEBUG
-logging.level.org.hibernate.SQL=DEBUG
-logging.level.org.hibernate.type.descriptor.sql.BasicBinder=TRACE
-
-# View slow queries
-docker-compose exec postgres psql -U paysprint -d paysprint
-SELECT * FROM pg_stat_statements ORDER BY mean_time DESC LIMIT 10;
-```
-
-## Common Development Tasks
-
-### Adding New Dependencies
-
-#### Backend (Java/Maven)
-```bash
-cd apps/business-backend
-
-# Add dependency
-mvn dependency:tree  # View current dependencies
-
-# Edit pom.xml
-# Add to <dependencies>:
-# <dependency>
-#     <groupId>org.springframework.boot</groupId>
-#     <artifactId>spring-boot-starter-data-rest</artifactId>
-# </dependency>
-
-# Update dependencies
-mvn dependency:resolve
-```
-
-#### Frontend (npm)
-```bash
-cd apps/business-logic-ui
-
-# Add package
-npm install @angular/animations
-
-# Update packages
-npm update
-
-# Audit for vulnerabilities
-npm audit
-```
-
-### Creating New Database Migration
-
-```bash
-# 1. Create migration file in apps/business-backend/db/migrations/
-touch apps/business-backend/db/migrations/V003__Add_new_feature_table.sql
-
-# 2. Add SQL statements
-cat > apps/business-backend/db/migrations/V003__Add_new_feature_table.sql << 'EOF'
-CREATE TABLE new_feature (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id),
-    name VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-EOF
-
-# 3. Restart backend (Flyway runs automatically)
-docker-compose -f infrastructure/docker-compose/docker-compose.local.yml restart backend
-
-# Or run manually
-cd apps/business-backend
-mvn flyway:migrate
-```
-
-### Creating New Angular Component
-
-```bash
-cd apps/business-logic-ui
-
-# Generate component using CLI
-ng generate component features/new-feature
-
-# Structure created:
-# src/app/features/new-feature/
-# ├── new-feature.component.ts
-# ├── new-feature.component.html
-# ├── new-feature.component.css
-# └── new-feature.component.spec.ts
-```
-
-### Creating New Spring Boot Endpoint
-
-```bash
-cd apps/business-backend
-
-# 1. Create controller
-cat > src/main/java/com/neueda/leap/feature/FeatureController.java << 'EOF'
-@RestController
-@RequestMapping("/api/feature")
-public class FeatureController {
-    @GetMapping("/{id}")
-    public FeatureDto getFeature(@PathVariable Long id) {
-        // implementation
-    }
-}
-EOF
-
-# 2. Create service
-cat > src/main/java/com/neueda/leap/feature/FeatureService.java << 'EOF'
-@Service
-public class FeatureService {
-    public FeatureDto getFeature(Long id) {
-        // business logic
-    }
-}
-EOF
-
-# 3. Test endpoint
-curl http://localhost:8080/api/feature/123
-```
-
-## Performance Optimization
-
-### Frontend Optimization
-
-#### Bundle Analysis
-```bash
-cd apps/business-logic-ui
-
-# Generate bundle analysis
-npm run build -- --stats-json
-
-# Analyze bundles
-npm install -g webpack-bundle-analyzer
-webpack-bundle-analyzer dist/*/stats.json
-```
-
-#### Enable Production Mode
-```bash
-# Smaller bundles, faster execution
-ng serve --prod
-
-# Or in browser - check Network tab for file sizes
-```
-
-### Backend Optimization
-
-#### Database Query Performance
-```sql
--- Explain plan for slow queries
-EXPLAIN ANALYZE
-SELECT * FROM orders WHERE user_id = '...' AND created_at > NOW() - INTERVAL '30 days';
-
--- Add indexes if needed
-CREATE INDEX idx_orders_user_created ON orders(user_id, created_at);
-```
-
-#### Enable Caching
-```java
-// In Spring Boot
-@Cacheable("users")
-public User getUser(UUID id) {
-    return userRepository.findById(id).orElse(null);
-}
-```
-
-## Cleanup
-
-### Remove Containers and Data
-
-```bash
-# Stop all services
-docker-compose -f infrastructure/docker-compose/docker-compose.local.yml down
-
-# Remove volumes (database data)
-docker-compose -f infrastructure/docker-compose/docker-compose.local.yml down -v
-
-# Remove images
-docker-compose -f infrastructure/docker-compose/docker-compose.local.yml down --rmi all
-```
-
-### Clean Build Artifacts
-
-```bash
-# Backend
-cd apps/business-backend
-mvn clean
-
-# Frontend
-cd apps/business-logic-ui
-rm -rf node_modules dist
-
-# All
-npm run clean  # Uses turbo if configured
-```
-
-## Git Workflow
-
-### Feature Branch Development
-
-```bash
-# 1. Create feature branch
-git checkout -b feature/user-auth-improvements
-
-# 2. Make changes
-# Edit files, test locally
-
-# 3. Commit changes
-git add .
-git commit -m "feat: improve user authentication flow"
-
-# 4. Push to remote
-git push origin feature/user-auth-improvements
-
-# 5. Create Pull Request
-# Go to GitHub and open PR for review
-
-# 6. After approval, merge to main
-git checkout main
-git pull origin main
-git merge feature/user-auth-improvements
-git push origin main
-```
-
-### Useful Git Commands
-
-```bash
-# View changed files
-git status
-
-# View detailed changes
-git diff
-
-# Stage specific files
-git add apps/business-backend/src/
-
-# Commit with message
-git commit -m "type: message"
-
-# View commit history
-git log --oneline -20
-
-# Revert last commit (before push)
-git reset --soft HEAD~1
-```
+Update the authoritative guide when its contract changes; do not add implementation summaries or duplicate setup guides. Validate Markdown links and anchors, remove emojis, and run git diff --check. Tests belong with the owning application. Never claim a historical test count represents the current suite.
 
 ## Troubleshooting
 
-### Port Already in Use
-```bash
-# Find process using port 8080
-lsof -i :8080
-kill -9 <PID>
-
-# Or change port in docker-compose
-ports:
-  - "8081:8080"
-```
-
-### Database Connection Failed
-```bash
-# Check if database container is running
-docker-compose ps
-
-# Check database logs
-docker-compose logs postgres
-
-# Reset database
-docker-compose down -v
-docker-compose up -d postgres
-```
-
-### npm Install Issues
-```bash
-# Clear npm cache
-npm cache clean --force
-
-# Remove node_modules
-rm -rf node_modules package-lock.json
-
-# Reinstall
-npm install
-```
-
-### Java Compilation Issues
-```bash
-# Clean build
-mvn clean compile
-
-# Check Java version
-java -version  # Should be 21
-
-# Reimport in IDE
-# VS Code: Ctrl+Shift+P -> "Java: Clean Language Server"
-```
-
-## Related Documentation
-
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture
-- [DATABASE.md](./DATABASE.md) - Database setup and schema
-- [DEPLOYMENT.md](./DEPLOYMENT.md) - Deployment procedures
-- [APIREFERENCE.md](./APIREFERENCE.md) - API documentation
+- Node engine errors: check node --version against the installed Angular package engines; a generic Node 22 installation can be too old.
+- Missing workspace imports: run npm ci at repository root and check shared package exports.
+- Unknown ng test option: use --no-watch, not --run.
+- Database connection or key failures: use the [operations checklist](operations.md) and [auth environment instructions](../../apps/auth-service/README.md).
+- Javadoc tool missing: select a full JDK via JAVA_HOME and verify mvn --version and javadoc --version.
