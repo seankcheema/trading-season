@@ -5,12 +5,14 @@
 | Area | Current responsibility | Source |
 | --- | --- | --- |
 | Angular UI | Login and registration forms, local validation, shared components | [Routes](../../apps/business-logic-ui/src/app/app.routes.ts) |
-| Spring Boot backend | Registration with profile data; username/password login issuing database sessions | [Java auth controller](../../apps/business-backend/src/main/java/com/neueda/leap/auth/AuthController.java) |
+| Spring Boot backend | Registration with profile data; username/password login issuing database sessions from the `src/main/java/app` package tree | [Java auth controller](../../apps/business-backend/src/main/java/app/auth/AuthController.java) |
 | NestJS auth service | Email/password login, RS256 access tokens, opaque refresh tokens, JWKS, liveness | [Auth controller](../../apps/auth-service/src/auth/auth.controller.ts) |
 | Shared UI | Angular components consumed through @shared/ui-components subpath exports | [Package manifest](../../packages/shared-ui-components/package.json) |
 | Reporting | Placeholder directories only | [Reporting proposal](reporting.md) |
 
 The frontend does not yet call either authentication API. Java and NestJS currently own separate user models and databases; there is no implemented token-validation bridge in the Java backend. Do not describe centralized authentication as a completed integration.
+
+Within the Java service, `app.Main` is the Spring Boot entry point and feature packages under `app` own their controllers, services, DTOs, and repositories.
 
 ## Data flows
 
