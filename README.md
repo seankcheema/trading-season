@@ -18,8 +18,8 @@ The UI opens on port 4200. Its forms currently perform local validation; API int
 
 | Area | Responsibility | Local port |
 | --- | --- | --- |
-| [Business UI](apps/business-logic-ui/README.md) | Login and registration screens | 4200 |
-| [Business backend](apps/business-backend/README.md) | Java registration and session login | 8080 |
+| [Business UI](apps/business-logic-ui/README.md) | Login, registration, and a dashboard with live simulated stock tickers | 4200 |
+| [Business backend](apps/business-backend/README.md) | Java registration/session login and public simulated stock data | 8081 |
 | [Auth service](apps/auth-service/README.md) | RS256 tokens, refresh tokens, auth database | 3001 |
 | [Shared UI](packages/shared-ui-components/README.md) | Reusable Angular components | — |
 | [Reporting proposal](docs/reference/reporting.md) | Future analytics UI and service | — |

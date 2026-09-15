@@ -2,7 +2,7 @@
 
 This reference describes implemented controllers unless a section is explicitly labeled as planned or in progress. The Java and NestJS APIs have different identities and response formats; they are not interchangeable.
 
-## Java backend: port 8080
+## Java backend: port 8081
 
 Base path: /api/auth. Source: [controller](../../apps/business-backend/src/main/java/com/neueda/leap/auth/AuthController.java).
 
@@ -15,23 +15,24 @@ Registration requires a 3–50 character username, valid email up to 100 charact
 
 Errors use an error string: 400 for request validation, 409 for duplicate username/email, and 401 for invalid credentials or inactive/locked accounts. See [exception mapping](../../apps/business-backend/src/main/java/com/neueda/leap/auth/GlobalExceptionHandler.java). Login returns a database session, not a JWT.
 
-## Trading API plan: status in progress
+## Java stock market API: port 8081
 
-Status: In progress. This plan covers only the public, read-only stock data required by the dashboard market ticker and selected-stock price chart. These endpoints are not implemented controllers yet. Account, portfolio, holding, transaction, and order integration is outside this slice.
+These public endpoints expose seeded stock data for the dashboard market ticker and future stock charts. Account, portfolio, holding, transaction, and order integration remains outside this slice; the dashboard portfolio chart still uses mock data.
 
-The API will default to the newest completed simulation session when `sessionId` is omitted. Requests that supply a session must identify a completed session. Unknown sessions, symbols, and timeframes will be rejected.
+The API defaults to the newest completed simulation session when `sessionId` is omitted. Requests that supply a session must identify a completed session. Unknown sessions, symbols, and timeframes are rejected.
 
 ### Public stock endpoints
 
-| Method and path | Request | Planned success |
+| Method and path | Request | Success |
 | --- | --- | --- |
 | GET /api/market/snapshot | Optional `sessionId` | Resolved simulation, replay cursor, market status, and every seeded stock's company name, current price, current-session change, percentage change, and tick timestamp |
 | GET /api/market/candles | Optional `sessionId`; required `symbol` and `timeframe` (`1D`, `5D`, `1W`, `1M`, or `1Y`) | At most 500 chronological OHLCV buckets ending at the current replay cursor |
 | GET /api/market/stream | Optional `sessionId`; optional `Last-Event-ID` request header | Server-sent event stream containing one synchronized price batch per simulated market second |
+| PUT /api/market/clock | Optional `sessionId`; JSON `timestamp` as an ISO-8601 instant | Moves the shared replay cursor to the closest seeded tick at or before that time and returns a snapshot; dates without seeded trading data return 400 |
 
 ### Candle aggregation
 
-The chart API will query the seeded one-minute candles rather than returning raw one-second history. Aggregation happens in the backend after filtering by simulation session, symbol, and the bounded timeframe.
+The chart API queries the seeded one-minute candles rather than returning raw one-second history. Aggregation happens in the backend after filtering by simulation session, symbol, and the bounded timeframe.
 
 | Timeframe | Planned buckets |
 | --- | --- |
@@ -45,7 +46,7 @@ Each aggregate uses the first open, maximum high, minimum low, final close, and 
 
 ### Live stream
 
-`GET /api/market/stream` will use `text/event-stream`. A `market-tick` event represents one simulated timestamp and contains the current tick for every available stock:
+`GET /api/market/stream` uses `text/event-stream`. A `market-tick` event represents one simulated timestamp and contains the current tick for every available stock:
 
 ```json
 {
@@ -62,15 +63,15 @@ Each aggregate uses the first open, maximum high, minimum low, final close, and 
 }
 ```
 
-One shared replay cursor will advance at one simulated second per real second. It will use the current `America/Chicago` date and market time when that timestamp exists in the seed, choose the nearest applicable seeded session otherwise, skip overnight and weekend gaps, and loop after the final seeded session. A configured start timestamp may override this behavior for deterministic tests and demonstrations. `marketTimestamp` is the simulated market time; `serverTimestamp` records delivery time.
+One shared replay cursor per requested simulation advances at one simulated second per real second. The dashboard staggers the stocks in each synchronized batch across the following 0–1 second window so multiple prices visibly change without rerendering the entire row at once. It uses the current `America/Chicago` date and market time when that timestamp exists in the seed, chooses the nearest applicable seeded session otherwise, skips overnight and weekend gaps, and loops after the final seeded session. `MARKET_REPLAY_START_AT` may override this behavior with an ISO-8601 instant for deterministic tests and demonstrations. `marketTimestamp` is the simulated market time; `serverTimestamp` records delivery time.
 
-The stream will send a heartbeat every 15 seconds and retain 30 seconds of events for reconnection by `Last-Event-ID`. A client outside that window will receive a resynchronization event and reload the snapshot and candle history.
+The stream sends a heartbeat every 15 events and retains the latest 30 events for reconnection by `Last-Event-ID`. A client outside that window receives a resynchronization event and reloads the snapshot.
 
 ### Data access and safeguards
 
-The replay service will support ticks stored either in PostgreSQL or in the archive location recorded in simulation metadata. It will load only the current trading day's required tick columns into a bounded server-side buffer, so emitting each second does not issue another database query or rescan a Parquet file.
+The replay service supports ticks stored either in PostgreSQL or in the archive location recorded in simulation metadata. It loads only the current trading day's required tick columns into a bounded server-side buffer, so emitting each second does not issue another database query or rescan a Parquet file.
 
-These endpoints remain unauthenticated reference-data reads. The implementation will enforce configured CORS origins, validated and bounded parameters, REST rate limits, per-client and global stream connection limits, parameterized database queries, and sanitized error responses. Filesystem paths will never be accepted from a request; Parquet access will be derived only from trusted simulation metadata.
+These endpoints are unauthenticated simulator operations; the clock change affects the shared replay for the selected simulation session. The implementation enforces configured CORS origins, validated and bounded parameters, REST rate limits, per-client and global stream connection limits, parameterized database queries, and sanitized request errors. Filesystem paths are never accepted from a request; Parquet access is derived only from trusted simulation metadata.
 
 ## NestJS auth service: port 3001
 

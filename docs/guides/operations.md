@@ -4,7 +4,7 @@
 
 | Component | Configuration | Defaults |
 | --- | --- | --- |
-| Java backend | [application.properties](../../apps/business-backend/src/main/resources/application.properties) | HTTP 8080; PostgreSQL localhost:5432/trading_season |
+| Java backend | [application.properties](../../apps/business-backend/src/main/resources/application.properties) | HTTP 8081; PostgreSQL localhost:5432/trading_season |
 | Auth service | [Auth setup](../../apps/auth-service/README.md) and [database configuration](../../apps/auth-service/src/config/database.config.ts) | HTTP 3001; PostgreSQL localhost:5433/auth_db |
 | Local containers | [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) | Business/auth database volumes and archive cache |
 | Jenkins | [Pipeline](../../infrastructure/jenkins/Jenkinsfile), [Compose](../../infrastructure/docker-compose/docker-compose.jenkins.yml) | Jenkins UI on host port 8888 |
@@ -22,7 +22,7 @@ docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compos
 docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml logs --tail 100 db auth-db
 ```
 
-The Java backend service in local Compose still uses build context '.' relative to the Compose directory and maps 8081, while the app defaults to 8080. Run Java through Maven until that configuration is corrected. The UI has no active Compose service. No production Compose file or Kubernetes deployment is supplied.
+The Java backend service in local Compose still uses build context '.' relative to the Compose directory. Run Java through Maven until that configuration is corrected. The UI has no active Compose service. No production Compose file or Kubernetes deployment is supplied.
 
 Auth GET /health reports process liveness, not database readiness. Check startup logs and database connectivity separately. Database volumes persist across ordinary container shutdown; removing volumes deletes their data. Back up retained data before schema or volume changes and verify restoration in a separate database.
 

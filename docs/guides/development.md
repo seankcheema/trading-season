@@ -30,10 +30,10 @@ Compose validates JWT variables even when selecting database services, so provid
 | Working directory | Command | Port |
 | --- | --- | --- |
 | Repository root | npm --workspace business-logic-ui start | 4200 |
-| apps/business-backend | mvn spring-boot:run | 8080 |
+| apps/business-backend | mvn spring-boot:run | 8081 |
 | apps/auth-service | npm run start:dev | 3001 |
 
-Do not use an unqualified Compose up for the full stack: its backend build context and port mapping are stale. Frontend API wiring is also unfinished; rendering forms does not demonstrate end-to-end authentication.
+Do not use an unqualified Compose up for the full stack: its backend build context is stale. The Angular development server proxies its implemented stock-data calls to port 8081, but authentication, portfolio, and order API wiring remains unfinished.
 
 ## Checks
 

@@ -5,6 +5,38 @@
       <div class="flex items-center gap-2.5">
         <img src="2b-waves.svg" alt="" class="size-8 shrink-0" />
         <span class="hidden text-lg font-semibold tracking-tight sm:inline">TradingSeason</span>
+        <details class="relative">
+          <summary
+            class="border-border bg-card hover:bg-muted flex h-9 cursor-pointer list-none items-center gap-2 rounded-lg border px-3 text-sm transition-colors"
+          >
+            <ng-icon name="lucideCalendarClock" class="text-[16px]" />
+            <span class="hidden md:inline">Market time</span>
+            <ng-icon name="lucideChevronDown" class="text-muted-foreground text-[14px]" />
+          </summary>
+          <div
+            class="border-border bg-card absolute top-11 left-0 z-30 w-72 rounded-xl border p-3 shadow-xl"
+          >
+            <label for="market-date-time" class="dash-label">Simulated date and time</label>
+            <input
+              id="market-date-time"
+              type="datetime-local"
+              class="border-border bg-background mt-2 h-9 w-full rounded-lg border px-3 text-sm"
+              [value]="marketDateTime()"
+              (change)="onMarketDateTimeChange($event)"
+            />
+            @if (clockError()) {
+              <p class="text-loss mt-2 text-xs">{{ clockError() }}</p>
+            }
+            <button
+              type="button"
+              class="bg-primary text-primary-foreground mt-3 h-9 w-full rounded-lg text-sm font-medium disabled:opacity-50"
+              [disabled]="clockUpdating() || !marketDateTime()"
+              (click)="applyMarketDateTime()"
+            >
+              {{ clockUpdating() ? 'Updating…' : 'Apply market time' }}
+            </button>
+          </div>
+        </details>
       </div>
 
       <div class="flex min-w-0 items-center gap-2 md:gap-3">
@@ -51,7 +83,9 @@
 
           <div class="mt-5 flex items-baseline justify-between text-xs">
             <h3 class="dash-label">Allocation</h3>
-            <span class="text-muted-foreground tabular-nums">{{ allocationPercent().toFixed(0) }}% invested</span>
+            <span class="text-muted-foreground tabular-nums"
+              >{{ allocationPercent().toFixed(0) }}% invested</span
+            >
           </div>
           <div
             class="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10"
@@ -69,7 +103,11 @@
           </p>
 
           <div class="mt-5 grid grid-cols-2 gap-2">
-            <button type="button" class="net-worth-action net-worth-action-primary" (click)="onDeposit()">
+            <button
+              type="button"
+              class="net-worth-action net-worth-action-primary"
+              (click)="onDeposit()"
+            >
               Deposit
             </button>
             <button type="button" class="net-worth-action" (click)="onWithdraw()">Withdraw</button>
@@ -90,12 +128,18 @@
 
           <ul class="dash-scroll dash-fade min-h-0 flex-1 overflow-y-auto">
             @for (transaction of transactions(); track $index) {
-              <li class="border-border/60 flex items-center justify-between gap-4 border-b py-2.5 text-sm last:border-b-0">
+              <li
+                class="border-border/60 flex items-center justify-between gap-4 border-b py-2.5 text-sm last:border-b-0"
+              >
                 <span class="min-w-0">
                   <span class="font-medium">{{ transaction.symbol }}</span>
                   <span
                     class="ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
-                    [class]="transaction.side === 'buy' ? 'bg-primary/15 text-primary' : 'bg-loss/15 text-loss'"
+                    [class]="
+                      transaction.side === 'buy'
+                        ? 'bg-primary/15 text-primary'
+                        : 'bg-loss/15 text-loss'
+                    "
                   >
                     {{ transaction.side }}
                   </span>
@@ -106,8 +150,12 @@
                 </span>
                 <span class="shrink-0 text-right tabular-nums">
                   <span class="block">{{ transaction.value | currency: 'USD' }}</span>
-                  <span class="block text-xs" [class]="transaction.gainLoss >= 0 ? 'text-gain' : 'text-loss'">
-                    {{ transaction.gainLoss >= 0 ? '+' : '' }}{{ transaction.gainLoss | currency: 'USD' }}
+                  <span
+                    class="block text-xs"
+                    [class]="transaction.gainLoss >= 0 ? 'text-gain' : 'text-loss'"
+                  >
+                    {{ transaction.gainLoss >= 0 ? '+' : ''
+                    }}{{ transaction.gainLoss | currency: 'USD' }}
                   </span>
                 </span>
               </li>
@@ -126,15 +174,24 @@
           aria-label="Market ticker"
           class="dash-card flex h-11 shrink-0 flex-wrap justify-between gap-y-2 overflow-hidden p-1.5"
         >
-          @for (instrument of tickerInstruments; track instrument.symbol) {
+          @for (instrument of tickerInstruments(); track instrument.symbol) {
             <button
               type="button"
-              class="hover:bg-muted flex h-full shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-sm whitespace-nowrap transition-colors"
+              class="hover:bg-muted flex h-full shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-sm whitespace-nowrap transition-colors duration-200 motion-reduce:transition-none"
+              [class.bg-gain/10]="
+                changedSymbols().has(instrument.symbol) && flashDirections()[instrument.symbol] >= 0
+              "
+              [class.bg-loss/10]="
+                changedSymbols().has(instrument.symbol) && flashDirections()[instrument.symbol] < 0
+              "
               (click)="openOrder(instrument)"
             >
               <span class="text-muted-foreground">{{ instrument.symbol }}</span>
               <span class="font-medium tabular-nums">{{ instrument.price.toFixed(2) }}</span>
-              <span class="text-xs tabular-nums" [class]="instrument.changePercent >= 0 ? 'text-gain' : 'text-loss'">
+              <span
+                class="text-xs tabular-nums"
+                [class]="instrument.changePercent >= 0 ? 'text-gain' : 'text-loss'"
+              >
                 {{ instrument.changePercent | signedPercent }}
               </span>
             </button>
@@ -151,7 +208,9 @@
                 </span>
                 <span
                   class="rounded-full px-2 py-0.5 text-xs font-medium tabular-nums"
-                  [class]="netWorthChangePercent() >= 0 ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'"
+                  [class]="
+                    netWorthChangePercent() >= 0 ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'
+                  "
                 >
                   {{ netWorthChangePercent() | signedPercent }}
                 </span>
@@ -159,7 +218,12 @@
             </div>
             <app-timeframe-toggle [(value)]="portfolioTimeframe" />
           </div>
-          <app-price-chart class="mt-3 min-h-0 flex-1" area [points]="portfolioChart()" [timeframe]="portfolioTimeframe()" />
+          <app-price-chart
+            class="mt-3 min-h-0 flex-1"
+            area
+            [points]="portfolioChart()"
+            [timeframe]="portfolioTimeframe()"
+          />
         </section>
 
         <section class="dash-card flex min-h-0 flex-col p-5 lg:flex-[3]">
@@ -188,7 +252,9 @@
                     >
                       <span>
                         <span class="block font-medium">{{ holding.symbol }}</span>
-                        <span class="text-muted-foreground block text-xs">{{ holding.shares }} shares</span>
+                        <span class="text-muted-foreground block text-xs"
+                          >{{ holding.shares }} shares</span
+                        >
                       </span>
                       <span class="text-center tabular-nums">
                         <span class="block">{{ holding.instrument.price | currency: 'USD' }}</span>
@@ -196,14 +262,20 @@
                           class="block text-xs"
                           [class]="holding.instrument.change >= 0 ? 'text-gain' : 'text-loss'"
                         >
-                          {{ holding.instrument.change >= 0 ? '+' : '' }}{{ holding.instrument.change.toFixed(2) }}
-                          ({{ holding.instrument.changePercent | signedPercent }})
+                          {{ holding.instrument.change >= 0 ? '+' : ''
+                          }}{{ holding.instrument.change.toFixed(2) }} ({{
+                            holding.instrument.changePercent | signedPercent
+                          }})
                         </span>
                       </span>
                       <span class="text-right tabular-nums">
                         <span class="block">{{ holding.value | currency: 'USD' }}</span>
-                        <span class="block text-xs" [class]="holding.gainLoss >= 0 ? 'text-gain' : 'text-loss'">
-                          {{ holding.gainLoss >= 0 ? '+' : '' }}{{ holding.gainLoss | currency: 'USD' }}
+                        <span
+                          class="block text-xs"
+                          [class]="holding.gainLoss >= 0 ? 'text-gain' : 'text-loss'"
+                        >
+                          {{ holding.gainLoss >= 0 ? '+' : ''
+                          }}{{ holding.gainLoss | currency: 'USD' }}
                         </span>
                       </span>
                     </button>

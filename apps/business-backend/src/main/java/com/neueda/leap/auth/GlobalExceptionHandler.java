@@ -1,5 +1,7 @@
 package com.neueda.leap.auth;
 
+import com.neueda.leap.market.MarketRequestException;
+import com.neueda.leap.market.MarketLimitException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -34,5 +36,25 @@ public class GlobalExceptionHandler {
                 .map(fieldError -> fieldError.getField() + ": " + fieldError.getDefaultMessage())
                 .collect(Collectors.joining("; "));
         return ResponseEntity.badRequest().body(Map.of("error", message));
+    }
+
+    /**
+     * Handles invalid or unavailable public market-data requests.
+     * @param ex request failure carrying a safe message
+     * @return a bad-request response
+     */
+    @ExceptionHandler(MarketRequestException.class)
+    public ResponseEntity<Map<String, String>> handleMarketRequest(MarketRequestException ex) {
+        return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
+    }
+
+    /**
+     * Handles public market-data rate and connection limits.
+     * @param ex limit failure carrying a safe message
+     * @return a too-many-requests response
+     */
+    @ExceptionHandler(MarketLimitException.class)
+    public ResponseEntity<Map<String, String>> handleMarketLimit(MarketLimitException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of("error", ex.getMessage()));
     }
 }

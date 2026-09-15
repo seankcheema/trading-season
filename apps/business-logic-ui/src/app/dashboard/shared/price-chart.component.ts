@@ -146,6 +146,7 @@ interface AxisTick {
 export class PriceChartComponent {
   readonly points = input.required<PricePoint[]>();
   readonly timeframe = input.required<Timeframe>();
+  readonly timezone = input('UTC');
   // Fills the space under the line with a gradient in the trend color.
   readonly area = input(false, { transform: booleanAttribute });
 
@@ -291,6 +292,39 @@ export class PriceChartComponent {
   }
 
   private formatTime(time: Date, format: string): string {
-    return formatDate(time, format, this._locale, 'UTC');
+    const timezone = this.timezone();
+    return formatDate(
+      time,
+      format,
+      this._locale,
+      timezone.includes('/') ? this.zoneOffset(time, timezone) : timezone,
+    );
+  }
+
+  private zoneOffset(time: Date, timezone: string): string {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(time);
+    const value = (type: Intl.DateTimeFormatPartTypes) =>
+      Number(parts.find((part) => part.type === type)?.value);
+    const localAsUtc = Date.UTC(
+      value('year'),
+      value('month') - 1,
+      value('day'),
+      value('hour'),
+      value('minute'),
+      value('second'),
+    );
+    const minutes = Math.round((localAsUtc - time.getTime()) / 60_000);
+    const sign = minutes >= 0 ? '+' : '-';
+    const absolute = Math.abs(minutes);
+    return `${sign}${String(Math.floor(absolute / 60)).padStart(2, '0')}${String(absolute % 60).padStart(2, '0')}`;
   }
 }
