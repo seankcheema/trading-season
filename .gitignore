@@ -1,9 +1,11 @@
 # Dependencies
 node_modules/
-AGENTS.md
 
 # Environment Variables
 .env
+
+# Generated build output
+/build_output.txt
 
 # Logs
 *.log

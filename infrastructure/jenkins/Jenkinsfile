@@ -7,7 +7,7 @@ pipeline {
         // at /var/lib/jenkins, not the container built from
         // infrastructure/docker/Dockerfile.jenkins, so nothing in this repo
         // controls which tools exist there.
-        maven 'Maven3'
+        maven 'Maven'
     }
 
     environment {
@@ -31,6 +31,24 @@ pipeline {
 
         stage('Setup Dependencies') {
             steps {
+                sh '''
+                    set -eu
+                    echo "📦 Installing root workspace dependencies..."
+                    if command -v node > /dev/null; then
+                        node --version
+                        npm --version
+                        # Use npm install if package-lock.json doesn't exist
+                        if [ -f package-lock.json ]; then
+                            npm ci
+                        else
+                            npm install
+                        fi
+                        npm --prefix apps/auth-service ci
+                        echo "✓ Root workspace dependencies installed"
+                    else
+                        echo "⚠️  Node.js not available, skipping npm setup"
+                    fi
+                '''
                 dir('apps/business-backend') {
                     sh '''
                         # Aggressive Maven cache cleanup to avoid dependency resolution issues
@@ -90,17 +108,8 @@ pipeline {
                         sh '''
                             set -eu
                             echo "🧪 Running Auth Service Tests (Vitest)..."
-                            if ! command -v node > /dev/null; then
-                                echo "✗ Node.js is not installed on this Jenkins agent."
-                                echo "  The auth service tests cannot run without it, and this"
-                                echo "  stage fails rather than skipping so the gap is visible."
-                                echo "  Fix: install Node.js 20+ on the agent, or run Jenkins from"
-                                echo "  infrastructure/docker/Dockerfile.jenkins, which includes it."
-                                exit 1
-                            fi
                             node --version
                             npm --version
-                            npm ci
                             npm run test:ci
                             echo "✓ Auth service tests completed"
                         '''
@@ -136,7 +145,6 @@ pipeline {
                             # @angular/build:unit-test builder. Vitest's own
                             # --run is not: `ng test --run` fails with
                             # "Unknown argument: run" before any test executes.
-                            npm install --legacy-peer-deps
                             npm test -- --no-watch --coverage
                             echo "✓ Frontend tests completed"
                         '''

@@ -1,77 +1,38 @@
-Initialize production-ready auth service with complete JWT authentication flow.
+# Auth service
 
-Features:
-- User registration & login with bcrypt password hashing
-- JWT token generation (1h access, 7d refresh)
-- Email/password authentication via Passport Local strategy
-- JWT Bearer token validation via Passport JWT strategy
-- Route protection with AuthGuards
-- 5 REST endpoints: register, login, refresh, verify, logout
-- PostgreSQL User entity with TypeORM
-- Full error handling and input validation
+NestJS authentication service with PostgreSQL, RS256 access tokens, opaque refresh-token rotation, JWKS, and a liveness endpoint. See the [API reference](../../docs/reference/api.md) for contracts and the existing logout limitation.
 
-Stack:
-- NestJS 12, TypeScript 5, ESM modules
-- Passport.js (JWT + Local strategies)
-- PostgreSQL + TypeORM
-- Vitest for testing
+## Local setup
 
-File structure:
-- src/auth/ (controller, service, strategies, guards, DTOs)
-- src/users/ (entity, service, DTOs)
-- src/config/ (database configuration)
+Install dependencies from repository root with npm --prefix apps/auth-service ci. From this directory, create a new .env using these steps; do not overwrite an existing environment file:
 
-Configuration:
-- .env for database & JWT secrets
-- Automatic schema sync in development mode
+1. Copy .env.example to .env.
+2. Delete its placeholder JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, and JWT_ISSUER lines.
+3. Append one generated development key pair:
 
-Ready to start:
-npm run start:dev  # Runs on localhost:3001
-# Auth Service - NestJS (Work in Progress)
-
-Centralized authentication and authorization service for the DuaLEAPa platform.
-
-## 📋 Status
-
-**Current Status:** 🚧 Work in Progress (Not yet implemented)
-
-This service is planned for a future sprint. It will provide OAuth2/OIDC-based authentication, session management, and multi-factor authentication.
-
-## 🎯 Planned Features
-
-- OAuth2/OIDC authentication
-- JWT token management
-- Multi-factor authentication (MFA)
-- Session management
-- API key management
-- User onboarding flows
-
-## 📁 Planned API Endpoints
-
-```
-POST   /api/auth/login      — User login
-POST   /api/auth/register   — User registration
-POST   /api/auth/refresh    — Refresh JWT token
-POST   /api/auth/verify     — Verify token
-POST   /api/auth/logout     — Logout user
-POST   /api/auth/mfa        — MFA challenge
+```sh
+node scripts/generate-dev-keys.mjs >> .env
 ```
 
-## 🛠️ Tech Stack
+The generator writes PKCS8/SPKI RSA keys with literal backslash-n escapes. The application normalizes them on load. Do not commit or print the resulting private key. Use managed secrets for deployment.
 
-- NestJS 11+
-- TypeScript
-- Node.js 22+
-- PostgreSQL 16 (shared)
-- JWT authentication
+Keep DB_HOST=localhost, DB_PORT=5433, DB_USER=authuser, DB_NAME=auth_db, and the matching local DB_PASSWORD. PORT defaults to 3001. Startup requires JWT_PRIVATE_KEY and JWT_PUBLIC_KEY; set JWT_ISSUER consistently. The .env.example CORS_ORIGIN entry is not wired into bootstrap.
 
-## 📚 Documentation
+Follow [development setup](../../docs/guides/development.md#run-locally) to start the auth database, then run npm run start:dev from this directory. Startup loads .env and applies the registered TypeORM migrations with synchronize disabled. The application does not automatically load .env.local.
 
-For now, refer to:
-- [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md) — System architecture
-- [docs/APIREFERENCE.md](../../docs/APIREFERENCE.md) — API endpoints
-- [docs/DEVELOPMENTWORKFLOW.md](../../docs/DEVELOPMENTWORKFLOW.md) — Development setup
+## Commands
 
----
+Run in this directory:
 
-**Last Updated:** 2026-09-09
+| Purpose | Command |
+| --- | --- |
+| Watch mode | npm run start:dev |
+| Compile | npm run build |
+| Tests | npm test |
+| CI coverage/reports | npm run test:ci |
+| Lint | npm run lint |
+| Inspect migrations | npm run migration:show |
+
+The migration CLI requires database environment variables exported in the shell; see [database guidance](../../docs/reference/database.md#auth-migrations). Tests generate ephemeral keys rather than using deployment credentials. GET /health checks liveness only.
+
+The Java backend maintains a separate authentication implementation; see [architecture](../../docs/reference/architecture.md) before integrating clients.
