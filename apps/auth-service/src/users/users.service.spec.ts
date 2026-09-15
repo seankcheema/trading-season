@@ -41,8 +41,6 @@ describe('UsersService', () => {
       const createUserDto = {
         email: 'test@example.com',
         password: 'password123',
-        firstName: 'John',
-        lastName: 'Doe',
       };
 
       const mockUser = {
@@ -50,7 +48,6 @@ describe('UsersService', () => {
         ...createUserDto,
         password: 'hashedpassword',
         isActive: true,
-        emailVerified: false,
         failedAttempts: 0,
         lockedUntil: null,
         role: 'TRADER',
@@ -73,8 +70,6 @@ describe('UsersService', () => {
       const createUserDto = {
         email: 'test@example.com',
         password: 'password123',
-        firstName: 'John',
-        lastName: 'Doe',
       };
 
       mockUserRepository.findOne.mockResolvedValue({ id: '123' });
@@ -83,7 +78,7 @@ describe('UsersService', () => {
         ConflictException,
       );
       await expect(service.create(createUserDto)).rejects.toThrow(
-        'Username or email is already in use',
+        'Email is already in use',
       );
     });
   });

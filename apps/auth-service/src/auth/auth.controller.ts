@@ -26,13 +26,7 @@ export class AuthController {
 
   @Post('register')
   async register(@Body() registerDto: RegisterDto): Promise<AuthTokenDto> {
-    return this.authService.register(
-      registerDto.username,
-      registerDto.email,
-      registerDto.password,
-      registerDto.firstName,
-      registerDto.lastName,
-    );
+    return this.authService.register(registerDto.email, registerDto.password);
   }
 
   @UseGuards(LocalAuthGuard)
