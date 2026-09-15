@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Login Sequence Diagram</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1e3a8a;
+            border-bottom: 3px solid #1e3a8a;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #1e3a8a;
+            margin-top: 30px;
+        }
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            background: #fafafa;
+            padding: 20px;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+            margin: 20px 0;
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        table th,
+        table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        table th {
+            background-color: #f5f5f5;
+            font-weight: 600;
+            color: #1e3a8a;
+        }
+        table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-left: 4px solid #1e3a8a;
+            border-radius: 4px;
+        }
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        .error-box {
+            background: #fee;
+            border-left: 4px solid #d32f2f;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success-box {
+            background: #e8f5e9;
+            border-left: 4px solid #388e3c;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .checkmark {
+            color: #388e3c;
+            font-weight: bold;
+        }
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 User Login Sequence Diagram</h1>
+        
+        <p>
+            This document illustrates the complete user authentication flow when logging into the trading application.
+            The sequence diagram shows all interactions between the client, API controller, service layer, repositories, and exception handling.
+        </p>
+
+        <h2>Login Flow Overview</h2>
+        
+        <div class="mermaid">
+sequenceDiagram
+    participant User as User Client
+    participant Controller as AuthController
+    participant Service as AuthService
+    participant UserRepo as UserRepository
+    participant PasswordEnc as PasswordEncoder
+    participant SessionRepo as SessionRepository
+    participant ExceptionHandler as GlobalExceptionHandler
+
+    User->>Controller: POST /api/auth/login<br/>(LoginRequest)
+    activate Controller
+    
+    Controller->>Service: login(request)
+    activate Service
+    
+    Service->>UserRepo: findByUsername(username)
+    activate UserRepo
+    UserRepo-->>Service: Optional[User]
+    deactivate UserRepo
+    
+    alt User Not Found
+        Service->>ExceptionHandler: throw UnauthorizedException
+        activate ExceptionHandler
+        ExceptionHandler-->>User: 401 Unauthorized
+        deactivate ExceptionHandler
+    else User Found
+        alt Account Status Not Active
+            Service->>ExceptionHandler: throw UnauthorizedException
+            activate ExceptionHandler
+            ExceptionHandler-->>User: 401 Unauthorized
+            deactivate ExceptionHandler
+        else Account is Active
+            alt Account is Locked
+                Service->>ExceptionHandler: throw UnauthorizedException
+                activate ExceptionHandler
+                ExceptionHandler-->>User: 401 Unauthorized (locked)
+                deactivate ExceptionHandler
+            else Account Not Locked
+                Service->>PasswordEnc: matches(password, hash)
+                activate PasswordEnc
+                PasswordEnc-->>Service: boolean
+                deactivate PasswordEnc
+                
+                alt Password Invalid
+                    Service->>Service: recordFailedAttempt(user)
+                    activate Service
+                    alt Failed Attempts >= MAX (5)
+                        Service->>UserRepo: save(user with lockout)
+                        activate UserRepo
+                        UserRepo-->>Service: User
+                        deactivate UserRepo
+                    else
+                        Service->>UserRepo: save(user with incremented attempts)
+                        activate UserRepo
+                        UserRepo-->>Service: User
+                        deactivate UserRepo
+                    end
+                    deactivate Service
+                    Service->>ExceptionHandler: throw UnauthorizedException
+                    activate ExceptionHandler
+                    ExceptionHandler-->>User: 401 Unauthorized
+                    deactivate ExceptionHandler
+                else Password Valid
+                    Service->>UserRepo: save(user<br/>reset failures<br/>update lastLogin)
+                    activate UserRepo
+                    UserRepo-->>Service: User
+                    deactivate UserRepo
+                    
+                    Service->>SessionRepo: save(new UserSession)
+                    activate SessionRepo
+                    SessionRepo-->>Service: UserSession
+                    deactivate SessionRepo
+                    
+                    Service-->>Controller: UserSession
+                    deactivate Service
+                    
+                    Controller-->>User: 200 OK<br/>(AuthResponse with<br/>sessionId & expiresAt)
+                    deactivate Controller
+                end
+            end
+        end
+    end
+        </div>
+
+        <h2>Key Components</h2>
+        
+        <div class="section">
+            <h3>AuthController (<code>app.auth.AuthController</code>)</h3>
+            <ul>
+                <li><strong>Responsibility:</strong> HTTP endpoint handling</li>
+                <li><strong>Method:</strong> <code>login(LoginRequest)</code> → <code>AuthResponse</code></li>
+                <li><strong>Status Code:</strong> 200 (success), 401 (authentication failure)</li>
+                <li><strong>Endpoint:</strong> <code>POST /api/auth/login</code></li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h3>AuthService (<code>app.auth.AuthService</code>)</h3>
+            <ul>
+                <li><strong>Responsibility:</strong> Authentication logic and session management</li>
+                <li><strong>Key Behaviors:</strong>
+                    <ul>
+                        <li>Username/password validation</li>
+                        <li>Account status verification</li>
+                        <li>Account lockout enforcement (5 failed attempts → 15-minute lockout)</li>
+                        <li>Session token generation</li>
+                        <li>Failed attempt tracking</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h3>Supporting Components</h3>
+            <p><strong>UserRepository</strong> (<code>app.user.UserRepository</code>):</p>
+            <ul>
+                <li>Responsibility: User entity persistence</li>
+                <li>Methods: <code>findByUsername(String)</code>, <code>save(User)</code></li>
+            </ul>
+
+            <p><strong>PasswordEncoder</strong> (Spring Security):</p>
+            <ul>
+                <li>Responsibility: Cryptographic password validation</li>
+                <li>Method: <code>matches(rawPassword, encodedPassword)</code></li>
+            </ul>
+
+            <p><strong>SessionRepository</strong> (<code>app.user.SessionRepository</code>):</p>
+            <ul>
+                <li>Responsibility: User session persistence</li>
+                <li>Method: <code>save(UserSession)</code></li>
+            </ul>
+
+            <p><strong>GlobalExceptionHandler</strong> (<code>app.auth.GlobalExceptionHandler</code>):</p>
+            <ul>
+                <li>Responsibility: Convert exceptions to HTTP responses</li>
+                <li>Handles: <code>UnauthorizedException</code> → 401, <code>ConflictException</code> → 409</li>
+            </ul>
+        </div>
+
+        <h2>Security Features</h2>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Feature</th>
+                    <th>Implementation</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Password Hashing</strong></td>
+                    <td>BCrypt via PasswordEncoder</td>
+                </tr>
+                <tr>
+                    <td><strong>Account Lockout</strong></td>
+                    <td>5 failed attempts → 15-minute lockout</td>
+                </tr>
+                <tr>
+                    <td><strong>Session Timeout</strong></td>
+                    <td>Configurable per user (stored in User entity)</td>
+                </tr>
+                <tr>
+                    <td><strong>Account Status</strong></td>
+                    <td>Verified at login (must be "ACTIVE")</td>
+                </tr>
+                <tr>
+                    <td><strong>Last Login Tracking</strong></td>
+                    <td>Recorded on successful authentication</td>
+                </tr>
+                <tr>
+                    <td><strong>Last Activity Tracking</strong></td>
+                    <td>Updated on successful authentication</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>Error Scenarios</h2>
+        
+        <div class="error-box">
+            <h4>1. User Not Found</h4>
+            <p><strong>Exception:</strong> <code>UnauthorizedException</code></p>
+            <p><strong>HTTP Status:</strong> 401 Unauthorized</p>
+            <p><strong>Message:</strong> "Invalid username or password"</p>
+        </div>
+
+        <div class="error-box">
+            <h4>2. Account Inactive</h4>
+            <p><strong>Exception:</strong> <code>UnauthorizedException</code></p>
+            <p><strong>HTTP Status:</strong> 401 Unauthorized</p>
+            <p><strong>Message:</strong> "Account is not active"</p>
+        </div>
+
+        <div class="error-box">
+            <h4>3. Account Locked</h4>
+            <p><strong>Exception:</strong> <code>UnauthorizedException</code></p>
+            <p><strong>HTTP Status:</strong> 401 Unauthorized</p>
+            <p><strong>Message:</strong> "Account is temporarily locked due to failed login attempts"</p>
+        </div>
+
+        <div class="error-box">
+            <h4>4. Invalid Password</h4>
+            <p><strong>Exception:</strong> <code>UnauthorizedException</code></p>
+            <p><strong>HTTP Status:</strong> 401 Unauthorized</p>
+            <p><strong>Message:</strong> "Invalid username or password"</p>
+            <p><strong>Side Effect:</strong> Increments <code>failedLoginAttempts</code>; locks account if attempts ≥ 5</p>
+        </div>
+
+        <h2>Success Flow Summary</h2>
+        
+        <div class="success-box">
+            <ol>
+                <li><span class="checkmark">✅</span> User found by username</li>
+                <li><span class="checkmark">✅</span> Account status is "ACTIVE"</li>
+                <li><span class="checkmark">✅</span> Account is not locked (or lockout expired)</li>
+                <li><span class="checkmark">✅</span> Password hash matches supplied password</li>
+                <li><span class="checkmark">✅</span> Failed attempt counter reset to 0</li>
+                <li><span class="checkmark">✅</span> Lock status cleared</li>
+                <li><span class="checkmark">✅</span> Last login timestamp updated</li>
+                <li><span class="checkmark">✅</span> New <code>UserSession</code> created and persisted</li>
+                <li><span class="checkmark">✅</span> <code>AuthResponse</code> returned with session ID and expiry time</li>
+            </ol>
+        </div>
+
+        <div class="footer">
+            <p><strong>Last Updated:</strong> 2026-09-15</p>
+            <p><strong>Package:</strong> <code>app.auth</code></p>
+            <p><strong>Related Classes:</strong> <code>AuthController</code>, <code>AuthService</code>, <code>UserSession</code>, <code>LoginRequest</code>, <code>AuthResponse</code></p>
+            <p><strong>See Also:</strong> <a href="overview-summary.html">API Overview</a> | <a href="app/auth/package-summary.html">auth package</a></p>
+        </div>
+    </div>
+
+    <script>
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+        mermaid.contentLoaded();
+    </script>
+</body>
+</html>
