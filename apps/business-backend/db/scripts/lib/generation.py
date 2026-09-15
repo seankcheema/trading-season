@@ -7,7 +7,7 @@ import uuid
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import pyarrow as pa
@@ -34,7 +34,9 @@ def _events(config: dict[str, Any]) -> list[dict[str, Any]]:
 def _file_record(path: Path, day: date) -> dict[str, Any]:
     return {"name":path.name,"day":str(day),"bytes":path.stat().st_size,"sha256":sha256(path)}
 
-def generate(root: Path=DEFAULT_DATASET, config_path: Path=DEFAULT_CONFIG, start_date: date|None=None, end_date: date|None=None, regenerate: bool=False) -> dict[str, Any]:
+def generate(root: Path=DEFAULT_DATASET, config_path: Path=DEFAULT_CONFIG, start_date: date|None=None,
+             end_date: date|None=None, regenerate: bool=False,
+             progress: Callable[[int, int, str], None] | None=None) -> dict[str, Any]:
     config=load_json(config_path); year=config["year"]
     start_date=start_date or date(year,1,1); end_date=end_date or date(year,12,31)
     if start_date>end_date or start_date.year!=year or end_date.year!=year: raise ValueError("Date range must be ordered and within the configured year")
@@ -44,11 +46,13 @@ def generate(root: Path=DEFAULT_DATASET, config_path: Path=DEFAULT_CONFIG, start
         existing=load_manifest(root)
         if existing["config"]==config and existing["sessions"]==[str(d) for d in days]: return existing
         raise ValueError("Existing archive differs; use --regenerate to replace ticks and candles together")
+    report = progress or (lambda current, total, label: None)
     staging=root.with_name(f".{root.name}.staging-{uuid.uuid4().hex}"); staging.mkdir(parents=True)
     tick_files=[]; candle_files=[]
     try:
         previous={s.symbol:float(s.starting_price) for s in STOCKS}
         for day_index,day in enumerate(days):
+            report(day_index, len(days), f"generating {day}")
             start=session_open(day); tick_path=staging/f"ticks-{day}.parquet"; candle_path=staging/f"candles-{day}.parquet"
             candle_tables=[]
             with pq.ParquetWriter(tick_path,TICK_SCHEMA,compression="zstd") as writer:
@@ -75,6 +79,7 @@ def generate(root: Path=DEFAULT_DATASET, config_path: Path=DEFAULT_CONFIG, start
                     candle_tables.append(pa.table({"symbol":[stock.symbol]*390,"t":np.arange(start,start+SESSION_SECONDS,60,dtype=np.int64),"session_start":[start]*390,"open":dec(p[:,0]),"high":dec(p.max(axis=1)),"low":dec(p.min(axis=1)),"close":dec(p[:,-1]),"volume":v.sum(axis=1,dtype=np.int64),"trade_count":np.full(390,60,dtype=np.int32)},schema=CANDLE_SCHEMA))
             pq.write_table(pa.concat_tables(candle_tables),candle_path,compression="zstd",row_group_size=3900)
             tick_files.append(_file_record(tick_path,day)); candle_files.append(_file_record(candle_path,day))
+        report(len(days), len(days), "archive generated")
         manifest={"schema_version":2,"dataset_id":"2026-v1","seed":config["seed"],"config":config,"start":session_open(days[0]),"end":session_open(days[-1])+SESSION_SECONDS,"sessions":[str(d) for d in days],"symbols":[{"symbol":s.symbol,"name":s.company_name} for s in STOCKS],"events":_events(config),"resolution":{"ticks":"1s","candles":"1m","timezone":"America/Chicago","session":"08:30:00-14:59:59","calendar":"weekdays including holidays"},"tick_files":tick_files,"candle_files":candle_files,"tick_count":len(days)*SESSION_SECONDS*len(STOCKS),"candle_count":len(days)*390*len(STOCKS)}
         manifest["fingerprint"]=archive_fingerprint(manifest); (staging/"manifest.json").write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8")
         validate_archive(staging,manifest)

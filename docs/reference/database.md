@@ -86,7 +86,16 @@ You should see tables such as `users`, `sessions`, `stocks`, `simulation_session
 
 The generated `2026-v1` archive is stored locally in `apps/business-backend/db/seeds/synthetic-market-data-2026-v1` and is not committed to Git. A full archive contains 61,074,000 one-second ticks and 1,017,900 tick-derived one-minute candles.
 
-Run these commands from the repository root.
+Run the complete routine workflow from the repository root with one command. It creates the virtual environment if needed, installs dependencies, generates or reuses the archive, carries the completed validation forward to the importer, and displays progress while loading PostgreSQL:
+
+```powershell
+apps/business-backend/db/setup-market-data.ps1 `
+  -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season
+```
+
+For a small archive, add `-StartDate 2026-01-05 -EndDate 2026-01-06`. Add `-Regenerate` to replace an incompatible archive or `-Replace` to replace a different import for the same session. On a brand-new disposable database, add `-InitializeDisposableDatabase`; this drops and recreates the business tables.
+
+The individual commands below remain available for troubleshooting and non-Windows environments. Run them from the repository root.
 
 #### Step 1: Install the Python dependencies
 
