@@ -1,10 +1,10 @@
-package com.neueda.leap.order.validation;
+package app.order.validation;
 
-import com.neueda.leap.account.Account;
-import com.neueda.leap.instrument.Instrument;
-import com.neueda.leap.order.Order;
-import com.neueda.leap.order.dto.OrderRequest;
-import com.neueda.leap.user.User;
+import app.account.Account;
+import app.instrument.Instrument;
+import app.order.Order;
+import app.order.dto.OrderRequest;
+import app.user.User;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -64,8 +64,6 @@ class OrderValidationPipelineUnitTest {
         verify(third, never()).validate(any(), any(), any(), any());
     }
 
-    // Mockito's any() is generic-unfriendly across four differently-typed
-    // parameters; this local helper keeps the stubs above readable.
     private static <T> T any() {
         return org.mockito.ArgumentMatchers.any();
     }

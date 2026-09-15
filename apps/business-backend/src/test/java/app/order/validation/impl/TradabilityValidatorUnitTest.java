@@ -1,11 +1,11 @@
-package com.neueda.leap.order.validation.impl;
+package app.order.validation.impl;
 
-import com.neueda.leap.account.Account;
-import com.neueda.leap.instrument.Instrument;
-import com.neueda.leap.order.Order;
-import com.neueda.leap.order.dto.OrderRequest;
-import com.neueda.leap.order.validation.ValidationResult;
-import com.neueda.leap.user.User;
+import app.account.Account;
+import app.instrument.Instrument;
+import app.order.Order;
+import app.order.dto.OrderRequest;
+import app.order.validation.ValidationResult;
+import app.user.User;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 

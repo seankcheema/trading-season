@@ -1,13 +1,13 @@
-package com.neueda.leap.order.validation.impl;
+package app.order.validation.impl;
 
-import com.neueda.leap.account.Account;
-import com.neueda.leap.holding.Holding;
-import com.neueda.leap.holding.HoldingRepository;
-import com.neueda.leap.instrument.Instrument;
-import com.neueda.leap.order.Order;
-import com.neueda.leap.order.dto.OrderRequest;
-import com.neueda.leap.order.validation.ValidationResult;
-import com.neueda.leap.user.User;
+import app.account.Account;
+import app.holding.Holding;
+import app.holding.HoldingRepository;
+import app.instrument.Instrument;
+import app.order.Order;
+import app.order.dto.OrderRequest;
+import app.order.validation.ValidationResult;
+import app.user.User;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -48,7 +48,7 @@ class SufficientHoldingsValidatorUnitTest {
     @Test
     void rejectsSellThatExceedsCurrentHolding() {
         validator = new SufficientHoldingsValidator(holdingRepository);
-        account.setAccountId(1);
+        account.setId(1);
         instrument.setInstrumentId(1);
         when(holdingRepository.findByAccountIdAndInstrumentId(1, 1)).thenReturn(Optional.of(holdingOf("5")));
 
@@ -60,7 +60,7 @@ class SufficientHoldingsValidatorUnitTest {
     @Test
     void passesSellThatExactlyMatchesCurrentHolding() {
         validator = new SufficientHoldingsValidator(holdingRepository);
-        account.setAccountId(1);
+        account.setId(1);
         instrument.setInstrumentId(1);
         when(holdingRepository.findByAccountIdAndInstrumentId(1, 1)).thenReturn(Optional.of(holdingOf("10")));
 
@@ -72,7 +72,7 @@ class SufficientHoldingsValidatorUnitTest {
     @Test
     void rejectsSellWithNoHoldingAtAll() {
         validator = new SufficientHoldingsValidator(holdingRepository);
-        account.setAccountId(1);
+        account.setId(1);
         instrument.setInstrumentId(1);
         when(holdingRepository.findByAccountIdAndInstrumentId(1, 1)).thenReturn(Optional.empty());
 
