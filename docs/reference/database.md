@@ -84,9 +84,13 @@ You should see tables such as `users`, `sessions`, `stocks`, `simulation_session
 
 ### Optional synthetic market data generation and import
 
-The helper creates the business schema, generates the local synthetic market data archive when missing, and imports it into PostgreSQL. The generated archive stays out of Git at `apps/business-backend/db/seeds/synthetic-market-data-2026-v1`.
+The generated `2026-v1` archive is stored locally in `apps/business-backend/db/seeds/synthetic-market-data-2026-v1` and is not committed to Git. A full archive contains 61,074,000 one-second ticks and 1,017,900 tick-derived one-minute candles.
 
-Set up the script virtual environment once from the repository root:
+Run these commands from the repository root.
+
+#### Step 1: Install the Python dependencies
+
+Create the virtual environment and install its dependencies once:
 
 ```powershell
 py -3 -m venv apps/business-backend/db/.venv
@@ -94,41 +98,56 @@ apps/business-backend/db/.venv/Scripts/python.exe -m pip install --upgrade pip
 apps/business-backend/db/.venv/Scripts/python.exe -m pip install -r apps/business-backend/db/scripts/requirements.txt
 ```
 
-Run everything:
+#### Step 2: Initialize a disposable database
+
+Run this step only when setting up the business database for the first time. It applies V001 and V002, and V001 drops existing tables.
 
 ```powershell
-$env:DATABASE_URL = "postgresql://trading_season:password@localhost:5432/trading_season"
-apps/business-backend/db/scripts/apply-synthetic-market-data.ps1 `
-  -Python apps/business-backend/db/.venv/Scripts/python.exe `
-  -Psql "C:\Program Files\PostgreSQL\18\bin\psql.exe"
+apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/0001-initialize-database.py `
+  --database-url postgresql://trading_season:password@localhost:5432/trading_season `
+  --disposable-database
 ```
 
-`-Psql` is only needed if the helper cannot find `psql.exe` automatically.
+Do not run step 2 during ordinary seeding.
 
-Force generation:
+#### Step 3: Generate the archive
+
+Generation does not access PostgreSQL:
 
 ```powershell
-apps/business-backend/db/scripts/apply-synthetic-market-data.ps1 `
-  -Python apps/business-backend/db/.venv/Scripts/python.exe `
-  -Psql "C:\Program Files\PostgreSQL\18\bin\psql.exe" `
-  -Generate
+apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/0002-generate-synthetic-market-data.py
 ```
 
-Only generate data files, without touching PostgreSQL:
+For a smaller test archive, add a date range:
 
 ```powershell
-apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/generate-synthetic-market-data.py
+apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/0002-generate-synthetic-market-data.py `
+  --start-date 2026-01-05 `
+  --end-date 2026-01-06
 ```
 
-Only validate generated data files, without touching PostgreSQL:
+If an older candle-only or otherwise incompatible archive exists, add `--regenerate`. The replacement is validated in a staging directory before it is published.
+
+#### Step 4: Validate the archive
+
+Validation does not access PostgreSQL:
 
 ```powershell
-apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/import-synthetic-market-data.py `
-  --database-url postgresql://unused `
-  --dry-run
+apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/0003-validate-synthetic-market-data.py
 ```
 
-The import adds stocks, one simulation session, market behaviors, market states, and 1-minute candles. It does not add users, accounts, orders, holdings, auth-service data, quotes, or market ticks.
+#### Step 5: Import the archive
+
+The importer validates the archive again and loads it in one transaction:
+
+```powershell
+apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/0004-import-synthetic-market-data.py `
+  --database-url postgresql://trading_season:password@localhost:5432/trading_season
+```
+
+An identical completed import is skipped. If the target session contains different or candle-only data, add `--replace`. The replacement affects only that simulation session; unrelated sessions and records are preserved.
+
+For later routine seeding, run steps 3 through 5 only. The import adds stocks, simulation metadata, market behaviors, market states, ticks, and candles. It does not add users, accounts, orders, holdings, auth-service data, or quotes.
 
 There is no Flyway runner in the Java backend; these files are applied manually.
 

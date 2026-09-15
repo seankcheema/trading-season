@@ -2,7 +2,7 @@
   "version": "2026-v1",
   "seed": 17,
   "year": 2026,
-  "samples_per_minute": 4,
+  "tick_resolution_seconds": 1,
   "conditions": {
     "normal": {
       "drift": 0.08,

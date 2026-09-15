@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | Java backend | [application.properties](../../apps/business-backend/src/main/resources/application.properties) | HTTP 8080; PostgreSQL localhost:5432/trading_season |
 | Auth service | [Auth setup](../../apps/auth-service/README.md) and [database configuration](../../apps/auth-service/src/config/database.config.ts) | HTTP 3001; PostgreSQL localhost:5433/auth_db |
-| Local containers | [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) | Separate business and auth database volumes |
+| Local containers | [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) | Business/auth database volumes and archive cache |
 | Jenkins | [Pipeline](../../infrastructure/jenkins/Jenkinsfile), [Compose](../../infrastructure/docker-compose/docker-compose.jenkins.yml) | Jenkins UI on host port 8888 |
 
 Java reads SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, and SPRING_DATASOURCE_PASSWORD. Auth reads DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, PORT, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, and JWT_ISSUER. Node startup loads .env from its working directory; Compose must receive the appropriate environment file explicitly.
@@ -26,9 +26,11 @@ The Java backend service in local Compose still uses build context '.' relative 
 
 Auth GET /health reports process liveness, not database readiness. Check startup logs and database connectivity separately. Database volumes persist across ordinary container shutdown; removing volumes deletes their data. Back up retained data before schema or volume changes and verify restoration in a separate database.
 
+Ordinary Compose startup neither initializes nor seeds. `db_data` remains the PostgreSQL store and `market_data_archive` caches generated files across container recreation. Run the `initialize` profile only for first-time disposable setup. Thereafter the opt-in `seed` profile waits for database readiness and runs numbered steps 0002 through 0004 without destructive initialization.
+
 ## CI and artifacts
 
-The Jenkins pipeline expects a native agent with the Maven tool named Maven3 and a Java 21 installation at its configured JAVA_HOME. It runs Java tests, auth Vitest tests, and Angular tests. See the pipeline for exact stage behavior.
+The Jenkins pipeline expects a native agent with Docker, the Maven tool named Maven, and Java 21 at its configured JAVA_HOME. It runs Java, auth, Angular, script, and build-scoped two-day PostgreSQL integration checks. Full-year generation remains on demand.
 
 | Suite | Outputs |
 | --- | --- |

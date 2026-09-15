@@ -10,14 +10,7 @@ apps/business-backend/db/.venv/Scripts/python.exe -m pip install --upgrade pip
 apps/business-backend/db/.venv/Scripts/python.exe -m pip install -r apps/business-backend/db/scripts/requirements.txt
 ```
 
-```powershell
-$env:DATABASE_URL = "postgresql://trading_season:password@localhost:5432/trading_season"
-apps/business-backend/db/scripts/apply-synthetic-market-data.ps1 `
-  -Python apps/business-backend/db/.venv/Scripts/python.exe `
-  -Psql "C:\Program Files\PostgreSQL\18\bin\psql.exe"
-```
-
-The helper generates the synthetic market data `2026-v1` archive when missing, then loads it into stocks, simulation session metadata, scenario behaviors, market states, and 1-minute candles.
+Use the [numbered cross-platform workflow](db/scripts/README.md). Initialization is a separate, explicitly destructive first-time action; ordinary seeding runs generation, validation, and import only. The `2026-v1` archive contains one-second ticks and tick-derived one-minute candles.
 
 From this directory:
 

@@ -12,6 +12,8 @@ node_modules/
 
 # Local/generated market-data archives
 apps/business-backend/db/seeds/synthetic-market-data-2026-v1/
+apps/business-backend/db/seeds/.synthetic-market-data-2026-v1.staging-*/
+apps/business-backend/db/seeds/.synthetic-market-data-2026-v1.backup-*/
 apps/business-backend/db/.venv/
 
 # macOS

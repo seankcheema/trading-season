@@ -33,6 +33,36 @@ services:
       - "5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trading_season -d trading_season"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  db-initialize:
+    profiles: ["initialize"]
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.market-data
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - market_data_archive:/workspace/apps/business-backend/db/seeds
+    command: ["apps/business-backend/db/scripts/0001-initialize-database.py", "--database-url", "postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season", "--disposable-database"]
+
+  market-data-seed:
+    profiles: ["seed"]
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.market-data
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - market_data_archive:/workspace/apps/business-backend/db/seeds
+    entrypoint: ["/bin/sh", "-ec"]
+    command: ["python apps/business-backend/db/scripts/0002-generate-synthetic-market-data.py && python apps/business-backend/db/scripts/0003-validate-synthetic-market-data.py && python apps/business-backend/db/scripts/0004-import-synthetic-market-data.py --database-url postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season"]
 
   auth-service:
     # Authentication and authorization service (KAN-79). Owns credentials and
@@ -89,3 +119,5 @@ volumes:
   auth_db_data:
     # Separate volume so the auth database can be reset independently of the
     # application database.
+  market_data_archive:
+    # Reusable generated Parquet archive, independent of PostgreSQL db_data.
