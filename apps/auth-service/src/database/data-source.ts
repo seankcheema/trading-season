@@ -4,6 +4,7 @@ import { User } from '../users/user.entity.js';
 import { RefreshToken } from '../refresh-tokens/refresh-token.entity.js';
 import { RequireUsername1789067284157 } from './migrations/1789067284157-RequireUsername.js';
 import { InitialAuthSchema1789051037692 } from './migrations/1789051037692-InitialAuthSchema.js';
+import { TrimUserToBrsMinimum1789481455425 } from './migrations/1789481455425-TrimUserToBrsMinimum.js';
 
 /**
  * DataSource used by the TypeORM CLI (npm run migration:*).
@@ -20,6 +21,10 @@ export default new DataSource({
   password: process.env.DB_PASSWORD || 'changeme',
   database: process.env.DB_NAME || 'auth_db',
   entities: [User, RefreshToken],
-  migrations: [InitialAuthSchema1789051037692, RequireUsername1789067284157],
+  migrations: [
+    InitialAuthSchema1789051037692,
+    RequireUsername1789067284157,
+    TrimUserToBrsMinimum1789481455425,
+  ],
   synchronize: false,
 });

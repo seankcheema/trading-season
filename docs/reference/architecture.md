@@ -18,7 +18,7 @@ Java requests pass through validation, AuthService, JPA repositories, and the bu
 
 NestJS requests pass through controllers/Passport strategies, AuthService, and TypeORM repositories in a separate auth database. Registration/login issue an RS256 access token and a random refresh token. Only the refresh token hash is stored. Refresh rotates it; reuse of an unusable token revokes the user's live refresh sessions. Access tokens expire after 15 minutes and remain stateless.
 
-The trading schema defines simulation, execution, and accounting structures, but their presence does not imply implemented trading endpoints. Its constraints and [ERD](../../apps/business-backend/db/erd.md) are described in the [database guide](database.md).
+The trading schema defines simulation, execution, and accounting structures, but their presence does not imply implemented trading endpoints. Its constraints and ERD are described in the [database guide](database.md).
 
 ## Integration limitations
 

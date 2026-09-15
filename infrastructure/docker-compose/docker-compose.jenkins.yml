@@ -33,8 +33,8 @@ services:
   #   depends_on:
   #     - db
   #   environment:
-  #     SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/paysprint
-  #     SPRING_DATASOURCE_USERNAME: paysprint
+  #     SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
+  #     SPRING_DATASOURCE_USERNAME: trading_season
   #     SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-changeme}
   #   networks:
   #     - dev-network
@@ -43,8 +43,8 @@ services:
     image: postgres:16-alpine
     container_name: postgres-db
     environment:
-      POSTGRES_DB: paysprint
-      POSTGRES_USER: paysprint
+      POSTGRES_DB: trading_season
+      POSTGRES_USER: trading_season
       POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
     ports:
       - "5432:5432"
