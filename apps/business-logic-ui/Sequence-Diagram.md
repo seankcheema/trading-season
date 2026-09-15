@@ -7,9 +7,7 @@ sequenceDiagram
     actor User
     participant LoginComponent
     participant AuthService
-    participant Backend as "Auth Backend<br/>(Port 3001)"
-    participant LocalStorage as "LocalStorage<br/>Adapter"
-    participant Router as "Angular Router"
+    participant Backend as "Backend<br/>(Auth DB)"
 
     User->>LoginComponent: Enter email & password
     User->>LoginComponent: Click Submit
@@ -24,14 +22,12 @@ sequenceDiagram
     
     alt Authentication Successful
         Backend-->>AuthService: 200 OK + AuthTokenDto
-        AuthService->>AuthService: Extract accessToken & refreshToken
-        AuthService->>LocalStorage: saveToken('accessToken', token)
-        AuthService->>LocalStorage: saveToken('refreshToken', token)
+        AuthService->>AuthService: Extract & cache tokens
         AuthService->>AuthService: Update tokenSubject
         AuthService-->>LoginComponent: Observable<AuthTokenDto>
         LoginComponent->>LoginComponent: Close loading spinner
-        LoginComponent->>Router: Navigate to dashboard
-        Router-->>User: Display dashboard
+        LoginComponent->>Backend: Navigate to dashboard
+        Backend-->>User: Display dashboard
     else Authentication Failed
         Backend-->>AuthService: 401 Unauthorized
         AuthService-->>LoginComponent: Error Observable
@@ -49,9 +45,7 @@ sequenceDiagram
     actor User
     participant RegisterComponent
     participant AuthService
-    participant Backend as "Auth Backend<br/>(Port 3001)"
-    participant LocalStorage as "LocalStorage<br/>Adapter"
-    participant Router as "Angular Router"
+    participant Backend as "Backend<br/>(Auth DB)"
 
     User->>RegisterComponent: Enter email & password
     User->>RegisterComponent: Enter confirm password
@@ -70,14 +64,12 @@ sequenceDiagram
     
     alt Registration Successful
         Backend-->>AuthService: 200 OK + AuthTokenDto
-        AuthService->>AuthService: Extract tokens
-        AuthService->>LocalStorage: saveToken('accessToken', token)
-        AuthService->>LocalStorage: saveToken('refreshToken', token)
+        AuthService->>AuthService: Extract & cache tokens
         AuthService->>AuthService: Update tokenSubject
         AuthService-->>RegisterComponent: Observable<AuthTokenDto>
         RegisterComponent->>RegisterComponent: Close loading spinner
-        RegisterComponent->>Router: Navigate to dashboard
-        Router-->>User: Display dashboard
+        RegisterComponent->>Backend: Navigate to dashboard
+        Backend-->>User: Display dashboard
     else Email Already Exists
         Backend-->>AuthService: 409 Conflict
         AuthService-->>RegisterComponent: Error Observable
@@ -99,31 +91,39 @@ sequenceDiagram
     participant HttpClient as "HttpClient"
     participant AuthInterceptor
     participant AuthService
-    participant LocalStorage as "LocalStorage<br/>Adapter"
-    participant Backend as "Backend API"
+    participant Backend as "Backend<br/>(Auth DB)"
 
     Component->>HttpClient: Make HTTP request
     HttpClient->>AuthInterceptor: intercept(request, next)
     
     AuthInterceptor->>AuthService: getToken()
-    AuthService->>LocalStorage: getToken('accessToken')
-    LocalStorage-->>AuthService: accessToken string
-    AuthService-->>AuthInterceptor: accessToken
+    AuthService-->>AuthInterceptor: cached accessToken
     
     alt Token exists
         AuthInterceptor->>AuthInterceptor: attachBearerToken(request)
         AuthInterceptor->>HttpClient: Add Authorization header
         HttpClient->>Backend: POST/GET/PUT/DELETE + Bearer token
-        Backend->>Backend: Validate JWT signature
-        Backend->>Backend: Decode JwtPayload
+        Backend->>Backend: Validate JWT signature with public key
+        Backend->>Backend: Decode JwtPayload + check expiration
         Backend-->>HttpClient: 200 OK + Response data
         HttpClient-->>Component: Response Observable
         Component->>Component: Handle response
-    else Token not found
-        HttpClient->>Backend: Request without token
+    else Token not found/expired
+        HttpClient->>Backend: Request without token or expired token
         Backend-->>HttpClient: 401 Unauthorized
-        HttpClient-->>Component: Error Observable
-        Component->>Component: Handle 401 error
+        HttpClient->>AuthInterceptor: Error 401 response
+        AuthInterceptor->>AuthService: Attempt refresh with refresh token
+        AuthService->>Backend: POST /auth/refresh + refresh token
+        Backend-->>AuthService: New AccessToken or 401
+        alt Refresh successful
+            AuthService->>AuthService: Update cached accessToken
+            AuthInterceptor->>HttpClient: Retry original request with new token
+            HttpClient-->>Component: Response Observable
+        else Refresh failed
+            AuthService->>AuthService: Clear tokens
+            HttpClient-->>Component: 401 Error Observable
+            Component->>Component: Redirect to login
+        end
     end
 ```
 
@@ -137,7 +137,7 @@ sequenceDiagram
     participant Router as "Angular Router"
     participant AuthGuard
     participant AuthService
-    participant LocalStorage as "LocalStorage<br/>Adapter"
+    participant Backend as "Backend<br/>(Auth DB)"
     participant ProtectedComponent as "Protected<br/>Component"
     participant LoginComponent
 
@@ -145,10 +145,11 @@ sequenceDiagram
     Router->>AuthGuard: canActivate()?
     
     AuthGuard->>AuthService: isAuthenticated()
-    AuthService->>LocalStorage: getToken('accessToken')
-    LocalStorage-->>AuthService: token or null
+    AuthService->>AuthService: Check cached token
+    AuthService->>Backend: verifyToken(token)
     
-    alt User is authenticated
+    alt Backend verifies token valid
+        Backend-->>AuthService: true + JwtPayload
         AuthService-->>AuthGuard: true
         AuthGuard->>AuthGuard: validateJwtClaims()
         AuthGuard->>AuthGuard: checkExpiration(JwtPayload)
@@ -158,14 +159,15 @@ sequenceDiagram
             ProtectedComponent-->>User: Display protected content
         else JWT expired
             AuthGuard->>AuthService: logout()
-            AuthService->>LocalStorage: removeToken('accessToken')
-            AuthService->>LocalStorage: removeToken('refreshToken')
+            AuthService->>AuthService: Clear cached tokens
             AuthGuard-->>Router: false (deny access)
             Router->>LoginComponent: Redirect to login
             LoginComponent-->>User: Show login form
         end
-    else User not authenticated
+    else Backend rejects token (401)
+        Backend-->>AuthService: false (invalid/expired)
         AuthService-->>AuthGuard: false
+        AuthGuard->>AuthService: logout()
         AuthGuard-->>Router: false (deny access)
         Router->>LoginComponent: Redirect to login
         LoginComponent-->>User: Show login form
@@ -181,17 +183,18 @@ sequenceDiagram
     actor User
     participant Component as "App Component"
     participant AuthService
-    participant LocalStorage as "LocalStorage<br/>Adapter"
+    participant Backend as "Backend<br/>(Auth DB)"
     participant Router as "Angular Router"
     participant LoginComponent
 
     User->>Component: Click Logout button
     Component->>AuthService: logout()
     
-    AuthService->>LocalStorage: removeToken('accessToken')
-    AuthService->>LocalStorage: removeToken('refreshToken')
+    AuthService->>Backend: POST /auth/logout (optional)
+    Backend->>Backend: Invalidate session/refresh token
+    Backend-->>AuthService: Logout confirmed
+    AuthService->>AuthService: Clear cached tokens
     AuthService->>AuthService: Update tokenSubject to null
-    AuthService->>AuthService: Clear authentication state
     
     AuthService-->>Component: Logout complete
     Component->>Router: Navigate to login
@@ -208,24 +211,30 @@ sequenceDiagram
 2. Component validates and sends to AuthService
 3. AuthService creates DTO and sends to backend
 4. Backend authenticates/registers and returns tokens
-5. AuthService stores tokens in LocalStorage
+5. AuthService caches tokens in memory and BehaviorSubject
 6. Component navigates to protected area
 
 ### **Token Usage Flow**
 1. Component makes HTTP request
-2. AuthInterceptor intercepts and attaches Bearer token
-3. Backend receives and validates JWT
-4. Response returned to component
+2. AuthInterceptor intercepts and retrieves cached token
+3. AuthInterceptor attaches Bearer token to Authorization header
+4. Backend receives and validates JWT (signature + expiration)
+5. Backend can verify token with server-side session store
+6. Response returned to component
+7. On 401: AuthInterceptor attempts refresh with BackendAuthService
 
 ### **Route Protection Flow**
 1. Router triggers AuthGuard before navigation
-2. AuthGuard checks token existence and expiration
-3. If valid → allow navigation
-4. If expired/missing → redirect to login
+2. AuthGuard calls AuthService to verify token with backend
+3. Backend validates token (BackendAuthService.verifyToken)
+4. If valid → allow navigation to protected component
+5. If invalid/expired → AuthGuard redirects to login
+6. Backend is source of truth for token validity
 
 ### **Logout Flow**
 1. User initiates logout
-2. AuthService clears all stored tokens
-3. AuthService updates auth state
-4. Router redirects to login page
-5. Application returns to unauthenticated state
+2. AuthService clears cached tokens from memory
+3. AuthService optionally calls backend to invalidate server-side session
+4. Backend invalidates refresh token and session
+5. Router redirects to login page
+6. Application returns to unauthenticated state
