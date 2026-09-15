@@ -4,9 +4,9 @@
 
 | Component | Configuration | Defaults |
 | --- | --- | --- |
-| Java backend | [application.properties](../../apps/business-backend/src/main/resources/application.properties) | HTTP 8080; PostgreSQL localhost:5432/paysprint |
+| Java backend | [application.properties](../../apps/business-backend/src/main/resources/application.properties) | HTTP 8080; PostgreSQL localhost:5432/trading_season |
 | Auth service | [Auth setup](../../apps/auth-service/README.md) and [database configuration](../../apps/auth-service/src/config/database.config.ts) | HTTP 3001; PostgreSQL localhost:5433/auth_db |
-| Local containers | [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) | Separate business and auth database volumes |
+| Local containers | [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) | Business/auth database volumes and archive cache |
 | Jenkins | [Pipeline](../../infrastructure/jenkins/Jenkinsfile), [Compose](../../infrastructure/docker-compose/docker-compose.jenkins.yml) | Jenkins UI on host port 8888 |
 
 Java reads SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, and SPRING_DATASOURCE_PASSWORD. Auth reads DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, PORT, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, and JWT_ISSUER. Node startup loads .env from its working directory; Compose must receive the appropriate environment file explicitly.
@@ -26,9 +26,13 @@ The Java backend service in local Compose still uses build context '.' relative 
 
 Auth GET /health reports process liveness, not database readiness. Check startup logs and database connectivity separately. Database volumes persist across ordinary container shutdown; removing volumes deletes their data. Back up retained data before schema or volume changes and verify restoration in a separate database.
 
+Ordinary Compose startup neither initializes nor seeds. `db_data` remains the PostgreSQL store and `market_data_archive` caches generated files across container recreation. Run the `initialize` profile only for first-time disposable setup. Thereafter the opt-in `seed` profile waits for database readiness and runs numbered steps 0002 through 0004 without destructive initialization.
+
+Because the seed container cannot inspect free space inside the separate PostgreSQL volume, set `MARKET_DATA_AVAILABLE_DISK_GB` to the volume's available capacity before starting the `seed` profile. The default `parquet` mode retains raw ticks in the archive volume and imports only candles into PostgreSQL. The importer commits and checkpoints one month at a time; a rerun verifies and skips completed months. Set tick storage to `postgres` only for an intentional high-capacity deployment.
+
 ## CI and artifacts
 
-The Jenkins pipeline expects a native agent with the Maven tool named Maven3 and a Java 21 installation at its configured JAVA_HOME. It runs Java tests, auth Vitest tests, and Angular tests. See the pipeline for exact stage behavior.
+The Jenkins pipeline expects a native agent with Docker, the Maven tool named Maven3, and Java 21 at its configured JAVA_HOME. It runs Java, auth, Angular, script, and build-scoped two-day PostgreSQL integration checks. Full-year generation remains on demand.
 
 | Suite | Outputs |
 | --- | --- |
@@ -50,4 +54,5 @@ Javadoc generation is a required Java change check described in [development](de
 - JWT verification fails: check the signing/public key pair and expiry. The current Passport strategy does not enforce issuer/audience; do not assume it does.
 - Logout appears successful but refresh still works: see the documented [API limitation](../reference/api.md#current-logout-limitation).
 - Jenkins fails before tests: verify the configured Java/Maven paths and Node version on the actual agent, not just the optional image.
+- Synthetic market-data CI derives Docker resource names from a normalized hash of the Jenkins build tag, so encoded multibranch names such as `%2F` do not need special handling. The stage creates and removes build-scoped database and archive volumes; do not pre-seed PostgreSQL or generate a persistent archive on the Jenkins VM.
 - UI renders but login does not reach an API: form submission is not yet wired to a service. See [architecture](../reference/architecture.md).

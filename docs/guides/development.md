@@ -47,6 +47,7 @@ Run from repository root after dependency installation:
 | Auth | npm --prefix apps/auth-service run build | NestJS compilation |
 | Auth | npm --prefix apps/auth-service run test:ci | Vitest coverage and JUnit reports; tests generate ephemeral keys |
 | Auth | npm --prefix apps/auth-service run lint | Oxlint |
+| Market-data scripts | python -m unittest discover apps/business-backend/db/tests | Unit checks; use Jenkins for the two-day PostgreSQL integration |
 
 Root Turborepo commands only cover configured workspaces and available scripts. Run Java and auth checks explicitly. See [operations](operations.md) for CI differences and artifact locations.
 

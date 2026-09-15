@@ -4,7 +4,6 @@ NestJS authentication service with PostgreSQL, RS256 access tokens, opaque refre
 
 ## UML Diagram 
 # Business Logic UI (Middle Tier) - Service Layer UML Diagram
-
 ## Class Diagram - Service Layer Architecture & Entity Relationships
 
 ```mermaid
@@ -33,8 +32,8 @@ classDiagram
     class AuthService {
         -authBaseUrl: string
         -tokenSubject: BehaviorSubject&lt;string|null&gt;
-        +login(username, password): Observable&lt;AuthTokenDto&gt;
-        +register(username, password): Observable&lt;AuthTokenDto&gt;
+        +login(email, password): Observable&lt;AuthTokenDto&gt;
+        +register(email, password): Observable&lt;AuthTokenDto&gt;
         +getToken(): string|null
         +logout(): void
         +isAuthenticated(): boolean
@@ -58,12 +57,12 @@ classDiagram
     
     %% Data Models / DTOs
     class LoginDto {
-        +username: string
+        +email: string
         +password: string
     }
     
     class RegisterDto {
-        +username: string
+        +email: string
         +password: string
     }
     
@@ -122,7 +121,7 @@ classDiagram
 - `showPassword: Signal<boolean>` - Toggles password field masking
 - `submitted: Signal<boolean>` - Tracks form submission state
 - `form: FormGroup` - Reactive form with validation rules
-  - `username` - Required, alphanumeric + underscore only
+  - `email` - Required, valid email format
   - `password` - Required, minimum 8 characters
 - `_fb: FormBuilder` - Angular form builder for reactive forms
 
@@ -131,7 +130,7 @@ classDiagram
 - `onSubmit()` - Validates form and calls `AuthService.login(username, password)`
 
 **Authentication Flow**:
-1. User enters username + password
+1. User enters email + password
 2. Sends `LoginDto` to backend
 3. Backend authenticates against stored password hash
 4. If match (200 OK) → returns `AuthTokenDto` with tokens
@@ -139,20 +138,20 @@ classDiagram
 
 **Dependencies**:
 - `AuthService` - For authentication
-- `LoginDto` - Sends username/password to auth service
+- `LoginDto` - Sends email/password to auth service
 - `AuthTokenDto` - Receives tokens on success
 
 ---
 
 #### RegisterComponent
-**Purpose**: Collect user registration credentials (username + password only for middle tier)
+**Purpose**: Collect user registration credentials (email + password only for middle tier)
 
 **Properties**:
 - `showPassword: Signal<boolean>` - Password visibility toggle
 - `showConfirmPassword: Signal<boolean>` - Confirm password visibility
 - `submitted: Signal<boolean>` - Form submission state
 - `form: FormGroup` - Registration form with validators:
-  - `username` - Required, alphanumeric + underscore only
+  - `email` - Required, valid email format
   - `password` - Required, min 8 chars, number, special character
   - `confirmPassword` - Required, must match password
 - `_fb: FormBuilder` - Angular form builder for reactive forms
@@ -162,15 +161,15 @@ classDiagram
 - `onSubmit()` - Validates form and calls `AuthService.register(username, password)`
 
 **Registration Flow (Middle Tier Only)**:
-1. User enters username + password + confirm password
-2. Sends `RegisterDto` (username + password only) to backend
+1. User enters email + password + confirm password
+2. Sends `RegisterDto` (email + password only) to backend
 3. Backend creates user account
 4. If successful (200 OK) → returns `AuthTokenDto` with tokens
 5. If fails (409 Conflict/400 Bad Request) → shows error
 
 **Dependencies**:
 - `AuthService` - For user registration
-- `RegisterDto` - Sends username/password to auth service
+- `RegisterDto` - Sends email/password to auth service
 - `AuthTokenDto` - Receives tokens on success
 
 ---
@@ -178,27 +177,27 @@ classDiagram
 ### **Service Layer**
 
 #### AuthService
-**Purpose**: Manage authentication via username + password, token lifecycle, and communication with backend auth server
+**Purpose**: Manage authentication via email + password, token lifecycle, and communication with backend auth server
 
 **Properties**:
 - `authBaseUrl: string` - Backend auth service URL (http://localhost:3001/auth)
 - `tokenSubject: BehaviorSubject<string|null>` - Reactive authentication state
 
 **Methods**:
-- `login(username, password): Observable<AuthTokenDto>` - Authenticates user by username + password
-  - Takes `LoginDto` credentials (username + password only)
+- `login(email, password): Observable<AuthTokenDto>` - Authenticates user by email + password
+  - Takes `LoginDto` credentials (email + password only)
   - Backend validates against stored password hash
   - Returns `AuthTokenDto` with access/refresh tokens
   - Stores tokens in localStorage
   - If authentication fails → throws 401 error
-- `register(username, password): Observable<AuthTokenDto>` - Registers new user
-  - Takes `RegisterDto` with username + password only
-  - Backend validates username + password
+- `register(email, password): Observable<AuthTokenDto>` - Registers new user
+  - Takes `RegisterDto` with email + password only
+  - Backend validates email + password
   - Backend hashes password with bcrypt
   - Backend creates user account
   - On success (200 OK): Returns `AuthTokenDto` with tokens
   - On failure (409/400): Throws error
-  -  Password never returned (only tokens)
+  - Password never returned (only tokens)
 - `getToken(): string|null` - Retrieves stored access token
 - `logout(): void` - Clears tokens from localStorage
 - `isAuthenticated(): boolean` - Checks if user has valid token
@@ -208,7 +207,7 @@ classDiagram
 - `getStoredToken()` - Retrieves token from localStorage
 
 **Key Points**:
-- Username + password is the only authentication method
+- Email + password is the only authentication method
 - Password is hashed server-side, never transmitted back
 - JWT tokens are returned instead of passwords
 - Tokens are used for all subsequent API requests
@@ -265,13 +264,13 @@ classDiagram
 **Purpose**: Transfer login credentials from UI to auth service
 
 **Properties**:
-- `username: string` - Unique username for authentication
+- `email: string` - User email for authentication
 - `password: string` - User password (plaintext, will be hashed on backend)
 
 **Flow**: `LoginComponent` → `AuthService` → Backend `/auth/login`
 
 **Backend Processing**:
-- Looks up user by username
+- Looks up user by email
 - Compares plaintext password against stored bcrypt hash
 - If match → returns 200 OK with `AuthTokenDto`
 - If no match → returns 401 Unauthorized
@@ -282,13 +281,13 @@ classDiagram
 **Purpose**: Transfer registration credentials from UI to auth service
 
 **Properties**:
-- `username: string` - Unique username
+- `email: string` - User email address
 - `password: string` - User password (plaintext, will be hashed on backend)
 
 **Flow**: `RegisterComponent` → `AuthService` → Backend `/auth/register`
 
 **Backend Processing**:
-- Validates username + password
+- Validates email + password
 - Hashes password with bcrypt
 - Creates user account
 - Returns 200 OK with `AuthTokenDto` (tokens only, no password)
@@ -344,12 +343,12 @@ classDiagram
 ```
 LoginComponent
   ├─→ AuthService
-  ├─→ LoginDto (sends: username + password)
+  ├─→ LoginDto (sends: email + password)
   └─→ AuthTokenDto (receives: access token + refresh token)
 
 RegisterComponent
   ├─→ AuthService
-  ├─→ RegisterDto (sends: username, password, profile data)
+  ├─→ RegisterDto (sends: email, password, profile data)
   └─→ AuthTokenDto (receives: tokens only, NOT password)
 
 AuthService
@@ -370,25 +369,25 @@ AuthInterceptor
   └─→ JwtPayload (attaches in Authorization header)
 ```
 
-### Data Flow: Login Process (Username + Password Only)
+### Data Flow: Login Process (Email + Password Only)
 
 ```
 1. User fills LoginComponent form
-   └─ username: "john_trader"
+   └─ email: "john.trader@company.com"
    └─ password: "SecurePass123!"
 
 2. LoginComponent.onSubmit() calls
-   └─ AuthService.login(username, password)
+   └─ AuthService.login(email, password)
 
 3. AuthService creates LoginDto
-   └─ { username: "john_trader", password: "SecurePass123!" }
+   └─ { email: "john.trader@company.com", password: "SecurePass123!" }
 
 4. AuthService makes HTTP POST
    └─ Backend: POST /auth/login
-   └─ Body: { username: "john_trader", password: "SecurePass123!" }
+   └─ Body: { email: "john.trader@company.com", password: "SecurePass123!" }
 
 5. Backend processes authentication
-   └─ Look up user by username
+   └─ Look up user by email
    └─ Compare plaintext password vs stored bcrypt hash
    └─ If match: return 200 OK
    └─ If no match: return 401 Unauthorized
@@ -399,7 +398,7 @@ AuthInterceptor
        refreshToken: "eyJhbGc...",
        expiresIn: 900
      }
-   └─  Password NOT included in response
+   └─ Password NOT included in response
 
 7. AuthService stores tokens
    └─ LocalStorage.accessToken = "eyJhbGc..."
@@ -408,7 +407,7 @@ AuthInterceptor
 8. AuthService decodes token to JwtPayload
    └─ {
        sub: "user-id-123",
-       username: "john_trader",
+       email: "john.trader@company.com",
        roles: ["USER"],
        exp: 1694821234
      }
@@ -417,27 +416,27 @@ AuthInterceptor
    └─ Navigate to dashboard
 ```
 
-### Data Flow: Registration Process (Username + Password Only)
+### Data Flow: Registration Process (Email + Password Only)
 
 ```
 1. User fills RegisterComponent form
-   └─ username: "jane_trader"
+   └─ email: "jane.trader@company.com"
    └─ password: "SecurePass456!"
    └─ confirmPassword: "SecurePass456!"
 
 2. RegisterComponent.onSubmit() calls
-   └─ AuthService.register(username, password)
+   └─ AuthService.register(email, password)
 
 3. AuthService creates RegisterDto
-   └─ { username: "jane_trader", password: "SecurePass456!" }
+   └─ { email: "jane.trader@company.com", password: "SecurePass456!" }
 
 4. AuthService makes HTTP POST
    └─ Backend: POST /auth/register
-   └─ Body: RegisterDto (username + password only)
+   └─ Body: RegisterDto (email + password only)
 
 5. Backend processes registration
-   └─ Validate username + password format
-   └─ Check username doesn't already exist
+   └─ Validate email + password format
+   └─ Check email doesn't already exist
    └─ Hash password with bcrypt
    └─ Create user account
    └─ Return 200 OK
@@ -682,6 +681,179 @@ export class AuthTokenDto {
   expiresIn: number;
 }
 ```
+
+---
+
+## Lifecycle: From Login to Protected Request
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Step 1: User navigates to /login                             │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 2: LoginComponent renders form with validation          │
+│ - email: required, valid email format                        │
+│ - password: required + min 8 characters                      │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 3: User enters credentials and submits                  │
+│ - email: "john.trader@company.com"                           │
+│ - password: "SecurePass123!"                                 │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 4: LoginComponent.onSubmit() validates form             │
+│ - If invalid: mark touched and show errors                   │
+│ - If valid: proceed to authentication                        │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 5: AuthService.login() called                           │
+│ - Creates LoginDto { email, password }                       │
+│ - Makes HTTP POST request to /auth/login                     │
+│ - Sends to NestJS auth service                               │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 6: Backend authenticates email + password               │
+│ - Queries database for user by email                         │
+│ - Compares plaintext password vs stored bcrypt hash          │
+│ - If MATCH: return 200 OK                                    │
+│ - If NO MATCH: return 401 Unauthorized                       │
+│ - Password verification: plaintext → bcrypt.compare()        │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 7: Backend returns AuthTokenDto                         │
+│ - accessToken: RS256 JWT (15 min expiration)                │
+│ - refreshToken: Server-side validated token                 │
+│ - expiresIn: 900 seconds                                     │
+│ - Password NOT returned (only tokens)                     │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 8: AuthService stores tokens in LocalStorage            │
+│ - localStorage['accessToken'] = token                        │
+│ - localStorage['refreshToken'] = token                       │
+│ - Updates BehaviorSubject for reactive state                │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 9: LoginComponent receives Observable resolution        │
+│ - Shows success message                                      │
+│ - Navigates to /dashboard                                    │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 10: User accesses protected route /dashboard            │
+│ - AuthGuard.canActivate() checks authentication              │
+│ - AuthService.isAuthenticated() returns true                 │
+│ - Route access granted                                       │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 11: Component makes API call to backend                 │
+│ - userService.getProfile() creates HTTP GET request         │
+│ - AuthInterceptor intercepts outgoing request               │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 12: AuthInterceptor modifies request                    │
+│ - Reads accessToken from localStorage                        │
+│ - Clones request with Authorization header                  │
+│ - Header: "Authorization: Bearer {accessToken}"              │
+│ - Sends modified request to backend                          │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 13: Backend validates token                             │
+│ - Extracts JwtPayload from Authorization header              │
+│ - Verifies RS256 signature with public key                   │
+│ - Checks token expiration: exp > now                         │
+│ - Extracts user ID from 'sub' claim                          │
+│ - Token valid: proceed with request                       │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 14: Backend returns user profile                        │
+│ - Status: 200 OK                                             │
+│ - Body: User profile data                                    │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 15: Component displays user profile                     │
+└──────────────────────────────────────────────────────────────┘
+```
+
+## Registration Lifecycle (Middle Tier Only)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Step 1: User navigates to /register                          │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 2: RegisterComponent renders form                       │
+│ - email: required, valid email format                        │
+│ - password: required, 8+ chars, number, special char         │
+│ - confirmPassword: required, must match password             │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 3: User fills credentials and submits                   │
+│ - email: "jane.trader@company.com"                           │
+│ - password: "SecurePass456!"                                 │
+│ - confirmPassword: "SecurePass456!"                          │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 4: RegisterComponent.onSubmit() validates form          │
+│ - Checks all fields are valid                                │
+│ - Cross-field: confirms passwords match                      │
+│ - If invalid: show errors, prevent submission                │
+│ - If valid: proceed to authentication                        │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 5: AuthService.register() called                        │
+│ - Creates RegisterDto { email, password }                    │
+│ - Makes HTTP POST request to /auth/register                  │
+│ - Sends to NestJS auth service                               │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 6: Backend processes registration                       │
+│ - Validate email + password format                           │
+│ - Check email is unique                                      │
+│ - Hash password with bcrypt                                  │
+│ - Create user account                                        │
+│ - If success: return 200 OK                                  │
+│ - If duplicate email: return 409 Conflict                    │
+│ - If invalid: return 400 Bad Request                         │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 7: Backend returns AuthTokenDto                         │
+│ - accessToken: RS256 JWT (15 min expiration)                │
+│ - refreshToken: Server-side validated                        │
+│ - expiresIn: 900 seconds                                     │
+│ - Password NOT returned (only tokens)                     │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 8: AuthService stores tokens                            │
+│ - localStorage['accessToken'] = token                        │
+│ - localStorage['refreshToken'] = token                       │
+│ - Marked as authenticated                                    │
+└──────────────────────────────────────────────────────────────┘
+           ↓
+┌──────────────────────────────────────────────────────────────┐
+│ Step 9: RegisterComponent navigates to dashboard             │
+│ - User is now registered AND logged in                       │
+│ - All subsequent API calls include JWT token                 │
+└───────────
 
 ---
 ## Local setup

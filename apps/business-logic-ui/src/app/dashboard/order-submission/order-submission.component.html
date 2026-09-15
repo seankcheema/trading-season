@@ -1,0 +1,156 @@
+<div
+  class="order-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-12 backdrop-blur-sm md:items-center"
+  (click)="closed.emit()"
+>
+  <section
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="order-submission-title"
+    class="order-dialog border-border bg-card w-full max-w-4xl rounded-2xl border shadow-2xl shadow-black/50"
+    (click)="$event.stopPropagation()"
+  >
+    <header class="border-border flex items-center justify-between gap-4 border-b px-5 py-3">
+      <h2 id="order-submission-title" class="text-sm font-semibold">New Order</h2>
+      <button
+        type="button"
+        class="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 cursor-pointer items-center justify-center rounded-lg transition-colors"
+        aria-label="Close order submission"
+        (click)="closed.emit()"
+      >
+        <ng-icon name="lucideX" class="text-[18px]" />
+      </button>
+    </header>
+
+    <div class="grid md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+      <!-- Instrument details -->
+      <div class="md:border-border flex min-w-0 flex-col p-5 md:border-r">
+        <app-instrument-search (selected)="activeInstrument.set($event)" />
+
+        <div class="mt-5 flex items-center gap-3">
+          <div
+            class="bg-primary/15 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl text-xs font-semibold"
+            aria-hidden="true"
+          >
+            {{ activeInstrument().symbol.slice(0, 4) }}
+          </div>
+          <div class="min-w-0">
+            <p class="text-lg leading-tight font-semibold">{{ activeInstrument().symbol }}</p>
+            <p class="text-muted-foreground truncate text-xs">{{ activeInstrument().name }}</p>
+          </div>
+        </div>
+
+        <div class="mt-4 flex flex-wrap items-end justify-between gap-3">
+          <p class="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span class="text-3xl font-semibold tracking-tight tabular-nums">
+              {{ activeInstrument().price | currency: 'USD' }}
+            </span>
+            <span
+              class="rounded-full px-2 py-0.5 text-xs font-medium tabular-nums"
+              [class]="activeInstrument().change >= 0 ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'"
+            >
+              {{ activeInstrument().change >= 0 ? '+' : '' }}{{ activeInstrument().change | currency: 'USD' }}
+              ({{ activeInstrument().changePercent | signedPercent }})
+            </span>
+          </p>
+          <app-timeframe-toggle [(value)]="timeframe" />
+        </div>
+        <app-price-chart class="mt-3 h-56" [points]="chartPoints()" [timeframe]="timeframe()" />
+      </div>
+
+      <!-- Order ticket -->
+      <div class="flex min-w-0 flex-col p-5">
+        <div role="group" aria-label="Order side" class="bg-muted grid grid-cols-2 gap-1 rounded-xl p-1">
+          @for (option of sides; track option) {
+            <button
+              type="button"
+              class="h-9 cursor-pointer rounded-lg text-sm font-medium capitalize transition-colors"
+              [class]="
+                side() === option
+                  ? option === 'buy'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-loss text-white'
+                  : 'text-muted-foreground hover:text-foreground'
+              "
+              [attr.aria-pressed]="side() === option"
+              (click)="side.set(option)"
+            >
+              {{ option }}
+            </button>
+          }
+        </div>
+
+        <div class="border-border mt-4 rounded-xl border p-4">
+          <div class="flex items-center justify-between gap-4">
+            <label for="order-shares" class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+              Shares
+            </label>
+            <span class="text-muted-foreground text-xs tabular-nums">
+              @if (maxShares() === 0) {
+                {{ side() === 'buy' ? 'Insufficient cash' : 'No shares held' }}
+              } @else {
+                Max {{ maxShares() }}
+              }
+            </span>
+          </div>
+          <input
+            id="order-shares"
+            type="number"
+            min="0"
+            [max]="maxShares()"
+            class="mt-1 w-full bg-transparent text-4xl font-semibold tracking-tight tabular-nums outline-none disabled:opacity-50"
+            [value]="shares()"
+            [disabled]="maxShares() === 0"
+            (input)="onSharesInput($event)"
+          />
+          <input
+            type="range"
+            aria-label="Shares"
+            class="share-slider mt-3 w-full"
+            [class.share-slider-sell]="side() === 'sell'"
+            min="0"
+            [max]="maxShares()"
+            step="1"
+            [value]="shares()"
+            [style.--fill]="(maxShares() ? (shares() / maxShares()) * 100 : 0) + '%'"
+            [disabled]="maxShares() === 0"
+            (input)="onSharesInput($event)"
+          />
+        </div>
+
+        <dl class="bg-muted/60 mt-4 space-y-2 rounded-xl p-4 text-sm">
+          <div class="flex justify-between gap-4">
+            <dt class="text-muted-foreground">Market price</dt>
+            <dd class="tabular-nums">{{ activeInstrument().price | currency: 'USD' }}</dd>
+          </div>
+          <div class="flex justify-between gap-4">
+            <dt class="text-muted-foreground">Shares</dt>
+            <dd class="tabular-nums">{{ shares() }}</dd>
+          </div>
+          <div class="flex justify-between gap-4">
+            <dt class="text-muted-foreground">Cash before</dt>
+            <dd class="tabular-nums">{{ cashBalance() | currency: 'USD' }}</dd>
+          </div>
+          <div class="flex justify-between gap-4">
+            <dt class="text-muted-foreground">Cash after</dt>
+            <dd class="tabular-nums">{{ cashAfter() | currency: 'USD' }}</dd>
+          </div>
+          <div class="border-border flex justify-between gap-4 border-t pt-2 font-semibold">
+            <dt>Estimated {{ side() === 'buy' ? 'cost' : 'proceeds' }}</dt>
+            <dd class="tabular-nums">{{ orderValue() | currency: 'USD' }}</dd>
+          </div>
+        </dl>
+
+        <div class="min-h-4 flex-1"></div>
+        <button
+          type="button"
+          class="h-11 w-full cursor-pointer rounded-xl text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+          [class]="side() === 'buy' ? 'bg-primary text-primary-foreground hover:bg-primary/85' : 'bg-loss hover:bg-loss/85 text-white'"
+          [disabled]="!canSubmit()"
+          (click)="submit()"
+        >
+          {{ side() === 'buy' ? 'Buy' : 'Sell' }} {{ shares() }} {{ activeInstrument().symbol }}
+        </button>
+      </div>
+    </div>
+  </section>
+</div>

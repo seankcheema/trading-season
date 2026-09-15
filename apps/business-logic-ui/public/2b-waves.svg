@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="TradingSeason — Waves">
+  <title>TradingSeason — Waves</title>
+  <path d="M2 54 C 14 34 22 54 34 44 C 44 36 54 46 62 34" stroke="#c6e8f5" stroke-width="7" fill="none"></path>
+  <path d="M2 42 C 14 22 22 42 34 32 C 44 24 54 34 62 22" stroke="#58c9f4" stroke-width="7" fill="none"></path>
+  <path d="M2 30 C 14 10 22 30 34 20 C 44 12 54 22 62 10" stroke="#00bbff" stroke-width="7" fill="none"></path>
+</svg>
