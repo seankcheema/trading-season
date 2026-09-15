@@ -12,7 +12,11 @@ import { RefreshTokensModule } from '../refresh-tokens/refresh-tokens.module.js'
 
 @Module({
   imports: [
-    PassportModule,
+    // register() is what provides AuthModuleOptions. Guards extending
+    // AuthGuard() inherit that constructor dependency but not its @Optional
+    // marker (Nest reads optional deps as own metadata), so bare PassportModule
+    // fails with "can't resolve dependencies of the LocalAuthGuard".
+    PassportModule.register({}),
     JwtModule.register({
       // normalizePem is the same helper JwtKeysService uses. Reading the raw
       // env value here instead would mean the two disagreed about escaped

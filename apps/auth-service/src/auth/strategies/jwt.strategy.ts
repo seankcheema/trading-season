@@ -9,14 +9,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   private readonly logger = new Logger(JwtStrategy.name);
 
   constructor(jwtKeysService: JwtKeysService) {
-    const publicKey = jwtKeysService?.getPublicKeyObject();
-    
+    // passport-jwt reads `secretOrKey`. `secretOrPublicKey` is the jsonwebtoken
+    // name and is silently ignored here, which made startup fail with
+    // "JwtStrategy requires a secret or key".
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       algorithms: ['RS256'],
-      secretOrPublicKey: publicKey,
-    } as any);
+      secretOrKey: jwtKeysService.getPublicKeyPem(),
+    });
   }
 
   validate(payload: JwtPayload): JwtPayload {
