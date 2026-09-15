@@ -2,6 +2,9 @@
 
 Spring Boot application targeting Java 21. Implements registration and username/password login with database sessions. Its identities are separate from NestJS auth users.
 
+Spring Boot source is rooted at `src/main/java/app`. The application entry point is `app.Main`, authentication types live in `app.auth`, and the rest of the business backend is organized by feature package such as `app.order`, `app.user`, `app.account`, and `app.instrument`. Tests mirror that structure under `src/test/java/app`.
+
+Follow [database setup](../../docs/reference/database.md#disposable-business-database-setup) before exercising the API. From this directory:
 Follow [database setup](../../docs/reference/database.md#disposable-business-database-setup) before exercising the API. The business database schema is applied manually: run V001, then V002, and optionally generate and import the synthetic market data 2026-v1 archive. The generated archive is local developer data and is not committed to this repo.
 
 ```powershell
