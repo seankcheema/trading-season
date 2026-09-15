@@ -89,11 +89,14 @@ The generated `2026-v1` archive is stored locally in `apps/business-backend/db/s
 Run the complete routine workflow from the repository root with one command. It creates the virtual environment if needed, installs dependencies, generates or reuses the archive, carries the completed validation forward to the importer, and displays progress while loading PostgreSQL:
 
 ```powershell
+$freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
+
 apps/business-backend/db/setup-market-data.ps1 `
-  -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season
+  -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
+  -AvailableDiskGb $freeDiskGb
 ```
 
-For a small archive, add `-StartDate 2026-01-05 -EndDate 2026-01-06`. Add `-Regenerate` to replace an incompatible archive or `-Replace` to replace a different import for the same session. On a brand-new disposable database, add `-InitializeDisposableDatabase`; this drops and recreates the business tables.
+For a small archive, add `-StartDate 2026-01-05 -EndDate 2026-01-06`. Add `-Regenerate` to replace an incompatible archive or `-Replace` to replace a different import for the same session. On a brand-new disposable database, add `-InitializeDisposableDatabase`; this drops and recreates the business tables. `-AvailableDiskGb` supplies free space on the PostgreSQL server when its data directory is not accessible from the script process. `-TickStorage parquet` is the default; use `-TickStorage postgres` only when raw ticks must be queried in SQL and the database has sufficient capacity.
 
 The individual commands below remain available for troubleshooting and non-Windows environments. Run them from the repository root.
 
@@ -147,12 +150,23 @@ apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scrip
 
 #### Step 5: Import the archive
 
-The importer validates the archive again and loads it in one transaction:
+The importer validates the archive again and commits one calendar month at a time. By default, raw ticks remain in Parquet and only candles are copied into PostgreSQL:
 
 ```powershell
 apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/0004-import-synthetic-market-data.py `
+  --tick-storage parquet `
   --database-url postgresql://trading_season:password@localhost:5432/trading_season
 ```
+
+Use `--tick-storage postgres` only for an intentional high-storage tick import. The storage mode is part of the session identity; changing it for an existing session requires `--replace`.
+
+Before each pending month, the importer checks available database storage against a conservative estimate for remaining heap/index growth, monthly working space, and a safety margin. It reads PostgreSQL's `data_directory` when the database user has permission and the path is locally accessible. If the setting or server path is inaccessible, the import stops unless `--available-disk-gb` or `MARKET_DATA_AVAILABLE_DISK_GB` provides the server's actual free space. Elevated PostgreSQL privileges are not required when using this override.
+
+Pass the actual free GiB for the filesystem containing PostgreSQL data. Do not inflate the override to bypass the capacity check.
+
+Each successful month is recorded in `simulation_sessions.config` and committed while the session remains `RUNNING`. In Parquet mode, a checkpoint records the archived tick count, zero database ticks, imported candle count, storage mode, and file fingerprint. Rerunning the same command verifies the Parquet fingerprint and SQL candle rows, skips completed months, and resumes with the first incomplete month. After all requested months and final totals are verified, the session becomes `COMPLETED`.
+
+The terminal displays a separate progress bar for each month, labeled `Month 1/12`, `Month 2/12`, and so on. Each bar advances through disk checking, partition loading, retaining ticks in Parquet or inserting them into PostgreSQL, candle verification, and commit. Previously completed months display as verified and skipped.
 
 An identical completed import is skipped. If the target session contains different or candle-only data, add `--replace`. The replacement affects only that simulation session; unrelated sessions and records are preserved.
 
@@ -175,7 +189,7 @@ SELECT 'candles', COUNT(*) FROM candles WHERE session_id = 2026001
 ORDER BY table_name;
 ```
 
-For a full-year archive, `market_ticks` should contain 61,074,000 rows and `candles` should contain 1,017,900 rows. A date-range archive will have smaller totals.
+For a full-year archive in the default Parquet mode, `market_ticks` should contain 0 rows and `candles` should contain 1,017,900 rows. The 61,074,000 raw ticks remain in the archive. PostgreSQL tick mode stores all 61,074,000 ticks. A date-range archive has smaller totals.
 
 Check the imported symbols and timestamp coverage:
 
@@ -205,6 +219,69 @@ LIMIT 20;
 ```
 
 These examples use the default synthetic session ID `2026001`. Replace it if the importer was run with a different `--session-id` value.
+
+View the session state and completed monthly checkpoints:
+
+```sql
+SELECT
+    id,
+    status,
+    config -> 'tick_storage' ->> 'mode' AS tick_storage,
+    config -> 'tick_storage' ->> 'archive_location' AS archive_location,
+    config -> 'tick_storage' ->> 'archived_ticks' AS archived_ticks,
+    config -> 'tick_storage' ->> 'database_ticks' AS database_ticks,
+    config -> 'import_checkpoint' -> 'completed_months' AS completed_months
+FROM simulation_sessions
+WHERE id = 2026001;
+```
+
+`RUNNING` means one or more committed months may be available but the requested archive is incomplete. Consumers should normally use only `COMPLETED` sessions.
+
+In Parquet mode, keep the archive at the recorded location. Deleting it removes the raw tick history and prevents checkpoint verification. DuckDB and PyArrow can read the daily tick partitions directly; live replay and query APIs remain outside this workflow.
+
+Confirm the committed tick and candle totals for each month:
+
+```sql
+SELECT
+    month,
+    SUM(ticks) AS ticks,
+    SUM(candles) AS candles
+FROM (
+    SELECT DATE_TRUNC('month', "timestamp") AS month, COUNT(*) AS ticks, 0 AS candles
+    FROM market_ticks
+    WHERE session_id = 2026001
+    GROUP BY 1
+    UNION ALL
+    SELECT DATE_TRUNC('month', "timestamp") AS month, 0 AS ticks, COUNT(*) AS candles
+    FROM candles
+    WHERE session_id = 2026001
+    GROUP BY 1
+) monthly_counts
+GROUP BY month
+ORDER BY month;
+```
+
+If an import fails with `DiskFullError`, free server storage before retrying. A regular vacuum makes pages from an aborted transaction reusable without deleting unrelated sessions:
+
+```sql
+VACUUM market_ticks;
+VACUUM candles;
+```
+
+Inspect the current heap and index allocation before maintenance:
+
+```sql
+SELECT
+    relname,
+    pg_size_pretty(pg_relation_size(oid)) AS heap_size,
+    pg_size_pretty(pg_indexes_size(oid)) AS index_size,
+    pg_size_pretty(pg_total_relation_size(oid)) AS total_size
+FROM pg_class
+WHERE relname IN ('market_ticks', 'candles')
+ORDER BY relname;
+```
+
+Regular vacuum does not necessarily return allocated files to the operating system. If `market_ticks` remains large after the failed import, a database administrator can consider `VACUUM FULL market_ticks;`. It takes an exclusive table lock, rewrites the relation, and can require additional temporary disk capacity. Do not truncate shared market-data tables unless an operator has independently confirmed that no unrelated tick data exists.
 
 For later routine seeding, run steps 3 through 6 only. The import adds stocks, simulation metadata, market behaviors, market states, ticks, and candles. It does not add users, accounts, orders, holdings, auth-service data, or quotes.
 

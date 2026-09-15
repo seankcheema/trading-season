@@ -4,6 +4,9 @@ param(
     [string]$DatabaseUrl,
     [string]$StartDate,
     [string]$EndDate,
+    [double]$AvailableDiskGb,
+    [ValidateSet("parquet", "postgres")]
+    [string]$TickStorage = "parquet",
     [switch]$InitializeDisposableDatabase,
     [switch]$Regenerate,
     [switch]$Replace
@@ -36,6 +39,11 @@ if ($StartDate) { $workflowArguments += @("--start-date", $StartDate) }
 if ($EndDate) { $workflowArguments += @("--end-date", $EndDate) }
 if ($Regenerate) { $workflowArguments += "--regenerate" }
 if ($Replace) { $workflowArguments += "--replace" }
+$workflowArguments += @("--tick-storage", $TickStorage)
+if ($PSBoundParameters.ContainsKey("AvailableDiskGb")) {
+    if ($AvailableDiskGb -le 0) { throw "AvailableDiskGb must be greater than zero." }
+    $workflowArguments += @("--available-disk-gb", $AvailableDiskGb)
+}
 
 & $python @workflowArguments
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

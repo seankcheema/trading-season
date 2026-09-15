@@ -61,8 +61,12 @@ services:
         condition: service_healthy
     volumes:
       - market_data_archive:/workspace/apps/business-backend/db/seeds
+    environment:
+      # Required because the script container cannot inspect free space inside
+      # the separate PostgreSQL volume. Set this to free server storage in GiB.
+      MARKET_DATA_AVAILABLE_DISK_GB: ${MARKET_DATA_AVAILABLE_DISK_GB:-}
     entrypoint: ["/bin/sh", "-ec"]
-    command: ["python apps/business-backend/db/scripts/0002-generate-synthetic-market-data.py && python apps/business-backend/db/scripts/0003-validate-synthetic-market-data.py && python apps/business-backend/db/scripts/0004-import-synthetic-market-data.py --database-url postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season"]
+    command: ["python apps/business-backend/db/scripts/0002-generate-synthetic-market-data.py && python apps/business-backend/db/scripts/0003-validate-synthetic-market-data.py && python apps/business-backend/db/scripts/0004-import-synthetic-market-data.py --tick-storage parquet --database-url postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season"]
 
   auth-service:
     # Authentication and authorization service (KAN-79). Owns credentials and

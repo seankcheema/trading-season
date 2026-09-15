@@ -20,6 +20,10 @@ parser.add_argument("--start-date", type=date.fromisoformat)
 parser.add_argument("--end-date", type=date.fromisoformat)
 parser.add_argument("--regenerate", action="store_true")
 parser.add_argument("--replace", action="store_true")
+parser.add_argument("--available-disk-gb", type=float,
+                    help="Free space on the PostgreSQL server when its data directory is not locally accessible.")
+parser.add_argument("--tick-storage", choices=("parquet", "postgres"), default="parquet",
+                    help="Keep ticks in Parquet (default) or import them into PostgreSQL.")
 args = parser.parse_args()
 
 print("Step 1/3: generating archive (existing compatible archives are reused)")
@@ -28,6 +32,9 @@ print(f"Step 2/3: validating {manifest['tick_count']:,} ticks and {manifest['can
 counts = validate_archive(args.dataset, manifest, Progress().update)
 print("Step 3/3: importing into PostgreSQL")
 result = asyncio.run(import_archive(args.database_url, args.dataset, args.session_id, args.replace,
-                                    Progress().update, counts))
+                                    Progress().update, counts, args.available_disk_gb,
+                                    tick_storage=args.tick_storage))
 action = "Skipped identical" if result["skipped"] else "Imported"
-print(f"{action} archive: {result['ticks']:,} ticks, {result['candles']:,} candles, session_id={result['session_id']}")
+print(f"{action} archive: {result['archived_ticks']:,} archived ticks, "
+      f"{result['database_ticks']:,} database ticks, {result['candles']:,} candles, "
+      f"{result['completed_months']} monthly checkpoints, session_id={result['session_id']}")
