@@ -147,7 +147,57 @@ apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scrip
 
 An identical completed import is skipped. If the target session contains different or candle-only data, add `--replace`. The replacement affects only that simulation session; unrelated sessions and records are preserved.
 
-For later routine seeding, run steps 3 through 5 only. The import adds stocks, simulation metadata, market behaviors, market states, ticks, and candles. It does not add users, accounts, orders, holdings, auth-service data, or quotes.
+#### Step 6: Verify the imported data in pgAdmin
+
+Connect pgAdmin's Query Tool to the `trading_season` database and run:
+
+```sql
+SELECT 'stocks' AS table_name, COUNT(*) AS row_count FROM stocks
+UNION ALL
+SELECT 'simulation_sessions', COUNT(*) FROM simulation_sessions WHERE id = 2026001
+UNION ALL
+SELECT 'market_states', COUNT(*) FROM market_states WHERE session_id = 2026001
+UNION ALL
+SELECT 'market_behaviors', COUNT(*) FROM market_behaviors WHERE session_id = 2026001
+UNION ALL
+SELECT 'market_ticks', COUNT(*) FROM market_ticks WHERE session_id = 2026001
+UNION ALL
+SELECT 'candles', COUNT(*) FROM candles WHERE session_id = 2026001
+ORDER BY table_name;
+```
+
+For a full-year archive, `market_ticks` should contain 61,074,000 rows and `candles` should contain 1,017,900 rows. A date-range archive will have smaller totals.
+
+Check the imported symbols and timestamp coverage:
+
+```sql
+SELECT
+    COUNT(DISTINCT symbol) AS symbols,
+    MIN("timestamp") AS first_tick,
+    MAX("timestamp") AS last_tick
+FROM market_ticks
+WHERE session_id = 2026001;
+```
+
+View a small sample of the generated ticks and candles:
+
+```sql
+SELECT *
+FROM market_ticks
+WHERE session_id = 2026001
+ORDER BY "timestamp", symbol
+LIMIT 20;
+
+SELECT *
+FROM candles
+WHERE session_id = 2026001
+ORDER BY "timestamp", symbol
+LIMIT 20;
+```
+
+These examples use the default synthetic session ID `2026001`. Replace it if the importer was run with a different `--session-id` value.
+
+For later routine seeding, run steps 3 through 6 only. The import adds stocks, simulation metadata, market behaviors, market states, ticks, and candles. It does not add users, accounts, orders, holdings, auth-service data, or quotes.
 
 There is no Flyway runner in the Java backend; these files are applied manually.
 

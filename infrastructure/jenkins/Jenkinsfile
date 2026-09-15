@@ -94,7 +94,12 @@ pipeline {
                 sh '''
                     set -eu
                     command -v docker >/dev/null
-                    TEST_TAG="trading-season-market-${BUILD_TAG}"
+                    # Multibranch BUILD_TAG values can contain encoded branch
+                    # separators such as %2F, which Docker rejects in named
+                    # volumes. Hash the complete tag to retain build isolation
+                    # while keeping every Docker resource name portable.
+                    BUILD_TAG_HASH="$(printf '%s' "$BUILD_TAG" | sha256sum | cut -c1-16)"
+                    TEST_TAG="trading-season-market-${BUILD_TAG_HASH}"
                     DB_CONTAINER="${TEST_TAG}-db"
                     TEST_NETWORK="${TEST_TAG}-network"
                     DB_VOLUME="${TEST_TAG}-db-data"
@@ -129,7 +134,8 @@ pipeline {
                     archiveArtifacts artifacts: 'reports/market-data/**/*', allowEmptyArchive: true
                     junit testResults: 'reports/market-data/junit.xml', allowEmptyResults: true
                     sh '''
-                        TEST_TAG="trading-season-market-${BUILD_TAG}"
+                        BUILD_TAG_HASH="$(printf '%s' "$BUILD_TAG" | sha256sum | cut -c1-16)"
+                        TEST_TAG="trading-season-market-${BUILD_TAG_HASH}"
                         docker rm -f "${TEST_TAG}-db" 2>/dev/null || true
                         docker volume rm "${TEST_TAG}-db-data" "${TEST_TAG}-archive" 2>/dev/null || true
                         docker network rm "${TEST_TAG}-network" 2>/dev/null || true

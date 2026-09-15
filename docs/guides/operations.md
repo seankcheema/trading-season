@@ -52,4 +52,5 @@ Javadoc generation is a required Java change check described in [development](de
 - JWT verification fails: check the signing/public key pair and expiry. The current Passport strategy does not enforce issuer/audience; do not assume it does.
 - Logout appears successful but refresh still works: see the documented [API limitation](../reference/api.md#current-logout-limitation).
 - Jenkins fails before tests: verify the configured Java/Maven paths and Node version on the actual agent, not just the optional image.
+- Synthetic market-data CI derives Docker resource names from a normalized hash of the Jenkins build tag, so encoded multibranch names such as `%2F` do not need special handling. The stage creates and removes build-scoped database and archive volumes; do not pre-seed PostgreSQL or generate a persistent archive on the Jenkins VM.
 - UI renders but login does not reach an API: form submission is not yet wired to a service. See [architecture](../reference/architecture.md).
