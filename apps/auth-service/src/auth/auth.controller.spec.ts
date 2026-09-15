@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
+import { buildValidationPipe } from '../config/validation.config.js';
 
 /**
  * Covers the controller, not the service beneath it.
@@ -35,6 +36,9 @@ describe('AuthController', () => {
     }).compile();
 
     app = module.createNestApplication();
+    // The same pipe main.ts installs, from the same factory — a spec that
+    // configures its own validation is testing a policy nothing deploys.
+    app.useGlobalPipes(buildValidationPipe());
     await app.init();
   });
 
@@ -78,11 +82,25 @@ describe('AuthController', () => {
     });
 
     it('should reject a request carrying no refresh token', async () => {
+      // 400, not 401: a body with no token is a malformed request, not a
+      // failed authentication. Validation rejects it before the route runs.
       await request(app.getHttpServer())
         .post('/auth/logout')
         .send({})
-        .expect(401);
+        .expect(400);
 
+      expect(logout).not.toHaveBeenCalled();
+    });
+
+    it('should reject unknown properties instead of ignoring them', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/logout')
+        .send({ refreshToken: 'the-refresh-token', ssn: '000-00-0000' })
+        .expect(400);
+
+      // forbidNonWhitelisted. Without it the extra field is stripped in
+      // silence and the caller gets a 201 that looks like it worked.
+      expect(JSON.stringify(res.body)).toMatch(/ssn/);
       expect(logout).not.toHaveBeenCalled();
     });
   });

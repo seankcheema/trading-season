@@ -1,27 +1,13 @@
-import {
-  Controller,
-  Post,
-  Body,
-  UseGuards,
-  Req,
-  UnauthorizedException,
-  Logger,
-} from '@nestjs/common';
+import { Controller, Post, Body, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
 import { LocalAuthGuard } from './guards/local-auth.guard.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { RefreshTokenDto } from './dto/refresh-token.dto.js';
 import { AuthTokenDto } from './dto/auth-token.dto.js';
-import { JwtPayload } from './dto/jwt-payload.dto.js';
-
-interface RequestWithUser extends Request {
-  user?: JwtPayload;
-}
 
 @Controller('auth')
 export class AuthController {
-  private readonly logger = new Logger(AuthController.name);
-
   constructor(private authService: AuthService) {}
 
   @Post('register')
@@ -38,9 +24,8 @@ export class AuthController {
   // Deliberately unguarded. Refresh exists for when the access token has
   // already expired, so requiring a valid one made the route unusable.
   @Post('refresh')
-  async refresh(@Req() req: RequestWithUser): Promise<AuthTokenDto> {
-    const refreshToken = this.extractRefreshToken(req);
-    return this.authService.refreshToken(refreshToken);
+  async refresh(@Body() dto: RefreshTokenDto): Promise<AuthTokenDto> {
+    return this.authService.refreshToken(dto.refreshToken);
   }
 
   /**
@@ -56,21 +41,8 @@ export class AuthController {
    * of the refresh token is the credential here.
    */
   @Post('logout')
-  async logout(@Req() req: RequestWithUser): Promise<{ message: string }> {
-    const refreshToken = this.extractRefreshToken(req);
-    await this.authService.logout(refreshToken);
+  async logout(@Body() dto: RefreshTokenDto): Promise<{ message: string }> {
+    await this.authService.logout(dto.refreshToken);
     return { message: 'Logged out successfully' };
-  }
-
-  /**
-   * Extract refresh token from request body or cookies
-   */
-  private extractRefreshToken(req: RequestWithUser): string {
-    const refreshToken =
-      (req as any).body?.refreshToken || (req as any).cookies?.refreshToken;
-    if (!refreshToken) {
-      throw new UnauthorizedException('No refresh token provided');
-    }
-    return refreshToken;
   }
 }
