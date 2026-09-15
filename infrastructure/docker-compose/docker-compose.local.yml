@@ -60,6 +60,7 @@ services:
       JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:?run apps/auth-service/scripts/generate-dev-keys.mjs and append to .env}
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?run apps/auth-service/scripts/generate-dev-keys.mjs and append to .env}
       JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
 
   auth-db:
     image: postgres:16-alpine

@@ -4,7 +4,6 @@ import { UnauthorizedException, BadRequestException, ConflictException } from '@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AuthService } from './auth.service.js';
 import { UsersService } from '../users/users.service.js';
-import { User } from '../users/user.entity.js';
 import { RefreshTokensService } from '../refresh-tokens/refresh-tokens.service.js';
 
 describe('AuthService', () => {
@@ -67,18 +66,13 @@ describe('AuthService', () => {
   describe('register', () => {
     it('should register a new user and return tokens', async () => {
       const registerDto = {
-        username: 'testuser',
         email: 'test@example.com',
         password: 'password123',
-        firstName: 'John',
-        lastName: 'Doe',
       };
 
       const mockUser = {
         id: '123',
         email: registerDto.email,
-        firstName: registerDto.firstName,
-        lastName: registerDto.lastName,
         role: 'TRADER',
       };
 
@@ -86,11 +80,8 @@ describe('AuthService', () => {
       mockJwtService.sign.mockReturnValue('token');
 
       const result = await service.register(
-        registerDto.username,
         registerDto.email,
         registerDto.password,
-        registerDto.firstName,
-        registerDto.lastName,
       );
 
       expect(result.accessToken).toBe('token');
@@ -101,19 +92,20 @@ describe('AuthService', () => {
 
     it('should reject password shorter than 8 characters', async () => {
       await expect(
-        service.register(
-          'test@example.com',
-          'short',
-          'John',
-          'Doe',
-        ),
+        service.register('test@example.com', 'short'),
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should reject missing required fields', async () => {
-      await expect(
-        service.register('test@example.com', 'password123', '', 'Doe'),
-      ).rejects.toThrow(BadRequestException);
+    it('should reject a missing email', async () => {
+      await expect(service.register('', 'password123')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should reject a missing password', async () => {
+      await expect(service.register('test@example.com', '')).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -268,28 +260,6 @@ describe('AuthService', () => {
     });
   });
 
-  describe('validateToken', () => {
-    it('should return payload on valid token', async () => {
-      const mockPayload = { sub: '123', email: 'test@example.com' };
-
-      mockJwtService.verify.mockReturnValue(mockPayload);
-
-      const result = await service.validateToken('valid.token.here');
-
-      expect(result).toEqual(mockPayload);
-    });
-
-    it('should throw UnauthorizedException on invalid token', async () => {
-      mockJwtService.verify.mockImplementation(() => {
-        throw new Error('Invalid token');
-      });
-
-      await expect(
-        service.validateToken('invalid.token.here'),
-      ).rejects.toThrow(UnauthorizedException);
-    });
-  });
-
   describe('refreshToken', () => {
     // Refresh tokens are opaque strings looked up in the database, so these
     // tests stub the stored row rather than a JWT payload.
@@ -383,76 +353,46 @@ describe('AuthService', () => {
   });
 
   describe('register - Duplicate Detection', () => {
-    it('should reject registration with duplicate email (409)', async () => {
+    it('should reject registration with a duplicate email (409)', async () => {
       mockUsersService.create.mockRejectedValue(
-        new ConflictException('Username or email is already in use'),
+        new ConflictException('Email is already in use'),
       );
 
       await expect(
-        service.register(
-          'someone',
-          'duplicate@example.com',
-          'password123',
-          'John',
-          'Doe',
-        ),
+        service.register('duplicate@example.com', 'password123'),
       ).rejects.toThrow(ConflictException);
     });
 
-    it('should reject registration with duplicate username (409)', async () => {
+    it('should surface the conflict without naming anything but the email', async () => {
+      // Email is now the only unique field, so a 409 necessarily confirms the
+      // address is registered — that is an enumeration oracle inherent to
+      // synchronous registration, not something the message can hide. Closing
+      // it properly means always returning 201 and confirming by email, which
+      // needs mail infrastructure the BRS puts out of scope (§4.2). What the
+      // message must not do is leak anything further.
       mockUsersService.create.mockRejectedValue(
-        new ConflictException('Username or email is already in use'),
+        new ConflictException('Email is already in use'),
       );
 
-      await expect(
-        service.register(
-          'taken',
-          'new@example.com',
-          'password123',
-          'John',
-          'Doe',
-        ),
-      ).rejects.toThrow(ConflictException);
+      const message = await service
+        .register('taken@example.com', 'password123')
+        .catch((e: Error) => e.message);
+
+      expect(message).toBe('Email is already in use');
+      expect(message).not.toMatch(/username|password|user id|role/i);
     });
 
-    it('should use one message for both, so it cannot be used to enumerate accounts', async () => {
-      const messages: string[] = [];
-      mockUsersService.create.mockRejectedValue(
-        new ConflictException('Username or email is already in use'),
-      );
-
-      for (const [username, email] of [
-        ['taken', 'fresh@example.com'],
-        ['fresh', 'taken@example.com'],
-      ]) {
-        await service
-          .register(username, email, 'password123', 'John', 'Doe')
-          .catch((e: Error) => messages.push(e.message));
-      }
-
-      expect(messages).toHaveLength(2);
-      // Identical either way, and phrased to cover both fields at once, so it
-      // never reveals which one actually collided.
-      expect(messages[0]).toBe(messages[1]);
-      expect(messages[0]).toMatch(/username or email/i);
-    });
-
-    it('should accept registration with unique email and username', async () => {
+    it('should accept registration with an unused email', async () => {
       mockUsersService.create.mockResolvedValue({
         id: '456',
         email: 'unique@example.com',
-        firstName: 'Jane',
-        lastName: 'Smith',
         role: 'TRADER',
       });
       mockJwtService.sign.mockReturnValue('newtoken');
 
       const result = await service.register(
-        'uniqueuser',
         'unique@example.com',
         'password123',
-        'Jane',
-        'Smith',
       );
 
       expect(result.accessToken).toBe('newtoken');

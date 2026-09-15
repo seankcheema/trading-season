@@ -22,10 +22,6 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  /** Required and unique. Collected at registration. */
-  @Column({ name: 'username', type: 'text', unique: true })
-  username: string;
-
   @Column({ name: 'email', type: 'text', unique: true })
   email: string;
 
@@ -48,18 +44,9 @@ export class User {
   @Column({ name: 'locked_until', type: 'timestamptz', nullable: true })
   lockedUntil: Date | null;
 
-  @Column({ name: 'first_name', type: 'text' })
-  firstName: string;
-
-  @Column({ name: 'last_name', type: 'text' })
-  lastName: string;
-
   /** false is the DEACTIVATED state referenced by KAN-86. */
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
-
-  @Column({ name: 'email_verified', type: 'boolean', default: false })
-  emailVerified: boolean;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
