@@ -40,7 +40,7 @@ Browse the [documentation index](docs/README.md) to choose a guide or reference.
 
 # Business database ERD
 
-Canonical relationship diagram for [V001 bootstrap SQL](migrations/V001__Initial_schema.sql). SQL defines exact columns and constraints. See the [database reference](../../../docs/reference/database.md) for ownership, initialization, and change rules.
+Canonical relationship diagram for the business SQL schema after V001 and V002. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
 
 The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change.
 
@@ -94,6 +94,10 @@ erDiagram
         INTEGER seed
         DOUBLE drift
         JSONB config
+        INTEGER config_version
+        TEXT status
+        TEXT failure_code
+        TEXT failure_detail
         TIMESTAMPTZ started_at
         TIMESTAMPTZ ended_at
     }
