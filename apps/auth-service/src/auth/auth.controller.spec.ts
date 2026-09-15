@@ -5,7 +5,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
-import { JwtKeysService } from './services/jwt-keys.service.js';
 
 /**
  * Covers the controller, not the service beneath it.
@@ -25,14 +24,13 @@ describe('AuthController', () => {
     logout = vi.fn().mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
-      // The login and verify routes carry Passport guards. Nest resolves their
-      // dependencies when the module initialises, not when those routes are
-      // called, so PassportModule is needed even though neither is exercised.
+      // The login route carries a Passport guard. Nest resolves guard
+      // dependencies when the module initialises, not when the route is
+      // called, so PassportModule is needed even though login is not exercised.
       imports: [PassportModule.register({})],
       controllers: [AuthController],
       providers: [
         { provide: AuthService, useValue: { logout } },
-        { provide: JwtKeysService, useValue: {} },
       ],
     }).compile();
 

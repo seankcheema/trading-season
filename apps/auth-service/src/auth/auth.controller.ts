@@ -4,14 +4,11 @@ import {
   Body,
   UseGuards,
   Req,
-  Get,
   UnauthorizedException,
   Logger,
 } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
-import { JwtKeysService, Jwks } from './services/jwt-keys.service.js';
 import { LocalAuthGuard } from './guards/local-auth.guard.js';
-import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { AuthTokenDto } from './dto/auth-token.dto.js';
@@ -25,10 +22,7 @@ interface RequestWithUser extends Request {
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
-  constructor(
-    private authService: AuthService,
-    private jwtKeysService: JwtKeysService,
-  ) {}
+  constructor(private authService: AuthService) {}
 
   @Post('register')
   async register(@Body() registerDto: RegisterDto): Promise<AuthTokenDto> {
@@ -53,18 +47,6 @@ export class AuthController {
   async refresh(@Req() req: RequestWithUser): Promise<AuthTokenDto> {
     const refreshToken = this.extractRefreshToken(req);
     return this.authService.refreshToken(refreshToken);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Get('verify')
-  async verify(@Req() req: RequestWithUser): Promise<{
-    valid: boolean;
-    user?: JwtPayload;
-  }> {
-    return {
-      valid: !!req.user,
-      user: req.user,
-    };
   }
 
   /**

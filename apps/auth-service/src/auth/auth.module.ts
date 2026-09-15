@@ -5,7 +5,6 @@ import { AuthService } from './auth.service.js';
 import { AuthController } from './auth.controller.js';
 import { WellKnownController } from './well-known.controller.js';
 import { LocalStrategy } from './strategies/local.strategy.js';
-import { JwtStrategy } from './strategies/jwt.strategy.js';
 import { JwtKeysService, normalizePem } from './services/jwt-keys.service.js';
 import { UsersModule } from '../users/users.module.js';
 import { RefreshTokensModule } from '../refresh-tokens/refresh-tokens.module.js';
@@ -50,11 +49,10 @@ export function buildJwtOptions(): JwtModuleOptions {
   providers: [
     JwtKeysService,
     AuthService,
+    // LocalStrategy only. There is no JWT strategy because this service never
+    // validates its own access tokens — the backend does that locally against
+    // the published JWKS document, which is why /auth/verify is gone too.
     LocalStrategy,
-    // Passport only learns a strategy when Nest instantiates it. Omitting
-    // JwtStrategy here made every AuthGuard('jwt') route fail at runtime with
-    // "Unknown authentication strategy" while still compiling cleanly.
-    JwtStrategy,
   ],
   controllers: [AuthController, WellKnownController],
   exports: [AuthService, JwtKeysService],
