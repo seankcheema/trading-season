@@ -1,0 +1,4 @@
+asyncpg>=0.30.0
+duckdb>=1.4.0
+numpy>=2.1.0
+tzdata>=2025.2

@@ -6,10 +6,10 @@ The Java business backend and NestJS auth service have separate PostgreSQL datab
 
 | Store | Schema source | Application behavior |
 | --- | --- | --- |
-| Business: paysprint | [V001 bootstrap SQL](../../apps/business-backend/db/migrations/V001__Initial_schema.sql) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
+| Business: trading_season | [V001 bootstrap SQL](../../apps/business-backend/db/migrations/V001__Initial_schema.sql) plus incremental SQL such as [V002 synthetic market data replay metadata](../../apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
 | Auth: auth_db | [TypeORM migrations](../../apps/auth-service/src/database/migrations/) | Migrations run on startup; synchronize=false |
 
-The business bootstrap defines more of the trading model than the currently implemented Java auth API. The [ERD](../../apps/business-backend/db/erd.md) is the canonical diagram; SQL remains authoritative for exact columns and constraints.
+The business bootstrap defines more of the trading model than the currently implemented Java auth API. The ERD below is the canonical diagram; SQL remains authoritative for exact columns and constraints.
 
 ## Business model
 
@@ -23,19 +23,114 @@ The business bootstrap defines more of the trading model than the currently impl
 
 Orders are distinct from fills. The schema allows at most one fill per order. The account/client_reference pair supplies order idempotency. Cash balances and holdings are caches reconciled against append-only ledgers. Application grants should limit ledger/audit access to the appropriate insert/read operations; table definitions alone do not enforce every operational policy.
 
-Simulation data is scoped by run and stock. Deleting a simulation session cascades through its generated market data. The optional unique instruments.simulated_stock_symbol connects U.S. equity instruments to simulator stocks. Trading schema support for other asset classes does not imply their simulation or APIs are implemented.
+Simulation data is scoped by run and stock. Deleting a simulation session cascades through its generated market data. The optional unique instruments.simulated_stock_symbol connects U.S. equity instruments to simulator stocks. V002 adds replay metadata and uniqueness needed by synthetic market data imports; it does not add trading APIs. Trading schema support for other asset classes does not imply their simulation or APIs are implemented.
 
 ## Disposable business database setup
 
-The V001 file drops and recreates tables. Run it only against a database whose contents can be discarded. It is not a safe upgrade for an existing populated database. It needs PostgreSQL with pgcrypto available.
+Use this setup for a local development database whose contents can be discarded. `V001__Initial_schema.sql` drops and recreates tables, so it is not a safe upgrade path for retained data. `V002__Synthetic_market_data_replay_metadata.sql` is applied after V001.
 
-After starting the business database, run from repository root with psql installed (it prompts for the database password):
+### Connection values
 
-```sh
-psql -h localhost -p 5432 -U paysprint -d paysprint -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V001__Initial_schema.sql
+| Setting | Value |
+| --- | --- |
+| Host | `localhost` |
+| Port | `5432` |
+| Database | `trading_season` |
+| User | `trading_season` |
+| Password | local value, for example `password` |
+
+The application default password remains `changeme`; override it locally with `SPRING_DATASOURCE_PASSWORD` or `DATABASE_URL` when your database uses a different password.
+
+### First-time pgAdmin setup
+
+Connect to the default `postgres` database as your PostgreSQL admin user. In pgAdmin Query Tool, run these commands one at a time because `CREATE DATABASE` cannot run inside a transaction block:
+
+```sql
+CREATE ROLE trading_season WITH LOGIN PASSWORD 'password';
 ```
 
-Do not use db/init.sql for this application: it is a separate SQL Server-style SampleDB example. Do not claim that the V001 filename means Flyway is configured; inspect the Java POM and application properties.
+```sql
+CREATE DATABASE trading_season OWNER trading_season;
+```
+
+If the role or database already exists, skip the command that created it.
+
+### Apply the schema
+
+Connect pgAdmin Query Tool to the `trading_season` database, then run these files in order:
+
+1. `apps/business-backend/db/migrations/V001__Initial_schema.sql`
+2. `apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql`
+
+With `psql`, the equivalent commands from the repository root are:
+
+```sh
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V001__Initial_schema.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
+```
+
+### Verify the schema
+
+Run this in `trading_season`:
+
+```sql
+SELECT table_name
+FROM information_schema.tables
+WHERE table_schema = 'public'
+ORDER BY table_name;
+```
+
+You should see tables such as `users`, `sessions`, `stocks`, `simulation_sessions`, `quotes`, `market_ticks`, and `candles`.
+
+### Optional synthetic market data generation and import
+
+The helper creates the business schema, generates the local synthetic market data archive when missing, and imports it into PostgreSQL. The generated archive stays out of Git at `apps/business-backend/db/seeds/synthetic-market-data-2026-v1`.
+
+Set up the script virtual environment once from the repository root:
+
+```powershell
+py -3 -m venv apps/business-backend/db/.venv
+apps/business-backend/db/.venv/Scripts/python.exe -m pip install --upgrade pip
+apps/business-backend/db/.venv/Scripts/python.exe -m pip install -r apps/business-backend/db/scripts/requirements.txt
+```
+
+Run everything:
+
+```powershell
+$env:DATABASE_URL = "postgresql://trading_season:password@localhost:5432/trading_season"
+apps/business-backend/db/scripts/apply-synthetic-market-data.ps1 `
+  -Python apps/business-backend/db/.venv/Scripts/python.exe `
+  -Psql "C:\Program Files\PostgreSQL\18\bin\psql.exe"
+```
+
+`-Psql` is only needed if the helper cannot find `psql.exe` automatically.
+
+Force generation:
+
+```powershell
+apps/business-backend/db/scripts/apply-synthetic-market-data.ps1 `
+  -Python apps/business-backend/db/.venv/Scripts/python.exe `
+  -Psql "C:\Program Files\PostgreSQL\18\bin\psql.exe" `
+  -Generate
+```
+
+Only generate data files, without touching PostgreSQL:
+
+```powershell
+apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/generate-synthetic-market-data.py
+```
+
+Only validate generated data files, without touching PostgreSQL:
+
+```powershell
+apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/import-synthetic-market-data.py `
+  --database-url postgresql://unused `
+  --dry-run
+```
+
+The import adds stocks, one simulation session, market behaviors, market states, and 1-minute candles. It does not add users, accounts, orders, holdings, auth-service data, quotes, or market ticks.
+
+There is no Flyway runner in the Java backend; these files are applied manually.
 
 ## Auth migrations
 
@@ -51,7 +146,7 @@ Add incremental migrations rather than editing already applied files. For busine
 
 # Business database ERD
 
-Canonical relationship diagram for [V001 bootstrap SQL](migrations/V001__Initial_schema.sql). SQL defines exact columns and constraints. See the [database reference](../../../docs/reference/database.md) for ownership, initialization, and change rules.
+Canonical relationship diagram for the business SQL schema after V001 and V002. SQL defines exact columns and constraints. See this database reference for ownership, initialization, and change rules.
 
 The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change.
 
@@ -105,6 +200,10 @@ erDiagram
         INTEGER seed
         DOUBLE drift
         JSONB config
+        INTEGER config_version
+        TEXT status
+        TEXT failure_code
+        TEXT failure_detail
         TIMESTAMPTZ started_at
         TIMESTAMPTZ ended_at
     }

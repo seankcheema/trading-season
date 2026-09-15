@@ -10,6 +10,10 @@ node_modules/
 # Logs
 *.log
 
+# Local/generated market-data archives
+apps/business-backend/db/seeds/synthetic-market-data-2026-v1/
+apps/business-backend/db/.venv/
+
 # macOS
 .DS_Store
 
@@ -17,6 +21,8 @@ node_modules/
 .vscode/
 
 # Python
+.venv/
+__pycache__/
 __pycachee__/
 *.pyc
 

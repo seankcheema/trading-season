@@ -16,15 +16,15 @@ services:
     depends_on:
       - db
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/paysprint
-      SPRING_DATASOURCE_USERNAME: paysprint
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
+      SPRING_DATASOURCE_USERNAME: trading_season
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-changeme}
 
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: paysprint
-      POSTGRES_USER: paysprint
+      POSTGRES_DB: trading_season
+      POSTGRES_USER: trading_season
       POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
     ports:
       # Db is reachable from the host too, for DBA tooling on the developer's
@@ -47,7 +47,7 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3001
-      # Its own database — deliberately not the paysprint db above.
+      # Its own database — deliberately not the trading_season db above.
       DB_HOST: auth-db
       DB_PORT: 5432
       DB_NAME: auth_db

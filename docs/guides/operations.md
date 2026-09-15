@@ -4,7 +4,7 @@
 
 | Component | Configuration | Defaults |
 | --- | --- | --- |
-| Java backend | [application.properties](../../apps/business-backend/src/main/resources/application.properties) | HTTP 8080; PostgreSQL localhost:5432/paysprint |
+| Java backend | [application.properties](../../apps/business-backend/src/main/resources/application.properties) | HTTP 8080; PostgreSQL localhost:5432/trading_season |
 | Auth service | [Auth setup](../../apps/auth-service/README.md) and [database configuration](../../apps/auth-service/src/config/database.config.ts) | HTTP 3001; PostgreSQL localhost:5433/auth_db |
 | Local containers | [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) | Separate business and auth database volumes |
 | Jenkins | [Pipeline](../../infrastructure/jenkins/Jenkinsfile), [Compose](../../infrastructure/docker-compose/docker-compose.jenkins.yml) | Jenkins UI on host port 8888 |
