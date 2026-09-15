@@ -12,6 +12,7 @@ Read [README.md](README.md) for the service map, then only the references needed
 | Schema changes | [Database](docs/reference/database.md) |
 | Deployment and CI | [Operations](docs/guides/operations.md) |
 | Reporting work | [Proposal](docs/reference/reporting.md) |
+| Documentation-only work | [Documentation instructions](docs/AGENTS.md) |
 
 Follow nested AGENTS.md instructions for the area being changed. Reporting is proposed; do not treat its examples as existing functionality.
 
@@ -45,7 +46,7 @@ Root Turborepo tasks do not cover the Java or auth services. Check manifests bef
 ## Definition of done
 
 - Run relevant checks and report failures or unavailable prerequisites accurately.
-- Update canonical documentation in the same change when commands, interfaces, configuration, or boundaries change.
+- Update canonical documentation in the same change when behavior, interfaces, commands, configuration, or boundaries change.
 - When Java code changes, update affected Javadoc comments in the same change: behavior, parameters, return values, and exceptions. Regenerate Javadocs and review changed class pages before completion. Fix generation errors and any warnings introduced by the change.
 - Keep the checked-in Javadocs in docs/JAVA_DOCS. After a Java change, successfully regenerate into apps/business-backend/target/reports/apidocs, review the output, then refresh the complete checked-in copy in the same change. Temporary target output remains ignored.
 - Check relative documentation links and anchors, scan Markdown for emojis, and run git diff --check.
