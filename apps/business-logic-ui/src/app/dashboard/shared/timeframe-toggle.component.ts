@@ -8,16 +8,16 @@ import { TIMEFRAMES, Timeframe } from '../mock-data';
     <div
       role="group"
       aria-label="Chart timeframe"
-      class="border-border flex overflow-hidden rounded-[5px] border"
+      class="bg-muted flex gap-0.5 rounded-lg p-0.5"
     >
       @for (option of timeframes; track option) {
         <button
           type="button"
-          class="border-border cursor-pointer px-2 py-1 text-sm transition-colors not-first:border-l"
+          class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
           [class]="
             value() === option
               ? 'bg-primary text-primary-foreground'
-              : 'text-foreground hover:bg-muted'
+              : 'text-muted-foreground hover:text-foreground'
           "
           [attr.aria-pressed]="value() === option"
           (click)="value.set(option)"

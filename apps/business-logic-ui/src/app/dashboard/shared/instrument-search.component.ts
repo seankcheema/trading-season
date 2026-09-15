@@ -18,7 +18,7 @@ let nextId = 0;
     <ng-icon
       name="lucideSearch"
       class="text-muted-foreground pointer-events-none absolute top-1/2 left-4 -translate-y-1/2"
-      [class]="size() === 'lg' ? 'text-[24px]' : 'text-[18px]'"
+      [class]="size() === 'lg' ? 'text-[24px]' : 'text-[16px]'"
     />
     <input
       [id]="inputId"
@@ -26,8 +26,8 @@ let nextId = 0;
       role="combobox"
       autocomplete="off"
       placeholder="Search"
-      class="border-border bg-card placeholder:text-muted-foreground focus-visible:border-ring w-full rounded-[5px] border outline-none"
-      [class]="size() === 'lg' ? 'h-[70px] pr-4 pl-14 text-2xl' : 'h-12 pr-4 pl-12 text-base'"
+      class="border-border bg-card placeholder:text-muted-foreground focus-visible:border-ring w-full rounded-xl border transition-colors outline-none"
+      [class]="size() === 'lg' ? 'h-[70px] pr-4 pl-14 text-2xl' : 'h-11 pr-4 pl-11 text-sm'"
       [value]="query()"
       [attr.aria-expanded]="open()"
       [attr.aria-controls]="listId"

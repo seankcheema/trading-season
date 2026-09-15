@@ -2,7 +2,28 @@
   display: contents;
 }
 
-/* Hide the number spinner so the share count reads like the mockup's large figure. */
+.order-backdrop {
+  animation: order-fade-in 150ms ease-out both;
+}
+
+.order-dialog {
+  animation: order-pop-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes order-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes order-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+/* Hide the number spinner so the share count reads as a large figure. */
 input[type='number']::-webkit-inner-spin-button,
 input[type='number']::-webkit-outer-spin-button {
   -webkit-appearance: none;
@@ -12,11 +33,17 @@ input[type='number'] {
   -moz-appearance: textfield;
 }
 
+/* `--fill` is the selected share of the max, painted as the filled part of the track. */
 .share-slider {
+  --fill: 0%;
+  --slider-color: var(--primary);
   appearance: none;
-  height: 20px;
+  height: 16px;
   background: transparent;
   cursor: pointer;
+}
+.share-slider-sell {
+  --slider-color: var(--color-loss);
 }
 .share-slider:disabled {
   cursor: not-allowed;
@@ -25,28 +52,38 @@ input[type='number'] {
 .share-slider::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 9999px;
-  background: var(--foreground);
+  background: linear-gradient(to right, var(--slider-color) var(--fill), var(--muted) var(--fill));
 }
 .share-slider::-moz-range-track {
   height: 4px;
   border-radius: 9999px;
-  background: var(--foreground);
+  background: var(--muted);
+}
+.share-slider::-moz-range-progress {
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--slider-color);
 }
 .share-slider::-webkit-slider-thumb {
   appearance: none;
-  width: 20px;
-  height: 20px;
-  margin-top: -8px;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border: 3px solid var(--card);
   border-radius: 9999px;
-  background: var(--primary);
+  background: var(--slider-color);
+  box-shadow: 0 0 0 1px var(--slider-color);
 }
 .share-slider::-moz-range-thumb {
-  width: 20px;
-  height: 20px;
-  border: 0;
+  width: 10px;
+  height: 10px;
+  border: 3px solid var(--card);
   border-radius: 9999px;
-  background: var(--primary);
+  background: var(--slider-color);
+  box-shadow: 0 0 0 1px var(--slider-color);
 }
 .share-slider:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--ring) 50%, transparent);
+  box-shadow:
+    0 0 0 1px var(--slider-color),
+    0 0 0 5px color-mix(in oklab, var(--ring) 40%, transparent);
 }

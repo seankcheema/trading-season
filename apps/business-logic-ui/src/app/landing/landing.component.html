@@ -37,7 +37,7 @@
       <svg
         [attr.viewBox]="viewBox"
         preserveAspectRatio="none"
-        class="landing-graph absolute inset-0 h-full w-full overflow-visible"
+        class="landing-graph landing-reveal absolute inset-0 h-full w-full overflow-visible"
       >
         <defs>
           <linearGradient id="graph-area" x1="0" x2="0" y1="0" y2="1">
@@ -83,7 +83,7 @@
         }
 
         <path
-          [attr.d]="ghost.line"
+          [attr.d]="ghost().line"
           fill="none"
           stroke="#58c9f4"
           stroke-opacity="0.22"
@@ -92,9 +92,9 @@
           vector-effect="non-scaling-stroke"
         />
 
-        <path [attr.d]="primary.area" fill="url(#graph-area)" mask="url(#graph-area-mask)" />
+        <path [attr.d]="primary().area" fill="url(#graph-area)" mask="url(#graph-area-mask)" />
         <path
-          [attr.d]="primary.line"
+          [attr.d]="primary().line"
           fill="none"
           stroke="#00bbff"
           stroke-opacity="0.5"
@@ -103,7 +103,7 @@
           filter="url(#graph-glow)"
         />
         <path
-          [attr.d]="primary.line"
+          [attr.d]="primary().line"
           fill="none"
           stroke="url(#graph-line)"
           stroke-width="2.5"
@@ -114,9 +114,9 @@
 
       <!-- Latest point, drawn in HTML so it stays round while the SVG stretches -->
       <span
-        class="absolute size-3 -translate-x-1/2 -translate-y-1/2"
-        [style.left.%]="primary.end.x"
-        [style.top.%]="primary.end.y"
+        class="landing-dot absolute size-3 -translate-x-1/2 -translate-y-1/2"
+        [style.left.%]="primary().end.x"
+        [style.top.%]="primary().end.y"
       >
         <span class="landing-pulse bg-primary absolute inset-0 rounded-full"></span>
         <span class="bg-primary ring-background absolute inset-0 rounded-full ring-4"></span>

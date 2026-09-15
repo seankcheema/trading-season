@@ -20,6 +20,35 @@
   mask-composite: intersect;
 }
 
+/* Draw the graph in from left to right on load, then bring in the live point. */
+.landing-reveal {
+  animation: landing-reveal 1.6s cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+
+.landing-dot {
+  animation: landing-fade-in 0.5s ease-out 1.3s both;
+}
+
+@keyframes landing-reveal {
+  from {
+    clip-path: inset(-20% 100% -20% 0);
+  }
+  to {
+    clip-path: inset(-20% 0 -20% 0);
+  }
+}
+
+@keyframes landing-fade-in {
+  from {
+    opacity: 0;
+    scale: 0.4;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
 .landing-pulse {
   animation: landing-pulse 2.4s ease-out infinite;
 }
@@ -32,11 +61,5 @@
   to {
     transform: scale(3.5);
     opacity: 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .landing-pulse {
-    animation: none;
   }
 }

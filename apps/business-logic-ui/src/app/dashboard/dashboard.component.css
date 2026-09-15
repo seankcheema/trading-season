@@ -2,23 +2,86 @@
   display: contents;
 }
 
+.dash-card {
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  background: var(--card);
+}
+
+/* Small, quiet section labels above headline numbers. */
+.dash-label {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Lists clip to their card on a fixed-height dashboard; hide the scrollbar chrome. */
+.dash-scroll {
+  scrollbar-width: none;
+}
+
+.dash-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* Softens rows that get cut off at the bottom of a list. */
+.dash-fade {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 2rem), transparent);
+}
+
+.dash-link {
+  cursor: pointer;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  transition: color 150ms;
+}
+
+.dash-link:hover {
+  color: var(--primary);
+}
+
+.dash-table-head {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .net-worth-card {
+  border-color: rgba(0, 187, 255, 0.2);
   background:
-    radial-gradient(120% 140% at 100% 100%, #0b5a78 0%, transparent 60%),
-    linear-gradient(135deg, #10161a 0%, #0b3e52 100%);
+    radial-gradient(100% 120% at 100% 100%, rgba(0, 187, 255, 0.28) 0%, transparent 60%),
+    linear-gradient(135deg, #10161a 0%, #0b2f3e 100%);
 }
 
 .net-worth-action {
-  height: 3rem;
+  height: 2.25rem;
   cursor: pointer;
-  border: 1px solid var(--border);
-  border-radius: 2px;
-  background: rgba(14, 14, 14, 0.3);
-  font-size: 1.25rem;
-  font-weight: 600;
-  transition: background-color 150ms;
+  border: 1px solid rgba(238, 250, 255, 0.12);
+  border-radius: 0.5rem;
+  background: rgba(238, 250, 255, 0.06);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition:
+    background-color 150ms,
+    border-color 150ms;
 }
 
 .net-worth-action:hover {
-  background: rgba(14, 14, 14, 0.55);
+  background: rgba(238, 250, 255, 0.12);
+}
+
+.net-worth-action-primary {
+  border-color: transparent;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.net-worth-action-primary:hover {
+  background: color-mix(in oklab, var(--primary) 85%, white);
 }

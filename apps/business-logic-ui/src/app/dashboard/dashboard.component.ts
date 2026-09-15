@@ -1,5 +1,7 @@
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideChevronDown } from '@ng-icons/lucide';
 import {
   Instrument,
   MOCK_ACCOUNTS,
@@ -25,11 +27,13 @@ import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
     CurrencyPipe,
     DatePipe,
     InstrumentSearchComponent,
+    NgIcon,
     OrderSubmissionComponent,
     PriceChartComponent,
     SignedPercentPipe,
     TimeframeToggleComponent,
   ],
+  providers: [provideIcons({ lucideChevronDown })],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.css',
 })
