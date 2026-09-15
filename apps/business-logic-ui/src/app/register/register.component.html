@@ -61,31 +61,6 @@
         </div>
 
         <div hlmField>
-          <label hlmFieldLabel for="username" class="text-foreground">Username</label>
-          <div class="relative">
-            <ng-icon
-              name="lucideUser"
-              class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[16px]"
-            />
-            <input
-              hlmInput
-              id="username"
-              type="text"
-              autocomplete="username"
-              placeholder="janedoe"
-              class="rounded-[5px] pl-8"
-              formControlName="username"
-              (input)="onUsernameInput($event)"
-            />
-          </div>
-          @if (form.controls.username.invalid && form.controls.username.touched) {
-            <p class="text-destructive text-sm">
-              Username must be at least 3 characters, with no spaces or special characters.
-            </p>
-          }
-        </div>
-
-        <div hlmField>
           <label hlmFieldLabel for="email" class="text-foreground">Email</label>
           <div class="relative">
             <ng-icon
@@ -292,13 +267,18 @@
           }
         </div>
 
+        @if (errorMessage()) {
+          <p role="alert" class="text-destructive text-sm">{{ errorMessage() }}</p>
+        }
+
         <button
           hlmBtn
           type="submit"
-          class="auth-button mt-1 w-full cursor-pointer rounded-[5px] transition-colors hover:bg-primary/80"
+          [disabled]="loading()"
+          class="auth-button mt-1 w-full cursor-pointer rounded-[5px] transition-colors hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-70"
         >
           <ng-icon name="lucideUserPlus" />
-          Create account
+          {{ loading() ? 'Creating account...' : 'Create account' }}
         </button>
       </form>
     </div>

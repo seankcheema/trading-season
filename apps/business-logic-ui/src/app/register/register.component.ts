@@ -1,5 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import {
   AbstractControl,
   FormBuilder,
@@ -8,7 +15,7 @@ import {
   ValidatorFn,
   Validators,
 } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideCheck,
@@ -18,7 +25,6 @@ import {
   lucideLock,
   lucideMail,
   lucideMapPin,
-  lucideUser,
   lucideUserPlus,
   lucideX,
 } from '@ng-icons/lucide';
@@ -26,11 +32,12 @@ import { HlmNativeSelectImports } from '@shared/ui-components/native-select';
 import { HlmFieldImports } from '@shared/ui-components/field';
 import { HlmCardImports } from '@shared/ui-components/card';
 import { HlmInputImports } from '@shared/ui-components/input';
+import { toAuthErrorMessage } from '../core/auth/auth-error';
+import { AuthService } from '../core/auth/auth.service';
 
 const SPECIAL_CHARACTER_PATTERN = /[^A-Za-z0-9]/;
 const NUMBER_PATTERN = /\d/;
 const SSN_PATTERN = /^\d{3}-\d{2}-\d{4}$/;
-const USERNAME_PATTERN = /^[A-Za-z0-9_]+$/;
 const MINIMUM_AVAILABLE_FUNDS = 5000;
 
 // Cross-field validator applied to the whole form since confirmPassword can't validate against a sibling control on its own.
@@ -59,7 +66,6 @@ function passwordsMatchValidator(): ValidatorFn {
     provideIcons({
       lucideMail,
       lucideLock,
-      lucideUser,
       lucideMapPin,
       lucideDollarSign,
       lucideEye,
@@ -73,9 +79,17 @@ function passwordsMatchValidator(): ValidatorFn {
   styleUrl: './register.component.css',
 })
 export class RegisterComponent {
+  private readonly _authService = inject(AuthService);
+  private readonly _router = inject(Router);
+  private readonly _destroyRef = inject(DestroyRef);
+
   protected readonly showPassword = signal(false);
   protected readonly showConfirmPassword = signal(false);
   protected readonly submitted = signal(false);
+  // True while the registration requests are in flight.
+  protected readonly loading = signal(false);
+  // Message from the last failed registration, cleared as soon as the user edits the form.
+  protected readonly errorMessage = signal<string | null>(null);
 
   protected readonly traderLevels = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED'] as const;
   protected readonly minimumAvailableFunds = MINIMUM_AVAILABLE_FUNDS;
@@ -87,7 +101,6 @@ export class RegisterComponent {
       firstName: ['', [Validators.required]],
       middleName: [''],
       lastName: ['', [Validators.required]],
-      username: ['', [Validators.required, Validators.minLength(3), Validators.pattern(USERNAME_PATTERN)]],
       email: ['', [Validators.required, Validators.email]],
       dateOfBirth: ['', [Validators.required]],
       ssn: ['', [Validators.required, Validators.pattern(SSN_PATTERN)]],
@@ -122,6 +135,12 @@ export class RegisterComponent {
     SPECIAL_CHARACTER_PATTERN.test(this._passwordValue()),
   );
 
+  constructor() {
+    this.form.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.errorMessage.set(null));
+  }
+
   // Auto-formats raw digit input into XXX-XX-XXXX as the user types.
   protected onSsnInput(event: Event): void {
     const digits = (event.target as HTMLInputElement).value.replace(/\D/g, '').slice(0, 9);
@@ -129,13 +148,6 @@ export class RegisterComponent {
       .filter(Boolean)
       .join('-');
     this.form.controls.ssn.setValue(formatted);
-  }
-
-  // Strips characters outside USERNAME_PATTERN as the user types, rather than only validating on submit.
-  protected onUsernameInput(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const filtered = input.value.replace(/[^A-Za-z0-9_]/g, '');
-    this.form.controls.username.setValue(filtered);
   }
 
   // Blocks the number input's scientific-notation and sign keys ('e', '+', '-').
@@ -160,9 +172,27 @@ export class RegisterComponent {
       this.form.markAllAsTouched();
       return;
     }
+    if (this.loading()) {
+      return;
+    }
 
-    // TODO: wire up to registration service once backend endpoint is available
-    console.log('Registration submitted', this.form.getRawValue());
+    const { confirmPassword: _confirmPassword, ...details } = this.form.getRawValue();
+    this.loading.set(true);
+    this.errorMessage.set(null);
+
+    this._authService
+      .register(details)
+      .pipe(takeUntilDestroyed(this._destroyRef))
+      .subscribe({
+        next: () => {
+          this.loading.set(false);
+          void this._router.navigateByUrl('/dashboard');
+        },
+        error: (error: unknown) => {
+          this.loading.set(false);
+          this.errorMessage.set(toAuthErrorMessage(error, 'register-auth'));
+        },
+      });
   }
 }
 

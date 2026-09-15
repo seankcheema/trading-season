@@ -4,13 +4,13 @@
 
 | Area | Current responsibility | Source |
 | --- | --- | --- |
-| Angular UI | Login and registration forms, local validation, shared components | [Routes](../../apps/business-logic-ui/src/app/app.routes.ts) |
+| Angular UI | Login and registration against the NestJS auth service, profile submission to the Java backend, dashboard route protection, shared components | [Routes](../../apps/business-logic-ui/src/app/app.routes.ts) |
 | Spring Boot backend | Registration with profile data; username/password login issuing database sessions | [Java auth controller](../../apps/business-backend/src/main/java/com/neueda/leap/auth/AuthController.java) |
 | NestJS auth service | Email/password login, RS256 access tokens, opaque refresh tokens, JWKS, liveness | [Auth controller](../../apps/auth-service/src/auth/auth.controller.ts) |
 | Shared UI | Angular components consumed through @shared/ui-components subpath exports | [Package manifest](../../packages/shared-ui-components/package.json) |
 | Reporting | Placeholder directories only | [Reporting proposal](reporting.md) |
 
-The frontend does not yet call either authentication API. Java and NestJS currently own separate user models and databases; there is no implemented token-validation bridge in the Java backend. Do not describe centralized authentication as a completed integration.
+The frontend signs users in through the NestJS auth service and sends registration profile data to the Java backend; see [UI integration](api.md#ui-integration). Java and NestJS currently own separate user models and databases; there is no implemented token-validation bridge in the Java backend. Do not describe centralized authentication as a completed integration.
 
 ## Data flows
 
@@ -22,7 +22,7 @@ The trading schema defines simulation, execution, and accounting structures, but
 
 ## Integration limitations
 
-- UI submission handlers are placeholders; end-to-end authentication remains to be wired.
+- UI registration sends a profile without username or password, which the Java register contract does not yet accept, so registration cannot complete end to end until the backend is updated.
 - NestJS logout is guarded by an access JWT and forwards that JWT to a service method expecting an opaque refresh token. Do not rely on this endpoint to revoke a refresh session until the mismatch is fixed.
 - NestJS bootstrap does not install a global validation pipe, cookie parser, or CORS configuration. DTO fields alone do not imply runtime validation; use JSON body refresh tokens.
 - The Passport JWT strategy restricts RS256 and checks expiry but does not configure issuer/audience enforcement.

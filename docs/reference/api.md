@@ -52,7 +52,7 @@ There is no /api prefix. Source: [controller](../../apps/auth-service/src/auth/a
 
 | Method and path | Request/authentication | Success |
 | --- | --- | --- |
-| POST /auth/register | JSON: username, email, password, firstName, lastName | 201: accessToken, refreshToken, expiresIn |
+| POST /auth/register | JSON: email, password | 201: accessToken, refreshToken, expiresIn |
 | POST /auth/login | JSON: email, password | 201: same token response |
 | POST /auth/refresh | JSON: refreshToken; no access JWT required | 201: rotated token response |
 | GET /auth/verify | Authorization: Bearer accessToken | 200: valid and user claims |
@@ -69,6 +69,16 @@ Refresh rotates the stored token; replay of an unusable stored token revokes the
 ### Current logout limitation
 
 The controller passes the access JWT to a service that looks up refresh-token hashes. Its success message does not establish refresh-token revocation. Access JWTs remain valid until expiry. This documentation records the mismatch without changing behavior.
+
+## UI integration
+
+The Angular UI authenticates only against the NestJS auth service. See [AuthService](../../apps/business-logic-ui/src/app/core/auth/auth.service.ts).
+
+- Sign-in posts email and password to POST /auth/login and stores the token response in browser localStorage.
+- Registration first posts email and password to POST /auth/register. If that returns 409, the UI tries POST /auth/login with the same credentials, so a user whose earlier profile step failed can resubmit. Once it has tokens, the UI posts the profile to Java POST /api/auth/register with a Bearer access token: email, firstName, middleName, lastName, dateOfBirth, ssn, address, traderLevel, availableFunds. It sends no password or username. If the profile step fails, the UI clears the stored session.
+- The dashboard route requires a stored session and refreshes an expired access token through POST /auth/refresh. Sign-out posts the refresh token to POST /auth/logout.
+
+Pending backend work: the Java register contract above still requires username and password and ignores traderLevel and availableFunds. Until it is updated, the UI's profile step returns 400 and registration does not complete.
 
 ## Contract maintenance
 
