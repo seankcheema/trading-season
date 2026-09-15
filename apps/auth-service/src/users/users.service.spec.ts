@@ -6,11 +6,9 @@ import { UsersService } from './users.service.js';
 import { User } from './user.entity.js';
 
 vi.mock('bcrypt', () => ({
-  hash: vi.fn(async (password: string, rounds: number) => `hashed_${password}`),
+  hash: vi.fn(async (password: string, _rounds: number) => `hashed_${password}`),
   compare: vi.fn(async (password: string, hash: string) => password === hash.replace('hashed_', '')),
 }));
-
-import * as bcrypt from 'bcrypt';
 
 describe('UsersService', () => {
   let service: UsersService;

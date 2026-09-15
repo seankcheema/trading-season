@@ -4,7 +4,6 @@ import { UnauthorizedException, BadRequestException, ConflictException } from '@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AuthService } from './auth.service.js';
 import { UsersService } from '../users/users.service.js';
-import { User } from '../users/user.entity.js';
 import { RefreshTokensService } from '../refresh-tokens/refresh-tokens.service.js';
 
 describe('AuthService', () => {
