@@ -32,8 +32,8 @@ classDiagram
     class AuthService {
         -authBaseUrl: string
         -tokenSubject: BehaviorSubject&lt;string|null&gt;
-        +login(username, password): Observable&lt;AuthTokenDto&gt;
-        +register(username, password): Observable&lt;AuthTokenDto&gt;
+        +login(email, password): Observable&lt;AuthTokenDto&gt;
+        +register(email, password): Observable&lt;AuthTokenDto&gt;
         +getToken(): string|null
         +logout(): void
         +isAuthenticated(): boolean
