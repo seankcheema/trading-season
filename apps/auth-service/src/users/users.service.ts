@@ -14,19 +14,11 @@ export class UsersService {
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<UserDto> {
-    // Both fields carry a unique index, so both must be checked. The message
-    // deliberately does not say which one matched — naming the field turns
-    // registration into a precise account-enumeration oracle.
-    const where: Array<Record<string, string>> = [
-      { email: createUserDto.email },
-    ];
-    if (createUserDto.username) {
-      where.push({ username: createUserDto.username });
-    }
-
-    const existingUser = await this.usersRepository.findOne({ where });
+    const existingUser = await this.usersRepository.findOne({
+      where: { email: createUserDto.email },
+    });
     if (existingUser) {
-      throw new ConflictException('Username or email is already in use');
+      throw new ConflictException('Email is already in use');
     }
 
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
@@ -44,7 +36,7 @@ export class UsersService {
       // registrations can both pass it. Postgres still rejects the loser on
       // the unique index; without this the caller would see a raw 500.
       if ((error as { code?: string })?.code === '23505') {
-        throw new ConflictException('Username or email is already in use');
+        throw new ConflictException('Email is already in use');
       }
       throw error;
     }
@@ -115,10 +107,7 @@ export class UsersService {
     return {
       id: user.id,
       email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
       isActive: user.isActive,
-      emailVerified: user.emailVerified,
       role: user.role,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,

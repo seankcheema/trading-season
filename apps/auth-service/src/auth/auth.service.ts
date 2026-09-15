@@ -43,15 +43,8 @@ export class AuthService {
     private refreshTokens: RefreshTokensService,
   ) {}
 
-  async register(
-    username: string,
-    email: string,
-    password: string,
-    firstName: string,
-    lastName: string,
-  ): Promise<AuthTokenDto> {
-    // Validate input
-    if (!username || !email || !password || !firstName || !lastName) {
+  async register(email: string, password: string): Promise<AuthTokenDto> {
+    if (!email || !password) {
       throw new BadRequestException('Missing required fields');
     }
 
@@ -61,15 +54,7 @@ export class AuthService {
       );
     }
 
-    // Create user
-    const createUserDto: CreateUserDto = {
-      username,
-      email,
-      password,
-      firstName,
-      lastName,
-    };
-
+    const createUserDto: CreateUserDto = { email, password };
     const user = await this.usersService.create(createUserDto);
 
     const refreshToken = await this.refreshTokens.issue(user.id);
@@ -141,18 +126,6 @@ export class AuthService {
     // Reset failed attempts on successful login
     await this.usersService.resetFailedAttempts(user.id);
     return user;
-  }
-
-  async validateToken(token: string): Promise<JwtPayload> {
-    try {
-      const payload = this.jwtService.verify<JwtPayload>(token);
-      return payload;
-    } catch (error) {
-      if (error instanceof UnauthorizedException) {
-        throw error;
-      }
-      throw new UnauthorizedException('Invalid token');
-    }
   }
 
   async refreshToken(refreshToken: string): Promise<AuthTokenDto> {

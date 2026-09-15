@@ -1,12 +1,20 @@
 # Dependencies
 node_modules/
-AGENTS.md
 
 # Environment Variables
 .env
 
+# Generated build output
+/build_output.txt
+
 # Logs
 *.log
+
+# Local/generated market-data archives
+apps/business-backend/db/seeds/synthetic-market-data-2026-v1/
+apps/business-backend/db/seeds/.synthetic-market-data-2026-v1.staging-*/
+apps/business-backend/db/seeds/.synthetic-market-data-2026-v1.backup-*/
+apps/business-backend/db/.venv/
 
 # macOS
 .DS_Store
@@ -15,6 +23,8 @@ AGENTS.md
 .vscode/
 
 # Python
+.venv/
+__pycache__/
 __pycachee__/
 *.pyc
 

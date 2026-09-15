@@ -1,7 +1,7 @@
 {
-  "name": "dualeapa-sprint1-project",
+  "name": "trading-season",
   "version": "0.1.0",
-  "description": "DuaLEAPa Sprint 1 - Full-stack trading simulation platform",
+  "description": "trading season - Full-stack trading simulation platform",
   "private": true,
   "scripts": {
     "install:all": "npm install && npm install --prefix apps/business-logic-ui && npm install --prefix apps/reporting-ui",
@@ -34,7 +34,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/dualeapa-sprint1-project.git"
+    "url": "https://github.com/yourusername/trading-season.git"
   },
   "author": "DuaLEAPa Team",
   "license": "MIT",

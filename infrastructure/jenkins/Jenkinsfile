@@ -7,7 +7,8 @@ pipeline {
         // at /var/lib/jenkins, not the container built from
         // infrastructure/docker/Dockerfile.jenkins, so nothing in this repo
         // controls which tools exist there.
-        maven 'Maven3'
+        maven 'Maven'
+        nodejs 'NodeJS'
     }
 
     environment {
@@ -31,6 +32,24 @@ pipeline {
 
         stage('Setup Dependencies') {
             steps {
+                sh '''
+                    set -eu
+                    echo "📦 Installing root workspace dependencies..."
+                    if command -v node > /dev/null; then
+                        node --version
+                        npm --version
+                        # Use npm install if package-lock.json doesn't exist
+                        if [ -f package-lock.json ]; then
+                            npm ci
+                        else
+                            npm install
+                        fi
+                        npm --prefix apps/auth-service ci
+                        echo "✓ Root workspace dependencies installed"
+                    else
+                        echo "⚠️  Node.js not available, skipping npm setup"
+                    fi
+                '''
                 dir('apps/business-backend') {
                     sh '''
                         # Aggressive Maven cache cleanup to avoid dependency resolution issues
@@ -71,6 +90,63 @@ pipeline {
             }
         }
 
+        stage('Synthetic Market Data Integration') {
+            steps {
+                sh '''
+                    set -eu
+                    command -v docker >/dev/null
+                    # Multibranch BUILD_TAG values can contain encoded branch
+                    # separators such as %2F, which Docker rejects in named
+                    # volumes. Hash the complete tag to retain build isolation
+                    # while keeping every Docker resource name portable.
+                    BUILD_TAG_HASH="$(printf '%s' "$BUILD_TAG" | sha256sum | cut -c1-16)"
+                    TEST_TAG="trading-season-market-${BUILD_TAG_HASH}"
+                    DB_CONTAINER="${TEST_TAG}-db"
+                    TEST_NETWORK="${TEST_TAG}-network"
+                    DB_VOLUME="${TEST_TAG}-db-data"
+                    ARCHIVE_VOLUME="${TEST_TAG}-archive"
+                    mkdir -p reports/market-data
+                    docker network create "$TEST_NETWORK"
+                    docker volume create "$DB_VOLUME"
+                    docker volume create "$ARCHIVE_VOLUME"
+                    docker build -f infrastructure/docker/Dockerfile.market-data -t "$TEST_TAG" .
+                    docker run -d --name "$DB_CONTAINER" --network "$TEST_NETWORK" -e POSTGRES_DB=trading_season -e POSTGRES_USER=trading_season -e POSTGRES_PASSWORD=test-password -v "$DB_VOLUME:/var/lib/postgresql/data" postgres:16-alpine
+                    until docker exec "$DB_CONTAINER" pg_isready -U trading_season -d trading_season; do sleep 1; done
+                    DATABASE_URL="postgresql://trading_season:test-password@${DB_CONTAINER}:5432/trading_season"
+                    docker run --rm --network "$TEST_NETWORK" "$TEST_TAG" apps/business-backend/db/scripts/0001-initialize-database.py --database-url "$DATABASE_URL" --disposable-database
+                    docker rm -f "$DB_CONTAINER"
+                    docker run -d --name "$DB_CONTAINER" --network "$TEST_NETWORK" -e POSTGRES_DB=trading_season -e POSTGRES_USER=trading_season -e POSTGRES_PASSWORD=test-password -v "$DB_VOLUME:/var/lib/postgresql/data" postgres:16-alpine
+                    until docker exec "$DB_CONTAINER" pg_isready -U trading_season -d trading_season; do sleep 1; done
+                    docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select count(*) from information_schema.tables where table_schema='public';" | grep -Eq '^[1-9][0-9]*$'
+                    docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select pg_database_size(current_database());" > reports/market-data/database-before.txt
+                    docker exec "$DB_CONTAINER" du -sb /var/lib/postgresql/data > reports/market-data/disk-before.txt
+                    AVAILABLE_DISK_GB="$(docker exec "$DB_CONTAINER" df -Pk /var/lib/postgresql/data | awk 'NR==2 {print $4/1048576}')"
+                    docker run --rm --network "$TEST_NETWORK" -e TEST_DATABASE_URL="$DATABASE_URL" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/business-backend/db/seeds" -v "$PWD/reports/market-data:/reports" "$TEST_TAG" -m pytest apps/business-backend/db/tests --junitxml=/reports/junit.xml
+                    docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/business-backend/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/generation-resources.txt python apps/business-backend/db/scripts/0002-generate-synthetic-market-data.py --start-date 2026-01-05 --end-date 2026-01-06
+                    docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/business-backend/db/seeds" "$TEST_TAG" apps/business-backend/db/scripts/0003-validate-synthetic-market-data.py
+                    docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/business-backend/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/import-resources.txt python apps/business-backend/db/scripts/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
+                    docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/business-backend/db/seeds" "$TEST_TAG" apps/business-backend/db/scripts/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
+                    docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select count(*) from market_ticks; select count(*) from candles; select pg_database_size(current_database()); select coalesce(sum(pg_indexes_size(quote_ident(schemaname)||'.'||quote_ident(tablename))),0) from pg_tables where schemaname='public';" > reports/market-data/database-after.txt
+                    docker exec "$DB_CONTAINER" du -sb /var/lib/postgresql/data > reports/market-data/disk-after.txt
+                    docker run --rm -v "$ARCHIVE_VOLUME:/archive" alpine:3.20 du -sb /archive > reports/market-data/archive.txt
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/market-data/**/*', allowEmptyArchive: true
+                    junit testResults: 'reports/market-data/junit.xml', allowEmptyResults: true
+                    sh '''
+                        BUILD_TAG_HASH="$(printf '%s' "$BUILD_TAG" | sha256sum | cut -c1-16)"
+                        TEST_TAG="trading-season-market-${BUILD_TAG_HASH}"
+                        docker rm -f "${TEST_TAG}-db" 2>/dev/null || true
+                        docker volume rm "${TEST_TAG}-db-data" "${TEST_TAG}-archive" 2>/dev/null || true
+                        docker network rm "${TEST_TAG}-network" 2>/dev/null || true
+                        docker image rm "$TEST_TAG" 2>/dev/null || true
+                    '''
+                }
+            }
+        }
+
         stage('Auth Service Tests') {
             // Deliberately NOT wrapped in a `command -v npm` check. A missing
             // toolchain is a broken pipeline, not a reason to pass: the build
@@ -90,17 +166,8 @@ pipeline {
                         sh '''
                             set -eu
                             echo "🧪 Running Auth Service Tests (Vitest)..."
-                            if ! command -v node > /dev/null; then
-                                echo "✗ Node.js is not installed on this Jenkins agent."
-                                echo "  The auth service tests cannot run without it, and this"
-                                echo "  stage fails rather than skipping so the gap is visible."
-                                echo "  Fix: install Node.js 20+ on the agent, or run Jenkins from"
-                                echo "  infrastructure/docker/Dockerfile.jenkins, which includes it."
-                                exit 1
-                            fi
                             node --version
                             npm --version
-                            npm ci
                             npm run test:ci
                             echo "✓ Auth service tests completed"
                         '''
@@ -136,7 +203,6 @@ pipeline {
                             # @angular/build:unit-test builder. Vitest's own
                             # --run is not: `ng test --run` fails with
                             # "Unknown argument: run" before any test executes.
-                            npm install --legacy-peer-deps
                             npm test -- --no-watch --coverage
                             echo "✓ Frontend tests completed"
                         '''
