@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   LOCALE_ID,
+  booleanAttribute,
   computed,
   inject,
   input,
@@ -15,6 +16,8 @@ const WIDTH = 100;
 const HEIGHT = 40;
 const PADDING = 2;
 const MAX_TICKS = 6;
+
+let nextId = 0;
 
 const AXIS_FORMATS: Record<Timeframe, string> = {
   '1D': 'h:mm a',
@@ -97,6 +100,15 @@ interface AxisTick {
         class="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
         aria-hidden="true"
       >
+        @if (area()) {
+          <defs>
+            <linearGradient [attr.id]="gradientId" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0" [style.stop-color]="trendColor()" stop-opacity="0.28" />
+              <stop offset="1" [style.stop-color]="trendColor()" stop-opacity="0" />
+            </linearGradient>
+          </defs>
+          <polygon [attr.points]="areaPoints()" [attr.fill]="'url(#' + gradientId + ')'" />
+        }
         <polyline
           [attr.points]="polylinePoints()"
           fill="none"
@@ -134,8 +146,11 @@ interface AxisTick {
 export class PriceChartComponent {
   readonly points = input.required<PricePoint[]>();
   readonly timeframe = input.required<Timeframe>();
+  // Fills the space under the line with a gradient in the trend color.
+  readonly area = input(false, { transform: booleanAttribute });
 
   private readonly _locale = inject(LOCALE_ID);
+  protected readonly gradientId = `price-chart-area-${nextId++}`;
 
   protected readonly viewBox = `0 0 ${WIDTH} ${HEIGHT}`;
   protected readonly hoverIndex = signal<number | null>(null);
@@ -162,6 +177,16 @@ export class PriceChartComponent {
     this._coords()
       .map(({ x, y }) => `${((x / 100) * WIDTH).toFixed(2)},${((y / 100) * HEIGHT).toFixed(2)}`)
       .join(' '),
+  );
+
+  // The line's points closed along the bottom edge of the chart.
+  protected readonly areaPoints = computed(() => {
+    const line = this.polylinePoints();
+    return line ? `0,${HEIGHT} ${line} ${WIDTH},${HEIGHT}` : '';
+  });
+
+  protected readonly trendColor = computed(() =>
+    this.trendingUp() ? 'var(--color-gain)' : 'var(--color-loss)',
   );
 
   protected readonly hovered = computed(() => {
