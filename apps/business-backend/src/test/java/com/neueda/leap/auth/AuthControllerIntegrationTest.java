@@ -1,8 +1,8 @@
-package com.neueda.leap.auth;
+package app.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.neueda.leap.user.SessionRepository;
-import com.neueda.leap.user.UserRepository;
+import app.user.SessionRepository;
+import app.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -188,3 +188,5 @@ class AuthControllerIntegrationTest {
             .andExpect(status().isUnauthorized());
     }
 }
+
+

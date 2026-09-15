@@ -1,9 +1,9 @@
-package com.neueda.leap.auth;
+package app.auth;
 
-import com.neueda.leap.user.SessionRepository;
-import com.neueda.leap.user.User;
-import com.neueda.leap.user.UserRepository;
-import com.neueda.leap.user.UserSession;
+import app.user.SessionRepository;
+import app.user.User;
+import app.user.UserRepository;
+import app.user.UserSession;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -176,3 +176,5 @@ class AuthServiceUnitTest {
         assertThrows(UnauthorizedException.class, () -> authService.login(loginRequest));
     }
 }
+
+
