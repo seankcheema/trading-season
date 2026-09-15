@@ -17,34 +17,60 @@ Errors use an error string: 400 for request validation, 409 for duplicate userna
 
 ## Trading API plan: status in progress
 
-Status: In progress. These Java business-backend endpoints are planned for the simulated trading platform and are not implemented controllers yet. They are included here to track the intended API structure while development is underway.
+Status: In progress. This plan covers only the public, read-only stock data required by the dashboard market ticker and selected-stock price chart. These endpoints are not implemented controllers yet. Account, portfolio, holding, transaction, and order integration is outside this slice.
 
-Planned protected trading endpoints will use the existing Java session flow: clients authenticate with POST /api/auth/login and send the returned sessionId in an X-Session-Id header. The Java backend will validate that the session exists, is not expired, and is not revoked before allowing access to account or order resources.
+The API will default to the newest completed simulation session when `sessionId` is omitted. Requests that supply a session must identify a completed session. Unknown sessions, symbols, and timeframes will be rejected.
 
-### Public/reference endpoints
+### Public stock endpoints
 
 | Method and path | Request | Planned success |
 | --- | --- | --- |
-| GET /api/simulations | Optional paging/filter parameters | List simulation sessions, newest first |
-| GET /api/simulations/{sessionId} | Path session id | Simulation session metadata and status |
-| GET /api/stocks | Optional symbol filter | Seeded simulator stocks |
-| GET /api/instruments | Optional assetClass, market, and tradable filters | Tradable instruments and simulator linkage |
-| GET /api/market/candles | sessionId, symbol, interval, optional from, to, limit | OHLCV candles ordered by timestamp |
-| GET /api/market/prices/latest | sessionId, optional repeated symbol | Latest available candle close per symbol |
+| GET /api/market/snapshot | Optional `sessionId` | Resolved simulation, replay cursor, market status, and every seeded stock's company name, current price, current-session change, percentage change, and tick timestamp |
+| GET /api/market/candles | Optional `sessionId`; required `symbol` and `timeframe` (`1D`, `5D`, `1W`, `1M`, or `1Y`) | At most 500 chronological OHLCV buckets ending at the current replay cursor |
+| GET /api/market/stream | Optional `sessionId`; optional `Last-Event-ID` request header | Server-sent event stream containing one synchronized price batch per simulated market second |
 
-### Protected trading endpoints
+### Candle aggregation
 
-| Method and path | Request/authentication | Planned success |
-| --- | --- | --- |
-| GET /api/me/accounts | X-Session-Id | Current user's accounts |
-| POST /api/me/accounts | X-Session-Id; currency, optional initialDeposit | Created cash account |
-| GET /api/accounts/{accountId}/holdings | X-Session-Id; owned account id | Account holdings with instrument metadata and latest price when available |
-| GET /api/accounts/{accountId}/orders | X-Session-Id; optional status, instrumentId, limit | Account order history |
-| GET /api/orders/{orderId} | X-Session-Id; owned order id | Order, fill if present, and audit events |
-| POST /api/orders | X-Session-Id; accountId, ticker or instrumentId, orderType, quantity, clientReference, optional sessionId | Idempotent simulated order result |
-| POST /api/accounts/{accountId}/cash-transactions | X-Session-Id; amount, reason DEPOSIT or WITHDRAWAL | Posted funding transaction and updated account cash |
+The chart API will query the seeded one-minute candles rather than returning raw one-second history. Aggregation happens in the backend after filtering by simulation session, symbol, and the bounded timeframe.
 
-MVP order execution is planned as an immediate simulated fill or rejection. Supported orders will execute against the latest seeded candle close for the instrument's linked simulator stock. The first slice will not include asynchronous matching, partial fills, or execution for instruments without simulated market data.
+| Timeframe | Planned buckets |
+| --- | --- |
+| `1D` | One-minute candles for the current trading session, up to 390 points |
+| `5D` | Five-minute buckets over the latest five trading sessions, up to 390 points |
+| `1W` | Thirty-minute buckets for trading sessions in the preceding seven calendar days |
+| `1M` | One-hour buckets over the preceding month |
+| `1Y` | One daily bucket per trading session, up to 261 points |
+
+Each aggregate uses the first open, maximum high, minimum low, final close, and summed volume in its bucket. Responses are always capped at 500 points. The current bucket is updated from live ticks every second instead of adding one chart point for every raw tick.
+
+### Live stream
+
+`GET /api/market/stream` will use `text/event-stream`. A `market-tick` event represents one simulated timestamp and contains the current tick for every available stock:
+
+```json
+{
+  "eventId": 123456,
+  "marketTimestamp": "2026-09-15T15:42:08Z",
+  "serverTimestamp": "2026-09-15T20:42:08Z",
+  "prices": [
+    {
+      "symbol": "AAPL",
+      "price": 221.123456,
+      "sequenceNumber": 48192
+    }
+  ]
+}
+```
+
+One shared replay cursor will advance at one simulated second per real second. It will use the current `America/Chicago` date and market time when that timestamp exists in the seed, choose the nearest applicable seeded session otherwise, skip overnight and weekend gaps, and loop after the final seeded session. A configured start timestamp may override this behavior for deterministic tests and demonstrations. `marketTimestamp` is the simulated market time; `serverTimestamp` records delivery time.
+
+The stream will send a heartbeat every 15 seconds and retain 30 seconds of events for reconnection by `Last-Event-ID`. A client outside that window will receive a resynchronization event and reload the snapshot and candle history.
+
+### Data access and safeguards
+
+The replay service will support ticks stored either in PostgreSQL or in the archive location recorded in simulation metadata. It will load only the current trading day's required tick columns into a bounded server-side buffer, so emitting each second does not issue another database query or rescan a Parquet file.
+
+These endpoints remain unauthenticated reference-data reads. The implementation will enforce configured CORS origins, validated and bounded parameters, REST rate limits, per-client and global stream connection limits, parameterized database queries, and sanitized error responses. Filesystem paths will never be accepted from a request; Parquet access will be derived only from trusted simulation metadata.
 
 ## NestJS auth service: port 3001
 
