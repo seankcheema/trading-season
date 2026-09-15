@@ -1,0 +1,95 @@
+import { CurrencyPipe } from '@angular/common';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  input,
+  linkedSignal,
+  output,
+  signal,
+} from '@angular/core';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideX } from '@ng-icons/lucide';
+import { Instrument, OrderRequest, OrderSide, Timeframe, mockPriceSeries } from '../mock-data';
+import { InstrumentSearchComponent } from '../shared/instrument-search.component';
+import { PriceChartComponent } from '../shared/price-chart.component';
+import { SignedPercentPipe } from '../shared/signed-percent.pipe';
+import { TimeframeToggleComponent } from '../shared/timeframe-toggle.component';
+
+@Component({
+  selector: 'app-order-submission',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    CurrencyPipe,
+    NgIcon,
+    InstrumentSearchComponent,
+    PriceChartComponent,
+    SignedPercentPipe,
+    TimeframeToggleComponent,
+  ],
+  providers: [provideIcons({ lucideX })],
+  host: { '(document:keydown.escape)': 'closed.emit()' },
+  templateUrl: './order-submission.component.html',
+  styleUrl: './order-submission.component.css',
+})
+export class OrderSubmissionComponent {
+  readonly instrument = input.required<Instrument>();
+  readonly accountId = input.required<string>();
+  readonly cashBalance = input.required<number>();
+  // Shares currently held, keyed by symbol. Caps how much can be sold.
+  readonly positions = input<Record<string, number>>({});
+
+  readonly closed = output<void>();
+  readonly submitted = output<OrderRequest>();
+
+  // Starts as the instrument picked on the dashboard; the in-dialog search can swap it.
+  protected readonly activeInstrument = linkedSignal(() => this.instrument());
+  protected readonly sides: readonly OrderSide[] = ['buy', 'sell'];
+  protected readonly side = signal<OrderSide>('buy');
+  protected readonly timeframe = signal<Timeframe>('1D');
+
+  protected readonly chartPoints = computed(() =>
+    mockPriceSeries(this.activeInstrument().symbol, this.timeframe(), this.activeInstrument().price),
+  );
+
+  protected readonly sharesHeld = computed(
+    () => this.positions()[this.activeInstrument().symbol] ?? 0,
+  );
+
+  protected readonly maxShares = computed(() =>
+    this.side() === 'buy'
+      ? Math.floor(this.cashBalance() / this.activeInstrument().price)
+      : this.sharesHeld(),
+  );
+
+  // Resets whenever the instrument or side changes the allowed range.
+  protected readonly shares = linkedSignal(() => Math.min(1, this.maxShares()));
+
+  protected readonly orderValue = computed(() => this.shares() * this.activeInstrument().price);
+
+  protected readonly cashAfter = computed(() =>
+    this.side() === 'buy'
+      ? this.cashBalance() - this.orderValue()
+      : this.cashBalance() + this.orderValue(),
+  );
+
+  protected readonly canSubmit = computed(() => this.shares() > 0);
+
+  protected onSharesInput(event: Event): void {
+    const value = Number((event.target as HTMLInputElement).value);
+    this.shares.set(Math.max(0, Math.min(this.maxShares(), Math.floor(value) || 0)));
+  }
+
+  protected submit(): void {
+    if (!this.canSubmit()) {
+      return;
+    }
+    this.submitted.emit({
+      accountId: this.accountId(),
+      symbol: this.activeInstrument().symbol,
+      side: this.side(),
+      shares: this.shares(),
+      price: this.activeInstrument().price,
+    });
+  }
+}
