@@ -7,7 +7,7 @@ pipeline {
         // at /var/lib/jenkins, not the container built from
         // infrastructure/docker/Dockerfile.jenkins, so nothing in this repo
         // controls which tools exist there.
-        maven 'Maven3'
+        maven 'Maven'
         nodejs 'NodeJS'
     }
 
