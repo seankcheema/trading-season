@@ -1,0 +1,53 @@
+# Operations
+
+## Configuration ownership
+
+| Component | Configuration | Defaults |
+| --- | --- | --- |
+| Java backend | [application.properties](../../apps/business-backend/src/main/resources/application.properties) | HTTP 8080; PostgreSQL localhost:5432/paysprint |
+| Auth service | [Auth setup](../../apps/auth-service/README.md) and [database configuration](../../apps/auth-service/src/config/database.config.ts) | HTTP 3001; PostgreSQL localhost:5433/auth_db |
+| Local containers | [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) | Separate business and auth database volumes |
+| Jenkins | [Pipeline](../../infrastructure/jenkins/Jenkinsfile), [Compose](../../infrastructure/docker-compose/docker-compose.jenkins.yml) | Jenkins UI on host port 8888 |
+
+Java reads SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, and SPRING_DATASOURCE_PASSWORD. Auth reads DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, PORT, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, and JWT_ISSUER. Node startup loads .env from its working directory; Compose must receive the appropriate environment file explicitly.
+
+In local Compose, DB_PASSWORD configures the business database and AUTH_DB_PASSWORD configures the auth database. Inside the auth container, the latter is assigned to DB_PASSWORD. Do not confuse those scopes. Defaults are for disposable local development; production credentials and signing keys must come from managed secrets.
+
+## Local operation
+
+Follow [development setup](development.md) for key generation and database startup. From repository root:
+
+```sh
+docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml ps
+docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml logs --tail 100 db auth-db
+```
+
+The Java backend service in local Compose still uses build context '.' relative to the Compose directory and maps 8081, while the app defaults to 8080. Run Java through Maven until that configuration is corrected. The UI has no active Compose service. No production Compose file or Kubernetes deployment is supplied.
+
+Auth GET /health reports process liveness, not database readiness. Check startup logs and database connectivity separately. Database volumes persist across ordinary container shutdown; removing volumes deletes their data. Back up retained data before schema or volume changes and verify restoration in a separate database.
+
+## CI and artifacts
+
+The Jenkins pipeline expects a native agent with the Maven tool named Maven3 and a Java 21 installation at its configured JAVA_HOME. It runs Java tests, auth Vitest tests, and Angular tests. See the pipeline for exact stage behavior.
+
+| Suite | Outputs |
+| --- | --- |
+| Java | apps/business-backend/target/surefire-reports |
+| Auth | apps/auth-service/coverage and reports/junit |
+| UI | apps/business-logic-ui/coverage |
+
+Auth CI runs npm ci then npm run test:ci. Frontend CI currently uses npm install --legacy-peer-deps followed by npm test -- --no-watch --coverage. This differs from the preferred root npm ci developer installation. Do not silently treat an absent test tool or empty required report as success.
+
+The optional [Jenkins image](../../infrastructure/docker/Dockerfile.jenkins) installs Node 20, which does not meet the current Angular engine requirement. The Jenkins Compose example also mounts the host Docker socket and contains development credentials. Review toolchains, credentials, and access before deployment; it is not a production-ready configuration.
+
+Javadoc generation is a required Java change check described in [development](development.md#javadocs); the current Jenkinsfile does not run or publish it automatically. Generate into the backend target directory, then refresh the checked-in docs/JAVA_DOCS copy after successful verification.
+
+## Troubleshooting
+
+- Connection refused: confirm database containers are healthy, published ports are free, and the app uses host names appropriate to its environment. Host auth connections use port 5433; containers use auth-db:5432.
+- Missing business tables: apply the documented disposable bootstrap in the [database guide](../reference/database.md); Java does not run Flyway automatically.
+- Auth startup fails on keys: generate an RSA pair, replace placeholder values, and preserve literal backslash-n escapes. Run from the auth directory so .env loads.
+- JWT verification fails: check the signing/public key pair and expiry. The current Passport strategy does not enforce issuer/audience; do not assume it does.
+- Logout appears successful but refresh still works: see the documented [API limitation](../reference/api.md#current-logout-limitation).
+- Jenkins fails before tests: verify the configured Java/Maven paths and Node version on the actual agent, not just the optional image.
+- UI renders but login does not reach an API: form submission is not yet wired to a service. See [architecture](../reference/architecture.md).
