@@ -57,7 +57,7 @@ If the role or database already exists, skip the command that created it.
 
 ### Apply the schema
 
-Connect pgAdmin Query Tool to the `trading_season` database, then run these files in order:
+Connect pgAdmin Query Tool to the `trading_season` database as the `trading_season` user, then run these files in order. Tables belong to the user that creates them, so running the files as your admin user leaves `trading_season` without table access even though it owns the database.
 
 1. `apps/business-backend/db/migrations/V001__Initial_schema.sql`
 2. `apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql`
@@ -81,6 +81,29 @@ ORDER BY table_name;
 ```
 
 You should see tables such as `users`, `sessions`, `stocks`, `simulation_sessions`, `quotes`, `market_ticks`, and `candles`.
+
+Confirm that `trading_season` owns them:
+
+```sql
+SELECT tablename, tableowner
+FROM pg_tables
+WHERE schemaname = 'public'
+ORDER BY tablename;
+```
+
+If another user owns the tables, scripts connecting as `trading_season` fail with `InsufficientPrivilegeError: permission denied for table ...`. A wrong password fails earlier, at login, with `InvalidPasswordError`. To fix ownership, connect to the `trading_season` database as the owning admin user and run:
+
+```sql
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
+    EXECUTE format('ALTER TABLE public.%I OWNER TO trading_season', r.tablename);
+  END LOOP;
+END $$;
+```
+
+Changing a table's owner also transfers its indexes and owned sequences.
 
 ### Optional synthetic market data generation and import
 
