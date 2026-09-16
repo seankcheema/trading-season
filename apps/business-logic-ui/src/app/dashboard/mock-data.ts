@@ -109,6 +109,7 @@ export interface PricePoint {
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
+const MARKET_TIMEZONE = 'America/Chicago';
 
 // Fixed "latest market close" rather than `new Date()`, so prerendered HTML matches what the
 // client hydrates. Times are market wall-clock values stored as UTC; format them with the
@@ -128,9 +129,12 @@ function tradingDayCloses(calendarDays: number): number[] {
   });
 }
 
-function mockTimestamps(timeframe: Timeframe): number[] {
+function mockTimestamps(timeframe: Timeframe, endTime?: number): number[] {
   switch (timeframe) {
     case '1D':
+      if (endTime !== undefined) {
+        return intradayTimestamps(endTime);
+      }
       // 9:30am to 4:00pm in 15 minute bars.
       return steps(MOCK_LAST_CLOSE, 15 * MINUTE, 27);
     case '5D':
@@ -144,16 +148,81 @@ function mockTimestamps(timeframe: Timeframe): number[] {
   }
 }
 
+// Builds an elapsed-session series in the simulated market timezone. The final point is
+// always the replay cursor, even when it falls between the regular 15-minute samples.
+function intradayTimestamps(endTime: number): number[] {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: MARKET_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(endTime);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value);
+  const marketOpen = zonedTimeToUtc(
+    value('year'),
+    value('month') - 1,
+    value('day'),
+    9,
+    30,
+    MARKET_TIMEZONE,
+  );
+
+  if (endTime <= marketOpen) {
+    return [endTime];
+  }
+
+  const timestamps: number[] = [];
+  for (let time = marketOpen; time <= endTime; time += 15 * MINUTE) {
+    timestamps.push(time);
+  }
+  if (timestamps[timestamps.length - 1] !== endTime) {
+    timestamps.push(endTime);
+  }
+  return timestamps;
+}
+
+function zonedTimeToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  timezone: string,
+): number {
+  const localAsUtc = Date.UTC(year, month, day, hour, minute);
+  const offsetParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(localAsUtc);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(offsetParts.find((part) => part.type === type)?.value);
+  const representedAsUtc = Date.UTC(
+    value('year'),
+    value('month') - 1,
+    value('day'),
+    value('hour'),
+    value('minute'),
+  );
+  return localAsUtc - (representedAsUtc - localAsUtc);
+}
+
 // Deterministic fake price history ending at `endValue`, so charts look stable across renders
 // (and SSR/hydration).
 export function mockPriceSeries(
   seed: string,
   timeframe: Timeframe,
   endValue: number,
-  endTime = MOCK_LAST_CLOSE,
+  endTime?: number,
 ): PricePoint[] {
-  const timestamps = mockTimestamps(timeframe);
-  const offset = endTime - timestamps[timestamps.length - 1];
+  const timestamps = mockTimestamps(timeframe, endTime);
+  const resolvedEndTime = endTime ?? MOCK_LAST_CLOSE;
+  const offset = resolvedEndTime - timestamps[timestamps.length - 1];
   const shiftedTimestamps = timestamps.map((time) => time + offset);
 
   let state = 0;

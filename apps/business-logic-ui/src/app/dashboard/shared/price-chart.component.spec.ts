@@ -66,6 +66,14 @@ describe('PriceChartComponent', () => {
     expect(marker?.style.left).toBe('50%');
   });
 
+  it('should show a smaller current price dot at the end of the trail', () => {
+    const fixture = setup();
+    const marker: HTMLElement | null = fixture.nativeElement.querySelector('.price-current-marker');
+    expect(marker?.style.left).toBe('100%');
+    expect(marker?.classList).toContain('size-2');
+    expect(marker?.classList).toContain('z-10');
+  });
+
   it('should show a fallback dot when there are no chart points', () => {
     const fixture = setup('1D', []);
     const marker: HTMLElement | null = fixture.nativeElement.querySelector('.price-current-marker');

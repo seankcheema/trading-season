@@ -38,6 +38,19 @@ describe('DashboardComponent', () => {
     expect(fixture.componentInstance).toBeTruthy();
   });
 
+  it('should limit the portfolio chart to the elapsed market session', () => {
+    const component = TestBed.createComponent(DashboardComponent).componentInstance;
+    component['currentMarketTimestamp'].set('2026-01-05T16:00:00Z');
+
+    const points = component['portfolioChart']();
+
+    expect(points[0].time.toISOString()).toBe('2026-01-05T15:30:00.000Z');
+    expect(points[points.length - 1].time.toISOString()).toBe('2026-01-05T16:00:00.000Z');
+    expect(points.every((point) => point.time.getTime() <= Date.parse('2026-01-05T16:00:00Z'))).toBe(
+      true,
+    );
+  });
+
   it('should not show the order submission dialog initially', () => {
     const fixture = TestBed.createComponent(DashboardComponent);
     fixture.detectChanges();

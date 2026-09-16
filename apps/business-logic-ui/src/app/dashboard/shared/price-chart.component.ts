@@ -178,7 +178,7 @@ interface MarkerPoint {
 
         @if (persistentPoint(); as point) {
           <div
-            class="price-current-marker ring-card pointer-events-none absolute z-10 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-sm ring-2"
+            class="price-current-marker ring-card pointer-events-none absolute z-10 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-sm ring-2"
             [class]="trendingUp() ? 'bg-gain' : 'bg-loss'"
             [style.left.%]="point.x"
             [style.top.%]="point.y"
@@ -303,7 +303,7 @@ export class PriceChartComponent {
     const point = this.describePoint(points.length - 1);
     return point
       ? {
-          x: this.clampMarkerPosition(point.x),
+          x: point.x,
           y: this.clampMarkerPosition(point.y),
         }
       : null;

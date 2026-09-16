@@ -242,6 +242,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       `portfolio-${this.selectedAccountId()}`,
       this.portfolioTimeframe(),
       this.netWorth(),
+      this.marketTimeMillis() ?? undefined,
     ),
   );
 
