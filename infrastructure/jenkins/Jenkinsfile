@@ -8,7 +8,9 @@ pipeline {
         // infrastructure/docker/Dockerfile.jenkins, so nothing in this repo
         // controls which tools exist there.
         maven 'Maven'
-        nodejs 'NodeJS'
+        // This Jenkins tool must be configured to install Node 22.22.3.
+        // Angular 22.1 rejects earlier Node 22 releases.
+        nodejs 'NodeJS 22.22.3'
     }
 
     environment {
@@ -23,6 +25,17 @@ pipeline {
     }
     
     stages {
+        stage('Verify Toolchain') {
+            steps {
+                sh '''
+                    set -eu
+                    node --version
+                    npm --version
+                    node -e 'const [major, minor, patch] = process.versions.node.split(".").map(Number); if (major !== 22 || minor < 22 || (minor === 22 && patch < 3)) { console.error(`Node ${process.versions.node} is unsupported. Configure the Jenkins NodeJS tool named "NodeJS 22.22.3" with Node 22.22.3 or newer on the 22.x line.`); process.exit(1); }'
+                '''
+            }
+        }
+
         stage('Checkout') {
             steps {
                 checkout scm

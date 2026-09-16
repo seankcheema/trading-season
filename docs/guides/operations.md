@@ -7,7 +7,7 @@
 | Java backend | [application.properties](../../apps/business-backend/src/main/resources/application.properties) | HTTP 8081; PostgreSQL localhost:5432/trading_season |
 | Auth service | [Auth setup](../../apps/auth-service/README.md) and [database configuration](../../apps/auth-service/src/config/database.config.ts) | HTTP 3001; PostgreSQL localhost:5433/auth_db |
 | Local containers | [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) | Business/auth database volumes and archive cache |
-| Jenkins | [Pipeline](../../infrastructure/jenkins/Jenkinsfile), [Compose](../../infrastructure/docker-compose/docker-compose.jenkins.yml) | Jenkins UI on host port 8888 |
+| Jenkins | [Pipeline](../../infrastructure/jenkins/Jenkinsfile), [troubleshooting](../../infrastructure/jenkins/README.md), [Compose](../../infrastructure/docker-compose/docker-compose.jenkins.yml) | Jenkins UI on host port 8888 |
 
 Java reads SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, and SPRING_DATASOURCE_PASSWORD. Auth reads DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, PORT, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, and JWT_ISSUER. Node startup loads .env from its working directory; Compose must receive the appropriate environment file explicitly.
 
@@ -32,7 +32,7 @@ Because the seed container cannot inspect free space inside the separate Postgre
 
 ## CI and artifacts
 
-The Jenkins pipeline expects a native agent with Docker, the Maven tool named Maven, and Java 21 at its configured JAVA_HOME. It runs Java, auth, Angular, script, and build-scoped two-day PostgreSQL integration checks. Full-year generation remains on demand.
+The Jenkins pipeline expects a native agent with Docker, the Maven tool named Maven, the NodeJS tool named `NodeJS 22.22.3` configured with Node 22.22.3 or newer on the 22.x line, and Java 21 at its configured JAVA_HOME. Its first stage verifies the Node runtime before dependency installation. It runs Java, auth, Angular, script, and build-scoped two-day PostgreSQL integration checks. Full-year generation remains on demand.
 
 | Suite | Outputs |
 | --- | --- |
@@ -54,5 +54,6 @@ Javadoc generation is a required Java change check described in [development](de
 - JWT verification fails: check the signing/public key pair and expiry. The current Passport strategy does not enforce issuer/audience; do not assume it does.
 - Logout appears successful but refresh still works: see the documented [API limitation](../reference/api.md#current-logout-limitation).
 - Jenkins fails before tests: verify the configured Java/Maven paths and Node version on the actual agent, not just the optional image.
+- Jenkins or Docker reports `No space left on device`: follow the [Jenkins disk-space runbook](../../infrastructure/jenkins/README.md) to identify the active Jenkins home, measure usage, and remove only confirmed disposable data.
 - Synthetic market-data CI derives Docker resource names from a normalized hash of the Jenkins build tag, so encoded multibranch names such as `%2F` do not need special handling. The stage creates and removes build-scoped database and archive volumes; do not pre-seed PostgreSQL or generate a persistent archive on the Jenkins VM.
 - UI renders but login does not reach an API: form submission is not yet wired to a service. See [architecture](../reference/architecture.md).
