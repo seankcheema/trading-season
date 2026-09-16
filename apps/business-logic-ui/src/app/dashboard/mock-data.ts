@@ -1,9 +1,9 @@
 // Placeholder data for the dashboard skeleton.
 // TODO: replace with the portfolio / market data services once the backend endpoints exist.
 
-export type Timeframe = '1D' | '5D' | '1W' | '1M' | '1Y';
+export type Timeframe = '1D' | '5D' | '1M' | '1Y';
 
-export const TIMEFRAMES: readonly Timeframe[] = ['1D', '5D', '1W', '1M', '1Y'];
+export const TIMEFRAMES: readonly Timeframe[] = ['1D', '5D', '1M', '1Y'];
 
 export type OrderSide = 'buy' | 'sell';
 
@@ -137,8 +137,6 @@ function mockTimestamps(timeframe: Timeframe): number[] {
       return tradingDayCloses(7)
         .slice(-5)
         .flatMap((close) => steps(close, HOUR, 7));
-    case '1W':
-      return tradingDayCloses(7).flatMap((close) => steps(close, 30 * MINUTE, 14));
     case '1M':
       return tradingDayCloses(30);
     case '1Y':

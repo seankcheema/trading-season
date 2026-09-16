@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { PriceChartComponent } from './price-chart.component';
 import { mockPriceSeries } from '../mock-data';
+import { TimeframeToggleComponent } from './timeframe-toggle.component';
 
 describe('PriceChartComponent', () => {
   beforeEach(async () => {
@@ -36,6 +37,15 @@ describe('PriceChartComponent', () => {
     ]);
   });
 
+  it('should render a right-side value axis with currency labels', () => {
+    const fixture = setup();
+    const component = fixture.componentInstance;
+    const ticks = component['yTicks']();
+    expect(ticks).toHaveLength(5);
+    expect(ticks.every((tick) => tick.label.startsWith('$'))).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain(ticks[0].label);
+  });
+
   it('should show the value and time of the hovered point', () => {
     const fixture = setup();
     fixture.componentInstance['hoverIndex'].set(26);
@@ -44,6 +54,9 @@ describe('PriceChartComponent', () => {
     expect(hovered?.valueLabel).toBe('$100.00');
     expect(hovered?.timeLabel).toBe('4:00 PM');
     expect(fixture.nativeElement.textContent).toContain('$100.00');
+    expect(fixture.nativeElement.querySelector('.price-hover-marker')?.textContent).toContain(
+      '$100.00',
+    );
   });
 
   it('should keep the tooltip out of the plot and hidden until hovered', () => {
@@ -65,5 +78,23 @@ describe('PriceChartComponent', () => {
     expect(fixture.componentInstance['hoverIndex']()).toBe(25);
     plot.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home' }));
     expect(fixture.componentInstance['hoverIndex']()).toBe(0);
+  });
+});
+
+describe('TimeframeToggleComponent', () => {
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [TimeframeToggleComponent],
+    }).compileComponents();
+  });
+
+  it('should not render the removed 1W timeframe', () => {
+    const fixture = TestBed.createComponent(TimeframeToggleComponent);
+    fixture.detectChanges();
+    const labels = Array.from(fixture.nativeElement.querySelectorAll('button')).map((button) =>
+      (button as HTMLButtonElement).textContent?.trim(),
+    );
+    expect(labels).toEqual(['1D', '5D', '1M', '1Y']);
+    expect(fixture.nativeElement.textContent).not.toContain('1W');
   });
 });
