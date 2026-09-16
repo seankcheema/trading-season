@@ -1,6 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { OrderSubmissionComponent } from './order-submission.component';
 import { Instrument } from '../mock-data';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 
 const INSTRUMENT: Instrument = {
   symbol: 'AAPL',
@@ -23,6 +25,7 @@ describe('OrderSubmissionComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [OrderSubmissionComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
     }).compileComponents();
   });
 
@@ -53,5 +56,34 @@ describe('OrderSubmissionComponent', () => {
     expect(emitted).toEqual([
       { accountId: 'personal', symbol: 'AAPL', side: 'buy', shares: 2, price: 316.59 },
     ]);
+  });
+
+  it('should resolve the active instrument from live input updates', () => {
+    const fixture = setup();
+    const component = fixture.componentInstance;
+    fixture.componentRef.setInput('instruments', [{ ...INSTRUMENT, price: 400, change: 99 }]);
+
+    expect(component['activeInstrument']().price).toBe(400);
+    expect(component['maxShares']()).toBe(25);
+    component['shares'].set(2);
+
+    const emitted: unknown[] = [];
+    component.submitted.subscribe((order) => emitted.push(order));
+    component['submit']();
+
+    expect(component['orderValue']()).toBe(800);
+    expect(emitted).toEqual([
+      { accountId: 'personal', symbol: 'AAPL', side: 'buy', shares: 2, price: 400 },
+    ]);
+  });
+
+  it('should end the fallback chart at the current market time', () => {
+    const fixture = setup();
+    const component = fixture.componentInstance;
+    fixture.componentRef.setInput('marketTimestamp', '2026-01-05T14:45:00Z');
+
+    const points = component['chartPoints']();
+
+    expect(points[points.length - 1].time.toISOString()).toBe('2026-01-05T14:45:00.000Z');
   });
 });

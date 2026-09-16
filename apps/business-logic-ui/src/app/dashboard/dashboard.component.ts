@@ -1,4 +1,5 @@
 import { CurrencyPipe, DOCUMENT, DatePipe, isPlatformBrowser } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -11,7 +12,12 @@ import {
   signal,
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideCalendarClock, lucideChevronDown } from '@ng-icons/lucide';
+import {
+  lucideBriefcaseBusiness,
+  lucideCalendarClock,
+  lucideCheck,
+  lucideChevronDown,
+} from '@ng-icons/lucide';
 import {
   Instrument,
   MOCK_ACCOUNTS,
@@ -24,12 +30,25 @@ import {
   findInstrument,
   mockPriceSeries,
 } from './mock-data';
-import { MarketDataService, MarketSnapshot, MarketTickEvent } from './market-data.service';
+import {
+  MarketCalendarAvailability,
+  MarketDataService,
+  MarketSnapshot,
+  MarketTickEvent,
+} from './market-data.service';
 import { OrderSubmissionComponent } from './order-submission/order-submission.component';
+import { DashboardHeaderDropdownComponent } from './shared/dashboard-header-dropdown.component';
 import { InstrumentSearchComponent } from './shared/instrument-search.component';
 import { PriceChartComponent } from './shared/price-chart.component';
 import { SignedPercentPipe } from './shared/signed-percent.pipe';
 import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
+
+const DEFAULT_MARKET_CALENDAR: MarketCalendarAvailability = {
+  timezone: 'America/Chicago',
+  firstTimestamp: '2026-01-01T14:30:00Z',
+  lastTimestamp: '2026-12-31T20:59:59Z',
+  tradingDates: marketWeekdays(2026),
+};
 
 @Component({
   selector: 'app-dashboard',
@@ -37,6 +56,7 @@ import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
   imports: [
     CurrencyPipe,
     DatePipe,
+    DashboardHeaderDropdownComponent,
     InstrumentSearchComponent,
     NgIcon,
     OrderSubmissionComponent,
@@ -44,7 +64,9 @@ import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
     SignedPercentPipe,
     TimeframeToggleComponent,
   ],
-  providers: [provideIcons({ lucideCalendarClock, lucideChevronDown })],
+  providers: [
+    provideIcons({ lucideBriefcaseBusiness, lucideCalendarClock, lucideCheck, lucideChevronDown }),
+  ],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.css',
 })
@@ -60,22 +82,76 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   protected readonly accounts = MOCK_ACCOUNTS;
   protected readonly selectedAccountId = signal(MOCK_ACCOUNTS[0].id);
+  protected readonly selectedAccount = computed(
+    () => this.accounts.find((account) => account.id === this.selectedAccountId()) ?? this.accounts[0],
+  );
   protected readonly cashBalance = signal(MOCK_CASH_BALANCE);
-  protected readonly tickerInstruments = signal<Instrument[]>(MOCK_INSTRUMENTS.slice(0, 6));
+  protected readonly instruments = signal<Instrument[]>([...MOCK_INSTRUMENTS]);
+  protected readonly tickerInstruments = computed(() => this.instruments().slice(0, 6));
   protected readonly changedSymbols = signal(new Set<string>());
   protected readonly flashDirections = signal<Record<string, number>>({});
   protected readonly portfolioTimeframe = signal<Timeframe>('1D');
   protected readonly marketSessionId = signal<number | null>(null);
+  protected readonly currentMarketTimestamp = signal('');
+  protected readonly marketCalendar = signal<MarketCalendarAvailability>(DEFAULT_MARKET_CALENDAR);
   protected readonly marketDateTime = signal('');
   protected readonly clockError = signal('');
   protected readonly clockUpdating = signal(false);
+  protected readonly marketClockLabel = computed(() =>
+    this.currentMarketTimestamp()
+      ? this.formatMarketTime(this.currentMarketTimestamp(), {
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZoneName: 'short',
+        })
+      : 'Market time',
+  );
+  protected readonly marketClockRangeLabel = computed(() => {
+    const calendar = this.marketCalendar();
+    return `${this.formatMarketTime(calendar.firstTimestamp, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    })} - ${this.formatMarketTime(calendar.lastTimestamp, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    })}`;
+  });
+  protected readonly marketClockShortRangeLabel = computed(() => {
+    const calendar = this.marketCalendar();
+    return `${this.formatMarketTime(calendar.firstTimestamp, {
+      month: 'short',
+      day: 'numeric',
+    })} - ${this.formatMarketTime(calendar.lastTimestamp, {
+      month: 'short',
+      day: 'numeric',
+    })}`;
+  });
+  protected readonly marketDateTimeMin = computed(() => {
+    const calendar = this.marketCalendar();
+    return this.isoToMarketLocal(calendar.firstTimestamp);
+  });
+  protected readonly marketDateTimeMax = computed(() => {
+    const calendar = this.marketCalendar();
+    return this.isoToMarketLocal(calendar.lastTimestamp);
+  });
 
-  // Instrument currently open in the order submission dialog, if any.
-  protected readonly orderInstrument = signal<Instrument | null>(null);
+  // Symbol currently open in the order submission dialog, if any.
+  private readonly orderSymbol = signal<string | null>(null);
+  protected readonly orderInstrument = computed(() => {
+    const symbol = this.orderSymbol();
+    return symbol ? findInstrument(symbol, this.instruments()) ?? null : null;
+  });
 
   protected readonly holdings = computed(() =>
     MOCK_HOLDINGS.flatMap((holding) => {
-      const instrument = findInstrument(holding.symbol);
+      const instrument = findInstrument(holding.symbol, this.instruments());
       if (!instrument) {
         return [];
       }
@@ -88,7 +164,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   protected readonly transactions = computed(() =>
     MOCK_TRANSACTIONS.map((transaction) => {
-      const current = findInstrument(transaction.symbol)?.price ?? transaction.price;
+      const current =
+        findInstrument(transaction.symbol, this.instruments())?.price ?? transaction.price;
       const direction = transaction.side === 'buy' ? 1 : -1;
       return {
         ...transaction,
@@ -139,12 +216,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.selectedAccountId.set((event.target as HTMLSelectElement).value);
   }
 
+  protected selectAccount(accountId: string, event: Event): void {
+    this.selectedAccountId.set(accountId);
+    (event.currentTarget as HTMLElement).closest('details')?.removeAttribute('open');
+  }
+
   protected openOrder(instrument: Instrument): void {
-    this.orderInstrument.set(instrument);
+    this.orderSymbol.set(instrument.symbol);
   }
 
   protected closeOrder(): void {
-    this.orderInstrument.set(null);
+    this.orderSymbol.set(null);
   }
 
   protected onOrderSubmitted(order: OrderRequest): void {
@@ -165,19 +247,27 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.marketDateTime.set((event.target as HTMLInputElement).value);
   }
 
-  protected applyMarketDateTime(): void {
+  protected applyMarketDateTime(value = this.marketDateTime()): void {
     const sessionId = this.marketSessionId();
-    const value = this.marketDateTime();
-    if (sessionId === null || !value) return;
+    this.marketDateTime.set(value);
+    if (sessionId === null || !value) {
+      return;
+    }
+    const resolved = this.resolveMarketDateTime(value);
+    if (resolved.error) {
+      this.clockError.set(resolved.error);
+      return;
+    }
+    this.marketDateTime.set(resolved.value);
     this.clockUpdating.set(true);
     this.clockError.set('');
-    this.marketData.setClock(sessionId, this.marketLocalToIso(value)).subscribe({
+    this.marketData.setClock(sessionId, this.marketLocalToIso(resolved.value)).subscribe({
       next: (snapshot) => {
         this.applySnapshot(snapshot);
         this.clockUpdating.set(false);
       },
-      error: () => {
-        this.clockError.set('Choose a seeded trading date and market time.');
+      error: (error: HttpErrorResponse) => {
+        this.clockError.set(this.clockErrorMessage(error));
         this.clockUpdating.set(false);
       },
     });
@@ -195,6 +285,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.clearQueuedUpdates();
     this.marketGeneration++;
     this.marketSessionId.set(snapshot.sessionId);
+    this.currentMarketTimestamp.set(snapshot.marketTimestamp);
+    this.marketCalendar.set(snapshot.calendar);
     this.marketDateTime.set(this.isoToMarketLocal(snapshot.marketTimestamp));
     const instruments = snapshot.stocks.map((stock) => {
       this.openingPrices.set(stock.symbol, stock.price - stock.change);
@@ -206,7 +298,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         changePercent: stock.changePercent,
       };
     });
-    this.tickerInstruments.set(instruments);
+    this.instruments.set(instruments);
     this.disconnectMarket = this.marketData.connect(snapshot.sessionId, {
       tick: (event) => this.queueTickBatch(event),
       status: () => undefined,
@@ -219,6 +311,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       return;
     }
     const generation = this.marketGeneration;
+    this.zone.run(() => this.currentMarketTimestamp.set(event.marketTimestamp));
     for (const tick of event.prices) {
       const timer = setTimeout(
         () => {
@@ -234,8 +327,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private applyTick(symbol: string, price: number): void {
     const previous =
-      this.tickerInstruments().find((stock) => stock.symbol === symbol)?.price ?? price;
-    this.tickerInstruments.update((stocks) =>
+      this.instruments().find((stock) => stock.symbol === symbol)?.price ?? price;
+    this.instruments.update((stocks) =>
       stocks.map((stock) => {
         if (stock.symbol !== symbol) return stock;
         const open = this.openingPrices.get(symbol) ?? price;
@@ -243,10 +336,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
         return { ...stock, price, change, changePercent: open ? (change / open) * 100 : 0 };
       }),
     );
+    const previousCents = Math.round(previous * 100);
+    const nextCents = Math.round(price * 100);
+    if (previousCents === nextCents) {
+      return;
+    }
     this.changedSymbols.update((symbols) => new Set(symbols).add(symbol));
     this.flashDirections.update((directions) => ({
       ...directions,
-      [symbol]: Math.sign(price - previous),
+      [symbol]: Math.sign(nextCents - previousCents),
     }));
     const flashTimer = setTimeout(() => {
       this.updateTimers.delete(flashTimer);
@@ -286,6 +384,70 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
   }
 
+  private resolveMarketDateTime(value: string): { value: string; error: string } {
+    const calendar = this.marketCalendar();
+    const selected = value.slice(0, 10);
+    const min = this.marketDateTimeMin();
+    const max = this.marketDateTimeMax();
+    if ((min && value < min) || (max && value > max)) {
+      return {
+        value,
+        error: `This simulation has market data from ${this.marketClockRangeLabel()}.`,
+      };
+    }
+    if (!calendar.tradingDates.includes(selected)) {
+      const replacement = this.nearestLoadedDateInMonth(selected);
+      if (!replacement) {
+        return {
+          value,
+          error: `${this.formatMarketDate(selected)} is not in this simulation archive. Choose one of the loaded trading dates.`,
+        };
+      }
+      return { value: `${replacement}${value.slice(10)}`, error: '' };
+    }
+    return { value, error: '' };
+  }
+
+  private nearestLoadedDateInMonth(value: string): string {
+    const calendar = this.marketCalendar();
+    const month = value.slice(0, 7);
+    const dates = calendar.tradingDates.filter((date) => date.startsWith(month));
+    const next = dates.find((date) => date >= value);
+    if (next) return next;
+    for (let index = dates.length - 1; index >= 0; index--) {
+      if (dates[index] <= value) return dates[index];
+    }
+    return '';
+  }
+
+  private clockErrorMessage(error: HttpErrorResponse): string {
+    const message = typeof error.error?.error === 'string' ? error.error.error : '';
+    return message || `Unable to update the market clock. Available range: ${this.marketClockRangeLabel()}.`;
+  }
+
+  private formatMarketDate(value: string): string {
+    const [year, month, day] = value.split('-').map(Number);
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(new Date(Date.UTC(year, month - 1, day)));
+  }
+
+  private formatMarketTime(
+    timestamp: string,
+    options: Intl.DateTimeFormatOptions,
+  ): string {
+    const calendar = this.marketCalendar();
+    return new Intl.DateTimeFormat('en-US', {
+      ...options,
+      timeZone: calendar?.timezone ?? 'America/Chicago',
+    })
+      .format(new Date(timestamp))
+      .replace(/\bC[DS]T\b/, 'CT');
+  }
+
   private marketLocalToIso(value: string): string {
     const [date, time] = value.split('T');
     const [year, month, day] = date.split('-').map(Number);
@@ -316,4 +478,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
     return new Date(instant).toISOString();
   }
+}
+
+function marketWeekdays(year: number): string[] {
+  const dates: string[] = [];
+  for (
+    let time = Date.UTC(year, 0, 1);
+    time <= Date.UTC(year, 11, 31);
+    time += 24 * 60 * 60 * 1000
+  ) {
+    const day = new Date(time).getUTCDay();
+    if (day !== 0 && day !== 6) {
+      dates.push(new Date(time).toISOString().slice(0, 10));
+    }
+  }
+  return dates;
 }

@@ -24,7 +24,10 @@
     <div class="grid md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
       <!-- Instrument details -->
       <div class="md:border-border flex min-w-0 flex-col p-5 md:border-r">
-        <app-instrument-search (selected)="activeInstrument.set($event)" />
+        <app-instrument-search
+          [instruments]="instruments()"
+          (selected)="activeSymbol.set($event.symbol)"
+        />
 
         <div class="mt-5 flex items-center gap-3">
           <div
@@ -54,7 +57,12 @@
           </p>
           <app-timeframe-toggle [(value)]="timeframe" />
         </div>
-        <app-price-chart class="mt-3 h-56" [points]="chartPoints()" [timeframe]="timeframe()" />
+        <app-price-chart
+          class="mt-3 h-56"
+          [points]="chartPoints()"
+          [timeframe]="timeframe()"
+          timezone="America/Chicago"
+        />
       </div>
 
       <!-- Order ticket -->

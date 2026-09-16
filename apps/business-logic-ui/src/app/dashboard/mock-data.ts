@@ -80,16 +80,22 @@ export const MOCK_TRANSACTIONS: readonly Transaction[] = [
   { symbol: 'AAPL', side: 'buy', shares: 4, price: 280.1, date: '2026-08-21' },
 ];
 
-export function findInstrument(symbol: string): Instrument | undefined {
-  return MOCK_INSTRUMENTS.find((instrument) => instrument.symbol === symbol);
+export function findInstrument(
+  symbol: string,
+  instruments: readonly Instrument[] = MOCK_INSTRUMENTS,
+): Instrument | undefined {
+  return instruments.find((instrument) => instrument.symbol === symbol);
 }
 
-export function searchInstruments(query: string): Instrument[] {
+export function searchInstruments(
+  query: string,
+  instruments: readonly Instrument[] = MOCK_INSTRUMENTS,
+): Instrument[] {
   const term = query.trim().toLowerCase();
   if (!term) {
     return [];
   }
-  return MOCK_INSTRUMENTS.filter(
+  return instruments.filter(
     (instrument) =>
       instrument.symbol.toLowerCase().includes(term) || instrument.name.toLowerCase().includes(term),
   );
@@ -142,8 +148,15 @@ function mockTimestamps(timeframe: Timeframe): number[] {
 
 // Deterministic fake price history ending at `endValue`, so charts look stable across renders
 // (and SSR/hydration).
-export function mockPriceSeries(seed: string, timeframe: Timeframe, endValue: number): PricePoint[] {
+export function mockPriceSeries(
+  seed: string,
+  timeframe: Timeframe,
+  endValue: number,
+  endTime = MOCK_LAST_CLOSE,
+): PricePoint[] {
   const timestamps = mockTimestamps(timeframe);
+  const offset = endTime - timestamps[timestamps.length - 1];
+  const shiftedTimestamps = timestamps.map((time) => time + offset);
 
   let state = 0;
   for (const char of seed + timeframe) {
@@ -161,5 +174,5 @@ export function mockPriceSeries(seed: string, timeframe: Timeframe, endValue: nu
   }
 
   const scale = endValue / walk[walk.length - 1];
-  return timestamps.map((time, i) => ({ time: new Date(time), value: walk[i] * scale }));
+  return shiftedTimestamps.map((time, i) => ({ time: new Date(time), value: walk[i] * scale }));
 }

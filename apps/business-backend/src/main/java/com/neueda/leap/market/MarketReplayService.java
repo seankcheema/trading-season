@@ -13,6 +13,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayDeque;
@@ -30,6 +31,8 @@ import static com.neueda.leap.market.MarketResponses.*;
 @Service
 public class MarketReplayService {
     private static final ZoneId MARKET_ZONE = ZoneId.of("America/Chicago");
+    private static final LocalTime MARKET_OPEN = LocalTime.of(8, 30);
+    private static final LocalTime MARKET_CLOSE = LocalTime.of(14, 59, 59);
     private static final int EVENT_HISTORY = 30;
     private static final int MAX_POINTS = 500;
 
@@ -78,7 +81,8 @@ public class MarketReplayService {
                 return new StockSnapshot(tick.symbol(), names.getOrDefault(tick.symbol(), tick.symbol()),
                         tick.price(), change, percent, tick.timestamp());
             }).toList();
-            return new Snapshot(state.session.id(), "OPEN", frame.timestamp(), clock.instant(), stocks);
+            return new Snapshot(state.session.id(), "OPEN", frame.timestamp(), clock.instant(),
+                    availability(state), stocks);
         }
     }
 
@@ -110,23 +114,30 @@ public class MarketReplayService {
 
     /**
      * Seeks the shared replay cursor to the closest seeded tick at or before an instant.
+     * Requests for non-trading dates inside an imported month use the nearest seeded day
+     * in that month, preferring the next seeded day.
      * @param requestedSessionId optional completed simulation identifier
      * @param timestamp desired simulated market timestamp
      * @return synchronized prices at the selected cursor
-     * @throws MarketRequestException when the date has no seeded trading data
+     * @throws MarketRequestException when the month has no seeded trading data
      */
     public Snapshot setClock(Long requestedSessionId, Instant timestamp) {
         ReplayState state = state(requestedSessionId);
-        LocalDate day = timestamp.atZone(MARKET_ZONE).toLocalDate();
+        ZonedDateTime requestedMarketTime = timestamp.atZone(MARKET_ZONE);
+        LocalDate requestedDay = requestedMarketTime.toLocalDate();
         synchronized (state) {
+            LocalDate day = resolveReplayDay(state.days, requestedDay);
             int dayIndex = state.days.indexOf(day);
             if (dayIndex < 0) {
                 throw new MarketRequestException("Selected date has no seeded trading data");
             }
+            Instant replayTimestamp = day.atTime(requestedMarketTime.toLocalTime())
+                    .atZone(MARKET_ZONE)
+                    .toInstant();
             List<MarketModels.Frame> frames = requireFrames(state.session, day);
             int frameIndex = 0;
             for (int i = 0; i < frames.size(); i++) {
-                if (!frames.get(i).timestamp().isAfter(timestamp)) frameIndex = i;
+                if (!frames.get(i).timestamp().isAfter(replayTimestamp)) frameIndex = i;
                 else break;
             }
             state.dayIndex = dayIndex;
@@ -242,22 +253,50 @@ public class MarketReplayService {
     }
 
     private List<MarketModels.Frame> requireFrames(MarketModels.Session session, LocalDate day) {
-        List<MarketModels.Frame> frames = repository.ticksForDay(session, day);
-        if (frames.isEmpty()) throw new IllegalStateException("Simulation trading day has no ticks");
+        List<MarketModels.Frame> frames;
+        try {
+            frames = repository.ticksForDay(session, day);
+        } catch (RuntimeException | LinkageError ex) {
+            throw new MarketRequestException("Selected date has no replay prices available");
+        }
+        if (frames.isEmpty()) throw new MarketRequestException("Selected date has no replay prices available");
         return frames;
+    }
+
+    private LocalDate resolveReplayDay(List<LocalDate> days, LocalDate requestedDay) {
+        if (days.contains(requestedDay)) return requestedDay;
+        YearMonth requestedMonth = YearMonth.from(requestedDay);
+        return days.stream()
+                .filter(day -> YearMonth.from(day).equals(requestedMonth))
+                .filter(day -> !day.isBefore(requestedDay))
+                .findFirst()
+                .or(() -> days.stream()
+                        .filter(day -> YearMonth.from(day).equals(requestedMonth))
+                        .filter(day -> !day.isAfter(requestedDay))
+                        .reduce((first, second) -> second))
+                .orElse(requestedDay);
     }
 
     private Instant rangeStart(ReplayState state, MarketTimeframe timeframe, Instant cursor) {
         if (timeframe == MarketTimeframe.ONE_DAY) {
-            return cursor.atZone(MARKET_ZONE).toLocalDate().atTime(8, 30).atZone(MARKET_ZONE).toInstant();
+            return cursor.atZone(MARKET_ZONE).toLocalDate().atTime(MARKET_OPEN).atZone(MARKET_ZONE).toInstant();
         }
         if (timeframe == MarketTimeframe.FIVE_DAYS) {
             LocalDate current = cursor.atZone(MARKET_ZONE).toLocalDate();
             List<LocalDate> eligible = state.days.stream().filter(day -> !day.isAfter(current)).toList();
             LocalDate first = eligible.get(Math.max(0, eligible.size() - 5));
-            return first.atTime(8, 30).atZone(MARKET_ZONE).toInstant();
+            return first.atTime(MARKET_OPEN).atZone(MARKET_ZONE).toInstant();
         }
         return cursor.minus(timeframe.lookback());
+    }
+
+    private CalendarAvailability availability(ReplayState state) {
+        LocalDate first = state.days.getFirst();
+        LocalDate last = state.days.getLast();
+        return new CalendarAvailability(MARKET_ZONE.getId(),
+                first.atTime(MARKET_OPEN).atZone(MARKET_ZONE).toInstant(),
+                last.atTime(MARKET_CLOSE).atZone(MARKET_ZONE).toInstant(),
+                state.days);
     }
 
     private List<CandlePoint> aggregate(List<MarketModels.Candle> raw, MarketTimeframe timeframe) {

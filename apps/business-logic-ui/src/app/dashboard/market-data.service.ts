@@ -17,7 +17,15 @@ export interface MarketSnapshot {
   status: string;
   marketTimestamp: string;
   serverTimestamp: string;
+  calendar: MarketCalendarAvailability;
   stocks: MarketStock[];
+}
+
+export interface MarketCalendarAvailability {
+  timezone: string;
+  firstTimestamp: string;
+  lastTimestamp: string;
+  tradingDates: string[];
 }
 
 export interface CandlePointDto {

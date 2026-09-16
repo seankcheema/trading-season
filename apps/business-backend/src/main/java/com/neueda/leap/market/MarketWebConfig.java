@@ -33,8 +33,8 @@ public class MarketWebConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/market/**").allowedOrigins(allowedOrigins).allowedMethods("GET")
-                .allowedHeaders("Last-Event-ID").maxAge(3600);
+        registry.addMapping("/api/market/**").allowedOrigins(allowedOrigins).allowedMethods("GET", "PUT", "OPTIONS")
+                .allowedHeaders("Content-Type", "Last-Event-ID").maxAge(3600);
     }
 
     @Override

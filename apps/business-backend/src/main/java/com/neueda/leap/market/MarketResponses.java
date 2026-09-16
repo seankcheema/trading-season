@@ -2,6 +2,7 @@ package com.neueda.leap.market;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 /** Public response records for the market-data API. */
@@ -26,15 +27,26 @@ public final class MarketResponses {
     public record StockSnapshot(String symbol, String companyName, BigDecimal price,
                          BigDecimal change, BigDecimal changePercent, Instant timestamp) { }
     /**
+     * Available simulated market clock range for a replay session.
+     * @param timezone IANA timezone used by the market replay calendar
+     * @param firstTimestamp first selectable seeded timestamp
+     * @param lastTimestamp last selectable seeded timestamp
+     * @param tradingDates seeded trading dates in market-local time
+     */
+    public record CalendarAvailability(String timezone, Instant firstTimestamp,
+                         Instant lastTimestamp, List<LocalDate> tradingDates) { }
+    /**
      * Complete ticker snapshot at one replay cursor.
      * @param sessionId simulation identifier
      * @param status replay market status
      * @param marketTimestamp simulated market time
      * @param serverTimestamp response creation time
+     * @param calendar available seeded clock range for the simulation
      * @param stocks current stock values
      */
     public record Snapshot(long sessionId, String status, Instant marketTimestamp,
-                    Instant serverTimestamp, List<StockSnapshot> stocks) { }
+                    Instant serverTimestamp, CalendarAvailability calendar,
+                    List<StockSnapshot> stocks) { }
     /**
      * One aggregated OHLCV chart bucket.
      * @param timestamp bucket start

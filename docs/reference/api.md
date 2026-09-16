@@ -25,10 +25,23 @@ The API defaults to the newest completed simulation session when `sessionId` is 
 
 | Method and path | Request | Success |
 | --- | --- | --- |
-| GET /api/market/snapshot | Optional `sessionId` | Resolved simulation, replay cursor, market status, and every seeded stock's company name, current price, current-session change, percentage change, and tick timestamp |
+| GET /api/market/snapshot | Optional `sessionId` | Resolved simulation, replay cursor, market status, available clock range, and every seeded stock's company name, current price, current-session change, percentage change, and tick timestamp |
 | GET /api/market/candles | Optional `sessionId`; required `symbol` and `timeframe` (`1D`, `5D`, `1W`, `1M`, or `1Y`) | At most 500 chronological OHLCV buckets ending at the current replay cursor |
 | GET /api/market/stream | Optional `sessionId`; optional `Last-Event-ID` request header | Server-sent event stream containing one synchronized price batch per simulated market second |
-| PUT /api/market/clock | Optional `sessionId`; JSON `timestamp` as an ISO-8601 instant | Moves the shared replay cursor to the closest seeded tick at or before that time and returns a snapshot; dates without seeded trading data return 400 |
+| PUT /api/market/clock | Optional `sessionId`; JSON `timestamp` as an ISO-8601 instant | Moves the shared replay cursor to the closest seeded tick at or before that time and returns a snapshot; non-trading dates inside an imported month use the nearest loaded trading date in that month, preferring the next trading date; months without seeded trading data return 400 |
+
+Snapshots include a `calendar` object that describes the selectable imported archive range:
+
+```json
+{
+  "timezone": "America/Chicago",
+  "firstTimestamp": "2026-01-05T14:30:00Z",
+  "lastTimestamp": "2026-12-31T20:59:59Z",
+  "tradingDates": ["2026-01-05", "2026-01-06"]
+}
+```
+
+Manual clock changes are limited to the months imported for the resolved simulation session. A local development database can contain a small date range rather than the full generated dataset, so clients should validate against `tradingDates`, `firstTimestamp`, and `lastTimestamp` before calling `PUT /api/market/clock`. If a user selects a weekend or other non-trading date inside an imported month, clients may adjust to the nearest loaded trading date in that month before sending the request; the backend applies the same rule for direct API callers.
 
 ### Candle aggregation
 
@@ -69,7 +82,7 @@ The stream sends a heartbeat every 15 events and retains the latest 30 events fo
 
 ### Data access and safeguards
 
-The replay service supports ticks stored either in PostgreSQL or in the archive location recorded in simulation metadata. It loads only the current trading day's required tick columns into a bounded server-side buffer, so emitting each second does not issue another database query or rescan a Parquet file.
+The replay service supports ticks stored either in PostgreSQL or in the archive location recorded in simulation metadata. It loads only the current trading day's required tick columns into a bounded server-side buffer, so emitting each second does not issue another database query or rescan a Parquet file. When a Parquet tick partition is unavailable but one-minute candles exist for the selected day, replay falls back to candle-close frames so manual clock changes still work at minute granularity.
 
 These endpoints are unauthenticated simulator operations; the clock change affects the shared replay for the selected simulation session. The implementation enforces configured CORS origins, validated and bounded parameters, REST rate limits, per-client and global stream connection limits, parameterized database queries, and sanitized request errors. Filesystem paths are never accepted from a request; Parquet access is derived only from trusted simulation metadata.
 

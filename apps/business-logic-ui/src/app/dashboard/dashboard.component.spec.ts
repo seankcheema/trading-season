@@ -1,8 +1,16 @@
 import { TestBed } from '@angular/core/testing';
 import { DashboardComponent } from './dashboard.component';
-import { MOCK_INSTRUMENTS } from './mock-data';
+import { Instrument, MOCK_INSTRUMENTS } from './mock-data';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { vi } from 'vitest';
+
+const CALENDAR = {
+  timezone: 'America/Chicago',
+  firstTimestamp: '2026-01-05T14:30:00Z',
+  lastTimestamp: '2026-01-06T20:59:59Z',
+  tradingDates: ['2026-01-05', '2026-01-06'],
+};
 
 describe('DashboardComponent', () => {
   beforeEach(async () => {
@@ -43,5 +51,238 @@ describe('DashboardComponent', () => {
       price: MOCK_INSTRUMENTS[0].price,
     });
     expect(component['orderInstrument']()).toBeNull();
+  });
+
+  it('should render account and market time dropdowns in the right header controls', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+
+    const controls = fixture.nativeElement.querySelector(
+      '[data-testid="dashboard-header-controls"]',
+    ) as HTMLElement;
+    const children = Array.from(controls.children).map((child) =>
+      (child as HTMLElement).getAttribute('data-testid'),
+    );
+
+    expect(children.slice(0, 2)).toEqual(['account-dropdown', 'market-clock-dropdown']);
+  });
+
+  it('should update the selected account from the custom account dropdown', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    const component = fixture.componentInstance;
+    fixture.detectChanges();
+
+    const accountDropdown = fixture.nativeElement.querySelector(
+      '[data-testid="account-dropdown"]',
+    ) as HTMLElement;
+    const accountButtons = accountDropdown.querySelectorAll('button[role="menuitemradio"]');
+    (accountButtons[1] as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(component['selectedAccountId']()).toBe('retirement');
+    expect(accountDropdown.textContent).toContain('Retirement Account');
+  });
+
+  it('should submit the current typed market time when applying the clock', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    const component = fixture.componentInstance;
+    const http = TestBed.inject(HttpTestingController);
+    component['marketSessionId'].set(2026001);
+
+    component['applyMarketDateTime']('2026-01-05T08:30');
+
+    const request = http.expectOne('/api/market/clock?sessionId=2026001');
+    expect(request.request.method).toBe('PUT');
+    expect(request.request.body).toEqual({ timestamp: '2026-01-05T14:30:00.000Z' });
+    request.flush({
+      sessionId: 2026001,
+      status: 'OPEN',
+      marketTimestamp: '2026-01-05T14:30:00Z',
+      serverTimestamp: '2026-01-05T14:30:00Z',
+      calendar: CALENDAR,
+      stocks: [],
+    });
+    expect(component['clockError']()).toBe('');
+  });
+
+  it('should submit September market close minutes in Central time', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    const component = fixture.componentInstance;
+    const http = TestBed.inject(HttpTestingController);
+    component['marketSessionId'].set(2026001);
+    component['marketCalendar'].set({
+      timezone: 'America/Chicago',
+      firstTimestamp: '2026-01-01T14:30:00Z',
+      lastTimestamp: '2026-12-31T20:59:59Z',
+      tradingDates: ['2026-09-01'],
+    });
+
+    component['applyMarketDateTime']('2026-09-01T14:59');
+
+    const request = http.expectOne('/api/market/clock?sessionId=2026001');
+    expect(request.request.body).toEqual({ timestamp: '2026-09-01T19:59:00.000Z' });
+    request.flush({
+      sessionId: 2026001,
+      status: 'OPEN',
+      marketTimestamp: '2026-09-01T19:59:00Z',
+      serverTimestamp: '2026-09-01T19:59:00Z',
+      calendar: CALENDAR,
+      stocks: [],
+    });
+  });
+
+  it('should show the backend clock error when the backend rejects the selected time', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    const component = fixture.componentInstance;
+    const http = TestBed.inject(HttpTestingController);
+    component['marketSessionId'].set(2026001);
+
+    component['applyMarketDateTime']('2026-01-05T08:30');
+
+    http.expectOne('/api/market/clock?sessionId=2026001').flush(
+      { error: 'Selected date has no seeded trading data' },
+      { status: 400, statusText: 'Bad Request' },
+    );
+    expect(component['clockError']()).toBe('Selected date has no seeded trading data');
+  });
+
+  it('should display the current simulated time in the market clock trigger', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.componentInstance['applySnapshot']({
+      sessionId: 2026001,
+      status: 'OPEN',
+      marketTimestamp: '2026-01-05T14:30:00Z',
+      serverTimestamp: '2026-01-05T14:30:00Z',
+      calendar: CALENDAR,
+      stocks: [],
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Jan 5, 8:30 AM CT');
+  });
+
+  it('should show shortened copy in the market clock dropdown', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.componentInstance['applySnapshot']({
+      sessionId: 2026001,
+      status: 'OPEN',
+      marketTimestamp: '2026-01-05T14:30:00Z',
+      serverTimestamp: '2026-01-05T14:30:00Z',
+      calendar: CALENDAR,
+      stocks: [],
+    });
+    fixture.detectChanges();
+
+    const dropdown = fixture.nativeElement.querySelector(
+      '[data-testid="market-clock-dropdown"]',
+    ) as HTMLElement;
+    expect(dropdown.textContent).toContain('Range: Jan 5 - Jan 6');
+    expect(dropdown.textContent).not.toContain('Loaded range');
+    expect(dropdown.textContent).toContain('Apply time');
+  });
+
+  it('should set datetime bounds from the simulation calendar', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.componentInstance['applySnapshot']({
+      sessionId: 2026001,
+      status: 'OPEN',
+      marketTimestamp: '2026-01-05T14:30:00Z',
+      serverTimestamp: '2026-01-05T14:30:00Z',
+      calendar: CALENDAR,
+      stocks: [],
+    });
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector('#market-date-time') as HTMLInputElement;
+    expect(input.min).toBe('2026-01-05T08:30');
+    expect(input.max).toBe('2026-01-06T14:59');
+  });
+
+  it('should validate dates outside the simulation range before calling the backend', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    const component = fixture.componentInstance;
+    const http = TestBed.inject(HttpTestingController);
+    component['marketSessionId'].set(2026001);
+    component['marketCalendar'].set(CALENDAR);
+
+    component['applyMarketDateTime']('2026-01-04T08:30');
+
+    http.expectNone('/api/market/clock?sessionId=2026001');
+    expect(component['clockError']()).toContain('market data from Jan 5');
+  });
+
+  it('should apply the next loaded trading date when the selected day is not seeded', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    const component = fixture.componentInstance;
+    const http = TestBed.inject(HttpTestingController);
+    const calendarWithGap = {
+      ...CALENDAR,
+      lastTimestamp: '2026-01-08T20:59:59Z',
+      tradingDates: ['2026-01-05', '2026-01-08'],
+    };
+    component['marketSessionId'].set(2026001);
+    component['marketCalendar'].set(calendarWithGap);
+
+    component['applyMarketDateTime']('2026-01-06T08:30');
+
+    const request = http.expectOne('/api/market/clock?sessionId=2026001');
+    expect(request.request.body).toEqual({ timestamp: '2026-01-08T14:30:00.000Z' });
+    expect(component['marketDateTime']()).toBe('2026-01-08T08:30');
+    request.flush({
+      sessionId: 2026001,
+      status: 'OPEN',
+      marketTimestamp: '2026-01-08T14:30:00Z',
+      serverTimestamp: '2026-01-08T14:30:00Z',
+      calendar: calendarWithGap,
+      stocks: [],
+    });
+    expect(component['clockError']()).toBe('');
+  });
+
+  it('should still reject dates in months with no loaded trading dates', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    const component = fixture.componentInstance;
+    const http = TestBed.inject(HttpTestingController);
+    component['marketSessionId'].set(2026001);
+    component['marketCalendar'].set({
+      ...CALENDAR,
+      firstTimestamp: '2026-01-05T14:30:00Z',
+      lastTimestamp: '2026-03-31T19:59:59Z',
+      tradingDates: ['2026-01-05', '2026-03-02'],
+    });
+
+    component['applyMarketDateTime']('2026-02-02T08:30');
+
+    http.expectNone('/api/market/clock?sessionId=2026001');
+    expect(component['clockError']()).toBe(
+      'Feb 2, 2026 is not in this simulation archive. Choose one of the loaded trading dates.',
+    );
+  });
+
+  it('should flash ticker rows only when the rendered price changes', () => {
+    vi.useFakeTimers();
+    const fixture = TestBed.createComponent(DashboardComponent);
+    const component = fixture.componentInstance;
+    const instrument: Instrument = {
+      symbol: 'AAPL',
+      name: 'Apple Inc.',
+      price: 100,
+      change: 0,
+      changePercent: 0,
+    };
+    component['instruments'].set([instrument]);
+
+    component['applyTick']('AAPL', 100.004);
+
+    expect(component['instruments']()[0].price).toBe(100.004);
+    expect(component['changedSymbols']().has('AAPL')).toBe(false);
+
+    component['applyTick']('AAPL', 100.01);
+
+    expect(component['changedSymbols']().has('AAPL')).toBe(true);
+    expect(component['flashDirections']()['AAPL']).toBe(1);
+    vi.advanceTimersByTime(221);
+    expect(component['changedSymbols']().has('AAPL')).toBe(false);
+    vi.useRealTimers();
   });
 });

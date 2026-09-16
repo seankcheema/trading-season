@@ -5,59 +5,72 @@
       <div class="flex items-center gap-2.5">
         <img src="2b-waves.svg" alt="" class="size-8 shrink-0" />
         <span class="hidden text-lg font-semibold tracking-tight sm:inline">TradingSeason</span>
-        <details class="relative">
-          <summary
-            class="border-border bg-card hover:bg-muted flex h-9 cursor-pointer list-none items-center gap-2 rounded-lg border px-3 text-sm transition-colors"
-          >
-            <ng-icon name="lucideCalendarClock" class="text-[16px]" />
-            <span class="hidden md:inline">Market time</span>
-            <ng-icon name="lucideChevronDown" class="text-muted-foreground text-[14px]" />
-          </summary>
-          <div
-            class="border-border bg-card absolute top-11 left-0 z-30 w-72 rounded-xl border p-3 shadow-xl"
-          >
-            <label for="market-date-time" class="dash-label">Simulated date and time</label>
-            <input
-              id="market-date-time"
-              type="datetime-local"
-              class="border-border bg-background mt-2 h-9 w-full rounded-lg border px-3 text-sm"
-              [value]="marketDateTime()"
-              (change)="onMarketDateTimeChange($event)"
-            />
-            @if (clockError()) {
-              <p class="text-loss mt-2 text-xs">{{ clockError() }}</p>
-            }
-            <button
-              type="button"
-              class="bg-primary text-primary-foreground mt-3 h-9 w-full rounded-lg text-sm font-medium disabled:opacity-50"
-              [disabled]="clockUpdating() || !marketDateTime()"
-              (click)="applyMarketDateTime()"
-            >
-              {{ clockUpdating() ? 'Updating…' : 'Apply market time' }}
-            </button>
-          </div>
-        </details>
       </div>
 
-      <div class="flex min-w-0 items-center gap-2 md:gap-3">
-        <label for="account-select" class="sr-only">Account</label>
-        <div class="relative min-w-0 flex-1 md:flex-none">
-          <ng-icon
-            name="lucideChevronDown"
-            class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-[16px]"
-          />
-          <select
-            id="account-select"
-            class="border-border bg-card hover:bg-muted focus-visible:border-ring h-9 w-full min-w-0 cursor-pointer appearance-none rounded-lg border pr-3 pl-9 text-sm transition-colors outline-none md:w-auto"
-            (change)="onAccountChange($event)"
-          >
+      <div
+        class="flex min-w-0 items-center justify-end gap-2 md:gap-3"
+        data-testid="dashboard-header-controls"
+      >
+        <app-dashboard-header-dropdown
+          data-testid="account-dropdown"
+          iconName="lucideBriefcaseBusiness"
+          [label]="selectedAccount().name"
+          ariaLabel="Select account"
+          triggerClass="w-[min(12rem,34vw)] sm:w-52 md:w-60"
+          panelClass="w-64"
+        >
+          <div class="p-1" role="menu" aria-label="Accounts">
             @for (account of accounts; track account.id) {
-              <option [value]="account.id" [selected]="account.id === selectedAccountId()">
-                {{ account.name }}
-              </option>
+              <button
+                type="button"
+                role="menuitemradio"
+                class="hover:bg-muted flex h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-sm transition-colors"
+                [attr.aria-checked]="account.id === selectedAccountId()"
+                (click)="selectAccount(account.id, $event)"
+              >
+                <span class="min-w-0 flex-1 truncate">{{ account.name }}</span>
+                @if (account.id === selectedAccountId()) {
+                  <ng-icon name="lucideCheck" class="text-primary shrink-0 text-[16px]" />
+                }
+              </button>
             }
-          </select>
-        </div>
+          </div>
+        </app-dashboard-header-dropdown>
+
+        <app-dashboard-header-dropdown
+          data-testid="market-clock-dropdown"
+          iconName="lucideCalendarClock"
+          [label]="marketClockLabel()"
+          ariaLabel="Change simulated market time"
+          triggerClass="w-[min(11rem,30vw)] sm:w-44 md:w-48"
+          panelClass="w-72 p-3"
+        >
+          <p class="text-sm font-medium tabular-nums">{{ marketClockLabel() }}</p>
+          <p class="text-muted-foreground mt-1 text-xs">Range: {{ marketClockShortRangeLabel() }}</p>
+          <label for="market-date-time" class="dash-label mt-3 block">Simulated time</label>
+          <input
+            #marketDateTimeInput
+            id="market-date-time"
+            type="datetime-local"
+            class="border-border bg-background mt-2 h-9 w-full rounded-lg border px-3 text-sm"
+            [value]="marketDateTime()"
+            [attr.min]="marketDateTimeMin()"
+            [attr.max]="marketDateTimeMax()"
+            (input)="onMarketDateTimeChange($event)"
+            (change)="onMarketDateTimeChange($event)"
+          />
+          @if (clockError()) {
+            <p class="text-loss mt-2 text-xs">{{ clockError() }}</p>
+          }
+          <button
+            type="button"
+            class="bg-primary text-primary-foreground mt-3 h-9 w-full rounded-lg text-sm font-medium disabled:opacity-50"
+            [disabled]="clockUpdating() || !marketDateTime() || marketSessionId() === null"
+            (click)="applyMarketDateTime(marketDateTimeInput.value)"
+          >
+            {{ clockUpdating() ? 'Updating…' : 'Apply time' }}
+          </button>
+        </app-dashboard-header-dropdown>
 
         <!-- TODO: replace with the signed-in user's avatar -->
         <div
@@ -73,7 +86,7 @@
     <main class="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2.25fr)]">
       <!-- Left column -->
       <div class="flex min-w-0 flex-col gap-3 lg:min-h-0">
-        <app-instrument-search (selected)="openOrder($event)" />
+        <app-instrument-search [instruments]="instruments()" (selected)="openOrder($event)" />
 
         <section class="net-worth-card dash-card shrink-0 p-5">
           <h2 class="dash-label">Net Worth</h2>
@@ -293,6 +306,9 @@
 @if (orderInstrument(); as instrument) {
   <app-order-submission
     [instrument]="instrument"
+    [instruments]="instruments()"
+    [sessionId]="marketSessionId()"
+    [marketTimestamp]="currentMarketTimestamp()"
     [accountId]="selectedAccountId()"
     [cashBalance]="cashBalance()"
     [positions]="positions()"

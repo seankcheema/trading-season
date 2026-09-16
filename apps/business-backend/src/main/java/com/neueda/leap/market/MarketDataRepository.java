@@ -69,14 +69,20 @@ public class MarketDataRepository implements MarketDataSource {
     }
 
     /**
-     * Loads one trading day's synchronized tick frames from PostgreSQL or Parquet.
+     * Loads one trading day's synchronized tick frames from PostgreSQL, Parquet, or candle fallback.
      * @param session resolved simulation metadata
      * @param day trading date
      * @return chronological synchronized frames
      */
     public List<MarketModels.Frame> ticksForDay(MarketModels.Session session, LocalDate day) {
-        return "postgres".equals(session.storageMode())
-                ? postgresTicks(session.id(), day) : parquetTicks(session, day);
+        if ("postgres".equals(session.storageMode())) {
+            return postgresTicks(session.id(), day);
+        }
+        try {
+            return parquetTicks(session, day);
+        } catch (RuntimeException | LinkageError ex) {
+            return candleFrames(session.id(), day);
+        }
     }
 
     /**
@@ -139,9 +145,28 @@ public class MarketDataRepository implements MarketDataSource {
                             rs.getBigDecimal(3), rs.getLong(4)));
                 }
             }
-        } catch (Exception ex) {
+        } catch (Throwable ex) {
             throw new IllegalStateException("Unable to load the simulation tick partition", ex);
         }
+        return frames(ticks);
+    }
+
+    private List<MarketModels.Frame> candleFrames(long sessionId, LocalDate day) {
+        Instant from = day.atTime(8, 30).atZone(MARKET_ZONE).toInstant();
+        Instant to = day.plusDays(1).atStartOfDay(MARKET_ZONE).toInstant();
+        List<MarketModels.Tick> ticks = new ArrayList<>();
+        jdbc.query("SELECT symbol, \"timestamp\", close FROM candles "
+                        + "WHERE session_id = ? AND \"interval\" = '1m' "
+                        + "AND \"timestamp\" >= ? AND \"timestamp\" < ? ORDER BY \"timestamp\", symbol",
+                rs -> {
+                    long sequence = 1;
+                    while (rs.next()) {
+                        ticks.add(new MarketModels.Tick(rs.getString(1), rs.getTimestamp(2).toInstant(),
+                                rs.getBigDecimal(3), sequence++));
+                    }
+                    return null;
+                },
+                sessionId, java.sql.Timestamp.from(from), java.sql.Timestamp.from(to));
         return frames(ticks);
     }
 
