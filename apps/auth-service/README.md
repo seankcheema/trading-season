@@ -3,8 +3,6 @@
 NestJS authentication service with PostgreSQL, RS256 access tokens, opaque refresh-token rotation, JWKS, and a liveness endpoint. See the [API reference](../../docs/reference/api.md) for contracts and the existing logout limitation.
 
 ## UML Diagram 
-# Business Logic UI (Middle Tier) - Service Layer UML Diagram
-## Class Diagram - Service Layer Architecture & Entity Relationships
 
 ```mermaid
 classDiagram
@@ -110,7 +108,8 @@ classDiagram
     AuthInterceptor --> JwtPayload : "attaches in header"
 ```
 
-##  Class Descriptions 
+##  Sequence Diagrams
+[Register Sequence Diagram](./Register-Sequence-Diagram.md)
 
 
 

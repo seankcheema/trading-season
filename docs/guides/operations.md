@@ -9,7 +9,7 @@
 | Local containers | [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) | Business/auth database volumes and archive cache |
 | Jenkins | [Pipeline](../../infrastructure/jenkins/Jenkinsfile), [Compose](../../infrastructure/docker-compose/docker-compose.jenkins.yml) | Jenkins UI on host port 8888 |
 
-Java reads SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, and SPRING_DATASOURCE_PASSWORD. Auth reads DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, PORT, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, and JWT_ISSUER. Node startup loads .env from its working directory; Compose must receive the appropriate environment file explicitly.
+Java reads SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD, AUTH_JWK_SET_URI, AUTH_JWT_ISSUER, and CORS_ORIGINS. AUTH_JWT_ISSUER must equal the auth service's JWT_ISSUER or every token is rejected. Auth reads DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, PORT, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, and JWT_ISSUER. Node startup loads .env from its working directory; Compose must receive the appropriate environment file explicitly.
 
 In local Compose, DB_PASSWORD configures the business database and AUTH_DB_PASSWORD configures the auth database. Inside the auth container, the latter is assigned to DB_PASSWORD. Do not confuse those scopes. Defaults are for disposable local development; production credentials and signing keys must come from managed secrets.
 
@@ -51,7 +51,7 @@ Javadoc generation is a required Java change check described in [development](de
 - Connection refused: confirm database containers are healthy, published ports are free, and the app uses host names appropriate to its environment. Host auth connections use port 5433; containers use auth-db:5432.
 - Missing business tables: apply the documented disposable bootstrap in the [database guide](../reference/database.md); Java does not run Flyway automatically.
 - Auth startup fails on keys: generate an RSA pair, replace placeholder values, and preserve literal backslash-n escapes. Run from the auth directory so .env loads.
-- JWT verification fails: check the signing/public key pair and expiry. The current Passport strategy does not enforce issuer/audience; do not assume it does.
+- JWT verification fails: check the signing/public key pair and expiry. The Java backend returns 401 when the JWKS at AUTH_JWK_SET_URI is unreachable, the signature does not match, the token has expired, iss differs from AUTH_JWT_ISSUER, or sub is not a UUID. Java caches the key set for five minutes and refetches early when a token carries an unknown kid; the auth service derives kid from the public key, so a key rotation is picked up on the first token signed with the new key. The auth service's own Passport strategy does not enforce issuer/audience; do not assume it does.
 - Logout appears successful but refresh still works: see the documented [API limitation](../reference/api.md#current-logout-limitation).
 - Jenkins fails before tests: verify the configured Java/Maven paths and Node version on the actual agent, not just the optional image.
 - Synthetic market-data CI derives Docker resource names from a normalized hash of the Jenkins build tag, so encoded multibranch names such as `%2F` do not need special handling. The stage creates and removes build-scoped database and archive volumes; do not pre-seed PostgreSQL or generate a persistent archive on the Jenkins VM.

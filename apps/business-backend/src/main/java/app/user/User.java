@@ -11,7 +11,11 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * User entity representing a user in the system.
+ * A trader or admin's business account: profile, funds and account settings.
+ *
+ * <p>The primary key is the auth service's user UUID, carried as the access
+ * token's {@code sub} claim. Credentials, lockout and login history live only in
+ * the auth service.
  */
 @Entity
 @Table(name = "users")
@@ -21,9 +25,6 @@ public class User {
     @Column(name = "user_id", updatable = false, nullable = false)
     private UUID userId;
 
-    @Column(nullable = false, unique = true)
-    private String username;
-
     @Column(name = "first_name", nullable = false)
     private String firstName;
 
@@ -32,9 +33,6 @@ public class User {
 
     @Column(name = "last_name", nullable = false)
     private String lastName;
-
-    @Column(name = "password_hash", nullable = false)
-    private String passwordHash;
 
     @Column(nullable = false, unique = true)
     private String email;
@@ -66,15 +64,6 @@ public class User {
     @Column(name = "execution_buffer_percent", nullable = false)
     private BigDecimal executionBufferPercent = BigDecimal.ZERO;
 
-    @Column(name = "failed_login_attempts", nullable = false)
-    private Integer failedLoginAttempts = 0;
-
-    @Column(name = "locked_until")
-    private OffsetDateTime lockedUntil;
-
-    @Column(name = "last_login_at")
-    private OffsetDateTime lastLoginAt;
-
     @Column(name = "last_activity_at")
     private OffsetDateTime lastActivityAt;
 
@@ -87,14 +76,6 @@ public class User {
 
     public void setUserId(UUID userId) {
         this.userId = userId;
-    }
-
-    public String getUsername() {
-        return username;
-    }
-
-    public void setUsername(String username) {
-        this.username = username;
     }
 
     public String getFirstName() {
@@ -119,14 +100,6 @@ public class User {
 
     public void setLastName(String lastName) {
         this.lastName = lastName;
-    }
-
-    public String getPasswordHash() {
-        return passwordHash;
-    }
-
-    public void setPasswordHash(String passwordHash) {
-        this.passwordHash = passwordHash;
     }
 
     public String getEmail() {
@@ -207,30 +180,6 @@ public class User {
 
     public void setExecutionBufferPercent(BigDecimal executionBufferPercent) {
         this.executionBufferPercent = executionBufferPercent;
-    }
-
-    public Integer getFailedLoginAttempts() {
-        return failedLoginAttempts;
-    }
-
-    public void setFailedLoginAttempts(Integer failedLoginAttempts) {
-        this.failedLoginAttempts = failedLoginAttempts;
-    }
-
-    public OffsetDateTime getLockedUntil() {
-        return lockedUntil;
-    }
-
-    public void setLockedUntil(OffsetDateTime lockedUntil) {
-        this.lockedUntil = lockedUntil;
-    }
-
-    public OffsetDateTime getLastLoginAt() {
-        return lastLoginAt;
-    }
-
-    public void setLastLoginAt(OffsetDateTime lastLoginAt) {
-        this.lastLoginAt = lastLoginAt;
     }
 
     public OffsetDateTime getLastActivityAt() {

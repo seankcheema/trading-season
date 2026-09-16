@@ -7,15 +7,25 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.context.WebApplicationContext;
 import tools.jackson.databind.ObjectMapper;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
@@ -36,9 +46,6 @@ class AuthControllerIntegrationTest {
     @Autowired
     private UserRepository userRepository;
 
-    @Autowired
-    private SessionRepository sessionRepository;
-
     @BeforeEach
     void cleanDatabase() {
         mockMvc = webAppContextSetup(webApplicationContext).build();
@@ -46,148 +53,194 @@ class AuthControllerIntegrationTest {
         userRepository.deleteAll();
     }
 
-    @Test
-    void registerSuccessfully() throws Exception {
-        RegisterRequest request = new RegisterRequest(
-            "alice",
-            "alice@example.com",
-            "Password123!",
+    /** A verified token for the given auth-service user, as the resource server would see it. */
+    static RequestPostProcessor tokenFor(UUID userId, String email) {
+        return jwt().jwt(token -> token
+            .subject(userId.toString())
+            .claim("email", email)
+            .claim("roles", List.of("TRADER")));
+    }
+
+    static RegisterRequest registration(String email) {
+        return new RegisterRequest(
+            email,
             "Alice",
             null,
             "Anderson",
             "123-45-6789",
             "1 Main St",
-            LocalDate.of(1990, 1, 1)
+            LocalDate.of(1990, 1, 1),
+            "BEGINNER",
+            new BigDecimal("5000.00")
         );
+    }
 
-        mockMvc.perform(post("/api/auth/register")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+    private ResultActions register(RequestPostProcessor token, Object body) throws Exception {
+        var request = post("/api/auth/register")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(body));
+        if (token != null) {
+            request.with(token);
+        }
+        return mockMvc.perform(request);
+    }
+
+    private ResultActions accountExists(Object body) throws Exception {
+        return mockMvc.perform(post("/api/auth/account-exists")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(body)));
+    }
+
+    // Registration
+
+    @Test
+    void registerSuccessfullyUsesTokenSubjectAsUserId() throws Exception {
+        UUID userId = UUID.randomUUID();
+
+        register(tokenFor(userId, "alice@example.com"), registration("alice@example.com"))
             .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.username").value("alice"))
+            .andExpect(jsonPath("$.userId").value(userId.toString()))
             .andExpect(jsonPath("$.email").value("alice@example.com"));
+
+        var saved = userRepository.findById(userId).orElseThrow();
+        assertEquals("Alice", saved.getFirstName());
+        assertEquals("BEGINNER", saved.getTraderLevel());
+        assertEquals(0, new BigDecimal("5000.00").compareTo(saved.getAvailableFunds()));
     }
 
     @Test
-    void registerFailsWithDuplicateUsername() throws Exception {
-        RegisterRequest request1 = new RegisterRequest(
-            "bob",
-            "bob@example.com",
-            "Password123!",
-            "Bob",
-            null,
-            "Brown",
-            "123-45-6789",
-            "1 Main St",
-            LocalDate.of(1990, 1, 1)
-        );
+    void registerRequiresAccessToken() throws Exception {
+        register(null, registration("alice@example.com"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, containsString("Bearer")))
+            .andExpect(jsonPath("$.error").exists());
 
+        assertEquals(0, userRepository.count());
+    }
+
+    @Test
+    void registerRejectsMalformedAccessToken() throws Exception {
         mockMvc.perform(post("/api/auth/register")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer not-a-jwt")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request1)))
+                .content(objectMapper.writeValueAsString(registration("alice@example.com"))))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.error").exists());
+
+        assertEquals(0, userRepository.count());
+    }
+
+    @Test
+    void registerFailsWhenEmailDoesNotMatchToken() throws Exception {
+        register(tokenFor(UUID.randomUUID(), "mallory@example.com"), registration("alice@example.com"))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.error").exists());
+
+        assertEquals(0, userRepository.count());
+    }
+
+    @Test
+    void registerFailsWhenAccountAlreadyRegistered() throws Exception {
+        UUID userId = UUID.randomUUID();
+        register(tokenFor(userId, "bob@example.com"), registration("bob@example.com"))
             .andExpect(status().isCreated());
 
-        RegisterRequest request2 = new RegisterRequest(
-            "bob",
-            "bob2@example.com",
-            "Password123!",
-            "Bob",
-            null,
-            "Brown",
-            "123-45-6789",
-            "1 Main St",
-            LocalDate.of(1990, 1, 1)
-        );
+        register(tokenFor(userId, "bob@example.com"), registration("bob@example.com"))
+            .andExpect(status().isConflict());
+    }
 
-        mockMvc.perform(post("/api/auth/register")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request2)))
+    @Test
+    void registerFailsWithDuplicateEmailInDifferentCase() throws Exception {
+        register(tokenFor(UUID.randomUUID(), "carol@example.com"), registration("carol@example.com"))
+            .andExpect(status().isCreated());
+
+        register(tokenFor(UUID.randomUUID(), "Carol@Example.com"), registration("Carol@Example.com"))
             .andExpect(status().isConflict());
     }
 
     @Test
     void registerFailsWithInvalidPayload() throws Exception {
+        String email = "dave@example.com";
         RegisterRequest invalid = new RegisterRequest(
-            "ab",
-            "not-an-email",
-            "short",
-            "Alice",
-            null,
-            "Anderson",
-            "123-45-6789",
-            "1 Main St",
-            LocalDate.of(1990, 1, 1)
-        );
-
-        mockMvc.perform(post("/api/auth/register")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(invalid)))
-            .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void loginSuccessfully() throws Exception {
-        RegisterRequest registerRequest = new RegisterRequest(
-            "carol",
-            "carol@example.com",
-            "Password123!",
-            "Carol",
-            null,
-            "Clark",
-            "123-45-6789",
-            "1 Main St",
-            LocalDate.of(1990, 1, 1)
-        );
-
-        mockMvc.perform(post("/api/auth/register")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(registerRequest)))
-            .andExpect(status().isCreated());
-
-        LoginRequest loginRequest = new LoginRequest("carol", "Password123!");
-
-        mockMvc.perform(post("/api/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(loginRequest)))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.sessionId").exists())
-            .andExpect(jsonPath("$.expiresAt").exists());
-    }
-
-    @Test
-    void loginFailsWithWrongPassword() throws Exception {
-        RegisterRequest registerRequest = new RegisterRequest(
-            "dave",
-            "dave@example.com",
-            "Password123!",
+            email,
             "Dave",
             null,
             "Davis",
-            "123-45-6789",
+            "123456789",  // not XXX-XX-XXXX
             "1 Main St",
-            LocalDate.of(1990, 1, 1)
+            LocalDate.now().plusDays(1),  // not in the past
+            "EXPERT",  // not a trader level
+            new BigDecimal("4999.99")  // below the minimum
         );
 
-        mockMvc.perform(post("/api/auth/register")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(registerRequest)))
-            .andExpect(status().isCreated());
+        String error = register(tokenFor(UUID.randomUUID(), email), invalid)
+            .andExpect(status().isBadRequest())
+            .andReturn().getResponse().getContentAsString();
 
-        LoginRequest loginRequest = new LoginRequest("dave", "WrongPassword!");
-
-        mockMvc.perform(post("/api/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(loginRequest)))
-            .andExpect(status().isUnauthorized());
+        for (String field : List.of("ssn", "dateOfBirth", "traderLevel", "availableFunds")) {
+            assertTrue(error.contains(field), () -> "expected a validation error for " + field + " in " + error);
+        }
+        assertEquals(0, userRepository.count());
     }
 
     @Test
-    void loginFailsForNonexistentUser() throws Exception {
-        LoginRequest loginRequest = new LoginRequest("nonexistent", "Password123!");
+    void registerFailsWhenRequiredFieldsAreMissing() throws Exception {
+        String email = "erin@example.com";
 
+        register(tokenFor(UUID.randomUUID(), email), Map.of("email", email))
+            .andExpect(status().isBadRequest());
+
+        assertEquals(0, userRepository.count());
+    }
+
+    @Test
+    void loginEndpointNoLongerExists() throws Exception {
         mockMvc.perform(post("/api/auth/login")
+                .with(tokenFor(UUID.randomUUID(), "frank@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(loginRequest)))
-            .andExpect(status().isUnauthorized());
+                .content("{\"email\":\"frank@example.com\",\"password\":\"Password123!\"}"))
+            .andExpect(status().isNotFound());
+    }
+
+    // Soft account existence check
+
+    @Test
+    void accountExistsIsFalseForUnregisteredEmail() throws Exception {
+        accountExists(Map.of("email", "nobody@example.com"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.exists").value(false));
+    }
+
+    @Test
+    void accountExistsIsTrueAfterRegistrationWithoutAccessToken() throws Exception {
+        register(tokenFor(UUID.randomUUID(), "gina@example.com"), registration("gina@example.com"))
+            .andExpect(status().isCreated());
+
+        accountExists(Map.of("email", "gina@example.com"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.exists").value(true));
+    }
+
+    @Test
+    void accountExistsIgnoresEmailCase() throws Exception {
+        register(tokenFor(UUID.randomUUID(), "hank@example.com"), registration("hank@example.com"))
+            .andExpect(status().isCreated());
+
+        accountExists(Map.of("email", "HANK@Example.COM"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.exists").value(true));
+    }
+
+    @Test
+    void accountExistsRejectsInvalidEmail() throws Exception {
+        accountExists(Map.of("email", "not-an-email"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").value(containsString("email")));
+    }
+
+    @Test
+    void accountExistsRejectsMissingEmail() throws Exception {
+        accountExists(Map.of())
+            .andExpect(status().isBadRequest());
     }
 }

@@ -8,171 +8,143 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @Tag("unit")
 class AuthServiceUnitTest {
 
+    private static final UUID USER_ID = UUID.fromString("7c9e6679-7425-40de-944b-e07fc1f90ae7");
+
     @Mock
     private UserRepository userRepository;
-
-    @Mock
-    private SessionRepository sessionRepository;
-
-    @Mock
-    private PasswordEncoder passwordEncoder;
 
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(userRepository, sessionRepository, passwordEncoder);
+        authService = new AuthService(userRepository);
     }
 
-    @Test
-    void registerSuccessfully() {
-        RegisterRequest request = new RegisterRequest(
-            "testuser",
-            "test@example.com",
-            "Password123!",
+    private static RegisterRequest request(String email) {
+        return new RegisterRequest(
+            email,
             "John",
-            null,
+            "Quincy",
             "Doe",
             "123-45-6789",
             "123 Main St",
-            LocalDate.of(1990, 1, 1)
+            LocalDate.of(1990, 1, 1),
+            "INTERMEDIATE",
+            new BigDecimal("7500.00")
         );
-
-        when(userRepository.existsByUsername("testuser")).thenReturn(false);
-        when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
-        when(passwordEncoder.encode("Password123!")).thenReturn("hashedPassword");
-
-        User savedUser = new User();
-        savedUser.setUserId(UUID.randomUUID());
-        savedUser.setUsername("testuser");
-        savedUser.setEmail("test@example.com");
-        when(userRepository.save(any(User.class))).thenReturn(savedUser);
-
-        User result = authService.register(request);
-
-        assertNotNull(result);
-        assertEquals("testuser", result.getUsername());
-        assertEquals("test@example.com", result.getEmail());
     }
 
     @Test
-    void registerFailsWithDuplicateUsername() {
-        RegisterRequest request = new RegisterRequest(
-            "testuser",
-            "test@example.com",
-            "Password123!",
-            "John",
-            null,
-            "Doe",
-            "123-45-6789",
-            "123 Main St",
-            LocalDate.of(1990, 1, 1)
-        );
+    void registerCreatesAccountKeyedByTokenSubject() {
+        AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "test@example.com");
+        when(userRepository.existsById(USER_ID)).thenReturn(false);
+        when(userRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(false);
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        when(userRepository.existsByUsername("testuser")).thenReturn(true);
+        User result = authService.register(caller, request("test@example.com"));
 
-        assertThrows(ConflictException.class, () -> authService.register(request));
+        ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(saved.capture());
+        User user = saved.getValue();
+        assertSame(user, result);
+        assertEquals(USER_ID, user.getUserId());
+        assertEquals("test@example.com", user.getEmail());
+        assertEquals("John", user.getFirstName());
+        assertEquals("Quincy", user.getMiddleName());
+        assertEquals("Doe", user.getLastName());
+        assertEquals("123-45-6789", user.getSsn());
+        assertEquals("123 Main St", user.getAddress());
+        assertEquals(LocalDate.of(1990, 1, 1), user.getDateOfBirth());
+        assertEquals("INTERMEDIATE", user.getTraderLevel());
+        assertEquals(new BigDecimal("7500.00"), user.getAvailableFunds());
+        assertNotNull(user.getCreatedAt());
+    }
+
+    @Test
+    void registerAcceptsEmailInDifferentCaseFromToken() {
+        AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "Test@Example.com");
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        User result = authService.register(caller, request("test@example.com"));
+
+        assertEquals(USER_ID, result.getUserId());
+    }
+
+    @Test
+    void registerFailsWhenEmailDoesNotMatchToken() {
+        AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "someone-else@example.com");
+
+        assertThrows(ForbiddenException.class,
+            () -> authService.register(caller, request("test@example.com")));
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void registerFailsWhenTokenHasNoEmail() {
+        AuthenticatedUser caller = new AuthenticatedUser(USER_ID, null);
+
+        assertThrows(ForbiddenException.class,
+            () -> authService.register(caller, request("test@example.com")));
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void registerFailsWhenAccountAlreadyRegistered() {
+        AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "test@example.com");
+        when(userRepository.existsById(USER_ID)).thenReturn(true);
+
+        assertThrows(ConflictException.class,
+            () -> authService.register(caller, request("test@example.com")));
+        verify(userRepository, never()).save(any());
     }
 
     @Test
     void registerFailsWithDuplicateEmail() {
-        RegisterRequest request = new RegisterRequest(
-            "testuser",
-            "test@example.com",
-            "Password123!",
-            "John",
-            null,
-            "Doe",
-            "123-45-6789",
-            "123 Main St",
-            LocalDate.of(1990, 1, 1)
-        );
+        AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "test@example.com");
+        when(userRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(true);
 
-        when(userRepository.existsByUsername("testuser")).thenReturn(false);
-        when(userRepository.existsByEmail("test@example.com")).thenReturn(true);
-
-        assertThrows(ConflictException.class, () -> authService.register(request));
+        assertThrows(ConflictException.class,
+            () -> authService.register(caller, request("test@example.com")));
+        verify(userRepository, never()).save(any());
     }
 
     @Test
-    void loginSuccessfully() {
-        User user = new User();
-        user.setUserId(UUID.randomUUID());
-        user.setUsername("testuser");
-        user.setPasswordHash("hashedPassword");
-        user.setAccountStatus("ACTIVE");
-        user.setFailedLoginAttempts(0);
-        user.setSessionTimeoutMinutes(30);
+    void accountExistsReturnsTrueForRegisteredEmail() {
+        when(userRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(true);
 
-        LoginRequest loginRequest = new LoginRequest("testuser", "Password123!");
-
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(user));
-        when(passwordEncoder.matches("Password123!", "hashedPassword")).thenReturn(true);
-
-        UserSession savedSession = new UserSession();
-        savedSession.setSessionId(UUID.randomUUID());
-        savedSession.setUserId(user.getUserId());
-        when(sessionRepository.save(any(UserSession.class))).thenReturn(savedSession);
-
-        UserSession result = authService.login(loginRequest);
-
-        assertNotNull(result);
-        assertEquals(user.getUserId(), result.getUserId());
+        assertTrue(authService.accountExists("test@example.com"));
     }
 
     @Test
-    void loginFailsWithInvalidPassword() {
-        User user = new User();
-        user.setUserId(UUID.randomUUID());
-        user.setUsername("testuser");
-        user.setPasswordHash("hashedPassword");
-        user.setAccountStatus("ACTIVE");
-        user.setFailedLoginAttempts(0);
+    void accountExistsReturnsFalseForUnknownEmail() {
+        when(userRepository.existsByEmailIgnoreCase("nobody@example.com")).thenReturn(false);
 
-        LoginRequest loginRequest = new LoginRequest("testuser", "WrongPassword!");
-
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(user));
-        when(passwordEncoder.matches("WrongPassword!", "hashedPassword")).thenReturn(false);
-
-        assertThrows(UnauthorizedException.class, () -> authService.login(loginRequest));
+        assertFalse(authService.accountExists("nobody@example.com"));
     }
 
     @Test
-    void loginFailsForNonexistentUser() {
-        LoginRequest loginRequest = new LoginRequest("nonexistent", "Password123!");
+    void accountExistsIgnoresSurroundingWhitespace() {
+        when(userRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(true);
 
-        when(userRepository.findByUsername("nonexistent")).thenReturn(Optional.empty());
-
-        assertThrows(UnauthorizedException.class, () -> authService.login(loginRequest));
-    }
-
-    @Test
-    void loginFailsForInactiveAccount() {
-        User user = new User();
-        user.setUserId(UUID.randomUUID());
-        user.setUsername("testuser");
-        user.setAccountStatus("INACTIVE");
-
-        LoginRequest loginRequest = new LoginRequest("testuser", "Password123!");
-
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(user));
-
-        assertThrows(UnauthorizedException.class, () -> authService.login(loginRequest));
+        assertTrue(authService.accountExists("  test@example.com "));
     }
 }

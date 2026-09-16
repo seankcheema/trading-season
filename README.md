@@ -21,7 +21,7 @@ The UI opens on port 4200. Its forms currently perform local validation; API int
 | Area | Responsibility | Local port |
 | --- | --- | --- |
 | [Business UI](apps/business-logic-ui/README.md) | Login and registration screens | 4200 |
-| [Business backend](apps/business-backend/README.md) | Java registration and session login | 8080 |
+| [Business backend](apps/business-backend/README.md) | Token-verified registration and account API | 8080 |
 | [Auth service](apps/auth-service/README.md) | RS256 tokens, refresh tokens, auth database | 3001 |
 | [Shared UI](packages/shared-ui-components/README.md) | Reusable Angular components | — |
 | [Reporting proposal](docs/reference/reporting.md) | Future analytics UI and service | — |
@@ -42,13 +42,12 @@ Browse the [documentation index](docs/README.md) to choose a guide or reference.
 
 # Business database ERD
 
-Canonical relationship diagram for the business SQL schema after V001 and V002. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
+Canonical relationship diagram for the business SQL schema after V001, V002 and V003. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
 
 The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change.
 
 ```mermaid
 erDiagram
-    users ||--o{ sessions : authenticates
     users ||--o{ accounts : owns
 
     stocks o|--o| instruments : "optionally powers"
@@ -80,16 +79,9 @@ erDiagram
 
     users {
         UUID user_id PK
-        TEXT username UK
         TEXT email UK
         TEXT user_role
         TEXT account_status
-    }
-    sessions {
-        UUID session_id PK
-        UUID user_id FK
-        TIMESTAMPTZ expires_at
-        TIMESTAMPTZ revoked_at
     }
     simulation_sessions {
         BIGINT id PK

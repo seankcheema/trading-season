@@ -10,13 +10,13 @@
 | Shared UI | Angular components consumed through @shared/ui-components subpath exports | [Package manifest](../../packages/shared-ui-components/package.json) |
 | Reporting | Placeholder directories only | [Reporting proposal](reporting.md) |
 
-The frontend does not yet call either authentication API. Java and NestJS currently own separate user models and databases; there is no implemented token-validation bridge in the Java backend. Do not describe centralized authentication as a completed integration.
+The frontend does not yet call either API. Java and NestJS own separate user models and databases, joined only by the user's UUID: the auth service puts it in the access token's sub claim and the Java backend uses it as users.user_id. The Java backend verifies tokens itself against the auth service's cached JWKS and never calls the auth service per request.
 
 Within the Java service, `app.Main` is the Spring Boot entry point and feature packages under `app` own their controllers, services, DTOs, and repositories.
 
 ## Data flows
 
-Java requests pass through validation, AuthService, JPA repositories, and the business PostgreSQL database. Registration hashes passwords; login creates a session identifier and expiry. See the [API contract](api.md).
+Java requests first pass the Spring Security bearer-token filter, which verifies the RS256 signature, expiry, issuer and subject; only the account existence check is public. They then pass through validation, services, JPA repositories, and the business PostgreSQL database. Registration stores profile data under the token's sub; there are no passwords or sessions in the business database. See the [API contract](api.md).
 
 NestJS requests pass through controllers/Passport strategies, AuthService, and TypeORM repositories in a separate auth database. Registration/login issue an RS256 access token and a random refresh token. Only the refresh token hash is stored. Refresh rotates it; reuse of an unusable token revokes the user's live refresh sessions. Access tokens expire after 15 minutes and remain stateless.
 

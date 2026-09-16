@@ -6,20 +6,49 @@ This reference describes implemented controllers unless a section is explicitly 
 
 Base path: /api/auth. Spring Boot source is rooted at [apps/business-backend/src/main/java/app](../../apps/business-backend/src/main/java/app), and these endpoints are implemented by [controller](../../apps/business-backend/src/main/java/app/auth/AuthController.java).
 
-| Method and path | Request | Success |
+The Java backend has no login and never receives a password. Sign-up and sign-in happen at the NestJS auth service; every Java endpoint except the account existence check requires its access token in an `Authorization: Bearer` header.
+
+| Method and path | Request/authentication | Success |
 | --- | --- | --- |
-| POST /api/auth/register | username, email, password, firstName, optional middleName, lastName, ssn, address, dateOfBirth | 201: userId, username, email |
-| POST /api/auth/login | username, password | 200: sessionId, expiresAt |
+| POST /api/auth/account-exists | Public. JSON: email | 200: exists |
+| POST /api/auth/register | Bearer access token. JSON: email, firstName, optional middleName, lastName, ssn, address, dateOfBirth, traderLevel, availableFunds | 201: userId, email |
+| GET /api/users/me | Bearer access token | 200: caller's profile without ssn |
 
 Registration requires a 3–50 character username, valid email up to 100 characters, password of 8–100 characters, nonblank profile fields, and a past dateOfBirth. See [registration constraints](../../apps/business-backend/src/main/java/app/auth/RegisterRequest.java).
 
 Errors use an error string: 400 for request validation, 409 for duplicate username/email, and 401 for invalid credentials or inactive/locked accounts. See [exception mapping](../../apps/business-backend/src/main/java/app/auth/GlobalExceptionHandler.java). Login returns a database session, not a JWT.
 
+### Token verification
+
+Tokens must be RS256 JWTs signed by the auth service. The backend fetches the public key from AUTH_JWK_SET_URI (the auth service's /.well-known/jwks.json) on the first authenticated request and caches it, so it does not call the auth service per request. A token is rejected with 401 when the signature does not verify, exp has passed, iss differs from AUTH_JWT_ISSUER, or sub is not a UUID. The roles claim becomes ROLE_ADMIN or ROLE_TRADER authorities.
+
+The token's sub is the only identifier shared with the auth service. It becomes users.user_id at registration, and endpoints resolve the caller's data from sub rather than from ids in the path or body, so a client can only read its own account.
+
+### Registration flow
+
+1. Optionally call POST /api/auth/account-exists to warn that the email is already registered. The check ignores case and is a convenience only: it reveals whether an email is registered, so rate-limit it at the edge, and registration still enforces uniqueness.
+2. Create credentials with POST /auth/register on the auth service and keep the returned accessToken.
+3. Call POST /api/auth/register on the Java backend with that token and the profile fields. The password and confirmation stay with step 2.
+
+Registration requires an email up to 100 characters that equals the token's email claim, ignoring case; nonblank names and address; ssn in XXX-XX-XXXX form; a past dateOfBirth; traderLevel BEGINNER, INTERMEDIATE or ADVANCED; and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/business-backend/src/main/java/app/auth/RegisterRequest.java).
+
+### Errors
+
+Errors use an `{"error": "..."}` body. See [exception mapping](../../apps/business-backend/src/main/java/com/neueda/leap/auth/GlobalExceptionHandler.java) and [security error handling](../../apps/business-backend/src/main/java/app/auth/SecurityErrorHandler.java).
+
+| Status | Cause |
+| --- | --- |
+| 400 | Request validation failed; the message lists each invalid field |
+| 401 | Missing, malformed, expired or untrusted access token; includes a WWW-Authenticate: Bearer header |
+| 403 | Registration email does not match the token's email claim |
+| 404 | GET /api/users/me before the caller has registered |
+| 409 | The caller already registered, or the email belongs to another account |
+
 ## Trading API plan: status in progress
 
 Status: In progress. These Java business-backend endpoints are planned for the simulated trading platform and are not implemented controllers yet. They are included here to track the intended API structure while development is underway.
 
-Planned protected trading endpoints will use the existing Java session flow: clients authenticate with POST /api/auth/login and send the returned sessionId in an X-Session-Id header. The Java backend will validate that the session exists, is not expired, and is not revoked before allowing access to account or order resources.
+Planned protected trading endpoints will use the [token verification](#token-verification) described above: clients send the auth service access token as a bearer token, and the Java backend scopes account and order resources to the token's sub.
 
 ### Public/reference endpoints
 
@@ -36,13 +65,13 @@ Planned protected trading endpoints will use the existing Java session flow: cli
 
 | Method and path | Request/authentication | Planned success |
 | --- | --- | --- |
-| GET /api/me/accounts | X-Session-Id | Current user's accounts |
-| POST /api/me/accounts | X-Session-Id; currency, optional initialDeposit | Created cash account |
-| GET /api/accounts/{accountId}/holdings | X-Session-Id; owned account id | Account holdings with instrument metadata and latest price when available |
-| GET /api/accounts/{accountId}/orders | X-Session-Id; optional status, instrumentId, limit | Account order history |
-| GET /api/orders/{orderId} | X-Session-Id; owned order id | Order, fill if present, and audit events |
-| POST /api/orders | X-Session-Id; accountId, ticker or instrumentId, orderType, quantity, clientReference, optional sessionId | Idempotent simulated order result |
-| POST /api/accounts/{accountId}/cash-transactions | X-Session-Id; amount, reason DEPOSIT or WITHDRAWAL | Posted funding transaction and updated account cash |
+| GET /api/me/accounts | Bearer token | Current user's accounts |
+| POST /api/me/accounts | Bearer token; currency, optional initialDeposit | Created cash account |
+| GET /api/accounts/{accountId}/holdings | Bearer token; owned account id | Account holdings with instrument metadata and latest price when available |
+| GET /api/accounts/{accountId}/orders | Bearer token; optional status, instrumentId, limit | Account order history |
+| GET /api/orders/{orderId} | Bearer token; owned order id | Order, fill if present, and audit events |
+| POST /api/orders | Bearer token; accountId, ticker or instrumentId, orderType, quantity, clientReference, optional sessionId | Idempotent simulated order result |
+| POST /api/accounts/{accountId}/cash-transactions | Bearer token; amount, reason DEPOSIT or WITHDRAWAL | Posted funding transaction and updated account cash |
 
 MVP order execution is planned as an immediate simulated fill or rejection. Supported orders will execute against the latest seeded candle close for the instrument's linked simulator stock. The first slice will not include asynchronous matching, partial fills, or execution for instruments without simulated market data.
 
@@ -52,7 +81,7 @@ There is no /api prefix. Source: [controller](../../apps/auth-service/src/auth/a
 
 | Method and path | Request/authentication | Success |
 | --- | --- | --- |
-| POST /auth/register | JSON: username, email, password, firstName, lastName | 201: accessToken, refreshToken, expiresIn |
+| POST /auth/register | JSON: email, password | 201: accessToken, refreshToken, expiresIn |
 | POST /auth/login | JSON: email, password | 201: same token response |
 | POST /auth/refresh | JSON: refreshToken; no access JWT required | 201: rotated token response |
 | GET /auth/verify | Authorization: Bearer accessToken | 200: valid and user claims |
