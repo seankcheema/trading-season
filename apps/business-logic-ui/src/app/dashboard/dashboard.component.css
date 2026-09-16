@@ -52,6 +52,19 @@
   text-transform: uppercase;
 }
 
+.assets-table-grid {
+  grid-template-columns:
+    minmax(4.75rem, 1fr)
+    minmax(4rem, 0.7fr)
+    minmax(3.75rem, 0.65fr)
+    minmax(5.25rem, 0.95fr)
+    minmax(5.25rem, 0.95fr)
+    minmax(5.25rem, 0.95fr)
+    minmax(4.75rem, 0.8fr)
+    minmax(6.25rem, 1.1fr)
+    minmax(6.5rem, 1.15fr);
+}
+
 .net-worth-card {
   border-color: rgba(0, 187, 255, 0.2);
   background:
