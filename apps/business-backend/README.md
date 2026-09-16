@@ -21,4 +21,45 @@ mvn test
 
 The app defaults to port 8081 and a business PostgreSQL database; tests use H2. Configuration lives in [application.properties](src/main/resources/application.properties).
 
+## Live ticker setup
+
+There is no separate live-ticker feature flag. The public ticker endpoints are active when the Spring Boot app is running and the business database contains a completed synthetic market-data session.
+
+For a first-time disposable local database, run the market-data workflow from the repository root:
+
+```powershell
+$freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
+
+apps/business-backend/db/setup-market-data.ps1 `
+  -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
+  -AvailableDiskGb $freeDiskGb `
+  -InitializeDisposableDatabase
+```
+
+For later reseeding of an already initialized disposable database, omit `-InitializeDisposableDatabase`:
+
+```powershell
+$freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
+
+apps/business-backend/db/setup-market-data.ps1 `
+  -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
+  -AvailableDiskGb $freeDiskGb
+```
+
+If the script reports `Candle-only 2026-v1 archive detected`, rerun the same command with `-Regenerate` to replace the incompatible local archive. If a previous import for the same simulation session also needs to be replaced, add `-Replace`.
+
+Then start the backend from this directory:
+
+```sh
+mvn spring-boot:run
+```
+
+Verify the ticker API before opening the UI:
+
+```powershell
+Invoke-RestMethod http://localhost:8081/api/market/snapshot
+```
+
+The dashboard reads the snapshot and then opens `GET /api/market/stream` automatically. The replay advances one simulated market second per real second by default. Set `MARKET_REPLAY_START_AT` to an ISO-8601 instant when you need a deterministic starting point, or `MARKET_REPLAY_TICK_MILLIS` to change replay speed. The default CORS origin is `http://localhost:4200`.
+
 See [API contracts](../../docs/reference/api.md), [development and Javadocs](../../docs/guides/development.md#javadocs), and the [database reference](../../docs/reference/database.md). Update affected Javadoc comments and regenerate documentation with every Java code change.
