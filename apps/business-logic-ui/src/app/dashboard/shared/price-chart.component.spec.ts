@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { PriceChartComponent } from './price-chart.component';
-import { mockPriceSeries } from '../mock-data';
+import { PricePoint, mockPriceSeries } from '../mock-data';
 import { TimeframeToggleComponent } from './timeframe-toggle.component';
 
 describe('PriceChartComponent', () => {
@@ -10,9 +10,9 @@ describe('PriceChartComponent', () => {
     }).compileComponents();
   });
 
-  function setup(timeframe: '1D' | '5D' | '1Y' = '1D') {
+  function setup(timeframe: '1D' | '5D' | '1Y' = '1D', points?: PricePoint[]) {
     const fixture = TestBed.createComponent(PriceChartComponent);
-    fixture.componentRef.setInput('points', mockPriceSeries('TEST', timeframe, 100));
+    fixture.componentRef.setInput('points', points ?? mockPriceSeries('TEST', timeframe, 100));
     fixture.componentRef.setInput('timeframe', timeframe);
     fixture.detectChanges();
     return fixture;
@@ -57,6 +57,21 @@ describe('PriceChartComponent', () => {
     expect(fixture.nativeElement.querySelector('.price-hover-marker')?.textContent).toContain(
       '$100.00',
     );
+  });
+
+  it('should show a current price dot for a single early-session point without hover', () => {
+    const fixture = setup('1D', [{ time: new Date('2026-01-01T08:30:00Z'), value: 100 }]);
+    const marker: HTMLElement | null = fixture.nativeElement.querySelector('.price-current-marker');
+    expect(marker).not.toBeNull();
+    expect(marker?.style.left).toBe('50%');
+  });
+
+  it('should show a fallback dot when there are no chart points', () => {
+    const fixture = setup('1D', []);
+    const marker: HTMLElement | null = fixture.nativeElement.querySelector('.price-current-marker');
+    expect(marker).not.toBeNull();
+    expect(marker?.style.left).toBe('50%');
+    expect(marker?.style.top).toBe('50%');
   });
 
   it('should keep the tooltip out of the plot and hidden until hovered', () => {

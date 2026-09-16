@@ -57,6 +57,11 @@ interface ChartScale {
   range: number;
 }
 
+interface MarkerPoint {
+  x: number;
+  y: number;
+}
+
 @Component({
   selector: 'app-price-chart',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -173,6 +178,15 @@ interface ChartScale {
           />
         </svg>
 
+        @if (persistentPoint(); as point) {
+          <div
+            class="price-current-marker ring-card pointer-events-none absolute z-10 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-sm ring-2"
+            [class]="trendingUp() ? 'bg-gain' : 'bg-loss'"
+            [style.left.%]="point.x"
+            [style.top.%]="point.y"
+          ></div>
+        }
+
         @if (hovered(); as point) {
           <div
             class="ring-card pointer-events-none absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2"
@@ -275,6 +289,26 @@ export class PriceChartComponent {
   protected readonly hovered = computed(() => {
     const index = this.hoverIndex();
     return index === null ? null : this.describePoint(index);
+  });
+
+  protected readonly persistentPoint = computed<MarkerPoint | null>(() => {
+    if (this.hovered()) {
+      return null;
+    }
+    const points = this.points();
+    if (!points.length) {
+      return { x: 50, y: 50 };
+    }
+    if (points.length === 1) {
+      return { x: 50, y: this.clampMarkerPosition(this.describePoint(0)?.y ?? 50) };
+    }
+    const point = this.describePoint(points.length - 1);
+    return point
+      ? {
+          x: this.clampMarkerPosition(point.x),
+          y: this.clampMarkerPosition(point.y),
+        }
+      : null;
   });
 
   // What the tooltip row renders: the hovered point, or the latest one as an invisible
@@ -435,6 +469,10 @@ export class PriceChartComponent {
         HEIGHT) *
       100
     );
+  }
+
+  private clampMarkerPosition(value: number): number {
+    return Math.min(98, Math.max(2, value));
   }
 
   private formatTime(time: Date, format: string): string {

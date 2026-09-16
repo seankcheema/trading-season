@@ -252,12 +252,20 @@
             <button type="button" class="dash-link">View all</button>
           </div>
 
-          <div class="dash-scroll dash-fade mt-4 min-h-0 flex-1 overflow-auto">
-            <div class="min-w-[28rem]">
-              <div class="dash-table-head bg-card sticky top-0 grid grid-cols-3 px-2">
+          <div class="dash-scroll mt-4 min-h-0 flex-1 overflow-auto pb-1">
+            <div class="min-w-[59rem] pr-4" data-testid="assets-table">
+              <div
+                class="assets-table-grid dash-table-head bg-card sticky top-0 grid gap-1.5 px-2 whitespace-nowrap"
+              >
                 <span>Asset</span>
-                <span class="text-center">Price</span>
+                <span>Today</span>
+                <span class="text-right">Shares</span>
+                <span class="text-right">Avg Price</span>
+                <span class="text-right">Price</span>
+                <span class="text-right">Change</span>
+                <span class="text-right">Change %</span>
                 <span class="text-right">Value</span>
+                <span class="text-right">Value $</span>
               </div>
 
               <ul>
@@ -265,37 +273,45 @@
                   <li>
                     <button
                       type="button"
-                      class="hover:bg-muted grid w-full cursor-pointer grid-cols-3 items-center rounded-lg px-2 py-2.5 text-left text-sm transition-colors"
+                      class="assets-table-grid hover:bg-muted grid w-full cursor-pointer items-center gap-1.5 rounded-lg px-2 py-2.5 text-left text-sm whitespace-nowrap transition-colors"
                       [attr.aria-label]="'Trade ' + holding.symbol"
+                      [attr.data-testid]="'asset-row-' + holding.symbol"
                       (click)="openOrder(holding.instrument)"
                     >
-                      <span>
-                        <span class="block font-medium">{{ holding.symbol }}</span>
-                        <span class="text-muted-foreground block text-xs"
-                          >{{ holding.shares }} shares</span
-                        >
-                      </span>
-                      <span class="text-center tabular-nums">
-                        <span class="block">{{ holding.instrument.price | currency: 'USD' }}</span>
-                        <span
-                          class="block text-xs"
-                          [class]="holding.instrument.change >= 0 ? 'text-gain' : 'text-loss'"
-                        >
-                          {{ holding.instrument.change >= 0 ? '+' : ''
-                          }}{{ holding.instrument.change.toFixed(2) }} ({{
-                            holding.instrument.changePercent | signedPercent
-                          }})
-                        </span>
+                      <span class="font-medium">{{ holding.symbol }}</span>
+                      <app-daily-sparkline
+                        [symbol]="holding.symbol"
+                        [points]="assetCharts()[holding.symbol]"
+                      />
+                      <span class="text-right tabular-nums">{{ holding.shares }}</span>
+                      <span class="text-right tabular-nums">
+                        {{ holding.costBasis | currency: 'USD' }}
                       </span>
                       <span class="text-right tabular-nums">
-                        <span class="block">{{ holding.value | currency: 'USD' }}</span>
-                        <span
-                          class="block text-xs"
-                          [class]="holding.gainLoss >= 0 ? 'text-gain' : 'text-loss'"
-                        >
-                          {{ holding.gainLoss >= 0 ? '+' : ''
-                          }}{{ holding.gainLoss | currency: 'USD' }}
-                        </span>
+                        {{ holding.instrument.price | currency: 'USD' }}
+                      </span>
+                      <span
+                        class="text-right tabular-nums"
+                        [class]="holding.instrument.change >= 0 ? 'text-gain' : 'text-loss'"
+                      >
+                        {{ holding.instrument.change >= 0 ? '+' : ''
+                        }}{{ holding.instrument.change | currency: 'USD' }}
+                      </span>
+                      <span
+                        class="text-right tabular-nums"
+                        [class]="holding.instrument.changePercent >= 0 ? 'text-gain' : 'text-loss'"
+                      >
+                        {{ holding.instrument.changePercent | signedPercent }}
+                      </span>
+                      <span class="text-right tabular-nums">
+                        {{ holding.value | currency: 'USD' }}
+                      </span>
+                      <span
+                        class="text-right tabular-nums"
+                        [class]="holding.gainLoss >= 0 ? 'text-gain' : 'text-loss'"
+                      >
+                        {{ holding.gainLoss >= 0 ? '+' : ''
+                        }}{{ holding.gainLoss | currency: 'USD' }}
                       </span>
                     </button>
                   </li>

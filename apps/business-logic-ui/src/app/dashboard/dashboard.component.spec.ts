@@ -191,6 +191,96 @@ describe('DashboardComponent', () => {
     expect(marketLabel.className).not.toContain('truncate');
   });
 
+  it('should render separate assets table columns for shares, prices, changes, and values', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+
+    const table = fixture.nativeElement.querySelector('[data-testid="assets-table"]') as HTMLElement;
+    const headers = Array.from(table.querySelectorAll('.dash-table-head span')).map((header) =>
+      (header as HTMLElement).textContent?.trim(),
+    );
+    const appleRow = table.querySelector('[data-testid="asset-row-AAPL"]') as HTMLElement;
+    const appleCells = Array.from(appleRow.children).map((cell) =>
+      (cell as HTMLElement).textContent?.trim(),
+    );
+
+    expect(headers).toEqual([
+      'Asset',
+      'Today',
+      'Shares',
+      'Avg Price',
+      'Price',
+      'Change',
+      'Change %',
+      'Value',
+      'Value $',
+    ]);
+    expect(appleCells).toEqual([
+      'AAPL',
+      '',
+      '4',
+      '$280.10',
+      '$316.59',
+      '+$15.65',
+      '+5.20%',
+      '$1,266.36',
+      '+$145.96',
+    ]);
+    expect(appleRow.querySelector('app-daily-sparkline')).not.toBeNull();
+    expect(appleRow.children[5].className).toContain('text-gain');
+    expect(appleRow.children[6].className).toContain('text-gain');
+    expect(appleRow.children[8].className).toContain('text-gain');
+  });
+
+  it('should request one-day candle series for held assets when a market snapshot loads', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    const component = fixture.componentInstance;
+    const http = TestBed.inject(HttpTestingController);
+    const stocks = MOCK_INSTRUMENTS.map((instrument) => ({
+      symbol: instrument.symbol,
+      companyName: instrument.name,
+      price: instrument.price,
+      change: instrument.change,
+      changePercent: instrument.changePercent,
+      timestamp: '2026-01-05T14:30:00Z',
+    }));
+
+    component['applySnapshot']({
+      sessionId: 2026001,
+      status: 'OPEN',
+      marketTimestamp: '2026-01-05T14:30:00Z',
+      serverTimestamp: '2026-01-05T14:30:00Z',
+      calendar: CALENDAR,
+      stocks,
+    });
+
+    for (const symbol of ['AAPL', 'NVDA', 'MSFT', 'SPY', 'TSLA']) {
+      const request = http.expectOne(
+        (candidate) =>
+          candidate.url === '/api/market/candles' &&
+          candidate.params.get('sessionId') === '2026001' &&
+          candidate.params.get('symbol') === symbol &&
+          candidate.params.get('timeframe') === '1D',
+      );
+      request.flush({
+        sessionId: 2026001,
+        symbol,
+        timeframe: '1D',
+        marketTimestamp: '2026-01-05T14:30:00Z',
+        points: [
+          {
+            timestamp: '2026-01-05T14:30:00Z',
+            open: 100,
+            high: 101,
+            low: 99,
+            close: 100,
+            volume: 1000,
+          },
+        ],
+      });
+    }
+  });
+
   it('should submit the current typed market time when applying the clock', () => {
     const fixture = TestBed.createComponent(DashboardComponent);
     const component = fixture.componentInstance;
