@@ -2,6 +2,8 @@
 
 Trading simulation monorepo with an Angular interface, a Spring Boot backend, and a NestJS authentication service. Reporting applications are placeholders.
 
+The Java application follows a Spring Boot source layout rooted at `apps/business-backend/src/main/java/app`, with the bootstrap class in `app.Main` and feature packages such as `app.auth`, `app.order`, `app.user`, `app.account`, and `app.instrument`.
+
 ## Start here
 
 Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and Docker with Compose. From the repository root:

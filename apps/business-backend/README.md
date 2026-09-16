@@ -2,6 +2,9 @@
 
 Spring Boot application targeting Java 21. Acts as an OAuth2 resource server: it verifies RS256 access tokens issued by the [auth service](../auth-service/README.md) and never handles passwords. A business account is keyed by the auth service's user UUID, carried as the token's sub claim.
 
+
+Spring Boot source is rooted at `src/main/java/app`. The application entry point is `app.Main`, authentication types live in `app.auth`, and the rest of the business backend is organized by feature package such as `app.order`, `app.user`, `app.account`, and `app.instrument`. Tests mirror that structure under `src/test/java/app`.
+
 Follow [database setup](../../docs/reference/database.md#disposable-business-database-setup) before exercising the API. The business database schema is applied manually: run V001, V002, then V003, and optionally generate and import the synthetic market data 2026-v1 archive. The generated archive is local developer data and is not committed to this repo.
 
 ```powershell

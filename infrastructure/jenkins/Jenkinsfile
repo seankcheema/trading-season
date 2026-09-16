@@ -34,7 +34,7 @@ pipeline {
             steps {
                 sh '''
                     set -eu
-                    echo "📦 Installing root workspace dependencies..."
+                    echo " Installing root workspace dependencies..."
                     if command -v node > /dev/null; then
                         node --version
                         npm --version
@@ -47,13 +47,13 @@ pipeline {
                         npm --prefix apps/auth-service ci
                         echo "✓ Root workspace dependencies installed"
                     else
-                        echo "⚠️  Node.js not available, skipping npm setup"
+                        echo "  Node.js not available, skipping npm setup"
                     fi
                 '''
                 dir('apps/business-backend') {
                     sh '''
                         # Aggressive Maven cache cleanup to avoid dependency resolution issues
-                        echo "🧹 Clearing Maven cache..."
+                        echo " Clearing Maven cache..."
                         rm -rf ~/.m2/repository/org/junit/platform ~/.m2/repository/org/apache/maven/plugins/maven-surefire-plugin
                         rm -rf ~/.m2/repository/org/junit
                         # Warm up Maven cache with fresh dependencies
@@ -72,7 +72,7 @@ pipeline {
             steps {
                 dir('apps/business-backend') {
                     sh '''
-                        echo "🧪 Running Backend Tests (Unit + Integration)..."
+                        echo " Running Backend Tests (Unit + Integration)..."
                         mvn -B clean test
                         echo "✓ Backend tests completed"
                     '''
@@ -165,7 +165,7 @@ pipeline {
                     dir('apps/auth-service') {
                         sh '''
                             set -eu
-                            echo "🧪 Running Auth Service Tests (Vitest)..."
+                            echo " Running Auth Service Tests (Vitest)..."
                             node --version
                             npm --version
                             npm run test:ci
@@ -198,7 +198,7 @@ pipeline {
                     dir('apps/business-logic-ui') {
                         sh '''
                             set -eu
-                            echo "🧪 Running Frontend Tests (Angular + Vitest)..."
+                            echo " Running Frontend Tests (Angular + Vitest)..."
                             # --no-watch and --coverage are options of the
                             # @angular/build:unit-test builder. Vitest's own
                             # --run is not: `ng test --run` fails with
@@ -222,19 +222,19 @@ pipeline {
         always {
             // Optional: Remove Maven and npm cache to free disk space (comment out if not needed)
             // sh 'rm -rf ~/.m2/repository ~/.npm'
-            echo "ℹ️  Build workspace preserved for debugging. To save disk space, manually delete workspace or adjust retention policy."
+            echo "  Build workspace preserved for debugging. To save disk space, manually delete workspace or adjust retention policy."
         }
         
         success {
-            echo "✅ All Tests PASSED"
+            echo " All Tests PASSED"
         }
         
         failure {
-            echo "❌ Tests FAILED - Review test results above"
+            echo " Tests FAILED - Review test results above"
         }
         
         unstable {
-            echo "⚠️  Build is UNSTABLE - Some tests may have failed or timed out"
+            echo "  Build is UNSTABLE - Some tests may have failed or timed out"
         }
     }
 }

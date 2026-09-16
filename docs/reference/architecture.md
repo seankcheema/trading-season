@@ -5,12 +5,14 @@
 | Area | Current responsibility | Source |
 | --- | --- | --- |
 | Angular UI | Login and registration forms, local validation, shared components | [Routes](../../apps/business-logic-ui/src/app/app.routes.ts) |
-| Spring Boot backend | OAuth2 resource server: verifies auth service access tokens, registers business profiles keyed by the token subject, serves the caller's own account | [Security configuration](../../apps/business-backend/src/main/java/com/neueda/leap/auth/SecurityConfig.java) |
+| Spring Boot backend | Registration with profile data; username/password login issuing database sessions from the `src/main/java/app` package tree | [Java auth controller](../../apps/business-backend/src/main/java/app/auth/AuthController.java) |
 | NestJS auth service | Email/password login, RS256 access tokens, opaque refresh tokens, JWKS, liveness | [Auth controller](../../apps/auth-service/src/auth/auth.controller.ts) |
 | Shared UI | Angular components consumed through @shared/ui-components subpath exports | [Package manifest](../../packages/shared-ui-components/package.json) |
 | Reporting | Placeholder directories only | [Reporting proposal](reporting.md) |
 
 The frontend does not yet call either API. Java and NestJS own separate user models and databases, joined only by the user's UUID: the auth service puts it in the access token's sub claim and the Java backend uses it as users.user_id. The Java backend verifies tokens itself against the auth service's cached JWKS and never calls the auth service per request.
+
+Within the Java service, `app.Main` is the Spring Boot entry point and feature packages under `app` own their controllers, services, DTOs, and repositories.
 
 ## Data flows
 

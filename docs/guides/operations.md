@@ -32,7 +32,7 @@ Because the seed container cannot inspect free space inside the separate Postgre
 
 ## CI and artifacts
 
-The Jenkins pipeline expects a native agent with Docker, the Maven tool named Maven, and Java 21 at its configured JAVA_HOME. It runs Java, auth, Angular, script, and build-scoped two-day PostgreSQL integration checks. Full-year generation remains on demand.
+The Jenkins pipeline expects a native agent with Docker, the Maven tool named Maven3, and Java 21 at its configured JAVA_HOME. It runs Java, auth, Angular, script, and build-scoped two-day PostgreSQL integration checks. Full-year generation remains on demand.
 
 | Suite | Outputs |
 | --- | --- |

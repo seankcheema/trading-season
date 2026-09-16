@@ -4,7 +4,7 @@ This reference describes implemented controllers unless a section is explicitly 
 
 ## Java backend: port 8080
 
-Sources: [auth controller](../../apps/business-backend/src/main/java/com/neueda/leap/auth/AuthController.java), [user controller](../../apps/business-backend/src/main/java/com/neueda/leap/user/UserController.java), [security configuration](../../apps/business-backend/src/main/java/com/neueda/leap/auth/SecurityConfig.java).
+Base path: /api/auth. Spring Boot source is rooted at [apps/business-backend/src/main/java/app](../../apps/business-backend/src/main/java/app), and these endpoints are implemented by [controller](../../apps/business-backend/src/main/java/app/auth/AuthController.java).
 
 The Java backend has no login and never receives a password. Sign-up and sign-in happen at the NestJS auth service; every Java endpoint except the account existence check requires its access token in an `Authorization: Bearer` header.
 
@@ -13,6 +13,10 @@ The Java backend has no login and never receives a password. Sign-up and sign-in
 | POST /api/auth/account-exists | Public. JSON: email | 200: exists |
 | POST /api/auth/register | Bearer access token. JSON: email, firstName, optional middleName, lastName, ssn, address, dateOfBirth, traderLevel, availableFunds | 201: userId, email |
 | GET /api/users/me | Bearer access token | 200: caller's profile without ssn |
+
+Registration requires a 3–50 character username, valid email up to 100 characters, password of 8–100 characters, nonblank profile fields, and a past dateOfBirth. See [registration constraints](../../apps/business-backend/src/main/java/app/auth/RegisterRequest.java).
+
+Errors use an error string: 400 for request validation, 409 for duplicate username/email, and 401 for invalid credentials or inactive/locked accounts. See [exception mapping](../../apps/business-backend/src/main/java/app/auth/GlobalExceptionHandler.java). Login returns a database session, not a JWT.
 
 ### Token verification
 
@@ -26,11 +30,11 @@ The token's sub is the only identifier shared with the auth service. It becomes 
 2. Create credentials with POST /auth/register on the auth service and keep the returned accessToken.
 3. Call POST /api/auth/register on the Java backend with that token and the profile fields. The password and confirmation stay with step 2.
 
-Registration requires an email up to 100 characters that equals the token's email claim, ignoring case; nonblank names and address; ssn in XXX-XX-XXXX form; a past dateOfBirth; traderLevel BEGINNER, INTERMEDIATE or ADVANCED; and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/business-backend/src/main/java/com/neueda/leap/auth/RegisterRequest.java).
+Registration requires an email up to 100 characters that equals the token's email claim, ignoring case; nonblank names and address; ssn in XXX-XX-XXXX form; a past dateOfBirth; traderLevel BEGINNER, INTERMEDIATE or ADVANCED; and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/business-backend/src/main/java/app/auth/RegisterRequest.java).
 
 ### Errors
 
-Errors use an `{"error": "..."}` body. See [exception mapping](../../apps/business-backend/src/main/java/com/neueda/leap/auth/GlobalExceptionHandler.java) and [security error handling](../../apps/business-backend/src/main/java/com/neueda/leap/auth/SecurityErrorHandler.java).
+Errors use an `{"error": "..."}` body. See [exception mapping](../../apps/business-backend/src/main/java/com/neueda/leap/auth/GlobalExceptionHandler.java) and [security error handling](../../apps/business-backend/src/main/java/app/auth/SecurityErrorHandler.java).
 
 | Status | Cause |
 | --- | --- |
