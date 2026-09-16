@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
   Component,
+  HostListener,
   OnDestroy,
   OnInit,
   NgZone,
@@ -50,6 +51,8 @@ const DEFAULT_MARKET_CALENDAR: MarketCalendarAvailability = {
   tradingDates: marketWeekdays(2026),
 };
 
+type HeaderDropdown = 'account' | 'market-clock';
+
 @Component({
   selector: 'app-dashboard',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -81,6 +84,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private marketGeneration = 0;
 
   protected readonly accounts = MOCK_ACCOUNTS;
+  protected readonly openHeaderDropdown = signal<HeaderDropdown | null>(null);
   protected readonly selectedAccountId = signal(MOCK_ACCOUNTS[0].id);
   protected readonly selectedAccount = computed(
     () => this.accounts.find((account) => account.id === this.selectedAccountId()) ?? this.accounts[0],
@@ -216,9 +220,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.selectedAccountId.set((event.target as HTMLSelectElement).value);
   }
 
-  protected selectAccount(accountId: string, event: Event): void {
+  protected onHeaderDropdownOpenChange(dropdown: HeaderDropdown, open: boolean): void {
+    this.openHeaderDropdown.set(open ? dropdown : null);
+  }
+
+  @HostListener('document:click', ['$event'])
+  protected closeHeaderDropdownOnDocumentClick(event: MouseEvent): void {
+    const target = event.target;
+    if (target instanceof Element && target.closest('app-dashboard-header-dropdown')) {
+      return;
+    }
+    this.openHeaderDropdown.set(null);
+  }
+
+  protected selectAccount(accountId: string): void {
     this.selectedAccountId.set(accountId);
-    (event.currentTarget as HTMLElement).closest('details')?.removeAttribute('open');
+    this.openHeaderDropdown.set(null);
   }
 
   protected openOrder(instrument: Instrument): void {
@@ -265,6 +282,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       next: (snapshot) => {
         this.applySnapshot(snapshot);
         this.clockUpdating.set(false);
+        this.openHeaderDropdown.set(null);
       },
       error: (error: HttpErrorResponse) => {
         this.clockError.set(this.clockErrorMessage(error));

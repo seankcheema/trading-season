@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DashboardComponent } from './dashboard.component';
 import { Instrument, MOCK_INSTRUMENTS } from './mock-data';
 import { provideHttpClient } from '@angular/common/http';
@@ -11,6 +11,19 @@ const CALENDAR = {
   lastTimestamp: '2026-01-06T20:59:59Z',
   tradingDates: ['2026-01-05', '2026-01-06'],
 };
+
+function dropdownDetails(fixture: ComponentFixture<DashboardComponent>, testId: string) {
+  return fixture.nativeElement.querySelector(
+    `[data-testid="${testId}"] details`,
+  ) as HTMLDetailsElement;
+}
+
+function openDropdown(fixture: ComponentFixture<DashboardComponent>, testId: string): void {
+  const details = dropdownDetails(fixture, testId);
+  details.open = true;
+  details.dispatchEvent(new Event('toggle'));
+  fixture.detectChanges();
+}
 
 describe('DashboardComponent', () => {
   beforeEach(async () => {
@@ -53,7 +66,7 @@ describe('DashboardComponent', () => {
     expect(component['orderInstrument']()).toBeNull();
   });
 
-  it('should render account and market time dropdowns in the right header controls', () => {
+  it('should render market time and account dropdowns in the right header controls', () => {
     const fixture = TestBed.createComponent(DashboardComponent);
     fixture.detectChanges();
 
@@ -64,13 +77,14 @@ describe('DashboardComponent', () => {
       (child as HTMLElement).getAttribute('data-testid'),
     );
 
-    expect(children.slice(0, 2)).toEqual(['account-dropdown', 'market-clock-dropdown']);
+    expect(children.slice(0, 2)).toEqual(['market-clock-dropdown', 'account-dropdown']);
   });
 
-  it('should update the selected account from the custom account dropdown', () => {
+  it('should update the selected account from the custom account dropdown and close it', () => {
     const fixture = TestBed.createComponent(DashboardComponent);
     const component = fixture.componentInstance;
     fixture.detectChanges();
+    openDropdown(fixture, 'account-dropdown');
 
     const accountDropdown = fixture.nativeElement.querySelector(
       '[data-testid="account-dropdown"]',
@@ -80,7 +94,101 @@ describe('DashboardComponent', () => {
     fixture.detectChanges();
 
     expect(component['selectedAccountId']()).toBe('retirement');
+    expect(component['openHeaderDropdown']()).toBeNull();
+    expect(dropdownDetails(fixture, 'account-dropdown').open).toBe(false);
     expect(accountDropdown.textContent).toContain('Retirement Account');
+  });
+
+  it('should close the market clock dropdown when the account dropdown opens', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+
+    openDropdown(fixture, 'market-clock-dropdown');
+    openDropdown(fixture, 'account-dropdown');
+
+    expect(dropdownDetails(fixture, 'market-clock-dropdown').open).toBe(false);
+    expect(dropdownDetails(fixture, 'account-dropdown').open).toBe(true);
+    expect(fixture.componentInstance['openHeaderDropdown']()).toBe('account');
+  });
+
+  it('should close the account dropdown when the market clock dropdown opens', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+
+    openDropdown(fixture, 'account-dropdown');
+    openDropdown(fixture, 'market-clock-dropdown');
+
+    expect(dropdownDetails(fixture, 'account-dropdown').open).toBe(false);
+    expect(dropdownDetails(fixture, 'market-clock-dropdown').open).toBe(true);
+    expect(fixture.componentInstance['openHeaderDropdown']()).toBe('market-clock');
+  });
+
+  it('should close an open header dropdown when clicking outside it', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+
+    openDropdown(fixture, 'account-dropdown');
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fixture.detectChanges();
+
+    expect(dropdownDetails(fixture, 'account-dropdown').open).toBe(false);
+    expect(fixture.componentInstance['openHeaderDropdown']()).toBeNull();
+  });
+
+  it('should keep an open header dropdown open when clicking inside it', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+
+    openDropdown(fixture, 'market-clock-dropdown');
+    const marketDropdown = fixture.nativeElement.querySelector(
+      '[data-testid="market-clock-dropdown"]',
+    ) as HTMLElement;
+    marketDropdown.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fixture.detectChanges();
+
+    expect(dropdownDetails(fixture, 'market-clock-dropdown').open).toBe(true);
+    expect(fixture.componentInstance['openHeaderDropdown']()).toBe('market-clock');
+  });
+
+  it('should keep dropdown labels on one line in matching-width trigger markup', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.componentInstance['applySnapshot']({
+      sessionId: 2026001,
+      status: 'OPEN',
+      marketTimestamp: '2026-01-05T14:30:00Z',
+      serverTimestamp: '2026-01-05T14:30:00Z',
+      calendar: CALENDAR,
+      stocks: [],
+    });
+    fixture.detectChanges();
+
+    const accountDropdown = fixture.nativeElement.querySelector(
+      '[data-testid="account-dropdown"]',
+    ) as HTMLElement;
+    const marketDropdown = fixture.nativeElement.querySelector(
+      '[data-testid="market-clock-dropdown"]',
+    ) as HTMLElement;
+    const accountLabel = accountDropdown.querySelector('summary span') as HTMLElement;
+    const marketLabel = marketDropdown.querySelector('summary span') as HTMLElement;
+    const accountDetails = accountDropdown.querySelector('details') as HTMLElement;
+    const marketDetails = marketDropdown.querySelector('details') as HTMLElement;
+    const accountPanel = accountDropdown.querySelector('details > div') as HTMLElement;
+    const marketPanel = marketDropdown.querySelector('details > div') as HTMLElement;
+
+    expect(accountDropdown.textContent).toContain('Personal Investing Account');
+    expect(marketDropdown.textContent).toContain('Jan 5, 8:30 AM CT');
+    expect(accountDetails.className).toContain('w-60');
+    expect(marketDetails.className).toContain('w-60');
+    expect(accountPanel.className).toContain('w-full');
+    expect(marketPanel.className).toContain('w-full');
+    expect(accountLabel.className).toContain('min-w-0');
+    expect(accountLabel.className).toContain('flex-1');
+    expect(accountLabel.className).toContain('whitespace-nowrap');
+    expect(accountLabel.className).not.toContain('break-words');
+    expect(accountLabel.className).not.toContain('truncate');
+    expect(marketLabel.className).toContain('whitespace-nowrap');
+    expect(marketLabel.className).not.toContain('break-words');
+    expect(marketLabel.className).not.toContain('truncate');
   });
 
   it('should submit the current typed market time when applying the clock', () => {
