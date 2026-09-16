@@ -38,7 +38,7 @@ export function buildJwtOptions(): JwtModuleOptions {
 
 @Module({
   imports: [
-    PassportModule,
+    PassportModule.register({ session: false }),
     // registerAsync so the options are built at injection time, after the
     // process has its environment. register() would capture process.env as the
     // file is imported.
