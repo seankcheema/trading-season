@@ -77,13 +77,15 @@ describe('PriceChartComponent', () => {
   it('should keep the tooltip out of the plot and hidden until hovered', () => {
     const fixture = setup();
     const tooltip: HTMLElement = fixture.nativeElement.querySelector('.bg-popover');
+    const tooltipLayer = tooltip.parentElement;
     const plot: HTMLElement = fixture.nativeElement.querySelector('[tabindex="0"]');
     expect(plot.contains(tooltip)).toBe(false);
-    expect(tooltip.classList).toContain('invisible');
+    expect(tooltipLayer?.classList).toContain('absolute');
+    expect(tooltipLayer?.classList).toContain('invisible');
 
     fixture.componentInstance['hoverIndex'].set(3);
     fixture.detectChanges();
-    expect(tooltip.classList).not.toContain('invisible');
+    expect(tooltipLayer?.classList).not.toContain('invisible');
   });
 
   it('should step through points with the arrow keys', () => {

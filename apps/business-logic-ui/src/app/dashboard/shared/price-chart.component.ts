@@ -68,33 +68,31 @@ interface MarkerPoint {
   imports: [SignedPercentPipe],
   host: { class: 'flex flex-col' },
   template: `
-    <!--
-      The tooltip lives in its own row above the plot rather than floating over it, so it can
-      never hide the line. It stays in the layout (invisible) when nothing is hovered, which
-      keeps the row's height -- and therefore the plot -- from jumping.
-    -->
-    @if (tooltipPoint(); as point) {
-      <div class="shrink-0 pb-2" aria-hidden="true">
+    <div
+      class="relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_4.75rem] grid-rows-[minmax(0,1fr)_1rem] gap-x-3 gap-y-2"
+    >
+      @if (tooltipPoint(); as point) {
         <div
-          class="border-border bg-popover relative w-fit rounded-[5px] border px-2 py-1 whitespace-nowrap shadow-lg"
+          class="pointer-events-none absolute top-0 z-20"
           [class]="hovered() ? '' : 'invisible'"
           [style.left.%]="point.x"
           [style.transform]="edgeTransform(point.x)"
+          aria-hidden="true"
         >
-          <p class="font-semibold">{{ point.valueLabel }}</p>
-          <p class="text-muted-foreground text-xs">
-            <span [class]="point.changePercent >= 0 ? 'text-gain' : 'text-loss'">
-              {{ point.changePercent | signedPercent }}
-            </span>
-            · {{ point.timeLabel }}
-          </p>
+          <div
+            class="border-border bg-popover w-fit rounded-[5px] border px-2 py-0.5 leading-tight whitespace-nowrap shadow-lg"
+          >
+            <p class="text-sm font-semibold">{{ point.valueLabel }}</p>
+            <p class="text-muted-foreground text-[11px]">
+              <span [class]="point.changePercent >= 0 ? 'text-gain' : 'text-loss'">
+                {{ point.changePercent | signedPercent }}
+              </span>
+              · {{ point.timeLabel }}
+            </p>
+          </div>
         </div>
-      </div>
-    }
+      }
 
-    <div
-      class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_4.75rem] grid-rows-[minmax(0,1fr)_1rem] gap-x-3 gap-y-2"
-    >
       <div
         #plot
         tabindex="0"

@@ -26,7 +26,7 @@ The API defaults to the newest completed simulation session when `sessionId` is 
 | Method and path | Request | Success |
 | --- | --- | --- |
 | GET /api/market/snapshot | Optional `sessionId` | Resolved simulation, replay cursor, market status, available clock range, and every seeded stock's company name, current price, current-session change, percentage change, and tick timestamp |
-| GET /api/market/candles | Optional `sessionId`; required `symbol` and `timeframe` (`1D`, `5D`, `1W`, `1M`, or `1Y`) | At most 500 chronological OHLCV buckets ending at the current replay cursor |
+| GET /api/market/candles | Optional `sessionId`; required `symbol` and `timeframe` (`1D`, `5D`, `1M`, or `1Y`) | At most 500 chronological OHLCV buckets ending at the current replay cursor |
 | GET /api/market/stream | Optional `sessionId`; optional `Last-Event-ID` request header | Server-sent event stream containing one synchronized price batch per simulated market second |
 | PUT /api/market/clock | Optional `sessionId`; JSON `timestamp` as an ISO-8601 instant | Moves the shared replay cursor to the closest seeded tick at or before that time and returns a snapshot; non-trading dates inside an imported month use the nearest loaded trading date in that month, preferring the next trading date; months without seeded trading data return 400 |
 
@@ -51,7 +51,6 @@ The chart API queries the seeded one-minute candles rather than returning raw on
 | --- | --- |
 | `1D` | One-minute candles for the current trading session, up to 390 points |
 | `5D` | Five-minute buckets over the latest five trading sessions, up to 390 points |
-| `1W` | Thirty-minute buckets for trading sessions in the preceding seven calendar days |
 | `1M` | One-hour buckets over the preceding month |
 | `1Y` | One daily bucket per trading session, up to 261 points |
 
@@ -92,23 +91,18 @@ There is no /api prefix. Source: [controller](../../apps/auth-service/src/auth/a
 
 | Method and path | Request/authentication | Success |
 | --- | --- | --- |
-| POST /auth/register | JSON: username, email, password, firstName, lastName | 201: accessToken, refreshToken, expiresIn |
+| POST /auth/register | JSON: email, password | 201: accessToken, refreshToken, expiresIn |
 | POST /auth/login | JSON: email, password | 201: same token response |
 | POST /auth/refresh | JSON: refreshToken; no access JWT required | 201: rotated token response |
-| GET /auth/verify | Authorization: Bearer accessToken | 200: valid and user claims |
-| POST /auth/logout | Authorization: Bearer accessToken | 201: message; see revocation limitation below |
+| POST /auth/logout | JSON: refreshToken; no access JWT required | 201: message after refresh-token revocation |
 | GET /.well-known/jwks.json | Public | 200: keys array of public JWKs |
 | GET /health | Public | 200: status, service, timestamp; liveness only |
 
-Token response fields are defined in [AuthTokenDto](../../apps/auth-service/src/auth/dto/auth-token.dto.ts). Access tokens use RS256, expire after 900 seconds, and contain sub, email, roles, iss, iat, and exp. Roles are ADMIN or TRADER. Refresh tokens are opaque random strings with a seven-day server-side lifetime; they are not JWTs.
+Token response fields are defined in [AuthTokenDto](../../apps/auth-service/src/auth/dto/auth-token.dto.ts). Access tokens use RS256, expire after 900 seconds, and contain sub, email, roles, iss, iat, and exp. Roles are ADMIN or TRADER. Refresh tokens are opaque random strings with a seven-day server-side lifetime; they are not JWTs. Token verification is delegated to clients and services using the published JWKS document; there is no `/auth/verify` endpoint.
 
-Registration checks required fields and a minimum password length of eight in the service. Missing/invalid credentials and invalid refresh tokens produce 401; missing registration fields or short passwords produce 400. Do not infer validation from DTO property declarations: no global validation pipe is installed. Error bodies use NestJS exception responses rather than the Java error envelope.
+The auth service installs a global validation pipe with whitelisting, unknown-property rejection, and request transformation. Registration accepts only email and password: email must be a valid address up to 254 characters, and password must be 8-72 characters. Login accepts a valid email plus any non-empty password up to 72 characters. Refresh and logout accept only a non-empty `refreshToken` string up to 512 characters. Missing or invalid request fields produce 400, missing/invalid credentials and invalid refresh tokens produce 401, and extra JSON properties are rejected instead of silently stripped. Error bodies use NestJS exception responses rather than the Java error envelope.
 
-Refresh rotates the stored token; replay of an unusable stored token revokes the user's live refresh sessions. Send refreshToken in JSON: cookie parsing is not installed in bootstrap.
-
-### Current logout limitation
-
-The controller passes the access JWT to a service that looks up refresh-token hashes. Its success message does not establish refresh-token revocation. Access JWTs remain valid until expiry. This documentation records the mismatch without changing behavior.
+Refresh rotates the stored token; replay of an unusable stored token revokes the user's live refresh sessions. Logout revokes the supplied refresh token and is deliberately unguarded so clients can end a session even after the access token expires. Send `refreshToken` in JSON for refresh and logout: cookie parsing is not installed in bootstrap. Access JWTs remain valid until expiry.
 
 ## Contract maintenance
 
