@@ -1,4 +1,4 @@
-package com.neueda.leap.user;
+package app.user;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;

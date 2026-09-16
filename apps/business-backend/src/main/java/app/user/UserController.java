@@ -1,6 +1,6 @@
-package com.neueda.leap.user;
+package app.user;
 
-import com.neueda.leap.auth.AuthenticatedUser;
+import app.auth.AuthenticatedUser;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;

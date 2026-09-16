@@ -1,7 +1,7 @@
 package app.auth;
 
 
-import com.neueda.leap.user.UserNotFoundException;
+import app.user.UserNotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

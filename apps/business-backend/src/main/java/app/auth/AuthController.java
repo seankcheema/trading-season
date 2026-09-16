@@ -1,7 +1,6 @@
 package app.auth;
 
 import app.user.User;
-import app.user.UserSession;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;

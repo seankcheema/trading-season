@@ -1,4 +1,4 @@
-package com.neueda.leap.auth;
+package app.auth;
 
 import org.springframework.security.oauth2.jwt.Jwt;
 

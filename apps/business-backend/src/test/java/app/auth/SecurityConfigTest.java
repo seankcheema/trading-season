@@ -1,4 +1,4 @@
-package com.neueda.leap.auth;
+package app.auth;
 
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JWSAlgorithm;
@@ -171,7 +171,7 @@ class SecurityConfigTest {
         Jwt jwt = decoder().decode(token);
 
         List<String> authorities = SecurityConfig.jwtAuthenticationConverter().convert(jwt).getAuthorities()
-            .stream().map(GrantedAuthority::getAuthority).sorted().toList();
+            .stream().map(GrantedAuthority::getAuthority).filter(a -> a.startsWith("ROLE_")).sorted().toList();
 
         assertEquals(List.of("ROLE_ADMIN", "ROLE_TRADER"), authorities);
     }

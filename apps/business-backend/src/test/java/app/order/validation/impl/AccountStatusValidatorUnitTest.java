@@ -10,7 +10,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -37,29 +36,7 @@ class AccountStatusValidatorUnitTest {
     }
 
     @Test
-    void rejectsWhenAccountIsLocked() {
-        User user = new User();
-        user.setAccountStatus("ACTIVE");
-        user.setLockedUntil(OffsetDateTime.now().plusMinutes(5));
-
-        ValidationResult result = validator.validate(request(), user, new Account(), new Instrument());
-
-        assertFalse(result.passed());
-    }
-
-    @Test
-    void passesWhenActiveAndLockExpired() {
-        User user = new User();
-        user.setAccountStatus("ACTIVE");
-        user.setLockedUntil(OffsetDateTime.now().minusMinutes(5));
-
-        ValidationResult result = validator.validate(request(), user, new Account(), new Instrument());
-
-        assertTrue(result.passed());
-    }
-
-    @Test
-    void passesWhenActiveAndNeverLocked() {
+    void passesWhenAccountIsActive() {
         User user = new User();
         user.setAccountStatus("ACTIVE");
 

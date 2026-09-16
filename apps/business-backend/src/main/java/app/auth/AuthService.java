@@ -1,9 +1,7 @@
 package app.auth;
 
-import app.user.SessionRepository;
 import app.user.User;
 import app.user.UserRepository;
-import app.user.UserSession;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

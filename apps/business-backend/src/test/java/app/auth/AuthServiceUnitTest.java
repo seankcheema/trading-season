@@ -1,9 +1,7 @@
 package app.auth;
 
-import app.user.SessionRepository;
 import app.user.User;
 import app.user.UserRepository;
-import app.user.UserSession;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -14,7 +12,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;

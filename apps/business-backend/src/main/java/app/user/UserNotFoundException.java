@@ -1,4 +1,4 @@
-package com.neueda.leap.user;
+package app.user;
 
 /** The authenticated caller has no business account yet, typically because registration was not completed. */
 public class UserNotFoundException extends RuntimeException {

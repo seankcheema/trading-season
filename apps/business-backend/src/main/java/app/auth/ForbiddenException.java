@@ -1,4 +1,4 @@
-package com.neueda.leap.auth;
+package app.auth;
 
 /** The authenticated caller is not allowed to perform the request, such as registering another account's email. */
 public class ForbiddenException extends RuntimeException {

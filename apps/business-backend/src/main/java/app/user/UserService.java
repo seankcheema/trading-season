@@ -1,4 +1,4 @@
-package com.neueda.leap.user;
+package app.user;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

@@ -1,4 +1,4 @@
-package com.neueda.leap.auth;
+package app.auth;
 
 /**
  * Result of the soft account existence check.
