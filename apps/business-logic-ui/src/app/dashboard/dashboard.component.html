@@ -163,18 +163,13 @@
                     {{ transaction.side }}
                   </span>
                   <span class="text-muted-foreground block text-xs">
-                    {{ transaction.shares }} &#64; {{ transaction.price | currency: 'USD' }} ·
                     {{ transaction.date | date: 'MMM d' }}
                   </span>
                 </span>
                 <span class="shrink-0 text-right tabular-nums">
                   <span class="block">{{ transaction.value | currency: 'USD' }}</span>
-                  <span
-                    class="block text-xs"
-                    [class]="transaction.gainLoss >= 0 ? 'text-gain' : 'text-loss'"
-                  >
-                    {{ transaction.gainLoss >= 0 ? '+' : ''
-                    }}{{ transaction.gainLoss | currency: 'USD' }}
+                  <span class="text-muted-foreground block text-xs">
+                    {{ transaction.shares }} &#64; {{ transaction.price | currency: 'USD' }}
                   </span>
                 </span>
               </li>
@@ -197,12 +192,6 @@
             <button
               type="button"
               class="hover:bg-muted flex h-full shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-sm whitespace-nowrap transition-colors duration-200 motion-reduce:transition-none"
-              [class.bg-gain/10]="
-                changedSymbols().has(instrument.symbol) && flashDirections()[instrument.symbol] >= 0
-              "
-              [class.bg-loss/10]="
-                changedSymbols().has(instrument.symbol) && flashDirections()[instrument.symbol] < 0
-              "
               (click)="openOrder(instrument)"
             >
               <span class="text-muted-foreground">{{ instrument.symbol }}</span>

@@ -470,8 +470,7 @@ describe('DashboardComponent', () => {
     );
   });
 
-  it('should flash ticker rows only when the rendered price changes', () => {
-    vi.useFakeTimers();
+  it('should update ticker prices and daily changes without highlight state', () => {
     const fixture = TestBed.createComponent(DashboardComponent);
     const component = fixture.componentInstance;
     const instrument: Instrument = {
@@ -482,18 +481,17 @@ describe('DashboardComponent', () => {
       changePercent: 0,
     };
     component['instruments'].set([instrument]);
+    component['openingPrices'].set('AAPL', 95);
 
-    component['applyTick']('AAPL', 100.004);
+    component['applyTick']('AAPL', 100);
 
-    expect(component['instruments']()[0].price).toBe(100.004);
-    expect(component['changedSymbols']().has('AAPL')).toBe(false);
-
-    component['applyTick']('AAPL', 100.01);
-
-    expect(component['changedSymbols']().has('AAPL')).toBe(true);
-    expect(component['flashDirections']()['AAPL']).toBe(1);
-    vi.advanceTimersByTime(221);
-    expect(component['changedSymbols']().has('AAPL')).toBe(false);
-    vi.useRealTimers();
+    expect(component['instruments']()[0]).toEqual({
+      ...instrument,
+      price: 100,
+      change: 5,
+      changePercent: (5 / 95) * 100,
+    });
+    expect('changedSymbols' in component).toBe(false);
+    expect('flashDirections' in component).toBe(false);
   });
 });

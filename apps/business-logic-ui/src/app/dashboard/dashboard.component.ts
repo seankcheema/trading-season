@@ -97,8 +97,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly cashBalance = signal(MOCK_CASH_BALANCE);
   protected readonly instruments = signal<Instrument[]>([...MOCK_INSTRUMENTS]);
   protected readonly tickerInstruments = computed(() => this.instruments().slice(0, 6));
-  protected readonly changedSymbols = signal(new Set<string>());
-  protected readonly flashDirections = signal<Record<string, number>>({});
   protected readonly portfolioTimeframe = signal<Timeframe>('1D');
   protected readonly marketSessionId = signal<number | null>(null);
   protected readonly currentMarketTimestamp = signal('');
@@ -173,16 +171,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   );
 
   protected readonly transactions = computed(() =>
-    MOCK_TRANSACTIONS.map((transaction) => {
-      const current =
-        findInstrument(transaction.symbol, this.instruments())?.price ?? transaction.price;
-      const direction = transaction.side === 'buy' ? 1 : -1;
-      return {
-        ...transaction,
-        value: transaction.shares * transaction.price,
-        gainLoss: direction * transaction.shares * (current - transaction.price),
-      };
-    }),
+    MOCK_TRANSACTIONS.map((transaction) => ({
+      ...transaction,
+      value: transaction.shares * transaction.price,
+    })),
   );
 
   protected readonly positions = computed(() =>
@@ -421,8 +413,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   private applyTick(symbol: string, price: number): void {
-    const previous =
-      this.instruments().find((stock) => stock.symbol === symbol)?.price ?? price;
     this.instruments.update((stocks) =>
       stocks.map((stock) => {
         if (stock.symbol !== symbol) return stock;
@@ -431,37 +421,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
         return { ...stock, price, change, changePercent: open ? (change / open) * 100 : 0 };
       }),
     );
-    const previousCents = Math.round(previous * 100);
-    const nextCents = Math.round(price * 100);
-    if (previousCents === nextCents) {
-      return;
-    }
-    this.changedSymbols.update((symbols) => new Set(symbols).add(symbol));
-    this.flashDirections.update((directions) => ({
-      ...directions,
-      [symbol]: Math.sign(nextCents - previousCents),
-    }));
-    const flashTimer = setTimeout(() => {
-      this.updateTimers.delete(flashTimer);
-      this.changedSymbols.update((symbols) => {
-        const next = new Set(symbols);
-        next.delete(symbol);
-        return next;
-      });
-      this.flashDirections.update((directions) => {
-        const next = { ...directions };
-        delete next[symbol];
-        return next;
-      });
-    }, 220);
-    this.updateTimers.add(flashTimer);
   }
 
   private clearQueuedUpdates(): void {
     this.updateTimers.forEach(clearTimeout);
     this.updateTimers.clear();
-    this.changedSymbols.set(new Set());
-    this.flashDirections.set({});
   }
 
   private isoToMarketLocal(timestamp: string): string {
