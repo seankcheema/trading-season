@@ -10,7 +10,7 @@ pipeline {
         maven 'Maven'
         // This Jenkins tool must be configured to install Node 22.22.3.
         // Angular 22.1 rejects earlier Node 22 releases.
-        nodejs 'NodeJS 22.22.3'
+        nodejs 'NodeJS'
     }
 
     environment {
