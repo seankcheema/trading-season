@@ -70,6 +70,48 @@ describe('RegisterComponent', () => {
     expect(navigate).toHaveBeenCalledWith('/dashboard');
   });
 
+  it('should mask the SSN until the user asks to see it', () => {
+    const fixture = TestBed.createComponent(RegisterComponent);
+    fixture.detectChanges();
+    const ssn = fixture.nativeElement.querySelector('#ssn') as HTMLInputElement;
+
+    expect(ssn.type).toBe('password');
+
+    fixture.componentInstance['toggleSsnVisibility']();
+    fixture.detectChanges();
+
+    expect(ssn.type).toBe('text');
+  });
+
+  it('should reveal only the field the user toggled', () => {
+    const fixture = TestBed.createComponent(RegisterComponent);
+    fixture.detectChanges();
+
+    fixture.componentInstance['togglePasswordVisibility']();
+    fixture.detectChanges();
+
+    const query = (selector: string) =>
+      (fixture.nativeElement.querySelector(selector) as HTMLInputElement).type;
+    expect(query('#password')).toBe('text');
+    expect(query('#confirmPassword')).toBe('password');
+    expect(query('#ssn')).toBe('password');
+  });
+
+  it('should label each reveal toggle distinctly', () => {
+    const fixture = TestBed.createComponent(RegisterComponent);
+    fixture.detectChanges();
+
+    const labels = [...fixture.nativeElement.querySelectorAll('button[aria-label]')].map(
+      (button: HTMLElement) => button.getAttribute('aria-label'),
+    );
+
+    // Duplicated names would leave the toggles indistinguishable to screen readers.
+    expect(labels).toContain('Show SSN');
+    expect(labels).toContain('Show password');
+    expect(labels).toContain('Show confirmation password');
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
   it('should show an error message when the email is already in use', () => {
     authService.register.mockReturnValue(
       throwError(

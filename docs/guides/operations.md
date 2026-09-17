@@ -32,15 +32,20 @@ Because the seed container cannot inspect free space inside the separate Postgre
 
 ## CI and artifacts
 
-The Jenkins pipeline expects a native agent with Docker, the Maven tool named Maven3, and Java 21 at its configured JAVA_HOME. It runs Java, auth, Angular, script, and build-scoped two-day PostgreSQL integration checks. Full-year generation remains on demand.
+The Jenkins pipeline expects a native agent with Docker, the Maven tool named Maven3, and Java 21 at its configured JAVA_HOME. It runs Java, auth, Angular, end-to-end, script, and build-scoped two-day PostgreSQL integration checks. Full-year generation remains on demand.
 
 | Suite | Outputs |
 | --- | --- |
-| Java | apps/business-backend/target/surefire-reports |
+| Java | apps/business-backend/target/surefire-reports and target/site/jacoco |
 | Auth | apps/auth-service/coverage and reports/junit |
 | UI | apps/business-logic-ui/coverage |
+| End-to-end | apps/business-logic-ui/reports/playwright |
 
 Auth CI runs npm ci then npm run test:ci. Frontend CI currently uses npm install --legacy-peer-deps followed by npm test -- --no-watch --coverage. This differs from the preferred root npm ci developer installation. Do not silently treat an absent test tool or empty required report as success.
+
+Every tier fails its own stage below 50% coverage; the mechanisms are listed under [coverage floors](development.md#coverage-floors). A stage that passes has already cleared the floor, so the archived reports are for inspection, not for a manual check.
+
+The end-to-end stage installs the Playwright Chromium build with `npx playwright install chromium`, deliberately without `--with-deps`, which shells out to sudo apt-get that the jenkins user cannot run. If the agent lacks the shared libraries headless Chromium needs, Playwright fails and names them. Playwright then builds the UI and serves it on port 4200 through the Angular SSR server, and stubs the API tier at the network boundary, so the stage needs no database, no auth service, and no Java backend. Because it builds, the stage is the only one that also proves the production build works; expect it to take longer than the unit stages.
 
 The optional [Jenkins image](../../infrastructure/docker/Dockerfile.jenkins) installs Node 20, which does not meet the current Angular engine requirement. The Jenkins Compose example also mounts the host Docker socket and contains development credentials. Review toolchains, credentials, and access before deployment; it is not a production-ready configuration.
 

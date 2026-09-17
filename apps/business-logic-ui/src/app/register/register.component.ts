@@ -85,6 +85,8 @@ export class RegisterComponent {
 
   protected readonly showPassword = signal(false);
   protected readonly showConfirmPassword = signal(false);
+  // The SSN is masked like a password, and revealed only when the user asks.
+  protected readonly showSsn = signal(false);
   protected readonly submitted = signal(false);
   // True while the registration requests are in flight.
   protected readonly loading = signal(false);
@@ -163,6 +165,10 @@ export class RegisterComponent {
 
   protected toggleConfirmPasswordVisibility(): void {
     this.showConfirmPassword.update((value) => !value);
+  }
+
+  protected toggleSsnVisibility(): void {
+    this.showSsn.update((value) => !value);
   }
 
   protected onSubmit(): void {

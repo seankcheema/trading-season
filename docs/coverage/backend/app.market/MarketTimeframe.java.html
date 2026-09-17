@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MarketTimeframe.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">sprint1-greeter-app</a> &gt; <a href="index.source.html" class="el_package">app.market</a> &gt; <span class="el_source">MarketTimeframe.java</span></div><h1>MarketTimeframe.java</h1><pre class="source lang-java linenums">package app.market;
+
+import java.time.Duration;
+
+/** Supported chart ranges and aggregation widths. */
+<span class="fc" id="L6">public enum MarketTimeframe {</span>
+    /** Current trading session at one-minute resolution. */
+<span class="fc" id="L8">    ONE_DAY(&quot;1D&quot;, Duration.ofDays(1), Duration.ofMinutes(1)),</span>
+    /** Latest five trading sessions at five-minute resolution. */
+<span class="fc" id="L10">    FIVE_DAYS(&quot;5D&quot;, Duration.ofDays(7), Duration.ofMinutes(5)),</span>
+    /** Previous seven calendar days at thirty-minute resolution. */
+<span class="fc" id="L12">    ONE_WEEK(&quot;1W&quot;, Duration.ofDays(7), Duration.ofMinutes(30)),</span>
+    /** Previous month at hourly resolution. */
+<span class="fc" id="L14">    ONE_MONTH(&quot;1M&quot;, Duration.ofDays(31), Duration.ofHours(1)),</span>
+    /** Previous year at daily resolution. */
+<span class="fc" id="L16">    ONE_YEAR(&quot;1Y&quot;, Duration.ofDays(366), Duration.ofDays(1));</span>
+
+    private final String wireValue;
+    private final Duration lookback;
+    private final Duration bucket;
+
+<span class="fc" id="L22">    MarketTimeframe(String wireValue, Duration lookback, Duration bucket) {</span>
+<span class="fc" id="L23">        this.wireValue = wireValue;</span>
+<span class="fc" id="L24">        this.lookback = lookback;</span>
+<span class="fc" id="L25">        this.bucket = bucket;</span>
+<span class="fc" id="L26">    }</span>
+
+    /**
+     * Returns the inclusive historical lookback used for the query.
+     * @return the historical lookback
+     */
+<span class="nc" id="L32">    public Duration lookback() { return lookback; }</span>
+
+    /**
+     * Returns the aggregation bucket width.
+     * @return the bucket width
+     */
+<span class="fc" id="L38">    public Duration bucket() { return bucket; }</span>
+
+    /**
+     * Parses the public API timeframe value.
+     * @param value wire-format timeframe
+     * @return the matching timeframe
+     * @throws MarketRequestException when the value is unsupported
+     */
+    public static MarketTimeframe parse(String value) {
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">        for (MarketTimeframe timeframe : values()) {</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">            if (timeframe.wireValue.equals(value)) return timeframe;</span>
+        }
+<span class="nc" id="L50">        throw new MarketRequestException(&quot;Unsupported timeframe: &quot; + value);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

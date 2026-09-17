@@ -1,0 +1,13 @@
+/* Type-checking for the Playwright suite. These specs run in Node through the
+   Playwright runner, not in the browser bundle, so they are deliberately kept
+   out of tsconfig.app.json and tsconfig.spec.json. */
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "noEmit": true
+  },
+  "include": ["**/*.ts"]
+}
