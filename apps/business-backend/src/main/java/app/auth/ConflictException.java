@@ -1,13 +1,15 @@
 package app.auth;
 
-/** Registration rejected because the username or email is already taken. */
+/** Registration rejected because the account already has a profile, or the email is registered to another account. */
 public class ConflictException extends RuntimeException {
     /**
-     * Creates a conflict with a client-safe message.
+     * Creates the exception.
      *
-     * @param message conflict description
+     * @param message the reason returned to the caller
      */
     public ConflictException(String message) {
         super(message);
     }
 }
+
+

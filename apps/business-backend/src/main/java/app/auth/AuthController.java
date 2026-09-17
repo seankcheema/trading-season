@@ -1,9 +1,10 @@
 package app.auth;
 
 import app.user.User;
-import app.user.UserSession;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -11,7 +12,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * REST endpoints for user registration and login.
+ * REST endpoints for business account registration and the soft account
+ * existence check. Sign-in is handled by the auth service, not here.
  */
 @RestController
 @RequestMapping("/api/auth")
@@ -22,34 +24,40 @@ public class AuthController {
     /**
      * Creates the controller.
      *
-     * @param authService authentication application service
+     * @param authService registration and account lookup logic
      */
     public AuthController(AuthService authService) {
         this.authService = authService;
     }
 
     /**
-     * Registers a new user account.
+     * Registers the business account for the caller identified by the bearer token.
      *
-     * @param request the registration details
-     * @return the created user's public profile
+     * @param jwt     the verified access token
+     * @param request the profile details from the registration form
+     * @return the created account's id and email
+     * @throws ForbiddenException if the request email differs from the token's email
+     * @throws ConflictException  if the account already exists or the email is taken
      */
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public RegisterResponse register(@Valid @RequestBody RegisterRequest request) {
-        User user = authService.register(request);
-        return new RegisterResponse(user.getUserId(), user.getUsername(), user.getEmail());
+    public RegisterResponse register(@AuthenticationPrincipal Jwt jwt,
+                                     @Valid @RequestBody RegisterRequest request) {
+        User user = authService.register(AuthenticatedUser.from(jwt), request);
+        return new RegisterResponse(user.getUserId(), user.getEmail());
     }
 
     /**
-     * Authenticates a user and issues a new session.
+     * Reports whether a business account is registered with the email. Does not
+     * require a token.
      *
-     * @param request the login credentials
-     * @return the issued session's id and expiry
+     * @param request the email to check
+     * @return whether an account exists
      */
-    @PostMapping("/login")
-    public AuthResponse login(@Valid @RequestBody LoginRequest request) {
-        UserSession session = authService.login(request);
-        return new AuthResponse(session.getSessionId(), session.getExpiresAt());
+    @PostMapping("/account-exists")
+    public AccountExistsResponse accountExists(@Valid @RequestBody AccountExistsRequest request) {
+        return new AccountExistsResponse(authService.accountExists(request.email()));
     }
 }
+
+

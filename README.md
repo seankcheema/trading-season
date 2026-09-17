@@ -2,6 +2,8 @@
 
 Trading simulation monorepo with an Angular interface, a Spring Boot backend, and a NestJS authentication service. Reporting applications are placeholders.
 
+The Java application follows a Spring Boot source layout rooted at `apps/business-backend/src/main/java/app`, with the bootstrap class in `app.Main` and feature packages such as `app.auth`, `app.order`, `app.user`, `app.account`, and `app.instrument`.
+
 ## Start here
 
 Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and Docker with Compose. From the repository root:
@@ -40,13 +42,12 @@ Browse the [documentation index](docs/README.md) to choose a guide or reference.
 
 # Business database ERD
 
-Canonical relationship diagram for the business SQL schema after V001 and V002. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
+Canonical relationship diagram for the business SQL schema after V001, V002 and V003. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
 
 The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change.
 
 ```mermaid
 erDiagram
-    users ||--o{ sessions : authenticates
     users ||--o{ accounts : owns
 
     stocks o|--o| instruments : "optionally powers"
@@ -78,16 +79,9 @@ erDiagram
 
     users {
         UUID user_id PK
-        TEXT username UK
         TEXT email UK
         TEXT user_role
         TEXT account_status
-    }
-    sessions {
-        UUID session_id PK
-        UUID user_id FK
-        TIMESTAMPTZ expires_at
-        TIMESTAMPTZ revoked_at
     }
     simulation_sessions {
         BIGINT id PK

@@ -2,7 +2,6 @@ package app.user;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -11,26 +10,12 @@ import java.util.UUID;
 public interface UserRepository extends JpaRepository<User, UUID> {
 
     /**
-     * Finds a user by username.
+     * Checks whether an email is already registered, ignoring case.
      *
-     * @param username username to find
-     * @return the matching user, if present
+     * @param email the email address
+     * @return {@code true} if an account uses the email in any letter case
      */
-    Optional<User> findByUsername(String username);
-
-    /**
-     * Checks whether a username is already taken.
-     *
-     * @param username username to test
-     * @return whether a matching user exists
-     */
-    boolean existsByUsername(String username);
-
-    /**
-     * Checks whether an email is already registered.
-     *
-     * @param email email address to test
-     * @return whether a matching user exists
-     */
-    boolean existsByEmail(String email);
+    boolean existsByEmailIgnoreCase(String email);
 }
+
+

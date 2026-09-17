@@ -1,7 +1,8 @@
 package app.auth;
 
-import app.market.MarketRequestException;
-import app.market.MarketLimitException;
+
+import app.user.UserNotFoundException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -12,68 +13,75 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Translates auth-related exceptions and validation errors into HTTP error responses.
+ * Translates controller exceptions and validation errors into HTTP error responses
+ * with an {@code {"error": "..."}} body. Missing or invalid tokens are rejected
+ * earlier, by {@link SecurityErrorHandler}.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    /** Creates the exception handler. */
-    public GlobalExceptionHandler() {
-    }
-
     /**
-     * Handles duplicate username/email registration attempts.
+     * Handles duplicate account or email registration attempts.
      *
-     * @param ex conflict containing a safe client message
-     * @return a conflict response
+     * @param ex the conflict
+     * @return 409 with the conflict message
      */
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<Map<String, String>> handleConflict(ConflictException ex) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", ex.getMessage()));
+        return error(HttpStatus.CONFLICT, ex.getMessage());
     }
 
     /**
-     * Handles invalid login credentials or blocked accounts.
+     * Handles a concurrent registration that passed the service checks but hit a
+     * unique constraint on insert.
      *
-     * @param ex authentication failure containing a safe client message
-     * @return an unauthorized response
+     * @param ex the constraint violation
+     * @return 409 without database details
      */
-    @ExceptionHandler(UnauthorizedException.class)
-    public ResponseEntity<Map<String, String>> handleUnauthorized(UnauthorizedException ex) {
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", ex.getMessage()));
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, String>> handleDataIntegrity(DataIntegrityViolationException ex) {
+        return error(HttpStatus.CONFLICT, "Account or email is already registered");
+    }
+
+    /**
+     * Handles an authenticated caller acting outside their own account.
+     *
+     * @param ex the refusal
+     * @return 403 with the refusal message
+     */
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<Map<String, String>> handleForbidden(ForbiddenException ex) {
+        return error(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
+    /**
+     * Handles an authenticated caller who has no business account yet.
+     *
+     * @param ex the lookup failure
+     * @return 404 with the failure message
+     */
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleNotFound(UserNotFoundException ex) {
+        return error(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 
     /**
      * Handles request validation failures, collecting all field errors into one message.
      *
-     * @param ex request validation failure
-     * @return a bad-request response containing the field errors
+     * @param ex the validation failure
+     * @return 400 listing each invalid field
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, String>> handleValidation(MethodArgumentNotValidException ex) {
         String message = ex.getBindingResult().getFieldErrors().stream()
                 .map(fieldError -> fieldError.getField() + ": " + fieldError.getDefaultMessage())
                 .collect(Collectors.joining("; "));
-        return ResponseEntity.badRequest().body(Map.of("error", message));
+        return error(HttpStatus.BAD_REQUEST, message);
     }
 
-    /**
-     * Handles invalid or unavailable public market-data requests.
-     * @param ex request failure carrying a safe message
-     * @return a bad-request response
-     */
-    @ExceptionHandler(MarketRequestException.class)
-    public ResponseEntity<Map<String, String>> handleMarketRequest(MarketRequestException ex) {
-        return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
-    }
-
-    /**
-     * Handles public market-data rate and connection limits.
-     * @param ex limit failure carrying a safe message
-     * @return a too-many-requests response
-     */
-    @ExceptionHandler(MarketLimitException.class)
-    public ResponseEntity<Map<String, String>> handleMarketLimit(MarketLimitException ex) {
-        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of("error", ex.getMessage()));
+    private static ResponseEntity<Map<String, String>> error(HttpStatus status, String message) {
+        return ResponseEntity.status(status).body(Map.of("error", message));
     }
 }
+
+
