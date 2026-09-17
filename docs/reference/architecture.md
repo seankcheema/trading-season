@@ -14,7 +14,7 @@ The frontend signs users in through the NestJS auth service and sends registrati
 
 ## Data flows
 
-Java requests pass through validation, AuthService, JPA repositories, and the business PostgreSQL database. Registration hashes passwords; login creates a session identifier and expiry. See the [API contract](api.md).
+Java requests first pass the Spring Security bearer-token filter, which verifies the RS256 signature, expiry, issuer and subject; only the account existence check is public. They then pass through validation, services, JPA repositories, and the business PostgreSQL database. Registration stores profile data under the token's sub; there are no passwords or sessions in the business database. See the [API contract](api.md).
 
 NestJS requests pass through controllers/Passport strategies, AuthService, and TypeORM repositories in a separate auth database. Registration/login issue an RS256 access token and a random refresh token. Only the refresh token hash is stored. Refresh rotates it; reuse of an unusable token revokes the user's live refresh sessions. Access tokens expire after 15 minutes and remain stateless.
 

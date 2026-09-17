@@ -2,11 +2,11 @@
 
 ## Two separate stores
 
-The Java business backend and NestJS auth service have separate PostgreSQL databases and user models. Do not assume identities or sessions are shared.
+The Java business backend and NestJS auth service have separate PostgreSQL databases and user models. The only value shared between them is the user's UUID: auth_db users.id equals trading_season users.user_id, and it reaches the Java backend as the access token's sub claim. Credentials, lockout and refresh sessions exist only in auth_db.
 
 | Store | Schema source | Application behavior |
 | --- | --- | --- |
-| Business: trading_season | [V001 bootstrap SQL](../../apps/business-backend/db/migrations/V001__Initial_schema.sql) plus incremental SQL such as [V002 synthetic market data replay metadata](../../apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
+| Business: trading_season | [V001 bootstrap SQL](../../apps/business-backend/db/migrations/V001__Initial_schema.sql) plus incremental SQL such as [V002 synthetic market data replay metadata](../../apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql) and [V003 token authentication](../../apps/business-backend/db/migrations/V003__Token_authentication.sql) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
 | Auth: auth_db | [TypeORM migrations](../../apps/auth-service/src/database/migrations/) | Migrations run on startup; synchronize=false |
 
 The business bootstrap defines more of the trading model than the currently implemented Java auth API. The ERD below is the canonical diagram; SQL remains authoritative for exact columns and constraints.
@@ -15,7 +15,7 @@ The business bootstrap defines more of the trading model than the currently impl
 
 | Group | Tables and responsibility |
 | --- | --- |
-| Identity | users and sessions: profile, credentials, login sessions |
+| Identity | users: profile, funds and account settings, keyed by the auth service user UUID; no credentials |
 | Simulation/reference | simulation_sessions, stocks, instruments: reproducible runs and tradable assets |
 | Market data | market_states, market_behaviors, quotes, market_ticks, candles: state, history, replay data |
 | Accounts/execution | accounts, holdings, orders, fills: balances, positions, instructions and executions |
@@ -27,7 +27,7 @@ Simulation data is scoped by run and stock. Deleting a simulation session cascad
 
 ## Disposable business database setup
 
-Use this setup for a local development database whose contents can be discarded. `V001__Initial_schema.sql` drops and recreates tables, so it is not a safe upgrade path for retained data. `V002__Synthetic_market_data_replay_metadata.sql` is applied after V001.
+Use this setup for a local development database whose contents can be discarded. `V001__Initial_schema.sql` drops and recreates tables, so it is not a safe upgrade path for retained data. `V002__Synthetic_market_data_replay_metadata.sql` is applied after V001, then `V003__Token_authentication.sql`. V003 removes the sessions table, the username column, and the users credential columns (password hash, lockout, reset token, last login), drops the user_id default because the application sets it from the token, and adds a case-insensitive unique index on email. Any stored password hashes and sessions are discarded.
 
 ### Connection values
 
@@ -61,13 +61,17 @@ Connect pgAdmin Query Tool to the `trading_season` database as the `trading_seas
 
 1. `apps/business-backend/db/migrations/V001__Initial_schema.sql`
 2. `apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql`
+3. `apps/business-backend/db/migrations/V003__Token_authentication.sql`
 
 With `psql`, the equivalent commands from the repository root are:
 
 ```sh
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V001__Initial_schema.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V003__Token_authentication.sql
 ```
+
+A database already initialized with V001 and V002 only needs V003 applied.
 
 ### Verify the schema
 
@@ -80,7 +84,7 @@ WHERE table_schema = 'public'
 ORDER BY table_name;
 ```
 
-You should see tables such as `users`, `sessions`, `stocks`, `simulation_sessions`, `quotes`, `market_ticks`, and `candles`.
+You should see tables such as `users`, `stocks`, `simulation_sessions`, `quotes`, `market_ticks`, and `candles`.
 
 Confirm that `trading_season` owns them:
 
@@ -135,7 +139,7 @@ apps/business-backend/db/.venv/Scripts/python.exe -m pip install -r apps/busines
 
 #### Step 2: Initialize a disposable database
 
-Run this step only when setting up the business database for the first time. It applies V001 and V002, and V001 drops existing tables.
+Run this step only when setting up the business database for the first time. It applies V001, V002 and V003, and V001 drops existing tables.
 
 ```powershell
 apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/0001-initialize-database.py `
@@ -312,7 +316,7 @@ There is no Flyway runner in the Java backend; these files are applied manually.
 
 ## Auth migrations
 
-[Runtime configuration](../../apps/auth-service/src/config/database.config.ts) and the [CLI data source](../../apps/auth-service/src/database/data-source.ts) must retain matching entity and migration lists. The initial schema creates auth users and refresh-token storage; the subsequent migration requires username.
+[Runtime configuration](../../apps/auth-service/src/config/database.config.ts) and the [CLI data source](../../apps/auth-service/src/database/data-source.ts) must retain matching entity and migration lists. The initial schema creates auth users and refresh-token storage; a later migration added a required username and TrimUserToBrsMinimum removed it along with first and last name, so email is the only login identifier.
 
 From apps/auth-service, npm run migration:show and npm run migration:run inspect/apply migrations. Export the matching database environment variables before invoking the CLI: its data source does not itself load dotenv. Normal application startup loads .env and runs migrations automatically.
 
@@ -324,13 +328,12 @@ Add incremental migrations rather than editing already applied files. For busine
 
 # Business database ERD
 
-Canonical relationship diagram for the business SQL schema after V001 and V002. SQL defines exact columns and constraints. See this database reference for ownership, initialization, and change rules.
+Canonical relationship diagram for the business SQL schema after V001, V002 and V003. SQL defines exact columns and constraints. See this database reference for ownership, initialization, and change rules.
 
 The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change.
 
 ```mermaid
 erDiagram
-    users ||--o{ sessions : authenticates
     users ||--o{ accounts : owns
 
     stocks o|--o| instruments : "optionally powers"
@@ -362,16 +365,9 @@ erDiagram
 
     users {
         UUID user_id PK
-        TEXT username UK
         TEXT email UK
         TEXT user_role
         TEXT account_status
-    }
-    sessions {
-        UUID session_id PK
-        UUID user_id FK
-        TIMESTAMPTZ expires_at
-        TIMESTAMPTZ revoked_at
     }
     simulation_sessions {
         BIGINT id PK
