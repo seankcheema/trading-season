@@ -3,7 +3,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 /**
  * Reduces users to the columns the business requirements actually call for.
  *
- * LEAP-BRS-2026-014 asks three things of this service: register and sign in
+ * The business requirements ask three things of this service: register and sign in
  * (BR-01), a client acting only on their own data (BR-02), and a session that
  * is time-limited and revocable (BR-03). Identity is the token's `sub`, and
  * authorization is `role`. Every column dropped below backs a feature no

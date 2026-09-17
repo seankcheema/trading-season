@@ -4,16 +4,16 @@ This reference describes implemented controllers unless a section is explicitly 
 
 ## Java backend: port 8081
 
-Base path: /api/auth. Source: [controller](../../apps/business-backend/src/main/java/com/neueda/leap/auth/AuthController.java).
+Base path: /api/auth. Source: [controller](../../apps/business-backend/src/main/java/app/auth/AuthController.java).
 
 | Method and path | Request | Success |
 | --- | --- | --- |
 | POST /api/auth/register | username, email, password, firstName, optional middleName, lastName, ssn, address, dateOfBirth | 201: userId, username, email |
 | POST /api/auth/login | username, password | 200: sessionId, expiresAt |
 
-Registration requires a 3–50 character username, valid email up to 100 characters, password of 8–100 characters, nonblank profile fields, and a past dateOfBirth. See [registration constraints](../../apps/business-backend/src/main/java/com/neueda/leap/auth/RegisterRequest.java).
+Registration requires a 3–50 character username, valid email up to 100 characters, password of 8–100 characters, nonblank profile fields, and a past dateOfBirth. See [registration constraints](../../apps/business-backend/src/main/java/app/auth/RegisterRequest.java).
 
-Errors use an error string: 400 for request validation, 409 for duplicate username/email, and 401 for invalid credentials or inactive/locked accounts. See [exception mapping](../../apps/business-backend/src/main/java/com/neueda/leap/auth/GlobalExceptionHandler.java). Login returns a database session, not a JWT.
+Errors use an error string: 400 for request validation, 409 for duplicate username/email, and 401 for invalid credentials or inactive/locked accounts. See [exception mapping](../../apps/business-backend/src/main/java/app/auth/GlobalExceptionHandler.java). Login returns a database session, not a JWT.
 
 ## Java stock market API: port 8081
 

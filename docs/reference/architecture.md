@@ -5,7 +5,7 @@
 | Area | Current responsibility | Source |
 | --- | --- | --- |
 | Angular UI | Login and registration forms, local validation, mock portfolio dashboard, and live simulated stock tickers | [Routes](../../apps/business-logic-ui/src/app/app.routes.ts) |
-| Spring Boot backend | Registration with profile data, username/password sessions, and public simulated stock snapshot/candle/SSE reads | [Java controllers](../../apps/business-backend/src/main/java/com/neueda/leap) |
+| Spring Boot backend | Registration with profile data, username/password sessions, and public simulated stock snapshot/candle/SSE reads | [Java controllers](../../apps/business-backend/src/main/java/app) |
 | NestJS auth service | Email/password login, RS256 access tokens, opaque refresh tokens, JWKS, liveness | [Auth controller](../../apps/auth-service/src/auth/auth.controller.ts) |
 | Shared UI | Angular components consumed through @shared/ui-components subpath exports | [Package manifest](../../packages/shared-ui-components/package.json) |
 | Reporting | Placeholder directories only | [Reporting proposal](reporting.md) |

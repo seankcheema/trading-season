@@ -8,7 +8,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.neueda.leap</groupId>
+    <groupId>app</groupId>
     <artifactId>sprint1-greeter-app</artifactId>
     <version>0.1.0</version>
     <packaging>jar</packaging>
@@ -78,14 +78,14 @@
                 <configuration>
                     <argLine>--add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.time=ALL-UNNAMED</argLine>
                     <!-- Support JUnit 5 @Tag filtering -->
-                    <includeTags>${test.tags}</includeTags>
+                    <groups>${test.tags}</groups>
                 </configuration>
             </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>com.neueda.leap.Main</mainClass>
+                    <mainClass>app.Main</mainClass>
                 </configuration>
                 <executions>
                     <execution>
