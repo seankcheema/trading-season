@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Instrument.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">sprint1-greeter-app</a> &gt; <a href="index.source.html" class="el_package">app.instrument</a> &gt; <span class="el_source">Instrument.java</span></div><h1>Instrument.java</h1><pre class="source lang-java linenums">package app.instrument;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+/**
+ * A tradable asset: equity, FX pair, or crypto. Every quote, order, holding,
+ * and fill hangs off this table.
+ */
+@Entity
+@Table(name = &quot;instruments&quot;)
+<span class="fc" id="L16">public class Instrument {</span>
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = &quot;instrument_id&quot;, updatable = false, nullable = false)
+    private Integer instrumentId;
+
+    @Column(nullable = false, unique = true)
+    private String ticker;
+
+    @Column(nullable = false)
+    private String name;
+
+    @Column(name = &quot;asset_class&quot;, nullable = false)
+    private String assetClass;
+
+    /** UK / US / IN for equities; null for FX and crypto. */
+    @Column
+    private String market;
+
+    @Column(nullable = false)
+    private String currency;
+
+    /** BR-05: an order against a non-tradable instrument must be rejected. */
+<span class="fc" id="L40">    @Column(name = &quot;is_tradable&quot;, nullable = false)</span>
+<span class="fc" id="L41">    private Boolean tradable = true;</span>
+
+    @Column(name = &quot;simulated_stock_symbol&quot;)
+    private String simulatedStockSymbol;
+
+    public Integer getInstrumentId() {
+<span class="fc" id="L47">        return instrumentId;</span>
+    }
+
+    public void setInstrumentId(Integer instrumentId) {
+<span class="fc" id="L51">        this.instrumentId = instrumentId;</span>
+<span class="fc" id="L52">    }</span>
+
+    public String getTicker() {
+<span class="fc" id="L55">        return ticker;</span>
+    }
+
+    public void setTicker(String ticker) {
+<span class="fc" id="L59">        this.ticker = ticker;</span>
+<span class="fc" id="L60">    }</span>
+
+    public String getName() {
+<span class="nc" id="L63">        return name;</span>
+    }
+
+    public void setName(String name) {
+<span class="nc" id="L67">        this.name = name;</span>
+<span class="nc" id="L68">    }</span>
+
+    public String getAssetClass() {
+<span class="nc" id="L71">        return assetClass;</span>
+    }
+
+    public void setAssetClass(String assetClass) {
+<span class="nc" id="L75">        this.assetClass = assetClass;</span>
+<span class="nc" id="L76">    }</span>
+
+    public String getMarket() {
+<span class="nc" id="L79">        return market;</span>
+    }
+
+    public void setMarket(String market) {
+<span class="nc" id="L83">        this.market = market;</span>
+<span class="nc" id="L84">    }</span>
+
+    public String getCurrency() {
+<span class="nc" id="L87">        return currency;</span>
+    }
+
+    public void setCurrency(String currency) {
+<span class="nc" id="L91">        this.currency = currency;</span>
+<span class="nc" id="L92">    }</span>
+
+    public Boolean isTradable() {
+<span class="fc" id="L95">        return tradable;</span>
+    }
+
+    public void setTradable(Boolean tradable) {
+<span class="fc" id="L99">        this.tradable = tradable;</span>
+<span class="fc" id="L100">    }</span>
+
+    public String getSimulatedStockSymbol() {
+<span class="nc" id="L103">        return simulatedStockSymbol;</span>
+    }
+
+    public void setSimulatedStockSymbol(String simulatedStockSymbol) {
+<span class="nc" id="L107">        this.simulatedStockSymbol = simulatedStockSymbol;</span>
+<span class="nc" id="L108">    }</span>
+}
+
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>
