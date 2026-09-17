@@ -57,6 +57,13 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <!-- Boot 4 moved the @WebMvcTest slice out of spring-boot-starter-test
+                 into a per-technology module. -->
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
             <scope>test</scope>
