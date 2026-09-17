@@ -250,17 +250,46 @@ pipeline {
                         sh '''
                             set -eu
                             echo " Running Login and Registration E2E Tests (Playwright)..."
-                            # Browsers are not installed by npm ci. Deliberately not
-                            # --with-deps: that shells out to sudo apt-get, which the
-                            # jenkins user cannot run. If the agent is missing the
-                            # shared libraries headless Chromium needs, Playwright
-                            # fails here and names them, which is the visible failure
-                            # the pipeline wants rather than a silent skip.
-                            npx playwright install chromium
-                            # Playwright starts its own `ng serve` on 4200 and waits
-                            # for it; the API tier is stubbed at the network boundary,
-                            # so no database or backend service is required.
-                            npm run e2e
+                            # Headless Chromium needs GTK/ATK shared libraries this agent
+                            # does not carry (libatk-1.0.so.0 and friends), and installing
+                            # them needs root: `playwright install --with-deps` shells out
+                            # to sudo apt-get, which the jenkins user cannot run. So the
+                            # suite runs inside the official Playwright image, which ships
+                            # those libraries and the matching browser builds already --
+                            # `npx playwright install chromium` on the agent downloaded a
+                            # browser that could never launch. The image tag is read from
+                            # the installed @playwright/test so it cannot drift out of
+                            # step with it -- the browser builds an image ships are only
+                            # guaranteed to match its own Playwright version.
+                            command -v docker >/dev/null
+                            PW_VERSION="$(node -p "require('@playwright/test/package.json').version")"
+                            # The whole workspace is mounted, not just this app: the
+                            # monorepo root holds node_modules and the @shared/* packages
+                            # the build resolves through it. Those were installed on this
+                            # Linux agent in Setup Dependencies, so they are reused as is.
+                            # The Jenkins NodeJS tool is mounted in and put first on PATH,
+                            # so the container builds with the same Node that Verify
+                            # Toolchain checked rather than whatever the image carries.
+                            NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
+                            # --user keeps dist/ and reports/ owned by jenkins rather than
+                            # root, which would break the next build's checkout and the
+                            # archiveArtifacts step below. HOME gives npm a writable cache.
+                            # --ipc=host avoids the Chromium crashes that the default
+                            # 64MB /dev/shm causes under Docker.
+                            # Playwright starts its own server on 4200 and waits for it;
+                            # the API tier is stubbed at the network boundary, so no
+                            # database or backend service is required.
+                            docker run --rm \
+                                --user "$(id -u):$(id -g)" \
+                                --ipc=host \
+                                -v "$WORKSPACE:/workspace" \
+                                -v "$NODE_HOME:/opt/node:ro" \
+                                -e HOME=/tmp \
+                                -e CI=true \
+                                -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
+                                -w /workspace/apps/business-logic-ui \
+                                "mcr.microsoft.com/playwright:v${PW_VERSION}-noble" \
+                                npm run e2e
                             echo "✓ End-to-end tests completed"
                         '''
                     }
