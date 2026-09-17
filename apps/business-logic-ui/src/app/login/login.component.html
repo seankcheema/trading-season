@@ -65,13 +65,18 @@
           }
         </div>
 
+        @if (errorMessage()) {
+          <p role="alert" class="text-destructive text-sm">{{ errorMessage() }}</p>
+        }
+
         <button
           hlmBtn
           type="submit"
-          class="auth-button mt-1 w-full cursor-pointer rounded-[5px] transition-colors hover:bg-primary/80"
+          [disabled]="loading()"
+          class="auth-button mt-1 w-full cursor-pointer rounded-[5px] transition-colors hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-70"
         >
           <ng-icon name="lucideLogIn" />
-          Sign in
+          {{ loading() ? 'Signing in...' : 'Sign in' }}
         </button>
       </form>
     </div>

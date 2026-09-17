@@ -33,7 +33,9 @@ Compose validates JWT variables even when selecting database services, so provid
 | apps/business-backend | mvn spring-boot:run | 8081 |
 | apps/auth-service | npm run start:dev | 3001 |
 
-Do not use an unqualified Compose up for the full stack: its backend build context is stale. The Angular development server proxies its implemented stock-data calls to port 8081, but authentication, portfolio, and order API wiring remains unfinished.
+Do not use an unqualified Compose up for the full stack: its backend build context and port mapping are stale.
+
+The UI calls the auth service directly on port 3001, which allows the dev server origin through CORS_ORIGINS. Java calls use the relative /api path, which the dev server forwards to port 8080 through [proxy.conf.json](../../apps/business-logic-ui/proxy.conf.json) because the Java backend has no CORS policy. Registration completes only once the Java register contract accepts the profile the UI sends; see the [API reference](../reference/api.md#ui-integration).
 
 ## Checks
 

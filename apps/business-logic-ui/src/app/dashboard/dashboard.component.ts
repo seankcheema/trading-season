@@ -12,14 +12,17 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideBriefcaseBusiness,
   lucideCalendarClock,
   lucideCheck,
   lucideChevronDown,
+  lucideLogOut,
 } from '@ng-icons/lucide';
 import { Subscription } from 'rxjs';
+import { Router } from '@angular/router';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { AuthService } from '../core/auth/auth.service';
 import {
   Instrument,
   MOCK_ACCOUNTS,
@@ -72,7 +75,7 @@ type HeaderDropdown = 'account' | 'market-clock';
     TimeframeToggleComponent,
   ],
   providers: [
-    provideIcons({ lucideBriefcaseBusiness, lucideCalendarClock, lucideCheck, lucideChevronDown }),
+    provideIcons({ lucideBriefcaseBusiness, lucideCalendarClock, lucideCheck, lucideChevronDown, lucideLogOut }),
   ],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.css',
@@ -87,6 +90,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private readonly openingPrices = new Map<string, number>();
   private readonly assetChartSubscriptions = new Map<string, Subscription>();
   private marketGeneration = 0;
+  private readonly _authService = inject(AuthService);
+  private readonly _router = inject(Router);
 
   protected readonly accounts = MOCK_ACCOUNTS;
   protected readonly openHeaderDropdown = signal<HeaderDropdown | null>(null);
@@ -552,4 +557,7 @@ function marketWeekdays(year: number): string[] {
     }
   }
   return dates;
+  protected onSignOut(): void {
+    this._authService.logout().subscribe(() => void this._router.navigateByUrl('/login'));
+  }
 }
