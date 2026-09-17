@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <p><b>Known gap:</b> this controller does not yet resolve the caller from
  * an authenticated session — business-backend has no request-time identity
  * check at all today (no {@code SecurityFilterChain}/filter reads the
- * {@code session_id} {@link app.auth.AuthService#login} issues),
+ * {@code session_id} the auth service issues),
  * and a separate {@code auth-service} issuing real JWTs exists alongside it
  * marked "WIP" in the root README. Until the team decides which of those
  * this endpoint should trust, {@link OrderRequest#accountId()} is taken

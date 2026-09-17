@@ -1,5 +1,5 @@
 -- Dua LEAPa — Trading Platform Schema
--- Source: LEAP-BRS-2026-014 v0.9 ("BR-*" refs below) + KAN-* Jira stories (impl detail).
+-- Source: business requirements specification v0.9 ("BR-*" refs below) + KAN-* Jira stories (impl detail).
 --
 -- Core design decisions:
 --   * Orders vs fills are separate (BR-06): an ACCEPTED order can exist with no fill yet.

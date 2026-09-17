@@ -78,13 +78,19 @@ let nextId = 0;
 })
 export class InstrumentSearchComponent {
   readonly size = input<'md' | 'lg'>('md');
+  readonly instruments = input<readonly Instrument[]>([]);
   readonly selected = output<Instrument>();
 
   protected readonly query = signal('');
   protected readonly focused = signal(false);
   protected readonly activeIndex = signal(0);
 
-  protected readonly results = computed(() => searchInstruments(this.query()));
+  protected readonly results = computed(() => {
+    const instruments = this.instruments();
+    return instruments.length
+      ? searchInstruments(this.query(), instruments)
+      : searchInstruments(this.query());
+  });
   protected readonly open = computed(() => this.focused() && this.query().trim().length > 0);
 
   private readonly _id = nextId++;
