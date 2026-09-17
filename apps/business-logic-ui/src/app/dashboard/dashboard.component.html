@@ -35,6 +35,16 @@
         >
           SC
         </div>
+
+        <button
+          type="button"
+          class="border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border transition-colors"
+          aria-label="Sign out"
+          title="Sign out"
+          (click)="onSignOut()"
+        >
+          <ng-icon name="lucideLogOut" class="text-[16px]" />
+        </button>
       </div>
     </header>
 

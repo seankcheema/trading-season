@@ -1,7 +1,9 @@
 import { CurrencyPipe, DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideChevronDown } from '@ng-icons/lucide';
+import { lucideChevronDown, lucideLogOut } from '@ng-icons/lucide';
+import { AuthService } from '../core/auth/auth.service';
 import {
   Instrument,
   MOCK_ACCOUNTS,
@@ -33,11 +35,14 @@ import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
     SignedPercentPipe,
     TimeframeToggleComponent,
   ],
-  providers: [provideIcons({ lucideChevronDown })],
+  providers: [provideIcons({ lucideChevronDown, lucideLogOut })],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.css',
 })
 export class DashboardComponent {
+  private readonly _authService = inject(AuthService);
+  private readonly _router = inject(Router);
+
   protected readonly accounts = MOCK_ACCOUNTS;
   protected readonly selectedAccountId = signal(MOCK_ACCOUNTS[0].id);
   protected readonly cashBalance = signal(MOCK_CASH_BALANCE);
@@ -118,5 +123,9 @@ export class DashboardComponent {
 
   protected onWithdraw(): void {
     // TODO: open withdrawal flow
+  }
+
+  protected onSignOut(): void {
+    this._authService.logout().subscribe(() => void this._router.navigateByUrl('/login'));
   }
 }
