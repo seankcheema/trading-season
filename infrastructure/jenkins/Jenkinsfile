@@ -98,7 +98,10 @@ pipeline {
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'apps/business-backend/target/surefire-reports/**/*',
+                    // The JaCoCo report is archived alongside the test results: the
+                    // coverage floor is enforced by the jacoco:check execution in the
+                    // POM, so a build that reaches this point has already cleared it.
+                    archiveArtifacts artifacts: 'apps/business-backend/target/surefire-reports/**/*, apps/business-backend/target/site/jacoco/**/*',
                                       allowEmptyArchive: true
                     junit testResults: 'apps/business-backend/target/surefire-reports/**/*.xml',
                           allowEmptyResults: true,
@@ -221,6 +224,8 @@ pipeline {
                             # @angular/build:unit-test builder. Vitest's own
                             # --run is not: `ng test --run` fails with
                             # "Unknown argument: run" before any test executes.
+                            # coverageThresholds in angular.json fails the run
+                            # below the agreed floor.
                             npm test -- --no-watch --coverage
                             echo "✓ Frontend tests completed"
                         '''
@@ -231,6 +236,47 @@ pipeline {
                 always {
                     archiveArtifacts artifacts: 'apps/business-logic-ui/coverage/**/*',
                                       allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('End-to-End Tests') {
+            environment {
+                CI = 'true'
+            }
+            steps {
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                    dir('apps/business-logic-ui') {
+                        sh '''
+                            set -eu
+                            echo " Running Login and Registration E2E Tests (Playwright)..."
+                            # Browsers are not installed by npm ci. Deliberately not
+                            # --with-deps: that shells out to sudo apt-get, which the
+                            # jenkins user cannot run. If the agent is missing the
+                            # shared libraries headless Chromium needs, Playwright
+                            # fails here and names them, which is the visible failure
+                            # the pipeline wants rather than a silent skip.
+                            npx playwright install chromium
+                            # Playwright starts its own `ng serve` on 4200 and waits
+                            # for it; the API tier is stubbed at the network boundary,
+                            # so no database or backend service is required.
+                            npm run e2e
+                            echo "✓ End-to-end tests completed"
+                        '''
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'apps/business-logic-ui/reports/playwright/**/*',
+                                      allowEmptyArchive: true
+                    // allowEmptyResults: false for the same reason as the auth stage:
+                    // a missing report means the suite never ran, which is a failure.
+                    catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                        junit testResults: 'apps/business-logic-ui/reports/playwright/junit.xml',
+                              allowEmptyResults: false,
+                              healthScaleFactor: 1.0
+                    }
                 }
             }
         }

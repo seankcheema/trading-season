@@ -25,7 +25,9 @@
                 "input": "public"
               }
             ],
-            "styles": ["src/styles.css"],
+            "styles": [
+              "src/styles.css"
+            ],
             "server": "src/main.server.ts",
             "outputMode": "server",
             "security": {
@@ -75,7 +77,27 @@
           "defaultConfiguration": "development"
         },
         "test": {
-          "builder": "@angular/build:unit-test"
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "include": [
+              "src/**/*.spec.ts"
+            ],
+            "exclude": [
+              "e2e/**"
+            ],
+            "coverageExclude": [
+              "e2e/**",
+              "src/**/*.spec.ts",
+              "src/main*.ts",
+              "src/server.ts"
+            ],
+            "coverageThresholds": {
+              "statements": 50,
+              "branches": 50,
+              "functions": 50,
+              "lines": 50
+            }
+          }
         }
       }
     }

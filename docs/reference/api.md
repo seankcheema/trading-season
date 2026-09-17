@@ -14,9 +14,9 @@ The Java backend has no login and never receives a password. Sign-up and sign-in
 | POST /api/auth/register | Bearer access token. JSON: email, firstName, optional middleName, lastName, ssn, address, dateOfBirth, traderLevel, availableFunds | 201: userId, email |
 | GET /api/users/me | Bearer access token | 200: caller's profile without ssn |
 
-Registration requires a 3–50 character username, valid email up to 100 characters, password of 8–100 characters, nonblank profile fields, and a past dateOfBirth. See [registration constraints](../../apps/business-backend/src/main/java/app/auth/RegisterRequest.java).
+Registration takes no username and no password; the caller is identified by the bearer token. It requires a valid email up to 100 characters, nonblank firstName, lastName and address, an ssn in XXX-XX-XXXX form, a past dateOfBirth, a traderLevel of BEGINNER, INTERMEDIATE or ADVANCED, and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/business-backend/src/main/java/app/auth/RegisterRequest.java).
 
-Errors use an error string: 400 for request validation, 409 for duplicate username/email, and 401 for invalid credentials or inactive/locked accounts. See [exception mapping](../../apps/business-backend/src/main/java/app/auth/GlobalExceptionHandler.java). Login returns a database session, not a JWT.
+Errors use an error string: 400 for request validation, 409 for a duplicate account or email, 403 when the request email differs from the token's email claim, and 401 for a missing or untrusted token. See [exception mapping](../../apps/business-backend/src/main/java/app/auth/GlobalExceptionHandler.java).
 
 ### Token verification
 
@@ -34,7 +34,7 @@ Registration requires an email up to 100 characters that equals the token's emai
 
 ### Errors
 
-Errors use an `{"error": "..."}` body. See [exception mapping](../../apps/business-backend/src/main/java/com/neueda/leap/auth/GlobalExceptionHandler.java) and [security error handling](../../apps/business-backend/src/main/java/app/auth/SecurityErrorHandler.java).
+Errors use an `{"error": "..."}` body. See [exception mapping](../../apps/business-backend/src/main/java/app/auth/GlobalExceptionHandler.java) and [security error handling](../../apps/business-backend/src/main/java/app/auth/SecurityErrorHandler.java).
 
 | Status | Cause |
 | --- | --- |
@@ -142,7 +142,7 @@ The Angular UI authenticates only against the NestJS auth service. See [AuthServ
 - Registration first posts email and password to POST /auth/register. If that returns 409, the UI tries POST /auth/login with the same credentials, so a user whose earlier profile step failed can resubmit. Once it has tokens, the UI posts the profile to Java POST /api/auth/register with a Bearer access token: email, firstName, middleName, lastName, dateOfBirth, ssn, address, traderLevel, availableFunds. It sends no password or username. If the profile step fails, the UI clears the stored session.
 - The dashboard route requires a stored session and refreshes an expired access token through POST /auth/refresh. Sign-out posts the refresh token to POST /auth/logout.
 
-Pending backend work: the Java register contract above still requires username and password and ignores traderLevel and availableFunds. Until it is updated, the UI's profile step returns 400 and registration does not complete.
+The registration and sign-in journeys are covered end to end by the [Playwright suite](../../apps/business-logic-ui/e2e), which drives the real application against a stand-in for both services. Its stand-in reproduces the contracts on this page, so update the two together.
 
 ## Contract maintenance
 

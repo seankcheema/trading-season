@@ -100,18 +100,28 @@
 
           <div hlmField>
             <label hlmFieldLabel for="ssn" class="text-foreground">SSN</label>
-            <input
-              hlmInput
-              id="ssn"
-              type="text"
-              inputmode="numeric"
-              autocomplete="off"
-              maxlength="11"
-              placeholder="XXX-XX-XXXX"
-              class="rounded-[5px]"
-              formControlName="ssn"
-              (input)="onSsnInput($event)"
-            />
+            <div class="relative">
+              <input
+                hlmInput
+                id="ssn"
+                [type]="showSsn() ? 'text' : 'password'"
+                inputmode="numeric"
+                autocomplete="off"
+                maxlength="11"
+                placeholder="XXX-XX-XXXX"
+                class="rounded-[5px] pr-8"
+                formControlName="ssn"
+                (input)="onSsnInput($event)"
+              />
+              <button
+                type="button"
+                class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 flex -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 transition-colors"
+                (click)="toggleSsnVisibility()"
+                [attr.aria-label]="showSsn() ? 'Hide SSN' : 'Show SSN'"
+              >
+                <ng-icon [name]="showSsn() ? 'lucideEyeOff' : 'lucideEye'" class="text-[16px]" />
+              </button>
+            </div>
             @if (form.controls.ssn.invalid && form.controls.ssn.touched) {
               <p class="text-destructive text-sm">Enter SSN as XXX-XX-XXXX.</p>
             }
@@ -254,7 +264,9 @@
               type="button"
               class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 flex -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 transition-colors"
               (click)="toggleConfirmPasswordVisibility()"
-              [attr.aria-label]="showConfirmPassword() ? 'Hide password' : 'Show password'"
+              [attr.aria-label]="
+                showConfirmPassword() ? 'Hide confirmation password' : 'Show confirmation password'
+              "
             >
               <ng-icon
                 [name]="showConfirmPassword() ? 'lucideEyeOff' : 'lucideEye'"

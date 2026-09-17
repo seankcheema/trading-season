@@ -45,6 +45,7 @@ Run from repository root after dependency installation:
 | --- | --- | --- |
 | UI | npm --workspace business-logic-ui run build | Angular production build |
 | UI | npm --workspace business-logic-ui test -- --no-watch --coverage | Angular unit-test builder; do not pass Vitest's --run |
+| UI end-to-end | npm --workspace business-logic-ui run e2e | Playwright login and registration journeys |
 | Java | mvn -B -f apps/business-backend/pom.xml test | Unit/integration tests use H2 test configuration |
 | Auth | npm --prefix apps/auth-service run build | NestJS compilation |
 | Auth | npm --prefix apps/auth-service run test:ci | Vitest coverage and JUnit reports; tests generate ephemeral keys |
@@ -52,6 +53,35 @@ Run from repository root after dependency installation:
 | Market-data scripts | python -m unittest discover apps/business-backend/db/tests | Unit checks; use Jenkins for the two-day PostgreSQL integration |
 
 Root Turborepo commands only cover configured workspaces and available scripts. Run Java and auth checks explicitly. See [operations](operations.md) for CI differences and artifact locations.
+
+## End-to-end tests
+
+The Playwright suite in [apps/business-logic-ui/e2e](../../apps/business-logic-ui/e2e) covers the login and registration journeys through the running application. Install the browser once, then run the suite:
+
+```sh
+npx --prefix apps/business-logic-ui playwright install chromium
+npm --workspace business-logic-ui run e2e
+```
+
+Playwright builds the application and serves it on port 4200 through the Angular SSR server, reusing a server already on that port when one is running. It runs against the production build rather than `ng serve` because the dev server dies part way through a parallel run on Windows, which fails the remaining tests with a connection error.
+
+The auth service and Java backend are replaced at the network boundary by a stand-in that reproduces their status codes and bodies, so the suite needs no database, no Docker, and no running service, and no `/api` proxy. What is exercised is the real Angular application: router, guards, reactive forms, HTTP interceptor and token storage. Keep the stand-in aligned with the [API reference](../reference/api.md) whenever an auth or registration contract changes.
+
+The suite passes `NG_ALLOWED_HOSTS=localhost` to the server. The build's `security.allowedHosts` is deliberately empty, and the SSR server rejects every request without a runtime allowlist; naming the host the suite serves on is preferable to relaxing the build setting.
+
+Run `npm --workspace business-logic-ui run e2e:report` to open the HTML report, and `e2e:ui` for interactive debugging. Reports are written to `apps/business-logic-ui/reports/playwright` and are ignored by git.
+
+## Coverage floors
+
+Each tier fails its own test command below 50% coverage, so the floor is enforced by the build rather than read off a report.
+
+| Tier | Enforced by | Counters |
+| --- | --- | --- |
+| UI | coverageThresholds in [angular.json](../../apps/business-logic-ui/angular.json) | statements, branches, functions, lines |
+| Auth | coverage.thresholds in [vitest.config.ts](../../apps/auth-service/vitest.config.ts) | statements, branches, functions, lines |
+| Java | jacoco:check in the [POM](../../apps/business-backend/pom.xml) | line and instruction ratio |
+
+The Java tier has the least headroom, and its branch coverage sits below the line figure, so it is not gated on branches. Raise the floor as coverage improves rather than lowering it to accommodate a change.
 
 ## Javadocs
 
