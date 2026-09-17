@@ -8,9 +8,11 @@ import { NgIcon } from '@ng-icons/core';
   template: `
     <details [class]="containerClasses()" [open]="open()" (toggle)="onToggle($event)">
       <summary [class]="triggerClasses()" [attr.aria-label]="ariaLabel()">
-        <ng-icon [name]="iconName()" class="shrink-0 text-[16px]" />
-        <span class="min-w-0 flex-1 whitespace-nowrap text-left leading-tight">{{ label() }}</span>
-        <ng-icon name="lucideChevronDown" class="text-muted-foreground shrink-0 text-[14px]" />
+        <ng-content select="[dropdownTrigger]">
+          <ng-icon [name]="iconName()" class="shrink-0 text-[16px]" />
+          <span class="min-w-0 flex-1 whitespace-nowrap text-left leading-tight">{{ label() }}</span>
+          <ng-icon name="lucideChevronDown" class="text-muted-foreground shrink-0 text-[14px]" />
+        </ng-content>
       </summary>
       <div [class]="panelClasses()">
         <ng-content />
@@ -30,8 +32,9 @@ import { NgIcon } from '@ng-icons/core';
   ],
 })
 export class DashboardHeaderDropdownComponent {
-  readonly iconName = input.required<string>();
-  readonly label = input.required<string>();
+  // Only used by the default trigger; a projected [dropdownTrigger] replaces it.
+  readonly iconName = input('');
+  readonly label = input('');
   readonly ariaLabel = input.required<string>();
   readonly open = input(false);
   readonly containerClass = input('');
@@ -45,13 +48,14 @@ export class DashboardHeaderDropdownComponent {
       .join(' '),
   );
 
+  // triggerClass replaces the default skin rather than adding to it, so a trigger can pick
+  // its own shape without competing with the defaults for Tailwind precedence.
   protected readonly triggerClasses = computed(() =>
     [
-      'border-border bg-card hover:bg-muted focus-visible:border-ring flex h-9 w-full min-w-0 cursor-pointer list-none items-center gap-2 rounded-lg border px-3 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/35',
-      this.triggerClass(),
-    ]
-      .filter(Boolean)
-      .join(' '),
+      'flex min-w-0 cursor-pointer list-none items-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/35',
+      this.triggerClass() ||
+        'border-border bg-card hover:bg-muted focus-visible:border-ring h-9 w-full gap-2 rounded-lg border px-3 text-sm',
+    ].join(' '),
   );
 
   protected readonly panelClasses = computed(() =>

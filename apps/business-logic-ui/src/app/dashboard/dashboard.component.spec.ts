@@ -1,11 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter } from '@angular/router';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { Router, provideRouter } from '@angular/router';
 import { DashboardComponent } from './dashboard.component';
 import { Instrument, MOCK_INSTRUMENTS } from './mock-data';
-import { provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { vi } from 'vitest';
 
 const CALENDAR = {
@@ -94,6 +92,56 @@ describe('DashboardComponent', () => {
     );
 
     expect(children.slice(0, 2)).toEqual(['market-clock-dropdown', 'account-dropdown']);
+  });
+
+  it('should offer settings and a red log out behind the profile icon instead of a logout button', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+
+    const profileDropdown = fixture.nativeElement.querySelector(
+      '[data-testid="profile-dropdown"]',
+    ) as HTMLElement;
+    const trigger = profileDropdown.querySelector('summary') as HTMLElement;
+    const items = Array.from(
+      profileDropdown.querySelectorAll('button[role="menuitem"]'),
+    ) as HTMLButtonElement[];
+
+    expect(trigger.className).toContain('rounded-full');
+    expect(trigger.textContent?.trim()).toBe('SC');
+    expect(items.map((item) => item.textContent?.trim())).toEqual(['Settings', 'Log out']);
+    expect(items[1].className).toContain('text-loss');
+    expect(fixture.nativeElement.querySelector('[aria-label="Sign out"]')).toBeNull();
+  });
+
+  it('should sign out and return to login from the profile menu', async () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+    fixture.detectChanges();
+    openDropdown(fixture, 'profile-dropdown');
+
+    const items = fixture.nativeElement.querySelectorAll(
+      '[data-testid="profile-dropdown"] button[role="menuitem"]',
+    ) as NodeListOf<HTMLButtonElement>;
+    items[1].click();
+    fixture.detectChanges();
+
+    expect(navigate).toHaveBeenCalledWith('/login');
+    expect(fixture.componentInstance['openHeaderDropdown']()).toBeNull();
+  });
+
+  it('should close the profile menu after choosing settings', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+    openDropdown(fixture, 'profile-dropdown');
+
+    const items = fixture.nativeElement.querySelectorAll(
+      '[data-testid="profile-dropdown"] button[role="menuitem"]',
+    ) as NodeListOf<HTMLButtonElement>;
+    items[0].click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance['openHeaderDropdown']()).toBeNull();
+    expect(dropdownDetails(fixture, 'profile-dropdown').open).toBe(false);
   });
 
   it('should update the selected account from the custom account dropdown and close it', () => {

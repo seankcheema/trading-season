@@ -18,6 +18,7 @@ import {
   lucideCheck,
   lucideChevronDown,
   lucideLogOut,
+  lucideSettings,
 } from '@ng-icons/lucide';
 import { Subscription } from 'rxjs';
 import { Router } from '@angular/router';
@@ -57,7 +58,7 @@ const DEFAULT_MARKET_CALENDAR: MarketCalendarAvailability = {
   tradingDates: marketWeekdays(2026),
 };
 
-type HeaderDropdown = 'account' | 'market-clock';
+type HeaderDropdown = 'account' | 'market-clock' | 'profile';
 
 @Component({
   selector: 'app-dashboard',
@@ -75,7 +76,14 @@ type HeaderDropdown = 'account' | 'market-clock';
     TimeframeToggleComponent,
   ],
   providers: [
-    provideIcons({ lucideBriefcaseBusiness, lucideCalendarClock, lucideCheck, lucideChevronDown, lucideLogOut }),
+    provideIcons({
+      lucideBriefcaseBusiness,
+      lucideCalendarClock,
+      lucideCheck,
+      lucideChevronDown,
+      lucideLogOut,
+      lucideSettings,
+    }),
   ],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.css',
@@ -542,6 +550,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
     return new Date(instant).toISOString();
   }
+
+  protected onSettings(): void {
+    // TODO: navigate to the settings page once it exists
+    this.openHeaderDropdown.set(null);
+  }
+
+  protected onSignOut(): void {
+    this.openHeaderDropdown.set(null);
+    this._authService.logout().subscribe(() => void this._router.navigateByUrl('/login'));
+  }
 }
 
 function marketWeekdays(year: number): string[] {
@@ -557,7 +575,4 @@ function marketWeekdays(year: number): string[] {
     }
   }
   return dates;
-  protected onSignOut(): void {
-    this._authService.logout().subscribe(() => void this._router.navigateByUrl('/login'));
-  }
 }

@@ -78,24 +78,39 @@
           </div>
         </app-dashboard-header-dropdown>
 
-        <!-- TODO: replace with the signed-in user's avatar -->
-        <div
-          class="bg-primary/15 text-primary flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-          aria-label="Signed in user"
-          role="img"
+        <app-dashboard-header-dropdown
+          data-testid="profile-dropdown"
+          ariaLabel="Open profile menu"
+          [open]="openHeaderDropdown() === 'profile'"
+          (openChange)="onHeaderDropdownOpenChange('profile', $event)"
+          containerClass="shrink-0"
+          triggerClass="bg-primary/15 text-primary hover:bg-primary/25 size-9 justify-center rounded-full text-xs font-semibold"
+          panelClass="w-48 p-1"
         >
-          SC
-        </div>
+          <!-- TODO: replace with the signed-in user's avatar -->
+          <span dropdownTrigger>SC</span>
 
-        <button
-          type="button"
-          class="border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border transition-colors"
-          aria-label="Sign out"
-          title="Sign out"
-          (click)="onSignOut()"
-        >
-          <ng-icon name="lucideLogOut" class="text-[16px]" />
-        </button>
+          <div role="menu" aria-label="Profile">
+            <button
+              type="button"
+              role="menuitem"
+              class="hover:bg-muted flex h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-sm transition-colors"
+              (click)="onSettings()"
+            >
+              <ng-icon name="lucideSettings" class="shrink-0 text-[16px]" />
+              <span>Settings</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              class="text-loss hover:bg-loss/10 flex h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-sm transition-colors"
+              (click)="onSignOut()"
+            >
+              <ng-icon name="lucideLogOut" class="shrink-0 text-[16px]" />
+              <span>Log out</span>
+            </button>
+          </div>
+        </app-dashboard-header-dropdown>
       </div>
     </header>
 
