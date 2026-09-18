@@ -5,7 +5,7 @@
 | Area | Current responsibility | Source |
 | --- | --- | --- |
 | Angular UI | Login and registration against the NestJS auth service, profile submission to the Java backend, dashboard route protection, shared components | [Routes](../../apps/business-logic-ui/src/app/app.routes.ts) |
-| Spring Boot backend | Registration with profile data; username/password login issuing database sessions | [Java auth controller](../../apps/business-backend/src/main/java/com/neueda/leap/auth/AuthController.java) |
+| Spring Boot backend | Token-authenticated profile registration and user APIs, plus public simulated market reads | [Java auth controller](../../apps/business-backend/src/main/java/app/auth/AuthController.java) |
 | NestJS auth service | Email/password login, RS256 access tokens, opaque refresh tokens, JWKS, liveness | [Auth controller](../../apps/auth-service/src/auth/auth.controller.ts) |
 | Shared UI | Angular components consumed through @shared/ui-components subpath exports | [Package manifest](../../packages/shared-ui-components/package.json) |
 | Reporting | Placeholder directories only | [Reporting proposal](reporting.md) |
@@ -14,7 +14,7 @@ The frontend signs users in through the NestJS auth service and sends registrati
 
 ## Data flows
 
-Java requests first pass the Spring Security bearer-token filter, which verifies the RS256 signature, expiry, issuer and subject; only the account existence check is public. They then pass through validation, services, JPA repositories, and the business PostgreSQL database. Registration stores profile data under the token's sub; there are no passwords or sessions in the business database. See the [API contract](api.md).
+Java requests first pass through Spring Security. The account existence check and read-only simulated market GET endpoints are public; user-specific endpoints and market mutations require a bearer token whose RS256 signature, expiry, issuer and subject are verified. Requests then pass through validation, services, JPA repositories, and the business PostgreSQL database. Registration stores profile data under the token's sub; there are no passwords or sessions in the business database. See the [API contract](api.md).
 
 NestJS requests pass through controllers/Passport strategies, AuthService, and TypeORM repositories in a separate auth database. Registration/login issue an RS256 access token and a random refresh token. Only the refresh token hash is stored. Refresh rotates it; reuse of an unusable token revokes the user's live refresh sessions. Access tokens expire after 15 minutes and remain stateless.
 

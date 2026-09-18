@@ -1,7 +1,9 @@
 package app.market;
 
+import app.Main;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -12,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -25,6 +28,11 @@ class MarketReplayServiceTest {
     private final MarketModels.Session session = new MarketModels.Session(2026001L, "postgres", "");
     private final Instant open = Instant.parse("2026-01-05T14:30:00Z");
     private MarketReplayService service;
+
+    @Test
+    void applicationEnablesScheduledReplayTicks() {
+        assertTrue(Main.class.isAnnotationPresent(EnableScheduling.class));
+    }
 
     @BeforeEach
     void setUp() {
