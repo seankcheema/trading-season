@@ -15,7 +15,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.concurrent.TimeUnit;
 
-/** Public, read-only endpoints for simulated stock snapshots, charts, and live ticks. */
+/** Public simulated market reads and authenticated shared replay clock control. */
 @RestController
 @RequestMapping("/api/market")
 public class MarketController {
@@ -57,6 +57,7 @@ public class MarketController {
 
     /**
      * Moves the shared simulated market clock to a seeded trading timestamp.
+     * The security filter requires an authenticated caller for this mutation.
      * @param sessionId optional completed simulation identifier
      * @param request requested market timestamp
      * @return a synchronized snapshot at the selected timestamp

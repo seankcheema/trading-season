@@ -39,7 +39,8 @@ import java.util.List;
  * the auth and business databases.
  *
  * <p>Every endpoint requires a valid bearer token except the account existence
- * check, which runs before the user has signed up.
+ * check and the read-only simulated market endpoints. Market mutations and all
+ * user-specific operations remain authenticated.
  */
 @Configuration
 public class SecurityConfig {
@@ -63,6 +64,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/api/auth/account-exists").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/market/**").permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
