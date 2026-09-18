@@ -37,6 +37,34 @@ describe('PriceChartComponent', () => {
     ]);
   });
 
+  it('should label the time axis on round clock boundaries', () => {
+    const component = setup().componentInstance;
+    component['_plotWidth'].set(900);
+    expect(component['ticks']().map((tick) => tick.label)).toEqual([
+      '9:30 AM',
+      '10:00 AM',
+      '12:00 PM',
+      '2:00 PM',
+      '4:00 PM',
+    ]);
+  });
+
+  it('should widen the time axis to fit a narrow chart rather than overlap labels', () => {
+    const component = setup().componentInstance;
+    // The order ticket puts the chart in a column far narrower than the viewport, so the
+    // fit has to be decided from the plot's own width. The 9:30 open is the odd label out
+    // and goes first, leaving a clean two-hour axis.
+    component['_plotWidth'].set(350);
+    const narrow = component['ticks']();
+    expect(narrow.map((tick) => tick.label)).toEqual([
+      '10:00 AM',
+      '12:00 PM',
+      '2:00 PM',
+      '4:00 PM',
+    ]);
+    expect(component['labelsCollide'](narrow)).toBe(false);
+  });
+
   it('should render a right-side value axis with currency labels', () => {
     const fixture = setup();
     const component = fixture.componentInstance;
@@ -54,9 +82,35 @@ describe('PriceChartComponent', () => {
     expect(hovered?.valueLabel).toBe('$100.00');
     expect(hovered?.timeLabel).toBe('4:00 PM');
     expect(fixture.nativeElement.textContent).toContain('$100.00');
-    expect(fixture.nativeElement.querySelector('.price-hover-marker')?.textContent).toContain(
+    expect(fixture.nativeElement.querySelector('.price-hover-label')?.textContent).toContain(
       '$100.00',
     );
+  });
+
+  it('should align the hover label with the point and keep it above the plot', () => {
+    const fixture = setup();
+    fixture.componentInstance['hoverIndex'].set(13);
+    fixture.detectChanges();
+    const label: HTMLElement = fixture.nativeElement.querySelector('.price-hover-label');
+    const point = fixture.componentInstance['hovered']();
+    // The label shares the plot's grid column, so a matching left offset puts it on the
+    // point's vertical axis, and its row sits above the plot at a constant height.
+    expect(label.style.left).toBe(`${point?.x}%`);
+    expect(label.style.top).toBe('');
+    expect(label.classList).toContain('top-0');
+    const plot: HTMLElement = fixture.nativeElement.querySelector('[tabindex="0"]');
+    expect(plot.contains(label)).toBe(false);
+    expect(label.parentElement?.nextElementSibling).toBe(plot.previousElementSibling);
+  });
+
+  it('should not draw a horizontal crosshair or a value-axis price on hover', () => {
+    const fixture = setup();
+    fixture.componentInstance['hoverIndex'].set(13);
+    fixture.detectChanges();
+    const plot: HTMLElement = fixture.nativeElement.querySelector('[tabindex="0"]');
+    expect(plot.querySelector('.inset-x-0')).toBeNull();
+    expect(plot.querySelector('.inset-y-0')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.price-hover-marker')).toBeNull();
   });
 
   it('should show a current price dot for a single early-session point without hover', () => {
@@ -82,18 +136,17 @@ describe('PriceChartComponent', () => {
     expect(marker?.style.top).toBe('50%');
   });
 
-  it('should keep the tooltip out of the plot and hidden until hovered', () => {
+  it('should keep the hover label out of the plot and hidden until hovered', () => {
     const fixture = setup();
-    const tooltip: HTMLElement = fixture.nativeElement.querySelector('.bg-popover');
-    const tooltipLayer = tooltip.parentElement;
+    const label: HTMLElement = fixture.nativeElement.querySelector('.price-hover-label');
     const plot: HTMLElement = fixture.nativeElement.querySelector('[tabindex="0"]');
-    expect(plot.contains(tooltip)).toBe(false);
-    expect(tooltipLayer?.classList).toContain('absolute');
-    expect(tooltipLayer?.classList).toContain('invisible');
+    expect(plot.contains(label)).toBe(false);
+    expect(label.classList).toContain('absolute');
+    expect(label.classList).toContain('invisible');
 
     fixture.componentInstance['hoverIndex'].set(3);
     fixture.detectChanges();
-    expect(tooltipLayer?.classList).not.toContain('invisible');
+    expect(label.classList).not.toContain('invisible');
   });
 
   it('should step through points with the arrow keys', () => {
