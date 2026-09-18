@@ -56,8 +56,13 @@ if ($privateKey -notmatch '^-----BEGIN PRIVATE KEY-----\\n.+\\n-----END PRIVATE 
 
 $dbHost = Get-EnvSetting -Content $envContent -Name 'DB_HOST'
 $dbPort = Get-EnvSetting -Content $envContent -Name 'DB_PORT'
-if ($dbHost -notin @('127.0.0.1', 'localhost') -or $dbPort -ne '5432') {
-    throw 'Local startup requires DB_HOST=127.0.0.1 (or localhost) and DB_PORT=5432 in apps/auth-service/.env. Port 5433 is for Docker Compose.'
+if ($dbHost -notin @('127.0.0.1', 'localhost')) {
+    throw 'Local startup requires DB_HOST=127.0.0.1 (or localhost) in apps/auth-service/.env.'
+}
+
+$parsedDbPort = 0
+if (-not [int]::TryParse($dbPort, [ref]$parsedDbPort) -or $parsedDbPort -lt 1 -or $parsedDbPort -gt 65535) {
+    throw 'DB_PORT in apps/auth-service/.env must be a valid TCP port.'
 }
 
 $npm = Get-RequiredCommand -Name 'npm.cmd'
@@ -66,7 +71,12 @@ $pgIsReady = Get-RequiredCommand -Name 'pg_isready.exe'
 
 & $pgIsReady -h 127.0.0.1 -p 5432 -q
 if ($LASTEXITCODE -ne 0) {
-    throw 'PostgreSQL is not accepting connections at 127.0.0.1:5432.'
+    throw 'The business PostgreSQL database is not accepting connections at 127.0.0.1:5432.'
+}
+
+& $pgIsReady -h $dbHost -p $parsedDbPort -q
+if ($LASTEXITCODE -ne 0) {
+    throw "The auth PostgreSQL database is not accepting connections at ${dbHost}:${parsedDbPort}."
 }
 
 Assert-PortAvailable -Port 3001

@@ -6,7 +6,7 @@ The Java application follows a Spring Boot source layout rooted at `apps/busines
 
 ## Start locally on Windows
 
-Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL. The quick start uses one local PostgreSQL server at `127.0.0.1:5432`; `trading_season` and `auth_db` are separate databases on that server. Port `5433` is only used when the auth database is published through Docker Compose.
+Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL. The business database defaults to `127.0.0.1:5432`. The auth example uses `127.0.0.1:5433`, matching the host port published by Docker Compose, but the local launcher honors the valid localhost `DB_PORT` configured in the auth `.env`.
 
 1. Create the `trading_season`/`trading_season` and `auth_db`/`authuser` database/user pairs. Apply business migrations V001, V002, and V003 in order. Follow the [database setup](docs/reference/database.md#disposable-business-database-setup) for the SQL and migration commands.
 2. Install dependencies from the repository root:
@@ -22,7 +22,7 @@ Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL
    Copy-Item apps/auth-service/.env.example apps/auth-service/.env
    ```
 
-   In the copied `.env`, remove the placeholder `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, and `JWT_ISSUER` lines before generating the real development values. Set `DB_HOST=127.0.0.1`, `DB_PORT=5432`, and the password assigned to `authuser`, then run:
+   In the copied `.env`, remove the placeholder `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, and `JWT_ISSUER` lines before generating the real development values. Keep the example's `DB_PORT=5433` when using the Compose auth database. If `auth_db` is instead on the same local PostgreSQL instance as the business database, set `DB_PORT=5432`. Set the password assigned to `authuser`, then run:
 
    ```powershell
    Push-Location apps/auth-service
