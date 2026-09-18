@@ -4,17 +4,48 @@ Trading simulation monorepo with an Angular interface, a Spring Boot backend, an
 
 The Java application follows a Spring Boot source layout rooted at `apps/business-backend/src/main/java/app`, with the bootstrap class in `app.Main` and feature packages such as `app.auth`, `app.order`, `app.user`, `app.account`, and `app.instrument`.
 
-## Start here
+## Start locally on Windows
 
-Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and Docker with Compose. From the repository root:
+Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL. The quick start uses one local PostgreSQL server at `127.0.0.1:5432`; `trading_season` and `auth_db` are separate databases on that server. Port `5433` is only used when the auth database is published through Docker Compose.
 
-```sh
-npm ci
-npm --prefix apps/auth-service ci
-npm --workspace business-logic-ui start
-```
+1. Create the `trading_season`/`trading_season` and `auth_db`/`authuser` database/user pairs. Apply business migrations V001, V002, and V003 in order. Follow the [database setup](docs/reference/database.md#disposable-business-database-setup) for the SQL and migration commands.
+2. Install dependencies from the repository root:
 
-The UI opens on port 4200. Its forms currently perform local validation; API integration is unfinished. Follow [development setup](docs/guides/development.md) to start services and databases.
+   ```powershell
+   npm ci
+   npm --prefix apps/auth-service ci
+   ```
+
+3. Configure authentication:
+
+   ```powershell
+   Copy-Item apps/auth-service/.env.example apps/auth-service/.env
+   ```
+
+   In the copied `.env`, remove the placeholder `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, and `JWT_ISSUER` lines before generating the real development values. Set `DB_HOST=127.0.0.1`, `DB_PORT=5432`, and the password assigned to `authuser`, then run:
+
+   ```powershell
+   Push-Location apps/auth-service
+   node scripts/generate-dev-keys.mjs >> .env
+   Pop-Location
+   ```
+
+   To check registered users, connect pgAdmin's Query Tool to `auth_db` and run this query. It intentionally excludes password hashes:
+
+   ```sql
+   SELECT id, email, role, is_active, failed_attempts, locked_until, created_at
+   FROM users
+   ORDER BY created_at DESC;
+   ```
+
+4. Start the full stack. Set `SPRING_DATASOURCE_PASSWORD` first to avoid the secure prompt when the business database does not use the application default:
+
+   ```powershell
+   $env:SPRING_DATASOURCE_PASSWORD = 'password'
+   .\scripts\start-local.ps1
+   ```
+
+The launcher keeps all logs in one terminal and stops the other services if one exits. Open the UI at `http://localhost:4200`; auth runs on `http://localhost:3001` and Java on `http://localhost:8081`. See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
 
 ## Service map
 
