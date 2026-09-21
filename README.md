@@ -12,7 +12,7 @@ These are the recommended and minimum versions. The project has been tested with
 |---|---|---|---|
 | Node.js | 24.8.0 | 24.8.0 | Runtime for Angular UI, NestJS auth, and build tools |
 | npm | 11.16.0 | 11.16.0 | Package manager for all Node workspaces |
-| Angular | 22.2.x | 22.2.x | Frontend framework with SSR |
+| Angular | 22.0.7 | 22.0.7 | Frontend framework with SSR |
 | JDK | 21 | 21 | Java compilation and Spring Boot runtime |
 | Maven | 3.9+ | 3.9.0 | Java build system |
 | Spring Boot | 4.1.1 | 4.1.0 | Backend framework |
@@ -23,16 +23,16 @@ These are the recommended and minimum versions. The project has been tested with
 
 ### Version Selection
 
-Use the recommended versions in the table above for the best experience. If you have different versions installed (e.g., Node 24.8.0 or Angular 22.2.x), ensure they match the exact requirements listed in the table above.
+Use the recommended versions in the table above for the best experience. If you have different versions installed (e.g., Node 24.8.0 or Angular 22.0.7), ensure they match the exact requirements listed in the table above.
 
 Node.js version requirements:
 - Must be 24.8.0 (exactly)
-- Angular 22.2.x requires Node 24.8.0
+- Angular 22.0.7 requires Node 24.8.0
 
 Angular support:
-- Required: Angular 22.2.x (exactly)
-- Do not use Angular 21.x or 22.0.x or 22.1.x
-- Ensure all @angular packages are on the 22.2.x line
+- Required: Angular 22.0.7 (exactly)
+- Do not use Angular 21.x, 22.0.0-22.0.6, or 22.1.x or later
+- Ensure all @angular packages are on 22.0.7
 
 Verification:
 

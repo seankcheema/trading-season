@@ -144,7 +144,7 @@ check_toolchain() {
     local node_version npm_version java_version maven_version
     node_version="$(node --version | sed 's/^v//')"
     [[ "$node_version" == "24.8.0" ]] || \
-        fail "Node $node_version is unsupported. Install Node 24.8.0 (exactly) for Angular 22.2.x compatibility."
+        fail "Node $node_version is unsupported. Install Node 24.8.0 (exactly) for Angular 22.0.7 compatibility."
     npm_version="$(npm --version)"
     [[ "$npm_version" == "11.16.0" ]] || fail "npm $npm_version is unsupported. Install npm 11.16.0 (exactly)."
     java_version="$(java -version 2>&1 | awk -F'"' 'NR == 1 { print $2 }')"
