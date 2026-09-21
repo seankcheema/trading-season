@@ -50,13 +50,13 @@ The Jenkins pipeline expects a native agent with Docker, the Maven tool named Ma
 | UI | apps/business-logic-ui/coverage |
 | End-to-end | apps/business-logic-ui/reports/playwright |
 
-Auth CI runs npm ci then npm run test:ci. Frontend CI currently uses npm install --legacy-peer-deps followed by npm test -- --no-watch --coverage. This differs from the preferred root npm ci developer installation. Do not silently treat an absent test tool or empty required report as success.
+Auth CI runs npm ci then npm run test:ci. Frontend CI uses the root workspace npm ci installation followed by npm test -- --no-watch --coverage from the UI workspace. Do not silently treat an absent test tool or empty required report as success.
 
 Every tier fails its own stage below 50% coverage; the mechanisms are listed under [coverage floors](development.md#coverage-floors). A stage that passes has already cleared the floor, so the archived reports are for inspection, not for a manual check.
 
 The end-to-end stage installs the Playwright Chromium build with `npx playwright install chromium`, deliberately without `--with-deps`, which shells out to sudo apt-get that the jenkins user cannot run. If the agent lacks the shared libraries headless Chromium needs, Playwright fails and names them. Playwright then builds the UI and serves it on port 4200 through the Angular SSR server, and stubs the API tier at the network boundary, so the stage needs no database, no auth service, and no Java backend. Because it builds, the stage is the only one that also proves the production build works; expect it to take longer than the unit stages.
 
-The optional [Jenkins image](../../infrastructure/docker/Dockerfile.jenkins) installs Node 20, which does not meet the current Angular engine requirement. The Jenkins Compose example also mounts the host Docker socket and contains development credentials. Review toolchains, credentials, and access before deployment; it is not a production-ready configuration.
+The optional [Jenkins image](../../infrastructure/docker/Dockerfile.jenkins) installs Node 24.x, which is compatible with Angular 21.2.x. The active pipeline still expects the native Jenkins NodeJS tool to provide the project-standard Node 24.8.0 runtime. The Jenkins Compose example also mounts the host Docker socket and contains development credentials. Review toolchains, credentials, and access before deployment; it is not a production-ready configuration.
 
 The pipeline prints `docker ps` near the start and in its final diagnostics. The initial check fails early when Jenkins cannot reach the daemon because later market-data and Playwright stages require Docker. The final check is read-only and protected so a diagnostic failure does not replace the build's original result.
 
@@ -69,6 +69,6 @@ Javadoc generation is a required Java change check described in [development](de
 - Auth startup fails on keys: generate an RSA pair, replace placeholder values, and preserve literal backslash-n escapes. Run from the auth directory so .env loads.
 - JWT verification fails: check the signing/public key pair and expiry. The Java backend returns 401 when the JWKS at AUTH_JWK_SET_URI is unreachable, the signature does not match, the token has expired, iss differs from AUTH_JWT_ISSUER, or sub is not a UUID. Java caches the key set for five minutes and refetches early when a token carries an unknown kid; the auth service derives kid from the public key, so a key rotation is picked up on the first token signed with the new key. The auth service's own Passport strategy does not enforce issuer/audience; do not assume it does.
 - Logout appears successful but refresh still works: see the documented [API limitation](../reference/api.md#current-logout-limitation).
-- Jenkins fails before tests: verify the configured Java/Maven paths and Node version (24.8.0 exactly) on the actual agent, not just the optional image.
+- Jenkins fails before tests: verify the configured Java/Maven paths and Node version (24.8.0 exactly, compatible with Angular 21.2.x) on the actual agent, not just the optional image.
 - Synthetic market-data CI derives Docker resource names from a normalized hash of the Jenkins build tag, so encoded multibranch names such as `%2F` do not need special handling. The stage creates and removes build-scoped database and archive volumes; do not pre-seed PostgreSQL or generate a persistent archive on the Jenkins VM.
 - UI renders but login does not reach an API: form submission is not yet wired to a service. See [architecture](../reference/architecture.md).

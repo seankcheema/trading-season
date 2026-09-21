@@ -2,7 +2,7 @@
 
 ## Toolchain and installation
 
-Use Node.js 24.8.0 (exactly), npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. Check exact dependency requirements in [root package.json](../../package.json), the [UI manifest](../../apps/business-logic-ui/package.json), and the [Java POM](../../apps/business-backend/pom.xml).
+Use Node.js 24.8.0 (exactly), npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. The Angular UI is pinned to Angular 21.2.x, which supports Node ^24.0.0; this repository still standardizes on Node 24.8.0 and TypeScript >=5.9.0 <6.0.0. Check exact dependency requirements in [root package.json](../../package.json), the [UI manifest](../../apps/business-logic-ui/package.json), and the [Java POM](../../apps/business-backend/pom.xml).
 
 From repository root:
 
@@ -117,7 +117,7 @@ Update the authoritative guide when its contract changes; do not add implementat
 
 ## Troubleshooting
 
-- Node engine errors: check `node --version` is exactly 24.8.0; version mismatches cause build failures.
+- Node engine errors: check `node --version` is exactly 24.8.0; Angular 21.2.x supports Node 24.x, but this project intentionally enforces 24.8.0.
 - Missing workspace imports: run npm ci at repository root and check shared package exports.
 - Unknown ng test option: use --no-watch, not --run.
 - Database connection or key failures: use the [operations checklist](operations.md) and [auth environment instructions](../../apps/auth-service/README.md).
