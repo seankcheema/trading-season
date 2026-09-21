@@ -552,8 +552,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   protected onSettings(): void {
-    // TODO: navigate to the settings page once it exists
     this.openHeaderDropdown.set(null);
+    void this._router.navigateByUrl('/settings');
   }
 
   protected onSignOut(): void {

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideEye, lucideEyeOff, lucideLock, lucideLogIn, lucideMail } from '@ng-icons/lucide';
 import { HlmCardImports } from '@shared/ui-components/card';
@@ -9,6 +9,7 @@ import { HlmFieldImports } from '@shared/ui-components/field';
 import { HlmInputImports } from '@shared/ui-components/input';
 import { toAuthErrorMessage } from '../core/auth/auth-error';
 import { AuthService } from '../core/auth/auth.service';
+import { INACTIVE_SIGN_OUT_REASON } from '../core/auth/session-timeout.service';
 
 @Component({
   selector: 'app-login',
@@ -30,6 +31,10 @@ export class LoginComponent {
   private readonly _authService = inject(AuthService);
   private readonly _router = inject(Router);
   private readonly _destroyRef = inject(DestroyRef);
+
+  // Set when the inactivity timeout, rather than the user, ended the previous session.
+  protected readonly signedOutForInactivity =
+    inject(ActivatedRoute).snapshot.queryParamMap.get('reason') === INACTIVE_SIGN_OUT_REASON;
 
   // Toggles masking on the password field.
   protected readonly showPassword = signal(false);

@@ -141,8 +141,9 @@ The Angular UI authenticates only against the NestJS auth service. See [AuthServ
 - Sign-in posts email and password to POST /auth/login and stores the token response in browser localStorage.
 - Registration first posts email and password to POST /auth/register. If that returns 409, the UI tries POST /auth/login with the same credentials, so a user whose earlier profile step failed can resubmit. Once it has tokens, the UI posts the profile to Java POST /api/auth/register with a Bearer access token: email, firstName, middleName, lastName, dateOfBirth, ssn, address, traderLevel, availableFunds. It sends no password or username. If the profile step fails, the UI clears the stored session.
 - The dashboard route requires a stored session and refreshes an expired access token through POST /auth/refresh. Sign-out posts the refresh token to POST /auth/logout.
+- While a session is stored, the UI signs the user out after 10 minutes without mouse, keyboard, scroll or touch input, using the same POST /auth/logout call, then shows the login page with `?reason=inactive`. The limit can be set to 5, 10, 15, 30 or 60 minutes on the settings page and is kept per browser. The last activity time is shared between tabs and survives a reload. This is enforced by the UI only; neither service tracks inactivity. See [SessionTimeoutService](../../apps/business-logic-ui/src/app/core/auth/session-timeout.service.ts).
 
-The registration and sign-in journeys are covered end to end by the [Playwright suite](../../apps/business-logic-ui/e2e), which drives the real application against a stand-in for both services. Its stand-in reproduces the contracts on this page, so update the two together.
+The registration, sign-in and inactivity timeout journeys are covered end to end by the [Playwright suite](../../apps/business-logic-ui/e2e), which drives the real application against a stand-in for both services. Its stand-in reproduces the contracts on this page, so update the two together.
 
 ## Contract maintenance
 

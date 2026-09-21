@@ -129,8 +129,9 @@ describe('DashboardComponent', () => {
     expect(fixture.componentInstance['openHeaderDropdown']()).toBeNull();
   });
 
-  it('should close the profile menu after choosing settings', () => {
+  it('should open the settings page and close the profile menu after choosing settings', () => {
     const fixture = TestBed.createComponent(DashboardComponent);
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
     fixture.detectChanges();
     openDropdown(fixture, 'profile-dropdown');
 
@@ -140,6 +141,7 @@ describe('DashboardComponent', () => {
     items[0].click();
     fixture.detectChanges();
 
+    expect(navigate).toHaveBeenCalledWith('/settings');
     expect(fixture.componentInstance['openHeaderDropdown']()).toBeNull();
     expect(dropdownDetails(fixture, 'profile-dropdown').open).toBe(false);
   });
