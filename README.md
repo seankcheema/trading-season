@@ -8,30 +8,57 @@ The Java application follows a Spring Boot source layout rooted at `apps/busines
 
 Install Git, Bash, Node.js 22.22.3+ on the 22.x line, npm 11.16.0, JDK 21+, and Maven 3.9+. PostgreSQL client tools are required when reusing local PostgreSQL. Docker Engine with the Compose v2 plugin is required only for Docker database mode; Docker Desktop is not required.
 
-From the repository root, run:
+From the repository root:
 
 ```sh
 ./scripts/setup-local.sh
 ```
 
-The script checks each prerequisite and setup stage. `[READY]` means existing setup was verified and skipped, `[DONE]` means the script completed the stage, and `[FAIL]` explains why it stopped. Its default `--database-mode auto` reuses valid local `trading_season` and `auth_db` databases before considering Docker. It never silently replaces a partial local database with a Docker volume.
-
-When Docker mode is needed, the script expects Compose v2. If `docker compose` is unavailable but a working v2 `docker-compose` standalone binary exists, it safely links that existing binary into the current user's Docker CLI plugin directory. It never overwrites an existing plugin path or installs Compose from the network.
-
-Choose a database source explicitly when needed:
+The default `auto` mode reuses verified local databases or falls back to Docker. Select one explicitly with:
 
 ```sh
 ./scripts/setup-local.sh --database-mode local
 ./scripts/setup-local.sh --database-mode docker
 ```
 
-The optional synthetic market-data archive is neither downloaded nor generated automatically. To copy an existing archive into the repository, while retaining at least 3 GiB of free space, pass its directory:
+`[READY]` means a valid stage was skipped, `[DONE]` means it was completed, and `[FAIL]` explains why setup stopped. Compose v2 standalone installations are linked into the current user's Docker plugin directory when needed; existing plugin paths are never overwritten.
+
+Market data is not downloaded or generated automatically. Copy and validate an existing archive while retaining at least 3 GiB free with:
 
 ```sh
 ./scripts/setup-local.sh --parquet-source /path/to/synthetic-market-data-2026-v1
 ```
 
-The copy is staged and validated before publication. Existing valid archives, environment keys, database data, and current dependency installations are preserved. Press Ctrl+C to stop the UI, auth service, and Java backend; PostgreSQL and Docker database containers remain running.
+Press Ctrl+C to stop the applications. PostgreSQL data and Docker database containers are preserved.
+
+### Linux VM toolchain troubleshooting
+
+Updating npm does not update Node.js. If `node --version` is older than 22.22.3, update Node 22 using the VM's Node installation method first. Then update npm:
+
+```sh
+sudo npm install -g npm@latest
+npm -v
+```
+
+To install Maven 3.9.11:
+
+```sh
+cd /tmp
+curl -fLO https://archive.apache.org/dist/maven/maven-3/3.9.11/binaries/apache-maven-3.9.11-bin.tar.gz
+sudo tar -xzf apache-maven-3.9.11-bin.tar.gz -C /opt
+sudo ln -sfn /opt/apache-maven-3.9.11 /opt/maven
+echo 'export M2_HOME=/opt/maven' >> ~/.bashrc
+echo 'export PATH=$M2_HOME/bin:$PATH' >> ~/.bashrc
+source ~/.bashrc
+mvn -version
+```
+
+Return to the repository and rerun setup:
+
+```sh
+cd -
+./scripts/setup-local.sh
+```
 
 To intentionally stop databases created by the Linux bootstrap without deleting their data:
 
@@ -42,9 +69,22 @@ docker compose --project-name trading-season-local --env-file apps/auth-service/
 
 ## Start locally on Windows
 
-Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL (or Docker Compose).
+Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL.
 
-### Quick start with the startup script (requires local databases)
+### Start all services with the startup script
+
+After completing the database setup below, run from the repository root. Set the password to the value used by the business database (`password` in the example):
+
+```powershell
+$env:SPRING_DATASOURCE_PASSWORD = 'password'
+.\scripts\start-local.ps1
+```
+
+The script starts UI, auth service, and Java backend in a single terminal and validates database connectivity and `.env` configuration. Press Ctrl+C to stop all services.
+
+Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001` and Java on `http://localhost:8081`.
+
+### First-time setup
 
 1. Install dependencies from the repository root:
 
@@ -65,18 +105,7 @@ Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL
    cd ../..
    ```
 
-3. Ensure both databases are running (`trading_season` on port 5432 and `auth_db` on port 5433 for Docker Compose, or 5432 for local PostgreSQL).
-
-4. Start all services with the startup script:
-
-   ```powershell
-   $env:SPRING_DATASOURCE_PASSWORD = 'password'
-   .\scripts\start-local.ps1
-   ```
-
-   The script starts UI, auth service, and Java backend in a single terminal, validates database connectivity and `.env` configuration. Press Ctrl+C to stop all services.
-
-   Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001` and Java on `http://localhost:8081`.
+3. Complete the PostgreSQL database setup below, then use the startup command above.
 
 ### Manual setup with local PostgreSQL
 
@@ -158,32 +187,6 @@ mvn spring-boot:run
 cd apps/auth-service
 npm run start:dev
 ```
-
-### Docker Compose setup (alternative)
-
-If you prefer to use Docker Compose for databases:
-
-1. Install dependencies and configure authentication (steps 1-2 above).
-
-2. Start the databases:
-
-   ```powershell
-   docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml up -d db auth-db
-   ```
-
-   This creates:
-   - Business database (`trading_season`) on `localhost:5432`
-   - Auth database (`auth_db`) on `localhost:5433`
-
-   Auth migrations run automatically on auth-service startup. For the business database, follow the [database setup](docs/reference/database.md#disposable-business-database-setup) to apply migrations V001, V002, and V003 if needed.
-
-3. Start all services with the startup script:
-
-   ```powershell
-   # Match DB_PASSWORD used by Compose; .env.example uses changeme.
-   $env:SPRING_DATASOURCE_PASSWORD = 'changeme'
-   .\scripts\start-local.ps1
-   ```
 
 ### Verify auth database
 
