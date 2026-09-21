@@ -31,7 +31,7 @@ Node.js version requirements:
 
 Angular support:
 - Required: Angular 21.2.22 (exactly)
-- Ensure all @angular packages are on 21.2.22
+- Keep Angular framework and CLI packages on 21.2.22; Angular CDK is pinned separately to 21.2.14 because CDK does not publish a 21.2.22 release
 - TypeScript must stay in the Angular 21.2.x-supported range: >=5.9.0 <6.0.0
 
 Verification:
