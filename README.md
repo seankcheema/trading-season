@@ -4,6 +4,40 @@ Trading simulation monorepo with an Angular interface, a Spring Boot backend, an
 
 The Java application follows a Spring Boot source layout rooted at `apps/business-backend/src/main/java/app`, with the bootstrap class in `app.Main` and feature packages such as `app.auth`, `app.order`, `app.user`, `app.account`, and `app.instrument`.
 
+## Start in a Linux VM
+
+Install Git, Bash, Node.js 22.22.3+ on the 22.x line, npm 11.16.0, JDK 21+, and Maven 3.9+. PostgreSQL client tools are required when reusing local PostgreSQL. Docker Engine with the Compose v2 plugin is required only for Docker database mode; Docker Desktop is not required.
+
+From the repository root, run:
+
+```sh
+./scripts/setup-local.sh
+```
+
+The script checks each prerequisite and setup stage. `[READY]` means existing setup was verified and skipped, `[DONE]` means the script completed the stage, and `[FAIL]` explains why it stopped. Its default `--database-mode auto` reuses valid local `trading_season` and `auth_db` databases before considering Docker. It never silently replaces a partial local database with a Docker volume.
+
+Choose a database source explicitly when needed:
+
+```sh
+./scripts/setup-local.sh --database-mode local
+./scripts/setup-local.sh --database-mode docker
+```
+
+The optional synthetic market-data archive is neither downloaded nor generated automatically. To copy an existing archive into the repository, while retaining at least 3 GiB of free space, pass its directory:
+
+```sh
+./scripts/setup-local.sh --parquet-source /path/to/synthetic-market-data-2026-v1
+```
+
+The copy is staged and validated before publication. Existing valid archives, environment keys, database data, and current dependency installations are preserved. Press Ctrl+C to stop the UI, auth service, and Java backend; PostgreSQL and Docker database containers remain running.
+
+To intentionally stop databases created by the Linux bootstrap without deleting their data:
+
+```sh
+docker compose --project-name trading-season-local --env-file apps/auth-service/.env \
+  -f infrastructure/docker-compose/docker-compose.local.yml stop db auth-db
+```
+
 ## Start locally on Windows
 
 Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL (or Docker Compose).
@@ -21,6 +55,9 @@ Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL
 
    ```powershell
    Copy-Item apps/auth-service/.env.example apps/auth-service/.env
+   (Get-Content apps/auth-service/.env) |
+     Where-Object { $_ -notmatch '^JWT_(PRIVATE_KEY|PUBLIC_KEY|ISSUER)=' } |
+     Set-Content apps/auth-service/.env
    cd apps/auth-service
    node scripts/generate-dev-keys.mjs | Add-Content .env
    cd ../..
@@ -89,9 +126,12 @@ Copy and configure the auth `.env`:
 Copy-Item apps/auth-service/.env.example apps/auth-service/.env
 ```
 
-Set `DB_PORT=5432` (since auth is on the same PostgreSQL instance), then generate the JWT keys:
+Set `DB_PORT=5432` and `DB_PASSWORD=password` (since auth is on the manually configured PostgreSQL instance), remove the three placeholder JWT lines, then generate the JWT keys:
 
 ```powershell
+(Get-Content apps/auth-service/.env) |
+  Where-Object { $_ -notmatch '^JWT_(PRIVATE_KEY|PUBLIC_KEY|ISSUER)=' } |
+  Set-Content apps/auth-service/.env
 cd apps/auth-service
 node scripts/generate-dev-keys.mjs | Add-Content .env
 cd ../..
@@ -138,7 +178,8 @@ If you prefer to use Docker Compose for databases:
 3. Start all services with the startup script:
 
    ```powershell
-   $env:SPRING_DATASOURCE_PASSWORD = 'password'
+   # Match DB_PASSWORD used by Compose; .env.example uses changeme.
+   $env:SPRING_DATASOURCE_PASSWORD = 'changeme'
    .\scripts\start-local.ps1
    ```
 

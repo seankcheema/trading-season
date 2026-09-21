@@ -41,6 +41,24 @@ pipeline {
             }
         }
 
+        stage('Docker Services') {
+            steps {
+                sh '''
+                    set -eu
+                    echo "Running Docker services on the Jenkins VM:"
+                    if ! command -v docker >/dev/null 2>&1; then
+                        echo "Docker CLI is unavailable; later market-data and Playwright stages require it." >&2
+                        exit 1
+                    fi
+                    if ! docker info >/dev/null 2>&1; then
+                        echo "Jenkins cannot access the Docker daemon; check the daemon and socket permissions." >&2
+                        exit 1
+                    fi
+                    docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}'
+                '''
+            }
+        }
+
         stage('Checkout') {
             steps {
                 checkout scm
@@ -313,6 +331,15 @@ pipeline {
     
     post {
         always {
+            script {
+                def dockerStatus = sh(script: '''
+                        echo "Running Docker services after the Jenkins build:"
+                        docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}'
+                    ''', returnStatus: true)
+                if (dockerStatus != 0) {
+                    echo "Final Docker service inspection failed with status ${dockerStatus}; preserving the original build result."
+                }
+            }
             // Optional: Remove Maven and npm cache to free disk space (comment out if not needed)
             // sh 'rm -rf ~/.m2/repository ~/.npm'
             echo "  Build workspace preserved for debugging. To save disk space, manually delete workspace or adjust retention policy."

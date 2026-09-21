@@ -15,6 +15,18 @@ The auth service has its own lockfile and is not a root workspace. Reporting has
 
 ## Run locally
 
+### Automated Linux VM setup
+
+From the repository root, `./scripts/setup-local.sh` validates the toolchain, maintains a 3 GiB free-space reserve, prepares missing dependencies and auth keys, selects databases, and supervises the three applications in one terminal. It reports verified stages as `[READY]`, completed work as `[DONE]`, and actionable failures as `[FAIL]`.
+
+The default `--database-mode auto` prefers verified local PostgreSQL databases. Use `--database-mode local` to prohibit Docker or `--database-mode docker` to require Docker Engine and Compose v2. Docker mode starts only `db` and `auth-db`, validates both schemas, and applies V001 through V003 only when the business schema is proven empty. Local and Docker database storage are separate and are never synchronized automatically.
+
+The script validates an archive already at `apps/business-backend/db/seeds/synthetic-market-data-2026-v1`. Use `--parquet-source PATH` to stage, checksum, and copy an existing archive when enough space remains. It never downloads, generates, imports, or regenerates market data. Use the [database guide](../reference/database.md#optional-synthetic-market-data-generation-and-import) for those explicit operations.
+
+The Windows and fully manual paths below remain supported.
+
+### Manual and Windows setup
+
 1. Follow the [auth setup](../../apps/auth-service/README.md) to create a local environment file and RSA keys.
 2. Start only the databases from repository root:
 
