@@ -300,6 +300,30 @@ docker_compose() {
     docker compose --project-name trading-season-local --env-file "$env_file" -f "$compose_file" "$@"
 }
 
+ensure_docker_compose() {
+    if docker compose version >/dev/null 2>&1; then
+        ready 'Docker Compose — CLI plugin is available; skipping.'
+        return
+    fi
+
+    local standalone plugin_dir plugin_path compose_version
+    standalone="$(command -v docker-compose 2>/dev/null || true)"
+    [[ -n "$standalone" ]] || fail 'Docker Compose v2 is unavailable. Install the docker compose CLI plugin.'
+    compose_version="$("$standalone" version --short 2>/dev/null || true)"
+    [[ "$compose_version" == 2.* || "$compose_version" == v2.* ]] || \
+        fail "The standalone Docker Compose at $standalone is not v2. Install the Compose v2 CLI plugin."
+
+    plugin_dir="${DOCKER_CONFIG:-$HOME/.docker}/cli-plugins"
+    plugin_path="$plugin_dir/docker-compose"
+    if [[ -e "$plugin_path" || -L "$plugin_path" ]]; then
+        fail "Docker Compose is not discoverable, and $plugin_path already exists. Inspect that path manually; it was not overwritten."
+    fi
+    mkdir -p "$plugin_dir" || fail "Could not create Docker CLI plugin directory $plugin_dir."
+    ln -s "$standalone" "$plugin_path" || fail "Could not link $standalone to $plugin_path."
+    docker compose version >/dev/null 2>&1 || fail "Created $plugin_path, but Docker still cannot load the Compose plugin."
+    done_stage "Docker Compose — linked existing v2 standalone binary into $plugin_path."
+}
+
 wait_for_compose_health() {
     local service="$1" id health attempt
     for attempt in $(seq 1 40); do
@@ -379,7 +403,7 @@ select_databases() {
     require_command docker 'Install the Docker CLI and Docker Compose v2, then start Docker Engine.'
     docker info >/dev/null 2>&1 || fail 'Docker CLI is installed, but the daemon is unavailable. Start Docker Engine or correct the active context.'
     [[ "$(docker info --format '{{.OSType}}')" == linux ]] || fail 'The Docker daemon is not using Linux containers; PostgreSQL requires a Linux daemon.'
-    docker compose version >/dev/null 2>&1 || fail 'Docker Compose v2 is unavailable. Install the docker compose CLI plugin.'
+    ensure_docker_compose
     check_storage 'Docker storage' "$(docker info --format '{{.DockerRootDir}}')"
 
     local service port existing had_both=true

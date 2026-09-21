@@ -16,6 +16,8 @@ From the repository root, run:
 
 The script checks each prerequisite and setup stage. `[READY]` means existing setup was verified and skipped, `[DONE]` means the script completed the stage, and `[FAIL]` explains why it stopped. Its default `--database-mode auto` reuses valid local `trading_season` and `auth_db` databases before considering Docker. It never silently replaces a partial local database with a Docker volume.
 
+When Docker mode is needed, the script expects Compose v2. If `docker compose` is unavailable but a working v2 `docker-compose` standalone binary exists, it safely links that existing binary into the current user's Docker CLI plugin directory. It never overwrites an existing plugin path or installs Compose from the network.
+
 Choose a database source explicitly when needed:
 
 ```sh
