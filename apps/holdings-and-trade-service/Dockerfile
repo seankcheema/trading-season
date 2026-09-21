@@ -31,7 +31,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
 
 # Copy only the compiled jar from the build stage. Nothing else.
-COPY --from=build /app/target/sprint1-greeter-app.jar app.jar
+COPY --from=build /app/target/holdings-and-trade-service.jar app.jar
 
-EXPOSE 8080
+EXPOSE 8081
 ENTRYPOINT ["java", "-jar", "app.jar"]

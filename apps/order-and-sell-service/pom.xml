@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0">
     <modelVersion>4.0.0</modelVersion>
 
@@ -9,7 +10,7 @@
     </parent>
 
     <groupId>app</groupId>
-    <artifactId>sprint1-greeter-app</artifactId>
+    <artifactId>order-and-sell-service</artifactId>
     <version>0.1.0</version>
     <packaging>jar</packaging>
 
@@ -18,8 +19,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <test.tags></test.tags>
         <jacoco.version>0.8.13</jacoco.version>
-        <!-- Minimum line and instruction coverage; matches the floor used by the other tiers. -->
-        <coverage.minimum>0.50</coverage.minimum>
+        <!-- Minimum line and instruction coverage; must be at least 60% per AC -->
+        <coverage.minimum>0.60</coverage.minimum>
     </properties>
 
     <dependencies>
@@ -74,7 +75,7 @@
     </dependencies>
 
     <build>
-        <finalName>sprint1-greeter-app</finalName>
+        <finalName>order-and-sell-service</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -122,7 +123,7 @@
                     </execution>
                     <execution>
                         <!-- Fails the build below the agreed floor, so "coverage is at least
-                             50%" is enforced by the build rather than read off a report. -->
+                             60%" is enforced by the build rather than read off a report. -->
                         <id>check-coverage</id>
                         <phase>test</phase>
                         <goals>

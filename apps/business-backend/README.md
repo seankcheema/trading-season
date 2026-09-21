@@ -1,77 +1,73 @@
-# Business backend
+# Business Backend Database Setup
 
+This directory contains database migrations, scripts, and synthetic market data setup for the Trading Season platform. The Java backend has been refactored into two microservices:
 
-Spring Boot application targeting Java 21. Implements registration and username/password login with database sessions, plus public snapshot, candle, and SSE replay endpoints for seeded simulated stocks. Its identities are separate from NestJS auth users. Acts as an OAuth2 resource server: it verifies RS256 access tokens issued by the [auth service](../auth-service/README.md) and never handles passwords. A business account is keyed by the auth service's user UUID, carried as the token's sub claim.
+- **[Holdings and Trade Service](../holdings-and-trade-service/)** - Manages order execution, validation, and holdings updates (port 8081)
+- **[Order and Sell Service](../order-and-sell-service/)** - Provides user profiles, holdings queries, and order history (port 8082)
 
+Both services share a single PostgreSQL database managed through the migration scripts in this directory.
 
+## Database Setup
 
-Spring Boot source is rooted at `src/main/java/app`. The application entry point is `app.Main`, authentication types live in `app.auth`, and the rest of the business backend is organized by feature package such as `app.order`, `app.user`, `app.account`, and `app.instrument`. Tests mirror that structure under `src/test/java/app`.
+The business database stores trading data (orders, holdings, accounts) and market data for simulations. Follow [database setup instructions](../../docs/reference/database.md#disposable-business-database-setup) to initialize and seed the database.
 
-Follow [database setup](../../docs/reference/database.md#disposable-business-database-setup) before exercising the API. The business database schema is applied manually: run V001, V002, then V003, and optionally generate and import the synthetic market data 2026-v1 archive. The generated archive is local developer data and is not committed to this repo.
+### Prerequisites
 
-```powershell
-py -3 -m venv apps/business-backend/db/.venv
-apps/business-backend/db/.venv/Scripts/python.exe -m pip install --upgrade pip
-apps/business-backend/db/.venv/Scripts/python.exe -m pip install -r apps/business-backend/db/scripts/requirements.txt
-```
+- PostgreSQL 16+
+- Python 3.x with pip
+- Available disk space for market data (optional)
 
-Use the [numbered cross-platform workflow](db/scripts/README.md). Initialization is a separate, explicitly destructive first-time action; ordinary seeding runs generation, validation, and import only. The `2026-v1` archive contains one-second ticks and tick-derived one-minute candles.
+### Initial Setup
 
-From this directory:
+1. Create the `trading_season` database:
+   ```sql
+   CREATE DATABASE trading_season;
+   CREATE USER trading_season WITH PASSWORD 'changeme';
+   GRANT ALL PRIVILEGES ON DATABASE trading_season TO trading_season;
+   ```
 
-```sh
-mvn spring-boot:run
-mvn test
-```
+2. Set up Python environment for database scripts:
+   ```powershell
+   py -3 -m venv db/.venv
+   db/.venv/Scripts/python.exe -m pip install --upgrade pip
+   db/.venv/Scripts/python.exe -m pip install -r db/scripts/requirements.txt
+   ```
 
-The app defaults to port 8081 and a business PostgreSQL database; tests use H2. Configuration lives in [application.properties](src/main/resources/application.properties).
+3. Run migrations (V001, V002, V003):
+   ```sh
+   # See detailed instructions in ../../docs/reference/database.md
+   ```
 
-## Live ticker setup
+### Synthetic Market Data (Optional)
 
-There is no separate live-ticker feature flag. The public ticker endpoints are active when the Spring Boot app is running and the business database contains a completed synthetic market-data session.
-
-For a first-time disposable local database, run the market-data workflow from the repository root:
-
+Generate and import simulated market data for testing:
 ```powershell
 $freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
 
-apps/business-backend/db/setup-market-data.ps1 `
+db/setup-market-data.ps1 `
   -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
   -AvailableDiskGb $freeDiskGb `
   -InitializeDisposableDatabase
 ```
 
-For later reseeding of an already initialized disposable database, omit `-InitializeDisposableDatabase`:
+## Files
 
-```powershell
-$freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
+- `migrations/` - SQL migration files (V001, V002, V003)
+- `scripts/` - Python scripts for initialization, generation, validation, and import
+- `seeds/` - Generated market data archive (local developer data, not committed)
+- `setup-market-data.ps1` - PowerShell script to orchestrate market data workflow
+- `tests/` - Database tests and validation
 
-apps/business-backend/db/setup-market-data.ps1 `
-  -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
-  -AvailableDiskGb $freeDiskGb
-```
+## Docker
 
-If the script reports `Candle-only 2026-v1 archive detected`, rerun the same command with `-Regenerate` to replace the incompatible local archive. If a previous import for the same simulation session also needs to be replaced, add `-Replace`.
+Both microservices are built and deployed via Docker. See:
+- [docker-compose.local.yml](../../infrastructure/docker-compose/docker-compose.local.yml) - Local development
+- [Dockerfile](../holdings-and-trade-service/Dockerfile) - Holdings and Trade Service
+- [Dockerfile](../order-and-sell-service/Dockerfile) - Order and Sell Service
 
-Then start the backend from this directory:
+## Related Documentation
 
-```sh
-mvn spring-boot:run
-```
+- [Database Reference](../../docs/reference/database.md) - Schema, migrations, ERD
+- [Architecture](../../docs/reference/architecture.md) - Service boundaries and integration
+- [Development Guide](../../docs/guides/development.md) - Development workflow
 
-Verify the ticker API before opening the UI:
-
-```powershell
-Invoke-RestMethod http://localhost:8081/api/market/snapshot
-```
-
-The dashboard reads the snapshot and then opens `GET /api/market/stream` automatically. The replay advances one simulated market second per real second by default. Set `MARKET_REPLAY_START_AT` to an ISO-8601 instant when you need a deterministic starting point, or `MARKET_REPLAY_TICK_MILLIS` to change replay speed. The default CORS origin is `http://localhost:4200`.
-The app defaults to port 8080 and a business PostgreSQL database; tests use H2 and do not need a running auth service. Configuration lives in [application.properties](src/main/resources/application.properties):
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| AUTH_JWK_SET_URI | http://localhost:3001/.well-known/jwks.json | Auth service JWKS; fetched on first authenticated request and cached |
-| AUTH_JWT_ISSUER | https://auth.dualeapa.local | Required iss claim; must equal the auth service's JWT_ISSUER |
-| CORS_ORIGINS | http://localhost:4200 | Comma-separated browser origins allowed to call the API |
-
-See [API contracts](../../docs/reference/api.md), [development and Javadocs](../../docs/guides/development.md#javadocs), and the [database reference](../../docs/reference/database.md). Update affected Javadoc comments and regenerate documentation with every Java code change.

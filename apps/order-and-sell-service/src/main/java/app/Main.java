@@ -4,7 +4,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-/** Starts the business API and enables scheduled market replay ticks. */
+/** Starts the Order and Sell Service API. */
 @SpringBootApplication
 @EnableScheduling
 public class Main {
@@ -16,5 +16,3 @@ public class Main {
         SpringApplication.run(Main.class, args);
     }
 }
-
-

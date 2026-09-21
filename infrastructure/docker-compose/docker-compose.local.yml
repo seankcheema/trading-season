@@ -8,9 +8,11 @@ services:
   #   depends_on:
   #     - backend
 
-  backend:
-    # Dockerfile lives at the repo root (builds the Maven project in src/).
-    build: .
+  # Holdings and Trade Service: manages order execution, validation, and holdings
+  holdings-and-trade-service:
+    build:
+      context: ../../apps/holdings-and-trade-service
+      dockerfile: Dockerfile
     ports:
       - "8081:8081"
     depends_on:
@@ -19,8 +21,23 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
       SPRING_DATASOURCE_USERNAME: trading_season
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-changeme}
-      # Access tokens are verified against the auth service's public key, fetched
-      # once from its JWKS endpoint and cached. The issuer must match JWT_ISSUER.
+      AUTH_JWK_SET_URI: http://auth-service:3001/.well-known/jwks.json
+      AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
+
+  # Order and Sell Service: provides read-only access to user profiles and order history
+  order-and-sell-service:
+    build:
+      context: ../../apps/order-and-sell-service
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8082"
+    depends_on:
+      - db
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
+      SPRING_DATASOURCE_USERNAME: trading_season
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-changeme}
       AUTH_JWK_SET_URI: http://auth-service:3001/.well-known/jwks.json
       AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
