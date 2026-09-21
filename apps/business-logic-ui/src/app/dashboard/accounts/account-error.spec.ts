@@ -6,11 +6,11 @@ function httpError(status: number, error: unknown = null): HttpErrorResponse {
 }
 
 describe('toAccountErrorMessage', () => {
-  it('explains an account or portfolio the user does not own', () => {
+  it('explains an account the user does not own', () => {
     expect(toAccountErrorMessage(new NotOwnedError(), 'deposit')).toBe(
       ACCOUNT_ERROR_MESSAGES.notOwned,
     );
-    expect(toAccountErrorMessage(httpError(403), 'save-portfolio')).toBe(
+    expect(toAccountErrorMessage(httpError(403), 'rename-account')).toBe(
       ACCOUNT_ERROR_MESSAGES.notOwned,
     );
     expect(toAccountErrorMessage(httpError(404), 'withdraw')).toBe(ACCOUNT_ERROR_MESSAGES.notOwned);
@@ -46,8 +46,8 @@ describe('toAccountErrorMessage', () => {
     expect(toAccountErrorMessage(httpError(409), 'create-account')).toBe(
       ACCOUNT_ERROR_MESSAGES.duplicateAccount,
     );
-    expect(toAccountErrorMessage(httpError(409), 'save-portfolio')).toBe(
-      ACCOUNT_ERROR_MESSAGES.duplicatePortfolio,
+    expect(toAccountErrorMessage(httpError(409), 'rename-account')).toBe(
+      ACCOUNT_ERROR_MESSAGES.duplicateAccount,
     );
     expect(toAccountErrorMessage(httpError(422), 'withdraw')).toBe(
       ACCOUNT_ERROR_MESSAGES.insufficientFunds,

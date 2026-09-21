@@ -1,12 +1,12 @@
 import { HttpErrorResponse } from '@angular/common/http';
 
 // Which change failed, since the same status means different things for each.
-export type AccountAction = 'create-account' | 'save-portfolio' | 'deposit' | 'withdraw';
+export type AccountAction = 'create-account' | 'rename-account' | 'deposit' | 'withdraw';
 
-// Raised by AccountStore before any request when an id is not among the caller's own.
+// Raised by AccountStore before any request when an account id is not among the caller's own.
 export class NotOwnedError extends Error {
   constructor() {
-    super('The account or portfolio does not belong to the signed-in user');
+    super('The account does not belong to the signed-in user');
     this.name = 'NotOwnedError';
   }
 }
@@ -15,20 +15,19 @@ export const ACCOUNT_ERROR_MESSAGES = {
   network: "Can't reach the server. Check your connection and try again.",
   unavailable: 'The service is unavailable right now. Please try again shortly.',
   sessionExpired: 'Your session has expired. Sign in again to continue.',
-  notOwned: "That account or portfolio isn't available to you.",
+  notOwned: "That account isn't available to you.",
   invalid: 'Please check the details and try again.',
   duplicateAccount: 'You already have an account with this name.',
-  duplicatePortfolio: 'This account already has a portfolio with this name.',
-  insufficientFunds: "This account doesn't have enough cash for that withdrawal.",
+  insufficientFunds: "You don't have enough cash for that withdrawal.",
   failed: {
     'create-account': "We couldn't create the account. Please try again.",
-    'save-portfolio': "We couldn't save the portfolio. Please try again.",
+    'rename-account': "We couldn't rename the account. Please try again.",
     deposit: "We couldn't complete the deposit. Please try again.",
     withdraw: "We couldn't complete the withdrawal. Please try again.",
   },
 } as const;
 
-// Maps a failed account, portfolio or cash transaction call to a message safe to show the user.
+// Maps a failed account or cash transaction call to a message safe to show the user.
 export function toAccountErrorMessage(error: unknown, action: AccountAction): string {
   if (error instanceof NotOwnedError) {
     return ACCOUNT_ERROR_MESSAGES.notOwned;
@@ -61,9 +60,8 @@ export function toAccountErrorMessage(error: unknown, action: AccountAction): st
 function conflictMessage(action: AccountAction): string {
   switch (action) {
     case 'create-account':
+    case 'rename-account':
       return ACCOUNT_ERROR_MESSAGES.duplicateAccount;
-    case 'save-portfolio':
-      return ACCOUNT_ERROR_MESSAGES.duplicatePortfolio;
     case 'withdraw':
       return ACCOUNT_ERROR_MESSAGES.insufficientFunds;
     case 'deposit':

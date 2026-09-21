@@ -132,25 +132,27 @@ export async function readAllBrowserStorage(page: Page): Promise<string> {
   return [stored, cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('\n')].join('\n');
 }
 
-/** The dashboard's account, portfolio and cash controls. */
+/** The dashboard's account and cash controls. */
 export class DashboardPage {
   readonly accountMenu: Locator;
   readonly accountMenuTrigger: Locator;
-  readonly portfolioMenu: Locator;
-  readonly portfolioMenuTrigger: Locator;
   readonly deposit: Locator;
   readonly withdraw: Locator;
   readonly cash: Locator;
+  readonly netWorth: Locator;
+  readonly portfolioValue: Locator;
+  readonly assets: Locator;
   readonly recentTransactions: Locator;
 
   constructor(readonly page: Page) {
     this.accountMenu = page.getByTestId('account-dropdown');
     this.accountMenuTrigger = page.getByLabel('Select account');
-    this.portfolioMenu = page.getByTestId('portfolio-dropdown');
-    this.portfolioMenuTrigger = page.getByLabel('Select portfolio');
     this.deposit = page.getByRole('button', { name: 'Deposit', exact: true });
     this.withdraw = page.getByRole('button', { name: 'Withdraw', exact: true });
     this.cash = page.getByText(/^Cash \$/);
+    this.netWorth = page.getByTestId('net-worth');
+    this.portfolioValue = page.getByTestId('portfolio-value');
+    this.assets = page.getByTestId('assets-table');
     this.recentTransactions = page.getByTestId('recent-transactions');
   }
 
@@ -172,13 +174,26 @@ export class DashboardPage {
     return dialog;
   }
 
-  async createAccount(name: string, openingDeposit?: number): Promise<Locator> {
+  async createAccount(name: string): Promise<Locator> {
     const dialog = await this.openNewAccount();
     await dialog.getByLabel('Account name').fill(name);
-    if (openingDeposit !== undefined) {
-      await dialog.getByLabel('Opening deposit').fill(String(openingDeposit));
-    }
     await dialog.getByRole('button', { name: 'Create account' }).click();
+    return dialog;
+  }
+
+  async selectAccount(name: string): Promise<void> {
+    await this.accountMenuTrigger.click();
+    await this.accountMenu.getByRole('menuitemradio', { name: new RegExp(`^${name} `) }).click();
+  }
+
+  /** Deposits or withdraws through the net worth card's dialog. */
+  async moveCash(action: 'Deposit' | 'Withdraw', amount: string): Promise<Locator> {
+    await (action === 'Deposit' ? this.deposit : this.withdraw).click();
+    const dialog = this.page.getByRole('dialog', {
+      name: action === 'Deposit' ? 'Deposit funds' : 'Withdraw funds',
+    });
+    await dialog.getByLabel('Amount').fill(amount);
+    await dialog.getByRole('button', { name: action, exact: true }).click();
     return dialog;
   }
 }

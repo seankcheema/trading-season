@@ -5,46 +5,41 @@ import { BACKEND_API_URL } from '../../core/api.config';
 import { NotOwnedError } from './account-error';
 import {
   Account,
+  AccountDetails,
+  AccountHolding,
   CashTransaction,
   CashTransactionReason,
-  NewAccount,
-  NewPortfolio,
-  Portfolio,
-  PortfolioDetails,
+  UserFunds,
 } from './account.models';
 
 export type AccountLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
-// Most recent cash transactions shown for the selected account.
+// Most recent cash transactions shown on the dashboard.
 const CASH_TRANSACTION_LIMIT = 20;
 
-// The signed-in user's accounts, portfolios and cash transactions for one dashboard.
+// The signed-in user's accounts, each account's holdings, and the cash they share.
 //
 // Provided by the dashboard rather than the root injector, so signing out and back in as
 // someone else never shows the previous user's data. The backend scopes every endpoint to
-// the token's subject; this store additionally refuses to select or change an account or
-// portfolio that is not among the ones the backend returned for the caller.
+// the token's subject; this store additionally refuses to select, rename or read holdings
+// for an account that is not among the ones the backend returned for the caller.
 @Injectable()
 export class AccountStore {
   private readonly _http = inject(HttpClient);
   private readonly _apiUrl = inject(BACKEND_API_URL);
 
   private readonly _accounts = signal<Account[]>([]);
-  private readonly _portfolios = signal<Portfolio[]>([]);
+  private readonly _holdings = signal(new Map<number, AccountHolding[]>());
+  private readonly _cashBalance = signal(0);
   private readonly _cashTransactions = signal<CashTransaction[]>([]);
   private readonly _selectedAccountId = signal<number | null>(null);
-  private readonly _selectedPortfolioId = signal<number | null>(null);
 
   readonly status = signal<AccountLoadStatus>('idle');
-  readonly cashTransactionsLoading = signal(false);
 
   readonly accounts = this._accounts.asReadonly();
-
-  // A portfolio is only usable when its account is one the caller owns.
-  readonly portfolios = computed(() => {
-    const owned = new Set(this._accounts().map((account) => account.accountId));
-    return this._portfolios().filter((portfolio) => owned.has(portfolio.accountId));
-  });
+  // Shared by every account.
+  readonly cashBalance = this._cashBalance.asReadonly();
+  readonly cashTransactions = this._cashTransactions.asReadonly();
 
   readonly selectedAccount = computed(
     () =>
@@ -55,31 +50,26 @@ export class AccountStore {
 
   readonly selectedAccountId = computed(() => this.selectedAccount()?.accountId ?? null);
 
-  readonly accountPortfolios = computed(() =>
-    this.portfolios().filter((portfolio) => portfolio.accountId === this.selectedAccountId()),
-  );
+  // The selected account's portfolio.
+  readonly selectedHoldings = computed(() => this.holdingsOf(this.selectedAccountId()));
 
-  readonly selectedPortfolio = computed(
+  // Every owned account's portfolio, keyed by account id.
+  readonly holdingsByAccount = computed(
     () =>
-      this.accountPortfolios().find(
-        (portfolio) => portfolio.portfolioId === this._selectedPortfolioId(),
-      ) ??
-      this.accountPortfolios()[0] ??
-      null,
-  );
-
-  readonly cashTransactions = computed(() =>
-    this._cashTransactions().filter(
-      (transaction) => transaction.accountId === this.selectedAccountId(),
-    ),
+      new Map(
+        this._accounts().map((account) => [account.accountId, this.holdingsOf(account.accountId)]),
+      ),
   );
 
   load(): void {
     this.status.set('loading');
-    forkJoin([this.fetchAccounts(), this.fetchPortfolios()]).subscribe({
+    forkJoin([
+      this.fetchAccounts().pipe(switchMap((accounts) => this.fetchAllHoldings(accounts))),
+      this.fetchCash(),
+    ]).subscribe({
       next: () => {
         this.status.set('ready');
-        this.refreshCashTransactions();
+        this.fetchCashTransactions().subscribe({ error: () => undefined });
       },
       error: () => this.status.set('error'),
     });
@@ -89,119 +79,61 @@ export class AccountStore {
     return this._accounts().some((account) => account.accountId === accountId);
   }
 
-  isOwnedPortfolio(portfolioId: number | null | undefined): boolean {
-    return this.portfolios().some((portfolio) => portfolio.portfolioId === portfolioId);
-  }
-
-  accountById(accountId: number | null | undefined): Account | null {
-    return this._accounts().find((account) => account.accountId === accountId) ?? null;
+  // Holdings are only ever kept for owned accounts; anything else has none.
+  holdingsOf(accountId: number | null | undefined): AccountHolding[] {
+    return this.isOwnedAccount(accountId) ? (this._holdings().get(accountId!) ?? []) : [];
   }
 
   // Returns false, and leaves the selection alone, for an account the caller doesn't own.
   selectAccount(accountId: number): boolean {
-    return this.select(accountId, true);
-  }
-
-  // Returns false for a portfolio the caller doesn't own. Selecting a portfolio also selects
-  // the account it belongs to.
-  selectPortfolio(portfolioId: number): boolean {
-    const portfolio = this.portfolios().find((item) => item.portfolioId === portfolioId);
-    if (!portfolio) {
+    if (!this.isOwnedAccount(accountId)) {
       return false;
     }
-    this.selectAccount(portfolio.accountId);
-    this._selectedPortfolioId.set(portfolioId);
+    this._selectedAccountId.set(accountId);
     return true;
   }
 
-  createAccount(details: NewAccount): Observable<Account> {
+  // Opens a new, empty account and selects it. Cash is shared, so there is nothing to fund.
+  createAccount(details: AccountDetails): Observable<Account> {
     return this._http.post<Account>(`${this._apiUrl}/me/accounts`, details).pipe(
       switchMap((created) =>
         this.afterChange(
-          this.fetchAccounts().pipe(
-            tap(() => this.select(created.accountId, false)),
-            // Load the new account's ledger explicitly: a first account is already the
-            // selection by default, so selecting it again would not trigger a load, and
-            // an opening deposit is already a transaction.
-            switchMap(() => this.fetchCashTransactions(created.accountId)),
-          ),
+          this.fetchAccounts().pipe(switchMap(() => this.fetchHoldings(created.accountId))),
           created,
         ),
       ),
+      tap((created) => this.selectAccount(created.accountId)),
     );
   }
 
-  createPortfolio(details: NewPortfolio): Observable<Portfolio> {
-    if (!this.isOwnedAccount(details.accountId)) {
-      return throwError(() => new NotOwnedError());
-    }
-    return this._http
-      .post<Portfolio>(`${this._apiUrl}/me/portfolios`, details)
-      .pipe(
-        switchMap((created) =>
-          this.afterChange(this.fetchPortfolios(), created).pipe(
-            tap(() => this.selectPortfolio(created.portfolioId)),
-          ),
-        ),
-      );
-  }
-
-  updatePortfolio(portfolioId: number, details: PortfolioDetails): Observable<Portfolio> {
-    if (!this.isOwnedPortfolio(portfolioId)) {
-      return throwError(() => new NotOwnedError());
-    }
-    return this._http
-      .put<Portfolio>(`${this._apiUrl}/me/portfolios/${portfolioId}`, details)
-      .pipe(switchMap((updated) => this.afterChange(this.fetchPortfolios(), updated)));
-  }
-
-  deposit(accountId: number, amount: number): Observable<void> {
-    return this.postCashTransaction(accountId, amount, 'DEPOSIT');
-  }
-
-  withdraw(accountId: number, amount: number): Observable<void> {
-    return this.postCashTransaction(accountId, amount, 'WITHDRAWAL');
-  }
-
-  private postCashTransaction(
-    accountId: number,
-    amount: number,
-    reason: CashTransactionReason,
-  ): Observable<void> {
+  // Renaming is the only edit an account, and so its portfolio, supports.
+  renameAccount(accountId: number, details: AccountDetails): Observable<Account> {
     if (!this.isOwnedAccount(accountId)) {
       return throwError(() => new NotOwnedError());
     }
     return this._http
-      .post<unknown>(`${this._apiUrl}/accounts/${accountId}/cash-transactions`, {
-        amount,
-        reason,
-      })
+      .put<Account>(`${this._apiUrl}/me/accounts/${accountId}`, details)
+      .pipe(switchMap((updated) => this.afterChange(this.fetchAccounts(), updated)));
+  }
+
+  deposit(amount: number): Observable<void> {
+    return this.postCashTransaction(amount, 'DEPOSIT');
+  }
+
+  withdraw(amount: number): Observable<void> {
+    return this.postCashTransaction(amount, 'WITHDRAWAL');
+  }
+
+  private postCashTransaction(amount: number, reason: CashTransactionReason): Observable<void> {
+    return this._http
+      .post<unknown>(`${this._apiUrl}/me/cash-transactions`, { amount, reason })
       .pipe(
+        // Cash and the transaction list both change, so reload both rather than patching them
+        // locally from the response.
         switchMap(() =>
-          // Balances and the transaction list both change, so reload both rather than
-          // patching them locally from the response.
-          this.afterChange(
-            forkJoin([this.fetchAccounts(), this.fetchCashTransactions(accountId)]),
-            undefined,
-          ),
+          this.afterChange(forkJoin([this.fetchCash(), this.fetchCashTransactions()]), undefined),
         ),
-        // The account's transactions were just reloaded, so switching to it needn't fetch again.
-        tap(() => this.select(accountId, false)),
       );
-  }
-
-  private select(accountId: number, loadTransactions: boolean): boolean {
-    if (!this.isOwnedAccount(accountId)) {
-      return false;
-    }
-    if (accountId !== this.selectedAccountId()) {
-      this._selectedAccountId.set(accountId);
-      this._selectedPortfolioId.set(null);
-      if (loadTransactions) {
-        this.refreshCashTransactions();
-      }
-    }
-    return true;
   }
 
   // Runs a refresh after a successful change and emits the change's result either way:
@@ -213,43 +145,46 @@ export class AccountStore {
     );
   }
 
-  private refreshCashTransactions(): void {
-    const accountId = this.selectedAccountId();
-    if (accountId === null) {
-      return;
-    }
-    this.cashTransactionsLoading.set(true);
-    this.fetchCashTransactions(accountId).subscribe({
-      next: () => this.cashTransactionsLoading.set(false),
-      error: () => this.cashTransactionsLoading.set(false),
-    });
-  }
-
   private fetchAccounts(): Observable<Account[]> {
-    return this._http
-      .get<Account[]>(`${this._apiUrl}/me/accounts`)
-      .pipe(tap((accounts) => this._accounts.set(accounts)));
+    return this._http.get<Account[]>(`${this._apiUrl}/me/accounts`).pipe(
+      tap((accounts) => {
+        this._accounts.set(accounts);
+        // Forget holdings of any account the caller no longer owns.
+        const owned = new Set(accounts.map((account) => account.accountId));
+        this._holdings.update(
+          (current) => new Map([...current].filter(([accountId]) => owned.has(accountId))),
+        );
+      }),
+    );
   }
 
-  private fetchPortfolios(): Observable<Portfolio[]> {
-    return this._http
-      .get<Portfolio[]>(`${this._apiUrl}/me/portfolios`)
-      .pipe(tap((portfolios) => this._portfolios.set(portfolios)));
+  private fetchAllHoldings(accounts: Account[]): Observable<unknown> {
+    return accounts.length
+      ? forkJoin(accounts.map((account) => this.fetchHoldings(account.accountId)))
+      : of(null);
   }
 
-  private fetchCashTransactions(accountId: number): Observable<CashTransaction[]> {
+  private fetchHoldings(accountId: number): Observable<AccountHolding[]> {
     return this._http
-      .get<CashTransaction[]>(`${this._apiUrl}/accounts/${accountId}/cash-transactions`, {
-        params: { limit: CASH_TRANSACTION_LIMIT },
-      })
+      .get<AccountHolding[]>(`${this._apiUrl}/accounts/${accountId}/holdings`)
       .pipe(
-        // Keep other accounts' cached rows and drop anything that isn't this account's.
-        tap((transactions) =>
-          this._cashTransactions.update((current) => [
-            ...current.filter((transaction) => transaction.accountId !== accountId),
-            ...transactions.filter((transaction) => transaction.accountId === accountId),
-          ]),
+        tap((holdings) =>
+          this._holdings.update((current) => new Map(current).set(accountId, holdings)),
         ),
       );
+  }
+
+  private fetchCash(): Observable<UserFunds> {
+    return this._http
+      .get<UserFunds>(`${this._apiUrl}/users/me`)
+      .pipe(tap((profile) => this._cashBalance.set(Number(profile.availableFunds) || 0)));
+  }
+
+  private fetchCashTransactions(): Observable<CashTransaction[]> {
+    return this._http
+      .get<CashTransaction[]>(`${this._apiUrl}/me/cash-transactions`, {
+        params: { limit: CASH_TRANSACTION_LIMIT },
+      })
+      .pipe(tap((transactions) => this._cashTransactions.set(transactions)));
   }
 }

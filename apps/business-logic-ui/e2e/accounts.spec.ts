@@ -11,6 +11,26 @@ function seed(user: typeof NEW_USER, extra: Partial<SeedAccount> = {}): SeedAcco
   return { email: user.email, password: user.password, hasProfile: true, ...extra };
 }
 
+// The stubbed market has no live prices, so every holding is valued at its average cost.
+// These symbols are also outside the dashboard's placeholder ticker, so their values are
+// stable whether or not the market snapshot has arrived yet.
+const EXISTING_SEED = seed(EXISTING_USER, {
+  availableFunds: 2000,
+  tradingAccounts: [
+    // A $600 portfolio.
+    { name: 'Brokerage', holdings: [{ symbol: 'IBM', quantity: 3, averageCost: 200 }] },
+    // A $700 portfolio.
+    { name: 'IRA', holdings: [{ symbol: 'KO', quantity: 10, averageCost: 70 }] },
+  ],
+});
+
+const OTHER_SEED = seed(OTHER_USER, {
+  availableFunds: 99_999,
+  tradingAccounts: [
+    { name: 'Other savings', holdings: [{ symbol: 'PEP', quantity: 1, averageCost: 150 }] },
+  ],
+});
+
 async function signIn(
   { loginPage, dashboardPage }: { loginPage: LoginPage; dashboardPage: DashboardPage },
   user: typeof NEW_USER,
@@ -24,21 +44,23 @@ async function signIn(
 
 test.describe('creating an account from the dashboard', () => {
   test.describe('for a user with no accounts', () => {
-    test.use({ stubOptions: { accounts: [seed(NEW_USER)] } });
+    test.use({ stubOptions: { accounts: [seed(NEW_USER, { availableFunds: 5000 })] } });
 
-    test('starts with no account and cash actions disabled', async ({
+    test('starts with no accounts, and the user’s own cash as their net worth', async ({
       loginPage,
       dashboardPage,
     }) => {
       await signIn({ loginPage, dashboardPage }, NEW_USER);
 
       await expect(dashboardPage.accountMenu).toContainText('No accounts');
-      await expect(dashboardPage.deposit).toBeDisabled();
-      await expect(dashboardPage.withdraw).toBeDisabled();
+      await expect(dashboardPage.cash).toHaveText('Cash $5,000.00');
+      await expect(dashboardPage.netWorth).toHaveText('$5,000');
+      // Cash belongs to the user, not an account, so it can move before any account exists.
+      await expect(dashboardPage.deposit).toBeEnabled();
       expect(await dashboardPage.listedAccounts()).toEqual([]);
     });
 
-    test('creates the first account with an opening deposit and selects it', async ({
+    test('creates a blank account and selects it', async ({
       page,
       loginPage,
       dashboardPage,
@@ -46,73 +68,56 @@ test.describe('creating an account from the dashboard', () => {
     }) => {
       await signIn({ loginPage, dashboardPage }, NEW_USER);
 
-      const dialog = await dashboardPage.createAccount('  Brokerage  ', 2500);
+      const dialog = await dashboardPage.createAccount('  Brokerage  ');
 
       await expect(dialog).toBeHidden();
       await expect(dashboardPage.accountMenu).toContainText('Brokerage');
-      await expect(dashboardPage.cash).toHaveText('Cash $2,500.00');
-      await expect(dashboardPage.deposit).toBeEnabled();
-      // The opening deposit is on the ledger, so it shows with the recent transactions.
-      await expect(dashboardPage.recentTransactions.locator('li').first()).toContainText('deposit');
-      await expect(dashboardPage.recentTransactions.locator('li').first()).toContainText(
-        '+$2,500.00',
-      );
+      // The new account's portfolio is empty and the shared cash is untouched.
+      await expect(dashboardPage.portfolioValue).toHaveText('$0');
+      await expect(dashboardPage.assets).toContainText('This account has no holdings yet.');
+      await expect(dashboardPage.cash).toHaveText('Cash $5,000.00');
+      await expect(dashboardPage.netWorth).toHaveText('$5,000');
 
       const creates = api.requests.filter(
         (request) => request.method === 'POST' && request.url.endsWith('/api/me/accounts'),
       );
       expect(creates).toHaveLength(1);
-      expect(JSON.parse(creates[0].body ?? '{}')).toEqual({
-        name: 'Brokerage',
-        currency: 'USD',
-        initialDeposit: 2500,
-      });
+      // Only a name: no opening deposit or balance.
+      expect(JSON.parse(creates[0].body ?? '{}')).toEqual({ name: 'Brokerage' });
       expect(creates[0].headers['authorization']).toMatch(/^Bearer /);
-      expect(api.tradingAccountsOf(NEW_USER.email)).toEqual([
-        expect.objectContaining({ name: 'Brokerage', cashBalance: 2500 }),
-      ]);
+      const [created] = api.tradingAccountsOf(NEW_USER.email);
+      expect(created).toEqual(expect.objectContaining({ name: 'Brokerage' }));
+      expect(api.holdingsOf(created.accountId)).toEqual([]);
+      expect(api.fundsOf(NEW_USER.email)).toBe(5000);
 
       // The account is the backend's, not the page's: it is still there after a reload.
       await page.reload();
       await expect(dashboardPage.accountMenu).toContainText('Brokerage');
-      await expect(dashboardPage.cash).toHaveText('Cash $2,500.00');
     });
 
-    test('creates an account without an opening deposit', async ({
-      loginPage,
-      dashboardPage,
-      api,
-    }) => {
-      await signIn({ loginPage, dashboardPage }, NEW_USER);
-
-      await dashboardPage.createAccount('Savings');
-
-      await expect(dashboardPage.accountMenu).toContainText('Savings');
-      await expect(dashboardPage.cash).toHaveText('Cash $0.00');
-      const create = api.requests.find(
-        (request) => request.method === 'POST' && request.url.endsWith('/api/me/accounts'),
-      );
-      expect(JSON.parse(create?.body ?? '{}')).toEqual({ name: 'Savings', currency: 'USD' });
-    });
-
-    test('checks the form before sending anything', async ({ loginPage, dashboardPage, api }) => {
+    test('asks only for a name', async ({ loginPage, dashboardPage }) => {
       await signIn({ loginPage, dashboardPage }, NEW_USER);
 
       const dialog = await dashboardPage.openNewAccount();
+
+      await expect(dialog.getByRole('textbox')).toHaveCount(1);
+      await expect(dialog.getByRole('spinbutton')).toHaveCount(0);
+      await expect(dialog).toContainText('starts with no holdings');
+    });
+
+    test('checks the name before sending anything', async ({ loginPage, dashboardPage, api }) => {
+      await signIn({ loginPage, dashboardPage }, NEW_USER);
+
+      const dialog = await dashboardPage.openNewAccount();
+      await dialog.getByLabel('Account name').fill('   ');
       await dialog.getByRole('button', { name: 'Create account' }).click();
+
       await expect(dialog.getByText('Enter an account name of up to 60 characters.')).toBeVisible();
-
-      await dialog.getByLabel('Account name').fill('Savings');
-      await dialog.getByLabel('Opening deposit').fill('-10');
-      await dialog.getByRole('button', { name: 'Create account' }).click();
-      await expect(dialog.getByText(/in whole cents/)).toBeVisible();
-
       expect(
         api.requests.filter(
           (request) => request.method === 'POST' && request.url.endsWith('/api/me/accounts'),
         ),
       ).toHaveLength(0);
-      await expect(dialog).toBeVisible();
     });
 
     test('can be cancelled without creating anything', async ({
@@ -163,37 +168,21 @@ test.describe('creating an account from the dashboard', () => {
   });
 
   test.describe('for a user who already has accounts', () => {
-    test.use({
-      stubOptions: {
-        accounts: [
-          seed(EXISTING_USER, {
-            tradingAccounts: [{ name: 'Brokerage', cashBalance: 1000 }],
-          }),
-          seed(OTHER_USER, {
-            tradingAccounts: [
-              {
-                name: 'Other savings',
-                cashBalance: 99_999,
-                portfolios: [{ name: 'Other growth' }],
-              },
-            ],
-          }),
-        ],
-      },
-    });
+    test.use({ stubOptions: { accounts: [EXISTING_SEED, OTHER_SEED] } });
 
-    test('adds the new account alongside the existing one and switches to it', async ({
+    test('adds a blank account alongside the others without changing net worth', async ({
       loginPage,
       dashboardPage,
     }) => {
       await signIn({ loginPage, dashboardPage }, EXISTING_USER);
-      await expect(dashboardPage.cash).toHaveText('Cash $1,000.00');
+      await expect(dashboardPage.netWorth).toHaveText('$3,300');
 
-      await dashboardPage.createAccount('Retirement', 300);
+      await dashboardPage.createAccount('Retirement');
 
       await expect(dashboardPage.accountMenu).toContainText('Retirement');
-      await expect(dashboardPage.cash).toHaveText('Cash $300.00');
-      expect(await dashboardPage.listedAccounts()).toEqual(['Brokerage', 'Retirement']);
+      await expect(dashboardPage.portfolioValue).toHaveText('$0');
+      await expect(dashboardPage.netWorth).toHaveText('$3,300');
+      expect(await dashboardPage.listedAccounts()).toEqual(['Brokerage', 'IRA', 'Retirement']);
     });
 
     test('refuses a duplicate name and says why', async ({ loginPage, dashboardPage, api }) => {
@@ -204,99 +193,111 @@ test.describe('creating an account from the dashboard', () => {
       await expect(dialog.getByRole('alert')).toHaveText(
         'You already have an account with this name.',
       );
-      expect(api.tradingAccountsOf(EXISTING_USER.email)).toHaveLength(1);
+      expect(api.tradingAccountsOf(EXISTING_USER.email)).toHaveLength(2);
     });
 
-    test("never lists or shows another user's accounts or portfolios", async ({
+    test("never lists or counts another user's accounts or cash", async ({
       page,
       loginPage,
       dashboardPage,
     }) => {
       await signIn({ loginPage, dashboardPage }, EXISTING_USER);
-
       await dashboardPage.createAccount('Retirement');
       await expect(dashboardPage.accountMenu).toContainText('Retirement');
 
-      expect(await dashboardPage.listedAccounts()).toEqual(['Brokerage', 'Retirement']);
-      await dashboardPage.portfolioMenuTrigger.click();
-      await expect(dashboardPage.portfolioMenu).not.toContainText('Other growth');
+      expect(await dashboardPage.listedAccounts()).toEqual(['Brokerage', 'IRA', 'Retirement']);
       await expect(page.locator('body')).not.toContainText('Other savings');
       await expect(page.locator('body')).not.toContainText('99,999');
+      await expect(dashboardPage.assets).not.toContainText('PEP');
+      await expect(dashboardPage.netWorth).toHaveText('$3,300');
     });
   });
 });
 
-test.describe('funding and organising a new account', () => {
-  test.use({ stubOptions: { accounts: [seed(NEW_USER)] } });
+test.describe('portfolios and net worth', () => {
+  test.use({ stubOptions: { accounts: [EXISTING_SEED] } });
 
-  test('deposits into and withdraws from a new account, refreshing balance and history', async ({
-    page,
+  test("counts the shared cash once plus every account's portfolio", async ({
     loginPage,
     dashboardPage,
   }) => {
-    await signIn({ loginPage, dashboardPage }, NEW_USER);
-    await dashboardPage.createAccount('Brokerage', 100);
-    await expect(dashboardPage.cash).toHaveText('Cash $100.00');
+    await signIn({ loginPage, dashboardPage }, EXISTING_USER);
 
-    await dashboardPage.deposit.click();
-    const deposit = page.getByRole('dialog', { name: 'Deposit funds' });
-    await deposit.getByLabel('Amount').fill('50.25');
-    await deposit.getByRole('button', { name: 'Deposit', exact: true }).click();
-    await expect(deposit).toBeHidden();
-    await expect(dashboardPage.cash).toHaveText('Cash $150.25');
-    await expect(dashboardPage.recentTransactions.locator('li').first()).toContainText('+$50.25');
+    // $2,000 cash + $600 Brokerage portfolio + $700 IRA portfolio.
+    await expect(dashboardPage.netWorth).toHaveText('$3,300');
+    await expect(dashboardPage.cash).toHaveText('Cash $2,000.00');
+    await expect(dashboardPage.portfolioValue).toHaveText('$600');
+    await expect(dashboardPage.assets).toContainText('IBM');
 
-    await dashboardPage.withdraw.click();
-    const withdrawal = page.getByRole('dialog', { name: 'Withdraw funds' });
-    await withdrawal.getByLabel('Amount').fill('500');
-    await withdrawal.getByRole('button', { name: 'Withdraw', exact: true }).click();
-    await expect(
-      withdrawal.getByText("That's more than the account's available cash."),
-    ).toBeVisible();
-
-    await withdrawal.getByLabel('Amount').fill('25');
-    await withdrawal.getByRole('button', { name: 'Withdraw', exact: true }).click();
-    await expect(withdrawal).toBeHidden();
-    await expect(dashboardPage.cash).toHaveText('Cash $125.25');
-    await expect(dashboardPage.recentTransactions.locator('li').first()).toContainText(
-      'withdrawal',
-    );
+    // An account's portfolio is its holdings; switching accounts switches portfolios only.
+    await dashboardPage.selectAccount('IRA');
+    await expect(dashboardPage.portfolioValue).toHaveText('$700');
+    await expect(dashboardPage.assets).toContainText('KO');
+    await expect(dashboardPage.assets).not.toContainText('IBM');
+    await expect(dashboardPage.cash).toHaveText('Cash $2,000.00');
+    await expect(dashboardPage.netWorth).toHaveText('$3,300');
   });
 
-  test('creates and then renames a portfolio in the new account', async ({
+  test('renames an account, and so its portfolio', async ({
     page,
     loginPage,
     dashboardPage,
     api,
   }) => {
-    await signIn({ loginPage, dashboardPage }, NEW_USER);
-    await dashboardPage.createAccount('Brokerage');
-    await expect(dashboardPage.portfolioMenu).toContainText('No portfolio');
+    await signIn({ loginPage, dashboardPage }, EXISTING_USER);
 
-    await dashboardPage.portfolioMenuTrigger.click();
-    await dashboardPage.portfolioMenu.getByRole('menuitem', { name: 'New portfolio' }).click();
-    const create = page.getByRole('dialog', { name: 'New portfolio' });
-    await expect(create.getByLabel('Account')).toHaveValue(
-      String(api.tradingAccountsOf(NEW_USER.email)[0].accountId),
-    );
-    await create.getByLabel('Portfolio name').fill('Growth');
-    await create.getByLabel('Description').fill('Long-term tech');
-    await create.getByRole('button', { name: 'Create portfolio' }).click();
-    await expect(create).toBeHidden();
-    await expect(dashboardPage.portfolioMenu).toContainText('Growth');
+    await dashboardPage.accountMenuTrigger.click();
+    await dashboardPage.accountMenu.getByRole('menuitem', { name: 'Rename IRA' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Rename account' });
+    await expect(dialog.getByLabel('Account name')).toHaveValue('IRA');
+    await dialog.getByLabel('Account name').fill('Roth IRA');
+    await dialog.getByRole('button', { name: 'Save' }).click();
 
-    await dashboardPage.portfolioMenuTrigger.click();
-    await dashboardPage.portfolioMenu.getByRole('menuitem', { name: 'Edit Growth' }).click();
-    const edit = page.getByRole('dialog', { name: 'Edit portfolio' });
-    await expect(edit.getByLabel('Account')).toBeDisabled();
-    await expect(edit.getByLabel('Portfolio name')).toHaveValue('Growth');
-    await edit.getByLabel('Portfolio name').fill('Aggressive growth');
-    await edit.getByRole('button', { name: 'Save changes' }).click();
-    await expect(edit).toBeHidden();
-
-    await expect(dashboardPage.portfolioMenu).toContainText('Aggressive growth');
-    expect(api.portfoliosOf(NEW_USER.email)).toEqual([
-      expect.objectContaining({ name: 'Aggressive growth', description: 'Long-term tech' }),
+    await expect(dialog).toBeHidden();
+    expect(await dashboardPage.listedAccounts()).toEqual(['Brokerage', 'Roth IRA']);
+    expect(api.tradingAccountsOf(EXISTING_USER.email).map((account) => account.name)).toEqual([
+      'Brokerage',
+      'Roth IRA',
     ]);
+  });
+
+  test('deposits and withdraws shared cash, refreshing net worth and history', async ({
+    page,
+    loginPage,
+    dashboardPage,
+    api,
+  }) => {
+    await signIn({ loginPage, dashboardPage }, EXISTING_USER);
+
+    const deposit = await dashboardPage.moveCash('Deposit', '50.25');
+    await expect(deposit).toBeHidden();
+    await expect(dashboardPage.cash).toHaveText('Cash $2,050.25');
+    await expect(dashboardPage.netWorth).toHaveText('$3,350');
+    await expect(dashboardPage.recentTransactions.locator('li').first()).toContainText('+$50.25');
+
+    // Cash is shared, so the selected account makes no difference to it.
+    await dashboardPage.selectAccount('IRA');
+    await expect(dashboardPage.cash).toHaveText('Cash $2,050.25');
+
+    const tooMuch = await dashboardPage.moveCash('Withdraw', '5000');
+    await expect(tooMuch.getByText("That's more than your available cash.")).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(tooMuch).toBeHidden();
+
+    const withdrawal = await dashboardPage.moveCash('Withdraw', '25');
+    await expect(withdrawal).toBeHidden();
+    await expect(dashboardPage.cash).toHaveText('Cash $2,025.25');
+    await expect(dashboardPage.recentTransactions.locator('li').first()).toContainText(
+      'withdrawal',
+    );
+
+    const posts = api.requests.filter(
+      (request) => request.method === 'POST' && request.url.endsWith('/api/me/cash-transactions'),
+    );
+    expect(posts.map((request) => JSON.parse(request.body ?? '{}'))).toEqual([
+      { amount: 50.25, reason: 'DEPOSIT' },
+      { amount: 25, reason: 'WITHDRAWAL' },
+    ]);
+    expect(api.fundsOf(EXISTING_USER.email)).toBe(2025.25);
   });
 });

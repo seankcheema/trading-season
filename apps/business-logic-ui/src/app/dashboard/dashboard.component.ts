@@ -9,15 +9,16 @@ import {
   NgZone,
   PLATFORM_ID,
   computed,
+  effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import {
   lucideBriefcaseBusiness,
   lucideCalendarClock,
   lucideCheck,
   lucideChevronDown,
-  lucideLayers,
   lucideLogOut,
   lucidePencil,
   lucidePlus,
@@ -29,7 +30,6 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import { AuthService } from '../core/auth/auth.service';
 import {
   Instrument,
-  MOCK_HOLDINGS,
   MOCK_INSTRUMENTS,
   MOCK_TRANSACTIONS,
   OrderRequest,
@@ -46,13 +46,12 @@ import {
   MarketTickEvent,
 } from './market-data.service';
 import { AccountStore } from './accounts/account-store.service';
-import { CashTransactionReason, Portfolio } from './accounts/account.models';
+import { AccountDialogComponent } from './accounts/account-dialog.component';
+import { Account, AccountHolding, CashTransactionReason } from './accounts/account.models';
 import {
   CashTransactionDialogComponent,
   CashTransactionMode,
 } from './accounts/cash-transaction-dialog.component';
-import { CreateAccountDialogComponent } from './accounts/create-account-dialog.component';
-import { PortfolioDialogComponent } from './accounts/portfolio-dialog.component';
 import { OrderSubmissionComponent } from './order-submission/order-submission.component';
 import { SettingsDialogComponent } from './settings-dialog/settings-dialog.component';
 import { DashboardHeaderDropdownComponent } from './shared/dashboard-header-dropdown.component';
@@ -69,13 +68,24 @@ const DEFAULT_MARKET_CALENDAR: MarketCalendarAvailability = {
   tradingDates: marketWeekdays(2026),
 };
 
-type HeaderDropdown = 'account' | 'market-clock' | 'portfolio' | 'profile';
+type HeaderDropdown = 'account' | 'market-clock' | 'profile';
 
-// The account, portfolio or cash dialog currently open over the dashboard, if any.
+// The account or cash dialog currently open over the dashboard, if any. An account dialog
+// with an account renames it; without one it creates a new, empty account.
 type AccountDialog =
-  | { kind: 'create-account' }
-  | { kind: 'portfolio'; portfolio: Portfolio | null }
+  | { kind: 'account'; account: Account | null }
   | { kind: 'cash'; mode: CashTransactionMode };
+
+// One position in an account's portfolio, valued at the latest price.
+interface PricedHolding {
+  symbol: string;
+  shares: number;
+  // Average cost per share, used to derive gain/loss.
+  costBasis: number;
+  instrument: Instrument;
+  value: number;
+  gainLoss: number;
+}
 
 // One row of the recent transactions list: a cash deposit or withdrawal from the account
 // service, or a trade. Trades are still mock data until order history is integrated.
@@ -96,8 +106,8 @@ type ActivityItem =
   selector: 'app-dashboard',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    AccountDialogComponent,
     CashTransactionDialogComponent,
-    CreateAccountDialogComponent,
     CurrencyPipe,
     DatePipe,
     DashboardHeaderDropdownComponent,
@@ -105,7 +115,6 @@ type ActivityItem =
     InstrumentSearchComponent,
     NgIcon,
     OrderSubmissionComponent,
-    PortfolioDialogComponent,
     PriceChartComponent,
     SettingsDialogComponent,
     SignedPercentPipe,
@@ -118,7 +127,6 @@ type ActivityItem =
       lucideCalendarClock,
       lucideCheck,
       lucideChevronDown,
-      lucideLayers,
       lucideLogOut,
       lucidePencil,
       lucidePlus,
@@ -141,13 +149,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private readonly _authService = inject(AuthService);
   private readonly _router = inject(Router);
 
-  // Only ever the signed-in user's own accounts and portfolios; see AccountStore.
+  // Only ever the signed-in user's own accounts; see AccountStore. Each account's portfolio
+  // is its holdings, and the user's cash is shared by all of them.
   protected readonly accountStore = inject(AccountStore);
   protected readonly accounts = this.accountStore.accounts;
   protected readonly selectedAccount = this.accountStore.selectedAccount;
   protected readonly selectedAccountId = this.accountStore.selectedAccountId;
-  protected readonly accountPortfolios = this.accountStore.accountPortfolios;
-  protected readonly selectedPortfolio = this.accountStore.selectedPortfolio;
   protected readonly hasAccounts = computed(() => this.accounts().length > 0);
   protected readonly accountLabel = computed(() => {
     switch (this.accountStore.status()) {
@@ -160,12 +167,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
         return this.selectedAccount()?.name ?? 'No accounts';
     }
   });
-  protected readonly portfolioLabel = computed(
-    () => this.selectedPortfolio()?.name ?? 'No portfolio',
-  );
   protected readonly accountDialog = signal<AccountDialog | null>(null);
   protected readonly openHeaderDropdown = signal<HeaderDropdown | null>(null);
-  protected readonly cashBalance = computed(() => this.selectedAccount()?.cashBalance ?? 0);
+  protected readonly cashBalance = this.accountStore.cashBalance;
   protected readonly instruments = signal<Instrument[]>([...MOCK_INSTRUMENTS]);
   protected readonly tickerInstruments = computed(() => this.instruments().slice(0, 6));
   protected readonly portfolioTimeframe = signal<Timeframe>('1D');
@@ -230,18 +234,27 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return symbol ? findInstrument(symbol, this.instruments()) ?? null : null;
   });
 
+  // The selected account's portfolio.
   protected readonly holdings = computed(() =>
-    MOCK_HOLDINGS.flatMap((holding) => {
-      const instrument = findInstrument(holding.symbol, this.instruments());
-      if (!instrument) {
-        return [];
-      }
-      const value = holding.shares * instrument.price;
-      return [
-        { ...holding, instrument, value, gainLoss: value - holding.shares * holding.costBasis },
-      ];
-    }),
+    this.priceHoldings(this.accountStore.selectedHoldings()),
   );
+
+  // Only the symbols, so price ticks don't look like a change of holdings.
+  private readonly heldSymbols = computed(() =>
+    this.accountStore
+      .selectedHoldings()
+      .map((holding) => holding.symbol)
+      .join(','),
+  );
+
+  // Value of each owned account's portfolio, keyed by account id.
+  protected readonly portfolioValues = computed(() => {
+    const values = new Map<number, number>();
+    for (const [accountId, holdings] of this.accountStore.holdingsByAccount()) {
+      values.set(accountId, totalValue(this.priceHoldings(holdings)));
+    }
+    return values;
+  });
 
   protected readonly transactions = computed<ActivityItem[]>(() => {
     const cash: ActivityItem[] = this.accountStore.cashTransactions().map((transaction) => ({
@@ -297,16 +310,21 @@ export class DashboardComponent implements OnInit, OnDestroy {
     );
   });
 
+  // The selected account's portfolio value.
+  protected readonly portfolioValue = computed(() => totalValue(this.holdings()));
+
+  protected readonly portfolioChangePercent = computed(() => {
+    const cost = this.holdings().reduce((total, h) => total + h.shares * h.costBasis, 0);
+    return cost ? ((this.portfolioValue() - cost) / cost) * 100 : 0;
+  });
+
+  // Every account's portfolio value together.
   protected readonly investedValue = computed(() =>
-    this.holdings().reduce((total, holding) => total + holding.value, 0),
+    [...this.portfolioValues().values()].reduce((total, value) => total + value, 0),
   );
 
+  // The user's shared cash plus the value of every account's portfolio.
   protected readonly netWorth = computed(() => this.cashBalance() + this.investedValue());
-
-  protected readonly netWorthChangePercent = computed(() => {
-    const cost = this.holdings().reduce((total, h) => total + h.shares * h.costBasis, 0);
-    return cost ? ((this.investedValue() - cost) / cost) * 100 : 0;
-  });
 
   // Share of net worth that is invested rather than held as cash.
   protected readonly allocationPercent = computed(() =>
@@ -315,12 +333,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   protected readonly portfolioChart = computed(() =>
     mockPriceSeries(
-      `portfolio-${this.selectedPortfolio()?.portfolioId ?? this.selectedAccountId()}`,
+      `portfolio-${this.selectedAccountId()}`,
       this.portfolioTimeframe(),
-      this.netWorth(),
+      this.portfolioValue(),
       this.marketTimeMillis() ?? undefined,
     ),
   );
+
+  constructor() {
+    // Holdings arrive after the market snapshot and change with the selected account, so
+    // load daily candles for any newly held symbol once there is a market session.
+    effect(() => {
+      this.heldSymbols();
+      const sessionId = this.marketSessionId();
+      if (sessionId !== null) {
+        untracked(() => this.loadAssetCharts(sessionId, this.marketGeneration));
+      }
+    });
+  }
 
   ngOnInit(): void {
     if (isPlatformBrowser(this.platformId)) {
@@ -353,32 +383,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.openHeaderDropdown.set(null);
   }
 
-  protected selectPortfolio(portfolioId: number): void {
-    this.accountStore.selectPortfolio(portfolioId);
-    this.openHeaderDropdown.set(null);
-  }
-
   protected retryAccounts(): void {
     this.accountStore.load();
   }
 
   protected openCreateAccount(): void {
     this.openHeaderDropdown.set(null);
-    this.accountDialog.set({ kind: 'create-account' });
+    this.accountDialog.set({ kind: 'account', account: null });
   }
 
-  protected openCreatePortfolio(): void {
-    this.openHeaderDropdown.set(null);
-    this.accountDialog.set({ kind: 'portfolio', portfolio: null });
-  }
-
-  protected openEditPortfolio(portfolio: Portfolio): void {
-    // Only portfolios the store lists for the caller can be opened for editing.
-    if (!this.accountStore.isOwnedPortfolio(portfolio.portfolioId)) {
+  protected openRenameAccount(account: Account): void {
+    // Only accounts the store lists for the caller can be renamed.
+    if (!this.accountStore.isOwnedAccount(account.accountId)) {
       return;
     }
     this.openHeaderDropdown.set(null);
-    this.accountDialog.set({ kind: 'portfolio', portfolio });
+    this.accountDialog.set({ kind: 'account', account });
   }
 
   protected closeAccountDialog(): void {
@@ -407,10 +427,31 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.openCashDialog('withdraw');
   }
 
+  // Cash belongs to the user rather than an account, so it can move before any account exists.
   private openCashDialog(mode: CashTransactionMode): void {
-    if (this.hasAccounts()) {
-      this.accountDialog.set({ kind: 'cash', mode });
-    }
+    this.accountDialog.set({ kind: 'cash', mode });
+  }
+
+  // Values holdings at the latest price, or at cost for a symbol with no live price.
+  private priceHoldings(holdings: readonly AccountHolding[]): PricedHolding[] {
+    return holdings.map((holding) => {
+      const instrument = findInstrument(holding.symbol, this.instruments()) ?? {
+        symbol: holding.symbol,
+        name: holding.symbol,
+        price: holding.averageCost,
+        change: 0,
+        changePercent: 0,
+      };
+      const value = holding.quantity * instrument.price;
+      return {
+        symbol: holding.symbol,
+        shares: holding.quantity,
+        costBasis: holding.averageCost,
+        instrument,
+        value,
+        gainLoss: value - holding.quantity * holding.averageCost,
+      };
+    });
   }
 
   protected onMarketDateTimeChange(event: Event): void {
@@ -482,6 +523,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private loadAssetCharts(sessionId: number, generation: number): void {
     for (const holding of this.holdings()) {
       const symbol = holding.symbol;
+      if (this.assetChartSubscriptions.has(symbol)) {
+        continue;
+      }
       const subscription = this.marketData.candles(sessionId, symbol, '1D').subscribe({
         next: (series) => {
           if (generation !== this.marketGeneration) {
@@ -672,6 +716,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.openHeaderDropdown.set(null);
     this._authService.logout().subscribe(() => void this._router.navigateByUrl('/login'));
   }
+}
+
+function totalValue(holdings: readonly PricedHolding[]): number {
+  return holdings.reduce((total, holding) => total + holding.value, 0);
 }
 
 function marketWeekdays(year: number): string[] {
