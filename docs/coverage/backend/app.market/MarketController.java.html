@@ -15,7 +15,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.concurrent.TimeUnit;
 
-/** Public, read-only endpoints for simulated stock snapshots, charts, and live ticks. */
+/** Public simulated market reads and authenticated shared replay clock control. */
 @RestController
 @RequestMapping(&quot;/api/market&quot;)
 public class MarketController {
@@ -35,8 +35,8 @@ public class MarketController {
     @GetMapping(&quot;/snapshot&quot;)
     public ResponseEntity&lt;MarketResponses.Snapshot&gt; snapshot(
             @RequestParam(required = false) Long sessionId) {
-<span class="nc" id="L38">        return ResponseEntity.ok().cacheControl(CacheControl.maxAge(1, TimeUnit.SECONDS).cachePrivate())</span>
-<span class="nc" id="L39">                .body(service.snapshot(sessionId));</span>
+<span class="fc" id="L38">        return ResponseEntity.ok().cacheControl(CacheControl.maxAge(1, TimeUnit.SECONDS).cachePrivate())</span>
+<span class="fc" id="L39">                .body(service.snapshot(sessionId));</span>
     }
 
     /**
@@ -51,12 +51,13 @@ public class MarketController {
             @RequestParam(required = false) Long sessionId,
             @RequestParam String symbol,
             @RequestParam String timeframe) {
-<span class="nc" id="L54">        return ResponseEntity.ok().cacheControl(CacheControl.maxAge(5, TimeUnit.SECONDS).cachePrivate())</span>
-<span class="nc" id="L55">                .body(service.candles(sessionId, symbol, timeframe));</span>
+<span class="fc" id="L54">        return ResponseEntity.ok().cacheControl(CacheControl.maxAge(5, TimeUnit.SECONDS).cachePrivate())</span>
+<span class="fc" id="L55">                .body(service.candles(sessionId, symbol, timeframe));</span>
     }
 
     /**
      * Moves the shared simulated market clock to a seeded trading timestamp.
+     * The security filter requires an authenticated caller for this mutation.
      * @param sessionId optional completed simulation identifier
      * @param request requested market timestamp
      * @return a synchronized snapshot at the selected timestamp
@@ -65,11 +66,11 @@ public class MarketController {
     public ResponseEntity&lt;MarketResponses.Snapshot&gt; setClock(
             @RequestParam(required = false) Long sessionId,
             @RequestBody MarketResponses.ClockRequest request) {
-<span class="pc bpc" id="L68" title="2 of 4 branches missed.">        if (request == null || request.timestamp() == null) {</span>
-<span class="nc" id="L69">            throw new MarketRequestException(&quot;timestamp is required&quot;);</span>
+<span class="pc bpc" id="L69" title="2 of 4 branches missed.">        if (request == null || request.timestamp() == null) {</span>
+<span class="nc" id="L70">            throw new MarketRequestException(&quot;timestamp is required&quot;);</span>
         }
-<span class="fc" id="L71">        return ResponseEntity.ok().cacheControl(CacheControl.noStore())</span>
-<span class="fc" id="L72">                .body(service.setClock(sessionId, request.timestamp()));</span>
+<span class="fc" id="L72">        return ResponseEntity.ok().cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L73">                .body(service.setClock(sessionId, request.timestamp()));</span>
     }
 
     /**
@@ -83,7 +84,7 @@ public class MarketController {
     public SseEmitter stream(@RequestParam(required = false) Long sessionId,
             @RequestHeader(value = &quot;Last-Event-ID&quot;, required = false) Long lastEventId,
             HttpServletRequest request) {
-<span class="nc" id="L86">        return service.subscribe(sessionId, request.getRemoteAddr(), lastEventId);</span>
+<span class="fc" id="L87">        return service.subscribe(sessionId, request.getRemoteAddr(), lastEventId);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>
