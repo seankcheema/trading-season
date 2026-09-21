@@ -4,54 +4,55 @@ Trading simulation monorepo with an Angular interface, a Spring Boot backend, an
 
 The Java application follows a Spring Boot source layout rooted at `apps/business-backend/src/main/java/app`, with the bootstrap class in `app.Main` and feature packages such as `app.auth`, `app.order`, `app.user`, `app.account`, and `app.instrument`.
 
-## Strict Dependency Requirements
+## Dependency Requirements
 
-**These versions are mandatory and must not be changed without explicit coordination across the team. Breaking changes will occur if versions are modified.**
+These are the recommended and minimum versions. The project has been tested with the defaults listed below. Other compatible versions may work but are not officially supported.
 
-| Dependency | Version | Purpose | Required |
+| Dependency | Recommended | Minimum | Purpose |
 |---|---|---|---|
-| Node.js | 24.18.0 (exactly) | Runtime for Angular UI, NestJS auth, and build tools | YES |
-| npm | 11.16.0 (exactly) | Package manager for all Node workspaces | YES |
-| Angular | 22.1.8 (exactly) | Frontend framework with SSR | YES |
-| JDK | 21 (Java 21) | Java compilation and Spring Boot runtime | YES |
-| Maven | 3.9+ | Java build system | YES |
-| Spring Boot | 4.1.1 | Backend framework | YES |
-| NestJS | 12.0.1+ | Auth service framework | YES |
-| Python | 3.12 | Market data generation scripts | YES |
-| PostgreSQL | 16 | Primary and auth databases | YES |
-| Docker Compose | v2+ | Local development orchestration | For Docker mode |
+| Node.js | 24.8.0 | 24.8.0 | Runtime for Angular UI, NestJS auth, and build tools |
+| npm | 11.16.0 | 11.16.0 | Package manager for all Node workspaces |
+| Angular | 22.2.x | 22.2.x | Frontend framework with SSR |
+| JDK | 21 | 21 | Java compilation and Spring Boot runtime |
+| Maven | 3.9+ | 3.9.0 | Java build system |
+| Spring Boot | 4.1.1 | 4.1.0 | Backend framework |
+| NestJS | 12.0.1+ | 12.0.0 | Auth service framework |
+| Python | 3.12 | 3.10+ | Market data generation scripts |
+| PostgreSQL | 16 | 15+ | Primary and auth databases |
+| Docker Compose | v2+ | v2.0 | Local development orchestration |
 
-### Node.js Version Enforcement
+### Version Selection
 
-- **Do not use** Node 22.x versions (22.22.3, 22.x.x, etc.) — they are deprecated for this project
-- **Do not use** Node 25.x (odd-numbered releases are not LTS)
-- **Do not use** Node 23.x or earlier Node 24.x versions
-- **Install exactly Node 24.18.0** using:
-  - **Windows**: `nvm install 24.18.0` or download from [nodejs.org](https://nodejs.org)
-  - **Linux**: `nvm install 24.18.0` and `nvm use 24.18.0`
-  - **macOS**: `brew install node@24` then verify `node --version`
+Use the recommended versions in the table above for the best experience. If you have different versions installed (e.g., Node 24.8.0 or Angular 22.2.x), ensure they match the exact requirements listed in the table above.
 
-### Verification
+Node.js version requirements:
+- Must be 24.8.0 (exactly)
+- Angular 22.2.x requires Node 24.8.0
 
-Before starting development, verify your toolchain matches the requirements exactly:
+Angular support:
+- Required: Angular 22.2.x (exactly)
+- Do not use Angular 21.x or 22.0.x or 22.1.x
+- Ensure all @angular packages are on the 22.2.x line
+
+Verification:
 
 ```sh
-node --version          # Must output: v24.18.0
-npm --version           # Must output: 11.16.0
-java -version           # Must output: openjdk 21 or similar
-mvn --version           # Must output: Apache Maven 3.9.x
-python --version        # Must output: Python 3.12.x
+node --version          # Recommended: v24.8.0+, must be v24.x.x
+npm --version           # Recommended: 11.16.0+, must be 10.x+
+java -version           # Must be: openjdk 21
+mvn --version           # Must be: Apache Maven 3.9+
+python --version        # Recommended: Python 3.12, Minimum: 3.10+
 docker --version        # For Docker database mode
 docker compose version  # For Docker database mode
 ```
 
-If any version mismatches occur, **stop immediately** and correct your toolchain before proceeding. CI/CD pipelines will fail if versions do not match.
+If your versions are below the minimums, update them. Higher patch versions on the same major.minor line are compatible.
 
 ---
 
 ## Start in a Linux VM
 
-Install Git, Bash, Node.js 24.18.0 (exactly), npm 11.16.0, JDK 21+, and Maven 3.9+. PostgreSQL client tools are required when reusing local PostgreSQL. Docker Engine with the Compose v2 plugin is required only for Docker database mode; Docker Desktop is not required.
+Install Git, Bash, Node.js 24.x (recommended 24.8.0+), npm 10.x+ (recommended 11.16.0), JDK 21, and Maven 3.9+. PostgreSQL client tools are required when reusing local PostgreSQL. Docker Engine with the Compose v2 plugin is required only for Docker database mode; Docker Desktop is not required.
 
 From the repository root:
 
@@ -78,22 +79,55 @@ Press Ctrl+C to stop the applications. PostgreSQL data and Docker database conta
 
 ### Linux VM toolchain troubleshooting
 
-Node.js 24.18.0 must be installed exactly as specified. Do not use other Node versions.
+Node.js 24.8.0 is required. Install it exactly using NVM (Node Version Manager):
 
-If `node --version` is not 24.18.0, uninstall your current Node and install Node 24.18.0:
+#### Install NVM (if not already installed)
 
 ```sh
-# Install Node 24.18.0 using nvm (Node Version Manager)
-nvm install 24.18.0
-nvm use 24.18.0
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+source ~/.bashrc
+```
+
+Verify NVM is installed:
+
+```sh
+nvm --version
+```
+
+#### Install Node 24.8.0
+
+```sh
+nvm install 24.8.0
+nvm use 24.8.0
+```
+
+Verify you have the correct version:
+
+```sh
 node --version
 ```
 
-Then update npm to 11.16.0:
+Output should be: `v24.8.0`
+
+#### Set Node 24.8.0 as the default
+
+```sh
+nvm alias default 24.8.0
+```
+
+Verify the default is set:
+
+```sh
+nvm current
+```
+
+Output should be: `v24.8.0`
+
+#### Update npm to 11.16.0
 
 ```sh
 sudo npm install -g npm@11.16.0
-npm -v
+npm --version
 ```
 
 To install Maven 3.9.11:
@@ -125,7 +159,7 @@ docker compose --project-name trading-season-local --env-file apps/auth-service/
 
 ## Start locally on Windows
 
-Install Node.js 24.18.0 (exactly), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL.
+Install Node.js 24.x (recommended 24.8.0+), npm 10.x+ (recommended 11.16.0), JDK 21, Maven 3.9+, and PostgreSQL.
 
 ### Start all services with the startup script
 

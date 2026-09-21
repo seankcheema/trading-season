@@ -134,7 +134,7 @@ port_in_use() {
 
 check_toolchain() {
     require_command git 'Install Git and try again.'
-    require_command node 'Install Node.js 24.18.0 (exactly).'
+    require_command node 'Install Node.js 24.8.0 (exactly).'
     require_command npm 'Install npm 11.16.0 (exactly).'
     require_command java 'Install a JDK 21 or newer.'
     require_command mvn 'Install Maven 3.9 or newer.'
@@ -143,8 +143,8 @@ check_toolchain() {
 
     local node_version npm_version java_version maven_version
     node_version="$(node --version | sed 's/^v//')"
-    [[ "$node_version" == "24.18.0" ]] || \
-        fail "Node $node_version is unsupported. Install Node 24.18.0 (exactly) for Angular 22.1.8 compatibility."
+    [[ "$node_version" == "24.8.0" ]] || \
+        fail "Node $node_version is unsupported. Install Node 24.8.0 (exactly) for Angular 22.2.x compatibility."
     npm_version="$(npm --version)"
     [[ "$npm_version" == "11.16.0" ]] || fail "npm $npm_version is unsupported. Install npm 11.16.0 (exactly)."
     java_version="$(java -version 2>&1 | awk -F'"' 'NR == 1 { print $2 }')"

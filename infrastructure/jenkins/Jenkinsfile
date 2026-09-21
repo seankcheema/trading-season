@@ -3,15 +3,11 @@ pipeline {
     
     tools {
         // Must match a Maven installation configured in Jenkins under
-        // Manage Jenkins > Tools. The agent this runs on is a native install
-        // at /var/lib/jenkins, not the container built from
-        // infrastructure/docker/Dockerfile.jenkins, so nothing in this repo
-        // controls which tools exist there.
+        // Manage Jenkins > Tools.
         maven 'Maven'
-        // This Jenkins tool must be configured with Node 24.18.0 (exactly).
-        // Angular 22.1.8 requires Node 24.18.0. Earlier and later versions
-        // will cause build failures. Reconfigure the Jenkins NodeJS tool
-        // with Node 24.18.0 if version mismatches occur.
+        // This Jenkins tool must be configured with Node 24.8.0 (exactly).
+        // Angular 22.2.x requires Node 24.8.0. Reconfigure the Jenkins NodeJS tool
+        // with Node 24.8.0 if version mismatches occur.
         nodejs 'NodeJS'
     }
 
@@ -34,8 +30,8 @@ pipeline {
                     node --version
                     npm --version
                     node -e 'const [major, minor, patch] = process.versions.node.split(".").map(Number);
-                    const supported = major === 24 && minor === 18 && patch === 0;
-                    if (!supported) { console.error(`Node ${process.versions.node} is unsupported. This project requires exactly Node 24.18.0 for Angular 22.1.8 compatibility. Reconfigure the Jenkins NodeJS tool named "NodeJS" to use Node 24.18.0.`); process.exit(1); }'
+                    const supported = major === 24 && minor === 8 && patch === 0;
+                    if (!supported) { console.error(`Node ${process.versions.node} is unsupported. This project requires exactly Node 24.8.0 for Angular 22.2.x compatibility. Reconfigure the Jenkins NodeJS tool named "NodeJS" to use Node 24.8.0.`); process.exit(1); }'
                 '''
             }
         }
