@@ -1,6 +1,9 @@
 [CmdletBinding()]
 param()
 
+# This script requires Node.js 24.18.0 (exactly), npm 11.16.0, JDK 21, and Maven 3.9+.
+# See README.md for strict dependency requirements and setup instructions.
+
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $authDirectory = Join-Path $repoRoot 'apps/auth-service'

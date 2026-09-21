@@ -134,8 +134,8 @@ port_in_use() {
 
 check_toolchain() {
     require_command git 'Install Git and try again.'
-    require_command node 'Install Node.js 22.22.3 or newer on the Node 22 line.'
-    require_command npm 'Install npm 11.16.0 or newer.'
+    require_command node 'Install Node.js 24.18.0 (exactly).'
+    require_command npm 'Install npm 11.16.0 (exactly).'
     require_command java 'Install a JDK 21 or newer.'
     require_command mvn 'Install Maven 3.9 or newer.'
     require_command sha256sum 'Install GNU coreutils.'
@@ -143,10 +143,10 @@ check_toolchain() {
 
     local node_version npm_version java_version maven_version
     node_version="$(node --version | sed 's/^v//')"
-    [[ "${node_version%%.*}" == 22 ]] && version_at_least "$node_version" '22.22.3' || \
-        fail "Node $node_version is unsupported. Install Node 22.22.3 or newer on the Node 22 line."
+    [[ "$node_version" == "24.18.0" ]] || \
+        fail "Node $node_version is unsupported. Install Node 24.18.0 (exactly) for Angular 22.1.8 compatibility."
     npm_version="$(npm --version)"
-    version_at_least "$npm_version" '11.16.0' || fail "npm $npm_version is unsupported. Install npm 11.16.0 or newer."
+    [[ "$npm_version" == "11.16.0" ]] || fail "npm $npm_version is unsupported. Install npm 11.16.0 (exactly)."
     java_version="$(java -version 2>&1 | awk -F'"' 'NR == 1 { print $2 }')"
     version_at_least "${java_version%%-*}" '21' || fail "Java $java_version is unsupported. Install JDK 21 or newer."
     maven_version="$(mvn --version | awk 'NR == 1 { print $3 }')"
