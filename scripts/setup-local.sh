@@ -396,10 +396,6 @@ select_databases() {
         ready 'Databases — using verified local trading_season and auth_db databases; Docker skipped.'
         return
     fi
-    if [[ "$database_mode" == auto ]] && port_in_use 5432; then
-        fail 'Port 5432 is occupied, but local PostgreSQL could not be verified. Docker fallback was not attempted.'
-    fi
-
     require_command docker 'Install the Docker CLI and Docker Compose v2, then start Docker Engine.'
     docker info >/dev/null 2>&1 || fail 'Docker CLI is installed, but the daemon is unavailable. Start Docker Engine or correct the active context.'
     [[ "$(docker info --format '{{.OSType}}')" == linux ]] || fail 'The Docker daemon is not using Linux containers; PostgreSQL requires a Linux daemon.'
