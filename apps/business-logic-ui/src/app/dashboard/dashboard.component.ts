@@ -17,7 +17,10 @@ import {
   lucideCalendarClock,
   lucideCheck,
   lucideChevronDown,
+  lucideLayers,
   lucideLogOut,
+  lucidePencil,
+  lucidePlus,
   lucideSettings,
 } from '@ng-icons/lucide';
 import { Subscription } from 'rxjs';
@@ -26,12 +29,11 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import { AuthService } from '../core/auth/auth.service';
 import {
   Instrument,
-  MOCK_ACCOUNTS,
-  MOCK_CASH_BALANCE,
   MOCK_HOLDINGS,
   MOCK_INSTRUMENTS,
   MOCK_TRANSACTIONS,
   OrderRequest,
+  OrderSide,
   PricePoint,
   Timeframe,
   findInstrument,
@@ -43,6 +45,14 @@ import {
   MarketSnapshot,
   MarketTickEvent,
 } from './market-data.service';
+import { AccountStore } from './accounts/account-store.service';
+import { CashTransactionReason, Portfolio } from './accounts/account.models';
+import {
+  CashTransactionDialogComponent,
+  CashTransactionMode,
+} from './accounts/cash-transaction-dialog.component';
+import { CreateAccountDialogComponent } from './accounts/create-account-dialog.component';
+import { PortfolioDialogComponent } from './accounts/portfolio-dialog.component';
 import { OrderSubmissionComponent } from './order-submission/order-submission.component';
 import { SettingsDialogComponent } from './settings-dialog/settings-dialog.component';
 import { DashboardHeaderDropdownComponent } from './shared/dashboard-header-dropdown.component';
@@ -59,12 +69,35 @@ const DEFAULT_MARKET_CALENDAR: MarketCalendarAvailability = {
   tradingDates: marketWeekdays(2026),
 };
 
-type HeaderDropdown = 'account' | 'market-clock' | 'profile';
+type HeaderDropdown = 'account' | 'market-clock' | 'portfolio' | 'profile';
+
+// The account, portfolio or cash dialog currently open over the dashboard, if any.
+type AccountDialog =
+  | { kind: 'create-account' }
+  | { kind: 'portfolio'; portfolio: Portfolio | null }
+  | { kind: 'cash'; mode: CashTransactionMode };
+
+// One row of the recent transactions list: a cash deposit or withdrawal from the account
+// service, or a trade. Trades are still mock data until order history is integrated.
+type ActivityItem =
+  | { kind: 'cash'; key: string; date: string; reason: CashTransactionReason; value: number }
+  | {
+      kind: 'trade';
+      key: string;
+      date: string;
+      symbol: string;
+      side: OrderSide;
+      shares: number;
+      price: number;
+      value: number;
+    };
 
 @Component({
   selector: 'app-dashboard',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    CashTransactionDialogComponent,
+    CreateAccountDialogComponent,
     CurrencyPipe,
     DatePipe,
     DashboardHeaderDropdownComponent,
@@ -72,18 +105,23 @@ type HeaderDropdown = 'account' | 'market-clock' | 'profile';
     InstrumentSearchComponent,
     NgIcon,
     OrderSubmissionComponent,
+    PortfolioDialogComponent,
     PriceChartComponent,
     SettingsDialogComponent,
     SignedPercentPipe,
     TimeframeToggleComponent,
   ],
   providers: [
+    AccountStore,
     provideIcons({
       lucideBriefcaseBusiness,
       lucideCalendarClock,
       lucideCheck,
       lucideChevronDown,
+      lucideLayers,
       lucideLogOut,
+      lucidePencil,
+      lucidePlus,
       lucideSettings,
     }),
   ],
@@ -103,13 +141,31 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private readonly _authService = inject(AuthService);
   private readonly _router = inject(Router);
 
-  protected readonly accounts = MOCK_ACCOUNTS;
-  protected readonly openHeaderDropdown = signal<HeaderDropdown | null>(null);
-  protected readonly selectedAccountId = signal(MOCK_ACCOUNTS[0].id);
-  protected readonly selectedAccount = computed(
-    () => this.accounts.find((account) => account.id === this.selectedAccountId()) ?? this.accounts[0],
+  // Only ever the signed-in user's own accounts and portfolios; see AccountStore.
+  protected readonly accountStore = inject(AccountStore);
+  protected readonly accounts = this.accountStore.accounts;
+  protected readonly selectedAccount = this.accountStore.selectedAccount;
+  protected readonly selectedAccountId = this.accountStore.selectedAccountId;
+  protected readonly accountPortfolios = this.accountStore.accountPortfolios;
+  protected readonly selectedPortfolio = this.accountStore.selectedPortfolio;
+  protected readonly hasAccounts = computed(() => this.accounts().length > 0);
+  protected readonly accountLabel = computed(() => {
+    switch (this.accountStore.status()) {
+      case 'idle':
+      case 'loading':
+        return 'Loading accounts…';
+      case 'error':
+        return 'Accounts unavailable';
+      case 'ready':
+        return this.selectedAccount()?.name ?? 'No accounts';
+    }
+  });
+  protected readonly portfolioLabel = computed(
+    () => this.selectedPortfolio()?.name ?? 'No portfolio',
   );
-  protected readonly cashBalance = signal(MOCK_CASH_BALANCE);
+  protected readonly accountDialog = signal<AccountDialog | null>(null);
+  protected readonly openHeaderDropdown = signal<HeaderDropdown | null>(null);
+  protected readonly cashBalance = computed(() => this.selectedAccount()?.cashBalance ?? 0);
   protected readonly instruments = signal<Instrument[]>([...MOCK_INSTRUMENTS]);
   protected readonly tickerInstruments = computed(() => this.instruments().slice(0, 6));
   protected readonly portfolioTimeframe = signal<Timeframe>('1D');
@@ -187,12 +243,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }),
   );
 
-  protected readonly transactions = computed(() =>
-    MOCK_TRANSACTIONS.map((transaction) => ({
+  protected readonly transactions = computed<ActivityItem[]>(() => {
+    const cash: ActivityItem[] = this.accountStore.cashTransactions().map((transaction) => ({
+      kind: 'cash',
+      key: `cash-${transaction.cashTransactionId}`,
+      date: transaction.createdAt,
+      reason: transaction.reason,
+      value: transaction.amount,
+    }));
+    const trades: ActivityItem[] = MOCK_TRANSACTIONS.map((transaction, index) => ({
+      kind: 'trade',
+      key: `trade-${index}`,
       ...transaction,
       value: transaction.shares * transaction.price,
-    })),
-  );
+    }));
+    // ISO dates and instants both sort correctly as strings; newest first.
+    return [...cash, ...trades].sort((a, b) => b.date.localeCompare(a.date));
+  });
 
   protected readonly positions = computed(() =>
     Object.fromEntries(this.holdings().map((holding) => [holding.symbol, holding.shares])),
@@ -248,7 +315,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   protected readonly portfolioChart = computed(() =>
     mockPriceSeries(
-      `portfolio-${this.selectedAccountId()}`,
+      `portfolio-${this.selectedPortfolio()?.portfolioId ?? this.selectedAccountId()}`,
       this.portfolioTimeframe(),
       this.netWorth(),
       this.marketTimeMillis() ?? undefined,
@@ -256,17 +323,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
   );
 
   ngOnInit(): void {
-    if (isPlatformBrowser(this.platformId)) this.loadMarketSnapshot();
+    if (isPlatformBrowser(this.platformId)) {
+      this.loadMarketSnapshot();
+      this.accountStore.load();
+    }
   }
 
   ngOnDestroy(): void {
     this.disconnectMarket?.();
     this.clearAssetChartSubscriptions();
     this.clearQueuedUpdates();
-  }
-
-  protected onAccountChange(event: Event): void {
-    this.selectedAccountId.set((event.target as HTMLSelectElement).value);
   }
 
   protected onHeaderDropdownOpenChange(dropdown: HeaderDropdown, open: boolean): void {
@@ -282,9 +348,41 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.openHeaderDropdown.set(null);
   }
 
-  protected selectAccount(accountId: string): void {
-    this.selectedAccountId.set(accountId);
+  protected selectAccount(accountId: number): void {
+    this.accountStore.selectAccount(accountId);
     this.openHeaderDropdown.set(null);
+  }
+
+  protected selectPortfolio(portfolioId: number): void {
+    this.accountStore.selectPortfolio(portfolioId);
+    this.openHeaderDropdown.set(null);
+  }
+
+  protected retryAccounts(): void {
+    this.accountStore.load();
+  }
+
+  protected openCreateAccount(): void {
+    this.openHeaderDropdown.set(null);
+    this.accountDialog.set({ kind: 'create-account' });
+  }
+
+  protected openCreatePortfolio(): void {
+    this.openHeaderDropdown.set(null);
+    this.accountDialog.set({ kind: 'portfolio', portfolio: null });
+  }
+
+  protected openEditPortfolio(portfolio: Portfolio): void {
+    // Only portfolios the store lists for the caller can be opened for editing.
+    if (!this.accountStore.isOwnedPortfolio(portfolio.portfolioId)) {
+      return;
+    }
+    this.openHeaderDropdown.set(null);
+    this.accountDialog.set({ kind: 'portfolio', portfolio });
+  }
+
+  protected closeAccountDialog(): void {
+    this.accountDialog.set(null);
   }
 
   protected openOrder(instrument: Instrument): void {
@@ -302,11 +400,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   protected onDeposit(): void {
-    // TODO: open deposit flow
+    this.openCashDialog('deposit');
   }
 
   protected onWithdraw(): void {
-    // TODO: open withdrawal flow
+    this.openCashDialog('withdraw');
+  }
+
+  private openCashDialog(mode: CashTransactionMode): void {
+    if (this.hasAccounts()) {
+      this.accountDialog.set({ kind: 'cash', mode });
+    }
   }
 
   protected onMarketDateTimeChange(event: Event): void {

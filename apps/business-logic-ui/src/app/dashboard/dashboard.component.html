@@ -53,7 +53,7 @@
         <app-dashboard-header-dropdown
           data-testid="account-dropdown"
           iconName="lucideBriefcaseBusiness"
-          [label]="selectedAccount().name"
+          [label]="accountLabel()"
           ariaLabel="Select account"
           [open]="openHeaderDropdown() === 'account'"
           (openChange)="onHeaderDropdownOpenChange('account', $event)"
@@ -61,20 +61,122 @@
           panelClass="w-full"
         >
           <div class="p-1" role="menu" aria-label="Accounts">
-            @for (account of accounts; track account.id) {
-              <button
-                type="button"
-                role="menuitemradio"
-                class="hover:bg-muted flex h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-sm transition-colors"
-                [attr.aria-checked]="account.id === selectedAccountId()"
-                (click)="selectAccount(account.id)"
-              >
-                <span class="min-w-0 flex-1 truncate">{{ account.name }}</span>
-                @if (account.id === selectedAccountId()) {
-                  <ng-icon name="lucideCheck" class="text-primary shrink-0 text-[16px]" />
+            @switch (accountStore.status()) {
+              @case ('error') {
+                <p class="text-loss px-2 py-1.5 text-xs">We couldn't load your accounts.</p>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="hover:bg-muted flex h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-sm transition-colors"
+                  (click)="retryAccounts()"
+                >
+                  Try again
+                </button>
+              }
+              @case ('ready') {
+                @for (account of accounts(); track account.accountId) {
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    class="hover:bg-muted flex min-h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors"
+                    [attr.aria-checked]="account.accountId === selectedAccountId()"
+                    (click)="selectAccount(account.accountId)"
+                  >
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate">{{ account.name }}</span>
+                      <span class="text-muted-foreground block text-xs tabular-nums">
+                        {{ account.cashBalance | currency: account.currency }}
+                      </span>
+                    </span>
+                    @if (account.accountId === selectedAccountId()) {
+                      <ng-icon name="lucideCheck" class="text-primary shrink-0 text-[16px]" />
+                    }
+                  </button>
+                } @empty {
+                  <p class="text-muted-foreground px-2 py-1.5 text-xs">
+                    You don't have any accounts yet.
+                  </p>
                 }
-              </button>
+                <div class="border-border my-1 border-t"></div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="text-primary hover:bg-muted flex h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-sm transition-colors"
+                  (click)="openCreateAccount()"
+                >
+                  <ng-icon name="lucidePlus" class="shrink-0 text-[16px]" />
+                  <span>New account</span>
+                </button>
+              }
+              @default {
+                <p class="text-muted-foreground px-2 py-1.5 text-xs">Loading accounts…</p>
+              }
             }
+          </div>
+        </app-dashboard-header-dropdown>
+
+        <app-dashboard-header-dropdown
+          data-testid="portfolio-dropdown"
+          iconName="lucideLayers"
+          [label]="portfolioLabel()"
+          ariaLabel="Select portfolio"
+          [open]="openHeaderDropdown() === 'portfolio'"
+          (openChange)="onHeaderDropdownOpenChange('portfolio', $event)"
+          containerClass="w-52"
+          panelClass="w-64"
+        >
+          <div class="p-1" role="menu" aria-label="Portfolios">
+            @for (portfolio of accountPortfolios(); track portfolio.portfolioId) {
+              <div class="flex items-center gap-1">
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  class="hover:bg-muted flex min-h-9 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors"
+                  [attr.aria-checked]="portfolio.portfolioId === selectedPortfolio()?.portfolioId"
+                  (click)="selectPortfolio(portfolio.portfolioId)"
+                >
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate">{{ portfolio.name }}</span>
+                    @if (portfolio.description) {
+                      <span class="text-muted-foreground block truncate text-xs">
+                        {{ portfolio.description }}
+                      </span>
+                    }
+                  </span>
+                  @if (portfolio.portfolioId === selectedPortfolio()?.portfolioId) {
+                    <ng-icon name="lucideCheck" class="text-primary shrink-0 text-[16px]" />
+                  }
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors"
+                  [attr.aria-label]="'Edit ' + portfolio.name"
+                  (click)="openEditPortfolio(portfolio)"
+                >
+                  <ng-icon name="lucidePencil" class="text-[14px]" />
+                </button>
+              </div>
+            } @empty {
+              <p class="text-muted-foreground px-2 py-1.5 text-xs">
+                {{
+                  hasAccounts()
+                    ? 'This account has no portfolios yet.'
+                    : 'Create an account before adding a portfolio.'
+                }}
+              </p>
+            }
+            <div class="border-border my-1 border-t"></div>
+            <button
+              type="button"
+              role="menuitem"
+              class="text-primary hover:bg-muted flex h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              [disabled]="!hasAccounts()"
+              (click)="openCreatePortfolio()"
+            >
+              <ng-icon name="lucidePlus" class="shrink-0 text-[16px]" />
+              <span>New portfolio</span>
+            </button>
           </div>
         </app-dashboard-header-dropdown>
 
@@ -150,12 +252,28 @@
             <button
               type="button"
               class="net-worth-action net-worth-action-primary"
+              [disabled]="!hasAccounts()"
               (click)="onDeposit()"
             >
               Deposit
             </button>
-            <button type="button" class="net-worth-action" (click)="onWithdraw()">Withdraw</button>
+            <button
+              type="button"
+              class="net-worth-action"
+              [disabled]="!hasAccounts()"
+              (click)="onWithdraw()"
+            >
+              Withdraw
+            </button>
           </div>
+          @if (accountStore.status() === 'ready' && !hasAccounts()) {
+            <p class="text-muted-foreground mt-2 text-xs">
+              <button type="button" class="dash-link underline" (click)="openCreateAccount()">
+                Create an account
+              </button>
+              to deposit and withdraw funds.
+            </p>
+          }
         </section>
 
         <section class="dash-card flex min-h-0 flex-1 flex-col p-5">
@@ -170,33 +288,63 @@
             <span class="text-right">Value</span>
           </div>
 
-          <ul class="dash-scroll dash-fade min-h-0 flex-1 overflow-y-auto">
-            @for (transaction of transactions(); track $index) {
+          <ul
+            class="dash-scroll dash-fade min-h-0 flex-1 overflow-y-auto"
+            data-testid="recent-transactions"
+          >
+            @for (transaction of transactions(); track transaction.key) {
               <li
                 class="border-border/60 flex items-center justify-between gap-4 border-b py-2.5 text-sm last:border-b-0"
+                [attr.data-kind]="transaction.kind"
               >
-                <span class="min-w-0">
-                  <span class="font-medium">{{ transaction.symbol }}</span>
-                  <span
-                    class="ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
-                    [class]="
-                      transaction.side === 'buy'
-                        ? 'bg-primary/15 text-primary'
-                        : 'bg-loss/15 text-loss'
-                    "
-                  >
-                    {{ transaction.side }}
+                @if (transaction.kind === 'cash') {
+                  <span class="min-w-0">
+                    <span class="font-medium">Cash</span>
+                    <span
+                      class="ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
+                      [class]="
+                        transaction.reason === 'DEPOSIT'
+                          ? 'bg-gain/15 text-gain'
+                          : 'bg-loss/15 text-loss'
+                      "
+                    >
+                      {{ transaction.reason === 'DEPOSIT' ? 'deposit' : 'withdrawal' }}
+                    </span>
+                    <span class="text-muted-foreground block text-xs">
+                      {{ transaction.date | date: 'MMM d' }}
+                    </span>
                   </span>
-                  <span class="text-muted-foreground block text-xs">
-                    {{ transaction.date | date: 'MMM d' }}
+                  <span class="shrink-0 text-right tabular-nums">
+                    <span class="block">
+                      {{ transaction.reason === 'DEPOSIT' ? '+' : '-'
+                      }}{{ transaction.value | currency: 'USD' }}
+                    </span>
+                    <span class="text-muted-foreground block text-xs">Cash transfer</span>
                   </span>
-                </span>
-                <span class="shrink-0 text-right tabular-nums">
-                  <span class="block">{{ transaction.value | currency: 'USD' }}</span>
-                  <span class="text-muted-foreground block text-xs">
-                    {{ transaction.shares }} &#64; {{ transaction.price | currency: 'USD' }}
+                } @else {
+                  <span class="min-w-0">
+                    <span class="font-medium">{{ transaction.symbol }}</span>
+                    <span
+                      class="ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
+                      [class]="
+                        transaction.side === 'buy'
+                          ? 'bg-primary/15 text-primary'
+                          : 'bg-loss/15 text-loss'
+                      "
+                    >
+                      {{ transaction.side }}
+                    </span>
+                    <span class="text-muted-foreground block text-xs">
+                      {{ transaction.date | date: 'MMM d' }}
+                    </span>
                   </span>
-                </span>
+                  <span class="shrink-0 text-right tabular-nums">
+                    <span class="block">{{ transaction.value | currency: 'USD' }}</span>
+                    <span class="text-muted-foreground block text-xs">
+                      {{ transaction.shares }} &#64; {{ transaction.price | currency: 'USD' }}
+                    </span>
+                  </span>
+                }
               </li>
             }
           </ul>
@@ -346,7 +494,7 @@
     [instruments]="instruments()"
     [sessionId]="marketSessionId()"
     [marketTimestamp]="currentMarketTimestamp()"
-    [accountId]="selectedAccountId()"
+    [accountId]="selectedAccountId()?.toString() ?? ''"
     [cashBalance]="cashBalance()"
     [positions]="positions()"
     (closed)="closeOrder()"
@@ -356,4 +504,31 @@
 
 @if (settingsOpen()) {
   <app-settings-dialog (closed)="closeSettings()" />
+}
+
+@if (accountDialog(); as dialog) {
+  @switch (dialog.kind) {
+    @case ('create-account') {
+      <app-create-account-dialog
+        (closed)="closeAccountDialog()"
+        (created)="closeAccountDialog()"
+      />
+    }
+    @case ('portfolio') {
+      <app-portfolio-dialog
+        [portfolio]="dialog.portfolio"
+        [accountId]="selectedAccountId()"
+        (closed)="closeAccountDialog()"
+        (saved)="closeAccountDialog()"
+      />
+    }
+    @case ('cash') {
+      <app-cash-transaction-dialog
+        [mode]="dialog.mode"
+        [accountId]="selectedAccountId()"
+        (closed)="closeAccountDialog()"
+        (completed)="closeAccountDialog()"
+      />
+    }
+  }
 }

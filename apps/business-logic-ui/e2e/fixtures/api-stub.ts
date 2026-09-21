@@ -26,12 +26,58 @@ export interface RecordedResponse {
   body: string;
 }
 
+/** A portfolio the business backend already holds for a seeded trading account. */
+export interface SeedPortfolio {
+  name: string;
+  description?: string | null;
+}
+
+/** A trading account the business backend already holds for a seeded user. */
+export interface SeedTradingAccount {
+  name: string;
+  cashBalance?: number;
+  portfolios?: SeedPortfolio[];
+}
+
 /** Credentials the stub already knows about when a test starts. */
 export interface SeedAccount {
   email: string;
   password: string;
   /** Whether the business-backend profile step also completed for this account. */
   hasProfile?: boolean;
+  /** Trading accounts, with their portfolios, the business backend holds for this user. */
+  tradingAccounts?: SeedTradingAccount[];
+}
+
+/** Trading account as GET /api/me/accounts returns it. */
+export interface TradingAccount {
+  accountId: number;
+  name: string;
+  currency: string;
+  cashBalance: number;
+  openedDate: string;
+}
+
+/** Portfolio as GET /api/me/portfolios returns it. */
+export interface StoredPortfolio {
+  portfolioId: number;
+  accountId: number;
+  name: string;
+  description: string | null;
+  createdAt: string;
+}
+
+/** Cash transaction as GET /api/accounts/{id}/cash-transactions returns it. */
+export interface StoredCashTransaction {
+  cashTransactionId: number;
+  accountId: number;
+  amount: number;
+  reason: 'DEPOSIT' | 'WITHDRAWAL';
+  createdAt: string;
+}
+
+interface OwnedTradingAccount extends TradingAccount {
+  ownerId: string;
 }
 
 interface StoredAccount {
@@ -56,7 +102,15 @@ export interface StubOptions {
   accessTokenTtlSeconds?: number;
   /** Forces the business-backend profile step to fail with this status. */
   failProfileWith?: number;
+  /** Forces POST /api/me/accounts to fail with this status. */
+  failAccountCreationWith?: number;
 }
+
+const CASH_TRANSACTIONS_PATH = /\/api\/accounts\/(\d+)\/cash-transactions$/;
+const PORTFOLIO_PATH = /\/api\/me\/portfolios\/(\d+)$/;
+const NAME_MAX_LENGTH = 60;
+const DESCRIPTION_MAX_LENGTH = 200;
+const MAX_CASH_AMOUNT = 1_000_000;
 
 function base64url(value: string): string {
   return Buffer.from(value, 'utf8').toString('base64url');
@@ -119,17 +173,39 @@ export class ApiStub {
   private readonly pendingResponses: Promise<RecordedResponse>[] = [];
   private readonly accessTokenTtl: number;
   private readonly failProfileWith: number | null;
+  private readonly failAccountCreationWith: number | null;
+
+  // Business backend trading data. Ids are sequential across users, as database keys are,
+  // so a test can aim a request at another user's id.
+  private readonly tradingAccounts: OwnedTradingAccount[] = [];
+  private readonly portfolios: StoredPortfolio[] = [];
+  private readonly cashTransactions: StoredCashTransaction[] = [];
+  private nextId = 1;
 
   constructor(options: StubOptions = {}) {
     this.accessTokenTtl = options.accessTokenTtlSeconds ?? ACCESS_TOKEN_TTL;
     this.failProfileWith = options.failProfileWith ?? null;
+    this.failAccountCreationWith = options.failAccountCreationWith ?? null;
     for (const seed of options.accounts ?? []) {
-      this.accounts.set(seed.email.toLowerCase(), {
+      const account: StoredAccount = {
         id: randomUUID(),
         email: seed.email,
         passwordDigest: digest(seed.password),
         profile: seed.hasProfile ? { email: seed.email } : null,
-      });
+      };
+      this.accounts.set(seed.email.toLowerCase(), account);
+      for (const trading of seed.tradingAccounts ?? []) {
+        const created = this.openTradingAccount(account.id, trading.name, trading.cashBalance ?? 0);
+        for (const portfolio of trading.portfolios ?? []) {
+          this.portfolios.push({
+            portfolioId: this.nextId++,
+            accountId: created.accountId,
+            name: portfolio.name,
+            description: portfolio.description ?? null,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
     }
   }
 
@@ -166,6 +242,27 @@ export class ApiStub {
     await page.route('**/api/auth/account-exists', (route) => this.accountExists(route));
     await page.route('**/api/users/me', (route) => this.ownProfile(route));
     await page.route('**/api/market/**', (route) => this.market(route));
+    await page.route('**/api/me/accounts', (route) => this.meAccounts(route));
+    await page.route('**/api/me/portfolios', (route) => this.mePortfolios(route));
+    await page.route(PORTFOLIO_PATH, (route) => this.updatePortfolio(route));
+    await page.route(
+      (url) => CASH_TRANSACTIONS_PATH.test(url.pathname),
+      (route) => this.accountCashTransactions(route),
+    );
+  }
+
+  /** Trading accounts the business backend holds for a user, oldest first. */
+  tradingAccountsOf(email: string): TradingAccount[] {
+    const ownerId = this.accounts.get(email.toLowerCase())?.id;
+    return this.tradingAccounts
+      .filter((account) => account.ownerId === ownerId)
+      .map(({ ownerId: _ownerId, ...account }) => account);
+  }
+
+  /** Portfolios the business backend holds for a user, oldest first. */
+  portfoliosOf(email: string): StoredPortfolio[] {
+    const owned = new Set(this.tradingAccountsOf(email).map((account) => account.accountId));
+    return this.portfolios.filter((portfolio) => owned.has(portfolio.accountId));
   }
 
   /** Every request whose URL or body contains the value, in wire order. */
@@ -358,6 +455,222 @@ export class ApiStub {
     });
   }
 
+  /** GET lists the caller's trading accounts; POST opens one, optionally with a deposit. */
+  private async meAccounts(route: Route): Promise<void> {
+    const ownerId = await this.caller(route);
+    if (!ownerId) {
+      return;
+    }
+    if (route.request().method() === 'GET') {
+      await this.json(route, 200, this.ownedAccounts(ownerId).map(publicAccount));
+      return;
+    }
+    if (this.failAccountCreationWith !== null) {
+      await this.json(route, this.failAccountCreationWith, { error: 'Account creation rejected' });
+      return;
+    }
+
+    const body = this.body(route);
+    const name = typeof body['name'] === 'string' ? body['name'].trim() : '';
+    const deposit = body['initialDeposit'] ?? 0;
+    if (!name || name.length > NAME_MAX_LENGTH) {
+      await this.json(route, 400, { error: 'name: must be 1 to 60 characters' });
+      return;
+    }
+    if (body['currency'] !== 'USD') {
+      await this.json(route, 400, { error: 'currency: must be USD' });
+      return;
+    }
+    if (typeof deposit !== 'number' || deposit < 0 || deposit > MAX_CASH_AMOUNT) {
+      await this.json(route, 400, { error: 'initialDeposit: must be between 0 and 1000000' });
+      return;
+    }
+    if (this.ownedAccounts(ownerId).some((account) => sameName(account.name, name))) {
+      await this.json(route, 409, { error: 'An account with this name already exists' });
+      return;
+    }
+
+    const account = this.openTradingAccount(ownerId, name, 0);
+    if (deposit > 0) {
+      this.postCash(account, deposit, 'DEPOSIT');
+    }
+    await this.json(route, 201, publicAccount(account));
+  }
+
+  /** GET lists the caller's portfolios; POST adds one to an account the caller owns. */
+  private async mePortfolios(route: Route): Promise<void> {
+    const ownerId = await this.caller(route);
+    if (!ownerId) {
+      return;
+    }
+    const owned = this.ownedAccounts(ownerId);
+    if (route.request().method() === 'GET') {
+      const ids = new Set(owned.map((account) => account.accountId));
+      await this.json(
+        route,
+        200,
+        this.portfolios.filter((portfolio) => ids.has(portfolio.accountId)),
+      );
+      return;
+    }
+
+    const body = this.body(route);
+    const account = owned.find((candidate) => candidate.accountId === body['accountId']);
+    if (!account) {
+      await this.json(route, 404, { error: 'Account not found' });
+      return;
+    }
+    const details = portfolioDetails(body);
+    if ('error' in details) {
+      await this.json(route, 400, { error: details.error });
+      return;
+    }
+    if (this.hasPortfolioNamed(account.accountId, details.name)) {
+      await this.json(route, 409, { error: 'A portfolio with this name already exists' });
+      return;
+    }
+
+    const portfolio: StoredPortfolio = {
+      portfolioId: this.nextId++,
+      accountId: account.accountId,
+      ...details,
+      createdAt: new Date().toISOString(),
+    };
+    this.portfolios.push(portfolio);
+    await this.json(route, 201, portfolio);
+  }
+
+  /** PUT renames or redescribes a portfolio in one of the caller's accounts. */
+  private async updatePortfolio(route: Route): Promise<void> {
+    const ownerId = await this.caller(route);
+    if (!ownerId) {
+      return;
+    }
+    const portfolioId = Number(PORTFOLIO_PATH.exec(new URL(route.request().url()).pathname)?.[1]);
+    const ids = new Set(this.ownedAccounts(ownerId).map((account) => account.accountId));
+    const portfolio = this.portfolios.find(
+      (candidate) => candidate.portfolioId === portfolioId && ids.has(candidate.accountId),
+    );
+    if (route.request().method() !== 'PUT' || !portfolio) {
+      await this.json(route, 404, { error: 'Portfolio not found' });
+      return;
+    }
+
+    const details = portfolioDetails(this.body(route));
+    if ('error' in details) {
+      await this.json(route, 400, { error: details.error });
+      return;
+    }
+    if (this.hasPortfolioNamed(portfolio.accountId, details.name, portfolio.portfolioId)) {
+      await this.json(route, 409, { error: 'A portfolio with this name already exists' });
+      return;
+    }
+    Object.assign(portfolio, details);
+    await this.json(route, 200, portfolio);
+  }
+
+  /** GET lists an owned account's cash transactions, newest first; POST deposits or withdraws. */
+  private async accountCashTransactions(route: Route): Promise<void> {
+    const ownerId = await this.caller(route);
+    if (!ownerId) {
+      return;
+    }
+    const url = new URL(route.request().url());
+    const accountId = Number(CASH_TRANSACTIONS_PATH.exec(url.pathname)?.[1]);
+    const account = this.ownedAccounts(ownerId).find(
+      (candidate) => candidate.accountId === accountId,
+    );
+    if (!account) {
+      await this.json(route, 404, { error: 'Account not found' });
+      return;
+    }
+
+    if (route.request().method() === 'GET') {
+      const limit = Number(url.searchParams.get('limit') ?? 50);
+      await this.json(
+        route,
+        200,
+        this.cashTransactions
+          .filter((transaction) => transaction.accountId === accountId)
+          .reverse()
+          .slice(0, limit),
+      );
+      return;
+    }
+
+    const body = this.body(route);
+    const amount = body['amount'];
+    const reason = body['reason'];
+    if (typeof amount !== 'number' || amount <= 0 || amount > MAX_CASH_AMOUNT) {
+      await this.json(route, 400, { error: 'amount: must be greater than 0' });
+      return;
+    }
+    if (reason !== 'DEPOSIT' && reason !== 'WITHDRAWAL') {
+      await this.json(route, 400, { error: 'reason: must be DEPOSIT or WITHDRAWAL' });
+      return;
+    }
+    if (reason === 'WITHDRAWAL' && amount > account.cashBalance) {
+      await this.json(route, 422, { error: 'Insufficient funds' });
+      return;
+    }
+    const transaction = this.postCash(account, amount, reason);
+    await this.json(route, 201, { transaction, account: publicAccount(account) });
+  }
+
+  /** The token subject of an authenticated request, or null after answering it with 401. */
+  private async caller(route: Route): Promise<string | null> {
+    const authorization = route.request().headers()['authorization'];
+    if (!authorization || !authorization.startsWith('Bearer ')) {
+      await this.json(route, 401, { error: 'Missing access token' });
+      return null;
+    }
+    return String(decodeJwtPayload(authorization.slice('Bearer '.length))['sub']);
+  }
+
+  private ownedAccounts(ownerId: string): OwnedTradingAccount[] {
+    return this.tradingAccounts.filter((account) => account.ownerId === ownerId);
+  }
+
+  private openTradingAccount(ownerId: string, name: string, cashBalance: number) {
+    const account: OwnedTradingAccount = {
+      accountId: this.nextId++,
+      ownerId,
+      name,
+      currency: 'USD',
+      cashBalance,
+      openedDate: new Date().toISOString().slice(0, 10),
+    };
+    this.tradingAccounts.push(account);
+    return account;
+  }
+
+  private postCash(
+    account: OwnedTradingAccount,
+    amount: number,
+    reason: StoredCashTransaction['reason'],
+  ): StoredCashTransaction {
+    const transaction: StoredCashTransaction = {
+      cashTransactionId: this.nextId++,
+      accountId: account.accountId,
+      amount,
+      reason,
+      createdAt: new Date().toISOString(),
+    };
+    this.cashTransactions.push(transaction);
+    account.cashBalance =
+      Math.round((account.cashBalance + (reason === 'DEPOSIT' ? amount : -amount)) * 100) / 100;
+    return transaction;
+  }
+
+  private hasPortfolioNamed(accountId: number, name: string, exceptId?: number): boolean {
+    return this.portfolios.some(
+      (portfolio) =>
+        portfolio.accountId === accountId &&
+        portfolio.portfolioId !== exceptId &&
+        sameName(portfolio.name, name),
+    );
+  }
+
   private body(route: Route): Record<string, unknown> {
     return JSON.parse(route.request().postData() ?? '{}') as Record<string, unknown>;
   }
@@ -365,4 +678,29 @@ export class ApiStub {
   private async json(route: Route, status: number, body: unknown): Promise<void> {
     await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
   }
+}
+
+function publicAccount({ ownerId: _ownerId, ...account }: OwnedTradingAccount): TradingAccount {
+  return account;
+}
+
+function sameName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function portfolioDetails(
+  body: Record<string, unknown>,
+): { name: string; description: string | null } | { error: string } {
+  const name = typeof body['name'] === 'string' ? body['name'].trim() : '';
+  const description = body['description'] ?? null;
+  if (!name || name.length > NAME_MAX_LENGTH) {
+    return { error: 'name: must be 1 to 60 characters' };
+  }
+  if (
+    description !== null &&
+    (typeof description !== 'string' || description.length > DESCRIPTION_MAX_LENGTH)
+  ) {
+    return { error: 'description: must be at most 200 characters' };
+  }
+  return { name, description };
 }

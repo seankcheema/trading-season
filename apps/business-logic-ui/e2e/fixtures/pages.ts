@@ -131,3 +131,54 @@ export async function readAllBrowserStorage(page: Page): Promise<string> {
   const cookies = await page.context().cookies();
   return [stored, cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('\n')].join('\n');
 }
+
+/** The dashboard's account, portfolio and cash controls. */
+export class DashboardPage {
+  readonly accountMenu: Locator;
+  readonly accountMenuTrigger: Locator;
+  readonly portfolioMenu: Locator;
+  readonly portfolioMenuTrigger: Locator;
+  readonly deposit: Locator;
+  readonly withdraw: Locator;
+  readonly cash: Locator;
+  readonly recentTransactions: Locator;
+
+  constructor(readonly page: Page) {
+    this.accountMenu = page.getByTestId('account-dropdown');
+    this.accountMenuTrigger = page.getByLabel('Select account');
+    this.portfolioMenu = page.getByTestId('portfolio-dropdown');
+    this.portfolioMenuTrigger = page.getByLabel('Select portfolio');
+    this.deposit = page.getByRole('button', { name: 'Deposit', exact: true });
+    this.withdraw = page.getByRole('button', { name: 'Withdraw', exact: true });
+    this.cash = page.getByText(/^Cash \$/);
+    this.recentTransactions = page.getByTestId('recent-transactions');
+  }
+
+  /** Opens the account menu and returns the accounts it lists, in order. */
+  async listedAccounts(): Promise<string[]> {
+    await this.accountMenuTrigger.click();
+    const items = this.accountMenu.getByRole('menuitemradio');
+    const names = await items.locator('span.truncate').allTextContents();
+    await this.accountMenuTrigger.click();
+    return names.map((name) => name.trim());
+  }
+
+  /** Opens the new account dialog from the account menu. */
+  async openNewAccount(): Promise<Locator> {
+    await this.accountMenuTrigger.click();
+    await this.accountMenu.getByRole('menuitem', { name: 'New account' }).click();
+    const dialog = this.page.getByRole('dialog', { name: 'New account' });
+    await dialog.waitFor();
+    return dialog;
+  }
+
+  async createAccount(name: string, openingDeposit?: number): Promise<Locator> {
+    const dialog = await this.openNewAccount();
+    await dialog.getByLabel('Account name').fill(name);
+    if (openingDeposit !== undefined) {
+      await dialog.getByLabel('Opening deposit').fill(String(openingDeposit));
+    }
+    await dialog.getByRole('button', { name: 'Create account' }).click();
+    return dialog;
+  }
+}
