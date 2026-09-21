@@ -1,6 +1,6 @@
 # Business UI
 
-Angular login, registration, dashboard, and settings screens using reactive forms, standalone components, signals, and the shared UI package. The dashboard market ticker reads the Java stock snapshot and live stream; authentication, portfolio, and order submission remain placeholders or mock-backed. Signed-in users are signed out after a configurable period of inactivity, 10 minutes by default; see the [API reference](../../docs/reference/api.md#ui-integration).
+Angular login, registration, and dashboard screens using reactive forms, standalone components, signals, and the shared UI package. The dashboard market ticker reads the Java stock snapshot and live stream; authentication, portfolio, and order submission remain placeholders or mock-backed. Signed-in users are signed out after a configurable period of inactivity, 10 minutes by default; see the [API reference](../../docs/reference/api.md#ui-integration).
 
 From repository root:
 

@@ -71,15 +71,24 @@ test.describe('the inactivity timeout', () => {
     expect(api.requests.filter((request) => request.url.endsWith('/auth/logout'))).toHaveLength(0);
   });
 
+  async function openSettings(page: Page) {
+    await page.getByLabel('Open profile menu').click();
+    await page.getByRole('menuitem', { name: 'Settings' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Settings' });
+    await expect(dialog).toBeVisible();
+    return dialog;
+  }
+
   test('uses the limit chosen in settings', async ({ page, loginPage }) => {
     await signIn({ page, loginPage });
 
-    await page.getByLabel('Open profile menu').click();
-    await page.getByRole('menuitem', { name: 'Settings' }).click();
-    await expect(page).toHaveURL(/\/settings$/);
-    const limit = page.getByLabel('Sign out after inactivity');
+    const dialog = await openSettings(page);
+    const limit = dialog.getByLabel('Sign out after inactivity');
     await expect(limit).toHaveValue('10');
     await limit.selectOption('5');
+    await dialog.getByRole('button', { name: 'Close settings' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page).toHaveURL(/\/dashboard$/);
 
     await page.clock.fastForward('05:00');
 
@@ -88,7 +97,17 @@ test.describe('the inactivity timeout', () => {
     // The choice outlives the session it was made in.
     await loginPage.signIn(REGISTERED.email, REGISTERED.password);
     await expect(page).toHaveURL(/\/dashboard$/);
-    await page.goto('/settings');
-    await expect(page.getByLabel('Sign out after inactivity')).toHaveValue('5');
+    await expect((await openSettings(page)).getByLabel('Sign out after inactivity')).toHaveValue(
+      '5',
+    );
+  });
+
+  test('closes the settings dialog with Escape', async ({ page, loginPage }) => {
+    await signIn({ page, loginPage });
+
+    const dialog = await openSettings(page);
+    await page.keyboard.press('Escape');
+
+    await expect(dialog).toBeHidden();
   });
 });

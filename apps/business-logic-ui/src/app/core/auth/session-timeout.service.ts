@@ -3,7 +3,7 @@ import { Injectable, PLATFORM_ID, effect, inject, signal, untracked } from '@ang
 import { Router } from '@angular/router';
 import { AuthService } from './auth.service';
 
-// Limits the settings page offers, in minutes.
+// Limits the settings dialog offers, in minutes.
 export const IDLE_TIMEOUT_OPTIONS = [5, 10, 15, 30, 60] as const;
 export const DEFAULT_IDLE_TIMEOUT_MINUTES = 10;
 

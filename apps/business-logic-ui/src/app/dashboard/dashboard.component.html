@@ -353,3 +353,7 @@
     (submitted)="onOrderSubmitted($event)"
   />
 }
+
+@if (settingsOpen()) {
+  <app-settings-dialog (closed)="closeSettings()" />
+}

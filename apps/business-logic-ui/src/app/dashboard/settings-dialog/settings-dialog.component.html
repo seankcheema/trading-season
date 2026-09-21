@@ -1,0 +1,56 @@
+<div
+  class="settings-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-12 backdrop-blur-sm md:items-center"
+  (click)="closed.emit()"
+>
+  <section
+    #dialog
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="settings-title"
+    tabindex="-1"
+    class="settings-dialog border-border bg-card w-full max-w-md rounded-2xl border shadow-2xl shadow-black/50 outline-none"
+    (click)="$event.stopPropagation()"
+  >
+    <header class="border-border flex items-center justify-between gap-4 border-b px-5 py-3">
+      <h2 id="settings-title" class="text-sm font-semibold">Settings</h2>
+      <button
+        type="button"
+        class="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 cursor-pointer items-center justify-center rounded-lg transition-colors"
+        aria-label="Close settings"
+        (click)="closed.emit()"
+      >
+        <ng-icon name="lucideX" class="text-[18px]" />
+      </button>
+    </header>
+
+    <div class="flex flex-col gap-4 p-5">
+      <div>
+        <h3 class="text-sm font-semibold">Security</h3>
+        <p class="text-muted-foreground text-sm">
+          Control how long you stay signed in on this browser.
+        </p>
+      </div>
+
+      <div hlmField>
+        <label hlmFieldLabel for="idleTimeout" class="text-foreground">
+          Sign out after inactivity
+        </label>
+        <hlm-native-select
+          [selectId]="'idleTimeout'"
+          [selectClass]="'cursor-pointer rounded-[5px]'"
+          [formControl]="idleTimeout"
+        >
+          @for (minutes of timeoutOptions; track minutes) {
+            <option [value]="minutes" hlmNativeSelectOption>
+              {{ minutes }} minutes{{ minutes === defaultTimeout ? ' (default)' : '' }}
+            </option>
+          }
+        </hlm-native-select>
+        <p class="text-muted-foreground text-sm">
+          You will be signed out automatically when there is no mouse, keyboard or touch input
+          for this long. Changes apply immediately.
+        </p>
+      </div>
+    </div>
+  </section>
+</div>

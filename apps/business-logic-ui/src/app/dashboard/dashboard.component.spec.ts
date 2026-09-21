@@ -129,10 +129,10 @@ describe('DashboardComponent', () => {
     expect(fixture.componentInstance['openHeaderDropdown']()).toBeNull();
   });
 
-  it('should open the settings page and close the profile menu after choosing settings', () => {
+  it('should open the settings dialog and close the profile menu after choosing settings', () => {
     const fixture = TestBed.createComponent(DashboardComponent);
-    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
     fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-settings-dialog')).toBeNull();
     openDropdown(fixture, 'profile-dropdown');
 
     const items = fixture.nativeElement.querySelectorAll(
@@ -141,9 +141,22 @@ describe('DashboardComponent', () => {
     items[0].click();
     fixture.detectChanges();
 
-    expect(navigate).toHaveBeenCalledWith('/settings');
+    expect(fixture.nativeElement.querySelector('app-settings-dialog')).not.toBeNull();
     expect(fixture.componentInstance['openHeaderDropdown']()).toBeNull();
     expect(dropdownDetails(fixture, 'profile-dropdown').open).toBe(false);
+  });
+
+  it('should close the settings dialog', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.componentInstance['onSettings']();
+    fixture.detectChanges();
+
+    (
+      fixture.nativeElement.querySelector('[aria-label="Close settings"]') as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-settings-dialog')).toBeNull();
   });
 
   it('should update the selected account from the custom account dropdown and close it', () => {

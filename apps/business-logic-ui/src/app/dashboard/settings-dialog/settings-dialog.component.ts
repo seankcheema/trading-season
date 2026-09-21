@@ -1,34 +1,38 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  afterNextRender,
+  inject,
+  output,
+  viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideArrowLeft } from '@ng-icons/lucide';
-import { HlmCardImports } from '@shared/ui-components/card';
+import { lucideX } from '@ng-icons/lucide';
 import { HlmFieldImports } from '@shared/ui-components/field';
 import { HlmNativeSelectImports } from '@shared/ui-components/native-select';
 import {
   DEFAULT_IDLE_TIMEOUT_MINUTES,
   IDLE_TIMEOUT_OPTIONS,
   SessionTimeoutService,
-} from '../core/auth/session-timeout.service';
+} from '../../core/auth/session-timeout.service';
 
 @Component({
-  selector: 'app-settings',
+  selector: 'app-settings-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    ReactiveFormsModule,
-    RouterLink,
-    NgIcon,
-    HlmCardImports,
-    HlmFieldImports,
-    HlmNativeSelectImports,
-  ],
-  providers: [provideIcons({ lucideArrowLeft })],
-  templateUrl: './settings.component.html',
+  imports: [ReactiveFormsModule, NgIcon, HlmFieldImports, HlmNativeSelectImports],
+  providers: [provideIcons({ lucideX })],
+  host: { '(document:keydown.escape)': 'closed.emit()' },
+  templateUrl: './settings-dialog.component.html',
+  styleUrl: './settings-dialog.component.css',
 })
-export class SettingsComponent {
+export class SettingsDialogComponent {
   private readonly _sessionTimeout = inject(SessionTimeoutService);
+  private readonly _dialog = viewChild.required<ElementRef<HTMLElement>>('dialog');
+
+  readonly closed = output<void>();
 
   protected readonly timeoutOptions = IDLE_TIMEOUT_OPTIONS;
   protected readonly defaultTimeout = DEFAULT_IDLE_TIMEOUT_MINUTES;
@@ -42,5 +46,7 @@ export class SettingsComponent {
     this.idleTimeout.valueChanges
       .pipe(takeUntilDestroyed())
       .subscribe((value) => this._sessionTimeout.setTimeoutMinutes(Number(value)));
+    // Move focus into the dialog so keyboard and screen reader users land on its content.
+    afterNextRender(() => this._dialog().nativeElement.focus());
   }
 }
