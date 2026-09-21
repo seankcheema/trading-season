@@ -17,14 +17,14 @@ sprint1-greeter-app,app.order,OrderService,189,24,6,0,40,9,7,1,4,1
 sprint1-greeter-app,app.market,MarketModels.Day,6,0,0,0,1,0,1,0,1,0
 sprint1-greeter-app,app.market,MarketRequestException,0,4,0,0,0,1,0,1,0,1
 sprint1-greeter-app,app.market,MarketModels.Stock,0,9,0,0,0,1,0,1,0,1
-sprint1-greeter-app,app.market,MarketReplayService.Subscriber,9,0,0,0,1,0,1,0,1,0
+sprint1-greeter-app,app.market,MarketReplayService.Subscriber,0,9,0,0,0,1,0,1,0,1
 sprint1-greeter-app,app.market,MarketModels.Session,0,12,0,0,0,1,0,1,0,1
 sprint1-greeter-app,app.market,MarketResponses.TickPrice,0,12,0,0,0,1,0,1,0,1
 sprint1-greeter-app,app.market,MarketResponses.StockSnapshot,0,21,0,0,0,1,0,1,0,1
 sprint1-greeter-app,app.market,MarketLimitException,4,0,0,0,1,0,1,0,1,0
 sprint1-greeter-app,app.market,MarketDataRepository,462,13,20,0,67,5,29,2,19,2
-sprint1-greeter-app,app.market,MarketReplayService,415,711,45,35,70,125,44,34,11,27
-sprint1-greeter-app,app.market,MarketController,41,23,2,2,6,4,5,2,3,2
+sprint1-greeter-app,app.market,MarketReplayService,292,834,39,41,45,150,40,38,9,29
+sprint1-greeter-app,app.market,MarketController,5,59,2,2,1,9,2,5,0,5
 sprint1-greeter-app,app.market,MarketWebConfig,0,81,0,0,0,9,0,4,0,4
 sprint1-greeter-app,app.market,MarketModels.Tick,0,15,0,0,0,1,0,1,0,1
 sprint1-greeter-app,app.market,MarketResponses.Snapshot,0,21,0,0,0,1,0,1,0,1
@@ -55,7 +55,7 @@ sprint1-greeter-app,app.auth,ForbiddenException,0,4,0,0,0,2,0,1,0,1
 sprint1-greeter-app,app.auth,SecurityErrorHandler,12,44,0,0,3,12,1,3,1,3
 sprint1-greeter-app,app.auth,AuthController,0,30,0,0,0,6,0,3,0,3
 sprint1-greeter-app,app.auth,AuthService,0,101,0,8,0,23,0,7,0,3
-sprint1-greeter-app,app.auth,SecurityConfig,0,164,0,0,0,39,0,12,0,12
+sprint1-greeter-app,app.auth,SecurityConfig,0,174,0,0,0,40,0,12,0,12
 sprint1-greeter-app,app.auth,AuthenticatedUser,0,32,0,2,0,7,0,4,0,3
 sprint1-greeter-app,app.order.execution,Fill,35,3,0,0,15,1,10,1,10,1
 sprint1-greeter-app,app.order.execution,HoldingMovement,42,3,0,0,18,1,12,1,12,1

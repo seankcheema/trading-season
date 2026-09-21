@@ -12,6 +12,11 @@
     </div>
 
     <div hlmCardContent>
+      @if (signedOutForInactivity) {
+        <p role="status" class="bg-muted text-foreground mb-5 rounded-[5px] px-3 py-2 text-sm">
+          You were signed out after a period of inactivity. Sign in again to continue.
+        </p>
+      }
       <form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate class="flex flex-col gap-5">
         <div hlmField>
           <label hlmFieldLabel for="email" class="text-foreground">Email</label>

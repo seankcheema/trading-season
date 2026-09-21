@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd">
-<coverage lines-valid="208" lines-covered="181" line-rate="0.8701000000000001" branches-valid="84" branches-covered="65" branch-rate="0.7737999999999999" timestamp="1789678652555" complexity="0" version="0.1">
+<coverage lines-valid="208" lines-covered="181" line-rate="0.8701000000000001" branches-valid="84" branches-covered="65" branch-rate="0.7737999999999999" timestamp="1790023255222" complexity="0" version="0.1">
   <sources>
     <source>C:/Users/Administrator/Documents/GitHub/dualeapa-sprint1-project/apps/auth-service</source>
   </sources>

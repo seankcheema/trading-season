@@ -44,6 +44,7 @@ import {
   MarketTickEvent,
 } from './market-data.service';
 import { OrderSubmissionComponent } from './order-submission/order-submission.component';
+import { SettingsDialogComponent } from './settings-dialog/settings-dialog.component';
 import { DashboardHeaderDropdownComponent } from './shared/dashboard-header-dropdown.component';
 import { DailySparklineComponent } from './shared/daily-sparkline.component';
 import { InstrumentSearchComponent } from './shared/instrument-search.component';
@@ -72,6 +73,7 @@ type HeaderDropdown = 'account' | 'market-clock' | 'profile';
     NgIcon,
     OrderSubmissionComponent,
     PriceChartComponent,
+    SettingsDialogComponent,
     SignedPercentPipe,
     TimeframeToggleComponent,
   ],
@@ -162,6 +164,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const calendar = this.marketCalendar();
     return this.isoToMarketLocal(calendar.lastTimestamp);
   });
+
+  protected readonly settingsOpen = signal(false);
 
   // Symbol currently open in the order submission dialog, if any.
   private readonly orderSymbol = signal<string | null>(null);
@@ -552,8 +556,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   protected onSettings(): void {
-    // TODO: navigate to the settings page once it exists
     this.openHeaderDropdown.set(null);
+    this.settingsOpen.set(true);
+  }
+
+  protected closeSettings(): void {
+    this.settingsOpen.set(false);
   }
 
   protected onSignOut(): void {

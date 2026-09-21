@@ -1,0 +1,24 @@
+:host {
+  display: contents;
+}
+
+.settings-backdrop {
+  animation: settings-fade-in 150ms ease-out both;
+}
+
+.settings-dialog {
+  animation: settings-pop-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes settings-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes settings-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}

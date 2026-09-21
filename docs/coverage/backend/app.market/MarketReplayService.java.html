@@ -137,7 +137,7 @@ public class MarketReplayService {
 <span class="fc" id="L137">            List&lt;MarketModels.Frame&gt; frames = requireFrames(state.session, day);</span>
 <span class="fc" id="L138">            int frameIndex = 0;</span>
 <span class="fc bfc" id="L139" title="All 2 branches covered.">            for (int i = 0; i &lt; frames.size(); i++) {</span>
-<span class="pc bpc" id="L140" title="1 of 2 branches missed.">                if (!frames.get(i).timestamp().isAfter(replayTimestamp)) frameIndex = i;</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">                if (!frames.get(i).timestamp().isAfter(replayTimestamp)) frameIndex = i;</span>
                 else break;
             }
 <span class="fc" id="L143">            state.dayIndex = dayIndex;</span>
@@ -157,35 +157,35 @@ public class MarketReplayService {
      * @return the registered emitter
      */
     public SseEmitter subscribe(Long requestedSessionId, String clientId, Long lastEventId) {
-<span class="nc" id="L160">        ReplayState state = state(requestedSessionId);</span>
-<span class="nc" id="L161">        SseEmitter emitter = new SseEmitter(0L);</span>
-<span class="nc" id="L162">        synchronized (clientStreams) {</span>
-<span class="nc" id="L163">            int global = clientStreams.values().stream().mapToInt(Integer::intValue).sum();</span>
-<span class="nc" id="L164">            int current = clientStreams.getOrDefault(clientId, 0);</span>
-<span class="nc bnc" id="L165" title="All 4 branches missed.">            if (global &gt;= maxStreamsGlobal || current &gt;= maxStreamsPerClient) {</span>
+<span class="fc" id="L160">        ReplayState state = state(requestedSessionId);</span>
+<span class="fc" id="L161">        SseEmitter emitter = new SseEmitter(0L);</span>
+<span class="fc" id="L162">        synchronized (clientStreams) {</span>
+<span class="fc" id="L163">            int global = clientStreams.values().stream().mapToInt(Integer::intValue).sum();</span>
+<span class="fc" id="L164">            int current = clientStreams.getOrDefault(clientId, 0);</span>
+<span class="pc bpc" id="L165" title="2 of 4 branches missed.">            if (global &gt;= maxStreamsGlobal || current &gt;= maxStreamsPerClient) {</span>
 <span class="nc" id="L166">                throw new MarketLimitException(&quot;Market stream connection limit reached&quot;);</span>
             }
-<span class="nc" id="L168">            clientStreams.put(clientId, current + 1);</span>
-<span class="nc" id="L169">        }</span>
-<span class="nc" id="L170">        Subscriber subscriber = new Subscriber(clientId, emitter);</span>
-<span class="nc" id="L171">        Runnable cleanup = () -&gt; remove(state, subscriber);</span>
-<span class="nc" id="L172">        emitter.onCompletion(cleanup);</span>
-<span class="nc" id="L173">        emitter.onTimeout(cleanup);</span>
-<span class="nc" id="L174">        emitter.onError(ignored -&gt; cleanup.run());</span>
-<span class="nc" id="L175">        synchronized (state) {</span>
+<span class="fc" id="L168">            clientStreams.put(clientId, current + 1);</span>
+<span class="fc" id="L169">        }</span>
+<span class="fc" id="L170">        Subscriber subscriber = new Subscriber(clientId, emitter);</span>
+<span class="pc" id="L171">        Runnable cleanup = () -&gt; remove(state, subscriber);</span>
+<span class="fc" id="L172">        emitter.onCompletion(cleanup);</span>
+<span class="fc" id="L173">        emitter.onTimeout(cleanup);</span>
+<span class="pc" id="L174">        emitter.onError(ignored -&gt; cleanup.run());</span>
+<span class="fc" id="L175">        synchronized (state) {</span>
             try {
-<span class="nc bnc" id="L177" title="All 2 branches missed.">                if (lastEventId != null) replayMissed(state, emitter, lastEventId);</span>
-<span class="nc" id="L178">                send(emitter, &quot;snapshot&quot;, null, snapshot(state.session.id()));</span>
-<span class="nc" id="L179">                state.subscribers.add(subscriber);</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">                if (lastEventId != null) replayMissed(state, emitter, lastEventId);</span>
+<span class="fc" id="L178">                send(emitter, &quot;snapshot&quot;, null, snapshot(state.session.id()));</span>
+<span class="fc" id="L179">                state.subscribers.add(subscriber);</span>
 <span class="nc" id="L180">            } catch (IOException ex) {</span>
 <span class="nc" id="L181">                releaseClient(clientId);</span>
 <span class="nc" id="L182">                emitter.completeWithError(ex);</span>
 <span class="nc" id="L183">            } catch (RuntimeException ex) {</span>
 <span class="nc" id="L184">                releaseClient(clientId);</span>
 <span class="nc" id="L185">                throw ex;</span>
-<span class="nc" id="L186">            }</span>
-<span class="nc" id="L187">        }</span>
-<span class="nc" id="L188">        return emitter;</span>
+<span class="pc" id="L186">            }</span>
+<span class="fc" id="L187">        }</span>
+<span class="fc" id="L188">        return emitter;</span>
     }
 
     /** Advances every active simulation cursor and publishes the next synchronized batch. */
@@ -278,8 +278,8 @@ public class MarketReplayService {
     }
 
     private Instant rangeStart(ReplayState state, MarketTimeframe timeframe, Instant cursor) {
-<span class="pc bpc" id="L281" title="1 of 2 branches missed.">        if (timeframe == MarketTimeframe.ONE_DAY) {</span>
-<span class="nc" id="L282">            return cursor.atZone(MARKET_ZONE).toLocalDate().atTime(MARKET_OPEN).atZone(MARKET_ZONE).toInstant();</span>
+<span class="fc bfc" id="L281" title="All 2 branches covered.">        if (timeframe == MarketTimeframe.ONE_DAY) {</span>
+<span class="fc" id="L282">            return cursor.atZone(MARKET_ZONE).toLocalDate().atTime(MARKET_OPEN).atZone(MARKET_ZONE).toInstant();</span>
         }
 <span class="pc bpc" id="L284" title="1 of 2 branches missed.">        if (timeframe == MarketTimeframe.FIVE_DAYS) {</span>
 <span class="fc" id="L285">            LocalDate current = cursor.atZone(MARKET_ZONE).toLocalDate();</span>
@@ -327,10 +327,10 @@ public class MarketReplayService {
 <span class="nc" id="L327">    }</span>
 
     private void send(SseEmitter emitter, String name, Long id, Object data) throws IOException {
-<span class="nc" id="L330">        SseEmitter.SseEventBuilder event = SseEmitter.event().name(name).data(data);</span>
-<span class="nc bnc" id="L331" title="All 2 branches missed.">        if (id != null) event.id(Long.toString(id));</span>
-<span class="nc" id="L332">        emitter.send(event);</span>
-<span class="nc" id="L333">    }</span>
+<span class="fc" id="L330">        SseEmitter.SseEventBuilder event = SseEmitter.event().name(name).data(data);</span>
+<span class="pc bpc" id="L331" title="1 of 2 branches missed.">        if (id != null) event.id(Long.toString(id));</span>
+<span class="fc" id="L332">        emitter.send(event);</span>
+<span class="fc" id="L333">    }</span>
 
     private void remove(ReplayState state, Subscriber subscriber) {
 <span class="nc bnc" id="L336" title="All 2 branches missed.">        if (!state.subscribers.remove(subscriber)) return;</span>
@@ -372,7 +372,7 @@ public class MarketReplayService {
         }
     }
 
-<span class="nc" id="L375">    private record Subscriber(String clientId, SseEmitter emitter) { }</span>
+<span class="fc" id="L375">    private record Subscriber(String clientId, SseEmitter emitter) { }</span>
 
     private static final class MutableCandle {
         final BigDecimal open;
