@@ -59,7 +59,7 @@ The launcher keeps all logs in one terminal and stops the other services if one 
 | [Holdings and Trade Service](apps/holdings-and-trade-service/README.md) | Order creation, validation, execution, and holdings management | 8081 |
 | [Order and Sell Service](apps/order-and-sell-service/README.md) | User profiles, holdings queries, and order history | 8082 |
 | [Auth service](apps/auth-service/README.md) | RS256 tokens, refresh tokens, auth database | 3001 |
-| [Business Database](apps/business-backend/README.md) | Shared PostgreSQL database setup and migrations | — |
+| [Business Database](apps/market-data/README.md) | Shared PostgreSQL database setup and migrations | — |
 | [Shared UI](packages/shared-ui-components/README.md) | Reusable Angular components | — |
 | [Reporting proposal](docs/reference/reporting.md) | Future analytics UI and service | — |
 | [Infrastructure](infrastructure/README.md) | Compose and Jenkins configuration | — |

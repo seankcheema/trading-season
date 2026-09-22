@@ -120,6 +120,11 @@ class MarketControllerCorsTest {
             return new MarketReplayService(new FakeMarketDataSource(),
                     Clock.fixed(MARKET_TIME, ZoneOffset.UTC), "", 3, 200);
         }
+
+        @Bean
+        ObjectMapper objectMapper() {
+            return new ObjectMapper();
+        }
     }
 
     private static final class FakeMarketDataSource implements MarketDataSource {
