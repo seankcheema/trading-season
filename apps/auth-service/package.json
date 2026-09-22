@@ -67,5 +67,8 @@
     "typescript": "^6.0.2",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^4.1.2"
+  },
+  "allowScripts": {
+    "bcrypt@6.0.0": true
   }
 }
