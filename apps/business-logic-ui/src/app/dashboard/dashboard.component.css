@@ -98,3 +98,9 @@
 .net-worth-action-primary:hover {
   background: color-mix(in oklab, var(--primary) 85%, white);
 }
+
+.net-worth-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  pointer-events: none;
+}

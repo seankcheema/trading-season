@@ -1,5 +1,5 @@
 // Placeholder data for the dashboard skeleton.
-// TODO: replace with the portfolio / market data services once the backend endpoints exist.
+// TODO: replace with the order history / market data services once the backend endpoints exist.
 
 export type Timeframe = '1D' | '5D' | '1M' | '1Y';
 
@@ -15,24 +15,12 @@ export interface Instrument {
   changePercent: number;
 }
 
-export interface Holding {
-  symbol: string;
-  shares: number;
-  // Average cost per share, used to derive gain/loss.
-  costBasis: number;
-}
-
 export interface Transaction {
   symbol: string;
   side: OrderSide;
   shares: number;
   price: number;
   date: string;
-}
-
-export interface Account {
-  id: string;
-  name: string;
 }
 
 export interface OrderRequest {
@@ -42,13 +30,6 @@ export interface OrderRequest {
   shares: number;
   price: number;
 }
-
-export const MOCK_ACCOUNTS: readonly Account[] = [
-  { id: 'personal', name: 'Personal Investing Account' },
-  { id: 'retirement', name: 'Retirement Account' },
-];
-
-export const MOCK_CASH_BALANCE = 10_000;
 
 export const MOCK_INSTRUMENTS: readonly Instrument[] = [
   { symbol: 'AAPL', name: 'Apple Inc.', price: 316.59, change: 15.65, changePercent: 5.2 },
@@ -61,14 +42,6 @@ export const MOCK_INSTRUMENTS: readonly Instrument[] = [
   { symbol: 'SPCX', name: 'Space Exploration Holdings', price: 127.43, change: 6.3, changePercent: 5.2 },
   { symbol: 'JPM', name: 'JPMorgan Chase & Co.', price: 289.61, change: 0.84, changePercent: 0.29 },
   { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', price: 648.2, change: 3.15, changePercent: 0.49 },
-];
-
-export const MOCK_HOLDINGS: readonly Holding[] = [
-  { symbol: 'AAPL', shares: 4, costBasis: 280.1 },
-  { symbol: 'NVDA', shares: 10, costBasis: 190.25 },
-  { symbol: 'MSFT', shares: 2, costBasis: 455.0 },
-  { symbol: 'SPY', shares: 3, costBasis: 610.5 },
-  { symbol: 'TSLA', shares: 1, costBasis: 301.8 },
 ];
 
 export const MOCK_TRANSACTIONS: readonly Transaction[] = [
