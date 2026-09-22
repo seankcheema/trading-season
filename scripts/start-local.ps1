@@ -6,6 +6,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $authDirectory = Join-Path $repoRoot 'apps/auth-service'
 $holdingsDirectory = Join-Path $repoRoot 'apps/holdings-and-trade-service'
 $orderDirectory = Join-Path $repoRoot 'apps/order-and-sell-service'
+$backendDirectory = Join-Path $repoRoot 'apps/market-data'
 $envFile = Join-Path $authDirectory '.env'
 
 function Get-RequiredCommand {
