@@ -19,9 +19,6 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
-    "migration:run": "typeorm-ts-node-esm migration:run -d src/database/data-source.ts",
-    "migration:revert": "typeorm-ts-node-esm migration:revert -d src/database/data-source.ts",
-    "migration:show": "typeorm-ts-node-esm migration:show -d src/database/data-source.ts",
     "test:ci": "vitest run --coverage"
   },
   "dependencies": {
