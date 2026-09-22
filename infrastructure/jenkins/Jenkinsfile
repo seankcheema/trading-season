@@ -354,9 +354,9 @@ pipeline {
     
     post {
         always {
-            // Optional: Remove Maven and npm cache to free disk space (comment out if not needed)
-            // sh 'rm -rf ~/.m2/repository ~/.npm'
-            echo "  Build workspace preserved for debugging. To save disk space, manually delete workspace or adjust retention policy."
+            // Remove Maven and npm cache to free disk space and prevent out-of-space errors
+            sh 'rm -rf ~/.m2/repository ~/.npm'
+            echo "✓ Build cache cleaned to free disk space"
         }
         
         success {
