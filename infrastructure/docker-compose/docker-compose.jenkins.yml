@@ -21,15 +21,31 @@ services:
     networks:
       - dev-network
 
-  # Note: Backend service is built by the Jenkinsfile during pipeline execution
-  # Uncomment below if you want to run backend locally during development
-  # backend:
+  # Note: Backend services are built by the Jenkinsfile during pipeline execution
+  # Uncomment below if you want to run services locally during development
+  # holdings-and-trade-service:
   #   build:
-  #     context: ../../apps/business-backend
+  #     context: ../../apps/holdings-and-trade-service
   #     dockerfile: Dockerfile
-  #   container_name: backend-service
+  #   container_name: holdings-and-trade-service
   #   ports:
   #     - "8081:8081"
+  #   depends_on:
+  #     - db
+  #   environment:
+  #     SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
+  #     SPRING_DATASOURCE_USERNAME: trading_season
+  #     SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-changeme}
+  #   networks:
+  #     - dev-network
+  #
+  # order-and-sell-service:
+  #   build:
+  #     context: ../../apps/order-and-sell-service
+  #     dockerfile: Dockerfile
+  #   container_name: order-and-sell-service
+  #   ports:
+  #     - "8082:8082"
   #   depends_on:
   #     - db
   #   environment:

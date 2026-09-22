@@ -30,7 +30,8 @@ Compose validates JWT variables even when selecting database services, so provid
 | Working directory | Command | Port |
 | --- | --- | --- |
 | Repository root | npm --workspace business-logic-ui start | 4200 |
-| apps/business-backend | mvn spring-boot:run | 8081 |
+| apps/holdings-and-trade-service | mvn spring-boot:run | 8081 |
+| apps/order-and-sell-service | mvn spring-boot:run | 8082 |
 | apps/auth-service | npm run start:dev | 3001 |
 
 Do not use an unqualified Compose up for the full stack: its backend build context and port mapping are stale.
@@ -73,13 +74,13 @@ Run `npm --workspace business-logic-ui run e2e:report` to open the HTML report, 
 
 ## Coverage floors
 
-Each tier fails its own test command below 50% coverage, so the floor is enforced by the build rather than read off a report.
+Each tier fails its own test command below its coverage floor, so the floor is enforced by the build rather than read off a report.
 
-| Tier | Enforced by | Counters |
-| --- | --- | --- |
-| UI | coverageThresholds in [angular.json](../../apps/business-logic-ui/angular.json) | statements, branches, functions, lines |
-| Auth | coverage.thresholds in [vitest.config.ts](../../apps/auth-service/vitest.config.ts) | statements, branches, functions, lines |
-| Java | jacoco:check in the [POM](../../apps/business-backend/pom.xml) | line and instruction ratio |
+| Tier | Floor | Enforced by | Counters |
+| --- | --- | --- | --- |
+| UI | 60% | coverageThresholds in [angular.json](../../apps/business-logic-ui/angular.json) | statements, branches, functions, lines |
+| Auth | 50% | coverage.thresholds in [vitest.config.ts](../../apps/auth-service/vitest.config.ts) | statements, branches, functions, lines |
+| Java | 50% | jacoco:check in the [POM](../../apps/business-backend/pom.xml) | line and instruction ratio |
 
 The Java tier has the least headroom, and its branch coverage sits below the line figure, so it is not gated on branches. Raise the floor as coverage improves rather than lowering it to accommodate a change.
 

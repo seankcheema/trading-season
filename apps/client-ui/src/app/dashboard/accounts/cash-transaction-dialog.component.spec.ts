@@ -1,0 +1,167 @@
+import { HttpErrorResponse } from '@angular/common/http';
+import { signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { Subject } from 'rxjs';
+import { ACCOUNT_ERROR_MESSAGES } from './account-error';
+import { AccountStore } from './account-store.service';
+import {
+  CashTransactionDialogComponent,
+  CashTransactionMode,
+} from './cash-transaction-dialog.component';
+
+describe('CashTransactionDialogComponent', () => {
+  let response: Subject<void>;
+  let store: {
+    cashBalance: ReturnType<typeof signal<number>>;
+    deposit: ReturnType<typeof vi.fn>;
+    withdraw: ReturnType<typeof vi.fn>;
+  };
+
+  beforeEach(async () => {
+    response = new Subject<void>();
+    store = {
+      cashBalance: signal(1_000),
+      deposit: vi.fn(() => response),
+      withdraw: vi.fn(() => response),
+    };
+    await TestBed.configureTestingModule({
+      imports: [CashTransactionDialogComponent],
+      providers: [{ provide: AccountStore, useValue: store }],
+    }).compileComponents();
+  });
+
+  function render(mode: CashTransactionMode) {
+    const fixture = TestBed.createComponent(CashTransactionDialogComponent);
+    fixture.componentRef.setInput('mode', mode);
+    const completed = vi.fn();
+    const closed = vi.fn();
+    fixture.componentInstance.completed.subscribe(completed);
+    fixture.componentInstance.closed.subscribe(closed);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    const amount = element.querySelector('#cashAmount') as HTMLInputElement;
+    const submit = element.querySelector('button[type="submit"]') as HTMLButtonElement;
+    const enter = (value: string) => {
+      amount.value = value;
+      amount.dispatchEvent(new Event('input'));
+      amount.dispatchEvent(new Event('blur'));
+      fixture.detectChanges();
+    };
+    const send = () => {
+      submit.click();
+      fixture.detectChanges();
+    };
+    const available = () =>
+      element.querySelector('[data-testid="cash-available"]')?.textContent?.trim();
+    return { fixture, element, submit, completed, closed, enter, send, available };
+  }
+
+  describe('deposits', () => {
+    it('asks only for an amount, since cash is shared by every account', () => {
+      const { element, submit, available } = render('deposit');
+
+      expect(element.querySelector('[role="dialog"]')?.textContent).toContain('Deposit funds');
+      expect(element.querySelector('select')).toBeNull();
+      expect(available()).toBe('Available cash: $1,000.00');
+      expect(submit.textContent?.trim()).toBe('Deposit');
+    });
+
+    it('deposits the amount, rounded to cents', () => {
+      const { enter, send, submit, completed } = render('deposit');
+      enter('20.1');
+
+      send();
+      send();
+
+      expect(store.deposit).toHaveBeenCalledTimes(1);
+      expect(store.deposit).toHaveBeenCalledWith(20.1);
+      expect(submit.textContent?.trim()).toBe('Processing…');
+      response.next();
+      expect(completed).toHaveBeenCalled();
+    });
+
+    it('allows a deposit larger than the current cash', () => {
+      const { enter, send } = render('deposit');
+      enter('5000');
+
+      send();
+
+      expect(store.deposit).toHaveBeenCalledWith(5000);
+    });
+
+    it.each([
+      ['', 'Enter an amount greater than $0.'],
+      ['0', 'Enter an amount greater than $0.'],
+      ['1.234', 'Enter the amount in whole cents.'],
+      ['1000001', 'The most you can move at once is $1,000,000.'],
+    ])('rejects an amount of "%s"', (value, message) => {
+      const { element, enter, send } = render('deposit');
+      enter(value);
+
+      send();
+
+      expect(store.deposit).not.toHaveBeenCalled();
+      expect(element.textContent).toContain(message);
+    });
+  });
+
+  describe('withdrawals', () => {
+    it('is titled for a withdrawal', () => {
+      const { element, submit } = render('withdraw');
+
+      expect(element.querySelector('[role="dialog"]')?.textContent).toContain('Withdraw funds');
+      expect(submit.textContent?.trim()).toBe('Withdraw');
+    });
+
+    it('limits a withdrawal to the available cash', () => {
+      const { element, enter, send } = render('withdraw');
+      enter('1000.01');
+
+      send();
+      expect(store.withdraw).not.toHaveBeenCalled();
+      expect(element.textContent).toContain("That's more than your available cash.");
+
+      enter('1000');
+      send();
+      expect(store.withdraw).toHaveBeenCalledWith(1000);
+    });
+
+    it('shows why the withdrawal failed', () => {
+      const { fixture, element, enter, send, submit } = render('withdraw');
+      enter('10');
+      send();
+
+      response.error(new HttpErrorResponse({ status: 422 }));
+      fixture.detectChanges();
+
+      expect(element.querySelector('[role="alert"]')?.textContent).toBe(
+        ACCOUNT_ERROR_MESSAGES.insufficientFunds,
+      );
+      expect(submit.disabled).toBe(false);
+    });
+  });
+
+  it('closes from Cancel, the close button and Escape', () => {
+    const { element, closed } = render('deposit');
+
+    (
+      Array.from(element.querySelectorAll('button')).find(
+        (button) => button.textContent?.trim() === 'Cancel',
+      ) as HTMLButtonElement
+    ).click();
+    (element.querySelector('[aria-label="Close deposit"]') as HTMLButtonElement).click();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+    expect(closed).toHaveBeenCalledTimes(3);
+  });
+
+  it('closes when the backdrop is clicked, but not the dialog itself', () => {
+    const { element, closed } = render('deposit');
+
+    (element.querySelector('[role="dialog"]') as HTMLElement).click();
+    expect(closed).not.toHaveBeenCalled();
+
+    (element.querySelector('.dashboard-dialog-backdrop') as HTMLElement).click();
+    expect(closed).toHaveBeenCalledTimes(1);
+  });
+});

@@ -36,10 +36,12 @@ Run from repository root unless a working directory is specified:
 | Auth dependencies | npm --prefix apps/auth-service ci |
 | UI build | npm --workspace business-logic-ui run build |
 | UI tests | npm --workspace business-logic-ui test -- --no-watch |
-| Java tests | mvn -B -f apps/business-backend/pom.xml test |
+| Holdings and Trade tests | mvn -B -f apps/holdings-and-trade-service/pom.xml test |
+| Order and Sell tests | mvn -B -f apps/order-and-sell-service/pom.xml test |
 | Auth tests | npm --prefix apps/auth-service test |
 | Auth lint | npm --prefix apps/auth-service run lint |
-| Javadocs | mvn -B -f apps/business-backend/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc |
+| Holdings and Trade Javadocs | mvn -B -f apps/holdings-and-trade-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc |
+| Order and Sell Javadocs | mvn -B -f apps/order-and-sell-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc |
 
 Root Turborepo tasks do not cover the Java or auth services. Check manifests before assuming a task exists.
 
@@ -48,5 +50,8 @@ Root Turborepo tasks do not cover the Java or auth services. Check manifests bef
 - Run relevant checks and report failures or unavailable prerequisites accurately.
 - Update canonical documentation in the same change when behavior, interfaces, commands, configuration, or boundaries change.
 - When Java code changes, update affected Javadoc comments in the same change: behavior, parameters, return values, and exceptions. Regenerate Javadocs and review changed class pages before completion. Fix generation errors and any warnings introduced by the change.
-- Keep the checked-in Javadocs in docs/JAVA_DOCS. After a Java change, successfully regenerate into apps/business-backend/target/reports/apidocs, review the output, then refresh the complete checked-in copy in the same change. Temporary target output remains ignored.
+- Keep the checked-in Javadocs in docs/JAVA_DOCS. After a Java change, successfully regenerate both services:
+  - `mvn -B -f apps/holdings-and-trade-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc`
+  - `mvn -B -f apps/order-and-sell-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc`
+  - Review output in target/reports/apidocs, then refresh the complete checked-in copy in docs/JAVA_DOCS in the same change. Temporary target output remains ignored.
 - Check relative documentation links and anchors, scan Markdown for emojis, and run git diff --check.
