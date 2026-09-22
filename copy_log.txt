@@ -1,0 +1,41 @@
+﻿=== File Copy Operation Log ===
+Start time: 09/21/2026 21:17:34
+
+Processing: business-backend/user
+  Source: C:\Users\Administrator\Desktop\leap\dualeapa-sprint1-project\apps\business-backend\src\main\java\app\user
+  Destination: C:\Users\Administrator\Desktop\leap\dualeapa-sprint1-project\apps\order-and-sell-service\src\main\java\app\user
+  Status: SUCCESS - Copied 6 .java files
+
+Processing: business-backend/auth
+  Source: C:\Users\Administrator\Desktop\leap\dualeapa-sprint1-project\apps\business-backend\src\main\java\app\auth
+  Destination: C:\Users\Administrator\Desktop\leap\dualeapa-sprint1-project\apps\order-and-sell-service\src\main\java\app\auth
+  Status: SUCCESS - Copied 12 .java files
+
+Processing: business-backend/market
+  Source: C:\Users\Administrator\Desktop\leap\dualeapa-sprint1-project\apps\business-backend\src\main\java\app\market
+  Destination: C:\Users\Administrator\Desktop\leap\dualeapa-sprint1-project\apps\order-and-sell-service\src\main\java\app\market
+  Status: SUCCESS - Copied 10 .java files
+
+Processing: business-backend/account
+  Source: C:\Users\Administrator\Desktop\leap\dualeapa-sprint1-project\apps\business-backend\src\main\java\app\account
+  Destination: C:\Users\Administrator\Desktop\leap\dualeapa-sprint1-project\apps\order-and-sell-service\src\main\java\app\account
+  Status: SUCCESS - Copied 3 .java files
+
+Processing: business-backend/holding
+  Source: C:\Users\Administrator\Desktop\leap\dualeapa-sprint1-project\apps\business-backend\src\main\java\app\holding
+  Destination: C:\Users\Administrator\Desktop\leap\dualeapa-sprint1-project\apps\order-and-sell-service\src\main\java\app\holding
+  Status: SUCCESS - Copied 2 .java files
+
+Processing: holdings-and-trade-service/auth
+  Source: C:\Users\Administrator\Desktop\leap\dualeapa-sprint1-project\apps\holdings-and-trade-service\src\main\java\app\auth
+  Destination: C:\Users\Administrator\Desktop\leap\dualeapa-sprint1-project\apps\order-and-sell-service\src\main\java\app\auth
+  Status: SUCCESS - Copied 12 .java files
+
+Processing: holdings-and-trade-service/market
+  Source: C:\Users\Administrator\Desktop\leap\dualeapa-sprint1-project\apps\holdings-and-trade-service\src\main\java\app\market
+  Destination: C:\Users\Administrator\Desktop\leap\dualeapa-sprint1-project\apps\order-and-sell-service\src\main\java\app\market
+  Status: SUCCESS - Copied 10 .java files
+
+=== SUMMARY ===
+Total .java files copied: 55
+End time: 09/21/2026 21:17:35

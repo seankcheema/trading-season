@@ -1,8 +1,12 @@
 # Trading Season
 
-Trading simulation monorepo with an Angular interface, a Spring Boot backend, and a NestJS authentication service. Reporting applications are placeholders.
+Trading simulation monorepo with an Angular interface, two Spring Boot microservices, and a NestJS authentication service. Reporting applications are placeholders.
 
-The Java application follows a Spring Boot source layout rooted at `apps/business-backend/src/main/java/app`, with the bootstrap class in `app.Main` and feature packages such as `app.auth`, `app.order`, `app.user`, `app.account`, and `app.instrument`.
+The Java backend is split into two independent microservices:
+- **Holdings and Trade Service** (`apps/holdings-and-trade-service/`) - Manages orders, validation, and holdings
+- **Order and Sell Service** (`apps/order-and-sell-service/`) - Provides user data, holdings queries, and order history
+
+Both services share a single PostgreSQL database and authentication via the NestJS auth service.
 
 ## Start locally on Windows
 
@@ -35,6 +39,7 @@ Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL
    .\scripts\start-local.ps1
    ```
 
+The launcher keeps all logs in one terminal and stops the other services if one exits. Open the UI at `http://localhost:4200`; auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`. See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
    The script starts UI, auth service, and Java backend in a single terminal, validates database connectivity and `.env` configuration. Press Ctrl+C to stop all services.
 
    Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001` and Java on `http://localhost:8081`.
@@ -158,9 +163,11 @@ See the [development guide](docs/guides/development.md) for additional commands,
 
 | Area | Responsibility | Local port |
 | --- | --- | --- |
-| [Business UI](apps/business-logic-ui/README.md) | Login, registration, and a dashboard with live simulated stock tickers | 4200 |
-| [Business backend](apps/business-backend/README.md) | Java registration/session login and public simulated stock data | 8081 |
+| [Business UI](apps/client-ui/README.md) | Login, registration, and a dashboard with live simulated stock tickers | 4200 |
+| [Holdings and Trade Service](apps/holdings-and-trade-service/README.md) | Order creation, validation, execution, and holdings management | 8081 |
+| [Order and Sell Service](apps/order-and-sell-service/README.md) | User profiles, holdings queries, and order history | 8082 |
 | [Auth service](apps/auth-service/README.md) | RS256 tokens, refresh tokens, auth database | 3001 |
+| [Business Database](apps/market-data/README.md) | Shared PostgreSQL database setup and migrations | — |
 | [Shared UI](packages/shared-ui-components/README.md) | Reusable Angular components | — |
 | [Reporting proposal](docs/reference/reporting.md) | Future analytics UI and service | — |
 | [Infrastructure](infrastructure/README.md) | Compose and Jenkins configuration | — |

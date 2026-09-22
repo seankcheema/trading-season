@@ -4,7 +4,9 @@ param()
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $authDirectory = Join-Path $repoRoot 'apps/auth-service'
-$backendDirectory = Join-Path $repoRoot 'apps/business-backend'
+$holdingsDirectory = Join-Path $repoRoot 'apps/holdings-and-trade-service'
+$orderDirectory = Join-Path $repoRoot 'apps/order-and-sell-service'
+$backendDirectory = Join-Path $repoRoot 'apps/market-data'
 $envFile = Join-Path $authDirectory '.env'
 
 function Get-RequiredCommand {
@@ -82,6 +84,7 @@ if ($LASTEXITCODE -ne 0) {
 Assert-PortAvailable -Port 3001
 Assert-PortAvailable -Port 4200
 Assert-PortAvailable -Port 8081
+Assert-PortAvailable -Port 8082
 
 $businessPassword = $env:SPRING_DATASOURCE_PASSWORD
 if ([string]::IsNullOrWhiteSpace($businessPassword)) {
@@ -145,8 +148,11 @@ try {
     $oldBusinessPassword = $env:SPRING_DATASOURCE_PASSWORD
     $env:SPRING_DATASOURCE_PASSWORD = $businessPassword
     try {
-        $processes += Start-LocalService -Name 'backend' -FilePath $maven `
-            -ArgumentList @('spring-boot:run') -WorkingDirectory $backendDirectory
+        $processes += Start-LocalService -Name 'holdings-and-trade' -FilePath $maven `
+            -ArgumentList @('spring-boot:run') -WorkingDirectory $holdingsDirectory
+
+        $processes += Start-LocalService -Name 'order-and-sell' -FilePath $maven `
+            -ArgumentList @('spring-boot:run') -WorkingDirectory $orderDirectory
     }
     finally {
         $env:SPRING_DATASOURCE_PASSWORD = $oldBusinessPassword
@@ -155,7 +161,7 @@ try {
     $processes += Start-LocalService -Name 'ui' -FilePath $npm `
         -ArgumentList @('--workspace', 'business-logic-ui', 'start') -WorkingDirectory $repoRoot
 
-    Write-Host 'Starting UI :4200, auth :3001, and Java :8081. Press Ctrl+C to stop all services.'
+    Write-Host 'Starting UI :4200, auth :3001, holdings-and-trade :8081, and order-and-sell :8082. Press Ctrl+C to stop all services.'
     while ($true) {
         foreach ($service in $processes) {
             Write-NewLogLines -Service $service

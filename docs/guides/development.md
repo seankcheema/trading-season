@@ -30,7 +30,8 @@ Compose validates JWT variables even when selecting database services, so provid
 | Working directory | Command | Port |
 | --- | --- | --- |
 | Repository root | npm --workspace business-logic-ui start | 4200 |
-| apps/business-backend | mvn spring-boot:run | 8081 |
+| apps/holdings-and-trade-service | mvn spring-boot:run | 8081 |
+| apps/order-and-sell-service | mvn spring-boot:run | 8082 |
 | apps/auth-service | npm run start:dev | 3001 |
 
 Do not use an unqualified Compose up for the full stack: its backend build context and port mapping are stale.
