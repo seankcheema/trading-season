@@ -68,17 +68,21 @@ pipeline {
                         echo "  Node.js not available, skipping npm setup"
                     fi
                 '''
-                dir('apps/market-data') {
-                    sh '''
-                        # Aggressive Maven cache cleanup to avoid dependency resolution issues
-                        echo " Clearing Maven cache..."
-                        rm -rf ~/.m2/repository/org/junit/platform ~/.m2/repository/org/apache/maven/plugins/maven-surefire-plugin
-                        rm -rf ~/.m2/repository/org/junit
-                        # Warm up Maven cache with fresh dependencies
-                        mvn -B dependency:resolve dependency:resolve-plugins -U
-                        echo "✓ Maven dependencies cached"
-                    '''
-                }
+                // apps/market-data holds only Python and SQL since the
+                // microservice split. The Java code lives in the two Spring Boot
+                // services below, so the cache is warmed from their poms.
+                sh '''
+                    set -eu
+                    # Aggressive Maven cache cleanup to avoid dependency resolution issues
+                    echo " Clearing Maven cache..."
+                    rm -rf ~/.m2/repository/org/junit/platform ~/.m2/repository/org/apache/maven/plugins/maven-surefire-plugin
+                    rm -rf ~/.m2/repository/org/junit
+                    # Warm up Maven cache with fresh dependencies
+                    for service in apps/holdings-and-trade-service apps/order-and-sell-service; do
+                        mvn -B -f "$service/pom.xml" dependency:resolve dependency:resolve-plugins -U
+                    done
+                    echo "✓ Maven dependencies cached"
+                '''
             }
         }
 
@@ -86,28 +90,6 @@ pipeline {
         // results from `post`. An earlier layout ran every suite inside one
         // stage, so the first failure skipped Archive and Publish and threw
         // away results from suites that had already passed.
-        stage('Market Data Tests') {
-            steps {
-                dir('apps/market-data') {
-                    sh '''
-                        echo " Running Market Data Tests..."
-                        mvn -B clean test
-                        echo "✓ Market data tests completed"
-                    '''
-                }
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'apps/market-data/target/surefire-reports/**/*, apps/market-data/target/site/jacoco/**/*',
-                                      allowEmptyArchive: true
-                    junit testResults: 'apps/market-data/target/surefire-reports/**/*.xml',
-                          allowEmptyResults: true,
-                          healthScaleFactor: 1.0
-                    echo "✓ Market data test results published"
-                }
-            }
-        }
-
         stage('Holdings and Trade Service Tests') {
             steps {
                 dir('apps/holdings-and-trade-service') {
