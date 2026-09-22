@@ -26,12 +26,50 @@ export interface RecordedResponse {
   body: string;
 }
 
+/** A position the business backend already holds in a seeded trading account. */
+export interface SeedHolding {
+  symbol: string;
+  quantity: number;
+  averageCost: number;
+}
+
+/** A trading account the business backend already holds for a seeded user. */
+export interface SeedTradingAccount {
+  name: string;
+  /** The account's portfolio. */
+  holdings?: SeedHolding[];
+}
+
 /** Credentials the stub already knows about when a test starts. */
 export interface SeedAccount {
   email: string;
   password: string;
   /** Whether the business-backend profile step also completed for this account. */
   hasProfile?: boolean;
+  /** Cash the user holds, shared by all of their trading accounts. Defaults to 5000. */
+  availableFunds?: number;
+  /** Trading accounts the business backend holds for this user. */
+  tradingAccounts?: SeedTradingAccount[];
+}
+
+/** Trading account as GET /api/me/accounts returns it. */
+export interface TradingAccount {
+  accountId: number;
+  name: string;
+  openedDate: string;
+}
+
+/** Cash transaction as GET /api/me/cash-transactions returns it. */
+export interface StoredCashTransaction {
+  cashTransactionId: number;
+  amount: number;
+  reason: 'DEPOSIT' | 'WITHDRAWAL';
+  createdAt: string;
+}
+
+interface OwnedTradingAccount extends TradingAccount {
+  ownerId: string;
+  holdings: SeedHolding[];
 }
 
 interface StoredAccount {
@@ -56,7 +94,15 @@ export interface StubOptions {
   accessTokenTtlSeconds?: number;
   /** Forces the business-backend profile step to fail with this status. */
   failProfileWith?: number;
+  /** Forces POST /api/me/accounts to fail with this status. */
+  failAccountCreationWith?: number;
 }
+
+const ACCOUNT_PATH = /\/api\/me\/accounts\/(\d+)$/;
+const HOLDINGS_PATH = /\/api\/accounts\/(\d+)\/holdings$/;
+const NAME_MAX_LENGTH = 60;
+const MAX_CASH_AMOUNT = 1_000_000;
+const DEFAULT_FUNDS = 5000;
 
 function base64url(value: string): string {
   return Buffer.from(value, 'utf8').toString('base64url');
@@ -119,17 +165,34 @@ export class ApiStub {
   private readonly pendingResponses: Promise<RecordedResponse>[] = [];
   private readonly accessTokenTtl: number;
   private readonly failProfileWith: number | null;
+  private readonly failAccountCreationWith: number | null;
+
+  // Business backend trading data. Account ids are sequential across users, as database keys
+  // are, so a test can aim a request at another user's id. Cash lives on each user's profile
+  // as availableFunds and is shared by all of that user's accounts.
+  private readonly tradingAccounts: OwnedTradingAccount[] = [];
+  private readonly cashTransactions = new Map<string, StoredCashTransaction[]>();
+  private nextId = 1;
 
   constructor(options: StubOptions = {}) {
     this.accessTokenTtl = options.accessTokenTtlSeconds ?? ACCESS_TOKEN_TTL;
     this.failProfileWith = options.failProfileWith ?? null;
+    this.failAccountCreationWith = options.failAccountCreationWith ?? null;
     for (const seed of options.accounts ?? []) {
-      this.accounts.set(seed.email.toLowerCase(), {
+      const account: StoredAccount = {
         id: randomUUID(),
         email: seed.email,
         passwordDigest: digest(seed.password),
-        profile: seed.hasProfile ? { email: seed.email } : null,
-      });
+        profile: seed.hasProfile
+          ? { email: seed.email, availableFunds: seed.availableFunds ?? DEFAULT_FUNDS }
+          : null,
+      };
+      this.accounts.set(seed.email.toLowerCase(), account);
+      for (const trading of seed.tradingAccounts ?? []) {
+        this.openTradingAccount(account.id, trading.name).holdings.push(
+          ...(trading.holdings ?? []),
+        );
+      }
     }
   }
 
@@ -166,6 +229,31 @@ export class ApiStub {
     await page.route('**/api/auth/account-exists', (route) => this.accountExists(route));
     await page.route('**/api/users/me', (route) => this.ownProfile(route));
     await page.route('**/api/market/**', (route) => this.market(route));
+    await page.route('**/api/me/accounts', (route) => this.meAccounts(route));
+    await page.route(ACCOUNT_PATH, (route) => this.renameAccount(route));
+    await page.route(
+      (url) => HOLDINGS_PATH.test(url.pathname),
+      (route) => this.accountHoldings(route),
+    );
+    await page.route('**/api/me/cash-transactions**', (route) => this.meCashTransactions(route));
+  }
+
+  /** Trading accounts the business backend holds for a user, oldest first. */
+  tradingAccountsOf(email: string): TradingAccount[] {
+    const ownerId = this.accounts.get(email.toLowerCase())?.id;
+    return this.tradingAccounts
+      .filter((account) => account.ownerId === ownerId)
+      .map(publicAccount);
+  }
+
+  /** A trading account's holdings, which make up its portfolio. */
+  holdingsOf(accountId: number): SeedHolding[] {
+    return this.tradingAccounts.find((account) => account.accountId === accountId)?.holdings ?? [];
+  }
+
+  /** A user's cash, shared by all of their trading accounts. */
+  fundsOf(email: string): number {
+    return Number(this.accounts.get(email.toLowerCase())?.profile?.['availableFunds'] ?? 0);
   }
 
   /** Every request whose URL or body contains the value, in wire order. */
@@ -358,6 +446,161 @@ export class ApiStub {
     });
   }
 
+  /** GET lists the caller's trading accounts; POST opens an empty one. */
+  private async meAccounts(route: Route): Promise<void> {
+    const ownerId = await this.caller(route);
+    if (!ownerId) {
+      return;
+    }
+    if (route.request().method() === 'GET') {
+      await this.json(route, 200, this.ownedAccounts(ownerId).map(publicAccount));
+      return;
+    }
+    if (this.failAccountCreationWith !== null) {
+      await this.json(route, this.failAccountCreationWith, { error: 'Account creation rejected' });
+      return;
+    }
+
+    const body = this.body(route);
+    // A new account holds nothing: there is no opening deposit or balance to send.
+    const unknown = Object.keys(body).filter((key) => key !== 'name');
+    if (unknown.length) {
+      await this.json(route, 400, { error: `Unrecognized field: ${unknown.join(', ')}` });
+      return;
+    }
+    const name = accountName(body);
+    if (!name) {
+      await this.json(route, 400, { error: 'name: must be 1 to 60 characters' });
+      return;
+    }
+    if (this.ownedAccounts(ownerId).some((account) => sameName(account.name, name))) {
+      await this.json(route, 409, { error: 'An account with this name already exists' });
+      return;
+    }
+    await this.json(route, 201, publicAccount(this.openTradingAccount(ownerId, name)));
+  }
+
+  /** PUT renames one of the caller's trading accounts. */
+  private async renameAccount(route: Route): Promise<void> {
+    const ownerId = await this.caller(route);
+    if (!ownerId) {
+      return;
+    }
+    const accountId = Number(ACCOUNT_PATH.exec(new URL(route.request().url()).pathname)?.[1]);
+    const account = this.ownedAccounts(ownerId).find(
+      (candidate) => candidate.accountId === accountId,
+    );
+    if (route.request().method() !== 'PUT' || !account) {
+      await this.json(route, 404, { error: 'Account not found' });
+      return;
+    }
+    const name = accountName(this.body(route));
+    if (!name) {
+      await this.json(route, 400, { error: 'name: must be 1 to 60 characters' });
+      return;
+    }
+    if (
+      this.ownedAccounts(ownerId).some(
+        (other) => other.accountId !== accountId && sameName(other.name, name),
+      )
+    ) {
+      await this.json(route, 409, { error: 'An account with this name already exists' });
+      return;
+    }
+    account.name = name;
+    await this.json(route, 200, publicAccount(account));
+  }
+
+  /** GET lists an owned account's holdings: its portfolio. */
+  private async accountHoldings(route: Route): Promise<void> {
+    const ownerId = await this.caller(route);
+    if (!ownerId) {
+      return;
+    }
+    const accountId = Number(HOLDINGS_PATH.exec(new URL(route.request().url()).pathname)?.[1]);
+    const account = this.ownedAccounts(ownerId).find(
+      (candidate) => candidate.accountId === accountId,
+    );
+    if (!account) {
+      await this.json(route, 404, { error: 'Account not found' });
+      return;
+    }
+    await this.json(route, 200, account.holdings);
+  }
+
+  /** GET lists the caller's cash transactions, newest first; POST deposits or withdraws. */
+  private async meCashTransactions(route: Route): Promise<void> {
+    const ownerId = await this.caller(route);
+    if (!ownerId) {
+      return;
+    }
+    const user = [...this.accounts.values()].find((candidate) => candidate.id === ownerId);
+    if (!user?.profile) {
+      await this.json(route, 404, { error: 'Account not found' });
+      return;
+    }
+    const ledger = this.cashTransactions.get(ownerId) ?? [];
+
+    if (route.request().method() === 'GET') {
+      const limit = Number(new URL(route.request().url()).searchParams.get('limit') ?? 50);
+      await this.json(route, 200, [...ledger].reverse().slice(0, limit));
+      return;
+    }
+
+    const body = this.body(route);
+    const amount = body['amount'];
+    const reason = body['reason'];
+    const funds = Number(user.profile['availableFunds'] ?? 0);
+    if (typeof amount !== 'number' || amount <= 0 || amount > MAX_CASH_AMOUNT) {
+      await this.json(route, 400, { error: 'amount: must be greater than 0' });
+      return;
+    }
+    if (reason !== 'DEPOSIT' && reason !== 'WITHDRAWAL') {
+      await this.json(route, 400, { error: 'reason: must be DEPOSIT or WITHDRAWAL' });
+      return;
+    }
+    if (reason === 'WITHDRAWAL' && amount > funds) {
+      await this.json(route, 422, { error: 'Insufficient funds' });
+      return;
+    }
+    const transaction: StoredCashTransaction = {
+      cashTransactionId: this.nextId++,
+      amount,
+      reason,
+      createdAt: new Date().toISOString(),
+    };
+    this.cashTransactions.set(ownerId, [...ledger, transaction]);
+    user.profile['availableFunds'] =
+      Math.round((funds + (reason === 'DEPOSIT' ? amount : -amount)) * 100) / 100;
+    await this.json(route, 201, transaction);
+  }
+
+  /** The token subject of an authenticated request, or null after answering it with 401. */
+  private async caller(route: Route): Promise<string | null> {
+    const authorization = route.request().headers()['authorization'];
+    if (!authorization || !authorization.startsWith('Bearer ')) {
+      await this.json(route, 401, { error: 'Missing access token' });
+      return null;
+    }
+    return String(decodeJwtPayload(authorization.slice('Bearer '.length))['sub']);
+  }
+
+  private ownedAccounts(ownerId: string): OwnedTradingAccount[] {
+    return this.tradingAccounts.filter((account) => account.ownerId === ownerId);
+  }
+
+  private openTradingAccount(ownerId: string, name: string): OwnedTradingAccount {
+    const account: OwnedTradingAccount = {
+      accountId: this.nextId++,
+      ownerId,
+      name,
+      openedDate: new Date().toISOString().slice(0, 10),
+      holdings: [],
+    };
+    this.tradingAccounts.push(account);
+    return account;
+  }
+
   private body(route: Route): Record<string, unknown> {
     return JSON.parse(route.request().postData() ?? '{}') as Record<string, unknown>;
   }
@@ -365,4 +608,18 @@ export class ApiStub {
   private async json(route: Route, status: number, body: unknown): Promise<void> {
     await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
   }
+}
+
+function publicAccount({ accountId, name, openedDate }: OwnedTradingAccount): TradingAccount {
+  return { accountId, name, openedDate };
+}
+
+function sameName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+/** The trimmed account name from a request body, or null when it is missing or too long. */
+function accountName(body: Record<string, unknown>): string | null {
+  const name = typeof body['name'] === 'string' ? body['name'].trim() : '';
+  return name && name.length <= NAME_MAX_LENGTH ? name : null;
 }

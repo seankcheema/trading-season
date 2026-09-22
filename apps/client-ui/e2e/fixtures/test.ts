@@ -1,6 +1,6 @@
 import { test as base } from '@playwright/test';
 import { ApiStub, type StubOptions } from './api-stub';
-import { LoginPage, RegisterPage } from './pages';
+import { DashboardPage, LoginPage, RegisterPage } from './pages';
 
 interface AuthFixtures {
   /**
@@ -12,6 +12,7 @@ interface AuthFixtures {
   api: ApiStub;
   loginPage: LoginPage;
   registerPage: RegisterPage;
+  dashboardPage: DashboardPage;
 }
 
 export const test = base.extend<AuthFixtures>({
@@ -34,6 +35,10 @@ export const test = base.extend<AuthFixtures>({
 
   registerPage: async ({ page }, use) => {
     await use(new RegisterPage(page));
+  },
+
+  dashboardPage: async ({ page }, use) => {
+    await use(new DashboardPage(page));
   },
 });
 

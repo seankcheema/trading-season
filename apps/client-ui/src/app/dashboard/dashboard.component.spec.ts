@@ -13,6 +13,50 @@ const CALENDAR = {
   tradingDates: ['2026-01-05', '2026-01-06'],
 };
 
+const ACCOUNTS = [
+  { accountId: 1, name: 'Personal Investing Account', openedDate: '2026-01-02' },
+  { accountId: 2, name: 'Retirement Account', openedDate: '2026-02-03' },
+];
+
+// Each account's portfolio is its holdings. Valued at MOCK_INSTRUMENTS prices, the first
+// is worth $6,430.38 and the second $1,296.40.
+const HOLDINGS: Record<number, unknown[]> = {
+  1: [
+    { symbol: 'AAPL', quantity: 4, averageCost: 280.1 },
+    { symbol: 'NVDA', quantity: 10, averageCost: 190.25 },
+    { symbol: 'MSFT', quantity: 2, averageCost: 455.0 },
+    { symbol: 'SPY', quantity: 3, averageCost: 610.5 },
+    { symbol: 'TSLA', quantity: 1, averageCost: 301.8 },
+  ],
+  2: [{ symbol: 'SPY', quantity: 2, averageCost: 600 }],
+};
+
+// The user's cash, shared by every account.
+const CASH = 10_000;
+
+// Answers the account, holdings and cash loads the dashboard starts with in the browser.
+function flushAccounts(
+  fixture: ComponentFixture<DashboardComponent>,
+  accounts: { accountId: number; name: string; openedDate: string }[] = ACCOUNTS,
+  {
+    holdings = HOLDINGS,
+    cash = CASH,
+    transactions = [] as unknown[],
+  }: { holdings?: Record<number, unknown[]>; cash?: number; transactions?: unknown[] } = {},
+): HttpTestingController {
+  const http = TestBed.inject(HttpTestingController);
+  http.expectOne('/api/me/accounts').flush(accounts);
+  for (const account of accounts) {
+    http
+      .expectOne(`/api/accounts/${account.accountId}/holdings`)
+      .flush(holdings[account.accountId] ?? []);
+  }
+  http.expectOne('/api/users/me').flush({ availableFunds: cash });
+  http.expectOne((request) => request.url === '/api/me/cash-transactions').flush(transactions);
+  fixture.detectChanges();
+  return http;
+}
+
 function dropdownDetails(fixture: ComponentFixture<DashboardComponent>, testId: string) {
   return fixture.nativeElement.querySelector(
     `[data-testid="${testId}"] details`,
@@ -163,6 +207,7 @@ describe('DashboardComponent', () => {
     const fixture = TestBed.createComponent(DashboardComponent);
     const component = fixture.componentInstance;
     fixture.detectChanges();
+    flushAccounts(fixture);
     openDropdown(fixture, 'account-dropdown');
 
     const accountDropdown = fixture.nativeElement.querySelector(
@@ -172,7 +217,7 @@ describe('DashboardComponent', () => {
     (accountButtons[1] as HTMLButtonElement).click();
     fixture.detectChanges();
 
-    expect(component['selectedAccountId']()).toBe('retirement');
+    expect(component['selectedAccountId']()).toBe(2);
     expect(component['openHeaderDropdown']()).toBeNull();
     expect(dropdownDetails(fixture, 'account-dropdown').open).toBe(false);
     expect(accountDropdown.textContent).toContain('Retirement Account');
@@ -240,6 +285,7 @@ describe('DashboardComponent', () => {
       stocks: [],
     });
     fixture.detectChanges();
+    flushAccounts(fixture);
 
     const accountDropdown = fixture.nativeElement.querySelector(
       '[data-testid="account-dropdown"]',
@@ -273,6 +319,7 @@ describe('DashboardComponent', () => {
   it('should render separate assets table columns for shares, prices, changes, and values', () => {
     const fixture = TestBed.createComponent(DashboardComponent);
     fixture.detectChanges();
+    flushAccounts(fixture);
 
     const table = fixture.nativeElement.querySelector('[data-testid="assets-table"]') as HTMLElement;
     const headers = Array.from(table.querySelectorAll('.dash-table-head span')).map((header) =>
@@ -314,7 +361,8 @@ describe('DashboardComponent', () => {
   it('should request one-day candle series for held assets when a market snapshot loads', () => {
     const fixture = TestBed.createComponent(DashboardComponent);
     const component = fixture.componentInstance;
-    const http = TestBed.inject(HttpTestingController);
+    fixture.detectChanges();
+    const http = flushAccounts(fixture);
     const stocks = MOCK_INSTRUMENTS.map((instrument) => ({
       symbol: instrument.symbol,
       companyName: instrument.name,
@@ -559,5 +607,269 @@ describe('DashboardComponent', () => {
     });
     expect('changedSymbols' in component).toBe(false);
     expect('flashDirections' in component).toBe(false);
+  });
+
+  describe('accounts, portfolios and cash', () => {
+    function render() {
+      const fixture = TestBed.createComponent(DashboardComponent);
+      fixture.detectChanges();
+      return fixture;
+    }
+
+    function element(fixture: ComponentFixture<DashboardComponent>) {
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    function text(node: Element | null | undefined) {
+      return node?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    }
+
+    function accountItems(fixture: ComponentFixture<DashboardComponent>) {
+      return Array.from(
+        element(fixture).querySelectorAll('[data-testid="account-dropdown"] [role="menuitemradio"]'),
+      ) as HTMLButtonElement[];
+    }
+
+    function button(fixture: ComponentFixture<DashboardComponent>, name: string) {
+      return Array.from(element(fixture).querySelectorAll('button')).find(
+        (candidate) => candidate.textContent?.trim() === name,
+      ) as HTMLButtonElement;
+    }
+
+    function assetSymbols(fixture: ComponentFixture<DashboardComponent>) {
+      return Array.from(
+        element(fixture).querySelectorAll('[data-testid="assets-table"] [data-testid^="asset-row-"]'),
+      ).map((row) => row.getAttribute('data-testid')?.replace('asset-row-', ''));
+    }
+
+    it('shows a loading label until the accounts arrive', () => {
+      const fixture = render();
+
+      expect(
+        element(fixture).querySelector('[data-testid="account-dropdown"]')?.textContent,
+      ).toContain('Loading accounts…');
+    });
+
+    it("lists only the signed-in user's accounts with each portfolio's value", () => {
+      const fixture = render();
+      flushAccounts(fixture);
+      openDropdown(fixture, 'account-dropdown');
+
+      const accounts = accountItems(fixture);
+
+      expect(accounts.map((item) => text(item))).toEqual([
+        'Personal Investing Account Portfolio $6,430.38',
+        'Retirement Account Portfolio $1,296.40',
+      ]);
+      expect(accounts[0].getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('has no separate portfolio picker: an account is its portfolio', () => {
+      const fixture = render();
+      flushAccounts(fixture);
+
+      expect(element(fixture).querySelector('[data-testid="portfolio-dropdown"]')).toBeNull();
+    });
+
+    it("counts the shared cash once plus every account's portfolio in net worth", () => {
+      const fixture = render();
+      flushAccounts(fixture);
+      const component = fixture.componentInstance;
+
+      expect(component['cashBalance']()).toBe(10_000);
+      expect(component['investedValue']()).toBeCloseTo(6_430.38 + 1_296.4, 2);
+      expect(component['netWorth']()).toBeCloseTo(10_000 + 6_430.38 + 1_296.4, 2);
+
+      // Switching accounts changes the portfolio shown, not the cash or net worth.
+      component['selectAccount'](2);
+      expect(component['portfolioValue']()).toBeCloseTo(1_296.4, 2);
+      expect(component['cashBalance']()).toBe(10_000);
+      expect(component['netWorth']()).toBeCloseTo(10_000 + 6_430.38 + 1_296.4, 2);
+    });
+
+    it("shows the selected account's holdings as its portfolio", () => {
+      const fixture = render();
+      flushAccounts(fixture);
+
+      expect(assetSymbols(fixture)).toEqual(['AAPL', 'NVDA', 'MSFT', 'SPY', 'TSLA']);
+      expect(text(element(fixture).querySelector('h2.dash-label'))).toBe('Net Worth');
+      expect(element(fixture).textContent).toContain('Portfolio Value · Personal Investing Account');
+
+      fixture.componentInstance['selectAccount'](2);
+      fixture.detectChanges();
+
+      expect(assetSymbols(fixture)).toEqual(['SPY']);
+      expect(fixture.componentInstance['positions']()).toEqual({ SPY: 2 });
+      expect(fixture.componentInstance['portfolioChangePercent']()).toBeCloseTo(8.0333, 3);
+    });
+
+    it('shows a new account as an empty portfolio', () => {
+      const fixture = render();
+      flushAccounts(fixture, [{ accountId: 3, name: 'Fresh', openedDate: '2026-09-21' }], {
+        holdings: {},
+      });
+
+      expect(assetSymbols(fixture)).toEqual([]);
+      expect(element(fixture).textContent).toContain('This account has no holdings yet.');
+      expect(fixture.componentInstance['portfolioValue']()).toBe(0);
+      expect(fixture.componentInstance['netWorth']()).toBe(CASH);
+    });
+
+    it('values a holding with no live price at its cost', () => {
+      const fixture = render();
+      flushAccounts(fixture, [ACCOUNTS[0]], {
+        holdings: { 1: [{ symbol: 'ZZZZ', quantity: 2, averageCost: 50 }] },
+      });
+
+      expect(fixture.componentInstance['portfolioValue']()).toBe(100);
+      expect(assetSymbols(fixture)).toEqual(['ZZZZ']);
+    });
+
+    it('ignores an attempt to select an account the user does not own', () => {
+      const fixture = render();
+      flushAccounts(fixture);
+      const component = fixture.componentInstance;
+
+      component['selectAccount'](999);
+
+      expect(component['selectedAccountId']()).toBe(1);
+    });
+
+    it('opens the new account dialog from the account dropdown', () => {
+      const fixture = render();
+      flushAccounts(fixture);
+      openDropdown(fixture, 'account-dropdown');
+
+      button(fixture, 'New account').click();
+      fixture.detectChanges();
+
+      expect(text(element(fixture).querySelector('[role="dialog"] h2'))).toBe('New account');
+      expect(fixture.componentInstance['openHeaderDropdown']()).toBeNull();
+    });
+
+    it('opens the rename dialog for an account from the account dropdown', () => {
+      const fixture = render();
+      flushAccounts(fixture);
+      openDropdown(fixture, 'account-dropdown');
+
+      (
+        element(fixture).querySelector('[aria-label="Rename Retirement Account"]') as HTMLButtonElement
+      ).click();
+      fixture.detectChanges();
+
+      expect(text(element(fixture).querySelector('[role="dialog"] h2'))).toBe('Rename account');
+      expect((element(fixture).querySelector('#accountName') as HTMLInputElement).value).toBe(
+        'Retirement Account',
+      );
+    });
+
+    it('refuses to rename an account the user does not own', () => {
+      const fixture = render();
+      flushAccounts(fixture);
+
+      fixture.componentInstance['openRenameAccount']({
+        accountId: 999,
+        name: 'Someone else',
+        openedDate: '2026-01-01',
+      });
+
+      expect(fixture.componentInstance['accountDialog']()).toBeNull();
+    });
+
+    it('opens the deposit and withdrawal dialogs from the net worth card', () => {
+      const fixture = render();
+      flushAccounts(fixture);
+
+      button(fixture, 'Deposit').click();
+      fixture.detectChanges();
+      expect(text(element(fixture).querySelector('[role="dialog"] h2'))).toBe('Deposit funds');
+
+      (element(fixture).querySelector('[aria-label="Close deposit"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(element(fixture).querySelector('app-cash-transaction-dialog')).toBeNull();
+
+      button(fixture, 'Withdraw').click();
+      fixture.detectChanges();
+      expect(text(element(fixture).querySelector('[role="dialog"] h2'))).toBe('Withdraw funds');
+    });
+
+    it('lets a user with no accounts manage cash and prompts them to create one', () => {
+      const fixture = render();
+      flushAccounts(fixture, []);
+      openDropdown(fixture, 'account-dropdown');
+
+      expect(fixture.componentInstance['accountLabel']()).toBe('No accounts');
+      expect(element(fixture).textContent).toContain("You don't have any accounts yet.");
+      expect(element(fixture).textContent).toContain('Create an account to start building a portfolio.');
+      expect(fixture.componentInstance['netWorth']()).toBe(CASH);
+      expect(button(fixture, 'Deposit').disabled).toBe(false);
+
+      button(fixture, 'Create an account').click();
+      fixture.detectChanges();
+      expect(element(fixture).querySelector('app-account-dialog')).not.toBeNull();
+    });
+
+    it('offers a retry when the accounts fail to load', () => {
+      const fixture = render();
+      const http = TestBed.inject(HttpTestingController);
+      http.expectOne('/api/users/me').flush({ availableFunds: CASH });
+      http.expectOne('/api/me/accounts').flush(null, { status: 500, statusText: 'Error' });
+      fixture.detectChanges();
+      openDropdown(fixture, 'account-dropdown');
+
+      expect(fixture.componentInstance['accountLabel']()).toBe('Accounts unavailable');
+      button(fixture, 'Try again').click();
+
+      flushAccounts(fixture);
+      expect(fixture.componentInstance['accountLabel']()).toBe('Personal Investing Account');
+    });
+
+    it('requests daily candles for holdings that arrive after the market snapshot', () => {
+      const fixture = render();
+      const http = TestBed.inject(HttpTestingController);
+      fixture.componentInstance['applySnapshot']({
+        sessionId: 2026001,
+        status: 'OPEN',
+        marketTimestamp: '2026-01-05T14:30:00Z',
+        serverTimestamp: '2026-01-05T14:30:00Z',
+        calendar: CALENDAR,
+        stocks: [],
+      });
+
+      flushAccounts(fixture, [ACCOUNTS[1]]);
+
+      expect(
+        http.match(
+          (request) =>
+            request.url === '/api/market/candles' && request.params.get('symbol') === 'SPY',
+        ),
+      ).toHaveLength(1);
+    });
+
+    it('lists cash transactions with the trades, newest first', () => {
+      const fixture = render();
+      flushAccounts(fixture, ACCOUNTS, {
+        transactions: [
+          { cashTransactionId: 7, amount: 250, reason: 'DEPOSIT', createdAt: '2026-09-20T15:00:00Z' },
+          {
+            cashTransactionId: 8,
+            amount: 40,
+            reason: 'WITHDRAWAL',
+            createdAt: '2026-09-01T15:00:00Z',
+          },
+        ],
+      });
+
+      const rows = Array.from(
+        element(fixture).querySelectorAll('[data-testid="recent-transactions"] li'),
+      ) as HTMLElement[];
+      const rowText = rows.map((row) => text(row));
+
+      expect(rows[0].dataset['kind']).toBe('cash');
+      expect(rowText[0]).toContain('deposit');
+      expect(rowText[0]).toContain('+$250.00');
+      expect(rows[1].dataset['kind']).toBe('trade');
+      expect(rowText.find((row) => row.includes('withdrawal'))).toContain('-$40.00');
+    });
   });
 });
