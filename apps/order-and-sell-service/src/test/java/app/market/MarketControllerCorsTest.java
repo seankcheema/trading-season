@@ -1,6 +1,6 @@
 package app.market;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,7 +36,7 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppC
 
 @SpringBootTest(properties = "market.replay.tick-millis=600000")
 @ActiveProfiles("test")
-@Import(MarketControllerCorsTest.TestConfig.class)
+@Import({MarketControllerCorsTest.TestConfig.class})
 class MarketControllerCorsTest {
     private static final String DASHBOARD_ORIGIN = "http://localhost:4200";
     private static final Instant MARKET_TIME = Instant.parse("2026-09-01T19:59:00Z");
@@ -156,3 +156,4 @@ class MarketControllerCorsTest {
         }
     }
 }
+

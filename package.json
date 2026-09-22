@@ -4,7 +4,7 @@
   "description": "trading season - Full-stack trading simulation platform",
   "private": true,
   "scripts": {
-    "install:all": "npm install && npm install --prefix apps/business-logic-ui && npm install --prefix apps/reporting-ui",
+    "install:all": "npm install && npm install --prefix apps/client-ui && npm install --prefix apps/reporting-ui",
     "dev": "turbo run dev",
     "build": "turbo run build",
     "test": "turbo run test",
@@ -12,7 +12,7 @@
     "clean": "turbo run clean && rm -rf node_modules apps/*/node_modules packages/*/node_modules"
   },
   "workspaces": [
-    "apps/business-logic-ui",
+    "apps/client-ui",
     "apps/reporting-ui",
     "packages/shared-ui-components",
     "packages/api-contracts"

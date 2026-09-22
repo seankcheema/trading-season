@@ -153,7 +153,7 @@ try {
     }
 
     $processes += Start-LocalService -Name 'ui' -FilePath $npm `
-        -ArgumentList @('--workspace', 'business-logic-ui', 'start') -WorkingDirectory $repoRoot
+        -ArgumentList @('--workspace', 'client-ui', 'start') -WorkingDirectory $repoRoot
 
     Write-Host 'Starting UI :4200, auth :3001, and Java :8081. Press Ctrl+C to stop all services.'
     while ($true) {
