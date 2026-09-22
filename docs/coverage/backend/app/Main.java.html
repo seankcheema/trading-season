@@ -2,12 +2,19 @@
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
+/** Starts the business API and enables scheduled market replay ticks. */
 @SpringBootApplication
-<span class="fc" id="L7">public class Main {</span>
+@EnableScheduling
+<span class="fc" id="L10">public class Main {</span>
+    /**
+     * Starts the Spring Boot application.
+     * @param args command-line arguments passed to Spring Boot
+     */
     public static void main(String[] args) {
-<span class="nc" id="L9">        SpringApplication.run(Main.class, args);</span>
-<span class="nc" id="L10">    }</span>
+<span class="nc" id="L16">        SpringApplication.run(Main.class, args);</span>
+<span class="nc" id="L17">    }</span>
 }
 
 

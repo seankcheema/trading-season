@@ -10,39 +10,29 @@ Both services share a single PostgreSQL database and authentication via the Nest
 
 ## Start locally on Windows
 
-Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL. The business database defaults to `127.0.0.1:5432`. The auth example uses `127.0.0.1:5433`, matching the host port published by Docker Compose, but the local launcher honors the valid localhost `DB_PORT` configured in the auth `.env`.
+Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL (or Docker Compose).
 
-1. Create the `trading_season`/`trading_season` and `auth_db`/`authuser` database/user pairs. Apply business migrations V001, V002, and V003 in order. Follow the [database setup](docs/reference/database.md#disposable-business-database-setup) for the SQL and migration commands.
-2. Install dependencies from the repository root:
+### Quick start with the startup script (requires local databases)
+
+1. Install dependencies from the repository root:
 
    ```powershell
    npm ci
    npm --prefix apps/auth-service ci
    ```
 
-3. Configure authentication:
+2. Configure authentication:
 
    ```powershell
    Copy-Item apps/auth-service/.env.example apps/auth-service/.env
+   cd apps/auth-service
+   node scripts/generate-dev-keys.mjs | Add-Content .env
+   cd ../..
    ```
 
-   In the copied `.env`, remove the placeholder `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, and `JWT_ISSUER` lines before generating the real development values. Keep the example's `DB_PORT=5433` when using the Compose auth database. If `auth_db` is instead on the same local PostgreSQL instance as the business database, set `DB_PORT=5432`. Set the password assigned to `authuser`, then run:
+3. Ensure both databases are running (`trading_season` on port 5432 and `auth_db` on port 5433 for Docker Compose, or 5432 for local PostgreSQL).
 
-   ```powershell
-   Push-Location apps/auth-service
-   node scripts/generate-dev-keys.mjs >> .env
-   Pop-Location
-   ```
-
-   To check registered users, connect pgAdmin's Query Tool to `auth_db` and run this query. It intentionally excludes password hashes:
-
-   ```sql
-   SELECT id, email, role, is_active, failed_attempts, locked_until, created_at
-   FROM users
-   ORDER BY created_at DESC;
-   ```
-
-4. Start the full stack. Set `SPRING_DATASOURCE_PASSWORD` first to avoid the secure prompt when the business database does not use the application default:
+4. Start all services with the startup script:
 
    ```powershell
    $env:SPRING_DATASOURCE_PASSWORD = 'password'
@@ -50,6 +40,124 @@ Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL
    ```
 
 The launcher keeps all logs in one terminal and stops the other services if one exits. Open the UI at `http://localhost:4200`; auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`. See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
+   The script starts UI, auth service, and Java backend in a single terminal, validates database connectivity and `.env` configuration. Press Ctrl+C to stop all services.
+
+   Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001` and Java on `http://localhost:8081`.
+
+### Manual setup with local PostgreSQL
+
+If you prefer to run PostgreSQL locally:
+
+#### 1. Create business database
+
+Connect to the default `postgres` database as your PostgreSQL admin user. In pgAdmin Query Tool or psql, run:
+
+```sql
+CREATE ROLE trading_season WITH LOGIN PASSWORD 'password';
+```
+
+```sql
+CREATE DATABASE trading_season OWNER trading_season;
+```
+
+Then apply the business schema. Connect to `trading_season` as the `trading_season` user and run these migration files in order:
+
+```powershell
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V001__Initial_schema.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V003__Token_authentication.sql
+```
+
+#### 2. Create auth database
+
+Connect to the default `postgres` database as your PostgreSQL admin user and run:
+
+```sql
+CREATE ROLE authuser WITH LOGIN PASSWORD 'password';
+```
+
+```sql
+CREATE DATABASE auth_db OWNER authuser;
+```
+
+Then connect to `auth_db` as the `authuser` user and grant schema privileges:
+
+```sql
+GRANT ALL PRIVILEGES ON SCHEMA public TO authuser;
+```
+
+#### 3. Configure auth service
+
+Copy and configure the auth `.env`:
+
+```powershell
+Copy-Item apps/auth-service/.env.example apps/auth-service/.env
+```
+
+Set `DB_PORT=5432` (since auth is on the same PostgreSQL instance), then generate the JWT keys:
+
+```powershell
+cd apps/auth-service
+node scripts/generate-dev-keys.mjs | Add-Content .env
+cd ../..
+```
+
+#### 4. Start applications
+
+Use the startup script as above, or start each application in its own terminal:
+
+```powershell
+npm ci
+npm --prefix apps/auth-service ci
+
+# Terminal 1: UI from repository root
+npm --workspace business-logic-ui start
+
+# Terminal 2: Java backend
+cd apps/business-backend
+mvn spring-boot:run
+
+# Terminal 3: Auth service (migrations run on startup)
+cd apps/auth-service
+npm run start:dev
+```
+
+### Docker Compose setup (alternative)
+
+If you prefer to use Docker Compose for databases:
+
+1. Install dependencies and configure authentication (steps 1-2 above).
+
+2. Start the databases:
+
+   ```powershell
+   docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml up -d db auth-db
+   ```
+
+   This creates:
+   - Business database (`trading_season`) on `localhost:5432`
+   - Auth database (`auth_db`) on `localhost:5433`
+
+   Auth migrations run automatically on auth-service startup. For the business database, follow the [database setup](docs/reference/database.md#disposable-business-database-setup) to apply migrations V001, V002, and V003 if needed.
+
+3. Start all services with the startup script:
+
+   ```powershell
+   $env:SPRING_DATASOURCE_PASSWORD = 'password'
+   .\scripts\start-local.ps1
+   ```
+
+### Verify auth database
+
+To check registered users, connect pgAdmin's Query Tool to `auth_db` and run:
+
+```sql
+SELECT id, email, role, is_active, failed_attempts, locked_until, created_at
+FROM users
+ORDER BY created_at DESC;
+```
+
+See the [development guide](docs/guides/development.md) for additional commands, tests, and troubleshooting.
 
 ## Service map
 

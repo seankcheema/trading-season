@@ -2,12 +2,16 @@ import { formatCurrency, formatDate } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
+  ElementRef,
   LOCALE_ID,
+  afterNextRender,
   booleanAttribute,
   computed,
   inject,
   input,
   signal,
+  viewChild,
 } from '@angular/core';
 import { PricePoint, Timeframe } from '../mock-data';
 import { SignedPercentPipe } from './signed-percent.pipe';
@@ -17,6 +21,12 @@ const HEIGHT = 40;
 const PADDING = 2;
 const MAX_TICKS = 6;
 const VALUE_TICKS = 5;
+// Blank space kept between neighbouring time labels, and the width one character of the
+// axis font takes. Measuring every label would cost a layout pass per render, so the width
+// is estimated; the estimate runs slightly wide so a near miss drops a label rather than
+// letting two collide.
+const LABEL_GAP = 10;
+const LABEL_CHAR_WIDTH = 6.6;
 
 let nextId = 0;
 
@@ -25,6 +35,16 @@ const AXIS_FORMATS: Record<Timeframe, string> = {
   '5D': 'EEE d',
   '1M': 'MMM d',
   '1Y': "MMM ''yy",
+};
+
+// Multiples of each timeframe's base slot that the axis may label, narrowest first. The
+// 1D axis is slotted in quarter hours, so it can run every 15m, 30m, 1h … 4h; the others
+// are slotted in whole days, and 1Y in whole months.
+const AXIS_STEPS: Record<Timeframe, number[]> = {
+  '1D': [1, 2, 4, 8, 12, 16],
+  '5D': [1, 2, 3],
+  '1M': [1, 2, 5, 7, 14],
+  '1Y': [1, 2, 3, 4, 6],
 };
 
 const TOOLTIP_FORMATS: Record<Timeframe, string> = {
@@ -40,8 +60,6 @@ interface AxisTick {
   svgX: number;
   label: string;
   transform: string;
-  // Hidden on narrow screens so labels don't collide.
-  minor: boolean;
 }
 
 interface ValueTick {
@@ -69,29 +87,28 @@ interface MarkerPoint {
   host: { class: 'flex flex-col' },
   template: `
     <div
-      class="relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_4.75rem] grid-rows-[minmax(0,1fr)_1rem] gap-x-3 gap-y-2"
+      class="relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_4.75rem] grid-rows-[1.25rem_minmax(0,1fr)_1rem] gap-x-3 gap-y-2"
     >
-      @if (tooltipPoint(); as point) {
-        <div
-          class="pointer-events-none absolute top-0 z-20"
-          [class]="hovered() ? '' : 'invisible'"
-          [style.left.%]="point.x"
-          [style.transform]="edgeTransform(point.x)"
-          aria-hidden="true"
-        >
+      <div class="relative min-w-0" aria-hidden="true">
+        @if (tooltipPoint(); as point) {
           <div
-            class="border-border bg-popover w-fit rounded-[5px] border px-2 py-0.5 leading-tight whitespace-nowrap shadow-lg"
+            class="price-hover-label pointer-events-none absolute top-0 whitespace-nowrap tabular-nums"
+            [class]="hovered() ? '' : 'invisible'"
+            [style.left.%]="point.x"
+            [style.transform]="edgeTransform(point.x)"
           >
-            <p class="text-sm font-semibold">{{ point.valueLabel }}</p>
-            <p class="text-muted-foreground text-[11px]">
-              <span [class]="point.changePercent >= 0 ? 'text-gain' : 'text-loss'">
-                {{ point.changePercent | signedPercent }}
-              </span>
-              · {{ point.timeLabel }}
-            </p>
+            <span class="text-[13px]/5 font-semibold">{{ point.valueLabel }}</span>
+            <span
+              class="text-[13px]/5"
+              [class]="point.changePercent >= 0 ? 'text-gain' : 'text-loss'"
+            >
+              {{ point.changePercent | signedPercent }}
+            </span>
+            <span class="text-muted-foreground text-[13px]/5">· {{ point.timeLabel }}</span>
           </div>
-        </div>
-      }
+        }
+      </div>
+      <div aria-hidden="true"></div>
 
       <div
         #plot
@@ -109,10 +126,6 @@ interface MarkerPoint {
           <div
             class="bg-foreground/40 pointer-events-none absolute inset-y-0 w-px"
             [style.left.%]="point.x"
-          ></div>
-          <div
-            class="bg-foreground/40 pointer-events-none absolute inset-x-0 h-px"
-            [style.top.%]="point.y"
           ></div>
         }
 
@@ -204,21 +217,12 @@ interface MarkerPoint {
             {{ tick.label }}
           </span>
         }
-        @if (hovered(); as point) {
-          <span
-            class="price-hover-marker bg-foreground text-background absolute right-0 -translate-y-1/2 rounded-[3px] px-1.5 py-0.5 text-[11px] font-medium shadow-sm"
-            [style.top.%]="point.y"
-          >
-            {{ point.valueLabel }}
-          </span>
-        }
       </div>
 
       <div class="text-muted-foreground relative h-4 text-xs" aria-hidden="true">
         @for (tick of ticks(); track tick.index) {
           <span
             class="absolute top-0 whitespace-nowrap"
-            [class]="tick.minor ? 'max-sm:hidden' : ''"
             [style.left.%]="tick.x"
             [style.transform]="tick.transform"
           >
@@ -244,6 +248,25 @@ export class PriceChartComponent {
   protected readonly HEIGHT = HEIGHT;
   protected readonly viewBox = `0 0 ${WIDTH} ${HEIGHT}`;
   protected readonly hoverIndex = signal<number | null>(null);
+
+  private readonly _plot = viewChild.required<ElementRef<HTMLElement>>('plot');
+  private readonly _plotWidth = signal(0);
+
+  constructor() {
+    const destroyRef = inject(DestroyRef);
+
+    afterNextRender(() => {
+      // Absent in the unit-test DOM; the axis then falls back to its unmeasured spacing.
+      if (typeof ResizeObserver === 'undefined') {
+        return;
+      }
+      const observer = new ResizeObserver(([entry]) =>
+        this._plotWidth.set(entry.contentRect.width),
+      );
+      observer.observe(this._plot().nativeElement);
+      destroyRef.onDestroy(() => observer.disconnect());
+    });
+  }
 
   protected readonly trendingUp = computed(() => {
     const values = this.points();
@@ -309,40 +332,61 @@ export class PriceChartComponent {
       : null;
   });
 
-  // What the tooltip row renders: the hovered point, or the latest one as an invisible
-  // placeholder that reserves the row's height.
+  // What the label row above the plot renders: the hovered point, or the latest one as an
+  // invisible placeholder so the row keeps a stable layout between hovers.
   protected readonly tooltipPoint = computed(
     () => this.hovered() ?? this.describePoint(this.points().length - 1),
   );
 
-  // Labels at the points where the axis label changes (e.g. each new day), thinned to fit.
+  // Labels on round boundaries of the timeframe — 8:00, 8:15, 8:30, or whole days and
+  // months — widened until they fit the chart's current width.
   protected readonly ticks = computed<AxisTick[]>(() => {
     const points = this.points();
-    const format = AXIS_FORMATS[this.timeframe()];
+    const timeframe = this.timeframe();
+    const format = AXIS_FORMATS[timeframe];
     const last = Math.max(points.length - 1, 1);
+    const slots = points.map((point) => this.slot(point.time, timeframe));
 
-    const candidates: { index: number; label: string }[] = [];
-    points.forEach((point, index) => {
-      const label = this.formatTime(point.time, format);
-      if (candidates[candidates.length - 1]?.label !== label) {
-        candidates.push({ index, label });
-      }
-    });
-
-    const stride = Math.ceil(candidates.length / MAX_TICKS);
-    return candidates
-      .filter((_, i) => i % stride === 0)
-      .map(({ index, label }, i) => {
+    const build = (step: number): AxisTick[] => {
+      const ticks: AxisTick[] = [];
+      let previous: number | null = null;
+      points.forEach((point, index) => {
+        const slot = Math.floor(slots[index] / step);
+        if (slot === previous) {
+          return;
+        }
+        previous = slot;
+        // The first point of each slot carries the label, so labels sit on the boundary
+        // itself rather than wherever the thinning happened to land.
         const x = (index / last) * 100;
-        return {
+        ticks.push({
           index,
-          label,
+          label: this.formatTime(point.time, format),
           x,
           svgX: (x / 100) * WIDTH,
           transform: this.edgeTransform(x),
-          minor: i % 2 === 1,
-        };
+        });
       });
+      return ticks;
+    };
+
+    const fits = (ticks: AxisTick[]) => ticks.length <= MAX_TICKS && !this.labelsCollide(ticks);
+
+    const steps = AXIS_STEPS[timeframe];
+    for (const step of steps) {
+      const ticks = build(step);
+      if (fits(ticks)) {
+        return ticks;
+      }
+      // A series rarely starts on a boundary: a session opening at 9:30 leaves an odd
+      // label crowding the 10:00 one. Drop it before widening the whole axis, which would
+      // cost every other label too.
+      const trimmed = ticks.slice(1);
+      if (trimmed.length > 1 && fits(trimmed)) {
+        return trimmed;
+      }
+    }
+    return build(steps[steps.length - 1]);
   });
 
   protected readonly yTicks = computed<ValueTick[]>(() => {
@@ -373,6 +417,44 @@ export class PriceChartComponent {
       `trending ${this.trendingUp() ? 'up' : 'down'}. Use arrow keys to inspect values.`
     );
   });
+
+  // The boundary a point falls on, counted from a fixed origin so that a step of N always
+  // lands on the same round times whatever the series happens to start at.
+  private slot(time: Date, timeframe: Timeframe): number {
+    const [year, month, day, hour, minute] = this.formatTime(time, 'yyyy-MM-dd-HH-mm')
+      .split('-')
+      .map(Number);
+    if (timeframe === '1D') {
+      return Math.floor((hour * 60 + minute) / 15);
+    }
+    if (timeframe === '1Y') {
+      return year * 12 + month - 1;
+    }
+    return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
+  }
+
+  // True when any label would touch, or come within LABEL_GAP of, the one before it.
+  // Before the first measurement — on the server, and in tests without layout — the width
+  // is 0 and every set is treated as fitting, leaving the axis at its full MAX_TICKS.
+  private labelsCollide(ticks: AxisTick[]): boolean {
+    const width = this._plotWidth();
+    if (!width) {
+      return false;
+    }
+    let previousRight = -Infinity;
+    for (const tick of ticks) {
+      const labelWidth = tick.label.length * LABEL_CHAR_WIDTH;
+      const center = (tick.x / 100) * width;
+      // Mirror the shift edgeTransform() applies, so each label is measured where it lands.
+      const left =
+        tick.x < 12 ? center : tick.x > 88 ? center - labelWidth : center - labelWidth / 2;
+      if (left < previousRight + LABEL_GAP) {
+        return true;
+      }
+      previousRight = left + labelWidth;
+    }
+    return false;
+  }
 
   // Keeps labels near the edges from spilling outside the chart.
   protected edgeTransform(x: number): string {

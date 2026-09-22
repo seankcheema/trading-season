@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
-import { Router, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { AUTH_ERROR_MESSAGES } from '../core/auth/auth-error';
 import { AuthService } from '../core/auth/auth.service';
@@ -82,5 +82,26 @@ describe('LoginComponent', () => {
     fixture.componentInstance['form'].controls.password.setValue('another-try1!');
 
     expect(fixture.componentInstance['errorMessage']()).toBeNull();
+  });
+
+  describe('after an inactivity sign-out', () => {
+    function renderWithQuery(params: Record<string, string>) {
+      TestBed.overrideProvider(ActivatedRoute, {
+        useValue: { snapshot: { queryParamMap: convertToParamMap(params) } },
+      });
+      const fixture = TestBed.createComponent(LoginComponent);
+      fixture.detectChanges();
+      return fixture.nativeElement.querySelector('[role="status"]') as HTMLElement | null;
+    }
+
+    it('explains why the user was signed out', () => {
+      expect(renderWithQuery({ reason: 'inactive' })?.textContent).toContain(
+        'signed out after a period of inactivity',
+      );
+    });
+
+    it('shows no notice on an ordinary visit', () => {
+      expect(renderWithQuery({})).toBeNull();
+    });
   });
 });
