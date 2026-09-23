@@ -101,34 +101,6 @@ pipeline {
             }
         }
 
-        stage('Start Services') {
-            steps {
-                sh '''
-                    set -eu
-                    echo "Starting application stack with Docker Compose..."
-                    export DB_PASSWORD=jenkins-test-password
-                    export AUTH_DB_PASSWORD=jenkins-auth-password
-                    docker compose -f infrastructure/docker-compose/docker-compose.jenkins.yml up -d --build
-                    echo "Waiting for services to be healthy..."
-                    # Wait for critical services
-                    until curl -sf http://localhost:3001/.well-known/jwks.json > /dev/null 2>&1; do
-                        echo "Waiting for auth-service..."
-                        sleep 2
-                    done
-                    until curl -sf http://localhost:8081/actuator/health > /dev/null 2>&1; do
-                        echo "Waiting for holdings-and-trade-service..."
-                        sleep 2
-                    done
-                    until curl -sf http://localhost:8082/actuator/health > /dev/null 2>&1; do
-                        echo "Waiting for order-and-sell-service..."
-                        sleep 2
-                    done
-                    echo "✓ All services are healthy"
-                    docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
-                '''
-            }
-        }
-
         stage('Setup Dependencies') {
             steps {
                 sh '''
@@ -417,16 +389,6 @@ pipeline {
     
     post {
         always {
-            script {
-                // Stop and clean up Docker Compose services started during the build
-                sh '''
-                    set +e
-                    echo "Stopping Docker Compose services..."
-                    docker compose -f infrastructure/docker-compose/docker-compose.jenkins.yml down 2>/dev/null || true
-                    echo "✓ Docker Compose services stopped"
-                    set -e
-                '''
-            }
             script {
                 def dockerStatus = sh(script: '''
                         echo "Running Docker services after the Jenkins build:"
