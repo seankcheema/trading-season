@@ -88,9 +88,9 @@ Install the required tools above before continuing. PostgreSQL can run locally o
    ```
 
 The launcher keeps all logs in one terminal and stops the other services if one exits. Open the UI at `http://localhost:4200`; auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`. See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
-   The script starts UI, auth service, and Java backend in a single terminal, validates database connectivity and `.env` configuration. Press Ctrl+C to stop all services.
+   The script starts the UI, auth service, and both Java services in a single terminal, validates database connectivity and `.env` configuration. Press Ctrl+C to stop all services.
 
-   Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001` and Java on `http://localhost:8081`.
+   Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001`; the Java services run on `http://localhost:8081` and `http://localhost:8082`.
 
 ### Manual setup with local PostgreSQL
 
@@ -111,9 +111,9 @@ CREATE DATABASE trading_season OWNER trading_season;
 Then apply the business schema. Connect to `trading_season` as the `trading_season` user and run these migration files in order:
 
 ```powershell
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V001__Initial_schema.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V003__Token_authentication.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initial_schema.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V003__Token_authentication.sql
 ```
 
 #### 2. Create auth database
@@ -161,11 +161,15 @@ npm --prefix apps/auth-service ci
 # Terminal 1: UI from repository root
 npm --workspace business-logic-ui start
 
-# Terminal 2: Java backend
-cd apps/business-backend
+# Terminal 2: Holdings and Trade Service
+cd apps/holdings-and-trade-service
 mvn spring-boot:run
 
-# Terminal 3: Auth service (migrations run on startup)
+# Terminal 3: Order and Sell Service
+cd apps/order-and-sell-service
+mvn spring-boot:run
+
+# Terminal 4: Auth service (migrations run on startup)
 cd apps/auth-service
 npm run start:dev
 ```

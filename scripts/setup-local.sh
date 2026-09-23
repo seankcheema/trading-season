@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 readonly MIN_FREE_KB=$((3 * 1024 * 1024))
-readonly EXPECTED_ARCHIVE="apps/business-backend/db/seeds/synthetic-market-data-2026-v1"
+readonly EXPECTED_ARCHIVE="apps/market-data/db/seeds/synthetic-market-data-2026-v1"
 
 database_mode="auto"
 parquet_source=""
@@ -344,9 +344,9 @@ validate_or_initialize_docker_business() {
     total="$(docker_compose exec -T db psql -U trading_season -d trading_season -Atqc "$business_total_query")"
     if [[ "$total" == 0 ]]; then
         for migration in \
-            apps/business-backend/db/migrations/V001__Initial_schema.sql \
-            apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql \
-            apps/business-backend/db/migrations/V003__Token_authentication.sql; do
+            apps/market-data/db/migrations/V001__Initial_schema.sql \
+            apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql \
+            apps/market-data/db/migrations/V003__Token_authentication.sql; do
             docker_compose exec -T db psql -v ON_ERROR_STOP=1 -U trading_season -d trading_season < "$migration" || \
                 fail "Business database initialization failed while applying $(basename "$migration")."
         done
@@ -449,14 +449,15 @@ start_service() {
 
 start_applications() {
     local port
-    for port in 3001 4200 8081; do
+    for port in 3001 4200 8081 8082; do
         port_in_use "$port" && fail "Application port $port is already in use. Stop the existing process or use the manual startup path."
     done
     log_dir="$(mktemp -d "${TMPDIR:-/tmp}/trading-season.XXXXXX")"
     start_service auth "$auth_dir" npm run start:dev
-    start_service backend "$repo_root/apps/business-backend" mvn spring-boot:run
+    start_service holdings-and-trade "$repo_root/apps/holdings-and-trade-service" mvn spring-boot:run
+    start_service order-and-sell "$repo_root/apps/order-and-sell-service" mvn spring-boot:run
     start_service ui "$repo_root" npm --workspace business-logic-ui start
-    done_stage 'Applications — starting UI :4200, auth :3001, and Java :8081. Press Ctrl+C to stop them.'
+    done_stage 'Applications — starting UI :4200, auth :3001, holdings-and-trade :8081, and order-and-sell :8082. Press Ctrl+C to stop them.'
 
     set +e
     wait -n "${service_pids[@]}"
