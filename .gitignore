@@ -12,7 +12,11 @@ node_modules/
 
 # Local/generated market-data archives
 apps/market-data/db/seeds/synthetic-market-data-2026-v1/
+apps/business-backend/db/seeds/synthetic-market-data-2026-v1/
 apps/market-data/db/.venv/
+*.parquet
+*.manifest.json
+apps/market-data/db/seeds/.ipynb_checkpoints/
 
 # macOS
 .DS_Store
@@ -33,6 +37,13 @@ __pycachee__/
 target/
 build/
 out/
+
+# Angular build cache and output
+.angular/
+dist/
+
+# TypeScript build artifacts
+*.tsbuildinfo
 
 # package Files
 *.jar
