@@ -58,7 +58,7 @@ The end-to-end stage installs the Playwright Chromium build with `npx playwright
 
 The optional [Jenkins image](../../infrastructure/docker/Dockerfile.jenkins) installs Node 24.x, which is compatible with Angular 21.2.x. The active pipeline still expects the native Jenkins NodeJS tool to provide the project-standard Node 24.8.0 runtime. The Jenkins Compose example also mounts the host Docker socket and contains development credentials. Review toolchains, credentials, and access before deployment; it is not a production-ready configuration.
 
-The pipeline prints `docker ps` near the start and in its final diagnostics. The initial check fails early when Jenkins cannot reach the daemon because later market-data and Playwright stages require Docker. The final check is read-only and protected so a diagnostic failure does not replace the build's original result.
+The pipeline prints `docker ps` near the start and in its final diagnostics. The initial check fails early when Jenkins cannot reach the daemon because later market-data and Playwright stages require Docker. After the final inspection, cleanup removes dangling Docker images and builder cache older than 24 hours. Inspection and cleanup failures are protected so they do not replace the build's original result.
 
 Javadoc generation is a required Java change check described in [development](development.md#javadocs); the current Jenkinsfile does not run or publish it automatically. Generate into the backend target directory, then refresh the checked-in docs/JAVA_DOCS copy after successful verification.
 

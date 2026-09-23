@@ -336,6 +336,10 @@ pipeline {
                     echo "Final Docker service inspection failed with status ${dockerStatus}; preserving the original build result."
                 }
             }
+            sh '''
+                docker image prune -f 2>/dev/null || true
+                docker builder prune -f --filter until=24h 2>/dev/null || true
+            '''
             // Optional: Remove Maven and npm cache to free disk space (comment out if not needed)
             // sh 'rm -rf ~/.m2/repository ~/.npm'
             echo "  Build workspace preserved for debugging. To save disk space, manually delete workspace or adjust retention policy."
