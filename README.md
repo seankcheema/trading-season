@@ -47,7 +47,7 @@ The script reports skipped valid stages as `[READY]`, completed stages as `[DONE
 To start all services with Docker Compose, run from the repository root:
 
 ```sh
-docker compose -f infrastructure/docker-compose/docker-compose.local.yml up
+docker compose -p trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml up
 ```
 
 Docker Compose will automatically:
