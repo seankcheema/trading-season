@@ -87,10 +87,10 @@ Install the required tools above before continuing. PostgreSQL can run locally o
    .\scripts\start-local.ps1
    ```
 
-The launcher keeps all logs in one terminal and stops the other services if one exits. Open the UI at `http://localhost:4200`; auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`. See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
+The launcher keeps all logs in one terminal and stops the other services if one exits. Open the UI at `http://localhost:4200`; auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`. The business database runs on port `5432` (default). See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
    The script starts the UI, auth service, and both Java services in a single terminal, validates database connectivity and `.env` configuration. Press Ctrl+C to stop all services.
 
-   Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001`; the Java services run on `http://localhost:8081` and `http://localhost:8082`.
+   Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001`; the Java services run on `http://localhost:8081` and `http://localhost:8082`. The business database runs on port `5432` (default).
 
 ### Manual setup with local PostgreSQL
 
