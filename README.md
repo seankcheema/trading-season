@@ -46,7 +46,7 @@ The script reports skipped valid stages as `[READY]`, completed stages as `[DONE
 
 Install the following development tools:
 
-- Node.js `24.8.0` and npm `11.16.0`
+- Node.js `24.x` (24.8.0 or later) and npm `11.16.0`
 - JDK `21` and Maven `3.9+`
 - PostgreSQL `16` (recommended)
 - Python `3.12` (recommended for the market-data scripts)

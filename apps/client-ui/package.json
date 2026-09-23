@@ -14,7 +14,7 @@
   "private": true,
   "packageManager": "npm@11.16.0",
   "engines": {
-    "node": "24.8.0",
+    "node": "^24.8.0",
     "npm": "11.16.0"
   },
   "dependencies": {

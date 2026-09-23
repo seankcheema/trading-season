@@ -29,7 +29,7 @@
     "monorepo"
   ],
   "engines": {
-    "node": "24.8.0",
+    "node": "^24.8.0",
     "npm": "11.16.0"
   },
   "repository": {
@@ -40,6 +40,14 @@
   "license": "MIT",
   "packageManager": "npm@11.16.0",
   "overrides": {
-    "vite": "8.1.5"
+    "vite": "8.1.5",
+    "smol-toml": "^1.7.1"
+  },
+  "allowScripts": {
+    "@parcel/watcher@2.6.0": true,
+    "esbuild@0.28.1": true,
+    "lmdb@3.5.1": true,
+    "msgpackr-extract@3.0.4": true,
+    "nx@23.2.1": true
   }
 }
