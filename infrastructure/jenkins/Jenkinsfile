@@ -360,6 +360,9 @@ pipeline {
                 }
             }
             sh '''
+                set +e
+                docker compose --project-name trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml down 2>/dev/null || true
+                set -e
                 docker image prune -f 2>/dev/null || true
                 docker builder prune -f --filter until=24h 2>/dev/null || true
             '''
