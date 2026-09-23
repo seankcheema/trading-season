@@ -1,450 +1,221 @@
 # Trading Season
 
-Trading simulation monorepo containing:
+Trading simulation monorepo with an Angular interface, two Spring Boot microservices, and a NestJS authentication service. Reporting applications are placeholders.
 
-* **Angular** frontend
-* **Spring Boot** business backend
-* **NestJS** authentication service
-* Placeholder reporting applications
+The Java backend is split into two independent microservices:
+- **Holdings and Trade Service** (`apps/holdings-and-trade-service/`) - Manages orders, validation, and holdings
+- **Order and Sell Service** (`apps/order-and-sell-service/`) - Provides user data, holdings queries, and order history
 
-The Java application follows a Spring Boot source layout rooted at:
+Both services share a single PostgreSQL database and authentication via the NestJS auth service.
 
-`apps/business-backend/src/main/java/app`
+## Start all services
 
-The bootstrap class is `app.Main`.
+### Windows
 
----
+With the local databases configured, set the Spring database password and run the Windows launcher from the repository root:
+
+```powershell
+$env:SPRING_DATASOURCE_PASSWORD = 'password'
+.\scripts\start-local.ps1
+```
+
+### Linux VM
+
+The Linux setup script validates the toolchain, installs project dependencies, configures the selected database mode, and starts the applications:
+
+```sh
+./scripts/setup-local.sh
+```
+
+Use a local or Docker-managed PostgreSQL instance explicitly when needed:
+
+```sh
+./scripts/setup-local.sh --database-mode local
+./scripts/setup-local.sh --database-mode docker
+```
+
+To stage an existing market-data archive during setup:
+
+```sh
+./scripts/setup-local.sh --parquet-source /path/to/synthetic-market-data-2026-v1
+```
+
+The script reports skipped valid stages as `[READY]`, completed stages as `[DONE]`, and failures as `[FAIL]`. Press `Ctrl+C` to stop the applications. PostgreSQL data and Docker database containers are preserved.
 
 ## Requirements
 
-| Dependency     |            Version | Purpose                            |
-| -------------- | -----------------: | ---------------------------------- |
-| Node.js        |           `24.8.0` | Angular, NestJS, and build tooling |
-| npm            |          `11.16.0` | Node package manager               |
-| Angular        |          `21.2.22` | Frontend framework                 |
-| Angular CDK    |          `21.2.14` | Angular component utilities        |
-| TypeScript     |   `>=5.9.0 <6.0.0` | Angular compilation                |
-| JDK            |               `21` | Spring Boot runtime                |
-| Maven          |             `3.9+` | Java build system                  |
-| Spring Boot    |            `4.1.1` | Business backend                   |
-| NestJS         |          `12.0.1+` | Authentication service             |
-| Python         | `3.12` recommended | Market-data scripts                |
-| PostgreSQL     |   `16` recommended | Application databases              |
-| Docker Compose |              `v2+` | Local database orchestration       |
+Install the following development tools:
 
-### Version Notes
+- Node.js `24.8.0` and npm `11.16.0`
+- JDK `21` and Maven `3.9+`
+- PostgreSQL `16` (recommended)
+- Python `3.12` (recommended for the market-data scripts)
+- Docker Compose `v2+` when using Docker-managed databases
 
-* Node.js is standardized on **`24.8.0`**.
-* Angular is standardized on **`21.2.22`**.
-* Angular framework and CLI packages should remain on **`21.2.22`**.
-* Angular CDK is pinned separately to **`21.2.14`**.
-* TypeScript must remain within **`>=5.9.0 <6.0.0`**.
+The Angular frontend uses Angular `21.2.23`, Angular CLI and build tooling `21.2.24`, Angular CDK `21.2.14`, and TypeScript `>=5.9.0 <6.0.0`. Keep the Angular framework packages on `21.2.23`, the CLI, build tooling, and SSR packages on `21.2.24`, and the CDK package on `21.2.14`.
 
-### Verify Toolchain
+The Java services use Spring Boot `4.1.1`. The authentication service uses NestJS `12.0.1+`.
 
-| Tool    | Command                  | Expected  |
-| ------- | ------------------------ | --------- |
-| Node.js | `node --version`         | `v24.8.0` |
-| npm     | `npm --version`          | `11.16.0` |
-| Java    | `java -version`          | JDK `21`  |
-| Maven   | `mvn --version`          | `3.9+`    |
-| Python  | `python --version`       | `3.10+`   |
-| Docker  | `docker --version`       | Installed |
-| Compose | `docker compose version` | `v2+`     |
+## Start locally on Windows
 
----
+Install the required tools above before continuing. PostgreSQL can run locally or through Docker Compose.
 
-# Linux Setup
+### Quick start with the startup script (requires local databases)
 
-Install:
+1. Install dependencies from the repository root:
 
-* Git
-* Bash
-* Node.js `24.8.0`
-* npm `11.16.0`
-* JDK `21`
-* Maven `3.9+`
-* PostgreSQL client tools
+   ```powershell
+   npm ci
+   npm --prefix apps/auth-service ci
+   ```
 
-Docker is only required when using Docker database mode.
+2. Configure authentication:
 
----
+   ```powershell
+   Copy-Item apps/auth-service/.env.example apps/auth-service/.env
+   cd apps/auth-service
+   node scripts/generate-dev-keys.mjs | Add-Content .env
+   cd ../..
+   ```
 
-## Start Setup
+3. Ensure both databases are running (`trading_season` on port 5432 and `auth_db` on port 5433 for Docker Compose, or 5432 for local PostgreSQL).
 
-| Action                | Command                                           |
-| --------------------- | ------------------------------------------------- |
-| Automatic setup       | `./scripts/setup-local.sh`                        |
-| Use local PostgreSQL  | `./scripts/setup-local.sh --database-mode local`  |
-| Use Docker PostgreSQL | `./scripts/setup-local.sh --database-mode docker` |
+4. Start all services with the startup script:
 
-### Existing Market Data
+   ```powershell
+   $env:SPRING_DATASOURCE_PASSWORD = 'password'
+   .\scripts\start-local.ps1
+   ```
 
-| Action                    | Command                                                                            |
-| ------------------------- | ---------------------------------------------------------------------------------- |
-| Load existing market data | `./scripts/setup-local.sh --parquet-source /path/to/synthetic-market-data-2026-v1` |
+The launcher keeps all logs in one terminal and stops the other services if one exits. Open the UI at `http://localhost:4200`; auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`. See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
+   The script starts UI, auth service, and Java backend in a single terminal, validates database connectivity and `.env` configuration. Press Ctrl+C to stop all services.
 
-Setup status:
+   Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001` and Java on `http://localhost:8081`.
 
-| Status    | Meaning                     |
-| --------- | --------------------------- |
-| `[READY]` | Valid stage was skipped     |
-| `[DONE]`  | Stage completed             |
-| `[FAIL]`  | Setup stopped with an error |
+### Manual setup with local PostgreSQL
 
-Press `Ctrl+C` to stop running applications.
+If you prefer to run PostgreSQL locally:
 
-PostgreSQL data and Docker database containers are preserved.
+#### 1. Create business database
 
----
-
-# Linux Toolchain Troubleshooting
-
-## Install NVM
-
-| Action       | Command                                                                            |
-| ------------ | ---------------------------------------------------------------------------------- |
-| Install NVM  | `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh \| bash` |
-| Reload shell | `source ~/.bashrc`                                                                 |
-| Verify NVM   | `nvm --version`                                                                    |
-
----
-
-## Install Node.js 24.8.0
-
-| Action                    | Command                    |
-| ------------------------- | -------------------------- |
-| Install                   | `nvm install 24.8.0`       |
-| Activate                  | `nvm use 24.8.0`           |
-| Set default               | `nvm alias default 24.8.0` |
-| Verify Node               | `node --version`           |
-| Verify active NVM version | `nvm current`              |
-
----
-
-## Install npm 11.16.0
-
-| Action      | Command                      |
-| ----------- | ---------------------------- |
-| Install npm | `npm install -g npm@11.16.0` |
-| Verify      | `npm --version`              |
-
----
-
-## Install Maven 3.9.11
-
-Run:
-
-```sh
-cd /tmp
-
-curl -fLO https://archive.apache.org/dist/maven/maven-3/3.9.11/binaries/apache-maven-3.9.11-bin.tar.gz
-
-sudo tar -xzf apache-maven-3.9.11-bin.tar.gz -C /opt
-
-sudo ln -sfn /opt/apache-maven-3.9.11 /opt/maven
-
-echo 'export M2_HOME=/opt/maven' >> ~/.bashrc
-echo 'export PATH=$M2_HOME/bin:$PATH' >> ~/.bashrc
-
-source ~/.bashrc
-
-mvn -version
-```
-
-Return to the repository:
-
-| Action                       | Command                    |
-| ---------------------------- | -------------------------- |
-| Return to previous directory | `cd -`                     |
-| Run setup again              | `./scripts/setup-local.sh` |
-
----
-
-# Windows Setup
-
-Install:
-
-* Node.js `24.8.0`
-* npm `11.16.0`
-* JDK `21`
-* Maven `3.9+`
-* PostgreSQL
-
----
-
-## Start All Services
-
-Set the Spring database password:
-
-| Action                | Command                                        |
-| --------------------- | ---------------------------------------------- |
-| Set database password | `$env:SPRING_DATASOURCE_PASSWORD = 'password'` |
-
-Start the project:
-
-| Action             | Command                     |
-| ------------------ | --------------------------- |
-| Start all services | `.\scripts\start-local.ps1` |
-
-The startup script validates:
-
-* Database connectivity
-* Authentication configuration
-* Environment variables
-* Required services
-
-Press `Ctrl+C` to stop all services.
-
----
-
-## Local Services
-
-| Service      | URL                     |
-| ------------ | ----------------------- |
-| Angular UI   | `http://localhost:4200` |
-| Auth Service | `http://localhost:3001` |
-| Java Backend | `http://localhost:8081` |
-
----
-
-# First-Time Setup
-
-## 1. Install Dependencies
-
-| Workspace      | Command                             |
-| -------------- | ----------------------------------- |
-| Root workspace | `npm ci`                            |
-| Auth service   | `npm --prefix apps/auth-service ci` |
-
----
-
-## 2. Configure Authentication
-
-Copy the environment file:
-
-| Action        | Command                                                           |
-| ------------- | ----------------------------------------------------------------- |
-| Create `.env` | `Copy-Item apps/auth-service/.env.example apps/auth-service/.env` |
-
-Remove the placeholder JWT values:
-
-```powershell
-(Get-Content apps/auth-service/.env) |
-  Where-Object { $_ -notmatch '^JWT_(PRIVATE_KEY|PUBLIC_KEY|ISSUER)=' } |
-  Set-Content apps/auth-service/.env
-```
-
-Generate development JWT keys:
-
-```powershell
-cd apps/auth-service
-
-node scripts/generate-dev-keys.mjs | Add-Content .env
-
-cd ../..
-```
-
----
-
-## 3. Configure PostgreSQL
-
-Complete the business database and authentication database setup below.
-
----
-
-# Manual PostgreSQL Setup
-
-## Business Database
-
-Connect to the default PostgreSQL database using an administrator account.
-
-### Create Role
+Connect to the default `postgres` database as your PostgreSQL admin user. In pgAdmin Query Tool or psql, run:
 
 ```sql
-CREATE ROLE trading_season
-WITH LOGIN PASSWORD 'password';
+CREATE ROLE trading_season WITH LOGIN PASSWORD 'password';
 ```
-
-### Create Database
 
 ```sql
-CREATE DATABASE trading_season
-OWNER trading_season;
+CREATE DATABASE trading_season OWNER trading_season;
 ```
 
-### Run Business Migrations
-
-Run the migrations in order:
+Then apply the business schema. Connect to `trading_season` as the `trading_season` user and run these migration files in order:
 
 ```powershell
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V001__Initial_schema.sql
-
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
-
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V003__Token_authentication.sql
 ```
 
----
+#### 2. Create auth database
 
-## Authentication Database
-
-### Create Role
+Connect to the default `postgres` database as your PostgreSQL admin user and run:
 
 ```sql
-CREATE ROLE authuser
-WITH LOGIN PASSWORD 'password';
+CREATE ROLE authuser WITH LOGIN PASSWORD 'password';
 ```
-
-### Create Database
 
 ```sql
-CREATE DATABASE auth_db
-OWNER authuser;
+CREATE DATABASE auth_db OWNER authuser;
 ```
 
-### Grant Schema Access
-
-Connect to `auth_db` as `authuser`:
+Then connect to `auth_db` as the `authuser` user and grant schema privileges:
 
 ```sql
-GRANT ALL PRIVILEGES
-ON SCHEMA public
-TO authuser;
+GRANT ALL PRIVILEGES ON SCHEMA public TO authuser;
 ```
 
----
+#### 3. Configure auth service
 
-# Configure Auth Service
-
-Copy the environment file:
-
-| Action        | Command                                                           |
-| ------------- | ----------------------------------------------------------------- |
-| Create `.env` | `Copy-Item apps/auth-service/.env.example apps/auth-service/.env` |
-
-Set:
-
-```text
-DB_PORT=5432
-DB_PASSWORD=password
-```
-
-Remove the placeholder JWT values:
+Copy and configure the auth `.env`:
 
 ```powershell
-(Get-Content apps/auth-service/.env) |
-  Where-Object { $_ -notmatch '^JWT_(PRIVATE_KEY|PUBLIC_KEY|ISSUER)=' } |
-  Set-Content apps/auth-service/.env
+Copy-Item apps/auth-service/.env.example apps/auth-service/.env
 ```
 
-Generate JWT keys:
+Set `DB_PORT=5432` (since auth is on the same PostgreSQL instance), then generate the JWT keys:
 
 ```powershell
 cd apps/auth-service
-
 node scripts/generate-dev-keys.mjs | Add-Content .env
-
 cd ../..
 ```
 
----
+#### 4. Start applications
 
-# Start Applications Manually
+Use the startup script as above, or start each application in its own terminal:
 
-## Angular UI
+```powershell
+npm ci
+npm --prefix apps/auth-service ci
 
-| Action               | Command                                   |
-| -------------------- | ----------------------------------------- |
-| Install dependencies | `npm ci`                                  |
-| Start frontend       | `npm --workspace business-logic-ui start` |
+# Terminal 1: UI from repository root
+npm --workspace business-logic-ui start
 
----
+# Terminal 2: Java backend
+cd apps/business-backend
+mvn spring-boot:run
 
-## Java Backend
+# Terminal 3: Auth service (migrations run on startup)
+cd apps/auth-service
+npm run start:dev
+```
 
-| Action        | Command                    |
-| ------------- | -------------------------- |
-| Open backend  | `cd apps/business-backend` |
-| Start backend | `mvn spring-boot:run`      |
+### Verify auth database
 
----
-
-## Authentication Service
-
-| Action            | Command                |
-| ----------------- | ---------------------- |
-| Open auth service | `cd apps/auth-service` |
-| Start service     | `npm run start:dev`    |
-
-Database migrations run when the authentication service starts.
-
----
-
-# Verify Authentication Database
-
-Connect to `auth_db` and run:
+To check registered users, connect pgAdmin's Query Tool to `auth_db` and run:
 
 ```sql
-SELECT
-    id,
-    email,
-    role,
-    is_active,
-    failed_attempts,
-    locked_until,
-    created_at
+SELECT id, email, role, is_active, failed_attempts, locked_until, created_at
 FROM users
 ORDER BY created_at DESC;
 ```
 
----
+See the [development guide](docs/guides/development.md) for additional commands, tests, and troubleshooting.
 
-# Service Map
+## Service map
 
-| Area                                                 | Responsibility                                          |   Port |
-| ---------------------------------------------------- | ------------------------------------------------------- | -----: |
-| [Business UI](apps/business-logic-ui/README.md)      | Login, registration, dashboard, simulated stock tickers | `4200` |
-| [Business Backend](apps/business-backend/README.md)  | Registration, sessions, and simulated stock data        | `8081` |
-| [Auth Service](apps/auth-service/README.md)          | RS256 JWTs, refresh tokens, authentication DB           | `3001` |
-| [Shared UI](packages/shared-ui-components/README.md) | Reusable Angular components                             |      — |
-| [Reporting](docs/reference/reporting.md)             | Future analytics UI and service                         |      — |
-| [Infrastructure](infrastructure/README.md)           | Docker Compose and Jenkins configuration                |      — |
+| Area | Responsibility | Local port |
+| --- | --- | --- |
+| [Business UI](apps/client-ui/README.md) | Login, registration, and a dashboard with live simulated stock tickers | 4200 |
+| [Holdings and Trade Service](apps/holdings-and-trade-service/README.md) | Order creation, validation, execution, and holdings management | 8081 |
+| [Order and Sell Service](apps/order-and-sell-service/README.md) | User profiles, holdings queries, and order history | 8082 |
+| [Auth service](apps/auth-service/README.md) | RS256 tokens, refresh tokens, auth database | 3001 |
+| [Business Database](apps/market-data/README.md) | Shared PostgreSQL database setup and migrations | — |
+| [Shared UI](packages/shared-ui-components/README.md) | Reusable Angular components | — |
+| [Reporting proposal](docs/reference/reporting.md) | Future analytics UI and service | — |
+| [Infrastructure](infrastructure/README.md) | Compose and Jenkins configuration | — |
 
----
+## Documentation
 
-# Documentation
+Browse the [documentation index](docs/README.md) to choose a guide or reference.
 
-| Document                                       | Description                                        |
-| ---------------------------------------------- | -------------------------------------------------- |
-| [Documentation Index](docs/README.md)          | Full documentation index                           |
-| [Development](docs/guides/development.md)      | Setup, commands, tests, and development workflow   |
-| [Architecture](docs/reference/architecture.md) | Application boundaries and source navigation       |
-| [API Reference](docs/reference/api.md)         | Implemented HTTP contracts                         |
-| [Database](docs/reference/database.md)         | Schema ownership, migrations, and ERD              |
-| [Operations](docs/guides/operations.md)        | CI, deployment, configuration, and troubleshooting |
-| [Agent Instructions](AGENTS.md)                | Repository rules and completion checks             |
-| [Javadocs](docs/JAVA_DOCS/index.html)          | Generated Java API documentation                   |
+- [Development](docs/guides/development.md): setup, commands, tests, contribution workflow.
+- [Architecture](docs/reference/architecture.md): boundaries, source navigation, current limitations.
+- [API reference](docs/reference/api.md): implemented HTTP contracts.
+- [Database](docs/reference/database.md): schema ownership, migrations, and ERD.
+- [Operations](docs/guides/operations.md): configuration, CI, deployment limitations, troubleshooting.
+- [Agent instructions](AGENTS.md): repository rules and completion checks.
 
----
+[Javadocs](docs/JAVA_DOCS/index.html) are kept in the repository and generated from Java source; the generation and update requirements are in the development guide.
 
-# Business Database ERD
+# Business database ERD
 
-The following diagram represents the business SQL schema after:
+Canonical relationship diagram for the business SQL schema after V001, V002 and V003. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
 
-* `V001`
-* `V002`
-* `V003`
-
-The SQL migration files remain the source of truth for exact columns and constraints.
-
-`instruments.simulated_stock_symbol` optionally links an instrument to a simulated stock.
-
-Market data belongs to both a simulation session and a stock.
+The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change.
 
 ```mermaid
 erDiagram
-
     users ||--o{ accounts : owns
 
     stocks o|--o| instruments : "optionally powers"
@@ -463,16 +234,13 @@ erDiagram
 
     accounts ||--o{ holdings : has
     instruments ||--o{ holdings : held_as
-
     accounts ||--o{ orders : submits
     instruments ||--o{ orders : targets
 
     orders ||--o| fills : executes_as
     orders ||--o{ audit_trail : records
-
     accounts ||--o{ cash_transactions : posts
     fills o|--o| cash_transactions : creates
-
     accounts ||--o{ holding_movements : posts
     instruments ||--o{ holding_movements : changes
     fills ||--o| holding_movements : creates
@@ -483,7 +251,6 @@ erDiagram
         TEXT user_role
         TEXT account_status
     }
-
     simulation_sessions {
         BIGINT id PK
         INTEGER seed
@@ -496,7 +263,6 @@ erDiagram
         TIMESTAMPTZ started_at
         TIMESTAMPTZ ended_at
     }
-
     stocks {
         VARCHAR symbol PK
         TEXT company_name
@@ -504,7 +270,6 @@ erDiagram
         BIGINT average_volume
         NUMERIC base_volatility
     }
-
     instruments {
         INTEGER instrument_id PK
         TEXT ticker UK
@@ -512,14 +277,12 @@ erDiagram
         TEXT market
         VARCHAR simulated_stock_symbol FK
     }
-
     accounts {
         INTEGER account_id PK
         UUID user_id FK
         NUMERIC cash_balance
         TEXT currency
     }
-
     market_states {
         BIGINT id PK
         BIGINT session_id FK
@@ -529,7 +292,6 @@ erDiagram
         NUMERIC liquidity
         NUMERIC momentum
     }
-
     market_behaviors {
         BIGINT id PK
         BIGINT session_id FK
@@ -539,7 +301,6 @@ erDiagram
         NUMERIC duration_seconds
         NUMERIC strength
     }
-
     quotes {
         BIGINT id PK
         BIGINT session_id FK
@@ -548,7 +309,6 @@ erDiagram
         NUMERIC bid
         NUMERIC ask
     }
-
     market_ticks {
         BIGINT id PK
         BIGINT session_id FK
@@ -557,7 +317,6 @@ erDiagram
         NUMERIC price
         BIGINT sequence_number
     }
-
     candles {
         BIGINT id PK
         BIGINT session_id FK
@@ -570,14 +329,12 @@ erDiagram
         NUMERIC close
         BIGINT volume
     }
-
     holdings {
         INTEGER holding_id PK
         INTEGER account_id FK
         INTEGER instrument_id FK
         NUMERIC quantity
     }
-
     orders {
         INTEGER order_id PK
         INTEGER account_id FK
@@ -587,14 +344,12 @@ erDiagram
         TEXT status
         NUMERIC quantity
     }
-
     fills {
         INTEGER fill_id PK
         INTEGER order_id FK
         NUMERIC quote_price
         NUMERIC quantity
     }
-
     cash_transactions {
         INTEGER cash_transaction_id PK
         INTEGER account_id FK
@@ -602,7 +357,6 @@ erDiagram
         NUMERIC amount
         TEXT reason
     }
-
     holding_movements {
         INTEGER holding_movement_id PK
         INTEGER account_id FK
@@ -610,7 +364,6 @@ erDiagram
         INTEGER fill_id FK
         NUMERIC quantity_delta
     }
-
     audit_trail {
         INTEGER audit_id PK
         INTEGER order_id FK

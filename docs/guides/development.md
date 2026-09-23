@@ -2,7 +2,7 @@
 
 ## Toolchain and installation
 
-Use Node.js 24.8.0 (exactly), npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. The Angular framework and CLI packages are pinned to 21.2.22, with Angular CDK pinned to its independently published 21.2.14 release. Angular 21.2.x supports Node ^24.0.0; this repository still standardizes on Node 24.8.0 and TypeScript >=5.9.0 <6.0.0. Check exact dependency requirements in [root package.json](../../package.json), the [UI manifest](../../apps/business-logic-ui/package.json), and the [Java POM](../../apps/business-backend/pom.xml).
+Use Node.js 24.8.0 (exactly), npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. The Angular framework packages are pinned to 21.2.23, Angular CLI, build tooling, and SSR are pinned to 21.2.24, and Angular CDK is pinned to its independently published 21.2.14 release. Angular 21.2.x supports Node ^24.0.0; this repository still standardizes on Node 24.8.0 and TypeScript >=5.9.0 <6.0.0. Check exact dependency requirements in [root package.json](../../package.json), the [UI manifest](../../apps/business-logic-ui/package.json), and the [Java POM](../../apps/business-backend/pom.xml).
 
 From repository root:
 
