@@ -211,24 +211,35 @@
         -->
         <section
           aria-label="Market ticker"
-          class = "dash-card flex h-11 shrink-0 items-center gap-1 p-1.5"          
+          class="dash-card flex h-11 shrink-0 items-center gap-1 p-1.5"
         >
-          @for (instrument of tickerInstruments(); track instrument.symbol) {
-            <button
-              type="button"
-              class="hover:bg-muted flex h-full shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-sm whitespace-nowrap transition-colors duration-200 motion-reduce:transition-none"
-              (click)="openOrder(instrument)"
-            >
-              <span class="text-muted-foreground">{{ instrument.symbol }}</span>
-              <span class="font-medium tabular-nums">{{ instrument.price.toFixed(2) }}</span>
-              <span
-                class="text-xs tabular-nums"
-                [class]="instrument.changePercent >= 0 ? 'text-gain' : 'text-loss'"
+          <div class="flex h-full min-w-0 flex-1 flex-wrap justify-between gap-y-2 overflow-hidden">
+            @for (instrument of tickerInstruments(); track instrument.symbol) {
+              <button
+                type="button"
+                class="hover:bg-muted flex h-full shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-sm whitespace-nowrap transition-colors duration-200 motion-reduce:transition-none"
+                (click)="openOrder(instrument)"
               >
-                {{ instrument.changePercent | signedPercent }}
-              </span>
-            </button>
-          }
+                <span class="text-muted-foreground">{{ instrument.symbol }}</span>
+                <span class="font-medium tabular-nums">{{ instrument.price.toFixed(2) }}</span>
+                <span
+                  class="text-xs tabular-nums"
+                  [class]="instrument.changePercent >= 0 ? 'text-gain' : 'text-loss'"
+                >
+                  {{ instrument.changePercent | signedPercent }}
+                </span>
+              </button>
+            }
+          </div>
+          <a
+            routerLink="/market"
+            class="hover:bg-muted text-muted-foreground hover:text-foreground flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors"
+            aria-label="Open full-screen market data"
+            title="Full-screen market data"
+            data-testid="market-fullscreen-link"
+          >
+            <ng-icon name="lucideMaximize" class="text-[16px]" />
+          </a>
         </section>
 
         <section class="dash-card flex min-h-64 flex-col p-5 lg:min-h-0 lg:flex-[2]">
