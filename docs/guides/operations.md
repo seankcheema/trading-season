@@ -15,11 +15,18 @@ In local Compose, DB_PASSWORD configures the business database and AUTH_DB_PASSW
 
 ## Local operation
 
-Follow [development setup](development.md) for key generation and database startup. From repository root:
+Follow [development setup](development.md) for the storage-aware Linux bootstrap, key generation, and database startup. The bootstrap never prunes Docker resources or deletes volumes. From repository root, manual Docker inspection remains available:
 
 ```sh
 docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml ps
 docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml logs --tail 100 db auth-db
+```
+
+For databases created by `scripts/setup-local.sh`, add `--project-name trading-season-local` to these inspection commands. Stop them without removing data with:
+
+```sh
+docker compose --project-name trading-season-local --env-file apps/auth-service/.env \
+  -f infrastructure/docker-compose/docker-compose.local.yml stop db auth-db
 ```
 
 The Java backend service in local Compose still uses build context '.' relative to the Compose directory and maps 8081, while the app defaults to 8080. Run Java through Maven until that configuration is corrected. The UI has no active Compose service. No production Compose file or Kubernetes deployment is supplied.
@@ -29,6 +36,8 @@ Auth GET /health reports process liveness, not database readiness. Check startup
 Ordinary Compose startup neither initializes nor seeds. `db_data` remains the PostgreSQL store and `market_data_archive` caches generated files across container recreation. Run the `initialize` profile only for first-time disposable setup. Thereafter the opt-in `seed` profile waits for database readiness and runs numbered steps 0002 through 0004 without destructive initialization.
 
 Because the seed container cannot inspect free space inside the separate PostgreSQL volume, set `MARKET_DATA_AVAILABLE_DISK_GB` to the volume's available capacity before starting the `seed` profile. The default `parquet` mode retains raw ticks in the archive volume and imports only candles into PostgreSQL. The importer commits and checkpoints one month at a time; a rerun verifies and skips completed months. Set tick storage to `postgres` only for an intentional high-capacity deployment.
+
+The Linux bootstrap uses the Compose project name `trading-season-local`, keeping its service identities and named volumes separate from the optional Jenkins Compose project. It keeps at least 3 GiB free on filesystems it changes and rechecks capacity after dependency installation, archive copy, and Docker startup. This reserve permits copying an existing archive when it fits; it is not permission to regenerate a full archive, whose staging copy needs additional capacity.
 
 ## CI and artifacts
 
@@ -41,13 +50,15 @@ The Jenkins pipeline expects a native agent with Docker, the Maven tool named Ma
 | UI | apps/business-logic-ui/coverage |
 | End-to-end | apps/business-logic-ui/reports/playwright |
 
-Auth CI runs npm ci then npm run test:ci. Frontend CI currently uses npm install --legacy-peer-deps followed by npm test -- --no-watch --coverage. This differs from the preferred root npm ci developer installation. Do not silently treat an absent test tool or empty required report as success.
+Auth CI runs npm ci then npm run test:ci. Frontend CI uses the root workspace npm ci installation followed by npm test -- --no-watch --coverage from the UI workspace. Do not silently treat an absent test tool or empty required report as success.
 
 Every tier fails its own stage below 50% coverage; the mechanisms are listed under [coverage floors](development.md#coverage-floors). A stage that passes has already cleared the floor, so the archived reports are for inspection, not for a manual check.
 
 The end-to-end stage installs the Playwright Chromium build with `npx playwright install chromium`, deliberately without `--with-deps`, which shells out to sudo apt-get that the jenkins user cannot run. If the agent lacks the shared libraries headless Chromium needs, Playwright fails and names them. Playwright then builds the UI and serves it on port 4200 through the Angular SSR server, and stubs the API tier at the network boundary, so the stage needs no database, no auth service, and no Java backend. Because it builds, the stage is the only one that also proves the production build works; expect it to take longer than the unit stages.
 
-The optional [Jenkins image](../../infrastructure/docker/Dockerfile.jenkins) installs Node 20, which does not meet the current Angular engine requirement. The Jenkins Compose example also mounts the host Docker socket and contains development credentials. Review toolchains, credentials, and access before deployment; it is not a production-ready configuration.
+The optional [Jenkins image](../../infrastructure/docker/Dockerfile.jenkins) installs Node 24.x, which is compatible with Angular 21.2.x. The active pipeline still expects the native Jenkins NodeJS tool to provide the project-standard Node 24.8.0 runtime. The Jenkins Compose example also mounts the host Docker socket and contains development credentials. Review toolchains, credentials, and access before deployment; it is not a production-ready configuration.
+
+The pipeline prints `docker ps` near the start and in its final diagnostics. The initial check fails early when Jenkins cannot reach the daemon because later market-data and Playwright stages require Docker. After the final inspection, cleanup removes dangling Docker images and builder cache older than 24 hours. Inspection and cleanup failures are protected so they do not replace the build's original result.
 
 Javadoc generation is a required Java change check described in [development](development.md#javadocs); the current Jenkinsfile does not run or publish it automatically. Generate into the backend target directory, then refresh the checked-in docs/JAVA_DOCS copy after successful verification.
 
@@ -58,6 +69,6 @@ Javadoc generation is a required Java change check described in [development](de
 - Auth startup fails on keys: generate an RSA pair, replace placeholder values, and preserve literal backslash-n escapes. Run from the auth directory so .env loads.
 - JWT verification fails: check the signing/public key pair and expiry. The Java backend returns 401 when the JWKS at AUTH_JWK_SET_URI is unreachable, the signature does not match, the token has expired, iss differs from AUTH_JWT_ISSUER, or sub is not a UUID. Java caches the key set for five minutes and refetches early when a token carries an unknown kid; the auth service derives kid from the public key, so a key rotation is picked up on the first token signed with the new key. The auth service's own Passport strategy does not enforce issuer/audience; do not assume it does.
 - Logout appears successful but refresh still works: see the documented [API limitation](../reference/api.md#current-logout-limitation).
-- Jenkins fails before tests: verify the configured Java/Maven paths and Node version on the actual agent, not just the optional image.
+- Jenkins fails before tests: verify the configured Java/Maven paths and Node version (24.8.0 exactly, compatible with Angular 21.2.x) on the actual agent, not just the optional image.
 - Synthetic market-data CI derives Docker resource names from a normalized hash of the Jenkins build tag, so encoded multibranch names such as `%2F` do not need special handling. The stage creates and removes build-scoped database and archive volumes; do not pre-seed PostgreSQL or generate a persistent archive on the Jenkins VM.
 - UI renders but login does not reach an API: form submission is not yet wired to a service. See [architecture](../reference/architecture.md).

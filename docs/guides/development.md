@@ -2,7 +2,7 @@
 
 ## Toolchain and installation
 
-Use Node.js 22.22.3+ on the 22.x line, npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. Check exact dependency requirements in [root package.json](../../package.json), the [UI manifest](../../apps/business-logic-ui/package.json), and the [Java POM](../../apps/business-backend/pom.xml).
+Use Node.js 24.8.0 (exactly), npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. The Angular framework packages are pinned to 21.2.23, Angular CLI, build tooling, and SSR are pinned to 21.2.24, and Angular CDK is pinned to its independently published 21.2.14 release. Angular 21.2.x supports Node ^24.0.0; this repository still standardizes on Node 24.8.0 and TypeScript >=5.9.0 <6.0.0. Check exact dependency requirements in [root package.json](../../package.json), the [UI manifest](../../apps/business-logic-ui/package.json), and the [Java POM](../../apps/business-backend/pom.xml).
 
 From repository root:
 
@@ -14,6 +14,20 @@ npm --prefix apps/auth-service ci
 The auth service has its own lockfile and is not a root workspace. Reporting has no runnable application yet. Avoid the root install:all helper, which targets the placeholder reporting UI.
 
 ## Run locally
+
+### Automated Linux VM setup
+
+From the repository root, `./scripts/setup-local.sh` validates the toolchain, maintains a 3 GiB free-space reserve, prepares missing dependencies and auth keys, selects databases, and supervises the three applications in one terminal. It reports verified stages as `[READY]`, completed work as `[DONE]`, and actionable failures as `[FAIL]`.
+
+The default `--database-mode auto` prefers verified local PostgreSQL databases. Use `--database-mode local` to prohibit Docker or `--database-mode docker` to require Docker Engine and Compose v2. Docker mode starts only `db` and `auth-db`, validates both schemas, and applies V001 through V003 only when the business schema is proven empty. Local and Docker database storage are separate and are never synchronized automatically.
+
+If Compose v2 is already installed as the standalone `docker-compose` command, the bootstrap creates the current user's Docker CLI plugin directory and symlinks that binary so `docker compose` works. An existing plugin entry is never overwritten, and the bootstrap does not download Compose.
+
+The script validates an archive already at `apps/business-backend/db/seeds/synthetic-market-data-2026-v1`. Use `--parquet-source PATH` to stage, checksum, and copy an existing archive when enough space remains. It never downloads, generates, imports, or regenerates market data. Use the [database guide](../reference/database.md#optional-synthetic-market-data-generation-and-import) for those explicit operations.
+
+The Windows and fully manual paths below remain supported.
+
+### Manual and Windows setup
 
 1. Follow the [auth setup](../../apps/auth-service/README.md) to create a local environment file and RSA keys.
 2. Start only the databases from repository root:
@@ -104,7 +118,7 @@ Update the authoritative guide when its contract changes; do not add implementat
 
 ## Troubleshooting
 
-- Node engine errors: check node --version against the installed Angular package engines; a generic Node 22 installation can be too old.
+- Node engine errors: check `node --version` is exactly 24.8.0; Angular 21.2.x supports Node 24.x, but this project intentionally enforces 24.8.0.
 - Missing workspace imports: run npm ci at repository root and check shared package exports.
 - Unknown ng test option: use --no-watch, not --run.
 - Database connection or key failures: use the [operations checklist](operations.md) and [auth environment instructions](../../apps/auth-service/README.md).

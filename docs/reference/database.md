@@ -111,6 +111,20 @@ Changing a table's owner also transfers its indexes and owned sequences.
 
 ### Optional synthetic market data generation and import
 
+On Linux, check the actual free space on the filesystem containing PostgreSQL data before importing and pass that value to `--available-disk-gb`. The storage-aware setup script deliberately does not start an import. For example, when PostgreSQL data and the repository use the root filesystem:
+
+```sh
+free_disk_gb="$(df -Pk / | awk 'NR == 2 { print $4 / 1048576 }')"
+python3 -m venv apps/business-backend/db/.venv
+apps/business-backend/db/.venv/bin/python -m pip install -r apps/business-backend/db/scripts/requirements.txt
+apps/business-backend/db/.venv/bin/python apps/business-backend/db/scripts/0004-import-synthetic-market-data.py \
+  --tick-storage parquet \
+  --available-disk-gb "$free_disk_gb" \
+  --database-url postgresql://trading_season:password@localhost:5432/trading_season
+```
+
+Do not inflate the reported value or run this command until the archive has been copied and validated. The importer performs an additional capacity check before each pending month.
+
 The generated `2026-v1` archive is stored locally in `apps/business-backend/db/seeds/synthetic-market-data-2026-v1` and is not committed to Git. A full archive contains 61,074,000 one-second ticks and 1,017,900 tick-derived one-minute candles.
 
 Run the complete routine workflow from the repository root with one command. It creates the virtual environment if needed, installs dependencies, generates or reuses the archive, carries the completed validation forward to the importer, and displays progress while loading PostgreSQL:

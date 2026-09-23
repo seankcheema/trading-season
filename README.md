@@ -8,9 +8,57 @@ The Java backend is split into two independent microservices:
 
 Both services share a single PostgreSQL database and authentication via the NestJS auth service.
 
+## Start all services
+
+### Windows
+
+With the local databases configured, set the Spring database password and run the Windows launcher from the repository root:
+
+```powershell
+$env:SPRING_DATASOURCE_PASSWORD = 'password'
+.\scripts\start-local.ps1
+```
+
+### Linux VM
+
+The Linux setup script validates the toolchain, installs project dependencies, configures the selected database mode, and starts the applications:
+
+```sh
+./scripts/setup-local.sh
+```
+
+Use a local or Docker-managed PostgreSQL instance explicitly when needed:
+
+```sh
+./scripts/setup-local.sh --database-mode local
+./scripts/setup-local.sh --database-mode docker
+```
+
+To stage an existing market-data archive during setup:
+
+```sh
+./scripts/setup-local.sh --parquet-source /path/to/synthetic-market-data-2026-v1
+```
+
+The script reports skipped valid stages as `[READY]`, completed stages as `[DONE]`, and failures as `[FAIL]`. Press `Ctrl+C` to stop the applications. PostgreSQL data and Docker database containers are preserved.
+
+## Requirements
+
+Install the following development tools:
+
+- Node.js `24.8.0` and npm `11.16.0`
+- JDK `21` and Maven `3.9+`
+- PostgreSQL `16` (recommended)
+- Python `3.12` (recommended for the market-data scripts)
+- Docker Compose `v2+` when using Docker-managed databases
+
+The Angular frontend uses Angular `21.2.23`, Angular CLI and build tooling `21.2.24`, Angular CDK `21.2.14`, and TypeScript `>=5.9.0 <6.0.0`. Keep the Angular framework packages on `21.2.23`, the CLI, build tooling, and SSR packages on `21.2.24`, and the CDK package on `21.2.14`.
+
+The Java services use Spring Boot `4.1.1`. The authentication service uses NestJS `12.0.1+`.
+
 ## Start locally on Windows
 
-Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL (or Docker Compose).
+Install the required tools above before continuing. PostgreSQL can run locally or through Docker Compose.
 
 ### Quick start with the startup script (requires local databases)
 
@@ -121,31 +169,6 @@ mvn spring-boot:run
 cd apps/auth-service
 npm run start:dev
 ```
-
-### Docker Compose setup (alternative)
-
-If you prefer to use Docker Compose for databases:
-
-1. Install dependencies and configure authentication (steps 1-2 above).
-
-2. Start the databases:
-
-   ```powershell
-   docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml up -d db auth-db
-   ```
-
-   This creates:
-   - Business database (`trading_season`) on `localhost:5432`
-   - Auth database (`auth_db`) on `localhost:5433`
-
-   Auth migrations run automatically on auth-service startup. For the business database, follow the [database setup](docs/reference/database.md#disposable-business-database-setup) to apply migrations V001, V002, and V003 if needed.
-
-3. Start all services with the startup script:
-
-   ```powershell
-   $env:SPRING_DATASOURCE_PASSWORD = 'password'
-   .\scripts\start-local.ps1
-   ```
 
 ### Verify auth database
 

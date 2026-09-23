@@ -6,6 +6,10 @@
   "private": true,
   "license": "UNLICENSED",
   "type": "module",
+  "engines": {
+    "node": "24.8.0",
+    "npm": "11.16.0"
+  },
   "scripts": {
     "build": "nest build",
     "deploy": "nest deploy",
@@ -63,5 +67,8 @@
     "typescript": "^6.0.2",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^4.1.2"
+  },
+  "allowScripts": {
+    "bcrypt@6.0.0": true
   }
 }

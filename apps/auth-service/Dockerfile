@@ -1,7 +1,7 @@
 # ── Stage 1: Build ─────────────────────────────────────────────────────────────
 # Full Node image: the build needs devDependencies (TypeScript, the Nest CLI)
 # that the runtime image must not carry.
-FROM node:22-alpine AS build
+FROM node:24.8.0-alpine AS build
 
 WORKDIR /app
 
@@ -21,7 +21,7 @@ RUN npm run build
 # Fresh base image. The devDependencies, TypeScript sources and build cache from
 # Stage 1 are NOT copied here — they never exist in the final image, which is
 # why the multi-stage result is significantly smaller.
-FROM node:22-alpine
+FROM node:24.8.0-alpine
 
 WORKDIR /app
 

@@ -29,8 +29,8 @@
     "monorepo"
   ],
   "engines": {
-    "node": ">=22.0.0",
-    "npm": ">=10.0.0"
+    "node": "24.8.0",
+    "npm": "11.16.0"
   },
   "repository": {
     "type": "git",
