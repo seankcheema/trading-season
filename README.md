@@ -19,9 +19,9 @@ $env:SPRING_DATASOURCE_PASSWORD = 'password'
 .\scripts\start-local.ps1
 ```
 
-### Linux VM
+### Linux with automated setup script
 
-The Linux setup script validates the toolchain, installs project dependencies, configures the selected database mode, and starts the applications:
+The Linux setup script validates the toolchain, installs project dependencies, configures databases via Docker Compose, and starts all applications:
 
 ```sh
 ./scripts/setup-local.sh
@@ -41,6 +41,47 @@ To stage an existing market-data archive during setup:
 ```
 
 The script reports skipped valid stages as `[READY]`, completed stages as `[DONE]`, and failures as `[FAIL]`. Press `Ctrl+C` to stop the applications. PostgreSQL data and Docker database containers are preserved.
+
+### Linux with Docker Compose (automated)
+
+To start all services with Docker Compose, run from the repository root:
+
+```sh
+docker compose -f infrastructure/docker-compose/docker-compose.local.yml up
+```
+
+Docker Compose will automatically:
+- Create and initialize both PostgreSQL databases
+- Apply all database migrations
+- Generate JWT keys for the auth service
+- Build and start all services
+
+To run services in the background, add `-d` and use `docker compose logs` to monitor:
+
+```sh
+docker compose -f infrastructure/docker-compose/docker-compose.local.yml up -d
+docker compose -f infrastructure/docker-compose/docker-compose.local.yml logs -f
+```
+
+To verify services are running:
+
+```sh
+docker ps
+```
+
+Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`.
+
+### Jenkins
+
+To start Jenkins for CI/CD pipeline execution:
+
+```sh
+docker compose -f infrastructure/docker-compose/docker-compose.jenkins.yml up -d
+```
+
+Jenkins runs on `http://localhost:8888` with username `admin` and password `admin`. The container mounts the host Docker socket to enable Docker builds within the pipeline.
+
+See [Jenkins configuration](infrastructure/jenkins/README.md) for credentials setup, disk-space management, and pipeline configuration.
 
 ## Requirements
 
