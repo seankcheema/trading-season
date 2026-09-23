@@ -6,7 +6,7 @@ Use this runbook when a Jenkins build fails because its agent or Docker host is 
 ERROR: Could not install packages due to an OSError: [Errno 28] No space left on device
 ```
 
-This failure happens before the market-data test fixture is generated. Reducing the test date range does not address an image-build failure.
+This failure happens before the market-data test fixture is generated. Reducing the test date range does not address an image-build failure. The pipeline requires at least 7 GiB free before its explicit depth-1 checkout.
 
 ## Identify the active Jenkins home
 
@@ -155,15 +155,21 @@ df -h /
 docker system df
 ```
 
-Do not rerun the Docker integration stage with only hundreds of megabytes free. Keep at least 5 GB available before starting it; more headroom is appropriate when Jenkins, Docker, SonarQube, and databases share a small root filesystem.
+Do not rerun the Docker integration stage with only hundreds of megabytes free. Keep at least 7 GiB available before starting it; the pipeline enforces that threshold. More headroom is appropriate when Jenkins, Docker, SonarQube, and databases share a small root filesystem.
 
-Rerun the branch job through Jenkins so files are created with the configured agent identity. A manual Maven test verifies only the Java suite and does not exercise the Python image build or the two-day PostgreSQL integration stage.
+Rerun the branch job through Jenkins so files are created with the configured agent identity. A manual Maven test verifies only one Java suite and does not exercise the Python image build or the two-day PostgreSQL integration stage.
+
+## Automatic pipeline cleanup
+
+The pipeline is intentionally configured as a cold build for the shared 30 GB agent. It disables the implicit full-history checkout, checks out the current branch at depth 1, and archives test reports before cleanup. Its final cleanup then removes the exact Playwright image used by the build, all unused Docker builder cache, Maven and npm caches, and the complete workspace. Named Docker volumes are not removed.
+
+The next build therefore downloads its checkout, dependencies, and browser image again. This costs build time and network bandwidth but prevents Git history, dependency trees, Docker layers, and generated output from accumulating between runs. If final cleanup is interrupted, use the manual inspection and cleanup sequence above before retrying.
 
 ## Prevent recurrence
 
 - Configure multibranch jobs to discard orphaned branch jobs and their workspaces after an agreed retention period.
 - Keep build history retention enabled; the pipeline currently retains ten builds, but workspace retention is separate.
 - Review `df -h /`, Jenkins workspace usage, and `docker system df` regularly on small agents.
-- Keep active workspaces only as long as they are useful for build reuse or debugging.
-- Expand the agent's storage when ordinary Jenkins, Docker, and service data cannot maintain at least 5 GB of free working space. Cleanup is not a substitute for adequate CI capacity.
-- Treat automatic workspace or Docker cleanup as a separate operational change. Validate retention and backup requirements before enabling it.
+- The pipeline deletes its workspace after report publication; use archived artifacts and build logs for debugging.
+- Expand the agent's storage when ordinary Jenkins, Docker, and service data cannot maintain at least 7 GiB of free working space. Cleanup is not a substitute for adequate CI capacity.
+- Revisit the cold-build policy if the agent is expanded and build speed becomes more important than minimum retained storage.

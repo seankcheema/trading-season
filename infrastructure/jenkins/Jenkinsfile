@@ -19,6 +19,9 @@ pipeline {
     
     options {
         buildDiscarder(logRotator(numToKeepStr: '10'))
+        // Avoid Declarative Pipeline's implicit full-history checkout. The
+        // explicit Checkout stage below keeps only the current branch tip.
+        skipDefaultCheckout(true)
         timeout(time: 1, unit: 'HOURS')
         timestamps()
     }
@@ -55,9 +58,46 @@ pipeline {
             }
         }
 
+        stage('Disk Preflight') {
+            steps {
+                sh '''
+                    set -eu
+                    AVAILABLE_KB="$(df -Pk "$WORKSPACE" | awk 'NR == 2 {print $4}')"
+                    REQUIRED_KB=$((7 * 1024 * 1024))
+                    if [ "$AVAILABLE_KB" -lt "$REQUIRED_KB" ]; then
+                        echo "Jenkins requires at least 7 GiB free before checkout; only $((AVAILABLE_KB / 1024 / 1024)) GiB is available." >&2
+                        echo "Follow infrastructure/jenkins/README.md before retrying this build." >&2
+                        exit 1
+                    fi
+                    echo "Disk preflight passed with $((AVAILABLE_KB / 1024 / 1024)) GiB available."
+                '''
+            }
+        }
+
         stage('Checkout') {
             steps {
-                checkout scm
+                script {
+                    // Preserve the multibranch job's repository, credentials,
+                    // refspec, branch selection, and configured extensions,
+                    // then add a depth-1 clone behavior for this checkout.
+                    def shallowExtensions = scm.extensions + [[
+                        $class: 'CloneOption',
+                        depth: 1,
+                        honorRefspec: true,
+                        noTags: true,
+                        reference: '',
+                        shallow: true,
+                        timeout: 10
+                    ]]
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: scm.branches,
+                        doGenerateSubmoduleConfigurations: false,
+                        extensions: shallowExtensions,
+                        submoduleCfg: [],
+                        userRemoteConfigs: scm.userRemoteConfigs
+                    ])
+                }
                 echo "✓ Repository checked out"
             }
         }
@@ -362,13 +402,32 @@ pipeline {
             sh '''
                 set +e
                 docker compose --project-name trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml down 2>/dev/null || true
-                set -e
+                if [ -f node_modules/@playwright/test/package.json ]; then
+                    PW_VERSION="$(node -p "require('@playwright/test/package.json').version" 2>/dev/null)"
+                    if [ -n "$PW_VERSION" ]; then
+                        docker image rm "mcr.microsoft.com/playwright:v${PW_VERSION}-noble" 2>/dev/null || true
+                    fi
+                fi
                 docker image prune -f 2>/dev/null || true
-                docker builder prune -f --filter until=24h 2>/dev/null || true
+                docker builder prune -af 2>/dev/null || true
+                set -e
             '''
             // Remove Maven and npm cache to free disk space and prevent out-of-space errors
-            sh 'rm -rf ~/.m2/repository ~/.npm'
-            echo "✓ Build cache cleaned to free disk space"
+            script {
+                def cacheCleanupStatus = sh(script: 'rm -rf ~/.m2/repository ~/.npm', returnStatus: true)
+                if (cacheCleanupStatus != 0) {
+                    echo "Dependency-cache cleanup failed with status ${cacheCleanupStatus}; preserving the original build result."
+                }
+                try {
+                    // Stage post blocks have already archived their reports.
+                    // Removing the checkout prevents Git history, dependencies,
+                    // and generated output from accumulating between builds.
+                    deleteDir()
+                } catch (err) {
+                    echo "Workspace cleanup failed: ${err}; preserving the original build result."
+                }
+            }
+            echo "✓ Build caches and workspace cleaned to free disk space"
         }
         
         success {
