@@ -38,7 +38,8 @@ RUN npm ci --omit=dev --foreground-scripts && npm cache clean --force
 COPY --from=build /app/dist ./dist
 
 # Copy entrypoint script that generates JWT keys if needed
-COPY infrastructure/docker/entrypoint-auth.sh /app/entrypoint.sh
+# Note: Build context is apps/auth-service, so use relative path to infrastructure
+COPY ../../infrastructure/docker/entrypoint-auth.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh && \
     # Allow openssl and sh for key generation (needed before dropping to appuser)
     apk add --no-cache openssl
