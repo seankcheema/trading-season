@@ -385,6 +385,45 @@ pipeline {
                 }
             }
         }
+
+        stage('Build Local Docker Stack') {
+            steps {
+                sh '''
+                    set -eu
+                    COMPOSE_FILE="infrastructure/docker-compose/docker-compose.local.yml"
+                    PROJECT_NAME="trading-season-local"
+
+                    echo "Building and starting the local application stack..."
+                    docker compose \
+                        --project-name "$PROJECT_NAME" \
+                        -f "$COMPOSE_FILE" \
+                        up -d --build
+
+                    echo "Local application services after startup:"
+                    docker compose \
+                        --project-name "$PROJECT_NAME" \
+                        -f "$COMPOSE_FILE" \
+                        ps
+
+                    EXPECTED_SERVICES="auth-db auth-service db holdings-and-trade-service order-and-sell-service"
+                    RUNNING_SERVICES="$(docker compose \
+                        --project-name "$PROJECT_NAME" \
+                        -f "$COMPOSE_FILE" \
+                        ps --services --status running | sort | tr '\n' ' ' | sed 's/ $//')"
+                    if [ "$RUNNING_SERVICES" != "$EXPECTED_SERVICES" ]; then
+                        echo "Expected running services: $EXPECTED_SERVICES" >&2
+                        echo "Actual running services:   $RUNNING_SERVICES" >&2
+                        docker compose \
+                            --project-name "$PROJECT_NAME" \
+                            -f "$COMPOSE_FILE" \
+                            logs --no-color --tail 100
+                        exit 1
+                    fi
+
+                    echo "Local application stack is running on host ports 3001, 5432, 5433, 8081, and 8082."
+                '''
+            }
+        }
     }
     
     post {
@@ -398,9 +437,26 @@ pipeline {
                     echo "Final Docker service inspection failed with status ${dockerStatus}; preserving the original build result."
                 }
             }
+            script {
+                if (currentBuild.currentResult == 'SUCCESS') {
+                    echo 'Preserving the trading-season-local application stack after the successful build.'
+                } else {
+                    def composeCleanupStatus = sh(
+                        script: '''
+                            docker compose \
+                                --project-name trading-season-local \
+                                -f infrastructure/docker-compose/docker-compose.local.yml \
+                                down
+                        ''',
+                        returnStatus: true
+                    )
+                    if (composeCleanupStatus != 0) {
+                        echo "Local application stack cleanup failed with status ${composeCleanupStatus}; preserving the original build result."
+                    }
+                }
+            }
             sh '''
                 set +e
-                docker compose --project-name trading-season-local -f infrastructure/docker-compose/docker-compose.jenkins.yml down 2>/dev/null || true
                 if [ -f node_modules/@playwright/test/package.json ]; then
                     PW_VERSION="$(node -p "require('@playwright/test/package.json').version" 2>/dev/null)"
                     if [ -n "$PW_VERSION" ]; then

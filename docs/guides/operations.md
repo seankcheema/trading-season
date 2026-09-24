@@ -30,7 +30,7 @@ docker compose --project-name trading-season-local --env-file apps/auth-service/
   -f infrastructure/docker-compose/docker-compose.local.yml stop db auth-db
 ```
 
-The Java backend service in local Compose still uses build context '.' relative to the Compose directory and maps 8081, while the app defaults to 8080. Run Java through Maven until that configuration is corrected. The UI has no active Compose service. No production Compose file or Kubernetes deployment is supplied.
+Local Compose builds both Java services from their application directories and publishes them on ports 8081 and 8082. The UI has no active Compose service, so run it separately through npm when needed. No production Compose file or Kubernetes deployment is supplied.
 
 Auth GET /health reports process liveness, not database readiness. Check startup logs and database connectivity separately. Database volumes persist across ordinary container shutdown; removing volumes deletes their data. Back up retained data before schema or volume changes and verify restoration in a separate database.
 
@@ -60,7 +60,16 @@ The end-to-end stage runs inside the official Playwright image whose version mat
 
 The optional [Jenkins image](../../infrastructure/docker/Dockerfile.jenkins) installs Node 24.x, which is compatible with Angular 21.2.x. The active pipeline still expects the native Jenkins NodeJS tool to provide a Node 24.x runtime at 24.8.0 or later. The Jenkins Compose example also mounts the host Docker socket and contains development credentials. Review toolchains, credentials, and access before deployment; it is not a production-ready configuration.
 
-The pipeline prints `docker ps` near the start and in its final diagnostics. The initial check fails early when Jenkins cannot reach the daemon because later market-data and Playwright stages require Docker. To fit the shared 30 GB agent, Jenkins performs a depth-1 checkout and treats every run as a cold build. After stage-level report publication, final cleanup removes the build's Playwright image, all unused builder cache, Maven and npm caches, and the complete workspace. Named Docker volumes remain intact. Inspection and cleanup failures are protected so they do not replace the build's original result.
+The pipeline prints `docker ps` near the start and in its final diagnostics. The initial check fails early when Jenkins cannot reach the daemon because later market-data, Playwright, and local-stack stages require Docker. After the test stages pass, Jenkins builds and starts `docker-compose.local.yml` under the `trading-season-local` project name and verifies that the two databases, auth service, and both Java services are running. A successful build leaves those containers available on host ports 3001, 5432, 5433, 8081, and 8082 for local inspection. The UI is not included because it has no active Compose service.
+
+Start the Jenkins controller separately; do not ask the running pipeline to manage its own container. From the repository root, start only the Jenkins service from its Compose file:
+
+```sh
+docker compose --project-name trading-season-jenkins \
+  -f infrastructure/docker-compose/docker-compose.jenkins.yml up -d jenkins
+```
+
+Using the explicit `jenkins` service avoids starting the duplicate application services that remain in the optional Jenkins Compose example and would otherwise compete for the same host ports. To fit the shared 30 GB agent, Jenkins performs a depth-1 checkout and treats every run as a cold build. An unsuccessful or aborted build stops the local application stack before workspace deletion; a successful build preserves it. After stage-level report publication, final cleanup removes the build's Playwright image, all unused builder cache, Maven and npm caches, and the complete workspace. Named Docker volumes remain intact. Inspection and cleanup failures are protected so they do not replace the build's original result.
 
 Javadoc generation is a required Java change check described in [development](development.md#javadocs); the current Jenkinsfile does not run or publish it automatically. Generate and review both service outputs, then refresh the checked-in docs/JAVA_DOCS copy after successful verification.
 

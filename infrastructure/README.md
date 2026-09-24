@@ -2,7 +2,7 @@
 
 | Resource | Purpose |
 | --- | --- |
-| [Local Compose](docker-compose/docker-compose.local.yml) | Business and auth databases, auth container, outdated Java service configuration |
+| [Local Compose](docker-compose/docker-compose.local.yml) | Business and auth databases, auth container, and both Java services |
 | [Jenkins Compose](docker-compose/docker-compose.jenkins.yml) | Optional local Jenkins environment |
 | [Jenkins pipeline](jenkins/Jenkinsfile) | Java, auth, frontend, and synthetic market-data test pipeline |
 | [Jenkins troubleshooting](jenkins/README.md) | Disk-space diagnosis, safe cleanup, and prevention |
