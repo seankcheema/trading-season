@@ -102,11 +102,11 @@ Each tier fails its own test command below its coverage floor, so the floor is e
 
 | Tier | Floor | Enforced by | Counters |
 | --- | --- | --- | --- |
-| UI | 60% | coverageThresholds in [angular.json](../../apps/client-ui/angular.json) | statements, branches, functions, lines |
-| Auth | 50% | coverage.thresholds in [vitest.config.ts](../../apps/auth-service/vitest.config.ts) | statements, branches, functions, lines |
-| Java services | 60% | jacoco:check in each service POM | line and instruction ratio |
+| UI | 70% | coverageThresholds in [angular.json](../../apps/client-ui/angular.json) | statements, branches, functions, lines |
+| Auth | 70% | coverage.thresholds in [vitest.config.ts](../../apps/auth-service/vitest.config.ts) | statements, branches, functions, lines |
+| Java services | 70% | jacoco:check in each service POM, per package | instructions, branches, lines, complexity, methods, classes |
 
-The Java tier has the least headroom, and its branch coverage sits below the line figure, so it is not gated on branches. Raise the floor as coverage improves rather than lowering it to accommodate a change.
+The Java check applies the floor to every package rather than to the service as a whole, so a well-tested package cannot hide an untested one. A package with no branches has no branch ratio and is not held to that counter. The UI and auth floors apply to the whole run. Current per-folder and per-package results are in [code coverage](../coverage/README.md). Raise the floor as coverage improves rather than lowering it to accommodate a change.
 
 ## Javadocs
 

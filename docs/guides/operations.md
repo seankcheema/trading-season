@@ -56,7 +56,7 @@ The Jenkins pipeline expects a native agent with Docker, the Maven tool named Ma
 
 Auth CI runs npm ci then npm run test:ci. Frontend CI uses the root workspace npm ci installation followed by npm test -- --no-watch --coverage from the UI workspace. Do not silently treat an absent test tool or empty required report as success.
 
-Every tier fails its own stage below 50% coverage; the mechanisms are listed under [coverage floors](development.md#coverage-floors). A stage that passes has already cleared the floor, so the archived reports are for inspection, not for a manual check.
+Every tier fails its own stage below 70% coverage; the mechanisms are listed under [coverage floors](development.md#coverage-floors). A stage that passes has already cleared the floor, so the archived reports are for inspection, not for a manual check.
 
 The end-to-end stage runs inside the official Playwright image whose version matches the installed `@playwright/test` package. The image supplies Chromium and its shared libraries without requiring privileged package installation on the agent. Playwright builds the UI and serves it on port 4200 through the Angular SSR server, and stubs the API tier at the network boundary, so the stage needs no database, auth service, or Java backend. Because it builds, the stage is the only one that also proves the production build works; expect it to take longer than the unit stages.
 

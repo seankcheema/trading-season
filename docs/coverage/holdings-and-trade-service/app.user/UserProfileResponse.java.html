@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UserProfileResponse.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.user</a> &gt; <span class="el_source">UserProfileResponse.java</span></div><h1>UserProfileResponse.java</h1><pre class="source lang-java linenums"><span class="fc" id="L1">package app.user;</span>
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+/**
+ * The caller's own business account. The SSN is never returned.
+ *
+ * @param userId         the account id, equal to the token's sub claim
+ * @param email          the account email
+ * @param firstName      first name
+ * @param middleName     middle name, or {@code null}
+ * @param lastName       last name
+ * @param address        mailing address
+ * @param dateOfBirth    date of birth
+ * @param traderLevel    BEGINNER, INTERMEDIATE or ADVANCED
+ * @param availableFunds cash available for trading
+ * @param userRole       ADMIN or TRADER
+ * @param accountStatus  ACTIVE or DEACTIVATED
+ * @param createdAt      when the account was registered
+ */
+public record UserProfileResponse(
+        UUID userId,
+        String email,
+        String firstName,
+        String middleName,
+        String lastName,
+        String address,
+        LocalDate dateOfBirth,
+        String traderLevel,
+        BigDecimal availableFunds,
+        String userRole,
+        String accountStatus,
+        OffsetDateTime createdAt
+) {
+
+    /**
+     * Maps an account to its response, leaving out sensitive fields.
+     *
+     * @param user the account
+     * @return the profile response
+     */
+    public static UserProfileResponse from(User user) {
+<span class="fc" id="L46">        return new UserProfileResponse(user.getUserId(), user.getEmail(),</span>
+<span class="fc" id="L47">                user.getFirstName(), user.getMiddleName(), user.getLastName(), user.getAddress(),</span>
+<span class="fc" id="L48">                user.getDateOfBirth(), user.getTraderLevel(), user.getAvailableFunds(),</span>
+<span class="fc" id="L49">                user.getUserRole(), user.getAccountStatus(), user.getCreatedAt());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OrderExecutionService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.order.execution</a> &gt; <span class="el_source">OrderExecutionService.java</span></div><h1>OrderExecutionService.java</h1><pre class="source lang-java linenums">package app.order.execution;
+
+import app.account.Account;
+import app.account.AccountRepository;
+import app.holding.Holding;
+import app.holding.HoldingRepository;
+import app.instrument.Instrument;
+import app.order.Order;
+import app.order.OrderRepository;
+import app.order.audit.AuditTrailService;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+
+/**
+ * Turns an ACCEPTED order into a fill, atomically. Only reached after
+ * {@code OrderValidationPipeline} has passed — this class does not itself
+ * decide whether a trade is allowed, it carries out one that already was.
+ *
+ * &lt;p&gt;&lt;b&gt;Simplification:&lt;/b&gt; this fills at the order's client-submitted
+ * {@code indicativePrice} rather than a live market quote — business-backend
+ * doesn't yet read the {@code quotes}/{@code market_ticks} tables FMS
+ * writes. BR-08 calls for the quote price prevailing at execution time, and
+ * KAN-100's buffer_percent tolerance only means something once there's a
+ * live price to compare the indicative price against. Wiring that up is
+ * follow-on work (plausibly KAN-129) — {@code fillPrice} below is the one
+ * line to change once a quote source exists; everything downstream of it
+ * (ledger writes, balance/holding updates) doesn't need to change.
+ *
+ * &lt;p&gt;Funds and holdings were already checked once by the pipeline, against
+ * a snapshot that can go stale between validation and execution. This class
+ * re-checks both under a row lock immediately before writing the fill, so
+ * two concurrent orders can't both spend the same balance or the same
+ * holding.
+ */
+@Service
+public class OrderExecutionService {
+
+    private final AccountRepository accountRepository;
+    private final HoldingRepository holdingRepository;
+    private final OrderRepository orderRepository;
+    private final FillRepository fillRepository;
+    private final CashTransactionRepository cashTransactionRepository;
+    private final HoldingMovementRepository holdingMovementRepository;
+    private final AuditTrailService auditTrailService;
+
+<span class="fc" id="L49">    public OrderExecutionService(AccountRepository accountRepository,</span>
+                                  HoldingRepository holdingRepository,
+                                  OrderRepository orderRepository,
+                                  FillRepository fillRepository,
+                                  CashTransactionRepository cashTransactionRepository,
+                                  HoldingMovementRepository holdingMovementRepository,
+                                  AuditTrailService auditTrailService) {
+<span class="fc" id="L56">        this.accountRepository = accountRepository;</span>
+<span class="fc" id="L57">        this.holdingRepository = holdingRepository;</span>
+<span class="fc" id="L58">        this.orderRepository = orderRepository;</span>
+<span class="fc" id="L59">        this.fillRepository = fillRepository;</span>
+<span class="fc" id="L60">        this.cashTransactionRepository = cashTransactionRepository;</span>
+<span class="fc" id="L61">        this.holdingMovementRepository = holdingMovementRepository;</span>
+<span class="fc" id="L62">        this.auditTrailService = auditTrailService;</span>
+<span class="fc" id="L63">    }</span>
+
+    @Transactional
+    public Order execute(Order order, Instrument instrument) {
+<span class="fc" id="L67">        boolean isBuy = Order.TYPE_BUY.equals(order.getOrderType());</span>
+<span class="fc" id="L68">        BigDecimal fillPrice = order.getIndicativePrice();</span>
+<span class="fc" id="L69">        BigDecimal tradeValue = order.getQuantity().multiply(fillPrice);</span>
+
+<span class="fc" id="L71">        Account account = accountRepository.findByIdForUpdate(order.getAccountId())</span>
+<span class="fc" id="L72">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+<span class="fc" id="L73">                        &quot;Account &quot; + order.getAccountId() + &quot; disappeared mid-execution&quot;));</span>
+
+<span class="fc bfc" id="L75" title="All 4 branches covered.">        if (isBuy &amp;&amp; tradeValue.compareTo(account.getCashBalance()) &gt; 0) {</span>
+<span class="fc" id="L76">            return failExecution(order, &quot;BR-09: insufficient funds at execution time&quot;);</span>
+        }
+
+<span class="fc" id="L79">        Holding holding = holdingRepository</span>
+<span class="fc" id="L80">                .findByAccountIdAndInstrumentIdForUpdate(order.getAccountId(), order.getInstrumentId())</span>
+<span class="fc" id="L81">                .orElse(null);</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        BigDecimal currentQuantity = holding == null ? BigDecimal.ZERO : holding.getQuantity();</span>
+<span class="fc bfc" id="L83" title="All 4 branches covered.">        if (!isBuy &amp;&amp; order.getQuantity().compareTo(currentQuantity) &gt; 0) {</span>
+<span class="fc" id="L84">            return failExecution(order, &quot;Insufficient holdings at execution time&quot;);</span>
+        }
+
+<span class="fc" id="L87">        OffsetDateTime now = OffsetDateTime.now();</span>
+
+<span class="fc" id="L89">        Fill fill = new Fill();</span>
+<span class="fc" id="L90">        fill.setOrderId(order.getOrderId());</span>
+<span class="fc" id="L91">        fill.setQuotePrice(fillPrice);</span>
+<span class="fc" id="L92">        fill.setQuantity(order.getQuantity());</span>
+<span class="fc" id="L93">        fill.setFilledAt(now);</span>
+<span class="fc" id="L94">        fill = fillRepository.save(fill);</span>
+
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        BigDecimal cashDelta = isBuy ? tradeValue.negate() : tradeValue;</span>
+<span class="fc" id="L97">        CashTransaction cashTransaction = new CashTransaction();</span>
+<span class="fc" id="L98">        cashTransaction.setAccountId(account.getAccountId());</span>
+<span class="fc" id="L99">        cashTransaction.setFillId(fill.getFillId());</span>
+<span class="fc" id="L100">        cashTransaction.setAmount(cashDelta);</span>
+<span class="fc" id="L101">        cashTransaction.setReason(CashTransaction.REASON_ORDER_FILL);</span>
+<span class="fc" id="L102">        cashTransaction.setCreatedAt(now);</span>
+<span class="fc" id="L103">        cashTransactionRepository.save(cashTransaction);</span>
+<span class="fc" id="L104">        account.setCashBalance(account.getCashBalance().add(cashDelta));</span>
+<span class="fc" id="L105">        accountRepository.save(account);</span>
+
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        BigDecimal quantityDelta = isBuy ? order.getQuantity() : order.getQuantity().negate();</span>
+<span class="fc" id="L108">        HoldingMovement movement = new HoldingMovement();</span>
+<span class="fc" id="L109">        movement.setAccountId(account.getAccountId());</span>
+<span class="fc" id="L110">        movement.setInstrumentId(order.getInstrumentId());</span>
+<span class="fc" id="L111">        movement.setFillId(fill.getFillId());</span>
+<span class="fc" id="L112">        movement.setQuantityDelta(quantityDelta);</span>
+<span class="fc" id="L113">        movement.setCreatedAt(now);</span>
+<span class="fc" id="L114">        holdingMovementRepository.save(movement);</span>
+
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (holding == null) {</span>
+<span class="fc" id="L117">            holding = new Holding();</span>
+<span class="fc" id="L118">            holding.setAccountId(order.getAccountId());</span>
+<span class="fc" id="L119">            holding.setInstrumentId(order.getInstrumentId());</span>
+<span class="fc" id="L120">            holding.setQuantity(quantityDelta);</span>
+<span class="fc" id="L121">        } else {</span>
+<span class="fc" id="L122">            holding.setQuantity(holding.getQuantity().add(quantityDelta));</span>
+        }
+<span class="fc" id="L124">        holding.setUpdatedAt(now);</span>
+<span class="fc" id="L125">        holdingRepository.save(holding);</span>
+
+<span class="fc" id="L127">        order.setStatus(Order.STATUS_FILLED);</span>
+<span class="fc" id="L128">        order.setResolvedAt(now);</span>
+<span class="fc" id="L129">        final Order savedOrder = orderRepository.save(order);</span>
+<span class="fc" id="L130">        auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_FILLED,</span>
+<span class="fc" id="L131">                &quot;Filled &quot; + savedOrder.getQuantity() + &quot; @ &quot; + fillPrice);</span>
+<span class="fc" id="L132">        return savedOrder;</span>
+    }
+
+    private Order failExecution(Order order, String reason) {
+<span class="fc" id="L136">        order.setStatus(Order.STATUS_EXECUTION_FAILED);</span>
+<span class="fc" id="L137">        order.setRejectionReason(reason);</span>
+<span class="fc" id="L138">        order.setResolvedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L139">        final Order savedOrder = orderRepository.save(order);</span>
+<span class="fc" id="L140">        auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_EXECUTION_FAILED, reason);</span>
+<span class="fc" id="L141">        return savedOrder;</span>
+    }
+}
+
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>
