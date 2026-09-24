@@ -18,7 +18,7 @@ The production container builds this root npm workspace and serves the browser o
 
 ## Tests
 
-Unit tests live beside the code they cover as `*.spec.ts` under `src`, and run on the Angular unit-test builder. The run fails below 60% coverage; the thresholds are in [angular.json](angular.json).
+Unit tests live beside the code they cover as `*.spec.ts` under `src`, and run on the Angular unit-test builder. The run fails below 70% on any coverage counter (statements, branches, functions, or lines); the thresholds are in [angular.json](angular.json).
 
 End-to-end tests live in [e2e](e2e) and run on Playwright, which owns that directory and is excluded from the unit-test builder. They cover the login, registration, inactivity timeout and account creation journeys against the running application, including where the password and SSN travel and how they are displayed, and that a user never sees another user's accounts. Install the browser once with `npx playwright install chromium`; the suite starts its own dev server, or reuses one already on port 4200.
 
