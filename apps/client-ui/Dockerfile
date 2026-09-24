@@ -5,7 +5,9 @@ WORKDIR /workspace
 COPY package.json package-lock.json ./
 COPY apps/client-ui/package.json apps/client-ui/package.json
 COPY packages/shared-ui-components/package.json packages/shared-ui-components/package.json
-RUN npm ci
+# The BuildKit cache mount keeps npm downloads between builds without storing
+# them in the image.
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY apps/client-ui/ apps/client-ui/
 COPY packages/shared-ui-components/ packages/shared-ui-components/
