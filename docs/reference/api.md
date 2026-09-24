@@ -1,8 +1,177 @@
-# API reference
+# API Reference
 
-This reference describes implemented controllers unless a section is explicitly labeled as planned or in progress. The Java and NestJS APIs have different identities and response formats; they are not interchangeable.
+This reference documents the HTTP contracts for each implemented microservice. Each service has independent authentication, response formats, and error handling. Planned endpoints are labeled as such; everything else is implemented and tested.
 
-## Java backend: port 8081
+**Critical: See [Architecture](architecture.md) for the naming mismatch.** Holdings and Trade Service handles orders; Order and Sell Service does not.
+
+## Auth Service (NestJS) — port 3001
+
+Complete implementation. No `/api` prefix.
+
+### Authentication endpoints
+
+| Method | Path | Request | Success response |
+| --- | --- | --- | --- |
+| POST | /auth/register | JSON: `email` (valid, ≤254 chars), `password` (8–72 chars) | 201: `accessToken`, `refreshToken`, `expiresIn` |
+| POST | /auth/login | JSON: `email`, `password` | 201: token response |
+| POST | /auth/refresh | JSON: `refreshToken` string | 201: rotated token response |
+| POST | /auth/logout | JSON: `refreshToken` string | 201: message; revokes session |
+| GET | /.well-known/jwks.json | — (public) | 200: array of public JWK keys |
+| GET | /health | — (public) | 200: status, service name, timestamp (liveness only) |
+
+**Tokens:** RS256 JWTs valid for 15 minutes (900 seconds), containing `sub` (user UUID), `email`, `roles` (ADMIN or TRADER), `iss`, `iat`, `exp`. Refresh tokens are opaque random strings with 7-day server-side lifetime; they rotate on use and are revoked by logout.
+
+**Validation:** Global validation pipe rejects unknown properties, mismatched types, and invalid values. Send all tokens as JSON body fields, not cookies.
+
+**Errors:** Standard NestJS exception responses (not the Java `{"error": "..."}` format).
+- 400 – validation failed (missing/invalid fields, extra properties)
+- 401 – missing/invalid credentials or refresh token
+- 409 – email already registered
+
+---
+
+## Holdings and Trade Service (Spring Boot Java 21) — port 8081
+
+## Holdings and Trade Service (Spring Boot Java 21) — port 8081
+
+### Authentication registration
+
+| Method | Path | Request | Success | Notes |
+| --- | --- | --- | --- | --- |
+| POST | /api/auth/account-exists | Public JSON: `email` | 200: `exists` boolean | Check before register; rate-limit at edge |
+| POST | /api/auth/register | Bearer token + JSON profile | 201: `userId`, `email` | Email must match token's `email` claim |
+| GET | /api/users/me | Bearer token | 200: user profile | Returns caller only; excludes SSN |
+
+**Registration profile fields:** (all required unless marked optional)
+- `email` (must match token; ≤100 chars)
+- `firstName`, `lastName`, `address` (nonblank)
+- `middleName` (optional)
+- `ssn` (XXX-XX-XXXX format)
+- `dateOfBirth` (must be in past)
+- `traderLevel` (BEGINNER, INTERMEDIATE, or ADVANCED)
+- `availableFunds` (≥5000.00; max 2 decimal places)
+
+**Token verification:** Each service caches the auth service's public JWKS independently. Tokens must:
+- Use RS256 signature
+- Not be expired (check `exp`)
+- Have `iss` matching AUTH_JWT_ISSUER config
+- Have valid UUID `sub` (becomes `users.user_id`)
+
+**Data scope:** Endpoints resolve the caller from the bearer token's `sub` only. Clients cannot read other users' data even with explicit IDs in the path.
+
+### Market data (public, unauthenticated)
+
+| Method | Path | Query parameters | Success |
+| --- | --- | --- | --- |
+| GET | /api/market/snapshot | Optional `sessionId` | 200: current market state, all stock prices, trading calendar |
+| GET | /api/market/candles | Required: `symbol`, `timeframe` (1D, 5D, 1M, 1Y); optional `sessionId` | 200: array of ≤500 OHLCV bars |
+| GET | /api/market/stream | Optional `sessionId`, `Last-Event-ID` header | 200 text/event-stream: continuous price ticks |
+| PUT | /api/market/clock | Bearer token + JSON: `timestamp` (ISO-8601); optional `sessionId` | 200: snapshot at nearest seeded tick ≤ timestamp |
+
+**Candle aggregation:** Backend aggregates seeded 1-minute candles; does not emit raw 1-second history. Each timeframe caps results at 500 points.
+
+**Clock changes:** Require bearer token (affects shared replay cursor). Non-trading dates within imported months advance to the nearest loaded trading date in that month.
+
+**Stream:** Server-sent events containing synchronized price batches. Retains 30 events for reconnection via `Last-Event-ID`; outside that window, client receives resync event and must reload snapshot.
+
+### Planned trading endpoints
+
+These endpoints are documented in code and tests but **NOT YET IMPLEMENTED**. Do not call them yet.
+
+| Method | Path | Request | Planned response |
+| --- | --- | --- | --- |
+| GET | /api/me/accounts | Bearer token | 200: array of caller's accounts |
+| POST | /api/me/accounts | Bearer token + JSON: `name` only | 201: created account |
+| PUT | /api/me/accounts/{accountId} | Bearer token + JSON: `name`; verify owned account | 200: renamed account |
+| GET | /api/accounts/{accountId}/holdings | Bearer token; owned account | 200: holdings with instrument metadata |
+| POST | /api/orders | Bearer token + JSON: accountId, ticker or instrumentId, orderType, quantity, clientReference, optional sessionId | 201: order result |
+| GET | /api/orders/{orderId} | Bearer token; owned order | 200: order, fill if present, audit events |
+| GET | /api/me/cash-transactions | Bearer token; optional limit | 200: user's cash transactions, newest first |
+| POST | /api/me/cash-transactions | Bearer token + JSON: amount, reason (DEPOSIT or WITHDRAWAL) | 201: transaction and updated availableFunds |
+
+See [Holdings and Trade Service documentation](services/holdings-and-trade-service.md) for what is actually implemented.
+
+### Errors
+
+Standard format: `{"error": "..."}` with HTTP status. Mismatched bearer token and request email produces 403. Always include `WWW-Authenticate: Bearer` challenge on 401.
+
+| Status | Cause |
+| --- | --- |
+| 400 | Request validation failed; message lists each invalid field |
+| 401 | Missing, malformed, expired or untrusted access token |
+| 403 | Registration email does not match token's email claim |
+| 404 | Resource not found (e.g., GET /api/users/me before registration) |
+| 409 | Duplicate account or email; account already registered |
+
+---
+
+## Order and Sell Service (Spring Boot Java 21) — port 8082
+
+**Current reality:** This service is not called by the Client UI. It is documented here for completeness.
+
+**Implemented endpoints:**
+
+| Method | Path | Request | Success |
+| --- | --- | --- | --- |
+| POST | /api/auth/register | Bearer token + profile (same contract as Holdings and Trade Service) | 201: userId, email |
+| GET | /api/users/me | Bearer token | 200: caller's profile only |
+| GET | /api/market/snapshot | Optional `sessionId` | 200: market snapshot (same as Holdings and Trade) |
+| GET | /api/market/candles | Required: symbol, timeframe; optional sessionId | 200: OHLCV bars (same contract) |
+| GET | /api/market/stream | Optional sessionId, Last-Event-ID | 200 text/event-stream (same contract) |
+
+**NOT implemented despite README documentation:**
+- Holdings queries
+- Order history
+- Order submission
+- Account management
+
+This service's README lists these as responsibilities, but the endpoints do not exist and repositories are unused.
+
+**Why this gap exists:** The architecture called for splitting order processing from user profile reads, but the split was not completed in code. Holdings and Trade Service does both. See [Order and Sell Service documentation](services/order-and-sell-service.md) for discussion and suggested next steps.
+
+---
+
+## Client UI integration flow
+
+The Angular UI (port 4200) orchestrates these services:
+
+1. **Authentication:** Direct calls to Auth Service
+   - POST /auth/register (create account)
+   - POST /auth/login (sign in)
+   - POST /auth/refresh (rotate expired token)
+   - POST /auth/logout (end session)
+
+2. **Profile and trading:** Calls to Holdings and Trade Service
+   - Use dev proxy (proxy.conf.json) which forwards all `/api/*` to port 8081
+   - Bearer token from Auth Service is sent in `Authorization: Bearer` header
+   - POST /api/auth/register (submit profile after auth registration)
+   - GET /api/users/me (verify profile)
+   - GET /api/market/snapshot (dashboard ticker)
+   - GET /api/market/candles (dashboard charts)
+   - GET /api/market/stream (real-time prices)
+
+3. **No calls to Order and Sell Service**
+   - UI routing contains no `/api/orders` endpoint
+   - Portfolio data is mock-only (not calling planned account endpoints)
+
+Session management, inactivity timeout, and token refresh are handled by [SessionTimeoutService](../../apps/business-logic-ui/src/app/core/auth/session-timeout.service.ts) and [AuthService](../../apps/business-logic-ui/src/app/core/auth/auth.service.ts). Inactivity timeout (5–60 minutes, default 10) is UI-only; neither backend service implements it.
+
+---
+
+## E2E test coverage
+
+The [Playwright suite](../../apps/business-logic-ui/e2e) covers:
+- Full registration flow (auth service + Holdings and Trade Service profile registration)
+- Sign-in and inactivity timeout
+- Dashboard access and session persistence
+
+Tests use a stand-in server that reproduces the contracts documented above. Update this reference and test expectations together.
+
+---
+
+## Contract maintenance
+
+Update this reference in the same commit as endpoint changes. Proposed endpoints must be explicitly labeled. Key generation and environment setup belong in [Auth Service README](../../apps/auth-service/README.md); Java implementation details belong in source Javadocs.
 
 Base path: /api/auth. Spring Boot source is rooted at [apps/business-backend/src/main/java/app](../../apps/business-backend/src/main/java/app), and these endpoints are implemented by [controller](../../apps/business-backend/src/main/java/app/auth/AuthController.java).
 
@@ -147,7 +316,3 @@ The Angular UI authenticates only against the NestJS auth service. See [AuthServ
 - While a session is stored, the UI signs the user out after 10 minutes without mouse, keyboard, scroll or touch input, using the same POST /auth/logout call, then shows the login page with `?reason=inactive`. The limit can be set to 5, 10, 15, 30 or 60 minutes in the dashboard's Settings dialog, opened from the profile menu, and is kept per browser. The last activity time is shared between tabs and survives a reload. This is enforced by the UI only; neither service tracks inactivity. See [SessionTimeoutService](../../apps/business-logic-ui/src/app/core/auth/session-timeout.service.ts).
 
 The registration, sign-in and inactivity timeout journeys are covered end to end by the [Playwright suite](../../apps/business-logic-ui/e2e), which drives the real application against a stand-in for both services. Its stand-in reproduces the contracts on this page, so update the two together.
-
-## Contract maintenance
-
-Update this reference and relevant tests in the same change as endpoint behavior. Proposed endpoints must be clearly labeled as planned or in progress until implemented. Key generation and environment setup belong in the [auth README](../../apps/auth-service/README.md); Java implementation details belong in source Javadocs.
