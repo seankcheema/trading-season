@@ -326,15 +326,24 @@ pipeline {
                             # does not carry (libatk-1.0.so.0 and friends), and installing
                             # them needs root: `playwright install --with-deps` shells out
                             # to sudo apt-get, which the jenkins user cannot run. So the
-                            # suite runs inside the official Playwright image, which ships
-                            # those libraries and the matching browser builds already --
-                            # `npx playwright install chromium` on the agent downloaded a
-                            # browser that could never launch. The image tag is read from
-                            # the installed @playwright/test so it cannot drift out of
-                            # step with it -- the browser builds an image ships are only
-                            # guaranteed to match its own Playwright version.
+                            # suite runs inside a container that carries those libraries.
+                            # The official Playwright image also ships Firefox and WebKit,
+                            # which this Chromium-only suite never uses, so the pipeline
+                            # builds a slim image holding only chromium-headless-shell and
+                            # ffmpeg. The tag is read from the installed @playwright/test
+                            # so it cannot drift out of step with it -- browser builds are
+                            # only guaranteed to match the Playwright version that
+                            # installed them. The image is built once per version and
+                            # reused while the agent has room for it.
                             command -v docker >/dev/null
                             PW_VERSION="$(node -p "require('@playwright/test/package.json').version")"
+                            PW_IMAGE="trading-season-playwright:${PW_VERSION}"
+                            if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
+                                echo "Building $PW_IMAGE..."
+                                docker build --build-arg PLAYWRIGHT_VERSION="$PW_VERSION" \
+                                    -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
+                            fi
+                            docker image ls "$PW_IMAGE" --format 'Playwright image {{.Repository}}:{{.Tag}} is {{.Size}}'
                             # The whole workspace is mounted, not just this app: the
                             # monorepo root holds node_modules and the @shared/* packages
                             # the build resolves through it. Those were installed on this
@@ -360,7 +369,7 @@ pipeline {
                                 -e CI=true \
                                 -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
                                 -w /workspace/apps/client-ui \
-                                "mcr.microsoft.com/playwright:v${PW_VERSION}-noble" \
+                                "$PW_IMAGE" \
                                 npm run e2e
                             echo "✓ End-to-end tests completed"
                         '''
@@ -500,10 +509,25 @@ pipeline {
             script {
                 def cacheCleanupStatus = sh(script: '''
                     set +e
+                    PW_VERSION=""
+                    if [ -f node_modules/@playwright/test/package.json ]; then
+                        PW_VERSION="$(node -p "require('@playwright/test/package.json').version" 2>/dev/null)"
+                    fi
+                    # Only the current Playwright version's image is worth
+                    # keeping. Older tags, and the much larger official images
+                    # earlier builds pulled, are always removed.
+                    docker image ls trading-season-playwright --format '{{.Tag}}' | while read -r tag; do
+                        [ "$tag" = "$PW_VERSION" ] || docker image rm "trading-season-playwright:$tag" >/dev/null 2>&1
+                    done
+                    docker image ls mcr.microsoft.com/playwright --format '{{.Repository}}:{{.Tag}}' | while read -r image; do
+                        docker image rm "$image" >/dev/null 2>&1
+                    done
                     docker image prune -f >/dev/null 2>&1
                     docker builder prune -f --keep-storage=2gb 2>/dev/null || docker builder prune -af 2>/dev/null
 
-                    KEEP_CACHES_MIN_KB=$((8 * 1024 * 1024))
+                    # One GiB above the 5 GiB Disk Preflight floor. A warm build
+                    # needs far less than the cold build that floor was sized for.
+                    KEEP_CACHES_MIN_KB=$((6 * 1024 * 1024))
                     AVAILABLE_KB="$(df -Pk "$WORKSPACE" | awk 'NR == 2 {print $4}')"
                     WORKSPACE_KB="$(du -sk "$WORKSPACE" 2>/dev/null | cut -f1)"
                     PROJECTED_KB=$((${AVAILABLE_KB:-0} + ${WORKSPACE_KB:-0}))
@@ -513,11 +537,8 @@ pipeline {
                     fi
 
                     echo "Only $((PROJECTED_KB / 1024 / 1024)) GiB will be free after workspace cleanup; removing all caches so the next build starts cold."
-                    if [ -f node_modules/@playwright/test/package.json ]; then
-                        PW_VERSION="$(node -p "require('@playwright/test/package.json').version" 2>/dev/null)"
-                        if [ -n "$PW_VERSION" ]; then
-                            docker image rm "mcr.microsoft.com/playwright:v${PW_VERSION}-noble" >/dev/null 2>&1
-                        fi
+                    if [ -n "$PW_VERSION" ]; then
+                        docker image rm "trading-season-playwright:$PW_VERSION" >/dev/null 2>&1
                     fi
                     docker builder prune -af 2>/dev/null
                     rm -rf ~/.m2/repository ~/.npm

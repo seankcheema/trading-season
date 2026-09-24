@@ -161,9 +161,11 @@ Rerun the branch job through Jenkins so files are created with the configured ag
 
 ## Automatic pipeline cleanup
 
-The pipeline is intentionally configured as a cold build for the shared 30 GB agent. It disables the implicit full-history checkout, checks out the current branch at depth 1, and archives test reports before cleanup. Its final cleanup then removes the exact Playwright image used by the build, all unused Docker builder cache, Maven and npm caches, and the complete workspace. Named Docker volumes are not removed.
+The pipeline disables the implicit full-history checkout, checks out the current branch at depth 1, and archives test reports before cleanup. Its final cleanup always removes `trading-season-playwright` images for other Playwright versions, any official `mcr.microsoft.com/playwright` images left by earlier builds, and dangling images, trims unused Docker builder cache to 2 GiB, and deletes the complete workspace. Named Docker volumes are not removed.
 
-The next build therefore downloads its checkout, dependencies, and browser image again. This costs build time and network bandwidth but prevents Git history, dependency trees, Docker layers, and generated output from accumulating between runs. If final cleanup is interrupted, use the manual inspection and cleanup sequence above before retrying.
+Dependency caches are kept only while the agent has room for them. When at least 6 GiB will be free after workspace deletion, one GiB above the Disk Preflight floor, the Maven repository, npm cache, and current Playwright image stay on the agent and the next build reuses them. Below that, cleanup also removes the current Playwright image, all Docker builder cache, and the Maven and npm caches, so the next build starts cold. The build log states which path cleanup took. If final cleanup is interrupted, use the manual inspection and cleanup sequence above before retrying.
+
+The end-to-end stage uses a slim Chromium-only image built from [Dockerfile.playwright](../docker/Dockerfile.playwright) instead of the official Playwright image, and only `main` builds the local application stack. Both keep branch builds' disk use and Docker cache growth small.
 
 ## Prevent recurrence
 
@@ -172,4 +174,4 @@ The next build therefore downloads its checkout, dependencies, and browser image
 - Review `df -h /`, Jenkins workspace usage, and `docker system df` regularly on small agents.
 - The pipeline deletes its workspace after report publication; use archived artifacts and build logs for debugging.
 - Expand the agent's storage when ordinary Jenkins, Docker, and service data cannot maintain at least 5 GiB of free working space. Cleanup is not a substitute for adequate CI capacity.
-- Revisit the cold-build policy if the agent is expanded and build speed becomes more important than minimum retained storage.
+- Expand the agent if cleanup logs show it removing all caches on most builds. Each cold build downloads its Maven, npm, and browser dependencies again.
