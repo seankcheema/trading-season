@@ -109,6 +109,47 @@ pipeline {
             }
         }
 
+        stage('Build Local Docker Stack') {
+            steps {
+                sh '''
+                    set -eu
+                    COMPOSE_FILE="infrastructure/docker-compose/docker-compose.local.yml"
+                    PROJECT_NAME="trading-season-local"
+
+                    echo "Building and starting the local application stack..."
+                    sh infrastructure/docker/run-compose.sh \
+                        --project-name "$PROJECT_NAME" \
+                        -f "$COMPOSE_FILE" \
+                        up -d --build
+
+                    echo "Local application services after startup:"
+                    sh infrastructure/docker/run-compose.sh \
+                        --project-name "$PROJECT_NAME" \
+                        -f "$COMPOSE_FILE" \
+                        ps
+
+                    EXPECTED_SERVICES="auth-db auth-service db holdings-and-trade-service order-and-sell-service"
+                    RUNNING_SERVICES="$(sh infrastructure/docker/run-compose.sh \
+                        --project-name "$PROJECT_NAME" \
+                        -f "$COMPOSE_FILE" \
+                        ps --services --filter status=running | sort | tr '\n' ' ' | sed 's/ $//')"
+                    if [ "$RUNNING_SERVICES" != "$EXPECTED_SERVICES" ]; then
+                        echo "Expected running services: $EXPECTED_SERVICES" >&2
+                        echo "Actual running services:   $RUNNING_SERVICES" >&2
+                        sh infrastructure/docker/run-compose.sh \
+                            --project-name "$PROJECT_NAME" \
+                            -f "$COMPOSE_FILE" \
+                            logs --no-color --tail 100
+                        exit 1
+                    fi
+
+                    echo "All Docker containers before tests:"
+                    docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}'
+                    echo "Local application stack is running on host ports 3001, 5432, 5433, 8081, and 8082."
+                '''
+            }
+        }
+
         stage('Setup Dependencies') {
             steps {
                 sh '''
@@ -394,44 +435,6 @@ pipeline {
             }
         }
 
-        stage('Build Local Docker Stack') {
-            steps {
-                sh '''
-                    set -eu
-                    COMPOSE_FILE="infrastructure/docker-compose/docker-compose.local.yml"
-                    PROJECT_NAME="trading-season-local"
-
-                    echo "Building and starting the local application stack..."
-                    sh infrastructure/docker/run-compose.sh \
-                        --project-name "$PROJECT_NAME" \
-                        -f "$COMPOSE_FILE" \
-                        up -d --build
-
-                    echo "Local application services after startup:"
-                    sh infrastructure/docker/run-compose.sh \
-                        --project-name "$PROJECT_NAME" \
-                        -f "$COMPOSE_FILE" \
-                        ps
-
-                    EXPECTED_SERVICES="auth-db auth-service db holdings-and-trade-service order-and-sell-service"
-                    RUNNING_SERVICES="$(sh infrastructure/docker/run-compose.sh \
-                        --project-name "$PROJECT_NAME" \
-                        -f "$COMPOSE_FILE" \
-                        ps --services --filter status=running | sort | tr '\n' ' ' | sed 's/ $//')"
-                    if [ "$RUNNING_SERVICES" != "$EXPECTED_SERVICES" ]; then
-                        echo "Expected running services: $EXPECTED_SERVICES" >&2
-                        echo "Actual running services:   $RUNNING_SERVICES" >&2
-                        sh infrastructure/docker/run-compose.sh \
-                            --project-name "$PROJECT_NAME" \
-                            -f "$COMPOSE_FILE" \
-                            logs --no-color --tail 100
-                        exit 1
-                    fi
-
-                    echo "Local application stack is running on host ports 3001, 5432, 5433, 8081, and 8082."
-                '''
-            }
-        }
     }
     
     post {
