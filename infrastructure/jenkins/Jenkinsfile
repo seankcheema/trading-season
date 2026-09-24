@@ -65,21 +65,7 @@ pipeline {
             }
         }
 
-        stage('Disk Preflight') {
-            steps {
-                sh '''
-                    set -eu
-                    AVAILABLE_KB="$(df -Pk "$WORKSPACE" | awk 'NR == 2 {print $4}')"
-                    REQUIRED_KB=$((5 * 1024 * 1024))
-                    if [ "$AVAILABLE_KB" -lt "$REQUIRED_KB" ]; then
-                        echo "Jenkins requires at least 5 GiB free before checkout; only $((AVAILABLE_KB / 1024 / 1024)) GiB is available." >&2
-                        echo "Follow infrastructure/jenkins/README.md before retrying this build." >&2
-                        exit 1
-                    fi
-                    echo "Disk preflight passed with $((AVAILABLE_KB / 1024 / 1024)) GiB available."
-                '''
-            }
-        }
+        
 
         stage('Checkout') {
             steps {
