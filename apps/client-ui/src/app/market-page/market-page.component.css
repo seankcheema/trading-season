@@ -1,0 +1,229 @@
+:host {
+  display: block;
+}
+
+.market-page {
+  min-height: 100dvh;
+  font-variant-numeric: tabular-nums;
+}
+
+.market-nav {
+  height: 4rem;
+}
+
+.market-content {
+  width: 100%;
+  max-width: 1648px;
+  margin: 0 auto;
+  padding: 0.625rem 1.5rem;
+}
+
+.market-summary {
+  display: flex;
+  min-height: 4.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.market-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.75rem 1.5rem;
+  border-left: 1px solid rgba(0, 187, 255, 0.15);
+  padding-left: 1rem;
+}
+
+.market-metrics div {
+  min-width: 3.75rem;
+}
+.market-metrics dt {
+  color: rgba(238, 250, 255, 0.46);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.market-metrics dd {
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.market-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(19rem, 3fr);
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.chart-panel {
+  display: flex;
+  min-height: 32rem;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.chart-stage {
+  min-height: 25rem;
+  flex: 1;
+  border-radius: 0.75rem;
+  background: #0e0e0e;
+  padding: 0.75rem;
+}
+.technical-footer {
+  display: flex;
+  min-height: 2.5rem;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.6875rem;
+}
+
+.tool-button,
+.tool-icon {
+  display: flex;
+  height: 1.875rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 1px solid rgba(238, 250, 255, 0.1);
+  border-radius: 0.5rem;
+  background: #181818;
+  padding: 0 0.625rem;
+  color: rgba(238, 250, 255, 0.42);
+  font-size: 0.6875rem;
+}
+.tool-icon {
+  width: 1.875rem;
+  padding: 0;
+}
+
+.tools-column {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow: hidden;
+}
+.insight-panel {
+  min-height: 12rem;
+  flex: 1;
+  overflow-y: auto;
+}
+.orders-panel {
+  flex: 0 0 auto;
+  max-height: 9rem;
+  overflow-y: auto;
+}
+.insight-tab {
+  border-radius: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  color: rgba(238, 250, 255, 0.52);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.insight-tab-active {
+  background: #00bbff;
+  color: #002a3a;
+}
+.tools-column app-trade-ticket {
+  min-height: 0;
+  max-height: 17rem;
+  overflow-y: auto;
+}
+.insight-panel,
+.tools-column app-trade-ticket,
+.orders-panel {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 187, 255, 0.35) transparent;
+}
+.order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding-top: 0.5rem;
+}
+.empty-tool {
+  display: flex;
+  min-height: 8rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  text-align: center;
+  font-size: 0.75rem;
+}
+.empty-tool span {
+  color: rgba(238, 250, 255, 0.46);
+}
+
+@media (min-width: 1280px) {
+  .market-page {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .market-content {
+    display: flex;
+    height: calc(100dvh - 4rem);
+    min-height: 0;
+    flex-direction: column;
+  }
+  .market-summary {
+    flex: 0 0 4.75rem;
+  }
+  .market-grid {
+    min-height: 0;
+    flex: 1;
+  }
+  .chart-panel {
+    min-height: 0;
+  }
+  .chart-stage {
+    min-height: 0;
+  }
+  .tools-column {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 1279px) {
+  .market-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .market-metrics {
+    width: 100%;
+    justify-content: flex-start;
+    border-top: 1px solid rgba(0, 187, 255, 0.15);
+    border-left: 0;
+    padding-top: 0.75rem;
+    padding-left: 0;
+  }
+  .market-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .market-content {
+    padding: 0.5rem 1rem;
+  }
+  .chart-panel {
+    min-height: 27rem;
+  }
+  .chart-stage {
+    min-height: 20rem;
+    padding: 0.5rem;
+  }
+  .market-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .tool-button {
+    padding: 0 0.4rem;
+  }
+}

@@ -11,14 +11,24 @@
   >
     <header class="border-border flex items-center justify-between gap-4 border-b px-5 py-3">
       <h2 id="order-submission-title" class="text-sm font-semibold">New Order</h2>
-      <button
-        type="button"
-        class="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 cursor-pointer items-center justify-center rounded-lg transition-colors"
-        aria-label="Close order submission"
-        (click)="closed.emit()"
-      >
-        <ng-icon name="lucideX" class="text-[18px]" />
-      </button>
+      <div class="flex items-center gap-1">
+        <a
+          [routerLink]="fullScreenUrl()"
+          class="text-muted-foreground hover:bg-muted hover:text-primary flex h-8 items-center gap-2 rounded-lg px-2 text-xs transition-colors"
+          aria-label="Open full screen market chart"
+        >
+          <ng-icon name="lucideExpand" class="text-[16px]" />
+          <span>Full screen</span>
+        </a>
+        <button
+          type="button"
+          class="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 cursor-pointer items-center justify-center rounded-lg transition-colors"
+          aria-label="Close order submission"
+          (click)="closed.emit()"
+        >
+          <ng-icon name="lucideX" class="text-[18px]" />
+        </button>
+      </div>
     </header>
 
     <div class="grid md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">

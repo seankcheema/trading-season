@@ -1,4 +1,4 @@
-import { formatCurrency, formatDate } from '@angular/common';
+import { formatCurrency, formatDate, formatNumber } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -80,6 +80,13 @@ interface MarkerPoint {
   y: number;
 }
 
+interface VolumeBar {
+  x: number;
+  width: number;
+  height: number;
+  up: boolean;
+}
+
 @Component({
   selector: 'app-price-chart',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -105,6 +112,9 @@ interface MarkerPoint {
               {{ point.changePercent | signedPercent }}
             </span>
             <span class="text-muted-foreground text-[13px]/5">· {{ point.timeLabel }}</span>
+            @if (point.volumeLabel) {
+              <span class="text-primary text-[13px]/5">· Vol {{ point.volumeLabel }}</span>
+            }
           </div>
         }
       </div>
@@ -177,6 +187,15 @@ interface MarkerPoint {
           />
           @if (area() && areaPath()) {
             <path [attr.d]="areaPath()" [attr.fill]="'url(#' + gradientId + ')'" />
+          }
+          @for (bar of volumeBars(); track $index) {
+            <rect
+              [attr.x]="bar.x"
+              [attr.y]="HEIGHT - bar.height"
+              [attr.width]="bar.width"
+              [attr.height]="bar.height"
+              [class]="bar.up ? 'fill-gain/45' : 'fill-loss/45'"
+            />
           }
           <path
             [attr.d]="linePath()"
@@ -306,6 +325,29 @@ export class PriceChartComponent {
   protected readonly trendColor = computed(() =>
     this.trendingUp() ? 'var(--color-gain)' : 'var(--color-loss)',
   );
+
+  protected readonly volumeBars = computed<VolumeBar[]>(() => {
+    const points = this.points();
+    const volumes = points.map((point) => point.volume ?? 0);
+    const minimum = Math.min(...volumes);
+    const maximum = Math.max(...volumes, 0);
+    if (!maximum) {
+      return [];
+    }
+    const slot = WIDTH / Math.max(points.length, 1);
+    const width = Math.max(0.12, Math.min(slot * 0.62, 1.4));
+    const range = maximum - minimum;
+    return points.map((point, index) => {
+      const normalized = range ? ((point.volume ?? 0) - minimum) / range : 0.5;
+      return {
+        x: index * slot + (slot - width) / 2,
+        width,
+        // Stretch the observed range so differences remain visible when volumes cluster.
+        height: HEIGHT * (0.04 + normalized * 0.2),
+        up: index === 0 || point.value >= points[index - 1].value,
+      };
+    });
+  });
 
   protected readonly hovered = computed(() => {
     const index = this.hoverIndex();
@@ -505,6 +547,8 @@ export class PriceChartComponent {
       ...this._coords()[index],
       valueLabel: formatCurrency(point.value, this._locale, '$', 'USD'),
       timeLabel: this.formatTime(point.time, TOOLTIP_FORMATS[this.timeframe()]),
+      volumeLabel:
+        point.volume === undefined ? '' : formatNumber(point.volume, this._locale, '1.0-0'),
       changePercent: ((point.value - points[0].value) / points[0].value) * 100,
     };
   }
@@ -545,8 +589,7 @@ export class PriceChartComponent {
 
   private valueToY(value: number, scale = this.yScale()): number {
     return (
-      ((HEIGHT - PADDING - ((value - scale.min) / scale.range) * (HEIGHT - PADDING * 2)) /
-        HEIGHT) *
+      ((HEIGHT - PADDING - ((value - scale.min) / scale.range) * (HEIGHT - PADDING * 2)) / HEIGHT) *
       100
     );
   }

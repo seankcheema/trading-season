@@ -77,6 +77,8 @@ export function searchInstruments(
 export interface PricePoint {
   time: Date;
   value: number;
+  /** Candle volume when the point came from the live market API. */
+  volume?: number;
 }
 
 const MINUTE = 60_000;

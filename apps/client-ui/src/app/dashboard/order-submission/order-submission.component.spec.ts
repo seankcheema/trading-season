@@ -3,6 +3,7 @@ import { OrderSubmissionComponent } from './order-submission.component';
 import { Instrument } from '../mock-data';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideRouter } from '@angular/router';
 
 const INSTRUMENT: Instrument = {
   symbol: 'AAPL',
@@ -25,7 +26,7 @@ describe('OrderSubmissionComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [OrderSubmissionComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     }).compileComponents();
   });
 
@@ -77,6 +78,11 @@ describe('OrderSubmissionComponent', () => {
     ]);
   });
 
+  it('should link the original modal to the canonical full-screen symbol route', () => {
+    const fixture = setup();
+    expect(fixture.componentInstance['fullScreenUrl']()).toEqual(['/dashboard/markets', 'aapl']);
+  });
+
   it('should limit the fallback chart to the elapsed market session', () => {
     const fixture = setup();
     const component = fixture.componentInstance;
@@ -86,9 +92,9 @@ describe('OrderSubmissionComponent', () => {
 
     expect(points[0].time.toISOString()).toBe('2026-01-05T15:30:00.000Z');
     expect(points[points.length - 1].time.toISOString()).toBe('2026-01-05T16:00:00.000Z');
-    expect(points.every((point) => point.time.getTime() <= Date.parse('2026-01-05T16:00:00Z'))).toBe(
-      true,
-    );
+    expect(
+      points.every((point) => point.time.getTime() <= Date.parse('2026-01-05T16:00:00Z')),
+    ).toBe(true);
   });
 
   it('should include the exact cursor between regular chart samples', () => {

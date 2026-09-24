@@ -11,7 +11,8 @@ import {
   signal,
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideX } from '@ng-icons/lucide';
+import { lucideExpand, lucideX } from '@ng-icons/lucide';
+import { RouterLink } from '@angular/router';
 import {
   Instrument,
   OrderRequest,
@@ -33,12 +34,13 @@ import { TimeframeToggleComponent } from '../shared/timeframe-toggle.component';
   imports: [
     CurrencyPipe,
     NgIcon,
+    RouterLink,
     InstrumentSearchComponent,
     PriceChartComponent,
     SignedPercentPipe,
     TimeframeToggleComponent,
   ],
-  providers: [provideIcons({ lucideX })],
+  providers: [provideIcons({ lucideExpand, lucideX })],
   host: { '(document:keydown.escape)': 'closed.emit()' },
   templateUrl: './order-submission.component.html',
   styleUrl: './order-submission.component.css',
@@ -66,6 +68,10 @@ export class OrderSubmissionComponent {
       findInstrument(this.activeSymbol()) ??
       this.instrument(),
   );
+  protected readonly fullScreenUrl = computed(() => [
+    '/dashboard/markets',
+    this.activeInstrument().symbol.toLowerCase(),
+  ]);
   protected readonly sides: readonly OrderSide[] = ['buy', 'sell'];
   protected readonly side = signal<OrderSide>('buy');
   protected readonly timeframe = signal<Timeframe>('1D');

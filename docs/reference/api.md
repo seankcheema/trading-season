@@ -46,7 +46,7 @@ Errors use an `{"error": "..."}` body. See [exception mapping](../../apps/busine
 
 ## Java stock market API: port 8081
 
-These public endpoints expose seeded stock data for the dashboard market ticker and future stock charts. Account, portfolio, holding, transaction, and order integration remains outside this slice; the dashboard portfolio chart still uses mock data.
+These public endpoints expose seeded stock data for the dashboard market ticker, instrument popup, and full-screen `/dashboard/markets/:symbol` view. The full-screen view combines candle history with live stream prices and supports `1D`, `5D`, `1M`, and `1Y`. Its metrics, consensus, news, AI commentary, and recent-order cards are explicitly demo data rather than API responses. Account, portfolio, holding, transaction, and order integration remains outside this slice; the dashboard portfolio chart still uses mock data and the full-screen view keeps Buy and Sell disabled.
 
 Planned protected trading endpoints will use the [token verification](#token-verification) described above: clients send the auth service access token as a bearer token, and the Java backend scopes account and order resources to the token's sub.
 

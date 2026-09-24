@@ -241,9 +241,7 @@ export class ApiStub {
   /** Trading accounts the business backend holds for a user, oldest first. */
   tradingAccountsOf(email: string): TradingAccount[] {
     const ownerId = this.accounts.get(email.toLowerCase())?.id;
-    return this.tradingAccounts
-      .filter((account) => account.ownerId === ownerId)
-      .map(publicAccount);
+    return this.tradingAccounts.filter((account) => account.ownerId === ownerId).map(publicAccount);
   }
 
   /** A trading account's holdings, which make up its portfolio. */
@@ -427,7 +425,16 @@ export class ApiStub {
         symbol: url.searchParams.get('symbol') ?? 'AAPL',
         timeframe: url.searchParams.get('timeframe') ?? '1D',
         marketTimestamp: '2026-01-05T15:00:00Z',
-        points: [],
+        points: [
+          {
+            timestamp: '2026-01-05T15:00:00Z',
+            open: 224.5,
+            high: 226.2,
+            low: 224.1,
+            close: 225.8,
+            volume: 1200,
+          },
+        ],
       });
       return;
     }
@@ -442,7 +449,16 @@ export class ApiStub {
         lastTimestamp: '2026-01-05T20:59:59Z',
         tradingDates: ['2026-01-05'],
       },
-      stocks: [],
+      stocks: [
+        {
+          symbol: 'AAPL',
+          companyName: 'Apple Inc.',
+          price: 225.8,
+          change: 2.04,
+          changePercent: 0.91,
+          timestamp: '2026-01-05T15:00:00Z',
+        },
+      ],
     });
   }
 

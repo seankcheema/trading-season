@@ -74,6 +74,18 @@ describe('PriceChartComponent', () => {
     expect(fixture.nativeElement.textContent).toContain(ticks[0].label);
   });
 
+  it('should make clustered candle volumes visibly different', () => {
+    const component = setup('1D', [
+      { time: new Date('2026-01-01T15:30:00Z'), value: 100, volume: 100 },
+      { time: new Date('2026-01-01T15:35:00Z'), value: 101, volume: 105 },
+      { time: new Date('2026-01-01T15:40:00Z'), value: 99, volume: 110 },
+    ]).componentInstance;
+
+    const heights = component['volumeBars']().map((bar) => bar.height);
+    expect(new Set(heights).size).toBe(3);
+    expect(Math.max(...heights) - Math.min(...heights)).toBeGreaterThan(6);
+  });
+
   it('should show the value and time of the hovered point', () => {
     const fixture = setup();
     fixture.componentInstance['hoverIndex'].set(26);
