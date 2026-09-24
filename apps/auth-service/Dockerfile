@@ -1,7 +1,7 @@
 # ── Stage 1: Build ─────────────────────────────────────────────────────────────
 # Full Node image: the build needs devDependencies (TypeScript, the Nest CLI)
 # that the runtime image must not carry.
-FROM node:22-alpine AS build
+FROM node:24.8.0-alpine AS build
 
 WORKDIR /app
 
@@ -21,7 +21,7 @@ RUN npm run build
 # Fresh base image. The devDependencies, TypeScript sources and build cache from
 # Stage 1 are NOT copied here — they never exist in the final image, which is
 # why the multi-stage result is significantly smaller.
-FROM node:22-alpine
+FROM node:24.8.0-alpine
 
 WORKDIR /app
 
@@ -37,10 +37,16 @@ RUN npm ci --omit=dev --foreground-scripts && npm cache clean --force
 # Copy only the compiled output from the build stage. Nothing else.
 COPY --from=build /app/dist ./dist
 
+# Copy entrypoint script that generates JWT keys if needed
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh && \
+    # Allow openssl and sh for key generation (needed before dropping to appuser)
+    apk add --no-cache openssl
+
 # Everything above runs as root so npm can write to /app. Hand ownership over
 # and drop privileges here, before the process starts.
 RUN chown -R appuser:appgroup /app
 USER appuser
 
 EXPOSE 3001
-CMD ["node", "dist/main.js"]
+ENTRYPOINT ["/app/entrypoint.sh"]
