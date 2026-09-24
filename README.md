@@ -1,105 +1,16 @@
 # Trading Season
 
-Trading simulation monorepo with an Angular interface, two Spring Boot microservices, and a NestJS authentication service. Reporting has runnable container placeholders but no implemented reporting functionality.
+Trading simulation monorepo with an Angular interface, two Spring Boot microservices, and a NestJS authentication service. Reporting applications are placeholders.
 
 The Java backend is split into two independent microservices:
-- **Holdings and Trade Service** (`apps/holdings-and-trade-service/`) - Manages orders, validation, and holdings
-- **Order and Sell Service** (`apps/order-and-sell-service/`) - Provides user data, holdings queries, and order history
+- **Holdings and Trade Service** (`apps/holdings-and-trade-service/`) – Order submission, validation, execution, and holdings management
+- **Order and Sell Service** (`apps/order-and-sell-service/`) – User profile queries and market data access
 
-Both services share a single PostgreSQL database and authentication via the NestJS auth service.
-
-## Start all services
-
-### Windows
-
-With the local databases configured, set the Spring database password and run the Windows launcher from the repository root:
-
-```powershell
-$env:SPRING_DATASOURCE_PASSWORD = 'password'
-.\scripts\start-local.ps1
-```
-
-### Linux with automated setup script
-
-The Linux setup script validates the toolchain, installs project dependencies, configures databases via Docker Compose, and starts all applications:
-
-```sh
-./scripts/setup-local.sh
-```
-
-Use a local or Docker-managed PostgreSQL instance explicitly when needed:
-
-```sh
-./scripts/setup-local.sh --database-mode local
-./scripts/setup-local.sh --database-mode docker
-```
-
-To stage an existing market-data archive during setup:
-
-```sh
-./scripts/setup-local.sh --parquet-source /path/to/synthetic-market-data-2026-v1
-```
-
-The script reports skipped valid stages as `[READY]`, completed stages as `[DONE]`, and failures as `[FAIL]`. Press `Ctrl+C` to stop the applications. PostgreSQL data and Docker database containers are preserved.
-
-### Linux with Docker Compose (automated)
-
-To start all services with Docker Compose, run from the repository root:
-
-```sh
-docker compose -p trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml up
-```
-
-Docker Compose will automatically:
-- Create and initialize both PostgreSQL databases
-- Apply all database migrations
-- Generate JWT keys for the auth service
-- Build and start all services
-
-To run services in the background, add `-d` and use `docker compose logs` to monitor:
-
-```sh
-docker compose -f infrastructure/docker-compose/docker-compose.local.yml up -d
-docker compose -f infrastructure/docker-compose/docker-compose.local.yml logs -f
-```
-
-To verify services are running:
-
-```sh
-docker ps
-```
-
-Open the client UI at `http://localhost:4200`. The reporting UI placeholder is at `http://localhost:4300`, and the reporting service placeholder health endpoint is at `http://localhost:8083/health`. Auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`.
-
-### Jenkins
-
-To start Jenkins for CI/CD pipeline execution:
-
-```sh
-docker compose -f infrastructure/docker-compose/docker-compose.jenkins.yml up -d
-```
-
-Jenkins runs on `http://localhost:8888` with username `admin` and password `admin`. The container mounts the host Docker socket to enable Docker builds within the pipeline.
-
-See [Jenkins configuration](infrastructure/jenkins/README.md) for credentials setup, disk-space management, and pipeline configuration.
-
-## Requirements
-
-Install the following development tools:
-
-- Node.js `24.x` (24.8.0 or later) and npm `11.16.0`
-- JDK `21` and Maven `3.9+`
-- PostgreSQL `16` (recommended)
-- Python `3.12` (recommended for the market-data scripts)
-- Docker Compose `v2+` when using Docker-managed databases
-
-The Angular frontend uses Angular `21.2.23`, Angular CLI and build tooling `21.2.24`, Angular CDK `21.2.14`, and TypeScript `>=5.9.0 <6.0.0`. Keep the Angular framework packages on `21.2.23`, the CLI, build tooling, and SSR packages on `21.2.24`, and the CDK package on `21.2.14`.
-
-The Java services use Spring Boot `4.1.1`. The authentication service uses NestJS `12.0.1+`.
+Both services share a single PostgreSQL database (`trading_season`) and authenticate via the NestJS auth service (`auth_db`).
 
 ## Start locally on Windows
 
-Install the required tools above before continuing. PostgreSQL can run locally or through Docker Compose.
+Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL (or Docker Compose).
 
 ### Quick start with the startup script (requires local databases)
 
@@ -128,10 +39,7 @@ Install the required tools above before continuing. PostgreSQL can run locally o
    .\scripts\start-local.ps1
    ```
 
-The launcher keeps all logs in one terminal and stops the other services if one exits. Open the UI at `http://localhost:4200`; auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`. The business database runs on port `5432` (default). See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
-   The script starts the UI, auth service, and both Java services in a single terminal, validates database connectivity and `.env` configuration. Press Ctrl+C to stop all services.
-
-   Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001`; the Java services run on `http://localhost:8081` and `http://localhost:8082`. The business database runs on port `5432` (default).
+   The launcher consolidates all logs in one terminal and stops all services if any one exits. Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`. See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
 
 ### Manual setup with local PostgreSQL
 
@@ -215,6 +123,31 @@ cd apps/auth-service
 npm run start:dev
 ```
 
+### Docker Compose setup (alternative)
+
+If you prefer to use Docker Compose for databases:
+
+1. Install dependencies and configure authentication (steps 1-2 above).
+
+2. Start the databases:
+
+   ```powershell
+   docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml up -d db auth-db
+   ```
+
+   This creates:
+   - Business database (`trading_season`) on `localhost:5432`
+   - Auth database (`auth_db`) on `localhost:5433`
+
+   Auth migrations run automatically on auth-service startup. For the business database, follow the [database setup](docs/reference/database.md#disposable-business-database-setup) to apply migrations V001, V002, and V003 if needed.
+
+3. Start all services with the startup script:
+
+   ```powershell
+   $env:SPRING_DATASOURCE_PASSWORD = 'password'
+   .\scripts\start-local.ps1
+   ```
+
 ### Verify auth database
 
 To check registered users, connect pgAdmin's Query Tool to `auth_db` and run:
@@ -229,31 +162,32 @@ See the [development guide](docs/guides/development.md) for additional commands,
 
 ## Service map
 
-| Area | Responsibility | Local port |
-| --- | --- | --- |
-| [Business UI](apps/client-ui/README.md) | Login, registration, and a dashboard with live simulated stock tickers | 4200 |
-| [Holdings and Trade Service](apps/holdings-and-trade-service/README.md) | Order creation, validation, execution, and holdings management | 8081 |
-| [Order and Sell Service](apps/order-and-sell-service/README.md) | User profiles, holdings queries, and order history | 8082 |
-| [Auth service](apps/auth-service/README.md) | RS256 tokens, refresh tokens, auth database | 3001 |
-| [Business Database](apps/market-data/README.md) | Shared PostgreSQL database setup and migrations | — |
-| [Shared UI](packages/shared-ui-components/README.md) | Reusable Angular components | — |
-| [Reporting UI](apps/reporting-ui/README.md) | Runnable placeholder; reporting screens are not implemented | 4300 |
-| [Reporting service](apps/reporting-service/README.md) | Runnable health placeholder; reporting APIs are not implemented | 8083 |
-| [Reporting proposal](docs/reference/reporting.md) | Proposed future analytics behavior | — |
-| [Infrastructure](infrastructure/README.md) | Compose and Jenkins configuration | — |
+| Service | Folder | Port | Responsibility |
+| --- | --- | --- | --- |
+| Client UI | `apps/client-ui` | 4200 | Login, registration, dashboard with live market data |
+| Auth Service | `apps/auth-service` | 3001 | Email/password authentication, RS256 token issuance, refresh token rotation |
+| Holdings and Trade Service | `apps/holdings-and-trade-service` | 8081 | Order submission, validation, execution; holdings and account management |
+| Order and Sell Service | `apps/order-and-sell-service` | 8082 | User profile queries, market data access |
+| Market Data | `apps/market-data` | — | Shared database migrations and synthetic market data tooling |
+| Shared UI Components | `packages/shared-ui-components` | — | Reusable Angular components library |
+| Reporting | `docs/reference/reporting.md` | — | Proposed analytics and portfolio performance reporting |
 
 ## Documentation
 
-Browse the [documentation index](docs/README.md) to choose a guide or reference.
+Review the [documentation index](docs/README.md) for all guides and references. Key resources:
 
-- [Development](docs/guides/development.md): setup, commands, tests, contribution workflow.
-- [Architecture](docs/reference/architecture.md): boundaries, source navigation, current limitations.
-- [API reference](docs/reference/api.md): implemented HTTP contracts.
-- [Database](docs/reference/database.md): schema ownership, migrations, and ERD.
-- [Operations](docs/guides/operations.md): configuration, CI, deployment limitations, troubleshooting.
-- [Agent instructions](AGENTS.md): repository rules and completion checks.
+| When you need to… | Read |
+| --- | --- |
+| Install, run, test, or debug locally | [Development Guide](docs/guides/development.md) |
+| Understand service architecture and boundaries | [Architecture Reference](docs/reference/architecture.md) |
+| Review implemented API endpoints | [API Reference](docs/reference/api.md) |
+| Understand database schema and ownership | [Database Reference](docs/reference/database.md) |
+| Configure services and CI/CD | [Operations Guide](docs/guides/operations.md) |
+| Plan analytics and reporting work | [Reporting Proposal](docs/reference/reporting.md) |
+| Browse Java API documentation | [Javadocs](docs/JAVA_DOCS/index.html) |
+| Review code coverage | [Coverage Reports](docs/coverage/README.md) |
 
-[Javadocs](docs/JAVA_DOCS/index.html) are kept in the repository and generated from Java source; the generation and update requirements are in the development guide.
+[Javadocs](docs/JAVA_DOCS/index.html) are maintained in the repository and regenerated from Java source. See the [development guide](docs/guides/development.md) for regeneration procedures.
 
 # Business database ERD
 
