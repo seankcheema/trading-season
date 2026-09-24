@@ -8,6 +8,10 @@ The Java backend is split into two independent microservices:
 
 Both services share a single PostgreSQL database and authentication via the NestJS auth service.
 
+## Code coverage
+
+View test coverage reports in [docs/coverage](docs/coverage/) or see [development guide](docs/guides/development.md#coverage-floors) for coverage floors and how to generate reports locally. Each tier (UI, Auth, Java) enforces a 50% coverage minimum.
+
 ## Start all services
 
 ### Windows
