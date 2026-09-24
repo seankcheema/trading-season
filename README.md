@@ -162,16 +162,15 @@ See the [development guide](docs/guides/development.md) for additional commands,
 
 ## Service map
 
-| Area | Responsibility | Local port |
-| --- | --- | --- |
-| [Business UI](apps/client-ui/README.md) | Login, registration, and a dashboard with live simulated stock tickers | 4200 |
-| [Holdings and Trade Service](apps/holdings-and-trade-service/README.md) | Order creation, validation, execution, and holdings management | 8081 |
-| [Order and Sell Service](apps/order-and-sell-service/README.md) | User profiles, holdings queries, and order history | 8082 |
-| [Auth service](apps/auth-service/README.md) | RS256 tokens, refresh tokens, auth database | 3001 |
-| [Business Database](apps/market-data/README.md) | Shared PostgreSQL database setup and migrations | — |
-| [Shared UI](packages/shared-ui-components/README.md) | Reusable Angular components | — |
-| [Reporting proposal](docs/reference/reporting.md) | Future analytics UI and service | — |
-| [Infrastructure](infrastructure/README.md) | Compose and Jenkins configuration | — |
+| Service | Folder | Port | Responsibility |
+| --- | --- | --- | --- |
+| Client UI | `apps/client-ui` | 4200 | Login, registration, dashboard with live market data |
+| Auth Service | `apps/auth-service` | 3001 | Email/password authentication, RS256 token issuance, refresh token rotation |
+| Holdings and Trade Service | `apps/holdings-and-trade-service` | 8081 | Order submission, validation, execution; holdings and account management |
+| Order and Sell Service | `apps/order-and-sell-service` | 8082 | User profile queries, market data access |
+| Market Data | `apps/market-data` | — | Shared database migrations and synthetic market data tooling |
+| Shared UI Components | `packages/shared-ui-components` | — | Reusable Angular components library |
+| Reporting | `docs/reference/reporting.md` | — | Proposed analytics and portfolio performance reporting |
 
 ## Documentation
 
