@@ -7,6 +7,7 @@
 **/.turbo
 **/.venv
 **/coverage
+**/dist
 **/node_modules
 **/reports
 **/target

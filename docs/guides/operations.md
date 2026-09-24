@@ -7,7 +7,9 @@
 | Holdings and Trade service | [application.properties](../../apps/holdings-and-trade-service/src/main/resources/application.properties) | HTTP 8081; PostgreSQL localhost:5432/trading_season |
 | Order and Sell service | [application.properties](../../apps/order-and-sell-service/src/main/resources/application.properties) | HTTP 8082; PostgreSQL localhost:5432/trading_season |
 | Auth service | [Auth setup](../../apps/auth-service/README.md) and [database configuration](../../apps/auth-service/src/config/database.config.ts) | HTTP 3001; PostgreSQL localhost:5433/auth_db |
-| Local containers | [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) | Business/auth database volumes and archive cache |
+| Client UI container | [Client Dockerfile](../../apps/client-ui/Dockerfile) | HTTP 4200; Nginx proxies `/api` to Holdings and Trade |
+| Reporting placeholders | [Reporting proposal](../reference/reporting.md) | UI HTTP 4300; service HTTP 8083 |
+| Local containers | [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) | Application containers, business/auth database volumes, and archive cache |
 | Jenkins | [Pipeline](../../infrastructure/jenkins/Jenkinsfile), [disk-space runbook](../../infrastructure/jenkins/README.md), [Compose](../../infrastructure/docker-compose/docker-compose.jenkins.yml) | Jenkins UI on host port 8888 |
 
 Java reads SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD, AUTH_JWK_SET_URI, AUTH_JWT_ISSUER, and CORS_ORIGINS. AUTH_JWT_ISSUER must equal the auth service's JWT_ISSUER or every token is rejected. Auth reads DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, PORT, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, and JWT_ISSUER. Node startup loads .env from its working directory; Compose must receive the appropriate environment file explicitly.
@@ -30,7 +32,7 @@ docker compose --project-name trading-season-local --env-file apps/auth-service/
   -f infrastructure/docker-compose/docker-compose.local.yml stop db auth-db
 ```
 
-Local Compose builds both Java services from their application directories and publishes them on ports 8081 and 8082. The UI has no active Compose service, so run it separately through npm when needed. No production Compose file or Kubernetes deployment is supplied.
+Local Compose builds the client UI, both Java services, auth service, and two reporting placeholders. It publishes the client UI on 4200, reporting UI on 4300, reporting service on 8083, Java services on 8081 and 8082, and auth on 3001. The reporting containers prove only that those future boundaries can run; they do not implement reporting. No production Compose file or Kubernetes deployment is supplied.
 
 Auth GET /health reports process liveness, not database readiness. Check startup logs and database connectivity separately. Database volumes persist across ordinary container shutdown; removing volumes deletes their data. Back up retained data before schema or volume changes and verify restoration in a separate database.
 
@@ -42,7 +44,7 @@ The Linux bootstrap uses the Compose project name `trading-season-local`, keepin
 
 ## CI and artifacts
 
-The Jenkins pipeline expects a native agent with Docker, the Maven tool named Maven, and Java 21 at its configured JAVA_HOME. It requires at least 7 GiB of free workspace storage before checkout and runs Java, auth, Angular, end-to-end, script, and build-scoped two-day PostgreSQL integration checks. Full-year generation remains on demand.
+The Jenkins pipeline expects a native agent with Docker, the Maven tool named Maven, and Java 21 at its configured JAVA_HOME. It requires at least 5 GiB of free workspace storage before checkout. This is an early guard rather than a guarantee that the complete Compose and Angular image builds will fit; keep additional headroom when possible. The pipeline runs Java, auth, Angular, end-to-end, script, and build-scoped two-day PostgreSQL integration checks. Full-year generation remains on demand.
 
 | Suite | Outputs |
 | --- | --- |
@@ -60,7 +62,7 @@ The end-to-end stage runs inside the official Playwright image whose version mat
 
 The optional [Jenkins image](../../infrastructure/docker/Dockerfile.jenkins) installs Node 24.x, the Docker CLI, Buildx, and the Docker Compose v2 plugin. Compose mounts the host Docker socket so those client tools operate on the host daemon; the Jenkins container does not run a separate Docker daemon. The active pipeline still expects the native Jenkins NodeJS tool to provide a Node 24.x runtime at 24.8.0 or later. The Jenkins Compose example contains development credentials. Review toolchains, credentials, and access before deployment; it is not a production-ready configuration.
 
-The pipeline prints `docker ps` during its initial Docker check, after application-stack startup, and in its final diagnostics. The initial check fails early when Jenkins cannot reach the daemon or neither Compose command is available because later stages require Docker. The pipeline prefers the Compose v2 `docker compose` plugin and falls back to the legacy `docker-compose` command. Immediately after checkout and before dependency installation or tests, Jenkins builds and starts `docker-compose.local.yml` under the `trading-season-local` project name. It verifies that the two databases, auth service, and both Java services are running, then prints every running container so the application services appear separately from Jenkins. A successful build leaves those containers available on host ports 3001, 5432, 5433, 8081, and 8082 for local inspection. The UI is not included because it has no active Compose service.
+The pipeline prints `docker ps` during its initial Docker check, after application-stack startup, and in its final diagnostics. The initial check fails early when Jenkins cannot reach the daemon or neither Compose command is available because later stages require Docker. The pipeline prefers the Compose v2 `docker compose` plugin and falls back to the legacy `docker-compose` command. Immediately after checkout and before dependency installation or tests, Jenkins builds and starts `docker-compose.local.yml` under the `trading-season-local` project name. It verifies eight long-running services and performs HTTP smoke checks against the client UI and both reporting placeholders, then prints every running container so the application services appear separately from Jenkins. A successful build leaves the stack available on host ports 3001, 4200, 4300, 5432, 5433, 8081, 8082, and 8083 for local inspection.
 
 Start the Jenkins controller separately; do not ask the running pipeline to manage its own container. From the repository root, start only the Jenkins service from its Compose file:
 

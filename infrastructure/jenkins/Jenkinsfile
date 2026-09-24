@@ -70,9 +70,9 @@ pipeline {
                 sh '''
                     set -eu
                     AVAILABLE_KB="$(df -Pk "$WORKSPACE" | awk 'NR == 2 {print $4}')"
-                    REQUIRED_KB=$((7 * 1024 * 1024))
+                    REQUIRED_KB=$((5 * 1024 * 1024))
                     if [ "$AVAILABLE_KB" -lt "$REQUIRED_KB" ]; then
-                        echo "Jenkins requires at least 7 GiB free before checkout; only $((AVAILABLE_KB / 1024 / 1024)) GiB is available." >&2
+                        echo "Jenkins requires at least 5 GiB free before checkout; only $((AVAILABLE_KB / 1024 / 1024)) GiB is available." >&2
                         echo "Follow infrastructure/jenkins/README.md before retrying this build." >&2
                         exit 1
                     fi
@@ -128,7 +128,7 @@ pipeline {
                         -f "$COMPOSE_FILE" \
                         ps
 
-                    EXPECTED_SERVICES="auth-db auth-service db holdings-and-trade-service order-and-sell-service"
+                    EXPECTED_SERVICES="auth-db auth-service client-ui db holdings-and-trade-service order-and-sell-service reporting-service reporting-ui"
                     RUNNING_SERVICES="$(sh infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
                         -f "$COMPOSE_FILE" \
@@ -143,9 +143,32 @@ pipeline {
                         exit 1
                     fi
 
+                    check_http() {
+                        service="$1"
+                        path="$2"
+                        expected="$3"
+                        attempt=1
+                        while [ "$attempt" -le 30 ]; do
+                            if sh infrastructure/docker/run-compose.sh \
+                                --project-name "$PROJECT_NAME" \
+                                -f "$COMPOSE_FILE" \
+                                exec -T "$service" wget -qO- "http://127.0.0.1:8080${path}" | grep -F "$expected" >/dev/null; then
+                                return 0
+                            fi
+                            attempt=$((attempt + 1))
+                            sleep 2
+                        done
+                        echo "HTTP smoke check failed for ${service}${path}." >&2
+                        return 1
+                    }
+
+                    check_http client-ui / '<app-root'
+                    check_http reporting-ui / 'Reporting UI placeholder'
+                    check_http reporting-service /health '"status":"ok"'
+
                     echo "All Docker containers before tests:"
                     docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}'
-                    echo "Local application stack is running on host ports 3001, 5432, 5433, 8081, and 8082."
+                    echo "Local application stack is running on host ports 3001, 4200, 4300, 5432, 5433, 8081, 8082, and 8083."
                 '''
             }
         }

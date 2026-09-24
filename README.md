@@ -1,6 +1,6 @@
 # Trading Season
 
-Trading simulation monorepo with an Angular interface, two Spring Boot microservices, and a NestJS authentication service. Reporting applications are placeholders.
+Trading simulation monorepo with an Angular interface, two Spring Boot microservices, and a NestJS authentication service. Reporting has runnable container placeholders but no implemented reporting functionality.
 
 The Java backend is split into two independent microservices:
 - **Holdings and Trade Service** (`apps/holdings-and-trade-service/`) - Manages orders, validation, and holdings
@@ -69,7 +69,7 @@ To verify services are running:
 docker ps
 ```
 
-Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`.
+Open the client UI at `http://localhost:4200`. The reporting UI placeholder is at `http://localhost:4300`, and the reporting service placeholder health endpoint is at `http://localhost:8083/health`. Auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`.
 
 ### Jenkins
 
@@ -237,7 +237,9 @@ See the [development guide](docs/guides/development.md) for additional commands,
 | [Auth service](apps/auth-service/README.md) | RS256 tokens, refresh tokens, auth database | 3001 |
 | [Business Database](apps/market-data/README.md) | Shared PostgreSQL database setup and migrations | — |
 | [Shared UI](packages/shared-ui-components/README.md) | Reusable Angular components | — |
-| [Reporting proposal](docs/reference/reporting.md) | Future analytics UI and service | — |
+| [Reporting UI](apps/reporting-ui/README.md) | Runnable placeholder; reporting screens are not implemented | 4300 |
+| [Reporting service](apps/reporting-service/README.md) | Runnable health placeholder; reporting APIs are not implemented | 8083 |
+| [Reporting proposal](docs/reference/reporting.md) | Proposed future analytics behavior | — |
 | [Infrastructure](infrastructure/README.md) | Compose and Jenkins configuration | — |
 
 ## Documentation

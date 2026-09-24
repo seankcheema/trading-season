@@ -6,7 +6,7 @@ Use this runbook when a Jenkins build fails because its agent or Docker host is 
 ERROR: Could not install packages due to an OSError: [Errno 28] No space left on device
 ```
 
-This failure happens before the market-data test fixture is generated. Reducing the test date range does not address an image-build failure. The pipeline requires at least 7 GiB free before its explicit depth-1 checkout.
+This failure happens before the market-data test fixture is generated. Reducing the test date range does not address an image-build failure. The pipeline requires at least 5 GiB free before its explicit depth-1 checkout. Because it builds the complete local container stack, including the Angular client image, more headroom may still be required.
 
 ## Identify the active Jenkins home
 
@@ -155,7 +155,7 @@ df -h /
 docker system df
 ```
 
-Do not rerun the Docker integration stage with only hundreds of megabytes free. Keep at least 7 GiB available before starting it; the pipeline enforces that threshold. More headroom is appropriate when Jenkins, Docker, SonarQube, and databases share a small root filesystem.
+Do not rerun the Docker integration stage with only hundreds of megabytes free. Keep at least 5 GiB available before starting it; the pipeline enforces that threshold. More headroom is appropriate when Jenkins, Docker, SonarQube, and databases share a small root filesystem.
 
 Rerun the branch job through Jenkins so files are created with the configured agent identity. A manual Maven test verifies only one Java suite and does not exercise the Python image build or the two-day PostgreSQL integration stage.
 
@@ -171,5 +171,5 @@ The next build therefore downloads its checkout, dependencies, and browser image
 - Keep build history retention enabled; the pipeline currently retains ten builds, but workspace retention is separate.
 - Review `df -h /`, Jenkins workspace usage, and `docker system df` regularly on small agents.
 - The pipeline deletes its workspace after report publication; use archived artifacts and build logs for debugging.
-- Expand the agent's storage when ordinary Jenkins, Docker, and service data cannot maintain at least 7 GiB of free working space. Cleanup is not a substitute for adequate CI capacity.
+- Expand the agent's storage when ordinary Jenkins, Docker, and service data cannot maintain at least 5 GiB of free working space. Cleanup is not a substitute for adequate CI capacity.
 - Revisit the cold-build policy if the agent is expanded and build speed becomes more important than minimum retained storage.

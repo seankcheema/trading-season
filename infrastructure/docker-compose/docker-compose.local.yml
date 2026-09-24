@@ -1,12 +1,27 @@
 services:
-  # frontend (trading-season-app) has no Dockerfile yet — add one and
-  # uncomment this service once it exists.
-  # frontend:
-  #   build: ./trading-season-app
-  #   ports:
-  #     - "4200:80"
-  #   depends_on:
-  #     - backend
+  client-ui:
+    build:
+      context: ../..
+      dockerfile: apps/client-ui/Dockerfile
+    ports:
+      - "4200:8080"
+    depends_on:
+      holdings-and-trade-service:
+        condition: service_started
+
+  reporting-ui:
+    build:
+      context: ../../apps/reporting-ui
+      dockerfile: Dockerfile
+    ports:
+      - "4300:8080"
+
+  reporting-service:
+    build:
+      context: ../../apps/reporting-service
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8080"
 
   # Holdings and Trade Service: manages order execution, validation, and holdings
   holdings-and-trade-service:

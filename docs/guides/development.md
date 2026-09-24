@@ -11,7 +11,7 @@ npm ci
 npm --prefix apps/auth-service ci
 ```
 
-The auth service has its own lockfile and is not a root workspace. Reporting has no runnable application yet. Avoid the root install:all helper, which targets the placeholder reporting UI.
+The auth service has its own lockfile and is not a root workspace. Reporting has no application framework or dependencies; its local containers are static HTTP placeholders. Avoid the root install:all helper, which targets the placeholder reporting UI as though it were an implemented npm application.
 
 ## Run locally
 
@@ -26,6 +26,17 @@ If Compose v2 is already installed as the standalone `docker-compose` command, t
 The script validates an archive already at `apps/market-data/db/seeds/synthetic-market-data-2026-v1`. Use `--parquet-source PATH` to stage, checksum, and copy an existing archive when enough space remains. It never downloads, generates, imports, or regenerates market data. Use the [database guide](../reference/database.md#optional-synthetic-market-data-generation-and-import) for those explicit operations.
 
 The Windows and fully manual paths below remain supported.
+
+### Full local container stack
+
+From the repository root, Local Compose builds and starts the implemented applications, databases, and reporting placeholders:
+
+```sh
+docker compose --project-name trading-season-local \
+  -f infrastructure/docker-compose/docker-compose.local.yml up -d --build
+```
+
+The client UI is available on port 4200, the reporting UI placeholder on 4300, and the reporting service placeholder on 8083. `GET http://localhost:8083/health` verifies only that the placeholder container is running; it is not a reporting API.
 
 ### Manual and Windows setup
 
@@ -47,8 +58,6 @@ Compose validates JWT variables even when selecting database services, so provid
 | apps/holdings-and-trade-service | mvn spring-boot:run | 8081 |
 | apps/order-and-sell-service | mvn spring-boot:run | 8082 |
 | apps/auth-service | npm run start:dev | 3001 |
-
-Do not use an unqualified Compose up for the full stack: its backend build context and port mapping are stale.
 
 The UI calls the auth service directly on port 3001, which allows the dev server origin through CORS_ORIGINS. Java calls use the relative /api path, which the dev server forwards to the Holdings and Trade Service on port 8081 through [proxy.conf.json](../../apps/client-ui/proxy.conf.json). Registration completes only once the Java register contract accepts the profile the UI sends; see the [API reference](../reference/api.md#ui-integration).
 
