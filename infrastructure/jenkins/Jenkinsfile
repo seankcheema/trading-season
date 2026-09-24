@@ -109,70 +109,6 @@ pipeline {
             }
         }
 
-        stage('Build Local Docker Stack') {
-            steps {
-                sh '''
-                    set -eu
-                    COMPOSE_FILE="infrastructure/docker-compose/docker-compose.local.yml"
-                    PROJECT_NAME="trading-season-local"
-
-                    echo "Building and starting the local application stack..."
-                    sh infrastructure/docker/run-compose.sh \
-                        --project-name "$PROJECT_NAME" \
-                        -f "$COMPOSE_FILE" \
-                        up -d --build
-
-                    echo "Local application services after startup:"
-                    sh infrastructure/docker/run-compose.sh \
-                        --project-name "$PROJECT_NAME" \
-                        -f "$COMPOSE_FILE" \
-                        ps
-
-                    EXPECTED_SERVICES="auth-db auth-service client-ui db holdings-and-trade-service order-and-sell-service reporting-service reporting-ui"
-                    RUNNING_SERVICES="$(sh infrastructure/docker/run-compose.sh \
-                        --project-name "$PROJECT_NAME" \
-                        -f "$COMPOSE_FILE" \
-                        ps --services --filter status=running | sort | tr '\n' ' ' | sed 's/ $//')"
-                    if [ "$RUNNING_SERVICES" != "$EXPECTED_SERVICES" ]; then
-                        echo "Expected running services: $EXPECTED_SERVICES" >&2
-                        echo "Actual running services:   $RUNNING_SERVICES" >&2
-                        sh infrastructure/docker/run-compose.sh \
-                            --project-name "$PROJECT_NAME" \
-                            -f "$COMPOSE_FILE" \
-                            logs --no-color --tail 100
-                        exit 1
-                    fi
-
-                    check_http() {
-                        service="$1"
-                        path="$2"
-                        expected="$3"
-                        attempt=1
-                        while [ "$attempt" -le 30 ]; do
-                            if sh infrastructure/docker/run-compose.sh \
-                                --project-name "$PROJECT_NAME" \
-                                -f "$COMPOSE_FILE" \
-                                exec -T "$service" wget -qO- "http://127.0.0.1:8080${path}" | grep -F "$expected" >/dev/null; then
-                                return 0
-                            fi
-                            attempt=$((attempt + 1))
-                            sleep 2
-                        done
-                        echo "HTTP smoke check failed for ${service}${path}." >&2
-                        return 1
-                    }
-
-                    check_http client-ui / '<app-root'
-                    check_http reporting-ui / 'Reporting UI placeholder'
-                    check_http reporting-service /health '"status":"ok"'
-
-                    echo "All Docker containers before tests:"
-                    docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}'
-                    echo "Local application stack is running on host ports 3001, 4200, 4300, 5432, 5433, 8081, 8082, and 8083."
-                '''
-            }
-        }
-
         stage('Setup Dependencies') {
             steps {
                 sh '''
@@ -193,21 +129,9 @@ pipeline {
                         echo "  Node.js not available, skipping npm setup"
                     fi
                 '''
-                // apps/market-data holds only Python and SQL since the
-                // microservice split. The Java code lives in the two Spring Boot
-                // services below, so the cache is warmed from their poms.
-                sh '''
-                    set -eu
-                    # Aggressive Maven cache cleanup to avoid dependency resolution issues
-                    echo " Clearing Maven cache..."
-                    rm -rf ~/.m2/repository/org/junit/platform ~/.m2/repository/org/apache/maven/plugins/maven-surefire-plugin
-                    rm -rf ~/.m2/repository/org/junit
-                    # Warm up Maven cache with fresh dependencies
-                    for service in apps/holdings-and-trade-service apps/order-and-sell-service; do
-                        mvn -B -f "$service/pom.xml" dependency:resolve dependency:resolve-plugins -U
-                    done
-                    echo "✓ Maven dependencies cached"
-                '''
+                // Maven dependencies are not pre-resolved here. Each service's
+                // `mvn clean test` resolves exactly what it needs; a separate
+                // resolve pass also downloaded unused site and report plugins.
             }
         }
 
@@ -402,15 +326,24 @@ pipeline {
                             # does not carry (libatk-1.0.so.0 and friends), and installing
                             # them needs root: `playwright install --with-deps` shells out
                             # to sudo apt-get, which the jenkins user cannot run. So the
-                            # suite runs inside the official Playwright image, which ships
-                            # those libraries and the matching browser builds already --
-                            # `npx playwright install chromium` on the agent downloaded a
-                            # browser that could never launch. The image tag is read from
-                            # the installed @playwright/test so it cannot drift out of
-                            # step with it -- the browser builds an image ships are only
-                            # guaranteed to match its own Playwright version.
+                            # suite runs inside a container that carries those libraries.
+                            # The official Playwright image also ships Firefox and WebKit,
+                            # which this Chromium-only suite never uses, so the pipeline
+                            # builds a slim image holding only chromium-headless-shell and
+                            # ffmpeg. The tag is read from the installed @playwright/test
+                            # so it cannot drift out of step with it -- browser builds are
+                            # only guaranteed to match the Playwright version that
+                            # installed them. The image is built once per version and
+                            # reused while the agent has room for it.
                             command -v docker >/dev/null
                             PW_VERSION="$(node -p "require('@playwright/test/package.json').version")"
+                            PW_IMAGE="trading-season-playwright:${PW_VERSION}"
+                            if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
+                                echo "Building $PW_IMAGE..."
+                                docker build --build-arg PLAYWRIGHT_VERSION="$PW_VERSION" \
+                                    -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
+                            fi
+                            docker image ls "$PW_IMAGE" --format 'Playwright image {{.Repository}}:{{.Tag}} is {{.Size}}'
                             # The whole workspace is mounted, not just this app: the
                             # monorepo root holds node_modules and the @shared/* packages
                             # the build resolves through it. Those were installed on this
@@ -436,7 +369,7 @@ pipeline {
                                 -e CI=true \
                                 -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
                                 -w /workspace/apps/client-ui \
-                                "mcr.microsoft.com/playwright:v${PW_VERSION}-noble" \
+                                "$PW_IMAGE" \
                                 npm run e2e
                             echo "✓ End-to-end tests completed"
                         '''
@@ -458,6 +391,84 @@ pipeline {
             }
         }
 
+        // No test depends on this stack: E2E stubs the API and market data
+        // starts its own database. Building its five images is the heaviest
+        // step in the pipeline, so it runs only after a green main build and
+        // leaves branch and pull-request builds to the test stages.
+        stage('Build Local Docker Stack') {
+            when {
+                allOf {
+                    branch 'main'
+                    expression { currentBuild.currentResult == 'SUCCESS' }
+                }
+            }
+            steps {
+                script {
+                    // Lets final cleanup tell a failed stack build apart from
+                    // a failed test, which must leave the previous stack alone.
+                    env.LOCAL_STACK_STARTED = 'true'
+                }
+                sh '''
+                    set -eu
+                    COMPOSE_FILE="infrastructure/docker-compose/docker-compose.local.yml"
+                    PROJECT_NAME="trading-season-local"
+
+                    echo "Building and starting the local application stack..."
+                    sh infrastructure/docker/run-compose.sh \
+                        --project-name "$PROJECT_NAME" \
+                        -f "$COMPOSE_FILE" \
+                        up -d --build
+
+                    echo "Local application services after startup:"
+                    sh infrastructure/docker/run-compose.sh \
+                        --project-name "$PROJECT_NAME" \
+                        -f "$COMPOSE_FILE" \
+                        ps
+
+                    EXPECTED_SERVICES="auth-db auth-service client-ui db holdings-and-trade-service order-and-sell-service reporting-service reporting-ui"
+                    RUNNING_SERVICES="$(sh infrastructure/docker/run-compose.sh \
+                        --project-name "$PROJECT_NAME" \
+                        -f "$COMPOSE_FILE" \
+                        ps --services --filter status=running | sort | tr '\n' ' ' | sed 's/ $//')"
+                    if [ "$RUNNING_SERVICES" != "$EXPECTED_SERVICES" ]; then
+                        echo "Expected running services: $EXPECTED_SERVICES" >&2
+                        echo "Actual running services:   $RUNNING_SERVICES" >&2
+                        sh infrastructure/docker/run-compose.sh \
+                            --project-name "$PROJECT_NAME" \
+                            -f "$COMPOSE_FILE" \
+                            logs --no-color --tail 100
+                        exit 1
+                    fi
+
+                    check_http() {
+                        service="$1"
+                        path="$2"
+                        expected="$3"
+                        attempt=1
+                        while [ "$attempt" -le 30 ]; do
+                            if sh infrastructure/docker/run-compose.sh \
+                                --project-name "$PROJECT_NAME" \
+                                -f "$COMPOSE_FILE" \
+                                exec -T "$service" wget -qO- "http://127.0.0.1:8080${path}" | grep -F "$expected" >/dev/null; then
+                                return 0
+                            fi
+                            attempt=$((attempt + 1))
+                            sleep 2
+                        done
+                        echo "HTTP smoke check failed for ${service}${path}." >&2
+                        return 1
+                    }
+
+                    check_http client-ui / '<app-root'
+                    check_http reporting-ui / 'Reporting UI placeholder'
+                    check_http reporting-service /health '"status":"ok"'
+
+                    echo "All Docker containers after startup:"
+                    docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}'
+                    echo "Local application stack is running on host ports 3001, 4200, 4300, 5432, 5433, 8081, 8082, and 8083."
+                '''
+            }
+        }
     }
     
     post {
@@ -472,7 +483,9 @@ pipeline {
                 }
             }
             script {
-                if (currentBuild.currentResult == 'SUCCESS') {
+                if (env.LOCAL_STACK_STARTED != 'true') {
+                    echo 'This build did not rebuild the trading-season-local application stack; leaving it unchanged.'
+                } else if (currentBuild.currentResult == 'SUCCESS') {
                     echo 'Preserving the trading-season-local application stack after the successful build.'
                 } else {
                     def composeCleanupStatus = sh(
@@ -489,21 +502,47 @@ pipeline {
                     }
                 }
             }
-            sh '''
-                set +e
-                if [ -f node_modules/@playwright/test/package.json ]; then
-                    PW_VERSION="$(node -p "require('@playwright/test/package.json').version" 2>/dev/null)"
-                    if [ -n "$PW_VERSION" ]; then
-                        docker image rm "mcr.microsoft.com/playwright:v${PW_VERSION}-noble" 2>/dev/null || true
-                    fi
-                fi
-                docker image prune -f 2>/dev/null || true
-                docker builder prune -af 2>/dev/null || true
-                set -e
-            '''
-            // Remove Maven and npm cache to free disk space and prevent out-of-space errors
+            // Keep the Maven and npm caches, the Playwright image, and up to
+            // 2 GiB of Docker build cache so the next build does not download
+            // them again. When the agent would drop below the free-space floor
+            // after workspace deletion, fall back to removing all of them.
             script {
-                def cacheCleanupStatus = sh(script: 'rm -rf ~/.m2/repository ~/.npm', returnStatus: true)
+                def cacheCleanupStatus = sh(script: '''
+                    set +e
+                    PW_VERSION=""
+                    if [ -f node_modules/@playwright/test/package.json ]; then
+                        PW_VERSION="$(node -p "require('@playwright/test/package.json').version" 2>/dev/null)"
+                    fi
+                    # Only the current Playwright version's image is worth
+                    # keeping. Older tags, and the much larger official images
+                    # earlier builds pulled, are always removed.
+                    docker image ls trading-season-playwright --format '{{.Tag}}' | while read -r tag; do
+                        [ "$tag" = "$PW_VERSION" ] || docker image rm "trading-season-playwright:$tag" >/dev/null 2>&1
+                    done
+                    docker image ls mcr.microsoft.com/playwright --format '{{.Repository}}:{{.Tag}}' | while read -r image; do
+                        docker image rm "$image" >/dev/null 2>&1
+                    done
+                    docker image prune -f >/dev/null 2>&1
+                    docker builder prune -f --keep-storage=2gb 2>/dev/null || docker builder prune -af 2>/dev/null
+
+                    # One GiB above the 5 GiB Disk Preflight floor. A warm build
+                    # needs far less than the cold build that floor was sized for.
+                    KEEP_CACHES_MIN_KB=$((6 * 1024 * 1024))
+                    AVAILABLE_KB="$(df -Pk "$WORKSPACE" | awk 'NR == 2 {print $4}')"
+                    WORKSPACE_KB="$(du -sk "$WORKSPACE" 2>/dev/null | cut -f1)"
+                    PROJECTED_KB=$((${AVAILABLE_KB:-0} + ${WORKSPACE_KB:-0}))
+                    if [ "$PROJECTED_KB" -ge "$KEEP_CACHES_MIN_KB" ]; then
+                        echo "Keeping dependency caches; $((PROJECTED_KB / 1024 / 1024)) GiB will be free after workspace cleanup."
+                        exit 0
+                    fi
+
+                    echo "Only $((PROJECTED_KB / 1024 / 1024)) GiB will be free after workspace cleanup; removing all caches so the next build starts cold."
+                    if [ -n "$PW_VERSION" ]; then
+                        docker image rm "trading-season-playwright:$PW_VERSION" >/dev/null 2>&1
+                    fi
+                    docker builder prune -af 2>/dev/null
+                    rm -rf ~/.m2/repository ~/.npm
+                ''', returnStatus: true)
                 if (cacheCleanupStatus != 0) {
                     echo "Dependency-cache cleanup failed with status ${cacheCleanupStatus}; preserving the original build result."
                 }
@@ -516,7 +555,7 @@ pipeline {
                     echo "Workspace cleanup failed: ${err}; preserving the original build result."
                 }
             }
-            echo "✓ Build caches and workspace cleaned to free disk space"
+            echo "✓ Build caches pruned and workspace cleaned"
         }
         
         success {
