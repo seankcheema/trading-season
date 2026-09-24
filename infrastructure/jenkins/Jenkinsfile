@@ -52,6 +52,10 @@ pipeline {
                         echo "Jenkins cannot access the Docker daemon; check the daemon and socket permissions." >&2
                         exit 1
                     fi
+                    if ! docker compose version; then
+                        echo "Docker Compose v2 is unavailable; rebuild the Jenkins image from infrastructure/docker/Dockerfile.jenkins." >&2
+                        exit 1
+                    fi
                     docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}'
                 '''
             }

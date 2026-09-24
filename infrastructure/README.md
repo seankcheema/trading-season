@@ -6,7 +6,7 @@
 | [Jenkins Compose](docker-compose/docker-compose.jenkins.yml) | Optional local Jenkins environment |
 | [Jenkins pipeline](jenkins/Jenkinsfile) | Java, auth, frontend, and synthetic market-data test pipeline |
 | [Jenkins troubleshooting](jenkins/README.md) | Disk-space diagnosis, safe cleanup, and prevention |
-| [Jenkins image](docker/Dockerfile.jenkins) | Container image with Node 24.x and JDK21 for Angular 21.2.x |
+| [Jenkins image](docker/Dockerfile.jenkins) | Container image with Node 24.x, JDK 21, Docker CLI, Buildx, and Compose v2 |
 
 For Linux VM development, `scripts/setup-local.sh` at the repository root can reuse verified local PostgreSQL or start only the two databases from Local Compose. It checks storage before changing it and does not require Docker Desktop.
 
