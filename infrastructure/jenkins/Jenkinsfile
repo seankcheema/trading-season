@@ -52,8 +52,12 @@ pipeline {
                         echo "Jenkins cannot access the Docker daemon; check the daemon and socket permissions." >&2
                         exit 1
                     fi
-                    if ! docker compose version; then
-                        echo "Docker Compose v2 is unavailable; rebuild the Jenkins image from infrastructure/docker/Dockerfile.jenkins." >&2
+                    if docker compose version >/dev/null 2>&1; then
+                        docker compose version
+                    elif command -v docker-compose >/dev/null 2>&1; then
+                        docker-compose version
+                    else
+                        echo "Docker Compose is unavailable; rebuild the Jenkins image or install the docker-compose command." >&2
                         exit 1
                     fi
                     docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}'
@@ -398,26 +402,26 @@ pipeline {
                     PROJECT_NAME="trading-season-local"
 
                     echo "Building and starting the local application stack..."
-                    docker compose \
+                    sh infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
                         -f "$COMPOSE_FILE" \
                         up -d --build
 
                     echo "Local application services after startup:"
-                    docker compose \
+                    sh infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
                         -f "$COMPOSE_FILE" \
                         ps
 
                     EXPECTED_SERVICES="auth-db auth-service db holdings-and-trade-service order-and-sell-service"
-                    RUNNING_SERVICES="$(docker compose \
+                    RUNNING_SERVICES="$(sh infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
                         -f "$COMPOSE_FILE" \
-                        ps --services --status running | sort | tr '\n' ' ' | sed 's/ $//')"
+                        ps --services --filter status=running | sort | tr '\n' ' ' | sed 's/ $//')"
                     if [ "$RUNNING_SERVICES" != "$EXPECTED_SERVICES" ]; then
                         echo "Expected running services: $EXPECTED_SERVICES" >&2
                         echo "Actual running services:   $RUNNING_SERVICES" >&2
-                        docker compose \
+                        sh infrastructure/docker/run-compose.sh \
                             --project-name "$PROJECT_NAME" \
                             -f "$COMPOSE_FILE" \
                             logs --no-color --tail 100
@@ -447,7 +451,7 @@ pipeline {
                 } else {
                     def composeCleanupStatus = sh(
                         script: '''
-                            docker compose \
+                            sh infrastructure/docker/run-compose.sh \
                                 --project-name trading-season-local \
                                 -f infrastructure/docker-compose/docker-compose.local.yml \
                                 down
