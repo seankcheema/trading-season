@@ -110,11 +110,15 @@ npm --prefix apps/auth-service ci
 # Terminal 1: UI from repository root
 npm --workspace business-logic-ui start
 
-# Terminal 2: Java backend
-cd apps/business-backend
+# Terminal 2: Holdings and Trade Service
+cd apps/holdings-and-trade-service
 mvn spring-boot:run
 
-# Terminal 3: Auth service (migrations run on startup)
+# Terminal 3: Order and Sell Service
+cd apps/order-and-sell-service
+mvn spring-boot:run
+
+# Terminal 4: Auth service (migrations run on startup)
 cd apps/auth-service
 npm run start:dev
 ```
