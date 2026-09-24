@@ -6,10 +6,36 @@ The Java business backend and NestJS auth service have separate PostgreSQL datab
 
 | Store | Schema source | Application behavior |
 | --- | --- | --- |
-| Business: trading_season | [V001 bootstrap SQL](../../apps/business-backend/db/migrations/V001__Initial_schema.sql) plus incremental SQL such as [V002 synthetic market data replay metadata](../../apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql) and [V003 token authentication](../../apps/business-backend/db/migrations/V003__Token_authentication.sql) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
+| Business: trading_season | [Market Data migrations](services/market-data.md) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
 | Auth: auth_db | [TypeORM migrations](../../apps/auth-service/src/database/migrations/) | Migrations run on startup; synchronize=false |
 
 The business bootstrap defines more of the trading model than the currently implemented Java auth API. The ERD below is the canonical diagram; SQL remains authoritative for exact columns and constraints.
+
+## Service ownership in trading_season
+
+Both Java services share the same `trading_season` database. This table lists which service has primary responsibility for each table:
+
+| Table | Owned by | Access |
+| --- | --- | --- |
+| users | Holdings and Trade Service | Read/write (profile, funds, settings) |
+| accounts | Holdings and Trade Service | Read/write (account management) |
+| orders | Holdings and Trade Service | Read/write (order lifecycle) |
+| fills | Holdings and Trade Service | Read/write (execution results) |
+| holdings | Holdings and Trade Service | Read/write (position tracking) |
+| cash_transactions | Holdings and Trade Service | Read/write (ledger entries) |
+| holding_movements | Holdings and Trade Service | Read/write (position ledger) |
+| audit_trail | Holdings and Trade Service | Read/write (event history) |
+| stocks | Holdings and Trade Service | Read/write (reference data) |
+| instruments | Holdings and Trade Service | Read/write (tradable assets) |
+| simulation_sessions | Holdings and Trade Service | Read/write (simulation metadata) |
+| market_states | Holdings and Trade Service | Read/write |
+| market_behaviors | Holdings and Trade Service | Read/write |
+| market_ticks | Holdings and Trade Service | Read/write |
+| candles | Holdings and Trade Service | Read/write |
+| quotes | Holdings and Trade Service | Read (market snapshots) |
+| Order and Sell Service | Read only (all tables) | Read (does not write) |
+
+Both services connect with the same credentials and access all tables. The Order and Sell Service currently has repositories defined but unused.
 
 ## Business model
 
@@ -24,8 +50,6 @@ The business bootstrap defines more of the trading model than the currently impl
 Orders are distinct from fills. The schema allows at most one fill per order. The account/client_reference pair supplies order idempotency. Cash balances and holdings are caches reconciled against append-only ledgers. Application grants should limit ledger/audit access to the appropriate insert/read operations; table definitions alone do not enforce every operational policy.
 
 Simulation data is scoped by run and stock. Deleting a simulation session cascades through its generated market data. The optional unique instruments.simulated_stock_symbol connects U.S. equity instruments to simulator stocks. V002 adds replay metadata and uniqueness needed by synthetic market data imports; it does not add trading APIs. Trading schema support for other asset classes does not imply their simulation or APIs are implemented.
-
-## Disposable business database setup
 
 Use this setup for a local development database whose contents can be discarded. `V001__Initial_schema.sql` drops and recreates tables, so it is not a safe upgrade path for retained data. `V002__Synthetic_market_data_replay_metadata.sql` is applied after V001, then `V003__Token_authentication.sql`. V003 removes the sessions table, the username column, and the users credential columns (password hash, lockout, reset token, last login), drops the user_id default because the application sets it from the token, and adds a case-insensitive unique index on email. Any stored password hashes and sessions are discarded.
 
@@ -57,21 +81,23 @@ If the role or database already exists, skip the command that created it.
 
 ### Apply the schema
 
-Connect pgAdmin Query Tool to the `trading_season` database as the `trading_season` user, then run these files in order. Tables belong to the user that creates them, so running the files as your admin user leaves `trading_season` without table access even though it owns the database.
+All migrations are managed centrally in the [Market Data folder](services/market-data.md). Connect pgAdmin Query Tool to the `trading_season` database as the `trading_season` user, then run these files in order from `apps/market-data/db/migrations/`. Tables belong to the user that creates them, so running the files as your admin user leaves `trading_season` without table access even though it owns the database.
 
-1. `apps/business-backend/db/migrations/V001__Initial_schema.sql`
-2. `apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql`
-3. `apps/business-backend/db/migrations/V003__Token_authentication.sql`
+1. `apps/market-data/db/migrations/V001__Initial_schema.sql`
+2. `apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql`
+3. `apps/market-data/db/migrations/V003__Token_authentication.sql`
 
 With `psql`, the equivalent commands from the repository root are:
 
 ```sh
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V001__Initial_schema.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V003__Token_authentication.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initial_schema.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V003__Token_authentication.sql
 ```
 
 A database already initialized with V001 and V002 only needs V003 applied.
+
+**Important:** Both Java services (Holdings and Trade Service and Order and Sell Service) must connect with the same schema version. Never edit an applied migration; add a new one instead. See [Market Data documentation](services/market-data.md) for detailed migration rules.
 
 ### Verify the schema
 
@@ -111,14 +137,14 @@ Changing a table's owner also transfers its indexes and owned sequences.
 
 ### Optional synthetic market data generation and import
 
-The generated `2026-v1` archive is stored locally in `apps/business-backend/db/seeds/synthetic-market-data-2026-v1` and is not committed to Git. A full archive contains 61,074,000 one-second ticks and 1,017,900 tick-derived one-minute candles.
+The generated `2026-v1` archive is stored locally in `apps/market-data/db/seeds/synthetic-market-data-2026-v1` and is not committed to Git. A full archive contains 61,074,000 one-second ticks and 1,017,900 tick-derived one-minute candles.
 
 Run the complete routine workflow from the repository root with one command. It creates the virtual environment if needed, installs dependencies, generates or reuses the archive, carries the completed validation forward to the importer, and displays progress while loading PostgreSQL:
 
 ```powershell
 $freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
 
-apps/business-backend/db/setup-market-data.ps1 `
+apps/market-data/db/setup-market-data.ps1 `
   -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
   -AvailableDiskGb $freeDiskGb
 ```
@@ -132,9 +158,9 @@ The individual commands below remain available for troubleshooting and non-Windo
 Create the virtual environment and install its dependencies once:
 
 ```powershell
-py -3 -m venv apps/business-backend/db/.venv
-apps/business-backend/db/.venv/Scripts/python.exe -m pip install --upgrade pip
-apps/business-backend/db/.venv/Scripts/python.exe -m pip install -r apps/business-backend/db/scripts/requirements.txt
+py -3 -m venv apps/market-data/db/.venv
+apps/market-data/db/.venv/Scripts/python.exe -m pip install --upgrade pip
+apps/market-data/db/.venv/Scripts/python.exe -m pip install -r apps/market-data/db/scripts/requirements.txt
 ```
 
 #### Step 2: Initialize a disposable database
@@ -142,7 +168,7 @@ apps/business-backend/db/.venv/Scripts/python.exe -m pip install -r apps/busines
 Run this step only when setting up the business database for the first time. It applies V001, V002 and V003, and V001 drops existing tables.
 
 ```powershell
-apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/0001-initialize-database.py `
+apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0001-initialize-database.py `
   --database-url postgresql://trading_season:password@localhost:5432/trading_season `
   --disposable-database
 ```
@@ -154,13 +180,13 @@ Do not run step 2 during ordinary seeding.
 Generation does not access PostgreSQL:
 
 ```powershell
-apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/0002-generate-synthetic-market-data.py
+apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0002-generate-synthetic-market-data.py
 ```
 
 For a smaller test archive, add a date range:
 
 ```powershell
-apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/0002-generate-synthetic-market-data.py `
+apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0002-generate-synthetic-market-data.py `
   --start-date 2026-01-05 `
   --end-date 2026-01-06
 ```
@@ -172,7 +198,7 @@ If an older candle-only or otherwise incompatible archive exists, add `--regener
 Validation does not access PostgreSQL:
 
 ```powershell
-apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/0003-validate-synthetic-market-data.py
+apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0003-validate-synthetic-market-data.py
 ```
 
 #### Step 5: Import the archive
@@ -180,7 +206,7 @@ apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scrip
 The importer validates the archive again and commits one calendar month at a time. By default, raw ticks remain in Parquet and only candles are copied into PostgreSQL:
 
 ```powershell
-apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/0004-import-synthetic-market-data.py `
+apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0004-import-synthetic-market-data.py `
   --tick-storage parquet `
   --database-url postgresql://trading_season:password@localhost:5432/trading_season
 ```
