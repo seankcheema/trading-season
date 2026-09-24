@@ -3,10 +3,10 @@
 Trading simulation monorepo with an Angular interface, two Spring Boot microservices, and a NestJS authentication service. Reporting applications are placeholders.
 
 The Java backend is split into two independent microservices:
-- **Holdings and Trade Service** (`apps/holdings-and-trade-service/`) - Manages orders, validation, and holdings
-- **Order and Sell Service** (`apps/order-and-sell-service/`) - Provides user data, holdings queries, and order history
+- **Holdings and Trade Service** (`apps/holdings-and-trade-service/`) – Order submission, validation, execution, and holdings management
+- **Order and Sell Service** (`apps/order-and-sell-service/`) – User profile queries and market data access
 
-Both services share a single PostgreSQL database and authentication via the NestJS auth service.
+Both services share a single PostgreSQL database (`trading_season`) and authenticate via the NestJS auth service (`auth_db`).
 
 ## Start locally on Windows
 
