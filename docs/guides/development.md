@@ -2,7 +2,7 @@
 
 ## Toolchain and installation
 
-Use Node.js 22.22.3+ on the 22.x line, npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. Check exact dependency requirements in [root package.json](../../package.json), the [UI manifest](../../apps/business-logic-ui/package.json), and the [Java POM](../../apps/business-backend/pom.xml).
+Use Node.js 22.22.3+ on the 22.x line, npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. Check exact dependency requirements in [root package.json](../../package.json), the [UI manifest](../../apps/business-logic-ui/package.json), and the Java POMs ([Holdings and Trade](../../apps/holdings-and-trade-service/pom.xml) and [Order and Sell](../../apps/order-and-sell-service/pom.xml)).
 
 From repository root:
 
@@ -15,6 +15,8 @@ The auth service has its own lockfile and is not a root workspace. Reporting has
 
 ## Run locally
 
+The application consists of four services. The UI routes only to Holdings and Trade Service; Order and Sell Service runs independently.
+
 1. Follow the [auth setup](../../apps/auth-service/README.md) to create a local environment file and RSA keys.
 2. Start only the databases from repository root:
 
@@ -24,19 +26,25 @@ docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compos
 
 Compose validates JWT variables even when selecting database services, so provide the environment file. If changing the two database passwords, use root Compose variables DB_PASSWORD for the business database and AUTH_DB_PASSWORD for the auth database; the auth app uses DB_PASSWORD for its own connection. Keep these separate when credentials differ.
 
-3. Initialize the business database only if you need the Java API, following the [database guide](../reference/database.md). Auth migrations run on auth-service startup.
+3. Initialize the business database only if you need the Java APIs, following the [database guide](../reference/database.md). Auth migrations run on auth-service startup.
+
 4. Start each application in its own terminal:
 
-| Working directory | Command | Port |
-| --- | --- | --- |
-| Repository root | npm --workspace business-logic-ui start | 4200 |
-| apps/holdings-and-trade-service | mvn spring-boot:run | 8081 |
-| apps/order-and-sell-service | mvn spring-boot:run | 8082 |
-| apps/auth-service | npm run start:dev | 3001 |
+| Working directory | Command | Port | Purpose |
+| --- | --- | --- | --- |
+| Repository root | npm --workspace business-logic-ui start | 4200 | Angular frontend |
+| apps/holdings-and-trade-service | mvn spring-boot:run | 8081 | Order processing, account management, user profiles (called by UI) |
+| apps/order-and-sell-service | mvn spring-boot:run | 8082 | User profiles, market data (independent; not called by UI) |
+| apps/auth-service | npm run start:dev | 3001 | Authentication, token issuance |
 
 Do not use an unqualified Compose up for the full stack: its backend build context and port mapping are stale.
 
-The UI calls the auth service directly on port 3001, which allows the dev server origin through CORS_ORIGINS. Java calls use the relative /api path, which the dev server forwards to port 8080 through [proxy.conf.json](../../apps/business-logic-ui/proxy.conf.json) because the Java backend has no CORS policy. Registration completes only once the Java register contract accepts the profile the UI sends; see the [API reference](../reference/api.md#ui-integration).
+**UI integration:**
+- The UI calls the Auth Service directly on port 3001 (allowed by CORS_ORIGINS)
+- The UI calls Holdings and Trade Service via dev proxy (relative `/api` paths forward to port 8081 through [proxy.conf.json](../../apps/business-logic-ui/proxy.conf.json))
+- The UI does not call Order and Sell Service
+
+**Why two Java services?** The architecture was designed to split order processing (Holdings and Trade) from user profile queries (Order and Sell), but Order and Sell Service is not yet implemented with its own endpoints. Currently, both services expose the same market data and user profile endpoints. See [Architecture](../reference/architecture.md) and [Order and Sell Service](../reference/services/order-and-sell-service.md) for details.
 
 ## Checks
 
@@ -47,13 +55,24 @@ Run from repository root after dependency installation:
 | UI | npm --workspace business-logic-ui run build | Angular production build |
 | UI | npm --workspace business-logic-ui test -- --no-watch --coverage | Angular unit-test builder; do not pass Vitest's --run |
 | UI end-to-end | npm --workspace business-logic-ui run e2e | Playwright login and registration journeys |
-| Java | mvn -B -f apps/business-backend/pom.xml test | Unit/integration tests use H2 test configuration |
+| Holdings and Trade Service | mvn -B -f apps/holdings-and-trade-service/pom.xml test | Unit/integration tests use H2 test configuration |
+| Order and Sell Service | mvn -B -f apps/order-and-sell-service/pom.xml test | Unit/integration tests use H2 test configuration |
 | Auth | npm --prefix apps/auth-service run build | NestJS compilation |
 | Auth | npm --prefix apps/auth-service run test:ci | Vitest coverage and JUnit reports; tests generate ephemeral keys |
 | Auth | npm --prefix apps/auth-service run lint | Oxlint |
-| Market-data scripts | python -m unittest discover apps/business-backend/db/tests | Unit checks; use Jenkins for the two-day PostgreSQL integration |
+| Market-data scripts | python -m unittest discover apps/market-data/db/tests | Unit checks; use Jenkins for the two-day PostgreSQL integration |
 
 Root Turborepo commands only cover configured workspaces and available scripts. Run Java and auth checks explicitly. See [operations](operations.md) for CI differences and artifact locations.
+
+**Microservice-specific checks:**
+
+When changing Holdings and Trade Service, also run Order and Sell Service tests to verify no schema conflicts:
+```sh
+mvn -B -f apps/holdings-and-trade-service/pom.xml test
+mvn -B -f apps/order-and-sell-service/pom.xml test
+```
+
+Both services must pass independently and share schema compatibility.
 
 ## End-to-end tests
 
@@ -80,19 +99,20 @@ Each tier fails its own test command below its coverage floor, so the floor is e
 | --- | --- | --- | --- |
 | UI | 60% | coverageThresholds in [angular.json](../../apps/business-logic-ui/angular.json) | statements, branches, functions, lines |
 | Auth | 50% | coverage.thresholds in [vitest.config.ts](../../apps/auth-service/vitest.config.ts) | statements, branches, functions, lines |
-| Java | 50% | jacoco:check in the [POM](../../apps/business-backend/pom.xml) | line and instruction ratio |
+| Java | 50% | jacoco:check in both service POMs | line and instruction ratio |
 
 The Java tier has the least headroom, and its branch coverage sits below the line figure, so it is not gated on branches. Raise the floor as coverage improves rather than lowering it to accommodate a change.
 
 ## Javadocs
 
-When Java code changes, update affected Javadoc comments in the same change, including behavior, parameters, return values, and exceptions. From repository root run:
+When Java code changes, update affected Javadoc comments in the same change, including behavior, parameters, return values, and exceptions. From repository root run both services:
 
 ```sh
-mvn -B -f apps/business-backend/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc
+mvn -B -f apps/holdings-and-trade-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc
+mvn -B -f apps/order-and-sell-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc
 ```
 
-Open apps/business-backend/target/reports/apidocs/index.html locally and review pages for changed types and members. This pinned plugin command generates documentation from current source. It needs a JDK and Maven dependency access on first run. The target directory is temporary and ignored. Keep the published [Javadocs](../JAVA_DOCS/index.html) checked in under docs/JAVA_DOCS. After successful generation for a Java change, replace that directory’s contents with the complete generated apidocs output, including assets and legal notices; remove obsolete generated pages and include the refreshed copy in the same change. Never replace the checked-in copy after failed generation.
+Open the generated documentation locally and review pages for changed types and members. Both pinned plugin commands generate documentation from current source. They need JDK and Maven dependency access on first run. The target directories are temporary and ignored. Keep the published [Javadocs](../JAVA_DOCS/index.html) checked in under docs/JAVA_DOCS. After successful generation for a Java change, replace that directory's contents with the complete generated apidocs output from both services, including assets and legal notices; remove obsolete generated pages and include the refreshed copy in the same change. Never replace the checked-in copy after failed generation.
 
 Fix generation errors and newly introduced warnings before completing a Java change. Existing missing-comment/tag warnings are visible technical debt, not evidence that a changed API is documented. Generation was verified during this consolidation on JDK 25 with the Java 21 source configuration; JDK 21 remains the project toolchain.
 

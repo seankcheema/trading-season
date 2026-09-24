@@ -3,10 +3,10 @@
 Trading simulation monorepo with an Angular interface, two Spring Boot microservices, and a NestJS authentication service. Reporting applications are placeholders.
 
 The Java backend is split into two independent microservices:
-- **Holdings and Trade Service** (`apps/holdings-and-trade-service/`) - Manages orders, validation, and holdings
-- **Order and Sell Service** (`apps/order-and-sell-service/`) - Provides user data, holdings queries, and order history
+- **Holdings and Trade Service** (`apps/holdings-and-trade-service/`) – Order submission, validation, execution, and holdings management
+- **Order and Sell Service** (`apps/order-and-sell-service/`) – User profile queries and market data access
 
-Both services share a single PostgreSQL database and authentication via the NestJS auth service.
+Both services share a single PostgreSQL database (`trading_season`) and authenticate via the NestJS auth service (`auth_db`).
 
 ## Start locally on Windows
 
@@ -39,10 +39,7 @@ Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL
    .\scripts\start-local.ps1
    ```
 
-The launcher keeps all logs in one terminal and stops the other services if one exits. Open the UI at `http://localhost:4200`; auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`. See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
-   The script starts UI, auth service, and Java backend in a single terminal, validates database connectivity and `.env` configuration. Press Ctrl+C to stop all services.
-
-   Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001` and Java on `http://localhost:8081`.
+   The launcher consolidates all logs in one terminal and stops all services if any one exits. Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`. See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
 
 ### Manual setup with local PostgreSQL
 
@@ -63,9 +60,9 @@ CREATE DATABASE trading_season OWNER trading_season;
 Then apply the business schema. Connect to `trading_season` as the `trading_season` user and run these migration files in order:
 
 ```powershell
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V001__Initial_schema.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V003__Token_authentication.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initial_schema.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V003__Token_authentication.sql
 ```
 
 #### 2. Create auth database
@@ -113,11 +110,15 @@ npm --prefix apps/auth-service ci
 # Terminal 1: UI from repository root
 npm --workspace business-logic-ui start
 
-# Terminal 2: Java backend
-cd apps/business-backend
+# Terminal 2: Holdings and Trade Service
+cd apps/holdings-and-trade-service
 mvn spring-boot:run
 
-# Terminal 3: Auth service (migrations run on startup)
+# Terminal 3: Order and Sell Service
+cd apps/order-and-sell-service
+mvn spring-boot:run
+
+# Terminal 4: Auth service (migrations run on startup)
 cd apps/auth-service
 npm run start:dev
 ```
@@ -161,29 +162,32 @@ See the [development guide](docs/guides/development.md) for additional commands,
 
 ## Service map
 
-| Area | Responsibility | Local port |
-| --- | --- | --- |
-| [Business UI](apps/client-ui/README.md) | Login, registration, and a dashboard with live simulated stock tickers | 4200 |
-| [Holdings and Trade Service](apps/holdings-and-trade-service/README.md) | Order creation, validation, execution, and holdings management | 8081 |
-| [Order and Sell Service](apps/order-and-sell-service/README.md) | User profiles, holdings queries, and order history | 8082 |
-| [Auth service](apps/auth-service/README.md) | RS256 tokens, refresh tokens, auth database | 3001 |
-| [Business Database](apps/market-data/README.md) | Shared PostgreSQL database setup and migrations | — |
-| [Shared UI](packages/shared-ui-components/README.md) | Reusable Angular components | — |
-| [Reporting proposal](docs/reference/reporting.md) | Future analytics UI and service | — |
-| [Infrastructure](infrastructure/README.md) | Compose and Jenkins configuration | — |
+| Service | Folder | Port | Responsibility |
+| --- | --- | --- | --- |
+| Client UI | `apps/client-ui` | 4200 | Login, registration, dashboard with live market data |
+| Auth Service | `apps/auth-service` | 3001 | Email/password authentication, RS256 token issuance, refresh token rotation |
+| Holdings and Trade Service | `apps/holdings-and-trade-service` | 8081 | Order submission, validation, execution; holdings and account management |
+| Order and Sell Service | `apps/order-and-sell-service` | 8082 | User profile queries, market data access |
+| Market Data | `apps/market-data` | — | Shared database migrations and synthetic market data tooling |
+| Shared UI Components | `packages/shared-ui-components` | — | Reusable Angular components library |
+| Reporting | `docs/reference/reporting.md` | — | Proposed analytics and portfolio performance reporting |
 
 ## Documentation
 
-Browse the [documentation index](docs/README.md) to choose a guide or reference.
+Review the [documentation index](docs/README.md) for all guides and references. Key resources:
 
-- [Development](docs/guides/development.md): setup, commands, tests, contribution workflow.
-- [Architecture](docs/reference/architecture.md): boundaries, source navigation, current limitations.
-- [API reference](docs/reference/api.md): implemented HTTP contracts.
-- [Database](docs/reference/database.md): schema ownership, migrations, and ERD.
-- [Operations](docs/guides/operations.md): configuration, CI, deployment limitations, troubleshooting.
-- [Agent instructions](AGENTS.md): repository rules and completion checks.
+| When you need to… | Read |
+| --- | --- |
+| Install, run, test, or debug locally | [Development Guide](docs/guides/development.md) |
+| Understand service architecture and boundaries | [Architecture Reference](docs/reference/architecture.md) |
+| Review implemented API endpoints | [API Reference](docs/reference/api.md) |
+| Understand database schema and ownership | [Database Reference](docs/reference/database.md) |
+| Configure services and CI/CD | [Operations Guide](docs/guides/operations.md) |
+| Plan analytics and reporting work | [Reporting Proposal](docs/reference/reporting.md) |
+| Browse Java API documentation | [Javadocs](docs/JAVA_DOCS/index.html) |
+| Review code coverage | [Coverage Reports](docs/coverage/README.md) |
 
-[Javadocs](docs/JAVA_DOCS/index.html) are kept in the repository and generated from Java source; the generation and update requirements are in the development guide.
+[Javadocs](docs/JAVA_DOCS/index.html) are maintained in the repository and regenerated from Java source. See the [development guide](docs/guides/development.md) for regeneration procedures.
 
 # Business database ERD
 
