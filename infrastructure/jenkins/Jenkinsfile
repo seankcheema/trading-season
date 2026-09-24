@@ -400,7 +400,7 @@ pipeline {
             }
             sh '''
                 set +e
-                docker compose --project-name trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml down 2>/dev/null || true
+                docker compose --project-name trading-season-local -f infrastructure/docker-compose/docker-compose.jenkins.yml down 2>/dev/null || true
                 if [ -f node_modules/@playwright/test/package.json ]; then
                     PW_VERSION="$(node -p "require('@playwright/test/package.json').version" 2>/dev/null)"
                     if [ -n "$PW_VERSION" ]; then
