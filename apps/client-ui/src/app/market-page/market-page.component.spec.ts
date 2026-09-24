@@ -94,7 +94,7 @@ describe('MarketPageComponent', () => {
     expect(text).toContain('Markets');
     expect(text).toContain('Watchlist');
     expect(text).toContain('Portfolio');
-    expect(text).toContain('Back to dashboard');
+    expect(text).toContain('Back');
     expect(text).toContain('Range Volume');
     expect(fixture.componentInstance['rangeVolume']()).toBe(1000);
     expect(text).toContain('$3.42T');

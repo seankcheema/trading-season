@@ -11,13 +11,7 @@
         <img src="2b-waves.svg" alt="" class="size-8" />
         <span class="hidden text-lg font-semibold tracking-tight sm:inline">TradingSeason</span>
       </a>
-      <a
-        routerLink="/dashboard"
-        class="border-primary/20 text-muted-foreground hover:text-primary hidden h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold md:flex"
-      >
-        <ng-icon name="lucideArrowLeft" /> Back to dashboard
-      </a>
-      <div class="mx-auto min-w-48 max-w-2xl flex-1">
+      <div class="mr-auto min-w-48 max-w-2xl flex-1">
         <app-instrument-search
           [instruments]="instruments()"
           (selected)="selectInstrument($event)"
@@ -29,13 +23,20 @@
       >
         <a
           routerLink="/dashboard"
+          class="text-muted-foreground hover:text-primary flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold"
+          aria-label="Back to dashboard"
+        >
+          <ng-icon name="lucideArrowLeft" /> Back
+        </a>
+        <a
+          routerLink="/dashboard"
           aria-current="page"
           class="border-primary/20 bg-muted rounded-md border px-3 py-1.5 text-sm font-semibold"
           >Markets</a
         >
         <button
           type="button"
-          class="text-muted-foreground px-3 py-1.5 text-sm"
+          class="text-muted-foreground px-3 py-1.5 text-sm font-semibold"
           disabled
           aria-label="Watchlist, not available yet"
         >
@@ -43,7 +44,7 @@
         </button>
         <button
           type="button"
-          class="text-muted-foreground px-3 py-1.5 text-sm"
+          class="text-muted-foreground px-3 py-1.5 text-sm font-semibold"
           disabled
           aria-label="Portfolio, not available yet"
         >
