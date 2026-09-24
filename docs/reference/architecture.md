@@ -16,38 +16,48 @@ Trading Season is a monorepo containing:
 ```mermaid
 graph TB
     UI["Client UI<br/>Angular 21+ | Port 4200"]
+    RptUI["Reporting UI<br/>Angular | Port 4300<br/><br/>Portfolio performance<br/>Trade history<br/>Risk summaries<br/>PROPOSED"]
     Auth["Auth Service<br/>NestJS | Port 3001"]
     HT["Holdings and Trade Service<br/>Spring Boot | Port 8081<br/><br/>Order submission/validation<br/>Account management<br/>Market data<br/>Called by UI"]
     OS["Order and Sell Service<br/>Spring Boot | Port 8082<br/><br/>User profile queries<br/>Market data<br/>Not called by UI"]
+    RptSvc["Reporting Service<br/>TBD | Port 8083<br/><br/>Portfolio aggregation<br/>Analytics<br/>PROPOSED"]
     
     AuthDB["auth_db<br/>PostgreSQL | Port 5433<br/><br/>User credentials<br/>Refresh tokens"]
     BizDB["trading_season<br/>PostgreSQL | Port 5432<br/><br/>Users via UUID<br/>Accounts<br/>Orders<br/>Market data"]
     
     UI -->|POST /login/refresh| Auth
     UI -->|/api/*| HT
+    RptUI -->|POST /login/refresh| Auth
+    RptUI -->|/api/*| RptSvc
     HT -->|fetch JWKS| Auth
     OS -->|fetch JWKS| Auth
+    RptSvc -->|fetch JWKS| Auth
     Auth --> AuthDB
     HT --> BizDB
     OS --> BizDB
+    RptSvc --> BizDB
     
     style HT fill:#90EE90
     style OS fill:#FFB6C6
     style Auth fill:#87CEEB
     style UI fill:#FFD700
+    style RptUI fill:#FFE4B5
+    style RptSvc fill:#FFE4B5
     style AuthDB fill:#E6E6FA
     style BizDB fill:#E6E6FA
 ```
 
 ## Service boundaries
 
-| Service | Technology | Port | Responsibility |
-| --- | --- | --- | --- |
-| **Client UI** | Angular 21+ | 4200 | User interface, login, registration, dashboard |
-| **Auth Service** | NestJS | 3001 | User credentials, token issuance, session management |
-| **Holdings and Trade Service** | Spring Boot (Java 21) | 8081 | Order submission/validation/execution, account management |
-| **Order and Sell Service** | Spring Boot (Java 21) | 8082 | User profile queries, market data access |
-| **Market Data** | Infrastructure | — | Database migrations, synthetic data generation |
+| Service | Technology | Port | Status | Responsibility |
+| --- | --- | --- | --- | --- |
+| **Client UI** | Angular 21+ | 4200 | Implemented | User interface, login, registration, dashboard |
+| **Auth Service** | NestJS | 3001 | Implemented | User credentials, token issuance, session management |
+| **Holdings and Trade Service** | Spring Boot (Java 21) | 8081 | Implemented | Order submission/validation/execution, account management |
+| **Order and Sell Service** | Spring Boot (Java 21) | 8082 | Implemented | User profile queries, market data access |
+| **Reporting UI** | Angular | 4300 | Proposed | Portfolio performance, trade history, risk summaries |
+| **Reporting Service** | TBD | 8083 | Proposed | Portfolio aggregation, analytics, report generation |
+| **Market Data** | Infrastructure | — | Implemented | Database migrations, synthetic data generation |
 
 ## The naming does not match the split
 
@@ -112,6 +122,15 @@ The dev proxy (`apps/client-ui/proxy.conf.json`) forwards all `/api` requests to
 
 4. **NestJS integration edge cases** – Bootstrap does not install global validation, cookie parser, or CORS. Refresh tokens must be sent as JSON body, not cookies. See [Auth Service documentation](services/auth-service.md) for details.
 
+## Proposed reporting services
+
+Reporting UI and Reporting Service are proposed but not yet implemented. When built, they will:
+
+- **Reporting UI** (port 4300) – Display portfolio performance, trade history, drawdown, returns, and risk summaries. Provide administrative operational and audit views. Use shared Angular components.
+- **Reporting Service** (port 8083) – Read-only access to authorized business data; compute aggregates such as Sharpe/Sortino ratios, win rate, and profit factor. Must not write operational records.
+
+Both services will authenticate via the Auth Service and may read from the `trading_season` database. Reporting store decisions (technology, refresh frequency, retention, timezone) remain unresolved. See [Reporting proposal](reporting.md) for intended capability and first implementation slice.
+
 ## Change boundaries
 
 - Put reusable UI components in the shared package; application logic stays in its owning app
@@ -121,6 +140,7 @@ The dev proxy (`apps/client-ui/proxy.conf.json`) forwards all `/api` requests to
 
 ## See also
 
+- [Reporting proposal](reporting.md) for proposed reporting services and first implementation slice
 - [Service Reference](services/) for per-service structure and endpoints
 - [API Reference](api.md) for implemented HTTP contracts
 - [Database Reference](database.md) for schema, ownership, and relationships
