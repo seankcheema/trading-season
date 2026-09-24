@@ -11,6 +11,37 @@ Trading Season is a monorepo containing:
 - **Backend** – Two independent Spring Boot microservices sharing a single PostgreSQL database
 - **Shared Infrastructure** – Database migrations, synthetic market data tooling, Docker Compose configuration
 
+## Service topology
+
+```mermaid
+graph TB
+    UI["Client UI<br/>Angular 21+ | Port 4200"]
+    Auth["Auth Service<br/>NestJS | Port 3001"]
+    HT["Holdings and Trade Service<br/>Spring Boot | Port 8081<br/><br/>✓ Order submission/validation<br/>✓ Account management<br/>✓ Market data<br/>✓ Called by UI"]
+    OS["Order and Sell Service<br/>Spring Boot | Port 8082<br/><br/>✓ User profile queries<br/>✓ Market data<br/>⚠ Not called by UI"]
+    
+    AuthDB["auth_db<br/>PostgreSQL<br/>Port 5433<br/><br/>• user credentials<br/>• refresh tokens"]
+    BizDB["trading_season<br/>PostgreSQL<br/>Port 5432<br/><br/>• users (via UUID)<br/>• accounts<br/>• orders<br/>• market data"]
+    
+    UI -->|POST /login/refresh| Auth
+    UI -->|/api/* (proxy)| HT
+    
+    Auth -->|verify JWKS| Auth
+    HT -->|fetch JWKS cache| Auth
+    OS -->|fetch JWKS cache| Auth
+    
+    Auth --> AuthDB
+    HT --> BizDB
+    OS --> BizDB
+    
+    style HT fill:#90EE90
+    style OS fill:#FFB6C6
+    style Auth fill:#87CEEB
+    style UI fill:#FFD700
+    style AuthDB fill:#E6E6FA
+    style BizDB fill:#E6E6FA
+```
+
 ## Service boundaries
 
 | Service | Technology | Port | Responsibility |
