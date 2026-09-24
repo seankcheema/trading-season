@@ -16,5 +16,10 @@ export const routes: Routes = [
     canActivate: [authGuard],
     loadComponent: () => import('./dashboard/dashboard.component').then((m) => m.DashboardComponent),
   },
+  {
+    path: 'market',
+    canActivate: [authGuard],
+    loadComponent: () => import('./market/market-fullscreen.component').then((m) => m.MarketComponent),
+  },
   { path: '**', redirectTo: '' },
 ];
