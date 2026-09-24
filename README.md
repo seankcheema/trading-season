@@ -174,16 +174,20 @@ See the [development guide](docs/guides/development.md) for additional commands,
 
 ## Documentation
 
-Browse the [documentation index](docs/README.md) to choose a guide or reference.
+Review the [documentation index](docs/README.md) for all guides and references. Key resources:
 
-- [Development](docs/guides/development.md): setup, commands, tests, contribution workflow.
-- [Architecture](docs/reference/architecture.md): boundaries, source navigation, current limitations.
-- [API reference](docs/reference/api.md): implemented HTTP contracts.
-- [Database](docs/reference/database.md): schema ownership, migrations, and ERD.
-- [Operations](docs/guides/operations.md): configuration, CI, deployment limitations, troubleshooting.
-- [Agent instructions](AGENTS.md): repository rules and completion checks.
+| When you need to… | Read |
+| --- | --- |
+| Install, run, test, or debug locally | [Development Guide](docs/guides/development.md) |
+| Understand service architecture and boundaries | [Architecture Reference](docs/reference/architecture.md) |
+| Review implemented API endpoints | [API Reference](docs/reference/api.md) |
+| Understand database schema and ownership | [Database Reference](docs/reference/database.md) |
+| Configure services and CI/CD | [Operations Guide](docs/guides/operations.md) |
+| Plan analytics and reporting work | [Reporting Proposal](docs/reference/reporting.md) |
+| Browse Java API documentation | [Javadocs](docs/JAVA_DOCS/index.html) |
+| Review code coverage | [Coverage Reports](docs/coverage/README.md) |
 
-[Javadocs](docs/JAVA_DOCS/index.html) are kept in the repository and generated from Java source; the generation and update requirements are in the development guide.
+[Javadocs](docs/JAVA_DOCS/index.html) are maintained in the repository and regenerated from Java source. See the [development guide](docs/guides/development.md) for regeneration procedures.
 
 # Business database ERD
 
