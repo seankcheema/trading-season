@@ -5,14 +5,14 @@ import { RefreshToken } from '../refresh-tokens/refresh-token.entity.js';
 /**
  * Connection to the shared business database.
  *
- * This service no longer has a database of its own. It reads and writes the
- * credential columns of `users` and owns `refresh_tokens`, both inside
- * `trading_season`.
+ * This service no longer has a database of its own. It owns two tables inside
+ * `trading_season`: `user_accounts` and `refresh_tokens`. The customer profile
+ * in `users` belongs to the Java services and is never touched from here.
  *
  * It currently connects as the application role, which can read every trading
- * table. A dedicated role granted only `users` and `refresh_tokens` would
- * restore some of the isolation the separate database used to provide, and is
- * worth doing before this reaches anything but a development machine.
+ * table. A role granted only those two tables would restore most of the
+ * isolation the separate database used to provide, and is worth doing before
+ * this reaches anything but a development machine.
  */
 export const databaseConfig: TypeOrmModuleOptions = {
   type: 'postgres',

@@ -7,20 +7,17 @@ import {
 } from 'typeorm';
 
 /**
- * The credential columns of the shared business `users` table.
+ * A credential record, in the shared business database.
  *
- * This entity maps only what authentication owns: identity, password hash,
- * role and lockout state. The profile columns — first_name, last_name, ssn,
- * address, date_of_birth, trader_level, available_funds — are absent on
- * purpose. An entity that does not declare a column can never write it, which
- * is what keeps this service out of the trading domain now that both services
- * read the same table.
+ * Lives in `user_accounts`, a table the auth service owns outright. The
+ * customer profile is a separate `users` row keyed by the same id and written
+ * only by the Java services; this entity cannot reach it. Splitting the two is
+ * what lets each table keep a single writer now that one database holds both.
  *
- * The schema is owned by Flyway in apps/business-backend/db/migrations, not by
- * this service. Column names are the business schema's, so every mapping below
- * is explicit.
+ * The schema is owned by Flyway in apps/market-data/db/migrations, not by this
+ * service, so every column mapping below is explicit.
  */
-@Entity('users')
+@Entity('user_accounts')
 export class User {
   /**
    * The access token's `sub`.
