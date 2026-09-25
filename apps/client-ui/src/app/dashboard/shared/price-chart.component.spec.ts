@@ -10,10 +10,11 @@ describe('PriceChartComponent', () => {
     }).compileComponents();
   });
 
-  function setup(timeframe: '1D' | '5D' | '1Y' = '1D', points?: PricePoint[]) {
+  function setup(timeframe: '1D' | '5D' | '1Y' = '1D', points?: PricePoint[], interactive = false) {
     const fixture = TestBed.createComponent(PriceChartComponent);
     fixture.componentRef.setInput('points', points ?? mockPriceSeries('TEST', timeframe, 100));
     fixture.componentRef.setInput('timeframe', timeframe);
+    fixture.componentRef.setInput('interactive', interactive);
     fixture.detectChanges();
     return fixture;
   }
@@ -168,6 +169,44 @@ describe('PriceChartComponent', () => {
     expect(fixture.componentInstance['hoverIndex']()).toBe(25);
     plot.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home' }));
     expect(fixture.componentInstance['hoverIndex']()).toBe(0);
+  });
+
+  it('should zoom and return to the latest bars', () => {
+    const points = Array.from({ length: 120 }, (_, index) => ({
+      time: new Date(2026, 0, 1, 9, index),
+      value: 100 + index,
+    }));
+    const component = setup('1D', points, true).componentInstance;
+    expect(component['visiblePoints']()).toHaveLength(78);
+    component['zoom'](0.8);
+    expect(component['visiblePoints']().length).toBeLessThan(78);
+    component['pan'](-0.5);
+    expect(component['atLatest']()).toBe(false);
+    component['goLatest']();
+    expect(component['atLatest']()).toBe(true);
+  });
+
+  it('should preserve the original full-series chart when interaction is disabled', () => {
+    const points = Array.from({ length: 120 }, (_, index) => ({
+      time: new Date(2026, 0, 1, 9, index),
+      value: 100 + index,
+    }));
+    const fixture = setup('1D', points);
+    expect(fixture.componentInstance['visiblePoints']()).toHaveLength(120);
+    expect(fixture.nativeElement.querySelector('[aria-label="Zoom in"]')).toBeNull();
+  });
+
+  it('should reset an interactive view when its interaction key changes', () => {
+    const points = Array.from({ length: 120 }, (_, index) => ({
+      time: new Date(2026, 0, 1, 9, index),
+      value: 100 + index,
+    }));
+    const fixture = setup('1D', points, true);
+    fixture.componentInstance['pan'](-0.5);
+    expect(fixture.componentInstance['atLatest']()).toBe(false);
+    fixture.componentRef.setInput('interactionKey', 'MSFT');
+    fixture.detectChanges();
+    expect(fixture.componentInstance['atLatest']()).toBe(true);
   });
 });
 

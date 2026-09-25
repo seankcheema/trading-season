@@ -76,29 +76,46 @@ describe('MarketPageComponent', () => {
     TestBed.resetTestingModule();
   });
 
-  it('loads a direct symbol route with candles and disabled trading', async () => {
+  it('loads a direct symbol route with candles and an interactive demo ticket', async () => {
     const fixture = await setup();
     expect(fixture.componentInstance['symbol']()).toBe('AAPL');
     expect(marketData.candles).toHaveBeenCalledWith(7, 'AAPL', '1D');
     expect(fixture.nativeElement.textContent).toContain('Apple Inc.');
-    const tradeButtons = Array.from(
-      fixture.nativeElement.querySelectorAll('app-trade-ticket button'),
-    ) as HTMLButtonElement[];
-    expect(tradeButtons.every((button) => button.disabled)).toBe(true);
+    const quantity = fixture.nativeElement.querySelector(
+      '#future-trade-quantity',
+    ) as HTMLInputElement;
+    quantity.value = '3';
+    quantity.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Cash before');
+    expect(fixture.nativeElement.textContent).toContain('Cash after');
+    expect(fixture.nativeElement.textContent).toContain('Buy 3 AAPL');
   });
 
-  it('renders the dashboard-width header and demo market metrics', async () => {
+  it('renders the streamlined header and demo market metrics', async () => {
     const fixture = await setup();
     const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain('TradingSeason');
-    expect(text).toContain('Markets');
-    expect(text).toContain('Watchlist');
-    expect(text).toContain('Portfolio');
     expect(text).toContain('Back');
+    expect(text).not.toContain('TradingSeason');
+    expect(text).not.toContain('Watchlist');
+    expect(text).not.toContain('Portfolio');
     expect(text).toContain('Range Volume');
+    expect(text).toContain('Bid');
+    expect(text).toContain('Ask');
+    expect(text).toContain('Spread');
+    expect(text).toContain('Open');
+    expect(text).toContain('Day Range');
+    expect(text).toContain('Trend');
     expect(fixture.componentInstance['rangeVolume']()).toBe(1000);
     expect(text).toContain('$3.42T');
-    expect(text).toContain('33.80');
+    expect(text).not.toContain('P/E (TTM)');
+    expect(text).not.toContain('52W Range');
+    expect(text).not.toContain('Beta');
+    expect(text).not.toContain('Div Yield');
+    expect(text).not.toContain('SIMULATED');
+    expect(fixture.nativeElement.querySelector('.market-identity')?.textContent).not.toContain(
+      '+$',
+    );
   });
 
   it('renders consensus and switches News and AI tools to demo states', async () => {
@@ -116,19 +133,24 @@ describe('MarketPageComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Demo AI signal');
   });
 
-  it('shows disabled unavailable navigation and mock recent orders', async () => {
+  it('removes recent orders and expands the chart when tools are collapsed', async () => {
     const fixture = await setup();
-    const disabledLabels = Array.from(
-      fixture.nativeElement.querySelectorAll('button:disabled'),
-      (button) => {
-        const element = button as HTMLButtonElement;
-        return element.getAttribute('aria-label') ?? element.textContent;
-      },
-    ).join(' ');
-    expect(disabledLabels).toContain('Watchlist, not available yet');
-    expect(disabledLabels).toContain('Portfolio, not available yet');
-    expect(fixture.nativeElement.textContent).toContain('Recent Orders');
-    expect(fixture.nativeElement.textContent).toContain('10 shares');
+    expect(fixture.nativeElement.textContent).not.toContain('Recent Orders');
+    expect(fixture.nativeElement.textContent).not.toContain('Executions');
+    expect(fixture.nativeElement.textContent).not.toContain('Trading coming soon');
+    expect(fixture.nativeElement.querySelector('[aria-label="Zoom in"]')).not.toBeNull();
+    expect(fixture.componentInstance['toolsCollapsed']()).toBe(false);
+    const toggle = fixture.nativeElement.querySelector(
+      '[aria-label="Hide market tools"]',
+    ) as HTMLButtonElement;
+    toggle.click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.market-grid').classList).toContain(
+      'tools-collapsed',
+    );
+    expect(fixture.nativeElement.querySelector('.tools-column').getAttribute('aria-hidden')).toBe(
+      'true',
+    );
   });
 
   it('shows an instrument-not-found state without opening a stream', async () => {

@@ -17,6 +17,8 @@ import {
   lucideBell,
   lucideArrowLeft,
   lucideChartNoAxesCombined,
+  lucidePanelRightClose,
+  lucidePanelRightOpen,
   lucideGitCompare,
   lucideRadio,
   lucideSlidersHorizontal,
@@ -37,7 +39,6 @@ import {
   normalizeMarketSymbol,
 } from '../dashboard/shared/market-chart.models';
 import { PriceChartComponent } from '../dashboard/shared/price-chart.component';
-import { SignedPercentPipe } from '../dashboard/shared/signed-percent.pipe';
 import { TimeframeToggleComponent } from '../dashboard/shared/timeframe-toggle.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
 
@@ -55,7 +56,6 @@ type InsightTab = 'overview' | 'news' | 'ai';
     NgIcon,
     PriceChartComponent,
     RouterLink,
-    SignedPercentPipe,
     TitleCasePipe,
     TimeframeToggleComponent,
     TradeTicketComponent,
@@ -65,6 +65,8 @@ type InsightTab = 'overview' | 'news' | 'ai';
       lucideBell,
       lucideArrowLeft,
       lucideChartNoAxesCombined,
+      lucidePanelRightClose,
+      lucidePanelRightOpen,
       lucideGitCompare,
       lucideRadio,
       lucideSlidersHorizontal,
@@ -96,6 +98,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly chartStatus = signal<ChartStatus>('loading');
   protected readonly timeframe = signal<Timeframe>('1D');
   protected readonly insightTab = signal<InsightTab>('overview');
+  protected readonly toolsCollapsed = signal(false);
   protected readonly candleRevision = signal(0);
   private readonly candles = signal<PricePoint[]>([]);
   protected readonly chartPoints = computed(() => {
@@ -107,15 +110,27 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly rangeVolume = computed(() =>
     this.candles().reduce((total, point) => total + (point.volume ?? 0), 0),
   );
+  protected readonly marketStats = computed(() => {
+    const instrument = this.instrument();
+    const candles = this.candles();
+    const price = instrument?.price ?? 0;
+    const spread = Math.max(0.01, price * 0.0004);
+    const values = candles.map((point) => point.value);
+    return {
+      bid: price - spread / 2,
+      ask: price + spread / 2,
+      spread,
+      open: values[0] ?? price - (instrument?.change ?? 0),
+      low: values.length ? Math.min(...values) : price,
+      high: values.length ? Math.max(...values) : price,
+      trend: (instrument?.change ?? 0) >= 0 ? 'Uptrend' : 'Downtrend',
+    };
+  });
   protected readonly mockDetails = computed(() => {
     const instrument = this.instrument();
     const price = instrument?.price ?? 0;
     return {
       marketCap: '$3.42T',
-      peRatio: '33.80',
-      weekRange: '$164 – $237',
-      beta: '1.08',
-      dividendYield: '0.44%',
       score: 78,
       targetPrice: price * 1.085,
       upside: 8.5,
@@ -124,11 +139,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       sell: 5,
       thesis:
         'Demo consensus remains bullish as price momentum and resilient demand offset near-term volatility.',
-      orders: [
-        { side: 'BUY', shares: 10, price: price * 0.994, status: 'Filled', time: '10:42 AM' },
-        { side: 'SELL', shares: 5, price: price * 1.001, status: 'Filled', time: 'Yesterday' },
-        { side: 'BUY', shares: 15, price: price * 0.982, status: 'Filled', time: 'Oct 24' },
-      ],
     } as const;
   });
   private readonly candleLoader = effect((onCleanup) => {

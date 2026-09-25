@@ -8,9 +8,11 @@ import {
   afterNextRender,
   booleanAttribute,
   computed,
+  effect,
   inject,
   input,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { PricePoint, Timeframe } from '../mock-data';
@@ -27,6 +29,8 @@ const VALUE_TICKS = 5;
 // letting two collide.
 const LABEL_GAP = 10;
 const LABEL_CHAR_WIDTH = 6.6;
+const MIN_VISIBLE_POINTS = 12;
+const DEFAULT_VISIBLE_POINTS = 78;
 
 let nextId = 0;
 
@@ -124,19 +128,91 @@ interface VolumeBar {
         #plot
         tabindex="0"
         role="group"
-        class="focus-visible:ring-ring/50 relative min-h-0 touch-pan-y rounded-[2px] outline-none focus-visible:ring-2"
+        class="focus-visible:ring-ring/50 relative min-h-0 rounded-[2px] outline-none focus-visible:ring-2"
+        [class.touch-none]="interactive()"
+        [class.touch-pan-y]="!interactive()"
         [attr.aria-label]="ariaLabel()"
+        (wheel)="onWheel($event, plot)"
         (pointermove)="onPointerMove($event, plot)"
-        (pointerdown)="onPointerMove($event, plot)"
-        (pointerleave)="hoverIndex.set(null)"
+        (pointerdown)="onPointerDown($event, plot)"
+        (pointerup)="onPointerUp($event, plot)"
+        (pointercancel)="onPointerUp($event, plot)"
+        (pointerleave)="onPointerLeave()"
+        (dblclick)="resetView()"
         (keydown)="onKeydown($event)"
         (blur)="hoverIndex.set(null)"
       >
+        @if (interactive()) {
+          <div
+            class="border-border bg-card/90 absolute top-1.5 left-1.5 z-20 flex items-center gap-0.5 rounded-lg border p-0.5 backdrop-blur-sm"
+            (pointerdown)="$event.stopPropagation()"
+          >
+            <button
+              type="button"
+              class="chart-control"
+              aria-label="Zoom out"
+              [disabled]="!canZoomOut()"
+              (click)="zoom(1.25)"
+            >
+              −
+            </button>
+            <button
+              type="button"
+              class="chart-control"
+              aria-label="Zoom in"
+              [disabled]="!canZoomIn()"
+              (click)="zoom(0.8)"
+            >
+              +
+            </button>
+            <span class="bg-border mx-0.5 h-3.5 w-px"></span>
+            <button
+              type="button"
+              class="chart-control"
+              aria-label="Pan left"
+              [disabled]="viewStart() === 0"
+              (click)="pan(-0.25)"
+            >
+              ‹
+            </button>
+            <button
+              type="button"
+              class="chart-control"
+              aria-label="Pan right"
+              [disabled]="atLatest()"
+              (click)="pan(0.25)"
+            >
+              ›
+            </button>
+            <button
+              type="button"
+              class="chart-control px-1.5"
+              aria-label="Reset chart view"
+              (click)="resetView()"
+            >
+              Reset
+            </button>
+            <span class="text-muted-foreground px-1 text-[10px] tabular-nums"
+              >{{ visiblePoints().length }} bars</span
+            >
+          </div>
+        }
         @if (hovered(); as point) {
           <div
             class="bg-foreground/40 pointer-events-none absolute inset-y-0 w-px"
             [style.left.%]="point.x"
           ></div>
+        }
+
+        @if (interactive() && !atLatest()) {
+          <button
+            type="button"
+            class="border-primary/40 bg-primary/15 text-primary absolute right-2 bottom-2 z-20 h-7 rounded-full border px-3 text-xs font-medium"
+            (pointerdown)="$event.stopPropagation()"
+            (click)="goLatest()"
+          >
+            Latest ››
+          </button>
         }
 
         <svg
@@ -252,11 +328,32 @@ interface VolumeBar {
       <div aria-hidden="true"></div>
     </div>
   `,
+  styles: `
+    .chart-control {
+      min-width: 1.5rem;
+      height: 1.5rem;
+      border-radius: 0.375rem;
+      color: var(--muted-foreground);
+      font-size: 0.6875rem;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .chart-control:hover:not(:disabled) {
+      background: var(--muted);
+      color: var(--primary);
+    }
+    .chart-control:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+  `,
 })
 export class PriceChartComponent {
   readonly points = input.required<PricePoint[]>();
   readonly timeframe = input.required<Timeframe>();
   readonly timezone = input('UTC');
+  readonly interactive = input(false, { transform: booleanAttribute });
+  readonly interactionKey = input('');
   // Fills the space under the line with a gradient in the trend color.
   readonly area = input(false, { transform: booleanAttribute });
 
@@ -267,12 +364,43 @@ export class PriceChartComponent {
   protected readonly HEIGHT = HEIGHT;
   protected readonly viewBox = `0 0 ${WIDTH} ${HEIGHT}`;
   protected readonly hoverIndex = signal<number | null>(null);
+  protected readonly viewStart = signal(0);
+  protected readonly viewCount = signal(DEFAULT_VISIBLE_POINTS);
+  private dragStart: { x: number; start: number } | null = null;
+
+  protected readonly visiblePoints = computed(() => {
+    const points = this.points();
+    if (!this.interactive()) {
+      return points;
+    }
+    const count = Math.min(points.length, this.viewCount());
+    const start = Math.min(this.viewStart(), Math.max(0, points.length - count));
+    return points.slice(start, start + count);
+  });
+  protected readonly atLatest = computed(
+    () => this.viewStart() + this.visiblePoints().length >= this.points().length,
+  );
+  protected readonly canZoomIn = computed(
+    () => this.visiblePoints().length > Math.min(MIN_VISIBLE_POINTS, this.points().length),
+  );
+  protected readonly canZoomOut = computed(
+    () => this.visiblePoints().length < this.points().length,
+  );
+  private readonly seriesKey = computed(
+    () =>
+      `${this.interactive()}:${this.interactionKey()}:${this.timeframe()}:${this.points().length ? 'ready' : 'empty'}`,
+  );
 
   private readonly _plot = viewChild.required<ElementRef<HTMLElement>>('plot');
   private readonly _plotWidth = signal(0);
 
   constructor() {
     const destroyRef = inject(DestroyRef);
+
+    effect(() => {
+      this.seriesKey();
+      untracked(() => this.resetView());
+    });
 
     afterNextRender(() => {
       // Absent in the unit-test DOM; the axis then falls back to its unmeasured spacing.
@@ -288,12 +416,12 @@ export class PriceChartComponent {
   }
 
   protected readonly trendingUp = computed(() => {
-    const values = this.points();
+    const values = this.visiblePoints();
     return values.length < 2 || values[values.length - 1].value >= values[0].value;
   });
 
   private readonly yScale = computed<ChartScale>(() => {
-    const values = this.points().map((point) => point.value);
+    const values = this.visiblePoints().map((point) => point.value);
     if (!values.length) {
       return { min: 0, max: 1, range: 1 };
     }
@@ -305,7 +433,7 @@ export class PriceChartComponent {
 
   // Point positions as percentages of the plot area.
   private readonly _coords = computed(() => {
-    const points = this.points();
+    const points = this.visiblePoints();
     const scale = this.yScale();
     const last = Math.max(points.length - 1, 1);
     return points.map(({ value }, i) => ({
@@ -327,7 +455,7 @@ export class PriceChartComponent {
   );
 
   protected readonly volumeBars = computed<VolumeBar[]>(() => {
-    const points = this.points();
+    const points = this.visiblePoints();
     const volumes = points.map((point) => point.volume ?? 0);
     const minimum = Math.min(...volumes);
     const maximum = Math.max(...volumes, 0);
@@ -358,7 +486,7 @@ export class PriceChartComponent {
     if (this.hovered()) {
       return null;
     }
-    const points = this.points();
+    const points = this.visiblePoints();
     if (!points.length) {
       return { x: 50, y: 50 };
     }
@@ -377,13 +505,13 @@ export class PriceChartComponent {
   // What the label row above the plot renders: the hovered point, or the latest one as an
   // invisible placeholder so the row keeps a stable layout between hovers.
   protected readonly tooltipPoint = computed(
-    () => this.hovered() ?? this.describePoint(this.points().length - 1),
+    () => this.hovered() ?? this.describePoint(this.visiblePoints().length - 1),
   );
 
   // Labels on round boundaries of the timeframe — 8:00, 8:15, 8:30, or whole days and
   // months — widened until they fit the chart's current width.
   protected readonly ticks = computed<AxisTick[]>(() => {
-    const points = this.points();
+    const points = this.visiblePoints();
     const timeframe = this.timeframe();
     const format = AXIS_FORMATS[timeframe];
     const last = Math.max(points.length - 1, 1);
@@ -447,7 +575,7 @@ export class PriceChartComponent {
   });
 
   protected readonly ariaLabel = computed(() => {
-    const points = this.points();
+    const points = this.visiblePoints();
     if (!points.length) {
       return 'Price chart, no data';
     }
@@ -506,17 +634,108 @@ export class PriceChartComponent {
   }
 
   protected onPointerMove(event: PointerEvent, plot: HTMLElement): void {
-    const count = this.points().length;
+    const count = this.visiblePoints().length;
     if (!count) {
       return;
     }
     const rect = plot.getBoundingClientRect();
+    if (this.dragStart) {
+      const delta = ((event.clientX - this.dragStart.x) / rect.width) * count;
+      this.setView(this.dragStart.start - delta, count);
+      return;
+    }
     const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
     this.hoverIndex.set(Math.round(ratio * (count - 1)));
   }
 
+  protected onPointerDown(event: PointerEvent, plot: HTMLElement): void {
+    if (!this.interactive()) {
+      this.onPointerMove(event, plot);
+      return;
+    }
+    plot.setPointerCapture?.(event.pointerId);
+    this.dragStart = { x: event.clientX, start: this.viewStart() };
+    this.onPointerMove(event, plot);
+  }
+
+  protected onPointerUp(event: PointerEvent, plot: HTMLElement): void {
+    if (plot.hasPointerCapture?.(event.pointerId)) {
+      plot.releasePointerCapture(event.pointerId);
+    }
+    this.dragStart = null;
+  }
+
+  protected onPointerLeave(): void {
+    if (!this.dragStart) {
+      this.hoverIndex.set(null);
+    }
+  }
+
+  protected onWheel(event: WheelEvent, plot: HTMLElement): void {
+    if (!this.interactive()) {
+      return;
+    }
+    event.preventDefault();
+    const rect = plot.getBoundingClientRect();
+    const anchor = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+      this.setView(
+        this.viewStart() + (event.deltaX / rect.width) * this.viewCount(),
+        this.viewCount(),
+      );
+      return;
+    }
+    const factor = Math.exp(event.deltaY * (event.ctrlKey ? 0.01 : 0.0025));
+    this.zoom(factor, anchor);
+  }
+
+  protected zoom(factor: number, anchor = 0.5): void {
+    const oldCount = this.visiblePoints().length;
+    const nextCount = Math.max(
+      Math.min(MIN_VISIBLE_POINTS, this.points().length),
+      Math.min(this.points().length, Math.round(oldCount * factor)),
+    );
+    this.setView(this.viewStart() + (oldCount - nextCount) * anchor, nextCount);
+  }
+
+  protected pan(amount: number): void {
+    this.setView(this.viewStart() + this.viewCount() * amount, this.viewCount());
+  }
+
+  protected goLatest(): void {
+    this.setView(this.points().length - this.viewCount(), this.viewCount());
+  }
+
+  protected resetView(): void {
+    const count = Math.min(DEFAULT_VISIBLE_POINTS, this.points().length);
+    this.setView(this.points().length - count, count);
+  }
+
+  private setView(start: number, count: number): void {
+    const safeCount = Math.max(0, Math.min(this.points().length, Math.round(count)));
+    const safeStart = Math.max(0, Math.min(this.points().length - safeCount, Math.round(start)));
+    this.viewCount.set(safeCount);
+    this.viewStart.set(safeStart);
+    this.hoverIndex.set(null);
+  }
+
   protected onKeydown(event: KeyboardEvent): void {
-    const last = this.points().length - 1;
+    if (this.interactive() && (event.key === '+' || event.key === '=')) {
+      event.preventDefault();
+      this.zoom(0.8);
+      return;
+    }
+    if (this.interactive() && event.key === '-') {
+      event.preventDefault();
+      this.zoom(1.25);
+      return;
+    }
+    if (this.interactive() && event.key === '0') {
+      event.preventDefault();
+      this.resetView();
+      return;
+    }
+    const last = this.visiblePoints().length - 1;
     if (last < 0) {
       return;
     }
@@ -538,7 +757,7 @@ export class PriceChartComponent {
   }
 
   private describePoint(index: number) {
-    const points = this.points();
+    const points = this.visiblePoints();
     const point = points[index];
     if (!point) {
       return null;

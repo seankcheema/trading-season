@@ -3,13 +3,9 @@
     class="market-nav border-primary/15 bg-[#0e0e0e]/95 border-b px-4 backdrop-blur-xl md:px-6"
   >
     <div class="mx-auto flex h-full max-w-[1600px] items-center gap-3">
-      <a
-        routerLink="/dashboard"
-        class="flex shrink-0 items-center gap-2"
-        aria-label="TradingSeason dashboard"
-      >
-        <img src="2b-waves.svg" alt="" class="size-8" />
-        <span class="hidden text-lg font-semibold tracking-tight sm:inline">TradingSeason</span>
+      <a routerLink="/dashboard" class="nav-back" aria-label="Back to dashboard">
+        <ng-icon name="lucideArrowLeft" />
+        <span>Back</span>
       </a>
       <div class="mr-auto min-w-48 max-w-2xl flex-1">
         <app-instrument-search
@@ -17,41 +13,6 @@
           (selected)="selectInstrument($event)"
         />
       </div>
-      <nav
-        class="border-primary/15 bg-card hidden shrink-0 items-center gap-1 rounded-lg border p-1 lg:flex"
-        aria-label="Primary"
-      >
-        <a
-          routerLink="/dashboard"
-          class="text-muted-foreground hover:text-primary flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold"
-          aria-label="Back to dashboard"
-        >
-          <ng-icon name="lucideArrowLeft" /> Back
-        </a>
-        <a
-          routerLink="/dashboard"
-          aria-current="page"
-          class="border-primary/20 bg-muted rounded-md border px-3 py-1.5 text-sm font-semibold"
-          >Markets</a
-        >
-        <button
-          type="button"
-          class="text-muted-foreground px-3 py-1.5 text-sm font-semibold"
-          disabled
-          aria-label="Watchlist, not available yet"
-        >
-          Watchlist
-        </button>
-        <button
-          type="button"
-          class="text-muted-foreground px-3 py-1.5 text-sm font-semibold"
-          disabled
-          aria-label="Portfolio, not available yet"
-        >
-          Portfolio
-        </button>
-      </nav>
-      <div class="border-primary/20 hidden h-6 border-l lg:block"></div>
       <button
         type="button"
         class="text-muted-foreground relative flex size-9 items-center justify-center"
@@ -112,136 +73,148 @@
       }
       @case ('ready') {
         @if (instrument(); as active) {
-          <section class="market-summary border-primary/20 bg-card rounded-xl border px-4 py-2">
-            <div class="flex min-w-0 items-center gap-4">
-              <div class="min-w-0">
-                <div class="flex items-center gap-2">
-                  <h1 class="text-xl font-bold">{{ active.symbol }}</h1>
-                  <span
-                    class="border-border text-muted-foreground rounded border px-1.5 py-0.5 text-[10px]"
-                    >SIMULATED</span
-                  >
+          <div class="market-grid" [class.tools-collapsed]="toolsCollapsed()">
+            <div class="market-main">
+              <section class="market-summary border-primary/20 bg-card rounded-xl border px-4 py-1">
+                <div class="market-identity">
+                  <div class="min-w-0">
+                    <h1 class="text-xl font-bold">{{ active.symbol }}</h1>
+                    <p class="text-muted-foreground truncate text-xs">{{ active.name }}</p>
+                  </div>
+                  <span class="text-3xl font-bold tabular-nums">{{
+                    active.price | currency: 'USD'
+                  }}</span>
                 </div>
-                <p class="text-muted-foreground truncate text-xs">{{ active.name }}</p>
-              </div>
-              <div class="border-primary/15 hidden h-9 border-l sm:block"></div>
-              <div class="flex items-baseline gap-2">
-                <span class="text-3xl font-bold tabular-nums">{{
-                  active.price | currency: 'USD'
-                }}</span
-                ><span
-                  class="rounded border px-2 py-0.5 text-xs font-semibold tabular-nums"
-                  [class]="
-                    active.change >= 0
-                      ? 'border-gain/30 bg-gain/10 text-gain'
-                      : 'border-loss/30 bg-loss/10 text-loss'
-                  "
-                  >{{ active.change >= 0 ? '+' : '' }}{{ active.change | currency: 'USD' }} ({{
-                    active.changePercent | signedPercent
-                  }})</span
+                <dl class="market-metrics">
+                  <div>
+                    <dt>Data</dt>
+                    <dd class="text-primary">Demo</dd>
+                  </div>
+                  <div>
+                    <dt>Mkt Cap</dt>
+                    <dd>{{ mockDetails().marketCap }}</dd>
+                  </div>
+                  <div>
+                    <dt>Bid</dt>
+                    <dd class="text-gain">{{ marketStats().bid | currency: 'USD' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Ask</dt>
+                    <dd class="text-loss">{{ marketStats().ask | currency: 'USD' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Spread</dt>
+                    <dd>{{ marketStats().spread | currency: 'USD' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Open</dt>
+                    <dd>{{ marketStats().open | currency: 'USD' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Day Range</dt>
+                    <dd>
+                      {{ marketStats().low | currency: 'USD' }}–{{
+                        marketStats().high | currency: 'USD'
+                      }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Range Volume</dt>
+                    <dd>{{ rangeVolume() | number: '1.0-0' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Trend</dt>
+                    <dd [class]="active.change >= 0 ? 'text-gain' : 'text-loss'">
+                      {{ marketStats().trend }}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+
+              <section class="chart-panel border-primary/20 bg-card rounded-xl border p-3">
+                <div
+                  class="border-primary/15 flex flex-wrap items-center justify-between gap-2 border-b pb-2"
                 >
-              </div>
-            </div>
-            <dl class="market-metrics">
-              <div>
-                <dt>Data</dt>
-                <dd class="text-primary">Demo</dd>
-              </div>
-              <div>
-                <dt>Mkt Cap</dt>
-                <dd>{{ mockDetails().marketCap }}</dd>
-              </div>
-              <div>
-                <dt>P/E (TTM)</dt>
-                <dd>{{ mockDetails().peRatio }}</dd>
-              </div>
-              <div>
-                <dt>52W Range</dt>
-                <dd>{{ mockDetails().weekRange }}</dd>
-              </div>
-              <div>
-                <dt>Range Volume</dt>
-                <dd>{{ rangeVolume() | number: '1.0-0' }}</dd>
-              </div>
-              <div>
-                <dt>Beta</dt>
-                <dd>{{ mockDetails().beta }}</dd>
-              </div>
-              <div>
-                <dt>Div Yield</dt>
-                <dd>{{ mockDetails().dividendYield }}</dd>
-              </div>
-            </dl>
-          </section>
-
-          <div class="market-grid">
-            <section class="chart-panel border-primary/20 bg-card rounded-xl border p-3">
-              <div
-                class="border-primary/15 flex flex-wrap items-center justify-between gap-2 border-b pb-2"
-              >
-                <app-timeframe-toggle [(value)]="timeframe" />
-                <div class="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    class="tool-button"
-                    disabled
-                    title="Indicators are not available yet"
-                  >
-                    <ng-icon name="lucideSlidersHorizontal" /> Indicators
-                  </button>
-                  <button
-                    type="button"
-                    class="tool-icon text-primary"
-                    disabled
-                    title="Additional chart modes are not available yet"
-                  >
-                    <ng-icon name="lucideChartNoAxesCombined" />
-                  </button>
-                  <button
-                    type="button"
-                    class="tool-button"
-                    disabled
-                    title="Comparison is not available yet"
-                  >
-                    <ng-icon name="lucideGitCompare" /> Compare
-                  </button>
+                  <app-timeframe-toggle [(value)]="timeframe" />
+                  <div class="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      class="tool-button collapse-button"
+                      [attr.aria-expanded]="!toolsCollapsed()"
+                      [attr.aria-label]="
+                        toolsCollapsed() ? 'Show market tools' : 'Hide market tools'
+                      "
+                      (click)="toolsCollapsed.set(!toolsCollapsed())"
+                    >
+                      <ng-icon
+                        [name]="toolsCollapsed() ? 'lucidePanelRightOpen' : 'lucidePanelRightClose'"
+                      />
+                      {{ toolsCollapsed() ? 'Show tools' : 'Hide tools' }}
+                    </button>
+                    <button
+                      type="button"
+                      class="tool-button"
+                      disabled
+                      title="Indicators are not available yet"
+                    >
+                      <ng-icon name="lucideSlidersHorizontal" /> Indicators
+                    </button>
+                    <button
+                      type="button"
+                      class="tool-icon text-primary"
+                      disabled
+                      title="Additional chart modes are not available yet"
+                    >
+                      <ng-icon name="lucideChartNoAxesCombined" />
+                    </button>
+                    <button
+                      type="button"
+                      class="tool-button"
+                      disabled
+                      title="Comparison is not available yet"
+                    >
+                      <ng-icon name="lucideGitCompare" /> Compare
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div class="chart-stage">
-                @switch (chartStatus()) {
-                  @case ('ready') {
-                    <app-price-chart
-                      class="h-full"
-                      area
-                      [points]="chartPoints()"
-                      [timeframe]="timeframe()"
-                      timezone="America/Chicago"
-                    />
+                <div class="chart-stage">
+                  @switch (chartStatus()) {
+                    @case ('ready') {
+                      <app-price-chart
+                        class="h-full"
+                        area
+                        interactive
+                        [interactionKey]="active.symbol"
+                        [points]="chartPoints()"
+                        [timeframe]="timeframe()"
+                        timezone="America/Chicago"
+                      />
+                    }
+                    @case ('loading') {
+                      <div class="text-muted-foreground flex h-full items-center justify-center">
+                        Loading candles…
+                      </div>
+                    }
+                    @case ('empty') {
+                      <div class="text-muted-foreground flex h-full items-center justify-center">
+                        No candle data is available for this range.
+                      </div>
+                    }
+                    @case ('error') {
+                      <div class="text-loss flex h-full items-center justify-center">
+                        Live chart data is unavailable.
+                      </div>
+                    }
                   }
-                  @case ('loading') {
-                    <div class="text-muted-foreground flex h-full items-center justify-center">
-                      Loading candles…
-                    </div>
-                  }
-                  @case ('empty') {
-                    <div class="text-muted-foreground flex h-full items-center justify-center">
-                      No candle data is available for this range.
-                    </div>
-                  }
-                  @case ('error') {
-                    <div class="text-loss flex h-full items-center justify-center">
-                      Live chart data is unavailable.
-                    </div>
-                  }
-                }
-              </div>
-              <footer class="technical-footer border-primary/15 bg-[#181818] border">
-                <span class="font-semibold">Technical indicators</span
-                ><span class="text-muted-foreground">Not available yet</span>
-              </footer>
-            </section>
+                </div>
+                <footer class="technical-footer border-primary/15 bg-[#181818] border">
+                  <span class="font-semibold">Technical indicators</span
+                  ><span class="text-muted-foreground">Not available yet</span>
+                </footer>
+              </section>
+            </div>
 
-            <aside class="tools-column">
+            <aside class="tools-column" [attr.aria-hidden]="toolsCollapsed()">
               <section class="insight-panel border-primary/20 bg-card rounded-xl border p-3">
                 <div
                   class="border-primary/15 bg-card sticky top-0 z-10 flex items-center justify-between border-b pb-2"
@@ -341,47 +314,6 @@
                 [sessionId]="sessionId()"
                 [marketTimestamp]="marketTimestamp()"
               />
-
-              <section
-                class="orders-panel border-primary/20 bg-card rounded-xl border p-3"
-                aria-labelledby="recent-orders-title"
-              >
-                <div
-                  class="border-primary/15 bg-card sticky top-0 z-10 flex items-center justify-between border-b pb-2"
-                >
-                  <div class="flex items-center gap-2">
-                    <h2 id="recent-orders-title" class="text-sm font-semibold">Recent Orders</h2>
-                    <span
-                      class="border-border text-muted-foreground rounded border px-1.5 py-0.5 text-[10px]"
-                      >{{ active.symbol }}</span
-                    >
-                  </div>
-                  <span class="text-gain text-[10px] font-semibold uppercase">Demo</span>
-                </div>
-                <div class="order-list">
-                  @for (order of mockDetails().orders; track $index) {
-                    <div
-                      class="border-primary/15 bg-[#181818] flex items-center justify-between gap-2 rounded-lg border px-2 py-1.5 text-[10px]"
-                    >
-                      <span
-                        ><strong [class]="order.side === 'BUY' ? 'text-gain' : 'text-loss'">{{
-                          order.side
-                        }}</strong>
-                        {{ order.shares }} shares
-                        <span class="text-muted-foreground"
-                          >&#64; {{ order.price | currency: 'USD' }}</span
-                        ></span
-                      >
-                      <span class="shrink-0 text-right"
-                        ><strong class="block">{{
-                          order.shares * order.price | currency: 'USD'
-                        }}</strong
-                        ><span class="text-muted-foreground">{{ order.time }}</span></span
-                      >
-                    </div>
-                  }
-                </div>
-              </section>
             </aside>
           </div>
         }
