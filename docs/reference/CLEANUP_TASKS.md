@@ -183,17 +183,18 @@ Choose one long-term approach.
 **Pros:** Works with existing deployment; doesn't break service independence
 **Cons:** Requires dependency coordination; need to maintain version alignment
 
-### Option B: Consolidate to Holdings and Trade Service (Simplest)
-**Timeline:** 1 sprint
+### Option B: Proper Service Split (Current State after Restructure_Microservices_fix)
+**Timeline:** Already completed
 
-**Steps:**
-1. Delete Order and Sell Service entirely (or keep as skeleton for future)
-2. Holdings and Trade Service becomes the only backend for trading logic
-3. Run all market data and auth endpoints from port 8081
-4. Redirect or deprecate port 8082
+**Implementation:**
+1. Order and Sell Service (port 8081) now handles all order operations
+2. Holdings and Trade Service (port 8082) now provides user profiles and account queries
+3. Client UI calls Order and Sell Service exclusively via dev proxy
+4. Both services share the `trading_season` database and authenticate via shared Auth Service
 
-**Pros:** Eliminates duplication immediately; simpler deployment
-**Cons:** Loses intended separation; may need refactoring later when Order and Sell Service is truly implemented
+**Status:** The KAN-47/KAN-139 restructuring fix corrected the initial logic error where service responsibilities were inverted. The proper split is now in place.
+
+**Remaining work:** Refine Holdings and Trade Service endpoints and consider consolidation if holding/account queries are rarely used.
 
 ### Option C: Proper Service Split (Architectural correctness)
 **Timeline:** 2–4 sprints
