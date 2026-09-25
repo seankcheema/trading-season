@@ -1,6 +1,6 @@
 # Code coverage
 
-Generated coverage reports for the four tested services, captured from a full local run on 2026-09-25. Each service keeps its own tooling and its own report format; this directory holds the generated output so the reports can be read without rerunning the suites. The reporting placeholders contain no application code and have no coverage.
+Generated coverage reports for the four tested services, captured from a full local run on 2026-09-25. Each service keeps its own tooling and its own report format; this directory holds the generated output so the reports can be read without rerunning the suites. Open [index.html](index.html) for a single page of links into all four reports. The reporting placeholders contain no application code and have no coverage.
 
 Every service enforces a 70 percent floor in its own test command rather than reporting a number for a human to check. The Java services apply it to every package on every JaCoCo counter; the UI and auth service apply it to the whole run on each counter. A suite that falls below the floor fails, so a report in this directory describes a run that already passed its gate. The mechanisms are listed under [coverage floors](../guides/development.md#coverage-floors).
 
