@@ -19,8 +19,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <test.tags></test.tags>
         <jacoco.version>0.8.13</jacoco.version>
-        <!-- Minimum line and instruction coverage; must be at least 60% per AC -->
-        <coverage.minimum>0.60</coverage.minimum>
+        <!-- Minimum coverage for every JaCoCo counter in every package -->
+        <coverage.minimum>0.70</coverage.minimum>
     </properties>
 
     <dependencies>
@@ -122,8 +122,11 @@
                         </goals>
                     </execution>
                     <execution>
-                        <!-- Fails the build below the agreed floor, so "coverage is at least
-                             60%" is enforced by the build rather than read off a report. -->
+                        <!-- Fails the build when any package falls below the floor on any
+                             counter, so "coverage is at least 70% in every package" is enforced
+                             by the build rather than read off a report. Every package meeting the
+                             floor implies the service as a whole does. A package with no branches
+                             has no branch ratio and is not held to that limit. -->
                         <id>check-coverage</id>
                         <phase>test</phase>
                         <goals>
@@ -132,15 +135,35 @@
                         <configuration>
                             <rules>
                                 <rule>
-                                    <element>BUNDLE</element>
+                                    <element>PACKAGE</element>
                                     <limits>
+                                        <limit>
+                                            <counter>INSTRUCTION</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${coverage.minimum}</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${coverage.minimum}</minimum>
+                                        </limit>
                                         <limit>
                                             <counter>LINE</counter>
                                             <value>COVEREDRATIO</value>
                                             <minimum>${coverage.minimum}</minimum>
                                         </limit>
                                         <limit>
-                                            <counter>INSTRUCTION</counter>
+                                            <counter>COMPLEXITY</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${coverage.minimum}</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>METHOD</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${coverage.minimum}</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>CLASS</counter>
                                             <value>COVEREDRATIO</value>
                                             <minimum>${coverage.minimum}</minimum>
                                         </limit>

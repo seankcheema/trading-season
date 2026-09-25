@@ -60,7 +60,7 @@ Run all tests with code coverage verification:
 mvn test
 ```
 
-Coverage must be at least 60% per AC requirements. Reports are in `target/site/jacoco/`.
+Coverage must be at least 70% in every package on every JaCoCo counter (instructions, branches, lines, complexity, methods, and classes); `mvn test` fails otherwise. Reports are in `target/site/jacoco/`.
 
 ## Configuration
 

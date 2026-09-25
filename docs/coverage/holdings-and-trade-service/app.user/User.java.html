@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>User.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.user</a> &gt; <span class="el_source">User.java</span></div><h1>User.java</h1><pre class="source lang-java linenums">package app.user;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+/**
+ * A trader or admin's business account: profile, funds and account settings.
+ *
+ * &lt;p&gt;The primary key is the auth service's user UUID, carried as the access
+ * token's {@code sub} claim. Credentials, lockout and login history live only in
+ * the auth service.
+ */
+@Entity
+@Table(name = &quot;users&quot;)
+<span class="fc" id="L22">public class User {</span>
+
+    @Id
+    @Column(name = &quot;user_id&quot;, updatable = false, nullable = false)
+    private UUID userId;
+
+    @Column(name = &quot;first_name&quot;, nullable = false)
+    private String firstName;
+
+    @Column(name = &quot;middle_name&quot;)
+    private String middleName;
+
+    @Column(name = &quot;last_name&quot;, nullable = false)
+    private String lastName;
+
+    @Column(nullable = false, unique = true)
+    private String email;
+
+    @Column(nullable = false)
+    private String ssn;
+
+    @Column(nullable = false)
+    private String address;
+
+    @Column(name = &quot;date_of_birth&quot;, nullable = false)
+    private LocalDate dateOfBirth;
+
+    @Column(name = &quot;trader_level&quot;, nullable = false)
+<span class="fc" id="L50">    private String traderLevel = &quot;BEGINNER&quot;;</span>
+
+    @Column(name = &quot;available_funds&quot;, nullable = false)
+<span class="fc" id="L53">    private BigDecimal availableFunds = BigDecimal.ZERO;</span>
+
+    @Column(name = &quot;user_role&quot;, nullable = false)
+<span class="fc" id="L56">    private String userRole = &quot;TRADER&quot;;</span>
+
+    @Column(name = &quot;account_status&quot;, nullable = false)
+<span class="fc" id="L59">    private String accountStatus = &quot;ACTIVE&quot;;</span>
+
+    @Column(name = &quot;session_timeout_minutes&quot;, nullable = false)
+<span class="fc" id="L62">    private Integer sessionTimeoutMinutes = 10;</span>
+
+    @Column(name = &quot;execution_buffer_percent&quot;, nullable = false)
+<span class="fc" id="L65">    private BigDecimal executionBufferPercent = BigDecimal.ZERO;</span>
+
+    @Column(name = &quot;last_activity_at&quot;)
+    private OffsetDateTime lastActivityAt;
+
+    @Column(name = &quot;created_at&quot;, nullable = false, updatable = false)
+    private OffsetDateTime createdAt;
+
+    public UUID getUserId() {
+<span class="fc" id="L74">        return userId;</span>
+    }
+
+    public void setUserId(UUID userId) {
+<span class="fc" id="L78">        this.userId = userId;</span>
+<span class="fc" id="L79">    }</span>
+
+    public String getFirstName() {
+<span class="fc" id="L82">        return firstName;</span>
+    }
+
+    public void setFirstName(String firstName) {
+<span class="fc" id="L86">        this.firstName = firstName;</span>
+<span class="fc" id="L87">    }</span>
+
+    public String getMiddleName() {
+<span class="fc" id="L90">        return middleName;</span>
+    }
+
+    public void setMiddleName(String middleName) {
+<span class="fc" id="L94">        this.middleName = middleName;</span>
+<span class="fc" id="L95">    }</span>
+
+    public String getLastName() {
+<span class="fc" id="L98">        return lastName;</span>
+    }
+
+    public void setLastName(String lastName) {
+<span class="fc" id="L102">        this.lastName = lastName;</span>
+<span class="fc" id="L103">    }</span>
+
+    public String getEmail() {
+<span class="fc" id="L106">        return email;</span>
+    }
+
+    public void setEmail(String email) {
+<span class="fc" id="L110">        this.email = email;</span>
+<span class="fc" id="L111">    }</span>
+
+    public String getSsn() {
+<span class="fc" id="L114">        return ssn;</span>
+    }
+
+    public void setSsn(String ssn) {
+<span class="fc" id="L118">        this.ssn = ssn;</span>
+<span class="fc" id="L119">    }</span>
+
+    public String getAddress() {
+<span class="fc" id="L122">        return address;</span>
+    }
+
+    public void setAddress(String address) {
+<span class="fc" id="L126">        this.address = address;</span>
+<span class="fc" id="L127">    }</span>
+
+    public LocalDate getDateOfBirth() {
+<span class="fc" id="L130">        return dateOfBirth;</span>
+    }
+
+    public void setDateOfBirth(LocalDate dateOfBirth) {
+<span class="fc" id="L134">        this.dateOfBirth = dateOfBirth;</span>
+<span class="fc" id="L135">    }</span>
+
+    public String getTraderLevel() {
+<span class="fc" id="L138">        return traderLevel;</span>
+    }
+
+    public void setTraderLevel(String traderLevel) {
+<span class="fc" id="L142">        this.traderLevel = traderLevel;</span>
+<span class="fc" id="L143">    }</span>
+
+    public BigDecimal getAvailableFunds() {
+<span class="fc" id="L146">        return availableFunds;</span>
+    }
+
+    public void setAvailableFunds(BigDecimal availableFunds) {
+<span class="fc" id="L150">        this.availableFunds = availableFunds;</span>
+<span class="fc" id="L151">    }</span>
+
+    public String getUserRole() {
+<span class="fc" id="L154">        return userRole;</span>
+    }
+
+    public void setUserRole(String userRole) {
+<span class="nc" id="L158">        this.userRole = userRole;</span>
+<span class="nc" id="L159">    }</span>
+
+    public String getAccountStatus() {
+<span class="fc" id="L162">        return accountStatus;</span>
+    }
+
+    public void setAccountStatus(String accountStatus) {
+<span class="fc" id="L166">        this.accountStatus = accountStatus;</span>
+<span class="fc" id="L167">    }</span>
+
+    public Integer getSessionTimeoutMinutes() {
+<span class="nc" id="L170">        return sessionTimeoutMinutes;</span>
+    }
+
+    public void setSessionTimeoutMinutes(Integer sessionTimeoutMinutes) {
+<span class="nc" id="L174">        this.sessionTimeoutMinutes = sessionTimeoutMinutes;</span>
+<span class="nc" id="L175">    }</span>
+
+    public BigDecimal getExecutionBufferPercent() {
+<span class="fc" id="L178">        return executionBufferPercent;</span>
+    }
+
+    public void setExecutionBufferPercent(BigDecimal executionBufferPercent) {
+<span class="fc" id="L182">        this.executionBufferPercent = executionBufferPercent;</span>
+<span class="fc" id="L183">    }</span>
+
+    public OffsetDateTime getLastActivityAt() {
+<span class="nc" id="L186">        return lastActivityAt;</span>
+    }
+
+    public void setLastActivityAt(OffsetDateTime lastActivityAt) {
+<span class="nc" id="L190">        this.lastActivityAt = lastActivityAt;</span>
+<span class="nc" id="L191">    }</span>
+
+    public OffsetDateTime getCreatedAt() {
+<span class="fc" id="L194">        return createdAt;</span>
+    }
+
+    public void setCreatedAt(OffsetDateTime createdAt) {
+<span class="fc" id="L198">        this.createdAt = createdAt;</span>
+<span class="fc" id="L199">    }</span>
+}
+
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

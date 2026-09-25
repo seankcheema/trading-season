@@ -79,6 +79,73 @@ describe('UsersService', () => {
         'Email is already in use',
       );
     });
+
+    it('should map a unique-index violation from a concurrent registration to 409', async () => {
+      mockUserRepository.findOne.mockResolvedValue(null);
+      mockUserRepository.create.mockReturnValue({});
+      mockUserRepository.save.mockRejectedValue({ code: '23505' });
+
+      await expect(
+        service.create({ email: 'test@example.com', password: 'password123' }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('should rethrow any other persistence failure unchanged', async () => {
+      const failure = new Error('connection reset');
+      mockUserRepository.findOne.mockResolvedValue(null);
+      mockUserRepository.create.mockReturnValue({});
+      mockUserRepository.save.mockRejectedValue(failure);
+
+      await expect(
+        service.create({ email: 'test@example.com', password: 'password123' }),
+      ).rejects.toBe(failure);
+    });
+
+    it('should store the bcrypt hash rather than the plaintext password', async () => {
+      mockUserRepository.findOne.mockResolvedValue(null);
+      mockUserRepository.create.mockImplementation((u: object) => u);
+      mockUserRepository.save.mockImplementation(async (u: object) => u);
+
+      await service.create({ email: 'test@example.com', password: 'password123' });
+
+      expect(mockUserRepository.create).toHaveBeenCalledWith({
+        email: 'test@example.com',
+        password: 'hashed_password123',
+      });
+    });
+  });
+
+  describe('findById', () => {
+    it('should return the public view of the user without the password hash', async () => {
+      const createdAt = new Date();
+      mockUserRepository.findOne.mockResolvedValue({
+        id: '123',
+        email: 'test@example.com',
+        password: 'hashedpassword',
+        isActive: true,
+        role: 'TRADER',
+        createdAt,
+        updatedAt: createdAt,
+      });
+
+      const result = await service.findById('123');
+
+      expect(mockUserRepository.findOne).toHaveBeenCalledWith({ where: { id: '123' } });
+      expect(result).toEqual({
+        id: '123',
+        email: 'test@example.com',
+        isActive: true,
+        role: 'TRADER',
+        createdAt,
+        updatedAt: createdAt,
+      });
+    });
+
+    it('should throw NotFoundException if user not found', async () => {
+      mockUserRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.findById('nonexistent')).rejects.toThrow(NotFoundException);
+    });
   });
 
   describe('findByEmail', () => {
@@ -162,6 +229,13 @@ describe('UsersService', () => {
       expect(mockUser.lockedUntil).toBeDefined();
       expect(mockUser.lockedUntil.getTime()).toBeGreaterThan(new Date().getTime());
     });
+
+    it('should throw NotFoundException if user not found', async () => {
+      mockUserRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.lockAccount('nonexistent')).rejects.toThrow(NotFoundException);
+      expect(mockUserRepository.save).not.toHaveBeenCalled();
+    });
   });
 
   describe('resetFailedAttempts', () => {
@@ -183,6 +257,15 @@ describe('UsersService', () => {
 
       expect(mockUser.failedAttempts).toBe(0);
       expect(mockUser.lockedUntil).toBeNull();
+    });
+
+    it('should throw NotFoundException if user not found', async () => {
+      mockUserRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.resetFailedAttempts('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockUserRepository.save).not.toHaveBeenCalled();
     });
   });
 

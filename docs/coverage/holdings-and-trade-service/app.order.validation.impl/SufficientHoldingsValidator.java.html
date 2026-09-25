@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SufficientHoldingsValidator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.order.validation.impl</a> &gt; <span class="el_source">SufficientHoldingsValidator.java</span></div><h1>SufficientHoldingsValidator.java</h1><pre class="source lang-java linenums">package app.order.validation.impl;
+
+import app.account.Account;
+import app.holding.Holding;
+import app.holding.HoldingRepository;
+import app.instrument.Instrument;
+import app.order.Order;
+import app.order.dto.OrderRequest;
+import app.order.validation.OrderValidator;
+import app.order.validation.ValidationResult;
+import app.user.User;
+import org.springframework.stereotype.Component;
+
+import java.math.BigDecimal;
+
+/**
+ * A SELL can't take a holding negative. Short selling isn't modelled by
+ * this schema (see docs/db/SCHEMA-README.md), so unlike {@code
+ * cash_balance}, {@code holdings.quantity} has no DB-level CHECK
+ * preventing it — this validator is the only thing stopping it today.
+ * Worth raising with the team whether {@code CHECK (quantity &gt;= 0)}
+ * should be added to the holdings table as a second line of defence.
+ */
+@Component
+public class SufficientHoldingsValidator implements OrderValidator {
+
+    private final HoldingRepository holdingRepository;
+
+<span class="fc" id="L29">    public SufficientHoldingsValidator(HoldingRepository holdingRepository) {</span>
+<span class="fc" id="L30">        this.holdingRepository = holdingRepository;</span>
+<span class="fc" id="L31">    }</span>
+
+    @Override
+    public ValidationResult validate(OrderRequest request, User user, Account account, Instrument instrument) {
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        if (!Order.TYPE_SELL.equals(request.orderType())) {</span>
+<span class="fc" id="L36">            return ValidationResult.pass();</span>
+        }
+<span class="fc" id="L38">        BigDecimal currentQuantity = holdingRepository</span>
+<span class="fc" id="L39">                .findByAccountIdAndInstrumentId(account.getAccountId(), instrument.getInstrumentId())</span>
+<span class="fc" id="L40">                .map(Holding::getQuantity)</span>
+<span class="fc" id="L41">                .orElse(BigDecimal.ZERO);</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        if (request.quantity().compareTo(currentQuantity) &gt; 0) {</span>
+<span class="fc" id="L43">            return ValidationResult.reject(&quot;Insufficient holdings for this SELL order&quot;);</span>
+        }
+<span class="fc" id="L45">        return ValidationResult.pass();</span>
+    }
+}
+
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

@@ -1,13 +1,13 @@
 # Synthetic market-data scripts
 
-Run these cross-platform Python entrypoints from the repository root, in numeric order. Install `requirements.txt` first. The archive defaults to `apps/business-backend/db/seeds/synthetic-market-data-2026-v1`.
+Run these cross-platform Python entrypoints from the repository root, in numeric order. Install `requirements.txt` for local scripts and notebook work. CI installs the smaller `requirements-ci.txt`, which excludes notebook-only packages. The archive defaults to `apps/market-data/db/seeds/synthetic-market-data-2026-v1`.
 
 For the normal end-to-end workflow on Windows, use the single PowerShell entrypoint. It creates the virtual environment when needed, installs dependencies, generates or reuses the archive, carries the completed validation forward to the importer, and displays progress bars:
 
 ```powershell
 $freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
 
-apps/business-backend/db/setup-market-data.ps1 `
+apps/market-data/db/setup-market-data.ps1 `
   -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
   -AvailableDiskGb $freeDiskGb
 ```

@@ -1,5 +1,7 @@
 # Reporting UI
 
-Status: proposed; this directory has no runnable application yet.
+Status: runnable container placeholder; no reporting UI is implemented.
 
-Read the [reporting proposal](../../docs/reference/reporting.md) for intended responsibilities and unresolved decisions. Follow the [root agent instructions](../../AGENTS.md) when implementing the first slice. Add local setup commands only when an implementation exists.
+Local Compose serves a static placeholder page at `http://localhost:4300`. Its Nginx container exists only to make the future service boundary visible in local and Jenkins container inspection. It has no framework, authentication, data access, charts, or reporting behavior.
+
+Read the [reporting proposal](../../docs/reference/reporting.md) before implementing the first functional slice. Replace the placeholder deliberately rather than treating it as an established application architecture.

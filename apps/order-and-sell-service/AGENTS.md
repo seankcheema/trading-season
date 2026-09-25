@@ -50,14 +50,14 @@ See [API reference](../../docs/reference/api.md) for full contract details.
 
 ## Code Coverage
 
-Must maintain at least 60% code coverage for all features:
-- Client information: 60%+
-- Customer Lookup: 60%+
-- Holdings by client: 60%+
-- Trade history: 60%+
-- Portfolio Data: 60%+
+Must maintain at least 70% code coverage for all features:
+- Client information: 70%+
+- Customer Lookup: 70%+
+- Holdings by client: 70%+
+- Trade history: 70%+
+- Portfolio Data: 70%+
 
-Run `mvn test` to verify coverage locally. Coverage reports are in `target/site/jacoco/`.
+`mvn test` enforces this as a JaCoCo check: every package must reach 70% on every counter (instructions, branches, lines, complexity, methods, and classes). Coverage reports are in `target/site/jacoco/`.
 
 ## Testing
 

@@ -22,10 +22,10 @@ export default defineConfig({
       // A floor rather than a target: below this the run fails, so "coverage is
       // at least 50%" is enforced by the build instead of read off a report.
       thresholds: {
-        statements: 50,
-        branches: 50,
-        functions: 50,
-        lines: 50,
+        statements: 70,
+        branches: 70,
+        functions: 70,
+        lines: 70,
       },
     },
   },
