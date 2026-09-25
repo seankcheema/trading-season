@@ -1,0 +1,49 @@
+:root {
+  /* Tailwind 4px spacing unit */
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-2-5: 10px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-14: 56px;
+  --space-20: 80px;
+
+  /* Radii — the codebase hard-codes 5px and 10px on auth surfaces */
+  --radius: 0.625rem;
+  --radius-2: 2px;       /* chart plot focus */
+  --radius-auth: 5px;    /* auth inputs, buttons, search dropdown */
+  --radius-md: 6px;      /* timeframe segment */
+  --radius-lg: 8px;      /* buttons, inputs, menu items */
+  --radius-auth-card: 10px;
+  --radius-xl: 12px;     /* hlm card, search input, side toggle */
+  --radius-dash: 14px;   /* .dash-card (0.875rem) */
+  --radius-2xl: 16px;    /* dialogs */
+  --radius-full: 9999px;
+
+  /* Elevation — used sparingly; borders do most of the work */
+  --shadow-sm: 0 1px 3px 0 rgba(0,0,0,.1), 0 1px 2px -1px rgba(0,0,0,.1);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,.1), 0 2px 4px -2px rgba(0,0,0,.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -4px rgba(0,0,0,.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0,0,0,.1), 0 8px 10px -6px rgba(0,0,0,.1);
+  --shadow-dialog: 0 25px 50px -12px rgba(0,0,0,.5);
+  --ring-focus: 0 0 0 3px var(--ring-50);
+
+  /* Motion */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1); /* @kind other */
+  --ease-in-out-reveal: cubic-bezier(0.65, 0, 0.35, 1); /* @kind other */
+  --duration-fast: 150ms; /* @kind other */
+  --duration-dialog: 200ms; /* @kind other */
+  --duration-reveal: 1.6s; /* @kind other */
+
+  /* Layout */
+  --layout-landing-max: 72rem;
+  --layout-dashboard-max: 1600px;
+  --header-h: 64px;
+}

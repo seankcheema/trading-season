@@ -1,0 +1,45 @@
+<!-- @dsCard group="Instrument View" viewport="1440x960" name="Instrument view (proposed)" subtitle="Advanced-trader deep dive: candles, quote, market state, time & sales" -->
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>TradingSeason · Instrument</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="../../assets/2b-waves.svg">
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script src="../_shared/market-data.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="../_shared/AppHeader.jsx"></script>
+<script type="text/babel" src="../_shared/OrderTicket.jsx"></script>
+<script type="text/babel" src="CandleChart.jsx"></script>
+<script type="text/babel" src="InstrumentView.jsx"></script>
+<script type="text/babel">
+function InstrumentApp() {
+  const { Button, InstrumentSearch } = window.TradingSeasonDesignSystem_86c3eb;
+  const initial = new URLSearchParams(location.search).get('symbol') || localStorage.getItem('ts-instrument') || 'AAPL';
+  const [symbol, setSymbol] = React.useState(TSData.find(initial) ? initial : 'AAPL');
+  const [account, setAccount] = React.useState(1);
+  const pick = (s) => { setSymbol(s); localStorage.setItem('ts-instrument', s); };
+  return (
+    <div style={{ height: '100vh', overflow: 'hidden', padding: '0 24px 16px', background: 'var(--background)' }}>
+      <div style={{ margin: '0 auto', display: 'flex', height: '100%', maxWidth: 1600, flexDirection: 'column' }}>
+        <AppHeader hideLogo accountId={account} onAccount={setAccount}
+          left={<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Button variant="outline" size="icon-lg" icon="chevron-left" aria-label="Back to dashboard" onClick={() => { location.href = '../client-ui/index.html'; }} />
+            <InstrumentSearch instruments={TSData.INSTRUMENTS} onSelect={(i) => pick(i.symbol)} placeholder="Search instruments" style={{ width: 280 }} />
+          </div>} />
+        <InstrumentView symbol={symbol} setSymbol={pick} />
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<InstrumentApp />);
+</script>
+</body>
+</html>

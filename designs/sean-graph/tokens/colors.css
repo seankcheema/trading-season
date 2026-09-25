@@ -1,0 +1,73 @@
+/* TradingSeason ships dark-only (<html class="dark">). These are the :root.dark values from
+   apps/client-ui/src/styles.css, promoted to :root. */
+:root {
+  color-scheme: dark;
+  /* Base palette */
+  --ts-ink-950: #0e0e0e;
+  --ts-ink-900: #10161a;
+  --ts-ink-850: #141414;
+  --ts-ink-800: #1a1a1a;
+  --ts-deep-sea: #0b2f3e;
+  --ts-frost: #eefaff;
+  --ts-cyan: #00bbff;
+  --ts-cyan-mid: #58c9f4;
+  --ts-cyan-pale: #c6e8f5;
+  --ts-gain: #33ff00;
+  --ts-loss: #ff0037;
+  --ts-white: #ffffff;
+  --ts-black: #000000;
+
+  /* Semantic (SpartanNG / shadcn names, as used in the codebase) */
+  --background: #0e0e0e;
+  --foreground: #eefaff;
+  --card: #141414;
+  --card-foreground: #eefaff;
+  --popover: #141414;
+  --popover-foreground: #eefaff;
+  --primary: #00bbff;
+  --primary-foreground: #0e0e0e;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #eefaff;
+  --muted: #1a1a1a;
+  --muted-foreground: rgba(238, 250, 255, 0.5);
+  --accent: #1a1a1a;
+  --accent-foreground: #eefaff;
+  --destructive: #ff0037;
+  --border: rgba(238, 250, 255, 0.15);
+  --input: rgba(238, 250, 255, 0.15);
+  --ring: #00bbff;
+  --color-gain: #33ff00;
+  --color-loss: #ff0037;
+
+  /* Tints derived in the product via Tailwind /opacity modifiers */
+  --primary-10: rgba(0, 187, 255, 0.10);
+  --primary-15: rgba(0, 187, 255, 0.15);
+  --primary-20: rgba(0, 187, 255, 0.20);
+  --primary-25: rgba(0, 187, 255, 0.25);
+  --primary-80: rgba(0, 187, 255, 0.80);
+  --gain-10: rgba(51, 255, 0, 0.10);
+  --gain-15: rgba(51, 255, 0, 0.15);
+  --loss-10: rgba(255, 0, 55, 0.10);
+  --loss-15: rgba(255, 0, 55, 0.15);
+  --loss-85: rgba(255, 0, 55, 0.85);
+  --border-60: rgba(238, 250, 255, 0.09);
+  --input-30: rgba(238, 250, 255, 0.045);
+  --input-50: rgba(238, 250, 255, 0.075);
+  --foreground-10: rgba(238, 250, 255, 0.10);
+  --foreground-40: rgba(238, 250, 255, 0.40);
+  --ring-50: rgba(0, 187, 255, 0.5);
+  --scrim: rgba(0, 0, 0, 0.6);
+
+  /* Aliases */
+  --surface-page: var(--background);
+  --surface-card: var(--card);
+  --surface-raised: var(--muted);
+  --text-body: var(--foreground);
+  --text-muted: var(--muted-foreground);
+  --text-link: var(--primary);
+
+  /* Signature gradients */
+  --gradient-net-worth: radial-gradient(100% 120% at 100% 100%, rgba(0, 187, 255, 0.28) 0%, transparent 60%), linear-gradient(135deg, #10161a 0%, #0b2f3e 100%); /* @kind color */
+  --gradient-graph-line: linear-gradient(90deg, #c6e8f5 0%, #58c9f4 45%, #00bbff 100%); /* @kind color */
+  --texture-hairlines: repeating-linear-gradient(90deg, transparent 0 9px, rgba(238, 250, 255, 0.035) 9px 10px); /* @kind color */
+}

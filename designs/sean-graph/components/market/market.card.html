@@ -1,0 +1,22 @@
+<!-- @dsCard group="Components" viewport="700x520" name="Market" subtitle="Chart, sparkline, toggles, pills, search, slider" -->
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{padding:20px;font-size:14px}.r{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.c{display:flex;flex-direction:column;gap:14px}</style></head><body><div id="root"></div>
+<script type="text/babel">
+const NS = window.TradingSeasonDesignSystem_86c3eb;
+
+const { PriceChart, Sparkline, TimeframeToggle, SideToggle, ChangePill, InstrumentSearch, ShareSlider } = NS;
+function series(seed,n,end){let s=0;for(const c of seed)s=(s*31+c.charCodeAt(0))>>>0;const w=[];let v=100;for(let i=0;i<n;i++){s=(s*1664525+1013904223)>>>0;v+=((s/2**32-.45)*20)/Math.sqrt(n);w.push(v)}const k=end/w[n-1];return w.map(x=>x*k)}
+const INS=[{symbol:'AAPL',name:'Apple Inc.',price:316.59,change:15.65,changePercent:5.2},{symbol:'NVDA',name:'NVIDIA Corporation',price:184.77,change:-3.41,changePercent:-1.81},{symbol:'MSFT',name:'Microsoft Corporation',price:512.3,change:6.12,changePercent:1.21}];
+function App(){const [tf,setTf]=React.useState('1D');const [side,setSide]=React.useState('buy');const [n,setN]=React.useState(4);return <div className="c">
+<div style={{display:'grid',gridTemplateColumns:'1.4fr 1fr',gap:16}}>
+<div style={{background:'var(--card)',border:'1px solid var(--border)',borderRadius:14,padding:16}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span className="r" style={{gap:10}}><span style={{fontSize:24,fontWeight:600}} className="tabular-nums">$316.59</span><ChangePill value={5.2}/></span><TimeframeToggle value={tf} onChange={setTf}/></div><PriceChart area points={series('AAPL'+tf,27,316.59)} labels={['9:30 AM','11:00 AM','12:30 PM','2:00 PM','3:30 PM']} height={200}/></div>
+<div className="c"><InstrumentSearch instruments={INS} placeholder="Search (try “a”)"/><SideToggle value={side} onChange={setSide}/><ShareSlider value={n} max={10} tone={side} onChange={setN}/>
+<div className="r"><ChangePill value={1.21}/><ChangePill value={-1.81}/><ChangePill tag tone="primary">buy</ChangePill><ChangePill tag tone="loss">sell</ChangePill><ChangePill tag tone="gain">deposit</ChangePill></div>
+<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}><Sparkline points={series('a',27,110)}/><Sparkline points={series('zz',27,80)}/></div></div>
+</div></div>}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>
