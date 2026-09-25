@@ -1,5 +1,6 @@
 package app.user;
 
+import app.support.UserAccountFixture;
 import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -7,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -42,10 +44,14 @@ class UserControllerIntegrationTest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @BeforeEach
     void cleanDatabase() {
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
         userRepository.deleteAll();
+        UserAccountFixture.deleteAll(jdbcTemplate);
     }
 
     private static RequestPostProcessor tokenFor(UUID userId, String email) {
@@ -56,6 +62,11 @@ class UserControllerIntegrationTest {
     }
 
     private void registerUser(UUID userId, String firstName, String email) throws Exception {
+        // These tests mint their own tokens, so they must also create the
+        // account row the auth service would have created first. /me now
+        // reports role and status from it rather than from the profile copy.
+        UserAccountFixture.createActiveAccount(jdbcTemplate, userId, email);
+
         Map<String, Object> body = Map.of(
             "email", email,
             "firstName", firstName,
