@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -9,6 +17,7 @@ import { HlmFieldImports } from '@shared/ui-components/field';
 import { HlmInputImports } from '@shared/ui-components/input';
 import { toAuthErrorMessage } from '../core/auth/auth-error';
 import { AuthService } from '../core/auth/auth.service';
+import { LOGIN_LOCKOUT_MINUTES, LoginLockoutService } from '../core/auth/login-lockout.service';
 import { INACTIVE_SIGN_OUT_REASON } from '../core/auth/session-timeout.service';
 
 @Component({
@@ -31,6 +40,7 @@ export class LoginComponent {
   private readonly _authService = inject(AuthService);
   private readonly _router = inject(Router);
   private readonly _destroyRef = inject(DestroyRef);
+  private readonly _lockout = inject(LoginLockoutService);
 
   // Set when the inactivity timeout, rather than the user, ended the previous session.
   protected readonly signedOutForInactivity =
@@ -44,6 +54,14 @@ export class LoginComponent {
   protected readonly loading = signal(false);
   // Message from the last failed sign-in, cleared as soon as the user edits the form.
   protected readonly errorMessage = signal<string | null>(null);
+  // True while too many rejected sign-ins have locked the form.
+  protected readonly locked = this._lockout.isLocked;
+  protected readonly lockoutMinutes = LOGIN_LOCKOUT_MINUTES;
+  // Time left on the lock as m:ss, for the disabled submit button.
+  protected readonly lockoutCountdown = computed(() => {
+    const seconds = Math.ceil(this._lockout.remainingMs() / 1000);
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  });
 
   private readonly _fb = new FormBuilder();
 
@@ -65,6 +83,9 @@ export class LoginComponent {
   protected onSubmit(): void {
     this.submitted.set(true);
 
+    if (this._lockout.checkLocked()) {
+      return;
+    }
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
@@ -83,11 +104,17 @@ export class LoginComponent {
       .subscribe({
         next: () => {
           this.loading.set(false);
+          this._lockout.recordSuccess();
           void this._router.navigateByUrl('/dashboard');
         },
         error: (error: unknown) => {
           this.loading.set(false);
-          this.errorMessage.set(toAuthErrorMessage(error, 'login'));
+          // Only rejected credentials count towards the lock, not outages or network errors.
+          if (error instanceof HttpErrorResponse && error.status === 401) {
+            this._lockout.recordFailure();
+          }
+          // Once locked, the lockout notice replaces the credentials message.
+          this.errorMessage.set(this.locked() ? null : toAuthErrorMessage(error, 'login'));
         },
       });
   }

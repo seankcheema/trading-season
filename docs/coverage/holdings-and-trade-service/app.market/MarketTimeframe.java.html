@@ -4,15 +4,15 @@ import java.time.Duration;
 
 /** Supported chart ranges and aggregation widths. */
 <span class="fc" id="L6">public enum MarketTimeframe {</span>
-<span class="fc" id="L7">    /** Current trading session at one-minute resolution. */</span>
+    /** Current trading session at one-minute resolution. */
 <span class="fc" id="L8">    ONE_DAY(&quot;1D&quot;, Duration.ofDays(1), Duration.ofMinutes(1)),</span>
-<span class="fc" id="L9">    /** Latest five trading sessions at five-minute resolution. */</span>
+    /** Latest five trading sessions at five-minute resolution. */
 <span class="fc" id="L10">    FIVE_DAYS(&quot;5D&quot;, Duration.ofDays(7), Duration.ofMinutes(5)),</span>
-<span class="fc" id="L11">    /** Previous seven calendar days at thirty-minute resolution. */</span>
+    /** Previous seven calendar days at thirty-minute resolution. */
 <span class="fc" id="L12">    ONE_WEEK(&quot;1W&quot;, Duration.ofDays(7), Duration.ofMinutes(30)),</span>
-<span class="fc" id="L13">    /** Previous month at hourly resolution. */</span>
+    /** Previous month at hourly resolution. */
 <span class="fc" id="L14">    ONE_MONTH(&quot;1M&quot;, Duration.ofDays(31), Duration.ofHours(1)),</span>
-<span class="fc" id="L15">    /** Previous year at daily resolution. */</span>
+    /** Previous year at daily resolution. */
 <span class="fc" id="L16">    ONE_YEAR(&quot;1Y&quot;, Duration.ofDays(366), Duration.ofDays(1));</span>
 
     private final String wireValue;

@@ -10,7 +10,7 @@
     </parent>
 
     <groupId>app</groupId>
-    <artifactId>order-and-sell-service</artifactId>
+    <artifactId>holdings-and-trade-service</artifactId>
     <version>0.1.0</version>
     <packaging>jar</packaging>
 
@@ -79,7 +79,7 @@
     </dependencies>
 
     <build>
-        <finalName>order-and-sell-service</finalName>
+        <finalName>holdings-and-trade-service</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

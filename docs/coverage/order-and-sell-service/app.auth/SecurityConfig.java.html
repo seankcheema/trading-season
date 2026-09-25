@@ -119,7 +119,7 @@ import java.util.List;
     static OAuth2TokenValidator&lt;Jwt&gt; tokenValidator(String issuer) {
 <span class="fc" id="L120">        return new DelegatingOAuth2TokenValidator&lt;&gt;(</span>
 <span class="fc" id="L121">                JwtValidators.createDefaultWithIssuer(issuer),</span>
-<span class="fc" id="L122">                new JwtClaimValidator&lt;String&gt;(JwtClaimNames.SUB, AuthenticatedUser::isUuid));</span>
+                new JwtClaimValidator&lt;String&gt;(JwtClaimNames.SUB, AuthenticatedUser::isUuid));
     }
 
     /**
