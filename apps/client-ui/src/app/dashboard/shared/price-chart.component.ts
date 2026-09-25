@@ -100,6 +100,61 @@ interface VolumeBar {
     <div
       class="relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_4.75rem] grid-rows-[1.25rem_minmax(0,1fr)_1rem] gap-x-3 gap-y-2"
     >
+      @if (interactive()) {
+        <div
+          class="border-border bg-card/90 absolute top-0 left-0 z-30 flex items-center gap-0.5 rounded-lg border p-0.5 backdrop-blur-sm"
+          (pointerdown)="$event.stopPropagation()"
+        >
+          <button
+            type="button"
+            class="chart-control"
+            aria-label="Zoom out"
+            [disabled]="!canZoomOut()"
+            (click)="zoom(1.25)"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            class="chart-control"
+            aria-label="Zoom in"
+            [disabled]="!canZoomIn()"
+            (click)="zoom(0.8)"
+          >
+            +
+          </button>
+          <span class="bg-border mx-0.5 h-3.5 w-px"></span>
+          <button
+            type="button"
+            class="chart-control"
+            aria-label="Pan left"
+            [disabled]="viewStart() === 0"
+            (click)="pan(-0.25)"
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            class="chart-control"
+            aria-label="Pan right"
+            [disabled]="atLatest()"
+            (click)="pan(0.25)"
+          >
+            ›
+          </button>
+          <button
+            type="button"
+            class="chart-control px-1.5"
+            aria-label="Reset chart view"
+            (click)="resetView()"
+          >
+            Reset
+          </button>
+          <span class="text-muted-foreground px-1 text-[10px] tabular-nums"
+            >{{ visiblePoints().length }} bars</span
+          >
+        </div>
+      }
       <div class="relative min-w-0" aria-hidden="true">
         @if (tooltipPoint(); as point) {
           <div
@@ -142,61 +197,6 @@ interface VolumeBar {
         (keydown)="onKeydown($event)"
         (blur)="hoverIndex.set(null)"
       >
-        @if (interactive()) {
-          <div
-            class="border-border bg-card/90 absolute top-1.5 left-1.5 z-20 flex items-center gap-0.5 rounded-lg border p-0.5 backdrop-blur-sm"
-            (pointerdown)="$event.stopPropagation()"
-          >
-            <button
-              type="button"
-              class="chart-control"
-              aria-label="Zoom out"
-              [disabled]="!canZoomOut()"
-              (click)="zoom(1.25)"
-            >
-              −
-            </button>
-            <button
-              type="button"
-              class="chart-control"
-              aria-label="Zoom in"
-              [disabled]="!canZoomIn()"
-              (click)="zoom(0.8)"
-            >
-              +
-            </button>
-            <span class="bg-border mx-0.5 h-3.5 w-px"></span>
-            <button
-              type="button"
-              class="chart-control"
-              aria-label="Pan left"
-              [disabled]="viewStart() === 0"
-              (click)="pan(-0.25)"
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              class="chart-control"
-              aria-label="Pan right"
-              [disabled]="atLatest()"
-              (click)="pan(0.25)"
-            >
-              ›
-            </button>
-            <button
-              type="button"
-              class="chart-control px-1.5"
-              aria-label="Reset chart view"
-              (click)="resetView()"
-            >
-              Reset
-            </button>
-            <span class="text-muted-foreground px-1 text-[10px] tabular-nums"
-              >{{ visiblePoints().length }} bars</span
-            >
-          </div>
-        }
         @if (hovered(); as point) {
           <div
             class="bg-foreground/40 pointer-events-none absolute inset-y-0 w-px"
