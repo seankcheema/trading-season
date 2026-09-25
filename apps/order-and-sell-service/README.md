@@ -1,19 +1,19 @@
 # Order and Sell Service
 
-Spring Boot microservice providing read-only access to user profiles, client information, holdings data, and order history. This service powers the dashboard UI and customer-facing queries.
+Spring Boot microservice responsible for managing all trading operations, order execution, and holding updates. This service is the core trading engine for the Trading Season platform.
 
 ## Architecture
 
 **Responsibilities:**
-- Provide user profile and client information
-- Enable customer lookup functionality
-- Query current holdings by client
-- Access complete trade history
-- Aggregate portfolio data
+- Create and accept trade orders
+- Validate orders (funds, holdings, tradability, account status)
+- Execute buy and sell transactions
+- Update and maintain current holdings
+- Maintain complete order audit trail and history
 
-**Port:** 8082 (default, configurable via `server.port`)
+**Port:** 8081 (default, configurable via `server.port`)
 
-**Database:** Shared PostgreSQL with Holdings and Trade Service. Schema is read-only; migrations managed centrally.
+**Database:** Shared PostgreSQL with Order and Sell Service. Schema is read-only; migrations managed centrally.
 
 **Authentication:** RS256 tokens issued by the NestJS auth service. Verifies tokens, never handles passwords.
 
@@ -25,7 +25,7 @@ Spring Boot microservice providing read-only access to user profiles, client inf
 
 - JDK 21
 - Maven 3.9+
-- PostgreSQL (shared with Holdings and Trade Service)
+- PostgreSQL (shared with Order and Sell Service)
 - NestJS auth service running on port 3001
 
 ### Setup
@@ -33,9 +33,9 @@ Spring Boot microservice providing read-only access to user profiles, client inf
 1. Create the trading_season database and apply migrations (V001, V002, V003):
    ```powershell
    # From repository root
-   py -3 -m venv apps/business-backend/db/.venv
-   apps/business-backend/db/.venv/Scripts/python.exe -m pip install --upgrade pip
-   apps/business-backend/db/.venv/Scripts/python.exe -m pip install -r apps/business-backend/db/scripts/requirements.txt
+   py -3 -m venv apps/market-data/db/.venv
+   apps/market-data/db/.venv/Scripts/python.exe -m pip install --upgrade pip
+   apps/market-data/db/.venv/Scripts/python.exe -m pip install -r apps/market-data/db/scripts/requirements.txt
    ```
 
 2. Run migrations:
@@ -49,8 +49,9 @@ Spring Boot microservice providing read-only access to user profiles, client inf
    ```
 
 4. Verify it's running:
-   ```powershell
-   Invoke-RestMethod http://localhost:8082/api/users
+   ```powershel
+
+   Invoke-RestMethod http://localhost:8081/api/market/snapshot
    ```
 
 ### Tests
@@ -79,16 +80,8 @@ Environment variables override defaults in [application.properties](src/main/res
 
 All endpoints require valid RS256 access token except public market GET endpoints.
 
-**User Management:**
-- `GET /api/users/{id}` - Get user profile by ID (requires auth)
-- `GET /api/users` - List all users (admin only)
-
-**Account Data:**
-- `GET /api/accounts/{accountId}` - Get account details (requires auth)
-- `GET /api/accounts/{accountId}/holdings` - Get current holdings (requires auth)
-
 **Order History:**
-- `GET /api/orders` - List all orders for authenticated user (requires auth)
+- `GET /api/orders` - List order history for authenticated user (requires auth)
 - `GET /api/orders/{id}` - Get order details (requires auth)
 
 **Market Data (Public):**
@@ -104,27 +97,18 @@ Source is rooted at `src/main/java/app`. Tests mirror structure under `src/test/
 
 ```
 app/
-├── user/        # User profiles and customer information
-├── account/     # Read-only account entities
-├── holding/     # Read-only position data
-├── auth/        # Authentication and authorization
-├── market/      # Market data and replay
-└── Main.java    # Application entry point
+├── order/           # Order management core
+│   ├── validation/  # Validation pipeline
+│   ├── execution/   # Order execution and settlement
+│   └── audit/       # Order event audit
+├── account/         # Trading account entities
+├── holding/         # Current position data
+├── instrument/      # Tradable asset definitions
+├── auth/            # Authentication and authorization
+├── market/          # Market data and replay
+└── Main.java        # Application entry point
 ```
 
-## Requirements
-
-Per user story AC:
-- Holds user, account, holding, auth, market packages
-- All previous tests pass
-- Code coverage is at least 70% for every sub-bullet:
-  - Client information: 70%+
-  - Customer Lookup: 70%+
-  - Holdings by client: 70%+
-  - Trade history: 70%+
-  - Portfolio Data: 70%+
-- Comprehensive README (this file)
-- Updated docker-compose to reflect architectural changes
 
 ## Development
 
@@ -132,8 +116,8 @@ See [service development guide](AGENTS.md) for coding standards, testing pattern
 
 ## Related Services
 
-- **Holdings and Trade Service** - Manages order execution, holds master order data
+- **Order and Sell Service** - Queries orders, holdings, and user data for UI
 - **Auth Service** - Issues and validates RS256 tokens
-- **Business UI** - Consumes this service's APIs for dashboard and user management
+- **Business UI** - Consumes this service's APIs
 
 See [Architecture reference](../../docs/reference/architecture.md) for service boundaries and integration patterns.
