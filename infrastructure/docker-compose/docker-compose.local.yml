@@ -23,7 +23,7 @@ services:
     ports:
       - "8083:8080"
 
-  # Holdings and Trade Service: manages order execution, validation, and holdings
+  # Order and Sell Service: provides read-only access to user profiles and order history
   holdings-and-trade-service:
     build:
       context: ../../apps/holdings-and-trade-service
@@ -41,7 +41,7 @@ services:
       AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
 
-  # Order and Sell Service: provides read-only access to user profiles and order history
+  # Holdings and Trade Service: manages order execution, validation, and holdings
   order-and-sell-service:
     build:
       context: ../../apps/order-and-sell-service
