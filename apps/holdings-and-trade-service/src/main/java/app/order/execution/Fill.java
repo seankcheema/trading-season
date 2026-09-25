@@ -11,7 +11,8 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
 /**
- * The execution outcome of an ACCEPTED order (BR-06/08). At most one fill
+ * The execution outcome of an order that passed its trading rules (BR-06/08);
+ * writing it moves the order to FILLED and then APPROVED (KAN-93). At most one fill
  * per order — this schema doesn't model partial fills.
  */
 @Entity

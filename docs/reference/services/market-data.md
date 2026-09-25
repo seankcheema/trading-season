@@ -8,7 +8,7 @@ Contains shared database migrations, synthetic market data generation scripts, a
 
 | Path | Purpose |
 | --- | --- |
-| `db/migrations/` | Database schema: `V001__Initial_schema.sql`, `V002__Synthetic_market_data_replay_metadata.sql`, `V003__Token_authentication.sql` |
+| `db/migrations/` | Database schema: `V001__Initial_schema.sql`, `V002__Synthetic_market_data_replay_metadata.sql`, `V003__Token_authentication.sql`, `V004__Order_status_lifecycle.sql` |
 | `db/scripts/` | Python scripts for market data generation, validation, and import workflow |
 | `db/seeds/` | Generated output archives (not committed to repository) |
 | `db/setup-market-data.ps1` | PowerShell orchestration for data generation workflow |
@@ -20,11 +20,12 @@ Both Java microservices connect to the same `trading_season` database with their
 
 ## Database initialization
 
-The schema is applied through three SQL migrations applied in order:
+The schema is applied through four SQL migrations applied in order:
 
 1. **V001__Initial_schema.sql** – Creates base schema, tables, and relationships
 2. **V002__Synthetic_market_data_replay_metadata.sql** – Adds replay metadata for synthetic data simulation
 3. **V003__Token_authentication.sql** – Removes legacy authentication columns, adds token support
+4. **V004__Order_status_lifecycle.sql** – Replaces order statuses with PENDING, FILLED, APPROVED and REJECTED (KAN-93)
 
 All migrations are applied to the `trading_season` database by either Java service on first startup (via Hibernate/JPA configuration) or manually via `psql`.
 
@@ -68,6 +69,9 @@ psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STO
 
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 \
   -f apps/market-data/db/migrations/V003__Token_authentication.sql
+
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 \
+  -f apps/market-data/db/migrations/V004__Order_status_lifecycle.sql
 ```
 
 Or via Docker Compose:

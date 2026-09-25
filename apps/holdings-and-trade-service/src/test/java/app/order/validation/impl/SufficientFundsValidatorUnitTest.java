@@ -20,39 +20,56 @@ class SufficientFundsValidatorUnitTest {
 
     private final SufficientFundsValidator validator = new SufficientFundsValidator();
 
-    private Account accountWithBalance(String balance) {
+    private User userWithFunds(String availableFunds) {
+        User user = new User();
+        user.setAvailableFunds(new BigDecimal(availableFunds));
+        return user;
+    }
+
+    /** An account whose cached cash balance must be ignored: funds belong to the user (KAN-93). */
+    private Account accountWithCash(String cashBalance) {
         Account account = new Account();
-        account.setCashBalance(new BigDecimal(balance));
+        account.setCashBalance(new BigDecimal(cashBalance));
         return account;
     }
 
     @Test
-    void rejectsBuyThatCostsMoreThanCashBalance() {
+    void rejectsBuyThatCostsMoreThanAvailableFunds() {
         OrderRequest request = new OrderRequest(1, 1, Order.TYPE_BUY,
                 BigDecimal.TEN, BigDecimal.valueOf(100), null, UUID.randomUUID());
 
-        ValidationResult result = validator.validate(request, new User(), accountWithBalance("500"), new Instrument());
+        ValidationResult result = validator.validate(request, userWithFunds("500"), accountWithCash("0"), new Instrument());
 
         assertFalse(result.passed());
         assertTrue(result.reason().contains("BR-09"));
     }
 
     @Test
-    void passesBuyThatExactlyMatchesCashBalance() {
+    void passesBuyThatExactlyMatchesAvailableFunds() {
         OrderRequest request = new OrderRequest(1, 1, Order.TYPE_BUY,
                 BigDecimal.TEN, BigDecimal.valueOf(100), null, UUID.randomUUID());
 
-        ValidationResult result = validator.validate(request, new User(), accountWithBalance("1000"), new Instrument());
+        ValidationResult result = validator.validate(request, userWithFunds("1000"), accountWithCash("0"), new Instrument());
 
         assertTrue(result.passed());
     }
 
     @Test
-    void ignoresCashBalanceForSellOrders() {
+    void ignoresAccountCashBalanceWhenUserFundsAreInsufficient() {
+        OrderRequest request = new OrderRequest(1, 1, Order.TYPE_BUY,
+                BigDecimal.TEN, BigDecimal.valueOf(100), null, UUID.randomUUID());
+
+        ValidationResult result = validator.validate(request, userWithFunds("0"), accountWithCash("1000000"), new Instrument());
+
+        assertFalse(result.passed());
+    }
+
+    @Test
+    void ignoresAvailableFundsForSellOrders() {
         OrderRequest request = new OrderRequest(1, 1, Order.TYPE_SELL,
                 BigDecimal.TEN, BigDecimal.valueOf(100), null, UUID.randomUUID());
 
-        ValidationResult result = validator.validate(request, new User(), accountWithBalance("0"), new Instrument());
+        ValidationResult result = validator.validate(request, userWithFunds("0"), accountWithCash("0"), new Instrument());
 
         assertTrue(result.passed());
     }

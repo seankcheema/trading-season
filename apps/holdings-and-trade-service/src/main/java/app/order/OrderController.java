@@ -34,10 +34,15 @@ public class OrderController {
     }
 
     /**
-     * Submits an order. Always returns 201 with the order's outcome — a
+     * Submits a buy or sell order (KAN-93). Always returns 201 with the
+     * order's outcome: {@code APPROVED} when it executed and the user's
+     * available funds moved, or {@code REJECTED} with a reason — a
      * trading-rule rejection is a successful response describing a failed
      * trade, not an HTTP error. See {@link OrderService#submitOrder} for
      * when this throws instead.
+     *
+     * @param request the order, validated by Bean Validation before this runs
+     * @return the order's final status and details
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)

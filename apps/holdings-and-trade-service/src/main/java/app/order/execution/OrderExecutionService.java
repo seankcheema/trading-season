@@ -8,6 +8,8 @@ import app.instrument.Instrument;
 import app.order.Order;
 import app.order.OrderRepository;
 import app.order.audit.AuditTrailService;
+import app.user.User;
+import app.user.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,9 +17,10 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
 /**
- * Turns an ACCEPTED order into a fill, atomically. Only reached after
- * {@code OrderValidationPipeline} has passed — this class does not itself
- * decide whether a trade is allowed, it carries out one that already was.
+ * Turns a PENDING order that passed the rule pipeline into a fill,
+ * atomically, and moves it to {@code FILLED} and then {@code APPROVED}
+ * (KAN-93). This class does not itself decide whether a trade is allowed,
+ * it carries out one that already was.
  *
  * <p><b>Simplification:</b> this fills at the order's client-submitted
  * {@code indicativePrice} rather than a live market quote — business-backend
@@ -29,16 +32,23 @@ import java.time.OffsetDateTime;
  * line to change once a quote source exists; everything downstream of it
  * (ledger writes, balance/holding updates) doesn't need to change.
  *
+ * <p><b>Funds:</b> cash belongs to the user, not to an account, so a BUY
+ * debits and a SELL credits the owning user's {@code availableFunds}
+ * (KAN-93). {@code accounts.cash_balance} is not moved. A
+ * {@code cash_transactions} row is still written for every fill so the
+ * movement is on the ledger.
+ *
  * <p>Funds and holdings were already checked once by the pipeline, against
  * a snapshot that can go stale between validation and execution. This class
  * re-checks both under a row lock immediately before writing the fill, so
  * two concurrent orders can't both spend the same balance or the same
- * holding.
+ * holding. An order that fails that re-check is {@code REJECTED}.
  */
 @Service
 public class OrderExecutionService {
 
     private final AccountRepository accountRepository;
+    private final UserRepository userRepository;
     private final HoldingRepository holdingRepository;
     private final OrderRepository orderRepository;
     private final FillRepository fillRepository;
@@ -47,6 +57,7 @@ public class OrderExecutionService {
     private final AuditTrailService auditTrailService;
 
     public OrderExecutionService(AccountRepository accountRepository,
+                                  UserRepository userRepository,
                                   HoldingRepository holdingRepository,
                                   OrderRepository orderRepository,
                                   FillRepository fillRepository,
@@ -54,6 +65,7 @@ public class OrderExecutionService {
                                   HoldingMovementRepository holdingMovementRepository,
                                   AuditTrailService auditTrailService) {
         this.accountRepository = accountRepository;
+        this.userRepository = userRepository;
         this.holdingRepository = holdingRepository;
         this.orderRepository = orderRepository;
         this.fillRepository = fillRepository;
@@ -62,18 +74,30 @@ public class OrderExecutionService {
         this.auditTrailService = auditTrailService;
     }
 
+    /**
+     * Executes an order whose trading rules have passed.
+     *
+     * @param order      the {@code PENDING} order to execute
+     * @param instrument the instrument being traded
+     * @return the order as {@code APPROVED}, or {@code REJECTED} if funds or
+     *         holdings were no longer sufficient under the row lock
+     * @throws IllegalStateException if the account or its owning user no longer exists
+     */
     @Transactional
     public Order execute(Order order, Instrument instrument) {
         boolean isBuy = Order.TYPE_BUY.equals(order.getOrderType());
         BigDecimal fillPrice = order.getIndicativePrice();
         BigDecimal tradeValue = order.getQuantity().multiply(fillPrice);
 
-        Account account = accountRepository.findByIdForUpdate(order.getAccountId())
+        Account account = accountRepository.findById(order.getAccountId())
                 .orElseThrow(() -> new IllegalStateException(
                         "Account " + order.getAccountId() + " disappeared mid-execution"));
+        User user = userRepository.findByIdForUpdate(account.getUserId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Account " + account.getAccountId() + " has no owning user"));
 
-        if (isBuy && tradeValue.compareTo(account.getCashBalance()) > 0) {
-            return failExecution(order, "BR-09: insufficient funds at execution time");
+        if (isBuy && tradeValue.compareTo(user.getAvailableFunds()) > 0) {
+            return reject(order, "BR-09: insufficient funds at execution time");
         }
 
         Holding holding = holdingRepository
@@ -81,7 +105,7 @@ public class OrderExecutionService {
                 .orElse(null);
         BigDecimal currentQuantity = holding == null ? BigDecimal.ZERO : holding.getQuantity();
         if (!isBuy && order.getQuantity().compareTo(currentQuantity) > 0) {
-            return failExecution(order, "Insufficient holdings at execution time");
+            return reject(order, "Insufficient holdings at execution time");
         }
 
         OffsetDateTime now = OffsetDateTime.now();
@@ -101,8 +125,8 @@ public class OrderExecutionService {
         cashTransaction.setReason(CashTransaction.REASON_ORDER_FILL);
         cashTransaction.setCreatedAt(now);
         cashTransactionRepository.save(cashTransaction);
-        account.setCashBalance(account.getCashBalance().add(cashDelta));
-        accountRepository.save(account);
+        user.setAvailableFunds(user.getAvailableFunds().add(cashDelta));
+        userRepository.save(user);
 
         BigDecimal quantityDelta = isBuy ? order.getQuantity() : order.getQuantity().negate();
         HoldingMovement movement = new HoldingMovement();
@@ -125,19 +149,23 @@ public class OrderExecutionService {
         holdingRepository.save(holding);
 
         order.setStatus(Order.STATUS_FILLED);
-        order.setResolvedAt(now);
-        final Order savedOrder = orderRepository.save(order);
-        auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_FILLED,
-                "Filled " + savedOrder.getQuantity() + " @ " + fillPrice);
+        Order filledOrder = orderRepository.save(order);
+        auditTrailService.record(filledOrder.getOrderId(), Order.STATUS_FILLED,
+                "Filled " + filledOrder.getQuantity() + " @ " + fillPrice);
+
+        filledOrder.setStatus(Order.STATUS_APPROVED);
+        filledOrder.setResolvedAt(now);
+        final Order savedOrder = orderRepository.save(filledOrder);
+        auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_APPROVED, null);
         return savedOrder;
     }
 
-    private Order failExecution(Order order, String reason) {
-        order.setStatus(Order.STATUS_EXECUTION_FAILED);
+    private Order reject(Order order, String reason) {
+        order.setStatus(Order.STATUS_REJECTED);
         order.setRejectionReason(reason);
         order.setResolvedAt(OffsetDateTime.now());
         final Order savedOrder = orderRepository.save(order);
-        auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_EXECUTION_FAILED, reason);
+        auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_REJECTED, reason);
         return savedOrder;
     }
 }

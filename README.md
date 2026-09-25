@@ -63,6 +63,7 @@ Then apply the business schema. Connect to `trading_season` as the `trading_seas
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initial_schema.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V003__Token_authentication.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V004__Order_status_lifecycle.sql
 ```
 
 #### 2. Create auth database
@@ -139,7 +140,7 @@ If you prefer to use Docker Compose for databases:
    - Business database (`trading_season`) on `localhost:5432`
    - Auth database (`auth_db`) on `localhost:5433`
 
-   Auth migrations run automatically on auth-service startup. For the business database, follow the [database setup](docs/reference/database.md#disposable-business-database-setup) to apply migrations V001, V002, and V003 if needed.
+   Auth migrations run automatically on auth-service startup. For the business database, follow the [database setup](docs/reference/database.md#disposable-business-database-setup) to apply migrations V001 through V004 if needed.
 
 3. Start all services with the startup script:
 
@@ -191,7 +192,7 @@ Review the [documentation index](docs/README.md) for all guides and references. 
 
 # Business database ERD
 
-Canonical relationship diagram for the business SQL schema after V001, V002 and V003. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
+Canonical relationship diagram for the business SQL schema after V001 through V004. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
 
 The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change.
 

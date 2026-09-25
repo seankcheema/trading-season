@@ -30,7 +30,7 @@ Spring Boot microservice responsible for managing all trading operations, order 
 
 ### Setup
 
-1. Create the trading_season database and apply migrations (V001, V002, V003):
+1. Create the trading_season database and apply migrations (V001 through V004):
    ```powershell
    # From repository root
    py -3 -m venv apps/business-backend/db/.venv

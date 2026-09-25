@@ -22,10 +22,13 @@ import java.util.Optional;
 
 /**
  * Orchestrates one order submission: idempotency check, loading the
- * entities the rule pipeline needs, running the pipeline, and — only if it
- * passes — handing off to {@link OrderExecutionService}. This is the
- * "Order controller" + "Trading rule pipeline" handoff from the KAN-95
- * walkthrough, minus the HTTP concerns, which stay in {@link OrderController}.
+ * entities the rule pipeline needs, persisting the order as
+ * {@code PENDING}, running the pipeline, and — only if it passes — handing
+ * off to {@link OrderExecutionService}. A failed rule leaves the order
+ * {@code REJECTED}; a successful execution leaves it {@code APPROVED}
+ * (KAN-93). This is the "Order controller" + "Trading rule pipeline"
+ * handoff from the KAN-95 walkthrough, minus the HTTP concerns, which stay
+ * in {@link OrderController}.
  */
 @Service
 public class OrderService {
@@ -55,11 +58,19 @@ public class OrderService {
     }
 
     /**
-     * Submits an order. Never throws for a trade that fails a trading
+     * Submits an order. The order is created {@code PENDING}; it returns as
+     * {@code REJECTED} when a trading rule fails, or {@code APPROVED} once the
+     * fill is written and the owning user's available funds and the account's
+     * holdings have moved. Never throws for a trade that fails a trading
      * rule — that's a normal outcome, reflected in the returned order's
      * status, not an HTTP-level error. It throws only when the request
-     * refers to something that doesn't exist ({@link AccountNotFoundException},
-     * {@link InstrumentNotFoundException}).
+     * refers to something that doesn't exist.
+     *
+     * @param request the validated submission
+     * @return the persisted order in its final status
+     * @throws AccountNotFoundException    if {@code accountId} does not exist
+     * @throws InstrumentNotFoundException if {@code instrumentId} does not exist
+     * @throws IllegalStateException       if the account has no owning user
      */
     @Transactional
     public Order submitOrder(OrderRequest request) {
@@ -98,10 +109,10 @@ public class OrderService {
         order.setQuantity(request.quantity());
         order.setIndicativePrice(request.indicativePrice());
         order.setBufferPercent(bufferPercent);
-        order.setStatus(Order.STATUS_SUBMITTED);
+        order.setStatus(Order.STATUS_PENDING);
         order.setSubmittedAt(now);
         order = orderRepository.save(order);
-        auditTrailService.record(order.getOrderId(), Order.STATUS_SUBMITTED, null);
+        auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, null);
 
         ValidationResult result = validationPipeline.run(request, user, account, instrument);
         if (!result.passed()) {
@@ -113,10 +124,10 @@ public class OrderService {
             return order;
         }
 
-        order.setStatus(Order.STATUS_ACCEPTED);
+        // The rules passed (BR-05); the order stays PENDING until execution
+        // moves it to FILLED and then APPROVED, or rejects it under the row lock.
         order.setAcceptedAt(OffsetDateTime.now());
         order = orderRepository.save(order);
-        auditTrailService.record(order.getOrderId(), Order.STATUS_ACCEPTED, null);
 
         return orderExecutionService.execute(order, instrument);
     }

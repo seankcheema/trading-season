@@ -78,7 +78,15 @@ This service is the primary backend for Client UI. It implements order operation
 
 | Method | Path | Request | Success |
 | --- | --- | --- | --- |
-| POST | /api/orders | Bearer token + JSON: accountId, ticker or instrumentId, orderType, quantity, clientReference, optional sessionId | 201: order result |
+| POST | /api/orders | Bearer token + JSON: `accountId`, `instrumentId`, `orderType` (BUY or SELL), `quantity` (> 0), `indicativePrice` (> 0), optional `bufferPercent` (>= 0), `clientReference` (UUID idempotency key) | 201: `orderId`, `status`, `orderType`, `quantity`, `indicativePrice`, `rejectionReason`, `submittedAt`, `resolvedAt` |
+
+**Order lifecycle (KAN-93):** an order is created `PENDING`, then the trading rules run: the user's account is active, a buy is affordable, a sell is covered by holdings, and the instrument is tradable. A failed rule leaves the order `REJECTED` with a `rejectionReason`. Otherwise the fill is written and the order moves to `FILLED` and then `APPROVED`, its final state. Every transition is recorded in `audit_trail`. A rejection is still a 201 response: it describes a failed trade, not a failed request.
+
+**Funds:** cash belongs to the user, not to an account. A buy is rejected when `quantity * indicativePrice` exceeds the caller's `availableFunds`, the value returned by `GET /api/users/me`. An approved buy decreases `availableFunds` by that amount and an approved sell increases it. `accounts.cash_balance` is not moved. Orders currently fill at `indicativePrice`; see [OrderExecutionService](../../apps/order-and-sell-service/src/main/java/app/order/execution/OrderExecutionService.java).
+
+**Idempotency:** resubmitting the same `accountId` and `clientReference` returns the original order's outcome without executing again.
+
+**Known gap:** `accountId` is taken from the request body and is not yet checked against the token's `sub`; see [OrderController](../../apps/order-and-sell-service/src/main/java/app/order/OrderController.java).
 
 ### Planned trading endpoints
 

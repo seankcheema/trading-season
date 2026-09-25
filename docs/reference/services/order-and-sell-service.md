@@ -13,7 +13,7 @@ This service implements the complete order processing pipeline and is the author
 - User account registration and profile management
 - Order submission and validation pipeline
 - Order execution with market impact
-- Holdings and cash updates as part of order execution (holding movements and cash transactions)
+- Holdings and the user's available funds updated as part of order execution (holding movements and cash transactions)
 - Market data publication (snapshots, candles, streaming quotes)
 - Audit trail recording
 
@@ -37,11 +37,24 @@ Order lookup, order history, and cash transaction endpoints are planned but not 
 Orders are validated in fixed sequence; validation stops at first rejection:
 
 1. **Account Status Validator** – Account must be active and in good standing
-2. **Sufficient Funds Validator** – Caller must have adequate cash balance
+2. **Sufficient Funds Validator** – Buy orders must not exceed the user's available funds
 3. **Sufficient Holdings Validator** – Caller must own sufficient shares (for sell orders)
 4. **Tradability Validator** – Instrument must be trading in the current market session
 
 Additional validators can be added by implementing `OrderValidator` under `app.order.validation.impl`; the `OrderValidationPipeline` collects all Spring-managed validator beans automatically.
+
+## Order lifecycle
+
+Statuses confirmed by KAN-93 and applied by [V004](../../../apps/market-data/db/migrations/V004__Order_status_lifecycle.sql):
+
+| Status | Meaning |
+| --- | --- |
+| `PENDING` | Created; the trading rules have not yet run |
+| `REJECTED` | A trading rule failed; `rejectionReason` says which. Final |
+| `FILLED` | The fill, cash movement and holding movement have been written |
+| `APPROVED` | Final state of a successful order |
+
+Buy orders check and debit the owning user's `available_funds`; sell orders credit it. `accounts.cash_balance` is not moved by execution. The user row is locked for the duration of execution so concurrent orders cannot overspend. Every transition is recorded in `audit_trail`.
 
 ## Internal structure
 

@@ -33,7 +33,7 @@ The business database stores trading data (orders, holdings, accounts) and marke
    db/.venv/Scripts/python.exe -m pip install -r db/scripts/requirements.txt
    ```
 
-3. Run migrations (V001, V002, V003):
+3. Run migrations (V001 through V004):
    ```sh
    # See detailed instructions in ../../docs/reference/database.md
    ```
@@ -52,7 +52,7 @@ db/setup-market-data.ps1 `
 
 ## Files
 
-- `migrations/` - SQL migration files (V001, V002, V003)
+- `migrations/` - SQL migration files (V001 through V004)
 - `scripts/` - Python scripts for initialization, generation, validation, and import
 - `seeds/` - Generated market data archive (local developer data, not committed)
 - `setup-market-data.ps1` - PowerShell script to orchestrate market data workflow
