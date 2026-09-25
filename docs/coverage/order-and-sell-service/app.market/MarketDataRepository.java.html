@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MarketDataRepository.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.market</a> &gt; <span class="el_source">MarketDataRepository.java</span></div><h1>MarketDataRepository.java</h1><pre class="source lang-java linenums">package app.market;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.DriverManager;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Reads completed synthetic market sessions, candles, and replay ticks. */
+@Repository
+public class MarketDataRepository implements MarketDataSource {
+<span class="fc" id="L23">    private static final ZoneId MARKET_ZONE = ZoneId.of(&quot;America/Chicago&quot;);</span>
+    private final JdbcTemplate jdbc;
+    private final ObjectMapper objectMapper;
+
+    /**
+     * Creates the repository with JDBC and JSON metadata support.
+     * @param jdbc database query helper
+     * @param objectMapper simulation metadata parser
+     */
+<span class="fc" id="L32">    public MarketDataRepository(JdbcTemplate jdbc, ObjectMapper objectMapper) {</span>
+<span class="fc" id="L33">        this.jdbc = jdbc;</span>
+<span class="fc" id="L34">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L35">    }</span>
+
+    /**
+     * Resolves a requested completed session, or the newest completed session when absent.
+     * @param requestedId optional simulation identifier
+     * @return resolved completed session metadata
+     * @throws MarketRequestException when no matching completed session exists
+     */
+    public MarketModels.Session resolveSession(Long requestedId) {
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        String where = requestedId == null ? &quot;&quot; : &quot; AND id = ?&quot;;</span>
+<span class="fc" id="L45">        String sql = &quot;SELECT id, config FROM simulation_sessions WHERE status = 'COMPLETED'&quot; + where</span>
+                + &quot; ORDER BY created_at DESC, id DESC LIMIT 1&quot;;
+<span class="fc" id="L47">        List&lt;MarketModels.Session&gt; rows = jdbc.query(sql, ps -&gt; {</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">            if (requestedId != null) ps.setLong(1, requestedId);</span>
+<span class="fc" id="L49">        }, (rs, row) -&gt; parseSession(rs.getLong(&quot;id&quot;), String.valueOf(rs.getObject(&quot;config&quot;))));</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (rows.isEmpty()) throw new MarketRequestException(&quot;Completed simulation session not found&quot;);</span>
+<span class="fc" id="L51">        return rows.getFirst();</span>
+    }
+
+    /** @return all simulator stocks in stable symbol order */
+    public List&lt;MarketModels.Stock&gt; stocks() {
+<span class="fc" id="L56">        return jdbc.query(&quot;SELECT symbol, company_name FROM stocks ORDER BY symbol&quot;,</span>
+<span class="fc" id="L57">                (rs, row) -&gt; new MarketModels.Stock(rs.getString(1), rs.getString(2)));</span>
+    }
+
+    /**
+     * Returns distinct seeded trading days for a session.
+     * @param sessionId simulation identifier
+     * @return chronological trading dates
+     */
+    public List&lt;LocalDate&gt; tradingDays(long sessionId) {
+<span class="fc" id="L66">        return jdbc.query(&quot;SELECT DISTINCT CAST(\&quot;timestamp\&quot; AT TIME ZONE 'America/Chicago' AS date) AS trading_day &quot;</span>
+                        + &quot;FROM candles WHERE session_id = ? ORDER BY trading_day&quot;,
+<span class="fc" id="L68">                (rs, row) -&gt; rs.getObject(1, LocalDate.class), sessionId);</span>
+    }
+
+    /**
+     * Loads one trading day's synchronized tick frames from PostgreSQL, Parquet, or candle fallback.
+     * @param session resolved simulation metadata
+     * @param day trading date
+     * @return chronological synchronized frames
+     */
+    public List&lt;MarketModels.Frame&gt; ticksForDay(MarketModels.Session session, LocalDate day) {
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (&quot;postgres&quot;.equals(session.storageMode())) {</span>
+<span class="fc" id="L79">            return postgresTicks(session.id(), day);</span>
+        }
+        try {
+<span class="fc" id="L82">            return parquetTicks(session, day);</span>
+<span class="fc" id="L83">        } catch (RuntimeException | LinkageError ex) {</span>
+<span class="fc" id="L84">            return candleFrames(session.id(), day);</span>
+        }
+    }
+
+    /**
+     * Loads bounded one-minute candles for server-side aggregation.
+     * @param sessionId simulation identifier
+     * @param symbol stock symbol
+     * @param from inclusive range start
+     * @param to inclusive range end
+     * @return chronological one-minute candles
+     */
+    public List&lt;MarketModels.Candle&gt; candles(long sessionId, String symbol, Instant from, Instant to) {
+<span class="fc" id="L97">        return jdbc.query(&quot;SELECT \&quot;timestamp\&quot;, open, high, low, close, volume FROM candles &quot;</span>
+                        + &quot;WHERE session_id = ? AND symbol = ? AND \&quot;interval\&quot; = '1m' &quot;
+                        + &quot;AND \&quot;timestamp\&quot; &gt;= ? AND \&quot;timestamp\&quot; &lt;= ? ORDER BY \&quot;timestamp\&quot;&quot;,
+<span class="fc" id="L100">                (rs, row) -&gt; new MarketModels.Candle(rs.getTimestamp(1).toInstant(), rs.getBigDecimal(2),</span>
+<span class="fc" id="L101">                        rs.getBigDecimal(3), rs.getBigDecimal(4), rs.getBigDecimal(5), rs.getLong(6)),</span>
+<span class="fc" id="L102">                sessionId, symbol, java.sql.Timestamp.from(from), java.sql.Timestamp.from(to));</span>
+    }
+
+    private MarketModels.Session parseSession(long id, String configText) {
+        try {
+<span class="fc" id="L107">            JsonNode storage = objectMapper.readTree(configText).path(&quot;tick_storage&quot;);</span>
+<span class="fc" id="L108">            String mode = storage.path(&quot;mode&quot;).asText(&quot;parquet&quot;);</span>
+<span class="fc" id="L109">            String archive = storage.path(&quot;archive_location&quot;).asText(&quot;&quot;);</span>
+<span class="fc" id="L110">            return new MarketModels.Session(id, mode, archive);</span>
+<span class="fc" id="L111">        } catch (Exception ex) {</span>
+<span class="fc" id="L112">            throw new IllegalStateException(&quot;Simulation storage metadata is invalid&quot;, ex);</span>
+        }
+    }
+
+    private List&lt;MarketModels.Frame&gt; postgresTicks(long sessionId, LocalDate day) {
+<span class="fc" id="L117">        Instant from = day.atTime(8, 30).atZone(MARKET_ZONE).toInstant();</span>
+<span class="fc" id="L118">        Instant to = day.plusDays(1).atStartOfDay(MARKET_ZONE).toInstant();</span>
+<span class="fc" id="L119">        List&lt;MarketModels.Tick&gt; ticks = jdbc.query(&quot;SELECT symbol, \&quot;timestamp\&quot;, price, sequence_number &quot;</span>
+                        + &quot;FROM market_ticks WHERE session_id = ? AND \&quot;timestamp\&quot; &gt;= ? AND \&quot;timestamp\&quot; &lt; ? &quot;
+                        + &quot;ORDER BY \&quot;timestamp\&quot;, symbol&quot;,
+<span class="fc" id="L122">                (rs, row) -&gt; new MarketModels.Tick(rs.getString(1), rs.getTimestamp(2).toInstant(),</span>
+<span class="fc" id="L123">                        rs.getBigDecimal(3), rs.getLong(4)), sessionId,</span>
+<span class="fc" id="L124">                java.sql.Timestamp.from(from), java.sql.Timestamp.from(to));</span>
+<span class="fc" id="L125">        return frames(ticks);</span>
+    }
+
+    private List&lt;MarketModels.Frame&gt; parquetTicks(MarketModels.Session session, LocalDate day) {
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (session.archiveLocation().isBlank()) {</span>
+<span class="fc" id="L130">            throw new IllegalStateException(&quot;Simulation archive location is unavailable&quot;);</span>
+        }
+<span class="fc" id="L132">        Path root = Path.of(session.archiveLocation()).toAbsolutePath().normalize();</span>
+<span class="fc" id="L133">        Path file = root.resolve(&quot;ticks-&quot; + day + &quot;.parquet&quot;).normalize();</span>
+<span class="pc bpc" id="L134" title="1 of 4 branches missed.">        if (!file.startsWith(root) || !Files.isRegularFile(file)) {</span>
+<span class="fc" id="L135">            throw new IllegalStateException(&quot;Simulation tick partition is unavailable&quot;);</span>
+        }
+<span class="fc" id="L137">        List&lt;MarketModels.Tick&gt; ticks = new ArrayList&lt;&gt;(234_000);</span>
+<span class="fc" id="L138">        try (var connection = DriverManager.getConnection(&quot;jdbc:duckdb:&quot;);</span>
+<span class="fc" id="L139">             var statement = connection.prepareStatement(</span>
+<span class="fc" id="L140">                     &quot;SELECT symbol, t, price, sequence_number FROM read_parquet(?) ORDER BY t, symbol&quot;)) {</span>
+<span class="fc" id="L141">            statement.setString(1, file.toString());</span>
+<span class="fc" id="L142">            try (var rs = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">                while (rs.next()) {</span>
+<span class="fc" id="L144">                    ticks.add(new MarketModels.Tick(rs.getString(1), Instant.ofEpochSecond(rs.getLong(2)),</span>
+<span class="fc" id="L145">                            rs.getBigDecimal(3), rs.getLong(4)));</span>
+                }
+            }
+<span class="nc" id="L148">        } catch (Throwable ex) {</span>
+<span class="nc" id="L149">            throw new IllegalStateException(&quot;Unable to load the simulation tick partition&quot;, ex);</span>
+        }
+<span class="fc" id="L151">        return frames(ticks);</span>
+    }
+
+    private List&lt;MarketModels.Frame&gt; candleFrames(long sessionId, LocalDate day) {
+<span class="fc" id="L155">        Instant from = day.atTime(8, 30).atZone(MARKET_ZONE).toInstant();</span>
+<span class="fc" id="L156">        Instant to = day.plusDays(1).atStartOfDay(MARKET_ZONE).toInstant();</span>
+<span class="fc" id="L157">        List&lt;MarketModels.Tick&gt; ticks = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L158">        jdbc.query(&quot;SELECT symbol, \&quot;timestamp\&quot;, close FROM candles &quot;</span>
+                        + &quot;WHERE session_id = ? AND \&quot;interval\&quot; = '1m' &quot;
+                        + &quot;AND \&quot;timestamp\&quot; &gt;= ? AND \&quot;timestamp\&quot; &lt; ? ORDER BY \&quot;timestamp\&quot;, symbol&quot;,
+<span class="fc" id="L161">                rs -&gt; {</span>
+<span class="fc" id="L162">                    long sequence = 1;</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">                    while (rs.next()) {</span>
+<span class="fc" id="L164">                        ticks.add(new MarketModels.Tick(rs.getString(1), rs.getTimestamp(2).toInstant(),</span>
+<span class="fc" id="L165">                                rs.getBigDecimal(3), sequence++));</span>
+                    }
+<span class="fc" id="L167">                    return null;</span>
+                },
+<span class="fc" id="L169">                sessionId, java.sql.Timestamp.from(from), java.sql.Timestamp.from(to));</span>
+<span class="fc" id="L170">        return frames(ticks);</span>
+    }
+
+    private List&lt;MarketModels.Frame&gt; frames(List&lt;MarketModels.Tick&gt; ticks) {
+<span class="fc" id="L174">        Map&lt;Instant, List&lt;MarketModels.Tick&gt;&gt; grouped = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        for (MarketModels.Tick tick : ticks) {</span>
+<span class="fc" id="L176">            grouped.computeIfAbsent(tick.timestamp(), ignored -&gt; new ArrayList&lt;&gt;()).add(tick);</span>
+        }
+<span class="fc" id="L178">        return grouped.entrySet().stream().map(entry -&gt; new MarketModels.Frame(entry.getKey(), entry.getValue())).toList();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

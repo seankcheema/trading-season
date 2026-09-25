@@ -60,7 +60,7 @@ Run all tests with code coverage verification:
 mvn test
 ```
 
-Coverage must be at least 60% per AC requirements. Reports are in `target/site/jacoco/`.
+Coverage must be at least 70% in every package on every JaCoCo counter (instructions, branches, lines, complexity, methods, and classes); `mvn test` fails otherwise. Reports are in `target/site/jacoco/`.
 
 ## Configuration
 
@@ -115,16 +115,16 @@ app/
 ## Requirements
 
 Per user story AC:
-- ✅ Holds user, account, holding, auth, market packages
-- ✅ All previous tests pass
-- ✅ Code coverage is at least 60% for every sub-bullet:
-  - Client information: 60%+
-  - Customer Lookup: 60%+
-  - Holdings by client: 60%+
-  - Trade history: 60%+
-  - Portfolio Data: 60%+
-- ✅ Comprehensive README (this file)
-- ✅ Updated docker-compose to reflect architectural changes
+- Holds user, account, holding, auth, market packages
+- All previous tests pass
+- Code coverage is at least 70% for every sub-bullet:
+  - Client information: 70%+
+  - Customer Lookup: 70%+
+  - Holdings by client: 70%+
+  - Trade history: 70%+
+  - Portfolio Data: 70%+
+- Comprehensive README (this file)
+- Updated docker-compose to reflect architectural changes
 
 ## Development
 

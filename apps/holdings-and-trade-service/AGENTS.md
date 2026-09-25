@@ -53,14 +53,14 @@ See [API reference](../../docs/reference/api.md) for full contract details.
 
 ## Code Coverage
 
-Must maintain at least 60% code coverage for all features:
-- Create trade orders: 60%+
-- Validate trade orders: 60%+
-- Execute buys and sells: 60%+
-- Update holdings: 60%+
-- Order status and history: 60%+
+Must maintain at least 70% code coverage for all features:
+- Create trade orders: 70%+
+- Validate trade orders: 70%+
+- Execute buys and sells: 70%+
+- Update holdings: 70%+
+- Order status and history: 70%+
 
-Run `mvn test` to verify coverage locally. Coverage reports are in `target/site/jacoco/`.
+`mvn test` enforces this as a JaCoCo check: every package must reach 70% on every counter (instructions, branches, lines, complexity, methods, and classes). Coverage reports are in `target/site/jacoco/`.
 
 ## Testing
 

@@ -1,12 +1,27 @@
 services:
-  # frontend (trading-season-app) has no Dockerfile yet — add one and
-  # uncomment this service once it exists.
-  # frontend:
-  #   build: ./trading-season-app
-  #   ports:
-  #     - "4200:80"
-  #   depends_on:
-  #     - backend
+  client-ui:
+    build:
+      context: ../..
+      dockerfile: apps/client-ui/Dockerfile
+    ports:
+      - "4200:8080"
+    depends_on:
+      holdings-and-trade-service:
+        condition: service_started
+
+  reporting-ui:
+    build:
+      context: ../../apps/reporting-ui
+      dockerfile: Dockerfile
+    ports:
+      - "4300:8080"
+
+  reporting-service:
+    build:
+      context: ../../apps/reporting-service
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8080"
 
   # Holdings and Trade Service: manages order execution, validation, and holdings
   holdings-and-trade-service:
@@ -16,7 +31,8 @@ services:
     ports:
       - "8081:8081"
     depends_on:
-      - db
+      db-init:
+        condition: service_completed_successfully
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
       SPRING_DATASOURCE_USERNAME: trading_season
@@ -33,7 +49,8 @@ services:
     ports:
       - "8082:8082"
     depends_on:
-      - db
+      db-init:
+        condition: service_completed_successfully
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
       SPRING_DATASOURCE_USERNAME: trading_season
@@ -60,6 +77,26 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  db-init:
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ../../apps/market-data/db/migrations:/migrations:ro
+    environment:
+      PGPASSWORD: ${DB_PASSWORD:-changeme}
+    command: >
+      sh -c 'if [ "$$(psql -h db -U trading_season -d trading_season -t -c 
+      "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='"'"'public'"'"';" 2>/dev/null || echo 0)" = "0" ]; then 
+      echo "[DB-INIT] Applying migrations..."; 
+      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 
+      -f /migrations/V001__Initial_schema.sql
+      -f /migrations/V002__Synthetic_market_data_replay_metadata.sql
+      -f /migrations/V003__Token_authentication.sql
+      && echo "[DB-INIT] Migrations complete"; 
+      else echo "[DB-INIT] Database already initialized, skipping migrations"; fi'
 
   db-initialize:
     profiles: ["initialize"]

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OrderController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.order</a> &gt; <span class="el_source">OrderController.java</span></div><h1>OrderController.java</h1><pre class="source lang-java linenums">package app.order;
+
+import app.order.dto.OrderRequest;
+import app.order.dto.OrderResponse;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * REST endpoint for order submission (KAN-95, KAN-47).
+ *
+ * &lt;p&gt;&lt;b&gt;Known gap:&lt;/b&gt; this controller does not yet resolve the caller from
+ * an authenticated session — business-backend has no request-time identity
+ * check at all today (no {@code SecurityFilterChain}/filter reads the
+ * {@code session_id} the auth service issues),
+ * and a separate {@code auth-service} issuing real JWTs exists alongside it
+ * marked &quot;WIP&quot; in the root README. Until the team decides which of those
+ * this endpoint should trust, {@link OrderRequest#accountId()} is taken
+ * from the request body as-is, with no ownership check. Don't build
+ * anything downstream that assumes this is already secure.
+ */
+@RestController
+@RequestMapping(&quot;/api/orders&quot;)
+public class OrderController {
+
+    private final OrderService orderService;
+
+<span class="fc" id="L32">    public OrderController(OrderService orderService) {</span>
+<span class="fc" id="L33">        this.orderService = orderService;</span>
+<span class="fc" id="L34">    }</span>
+
+    /**
+     * Submits an order. Always returns 201 with the order's outcome — a
+     * trading-rule rejection is a successful response describing a failed
+     * trade, not an HTTP error. See {@link OrderService#submitOrder} for
+     * when this throws instead.
+     */
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public OrderResponse submitOrder(@Valid @RequestBody OrderRequest request) {
+<span class="fc" id="L45">        Order order = orderService.submitOrder(request);</span>
+<span class="fc" id="L46">        return OrderResponse.from(order);</span>
+    }
+}
+
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

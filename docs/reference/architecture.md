@@ -4,11 +4,11 @@
 
 | Area | Current responsibility | Source |
 | --- | --- | --- |
-| Angular UI | Login and registration against the NestJS auth service, profile submission to the Java backend, dashboard route protection, inactivity sign-out, shared components | [Routes](../../apps/business-logic-ui/src/app/app.routes.ts) |
-| Spring Boot backend | Token-authenticated profile registration and user APIs, plus public simulated market reads | [Java auth controller](../../apps/business-backend/src/main/java/app/auth/AuthController.java) |
+| Angular UI | Login and registration against the NestJS auth service, profile submission to the Java backend, dashboard route protection, inactivity sign-out, shared components | [Routes](../../apps/client-ui/src/app/app.routes.ts) |
+| Spring Boot backend | Token-authenticated profile registration and user APIs, plus public simulated market reads | [Java auth controller](../../apps/holdings-and-trade-service/src/main/java/app/auth/AuthController.java) |
 | NestJS auth service | Email/password login, RS256 access tokens, opaque refresh tokens, JWKS, liveness | [Auth controller](../../apps/auth-service/src/auth/auth.controller.ts) |
 | Shared UI | Angular components consumed through @shared/ui-components subpath exports | [Package manifest](../../packages/shared-ui-components/package.json) |
-| Reporting | Placeholder directories only | [Reporting proposal](reporting.md) |
+| Reporting | Runnable HTTP placeholders only; no reporting behavior | [Reporting proposal](reporting.md) |
 
 The frontend signs users in through the NestJS auth service and sends registration profile data to the Java backend; see [UI integration](api.md#ui-integration). Java and NestJS currently own separate user models and databases; there is no implemented token-validation bridge in the Java backend. Do not describe centralized authentication as a completed integration.
 
@@ -26,7 +26,7 @@ The trading schema defines simulation, execution, and accounting structures, but
 - NestJS logout is guarded by an access JWT and forwards that JWT to a service method expecting an opaque refresh token. Do not rely on this endpoint to revoke a refresh session until the mismatch is fixed.
 - NestJS bootstrap does not install a global validation pipe, cookie parser, or CORS configuration. DTO fields alone do not imply runtime validation; use JSON body refresh tokens.
 - The Passport JWT strategy restricts RS256 and checks expiry but does not configure issuer/audience enforcement.
-- Local Compose has an outdated Java backend context and port mapping. See [operations](../guides/operations.md).
+- The reporting containers are availability placeholders only and do not establish a reporting runtime or API contract. See [reporting](reporting.md).
 
 These are current limitations, not changes made by documentation consolidation.
 

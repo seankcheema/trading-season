@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { AUTH_ERROR_MESSAGES } from '../core/auth/auth-error';
 import { AuthService } from '../core/auth/auth.service';
 import { LoginComponent } from './login.component';
@@ -82,6 +82,48 @@ describe('LoginComponent', () => {
     fixture.componentInstance['form'].controls.password.setValue('another-try1!');
 
     expect(fixture.componentInstance['errorMessage']()).toBeNull();
+  });
+
+  it('should submit through the form and show validation feedback when empty', () => {
+    const fixture = TestBed.createComponent(LoginComponent);
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('form') as HTMLFormElement).dispatchEvent(
+      new Event('submit'),
+    );
+    fixture.detectChanges();
+
+    expect(authService.login).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('Enter a valid email address.');
+    expect(fixture.nativeElement.textContent).toContain('Password is required.');
+  });
+
+  it('should ignore a second submission while the first is in flight', () => {
+    authService.login.mockReturnValue(new Subject<void>());
+    const fixture = fillAndSubmit();
+
+    fixture.componentInstance['onSubmit']();
+
+    expect(authService.login).toHaveBeenCalledOnce();
+    expect(fixture.componentInstance['loading']()).toBe(true);
+  });
+
+  it('should reveal and re-mask the password from the toggle button', () => {
+    const fixture = TestBed.createComponent(LoginComponent);
+    fixture.detectChanges();
+    const password = fixture.nativeElement.querySelector('#password') as HTMLInputElement;
+    const toggle = () =>
+      fixture.nativeElement.querySelector('button[aria-label$="password"]') as HTMLButtonElement;
+
+    expect(toggle().getAttribute('aria-label')).toBe('Show password');
+    toggle().click();
+    fixture.detectChanges();
+    expect(password.type).toBe('text');
+    expect(toggle().getAttribute('aria-label')).toBe('Hide password');
+
+    toggle().click();
+    fixture.detectChanges();
+    expect(password.type).toBe('password');
   });
 
   describe('after an inactivity sign-out', () => {

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OrderRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.order.dto</a> &gt; <span class="el_source">OrderRequest.java</span></div><h1>OrderRequest.java</h1><pre class="source lang-java linenums"><span class="fc" id="L1">package app.order.dto;</span>
+
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
+
+import java.math.BigDecimal;
+import java.util.UUID;
+
+/**
+ * A client's order submission (KAN-95 acceptance criterion: &quot;acquire
+ * trading rules from the client&quot;). {@code indicativePrice} and
+ * {@code bufferPercent} are the trading rule itself, not just order
+ * details — they're what {@code PriceBufferValidator} checks execution
+ * against (BR-13, KAN-100).
+ *
+ * &lt;p&gt;{@code accountId} is included directly here as a stopgap: business-backend
+ * does not yet resolve the calling account from an authenticated session
+ * (see {@link app.order.OrderController}). Once that's wired
+ * up, this field should come from the session instead of the request body,
+ * and {@code OrderService} must verify it belongs to the caller.
+ *
+ * @param accountId        the account the order is placed against (temporary — see above)
+ * @param instrumentId     the instrument being bought or sold
+ * @param orderType        {@code BUY} or {@code SELL}
+ * @param quantity         units to trade, must be positive
+ * @param indicativePrice  the price shown to the trader before submission (BR-13)
+ * @param bufferPercent    execution price tolerance for this order (KAN-100); when
+ *                         omitted, falls back to the user's {@code execution_buffer_percent}
+ * @param clientReference  client-generated idempotency key; retried submissions
+ *                         with the same key return the original order's outcome
+ */
+public record OrderRequest(
+        @NotNull Integer accountId,
+        @NotNull Integer instrumentId,
+        @NotNull @Pattern(regexp = &quot;BUY|SELL&quot;) String orderType,
+        @NotNull @Positive BigDecimal quantity,
+        @NotNull @Positive BigDecimal indicativePrice,
+        @PositiveOrZero BigDecimal bufferPercent,
+        @NotNull UUID clientReference
+) {
+}
+
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

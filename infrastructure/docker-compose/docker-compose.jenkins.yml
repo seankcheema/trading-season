@@ -19,45 +19,12 @@ services:
       JENKINS_OPTS: "--argumentsRealm.passwd.admin=admin --argumentsRealm.roles.admin=admin"
     restart: unless-stopped
     networks:
-      - dev-network
+      - ci-network
 
-  # Note: Backend services are built by the Jenkinsfile during pipeline execution
-  # Uncomment below if you want to run services locally during development
-  # holdings-and-trade-service:
-  #   build:
-  #     context: ../../apps/holdings-and-trade-service
-  #     dockerfile: Dockerfile
-  #   container_name: holdings-and-trade-service
-  #   ports:
-  #     - "8081:8081"
-  #   depends_on:
-  #     - db
-  #   environment:
-  #     SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
-  #     SPRING_DATASOURCE_USERNAME: trading_season
-  #     SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-changeme}
-  #   networks:
-  #     - dev-network
-  #
-  # order-and-sell-service:
-  #   build:
-  #     context: ../../apps/order-and-sell-service
-  #     dockerfile: Dockerfile
-  #   container_name: order-and-sell-service
-  #   ports:
-  #     - "8082:8082"
-  #   depends_on:
-  #     - db
-  #   environment:
-  #     SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
-  #     SPRING_DATASOURCE_USERNAME: trading_season
-  #     SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-changeme}
-  #   networks:
-  #     - dev-network
-
+  # Business database (shared by Holdings and Trade, Order and Sell services)
   db:
     image: postgres:16-alpine
-    container_name: postgres-db
+    container_name: trading-season-db
     environment:
       POSTGRES_DB: trading_season
       POSTGRES_USER: trading_season
@@ -66,13 +33,129 @@ services:
       - "5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trading_season -d trading_season"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     networks:
-      - dev-network
+      - ci-network
+
+  # Database initialization (applies migrations)
+  db-init:
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ../../apps/market-data/db/migrations:/migrations:ro
+    environment:
+      PGPASSWORD: ${DB_PASSWORD:-changeme}
+    command: >
+      sh -c 'if [ "$$(psql -h db -U trading_season -d trading_season -t -c 
+      "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='"'"'public'"'"';" 2>/dev/null || echo 0)" = "0" ]; then 
+      echo "[DB-INIT] Applying migrations..."; 
+      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 
+      -f /migrations/V001__Initial_schema.sql
+      -f /migrations/V002__Synthetic_market_data_replay_metadata.sql
+      -f /migrations/V003__Token_authentication.sql
+      && echo "[DB-INIT] Migrations complete"; 
+      else echo "[DB-INIT] Database already initialized, skipping migrations"; fi'
+    networks:
+      - ci-network
+
+  # Authentication database
+  auth-db:
+    image: postgres:16-alpine
+    container_name: auth-db
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: authuser
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-changeme}
+    ports:
+      - "5433:5432"
+    volumes:
+      - auth_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U authuser -d auth_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - ci-network
+
+  # Authentication service
+  auth-service:
+    build:
+      context: ../../apps/auth-service
+    container_name: auth-service
+    ports:
+      - "3001:3001"
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DB_HOST: auth-db
+      DB_PORT: 5432
+      DB_NAME: auth_db
+      DB_USER: authuser
+      DB_PASSWORD: ${AUTH_DB_PASSWORD:-changeme}
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
+      JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
+    networks:
+      - ci-network
+
+  # Holdings and Trade Service
+  holdings-and-trade-service:
+    build:
+      context: ../../apps/holdings-and-trade-service
+      dockerfile: Dockerfile
+    container_name: holdings-and-trade-service
+    ports:
+      - "8081:8081"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
+      SPRING_DATASOURCE_USERNAME: trading_season
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-changeme}
+      AUTH_JWK_SET_URI: http://auth-service:3001/.well-known/jwks.json
+      AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
+    networks:
+      - ci-network
+
+  # Order and Sell Service
+  order-and-sell-service:
+    build:
+      context: ../../apps/order-and-sell-service
+      dockerfile: Dockerfile
+    container_name: order-and-sell-service
+    ports:
+      - "8082:8082"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
+      SPRING_DATASOURCE_USERNAME: trading_season
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-changeme}
+      AUTH_JWK_SET_URI: http://auth-service:3001/.well-known/jwks.json
+      AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
+    networks:
+      - ci-network
 
 volumes:
   jenkins_home:
   db_data:
+  auth_db_data:
 
 networks:
-  dev-network:
+  ci-network:
     driver: bridge

@@ -1,0 +1,14 @@
+.git
+.github
+.pytest_cache
+.turbo
+**/__pycache__
+**/.pytest_cache
+**/.turbo
+**/.venv
+**/coverage
+**/dist
+**/node_modules
+**/reports
+**/target
+apps/market-data/db/seeds

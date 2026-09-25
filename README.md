@@ -1,6 +1,6 @@
 # Trading Season
 
-Trading simulation monorepo with an Angular interface, two Spring Boot microservices, and a NestJS authentication service. Reporting applications are placeholders.
+Trading simulation monorepo with an Angular interface, two Spring Boot microservices, and a NestJS authentication service. Reporting has runnable container placeholders but no implemented reporting functionality.
 
 The Java backend is split into two independent microservices:
 - **Holdings and Trade Service** (`apps/holdings-and-trade-service/`) - Manages orders, validation, and holdings
@@ -8,9 +8,102 @@ The Java backend is split into two independent microservices:
 
 Both services share a single PostgreSQL database and authentication via the NestJS auth service.
 
+## Code coverage
+
+View test coverage reports in [docs/coverage](docs/coverage/) or see [development guide](docs/guides/development.md#coverage-floors) for coverage floors and how to generate reports locally. Each tier (UI, Auth, Java) enforces a 50% coverage minimum.
+
+## Start all services
+
+### Windows
+
+With the local databases configured, set the Spring database password and run the Windows launcher from the repository root:
+
+```powershell
+$env:SPRING_DATASOURCE_PASSWORD = 'password'
+.\scripts\start-local.ps1
+```
+
+### Linux with automated setup script
+
+The Linux setup script validates the toolchain, installs project dependencies, configures databases via Docker Compose, and starts all applications:
+
+```sh
+./scripts/setup-local.sh
+```
+
+Use a local or Docker-managed PostgreSQL instance explicitly when needed:
+
+```sh
+./scripts/setup-local.sh --database-mode local
+./scripts/setup-local.sh --database-mode docker
+```
+
+To stage an existing market-data archive during setup:
+
+```sh
+./scripts/setup-local.sh --parquet-source /path/to/synthetic-market-data-2026-v1
+```
+
+The script reports skipped valid stages as `[READY]`, completed stages as `[DONE]`, and failures as `[FAIL]`. Press `Ctrl+C` to stop the applications. PostgreSQL data and Docker database containers are preserved.
+
+### Linux with Docker Compose (automated)
+
+To start all services with Docker Compose, run from the repository root:
+
+```sh
+docker compose -p trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml up
+```
+
+Docker Compose will automatically:
+- Create and initialize both PostgreSQL databases
+- Apply all database migrations
+- Generate JWT keys for the auth service
+- Build and start all services
+
+To run services in the background, add `-d` and use `docker compose logs` to monitor:
+
+```sh
+docker compose -f infrastructure/docker-compose/docker-compose.local.yml up -d
+docker compose -f infrastructure/docker-compose/docker-compose.local.yml logs -f
+```
+
+To verify services are running:
+
+```sh
+docker ps
+```
+
+Open the client UI at `http://localhost:4200`. The reporting UI placeholder is at `http://localhost:4300`, and the reporting service placeholder health endpoint is at `http://localhost:8083/health`. Auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`.
+
+### Jenkins
+
+To start Jenkins for CI/CD pipeline execution:
+
+```sh
+docker compose -f infrastructure/docker-compose/docker-compose.jenkins.yml up -d
+```
+
+Jenkins runs on `http://localhost:8888` with username `admin` and password `admin`. The container mounts the host Docker socket to enable Docker builds within the pipeline.
+
+See [Jenkins configuration](infrastructure/jenkins/README.md) for credentials setup, disk-space management, and pipeline configuration.
+
+## Requirements
+
+Install the following development tools:
+
+- Node.js `24.x` (24.8.0 or later) and npm `11.16.0`
+- JDK `21` and Maven `3.9+`
+- PostgreSQL `16` (recommended)
+- Python `3.12` (recommended for the market-data scripts)
+- Docker Compose `v2+` when using Docker-managed databases
+
+The Angular frontend uses Angular `21.2.23`, Angular CLI and build tooling `21.2.24`, Angular CDK `21.2.14`, and TypeScript `>=5.9.0 <6.0.0`. Keep the Angular framework packages on `21.2.23`, the CLI, build tooling, and SSR packages on `21.2.24`, and the CDK package on `21.2.14`.
+
+The Java services use Spring Boot `4.1.1`. The authentication service uses NestJS `12.0.1+`.
+
 ## Start locally on Windows
 
-Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL (or Docker Compose).
+Install the required tools above before continuing. PostgreSQL can run locally or through Docker Compose.
 
 ### Quick start with the startup script (requires local databases)
 
@@ -39,10 +132,10 @@ Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL
    .\scripts\start-local.ps1
    ```
 
-The launcher keeps all logs in one terminal and stops the other services if one exits. Open the UI at `http://localhost:4200`; auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`. See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
-   The script starts UI, auth service, and Java backend in a single terminal, validates database connectivity and `.env` configuration. Press Ctrl+C to stop all services.
+The launcher keeps all logs in one terminal and stops the other services if one exits. Open the UI at `http://localhost:4200`; auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`. The business database runs on port `5432` (default). See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
+   The script starts the UI, auth service, and both Java services in a single terminal, validates database connectivity and `.env` configuration. Press Ctrl+C to stop all services.
 
-   Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001` and Java on `http://localhost:8081`.
+   Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001`; the Java services run on `http://localhost:8081` and `http://localhost:8082`. The business database runs on port `5432` (default).
 
 ### Manual setup with local PostgreSQL
 
@@ -63,9 +156,9 @@ CREATE DATABASE trading_season OWNER trading_season;
 Then apply the business schema. Connect to `trading_season` as the `trading_season` user and run these migration files in order:
 
 ```powershell
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V001__Initial_schema.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V003__Token_authentication.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initial_schema.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V003__Token_authentication.sql
 ```
 
 #### 2. Create auth database
@@ -113,39 +206,18 @@ npm --prefix apps/auth-service ci
 # Terminal 1: UI from repository root
 npm --workspace business-logic-ui start
 
-# Terminal 2: Java backend
-cd apps/business-backend
+# Terminal 2: Holdings and Trade Service
+cd apps/holdings-and-trade-service
 mvn spring-boot:run
 
-# Terminal 3: Auth service (migrations run on startup)
+# Terminal 3: Order and Sell Service
+cd apps/order-and-sell-service
+mvn spring-boot:run
+
+# Terminal 4: Auth service (migrations run on startup)
 cd apps/auth-service
 npm run start:dev
 ```
-
-### Docker Compose setup (alternative)
-
-If you prefer to use Docker Compose for databases:
-
-1. Install dependencies and configure authentication (steps 1-2 above).
-
-2. Start the databases:
-
-   ```powershell
-   docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml up -d db auth-db
-   ```
-
-   This creates:
-   - Business database (`trading_season`) on `localhost:5432`
-   - Auth database (`auth_db`) on `localhost:5433`
-
-   Auth migrations run automatically on auth-service startup. For the business database, follow the [database setup](docs/reference/database.md#disposable-business-database-setup) to apply migrations V001, V002, and V003 if needed.
-
-3. Start all services with the startup script:
-
-   ```powershell
-   $env:SPRING_DATASOURCE_PASSWORD = 'password'
-   .\scripts\start-local.ps1
-   ```
 
 ### Verify auth database
 
@@ -169,7 +241,9 @@ See the [development guide](docs/guides/development.md) for additional commands,
 | [Auth service](apps/auth-service/README.md) | RS256 tokens, refresh tokens, auth database | 3001 |
 | [Business Database](apps/market-data/README.md) | Shared PostgreSQL database setup and migrations | — |
 | [Shared UI](packages/shared-ui-components/README.md) | Reusable Angular components | — |
-| [Reporting proposal](docs/reference/reporting.md) | Future analytics UI and service | — |
+| [Reporting UI](apps/reporting-ui/README.md) | Runnable placeholder; reporting screens are not implemented | 4300 |
+| [Reporting service](apps/reporting-service/README.md) | Runnable health placeholder; reporting APIs are not implemented | 8083 |
+| [Reporting proposal](docs/reference/reporting.md) | Proposed future analytics behavior | — |
 | [Infrastructure](infrastructure/README.md) | Compose and Jenkins configuration | — |
 
 ## Documentation
