@@ -70,18 +70,27 @@
           }
         </div>
 
-        @if (errorMessage()) {
+        @if (locked()) {
+          <p role="alert" class="text-destructive text-sm">
+            Too many failed sign-in attempts. Sign-in is locked for {{ lockoutMinutes }} minutes from
+            your last attempt.
+          </p>
+        } @else if (errorMessage()) {
           <p role="alert" class="text-destructive text-sm">{{ errorMessage() }}</p>
         }
 
         <button
           hlmBtn
           type="submit"
-          [disabled]="loading()"
+          [disabled]="loading() || locked()"
           class="auth-button mt-1 w-full cursor-pointer rounded-[5px] transition-colors hover:bg-primary/80 disabled:cursor-not-allowed disabled:opacity-70"
         >
           <ng-icon name="lucideLogIn" />
-          {{ loading() ? 'Signing in...' : 'Sign in' }}
+          @if (locked()) {
+            Try again in {{ lockoutCountdown() }}
+          } @else {
+            {{ loading() ? 'Signing in...' : 'Sign in' }}
+          }
         </button>
       </form>
     </div>
