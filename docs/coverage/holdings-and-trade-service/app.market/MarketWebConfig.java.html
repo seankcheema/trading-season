@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MarketWebConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.market</a> &gt; <span class="el_source">MarketWebConfig.java</span></div><h1>MarketWebConfig.java</h1><pre class="source lang-java linenums"><span class="fc" id="L1">package app.market;</span>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MarketWebConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.market</a> &gt; <span class="el_source">MarketWebConfig.java</span></div><h1>MarketWebConfig.java</h1><pre class="source lang-java linenums">package app.market;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -25,8 +25,8 @@ public class MarketWebConfig implements WebMvcConfigurer {
      * @param origins comma-separated allowed browser origins
      * @param requestsPerMinute maximum REST requests per client and minute
      */
-<span class="fc" id="L28">    public MarketWebConfig(@Value(&quot;${market.cors.allowed-origins:http://localhost:4200}&quot;) String origins,</span>
-            @Value(&quot;${market.limits.rest-requests-per-minute:120}&quot;) int requestsPerMinute) {
+    public MarketWebConfig(@Value(&quot;${market.cors.allowed-origins:http://localhost:4200}&quot;) String origins,
+<span class="fc" id="L29">            @Value(&quot;${market.limits.rest-requests-per-minute:120}&quot;) int requestsPerMinute) {</span>
 <span class="fc" id="L30">        this.allowedOrigins = java.util.Arrays.stream(origins.split(&quot;,&quot;)).map(String::trim).toArray(String[]::new);</span>
 <span class="fc" id="L31">        this.rateInterceptor = new MarketRateInterceptor(requestsPerMinute, Clock.systemUTC());</span>
 <span class="fc" id="L32">    }</span>
@@ -40,7 +40,7 @@ public class MarketWebConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
 <span class="fc" id="L42">        registry.addInterceptor(rateInterceptor).addPathPatterns(</span>
-<span class="fc" id="L43">                &quot;/api/market/snapshot&quot;, &quot;/api/market/candles&quot;, &quot;/api/market/clock&quot;);</span>
+                &quot;/api/market/snapshot&quot;, &quot;/api/market/candles&quot;, &quot;/api/market/clock&quot;);
 <span class="fc" id="L44">    }</span>
 
     private static final class MarketRateInterceptor implements HandlerInterceptor {
@@ -61,7 +61,7 @@ public class MarketWebConfig implements WebMvcConfigurer {
 <span class="fc" id="L61">            return false;</span>
         }
 
-        private record Window(long minute, int count) { }
+<span class="fc" id="L64">        private record Window(long minute, int count) { }</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

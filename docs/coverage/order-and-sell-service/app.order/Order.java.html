@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Order.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.order</a> &gt; <span class="el_source">Order.java</span></div><h1>Order.java</h1><pre class="source lang-java linenums">package app.order;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+/**
+ * A client's buy/sell instruction, tracked through its own status lifecycle
+ * (BR-04/05/06) — deliberately separate from execution, which lives in
+ * {@code order.execution.Fill}.
+ *
+ * &lt;p&gt;Lifecycle (see V001__Initial_schema.sql): {@code SUBMITTED -&gt;
+ * ACCEPTED/REJECTED -&gt; FILLED/EXECUTION_FAILED}. This entity is persisted
+ * as {@code SUBMITTED} the moment a request is received, before the
+ * trading-rule pipeline runs, so a rejected order still leaves a record.
+ */
+@Entity
+@Table(name = &quot;orders&quot;)
+<span class="fc" id="L26">public class Order {</span>
+
+    public static final String TYPE_BUY = &quot;BUY&quot;;
+    public static final String TYPE_SELL = &quot;SELL&quot;;
+
+    public static final String STATUS_SUBMITTED = &quot;SUBMITTED&quot;;
+    public static final String STATUS_ACCEPTED = &quot;ACCEPTED&quot;;
+    public static final String STATUS_REJECTED = &quot;REJECTED&quot;;
+    public static final String STATUS_FILLED = &quot;FILLED&quot;;
+    public static final String STATUS_EXECUTION_FAILED = &quot;EXECUTION_FAILED&quot;;
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = &quot;order_id&quot;, updatable = false, nullable = false)
+    private Integer orderId;
+
+    @Column(name = &quot;account_id&quot;, nullable = false, updatable = false)
+    private Integer accountId;
+
+    @Column(name = &quot;instrument_id&quot;, nullable = false, updatable = false)
+    private Integer instrumentId;
+
+    /** Client-supplied idempotency key stopping duplicate submissions on retry (section 9.1). */
+    @Column(name = &quot;client_reference&quot;, nullable = false, updatable = false)
+    private UUID clientReference;
+
+    @Column(name = &quot;order_type&quot;, nullable = false, updatable = false)
+    private String orderType;
+
+<span class="fc" id="L55">    @Column(nullable = false)</span>
+    private String status = STATUS_SUBMITTED;
+
+    @Column(nullable = false, updatable = false)
+    private BigDecimal quantity;
+
+    /** BR-13: the price shown to the trader before they submitted — acquired from the client. */
+    @Column(name = &quot;indicative_price&quot;, updatable = false)
+    private BigDecimal indicativePrice;
+
+    /** KAN-100: the trader's execution price tolerance, acquired from the client. */
+    @Column(name = &quot;buffer_percent&quot;, updatable = false)
+    private BigDecimal bufferPercent;
+
+    @Column(name = &quot;rejection_reason&quot;)
+    private String rejectionReason;
+
+    @Column(name = &quot;submitted_at&quot;, nullable = false, updatable = false)
+    private OffsetDateTime submittedAt;
+
+    @Column(name = &quot;accepted_at&quot;)
+    private OffsetDateTime acceptedAt;
+
+    @Column(name = &quot;resolved_at&quot;)
+    private OffsetDateTime resolvedAt;
+
+    public Integer getOrderId() {
+<span class="fc" id="L82">        return orderId;</span>
+    }
+
+    public void setOrderId(Integer orderId) {
+<span class="fc" id="L86">        this.orderId = orderId;</span>
+<span class="fc" id="L87">    }</span>
+
+    public Integer getAccountId() {
+<span class="fc" id="L90">        return accountId;</span>
+    }
+
+    public void setAccountId(Integer accountId) {
+<span class="fc" id="L94">        this.accountId = accountId;</span>
+<span class="fc" id="L95">    }</span>
+
+    public Integer getInstrumentId() {
+<span class="fc" id="L98">        return instrumentId;</span>
+    }
+
+    public void setInstrumentId(Integer instrumentId) {
+<span class="fc" id="L102">        this.instrumentId = instrumentId;</span>
+<span class="fc" id="L103">    }</span>
+
+    public UUID getClientReference() {
+<span class="nc" id="L106">        return clientReference;</span>
+    }
+
+    public void setClientReference(UUID clientReference) {
+<span class="fc" id="L110">        this.clientReference = clientReference;</span>
+<span class="fc" id="L111">    }</span>
+
+    public String getOrderType() {
+<span class="fc" id="L114">        return orderType;</span>
+    }
+
+    public void setOrderType(String orderType) {
+<span class="fc" id="L118">        this.orderType = orderType;</span>
+<span class="fc" id="L119">    }</span>
+
+    public String getStatus() {
+<span class="fc" id="L122">        return status;</span>
+    }
+
+    public void setStatus(String status) {
+<span class="fc" id="L126">        this.status = status;</span>
+<span class="fc" id="L127">    }</span>
+
+    public BigDecimal getQuantity() {
+<span class="fc" id="L130">        return quantity;</span>
+    }
+
+    public void setQuantity(BigDecimal quantity) {
+<span class="fc" id="L134">        this.quantity = quantity;</span>
+<span class="fc" id="L135">    }</span>
+
+    public BigDecimal getIndicativePrice() {
+<span class="fc" id="L138">        return indicativePrice;</span>
+    }
+
+    public void setIndicativePrice(BigDecimal indicativePrice) {
+<span class="fc" id="L142">        this.indicativePrice = indicativePrice;</span>
+<span class="fc" id="L143">    }</span>
+
+    public BigDecimal getBufferPercent() {
+<span class="fc" id="L146">        return bufferPercent;</span>
+    }
+
+    public void setBufferPercent(BigDecimal bufferPercent) {
+<span class="fc" id="L150">        this.bufferPercent = bufferPercent;</span>
+<span class="fc" id="L151">    }</span>
+
+    public String getRejectionReason() {
+<span class="fc" id="L154">        return rejectionReason;</span>
+    }
+
+    public void setRejectionReason(String rejectionReason) {
+<span class="fc" id="L158">        this.rejectionReason = rejectionReason;</span>
+<span class="fc" id="L159">    }</span>
+
+    public OffsetDateTime getSubmittedAt() {
+<span class="fc" id="L162">        return submittedAt;</span>
+    }
+
+    public void setSubmittedAt(OffsetDateTime submittedAt) {
+<span class="fc" id="L166">        this.submittedAt = submittedAt;</span>
+<span class="fc" id="L167">    }</span>
+
+    public OffsetDateTime getAcceptedAt() {
+<span class="nc" id="L170">        return acceptedAt;</span>
+    }
+
+    public void setAcceptedAt(OffsetDateTime acceptedAt) {
+<span class="fc" id="L174">        this.acceptedAt = acceptedAt;</span>
+<span class="fc" id="L175">    }</span>
+
+    public OffsetDateTime getResolvedAt() {
+<span class="fc" id="L178">        return resolvedAt;</span>
+    }
+
+    public void setResolvedAt(OffsetDateTime resolvedAt) {
+<span class="fc" id="L182">        this.resolvedAt = resolvedAt;</span>
+<span class="fc" id="L183">    }</span>
+}
+
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

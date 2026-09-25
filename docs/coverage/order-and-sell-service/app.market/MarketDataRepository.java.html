@@ -137,7 +137,7 @@ public class MarketDataRepository implements MarketDataSource {
 <span class="fc" id="L137">        List&lt;MarketModels.Tick&gt; ticks = new ArrayList&lt;&gt;(234_000);</span>
 <span class="fc" id="L138">        try (var connection = DriverManager.getConnection(&quot;jdbc:duckdb:&quot;);</span>
 <span class="fc" id="L139">             var statement = connection.prepareStatement(</span>
-<span class="fc" id="L140">                     &quot;SELECT symbol, t, price, sequence_number FROM read_parquet(?) ORDER BY t, symbol&quot;)) {</span>
+                     &quot;SELECT symbol, t, price, sequence_number FROM read_parquet(?) ORDER BY t, symbol&quot;)) {
 <span class="fc" id="L141">            statement.setString(1, file.toString());</span>
 <span class="fc" id="L142">            try (var rs = statement.executeQuery()) {</span>
 <span class="fc bfc" id="L143" title="All 2 branches covered.">                while (rs.next()) {</span>
@@ -147,7 +147,7 @@ public class MarketDataRepository implements MarketDataSource {
             }
 <span class="nc" id="L148">        } catch (Throwable ex) {</span>
 <span class="nc" id="L149">            throw new IllegalStateException(&quot;Unable to load the simulation tick partition&quot;, ex);</span>
-        }
+<span class="fc" id="L150">        }</span>
 <span class="fc" id="L151">        return frames(ticks);</span>
     }
 
@@ -158,7 +158,7 @@ public class MarketDataRepository implements MarketDataSource {
 <span class="fc" id="L158">        jdbc.query(&quot;SELECT symbol, \&quot;timestamp\&quot;, close FROM candles &quot;</span>
                         + &quot;WHERE session_id = ? AND \&quot;interval\&quot; = '1m' &quot;
                         + &quot;AND \&quot;timestamp\&quot; &gt;= ? AND \&quot;timestamp\&quot; &lt; ? ORDER BY \&quot;timestamp\&quot;, symbol&quot;,
-<span class="fc" id="L161">                rs -&gt; {</span>
+                rs -&gt; {
 <span class="fc" id="L162">                    long sequence = 1;</span>
 <span class="fc bfc" id="L163" title="All 2 branches covered.">                    while (rs.next()) {</span>
 <span class="fc" id="L164">                        ticks.add(new MarketModels.Tick(rs.getString(1), rs.getTimestamp(2).toInstant(),</span>
@@ -174,7 +174,7 @@ public class MarketDataRepository implements MarketDataSource {
 <span class="fc" id="L174">        Map&lt;Instant, List&lt;MarketModels.Tick&gt;&gt; grouped = new LinkedHashMap&lt;&gt;();</span>
 <span class="fc bfc" id="L175" title="All 2 branches covered.">        for (MarketModels.Tick tick : ticks) {</span>
 <span class="fc" id="L176">            grouped.computeIfAbsent(tick.timestamp(), ignored -&gt; new ArrayList&lt;&gt;()).add(tick);</span>
-        }
+<span class="fc" id="L177">        }</span>
 <span class="fc" id="L178">        return grouped.entrySet().stream().map(entry -&gt; new MarketModels.Frame(entry.getKey(), entry.getValue())).toList();</span>
     }
 }

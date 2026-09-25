@@ -1,6 +1,6 @@
 # Code coverage
 
-Generated coverage reports for the four tested services, captured from a full local run on 2026-09-24. Each service keeps its own tooling and its own report format; this directory holds the generated output so the reports can be read without rerunning the suites. The reporting placeholders contain no application code and have no coverage.
+Generated coverage reports for the four tested services. The Java services were regenerated on 2026-09-25 after correcting a service-identity mismatch between the two directories' `pom.xml`/`application.properties` files and the tests each report reflects; Client UI and Auth service reports are from a full local run on 2026-09-24. Each service keeps its own tooling and its own report format; this directory holds the generated output so the reports can be read without rerunning the suites. The reporting placeholders contain no application code and have no coverage.
 
 Every service enforces a 70 percent floor in its own test command rather than reporting a number for a human to check. The Java services apply it to every package on every JaCoCo counter; the UI and auth service apply it to the whole run on each counter. A suite that falls below the floor fails, so a report in this directory describes a run that already passed its gate. The mechanisms are listed under [coverage floors](../guides/development.md#coverage-floors).
 
@@ -22,8 +22,8 @@ Counters differ by tool. JaCoCo measures bytecode instructions and branches; the
 | Service | Tests | Statements / Instructions | Branches | Functions / Methods | Lines |
 | --- | --- | --- | --- | --- | --- |
 | Client UI | 227 in 19 files | 94.75 percent (2332/2461) | 89.58 percent (774/864) | 91.70 percent (431/470) | 95.34 percent (1885/1977) |
-| Holdings and Trade | 136 | 97.45 percent (4133/4241) | 95.78 percent (159/166) | 95.48 percent (317/332) | 96.97 percent (864/891) |
-| Order and Sell | 100 | 96.92 percent (3048/3145) | 94.53 percent (121/128) | 93.75 percent (195/208) | 95.59 percent (542/567) |
+| Holdings and Trade | 100 | 96.96 percent (3028/3123) | 94.53 percent (121/128) | 93.75 percent (195/208) | 95.10 percent (544/572) |
+| Order and Sell | 136 | 97.51 percent (4109/4214) | 95.78 percent (159/166) | 95.48 percent (317/332) | 96.66 percent (867/897) |
 | Auth service | 106 in 10 files | 99.05 percent (208/210) | 92.86 percent (78/84) | 96.00 percent (48/50) | 99.52 percent (207/208) |
 
 Every folder and package is at or above 70 percent on every counter. The weakest in each service:
@@ -31,15 +31,15 @@ Every folder and package is at or above 70 percent on every counter. The weakest
 | Service | Weakest folder or package | Lowest counter |
 | --- | --- | --- |
 | Client UI | `app/core/auth` | branches, 80.0 percent |
-| Holdings and Trade | `app.user` | complexity and methods, 87.8 percent |
-| Order and Sell | `app.user` | complexity and methods, 80.5 percent |
+| Holdings and Trade | `app.user` | complexity and methods, 80.5 percent |
+| Order and Sell | `app.user` | complexity and methods, 87.8 percent |
 | Auth service | `auth/strategies` | branches, 75.0 percent |
 
 All four suites passed and all coverage checks were met.
 
 ## Analysis
 
-The Java services share their `account`, `holding`, `auth`, `user`, and `market` packages file for file, and the tests for those packages are shared in the same way. `MarketDataRepository`, previously the largest uncovered class, now runs its SQL against H2 in PostgreSQL mode and its Parquet path against a partition written by DuckDB during the test. The Holdings and Trade order path is covered end to end: unit tests reach every execution-time recheck in `OrderExecutionService`, and an endpoint test submits a buy and a sell through `POST /api/orders` and checks the fills, cash transactions, holding movements, and audit trail left behind. The remaining misses are eight unused accessors on the `User` entity and `MarketModels.Day`, a record nothing constructs.
+The Java services share their `account`, `holding`, `auth`, `user`, and `market` packages file for file, and the tests for those packages are shared in the same way. `MarketDataRepository`, previously the largest uncovered class, now runs its SQL against H2 in PostgreSQL mode and its Parquet path against a partition written by DuckDB during the test. The Order and Sell order path is covered end to end: unit tests reach every execution-time recheck in `OrderExecutionService`, and an endpoint test submits a buy and a sell through `POST /api/orders` and checks the fills, cash transactions, holding movements, and audit trail left behind. The remaining misses are eight unused accessors on the `User` entity and `MarketModels.Day`, a record nothing constructs.
 
 In the client UI, template event handlers were the main function-counter gap; the login, registration, and order submission tests now drive them through the rendered DOM. The remaining branch gaps sit mostly in `token-storage.service.ts`, where browser storage is unavailable, and in the dashboard component.
 
