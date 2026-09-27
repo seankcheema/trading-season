@@ -1,9 +1,14 @@
 import { PLATFORM_ID } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
+import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
-import { MarketDataService, MarketSnapshot } from '../dashboard/market-data.service';
+import {
+  MarketDataService,
+  MarketSnapshot,
+  MarketStreamHandlers,
+} from '../dashboard/market-data.service';
+import { Timeframe } from '../dashboard/mock-data';
 import { MarketPageComponent } from './market-page.component';
 
 const SNAPSHOT: MarketSnapshot = {
@@ -26,44 +31,63 @@ const SNAPSHOT: MarketSnapshot = {
       changePercent: 0.91,
       timestamp: '2026-01-05T15:01:00Z',
     },
+    {
+      symbol: 'MSFT',
+      companyName: 'Microsoft Corporation',
+      price: 420.5,
+      change: -3.5,
+      changePercent: -0.83,
+      timestamp: '2026-01-05T15:01:00Z',
+    },
   ],
 };
 
 describe('MarketPageComponent', () => {
   const disconnect = vi.fn();
+  let navigate: ReturnType<typeof vi.spyOn>;
   const marketData = {
     snapshot: vi.fn(() => of(SNAPSHOT)),
-    candles: vi.fn(() =>
+    candles: vi.fn((_sessionId: number, symbol: string, timeframe: Timeframe) =>
       of({
         sessionId: 7,
-        symbol: 'AAPL',
-        timeframe: '1D',
+        symbol,
+        timeframe,
         marketTimestamp: SNAPSHOT.marketTimestamp,
         points: [
           {
             timestamp: '2026-01-05T15:00:00Z',
-            open: 224,
-            high: 226,
-            low: 223,
-            close: 225,
-            volume: 1000,
+            open: symbol === 'AAPL' ? 224 : 424,
+            high: symbol === 'AAPL' ? 226 : 426,
+            low: symbol === 'AAPL' ? 223 : 419,
+            close: symbol === 'AAPL' ? 225 : 420,
+            volume: symbol === 'AAPL' ? 1000 : 2000,
           },
         ],
       }),
     ),
-    connect: vi.fn(() => disconnect),
+    connect: vi.fn((_sessionId: number, _handlers: MarketStreamHandlers) => disconnect),
   };
 
-  async function setup(symbol = 'aapl'): Promise<ComponentFixture<MarketPageComponent>> {
+  async function setup(
+    symbol = 'aapl',
+    compare = '',
+  ): Promise<ComponentFixture<MarketPageComponent>> {
     await TestBed.configureTestingModule({
       imports: [MarketPageComponent],
       providers: [
         provideRouter([]),
         { provide: PLATFORM_ID, useValue: 'browser' },
-        { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ symbol })) } },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            paramMap: of(convertToParamMap({ symbol })),
+            queryParamMap: of(convertToParamMap(compare ? { compare } : {})),
+          },
+        },
         { provide: MarketDataService, useValue: marketData },
       ],
     }).compileComponents();
+    navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     const fixture = TestBed.createComponent(MarketPageComponent);
     fixture.detectChanges();
     await fixture.whenStable();
@@ -73,6 +97,25 @@ describe('MarketPageComponent', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    marketData.candles.mockImplementation(
+      (_sessionId: number, symbol: string, timeframe: Timeframe) =>
+        of({
+          sessionId: 7,
+          symbol,
+          timeframe,
+          marketTimestamp: SNAPSHOT.marketTimestamp,
+          points: [
+            {
+              timestamp: '2026-01-05T15:00:00Z',
+              open: symbol === 'AAPL' ? 224 : 424,
+              high: symbol === 'AAPL' ? 226 : 426,
+              low: symbol === 'AAPL' ? 223 : 419,
+              close: symbol === 'AAPL' ? 225 : 420,
+              volume: symbol === 'AAPL' ? 1000 : 2000,
+            },
+          ],
+        }),
+    );
     TestBed.resetTestingModule();
   });
 
@@ -167,6 +210,144 @@ describe('MarketPageComponent', () => {
     expect(fixture.nativeElement.querySelector('.market-grid').classList).not.toContain(
       'tools-collapsed',
     );
+  });
+
+  it('restores a comparison from the URL and loads both charts for the same timeframe', async () => {
+    const fixture = await setup('aapl', 'msft');
+    expect(fixture.componentInstance['comparisonSymbol']()).toBe('MSFT');
+    expect(marketData.candles).toHaveBeenCalledWith(7, 'AAPL', '1D');
+    expect(marketData.candles).toHaveBeenCalledWith(7, 'MSFT', '1D');
+    expect(fixture.nativeElement.querySelectorAll('.comparison-chart').length).toBe(2);
+    expect(fixture.nativeElement.querySelector('.comparison-summary')?.textContent).toContain(
+      'Microsoft Corporation',
+    );
+    expect(fixture.nativeElement.textContent).toContain('Range Volume');
+    expect(fixture.nativeElement.textContent).toContain('2,000');
+  });
+
+  it('opens the comparison picker and writes the selected peer to the URL', async () => {
+    const fixture = await setup();
+    const compareButton = Array.from(
+      fixture.nativeElement.querySelectorAll('.tool-button') as NodeListOf<HTMLButtonElement>,
+    ).find((button) => button.textContent?.includes('Compare')) as HTMLButtonElement;
+    compareButton.click();
+    fixture.detectChanges();
+    expect(compareButton.getAttribute('aria-expanded')).toBe('true');
+    const search = fixture.nativeElement.querySelector(
+      '#comparison-picker input',
+    ) as HTMLInputElement;
+    search.value = 'MSFT';
+    search.dispatchEvent(new Event('input'));
+    search.dispatchEvent(new Event('focus'));
+    fixture.detectChanges();
+    (
+      fixture.nativeElement.querySelector('#comparison-picker [role="option"]') as HTMLElement
+    ).click();
+    expect(navigate).toHaveBeenCalledWith([], {
+      relativeTo: TestBed.inject(ActivatedRoute),
+      queryParams: { compare: 'msft' },
+      queryParamsHandling: 'merge',
+      replaceUrl: false,
+    });
+  });
+
+  it('keeps the comparison picker open for inside clicks and closes it outside', async () => {
+    const fixture = await setup();
+    const compareButton = Array.from(
+      fixture.nativeElement.querySelectorAll('.tool-button') as NodeListOf<HTMLButtonElement>,
+    ).find((button) => button.textContent?.includes('Compare')) as HTMLButtonElement;
+    compareButton.click();
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('#comparison-picker') as HTMLElement).click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance['comparisonPickerOpen']()).toBe(true);
+
+    document.body.click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance['comparisonPickerOpen']()).toBe(false);
+  });
+
+  it('removes a comparison through the chart toolbar', async () => {
+    const fixture = await setup('aapl', 'msft');
+    (
+      fixture.nativeElement.querySelector('[aria-label="Remove comparison"]') as HTMLButtonElement
+    ).click();
+    expect(navigate).toHaveBeenCalledWith([], {
+      relativeTo: TestBed.inject(ActivatedRoute),
+      queryParams: { compare: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: false,
+    });
+  });
+
+  it('removes invalid and duplicate comparison query parameters', async () => {
+    const invalidFixture = await setup('aapl', 'missing');
+    expect(invalidFixture.componentInstance['comparisonSymbol']()).toBe('');
+    expect(navigate).toHaveBeenCalledWith(
+      [],
+      expect.objectContaining({
+        queryParams: { compare: null },
+        replaceUrl: true,
+      }),
+    );
+    invalidFixture.destroy();
+
+    TestBed.resetTestingModule();
+    const duplicateFixture = await setup('aapl', 'aapl');
+    expect(duplicateFixture.componentInstance['comparisonSymbol']()).toBe('');
+    expect(navigate).toHaveBeenCalledWith(
+      [],
+      expect.objectContaining({
+        queryParams: { compare: null },
+        replaceUrl: true,
+      }),
+    );
+  });
+
+  it('updates both instruments from a live market tick', async () => {
+    const fixture = await setup('aapl', 'msft');
+    const handlers = marketData.connect.mock.calls[0][1];
+    handlers.tick({
+      eventId: 2,
+      marketTimestamp: '2026-01-05T15:02:00Z',
+      serverTimestamp: '2026-01-05T15:02:00Z',
+      prices: [
+        { symbol: 'AAPL', price: 226.8, sequenceNumber: 2 },
+        { symbol: 'MSFT', price: 418.5, sequenceNumber: 2 },
+      ],
+    });
+    fixture.detectChanges();
+    expect(fixture.componentInstance['instrument']()?.price).toBe(226.8);
+    expect(fixture.componentInstance['comparisonInstrument']()?.price).toBe(418.5);
+  });
+
+  it('keeps the primary chart ready when comparison candles fail', async () => {
+    marketData.candles.mockImplementation(
+      (_sessionId: number, symbol: string, timeframe: Timeframe) =>
+        symbol === 'MSFT'
+          ? throwError(() => new Error('comparison unavailable'))
+          : of({
+              sessionId: 7,
+              symbol,
+              timeframe,
+              marketTimestamp: SNAPSHOT.marketTimestamp,
+              points: [
+                {
+                  timestamp: '2026-01-05T15:00:00Z',
+                  open: 224,
+                  high: 226,
+                  low: 223,
+                  close: 225,
+                  volume: 1000,
+                },
+              ],
+            }),
+    );
+    const fixture = await setup('aapl', 'msft');
+    expect(fixture.componentInstance['chartStatus']()).toBe('ready');
+    expect(fixture.componentInstance['comparisonChartStatus']()).toBe('error');
+    expect(fixture.nativeElement.textContent).toContain('MSFT chart data is unavailable');
   });
 
   it('shows an instrument-not-found state without opening a stream', async () => {

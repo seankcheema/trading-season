@@ -75,64 +75,134 @@
         @if (instrument(); as active) {
           <div class="market-grid" [class.tools-collapsed]="toolsCollapsed()">
             <div class="market-main">
-              <section class="market-summary border-primary/20 bg-card rounded-xl border px-4 py-1">
-                <div class="market-identity">
-                  <div class="min-w-0">
-                    <h1 class="text-xl font-bold">{{ active.symbol }}</h1>
-                    <p class="text-muted-foreground truncate text-xs">{{ active.name }}</p>
-                  </div>
-                  <span class="text-3xl font-bold tabular-nums">{{
-                    active.price | currency: 'USD'
-                  }}</span>
-                </div>
-                <dl class="market-metrics">
-                  <div>
-                    <dt>Mkt Cap</dt>
-                    <dd>{{ mockDetails().marketCap }}</dd>
-                  </div>
-                  <div>
-                    <dt>Bid</dt>
-                    <dd class="text-gain">{{ marketStats().bid | currency: 'USD' }}</dd>
-                  </div>
-                  <div>
-                    <dt>Ask</dt>
-                    <dd class="text-loss">{{ marketStats().ask | currency: 'USD' }}</dd>
-                  </div>
-                  <div>
-                    <dt>Spread</dt>
-                    <dd>{{ marketStats().spread | currency: 'USD' }}</dd>
-                  </div>
-                  <div>
-                    <dt>Open</dt>
-                    <dd>{{ marketStats().open | currency: 'USD' }}</dd>
-                  </div>
-                  <div>
-                    <dt>Day Range</dt>
-                    <dd>
-                      {{ marketStats().low | currency: 'USD' }}–{{
-                        marketStats().high | currency: 'USD'
-                      }}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Range Volume</dt>
-                    <dd>{{ rangeVolume() | number: '1.0-0' }}</dd>
-                  </div>
-                  @if (toolsCollapsed()) {
-                    <div class="market-tools-toggle">
-                      <button
-                        type="button"
-                        class="tool-icon tools-open-button"
-                        aria-label="Open market tools"
-                        title="Open market tools"
-                        (click)="toolsCollapsed.set(false)"
-                      >
-                        <ng-icon name="lucidePanelRightOpen" />
-                      </button>
-                    </div>
+              @if (comparisonInstrument(); as compared) {
+                <section
+                  class="comparison-summary border-primary/20 bg-card rounded-xl border px-4 py-1"
+                  aria-label="Stock comparison summary"
+                >
+                  @for (
+                    item of [
+                      {
+                        instrument: active,
+                        stats: marketStats(),
+                        volume: rangeVolume(),
+                      },
+                      {
+                        instrument: compared,
+                        stats: comparisonMarketStats(),
+                        volume: comparisonRangeVolume(),
+                      },
+                    ];
+                    track item.instrument.symbol
+                  ) {
+                    <article class="comparison-summary-item">
+                      <div class="comparison-identity">
+                        <h1 class="min-w-0 truncate text-sm font-bold">
+                          {{ item.instrument.symbol }}
+                          <span class="text-muted-foreground ml-1 font-normal">{{
+                            item.instrument.name
+                          }}</span>
+                        </h1>
+                        <div class="comparison-price">
+                          <strong class="tabular-nums">
+                            {{ item.instrument.price | currency: 'USD' }}
+                          </strong>
+                          <span
+                            class="text-[11px] font-semibold tabular-nums"
+                            [class]="item.instrument.change >= 0 ? 'text-gain' : 'text-loss'"
+                          >
+                            {{ item.instrument.change >= 0 ? '+' : ''
+                            }}{{ item.instrument.change | currency: 'USD' }}
+                            {{ item.instrument.changePercent | signedPercent }}
+                          </span>
+                        </div>
+                      </div>
+                      <dl class="comparison-metrics">
+                        <div>
+                          <dt>Open</dt>
+                          <dd>{{ item.stats.open | currency: 'USD' }}</dd>
+                        </div>
+                        <div>
+                          <dt>Volume</dt>
+                          <dd>{{ item.volume | number: '1.0-0' }}</dd>
+                        </div>
+                      </dl>
+                      @if (toolsCollapsed() && item.instrument.symbol === compared.symbol) {
+                        <button
+                          type="button"
+                          class="tool-icon tools-open-button comparison-tools-open"
+                          aria-label="Open market tools"
+                          title="Open market tools"
+                          (click)="toolsCollapsed.set(false)"
+                        >
+                          <ng-icon name="lucidePanelRightOpen" />
+                        </button>
+                      }
+                    </article>
                   }
-                </dl>
-              </section>
+                </section>
+              } @else {
+                <section
+                  class="market-summary border-primary/20 bg-card rounded-xl border px-4 py-1"
+                >
+                  <div class="market-identity">
+                    <div class="min-w-0">
+                      <h1 class="text-xl font-bold">{{ active.symbol }}</h1>
+                      <p class="text-muted-foreground truncate text-xs">{{ active.name }}</p>
+                    </div>
+                    <span class="text-3xl font-bold tabular-nums">{{
+                      active.price | currency: 'USD'
+                    }}</span>
+                  </div>
+                  <dl class="market-metrics">
+                    <div>
+                      <dt>Mkt Cap</dt>
+                      <dd>{{ mockDetails().marketCap }}</dd>
+                    </div>
+                    <div>
+                      <dt>Bid</dt>
+                      <dd class="text-gain">{{ marketStats().bid | currency: 'USD' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Ask</dt>
+                      <dd class="text-loss">{{ marketStats().ask | currency: 'USD' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Spread</dt>
+                      <dd>{{ marketStats().spread | currency: 'USD' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Open</dt>
+                      <dd>{{ marketStats().open | currency: 'USD' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Day Range</dt>
+                      <dd>
+                        {{ marketStats().low | currency: 'USD' }}–{{
+                          marketStats().high | currency: 'USD'
+                        }}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Range Volume</dt>
+                      <dd>{{ rangeVolume() | number: '1.0-0' }}</dd>
+                    </div>
+                    @if (toolsCollapsed()) {
+                      <div class="market-tools-toggle">
+                        <button
+                          type="button"
+                          class="tool-icon tools-open-button"
+                          aria-label="Open market tools"
+                          title="Open market tools"
+                          (click)="toolsCollapsed.set(false)"
+                        >
+                          <ng-icon name="lucidePanelRightOpen" />
+                        </button>
+                      </div>
+                    }
+                  </dl>
+                </section>
+              }
 
               <section class="chart-panel border-primary/20 bg-card rounded-xl border p-3">
                 <div
@@ -156,43 +226,153 @@
                     >
                       <ng-icon name="lucideChartNoAxesCombined" />
                     </button>
-                    <button
-                      type="button"
-                      class="tool-button"
-                      disabled
-                      title="Comparison is not available yet"
-                    >
-                      <ng-icon name="lucideGitCompare" /> Compare
-                    </button>
+                    <div class="comparison-dropdown relative">
+                      <button
+                        type="button"
+                        class="tool-button"
+                        [class.tool-button-active]="
+                          comparisonPickerOpen() || comparisonInstrument()
+                        "
+                        [attr.aria-expanded]="comparisonPickerOpen()"
+                        aria-haspopup="dialog"
+                        aria-controls="comparison-picker"
+                        (click)="comparisonPickerOpen.update((open) => !open)"
+                      >
+                        <ng-icon name="lucideGitCompare" />
+                        {{ comparisonInstrument()?.symbol ?? 'Compare' }}
+                      </button>
+                      @if (comparisonPickerOpen()) {
+                        <div
+                          id="comparison-picker"
+                          class="comparison-picker"
+                          role="dialog"
+                          aria-label="Choose a stock to compare"
+                        >
+                          <span class="text-muted-foreground text-xs font-semibold"
+                            >Compare {{ active.symbol }} with</span
+                          >
+                          @if (comparisonInstruments().length) {
+                            <app-instrument-search
+                              [instruments]="comparisonInstruments()"
+                              (selected)="selectComparison($event)"
+                            />
+                          } @else {
+                            <span class="text-muted-foreground text-xs"
+                              >No other stocks are available in this session.</span
+                            >
+                          }
+                        </div>
+                      }
+                    </div>
+                    @if (comparisonInstrument()) {
+                      <button
+                        type="button"
+                        class="tool-icon"
+                        aria-label="Remove comparison"
+                        title="Remove comparison"
+                        (click)="removeComparison()"
+                      >
+                        <ng-icon name="lucideX" />
+                      </button>
+                    }
                   </div>
                 </div>
-                <div class="chart-stage">
-                  @switch (chartStatus()) {
-                    @case ('ready') {
-                      <app-price-chart
-                        class="h-full"
-                        area
-                        interactive
-                        [interactionKey]="active.symbol"
-                        [points]="chartPoints()"
-                        [timeframe]="timeframe()"
-                        timezone="America/Chicago"
-                      />
-                    }
-                    @case ('loading') {
-                      <div class="text-muted-foreground flex h-full items-center justify-center">
-                        Loading candles…
-                      </div>
-                    }
-                    @case ('empty') {
-                      <div class="text-muted-foreground flex h-full items-center justify-center">
-                        No candle data is available for this range.
-                      </div>
-                    }
-                    @case ('error') {
-                      <div class="text-loss flex h-full items-center justify-center">
-                        Live chart data is unavailable.
-                      </div>
+                <div class="chart-stage" [class.chart-stage-comparing]="comparisonInstrument()">
+                  @if (comparisonInstrument(); as compared) {
+                    <div class="comparison-charts">
+                      <section
+                        class="comparison-chart"
+                        [attr.aria-label]="active.symbol + ' price chart'"
+                      >
+                        <header>
+                          <strong>{{ active.symbol }}</strong
+                          ><span>Primary</span>
+                        </header>
+                        @switch (chartStatus()) {
+                          @case ('ready') {
+                            <app-price-chart
+                              class="h-full"
+                              area
+                              interactive
+                              [interactionKey]="active.symbol"
+                              [points]="chartPoints()"
+                              [timeframe]="timeframe()"
+                              timezone="America/Chicago"
+                            />
+                          }
+                          @case ('loading') {
+                            <div class="chart-message">Loading {{ active.symbol }} candles…</div>
+                          }
+                          @case ('empty') {
+                            <div class="chart-message">
+                              No candle data is available for {{ active.symbol }}.
+                            </div>
+                          }
+                          @case ('error') {
+                            <div class="chart-message text-loss">
+                              {{ active.symbol }} chart data is unavailable.
+                            </div>
+                          }
+                        }
+                      </section>
+                      <section
+                        class="comparison-chart"
+                        [attr.aria-label]="compared.symbol + ' price chart'"
+                      >
+                        <header>
+                          <strong>{{ compared.symbol }}</strong
+                          ><span>Comparison</span>
+                        </header>
+                        @switch (comparisonChartStatus()) {
+                          @case ('ready') {
+                            <app-price-chart
+                              class="h-full"
+                              area
+                              interactive
+                              [interactionKey]="compared.symbol"
+                              [points]="comparisonChartPoints()"
+                              [timeframe]="timeframe()"
+                              timezone="America/Chicago"
+                            />
+                          }
+                          @case ('loading') {
+                            <div class="chart-message">Loading {{ compared.symbol }} candles…</div>
+                          }
+                          @case ('empty') {
+                            <div class="chart-message">
+                              No candle data is available for {{ compared.symbol }}.
+                            </div>
+                          }
+                          @case ('error') {
+                            <div class="chart-message text-loss">
+                              {{ compared.symbol }} chart data is unavailable.
+                            </div>
+                          }
+                        }
+                      </section>
+                    </div>
+                  } @else {
+                    @switch (chartStatus()) {
+                      @case ('ready') {
+                        <app-price-chart
+                          class="h-full"
+                          area
+                          interactive
+                          [interactionKey]="active.symbol"
+                          [points]="chartPoints()"
+                          [timeframe]="timeframe()"
+                          timezone="America/Chicago"
+                        />
+                      }
+                      @case ('loading') {
+                        <div class="chart-message">Loading candles…</div>
+                      }
+                      @case ('empty') {
+                        <div class="chart-message">No candle data is available for this range.</div>
+                      }
+                      @case ('error') {
+                        <div class="chart-message text-loss">Live chart data is unavailable.</div>
+                      }
                     }
                   }
                 </div>

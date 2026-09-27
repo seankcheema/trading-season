@@ -88,6 +88,71 @@
   justify-content: flex-end;
 }
 
+.comparison-summary {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+}
+.comparison-summary-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 1rem;
+}
+.comparison-summary-item:first-child {
+  border-right: 1px solid rgba(0, 187, 255, 0.15);
+  padding-left: 0;
+}
+.comparison-summary-item:nth-child(2) {
+  padding-right: 0;
+}
+.comparison-identity {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.comparison-price {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+}
+.comparison-metrics {
+  display: grid;
+  flex: 0 1 auto;
+  grid-template-columns: auto auto;
+  gap: 0.75rem;
+  border-left: 1px solid rgba(238, 250, 255, 0.08);
+  padding-left: 0.75rem;
+}
+.comparison-metrics div {
+  display: flex;
+  align-items: baseline;
+  gap: 0.2rem;
+}
+.comparison-metrics dt {
+  color: rgba(238, 250, 255, 0.42);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.comparison-metrics dd {
+  font-size: 0.625rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.comparison-tools-open {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
 .market-grid {
   display: grid;
   grid-template-columns: minmax(0, 7fr) minmax(19rem, 3fr);
@@ -123,6 +188,73 @@
   background: #0e0e0e;
   padding: 0.75rem;
 }
+.chart-message {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: rgba(238, 250, 255, 0.46);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+.comparison-picker {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  width: min(22rem, calc(100vw - 2rem));
+  align-items: stretch;
+  flex-direction: column;
+  gap: 0.75rem;
+  border: 1px solid rgba(238, 250, 255, 0.15);
+  border-radius: 0.5rem;
+  background: #181818;
+  padding: 0.75rem;
+  box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.45);
+}
+.comparison-picker app-instrument-search {
+  width: 100%;
+}
+.comparison-charts {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.comparison-chart {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  padding-right: 0.75rem;
+}
+.comparison-chart + .comparison-chart {
+  border-left: 1px solid rgba(238, 250, 255, 0.1);
+  padding-right: 0;
+  padding-left: 0.75rem;
+}
+.comparison-chart header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+  color: rgba(238, 250, 255, 0.46);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.comparison-chart header strong {
+  color: #eefaff;
+  font-size: 0.75rem;
+}
+.comparison-chart app-price-chart,
+.comparison-chart .chart-message {
+  min-height: 0;
+  flex: 1;
+}
 .technical-footer {
   display: flex;
   min-height: 2.5rem;
@@ -146,6 +278,15 @@
   padding: 0 0.625rem;
   color: rgba(238, 250, 255, 0.42);
   font-size: 0.6875rem;
+}
+.tool-button:not(:disabled),
+.tool-icon:not(:disabled) {
+  cursor: pointer;
+}
+.tool-button-active {
+  border-color: rgba(0, 187, 255, 0.45);
+  background: rgba(0, 187, 255, 0.12);
+  color: #00bbff;
 }
 .tool-icon {
   width: 1.875rem;
@@ -298,6 +439,26 @@
   }
 }
 
+@media (max-width: 900px) {
+  .comparison-charts {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(2, minmax(20rem, 1fr));
+  }
+  .comparison-chart {
+    padding-right: 0;
+    padding-bottom: 0.75rem;
+  }
+  .comparison-chart + .comparison-chart {
+    border-top: 1px solid rgba(238, 250, 255, 0.1);
+    border-left: 0;
+    padding-top: 0.75rem;
+    padding-left: 0;
+  }
+  .chart-stage-comparing {
+    min-height: 43rem;
+  }
+}
+
 @media (max-width: 640px) {
   .market-content {
     padding: 0.5rem 1rem;
@@ -312,6 +473,24 @@
   .market-metrics {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
+  }
+  .comparison-metrics {
+    grid-template-columns: repeat(2, auto);
+  }
+  .comparison-summary {
+    grid-template-columns: 1fr;
+  }
+  .comparison-summary-item {
+    padding: 0.65rem 0 0;
+  }
+  .comparison-summary-item:first-child {
+    border-right: 0;
+    border-bottom: 1px solid rgba(0, 187, 255, 0.15);
+    padding-top: 0;
+    padding-bottom: 0.65rem;
+  }
+  .comparison-picker {
+    right: -2.25rem;
   }
   .tool-button {
     padding: 0 0.4rem;
