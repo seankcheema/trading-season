@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { PriceChartComponent } from './price-chart.component';
 import { PricePoint, mockPriceSeries } from '../mock-data';
 import { TimeframeToggleComponent } from './timeframe-toggle.component';
+import { ChartMode, MarketCandlePoint } from './market-chart.models';
 
 describe('PriceChartComponent', () => {
   beforeEach(async () => {
@@ -18,6 +19,119 @@ describe('PriceChartComponent', () => {
     fixture.detectChanges();
     return fixture;
   }
+
+  function setupCandles(mode: ChartMode) {
+    const candles: MarketCandlePoint[] = [
+      {
+        time: new Date('2026-01-01T15:30:00Z'),
+        open: 100,
+        high: 104,
+        low: 98,
+        close: 103,
+        volume: 100,
+      },
+      {
+        time: new Date('2026-01-01T15:35:00Z'),
+        open: 103,
+        high: 105,
+        low: 99,
+        close: 101,
+        volume: 180,
+      },
+      {
+        time: new Date('2026-01-01T15:40:00Z'),
+        open: 101,
+        high: 112,
+        low: 100,
+        close: 110,
+        volume: 140,
+      },
+    ];
+    const fixture = TestBed.createComponent(PriceChartComponent);
+    fixture.componentRef.setInput('candles', candles);
+    fixture.componentRef.setInput('timeframe', '1D');
+    fixture.componentRef.setInput('mode', mode);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('renders line and area paths for the simple trend modes', () => {
+    const line = setupCandles('line');
+    expect(line.nativeElement.querySelector('.chart-price-line')).not.toBeNull();
+    expect(line.nativeElement.querySelector('linearGradient')).toBeNull();
+
+    const area = setupCandles('area');
+    expect(area.nativeElement.querySelector('.chart-price-line')).not.toBeNull();
+    expect(area.nativeElement.querySelector('linearGradient')).not.toBeNull();
+  });
+
+  it('renders candlestick wicks and bodies from OHLC data', () => {
+    const fixture = setupCandles('candles');
+    expect(fixture.nativeElement.querySelectorAll('.chart-candle')).toHaveLength(3);
+    expect(fixture.nativeElement.querySelectorAll('.chart-candle rect')).toHaveLength(3);
+  });
+
+  it('renders OHLC open and close ticks', () => {
+    const fixture = setupCandles('ohlc');
+    expect(fixture.nativeElement.querySelectorAll('.ohlc-open-tick')).toHaveLength(3);
+    expect(fixture.nativeElement.querySelectorAll('.ohlc-close-tick')).toHaveLength(3);
+  });
+
+  it('renders volume as the primary graph without a price line', () => {
+    const fixture = setupCandles('volume');
+    const heights = fixture.componentInstance['volumeBars']().map((bar) => bar.height);
+    expect(fixture.nativeElement.querySelectorAll('.chart-volume-bar')).toHaveLength(3);
+    expect(fixture.nativeElement.querySelector('.chart-price-line')).toBeNull();
+    expect(Math.max(...heights)).toBeGreaterThan(30);
+  });
+
+  it('normalizes percent mode to zero and formats the axis as percentages', () => {
+    const fixture = setupCandles('percent');
+    const points = fixture.componentInstance['visiblePoints']();
+    expect(points[0].value).toBe(0);
+    expect(points[2].value).toBeCloseTo(6.8, 1);
+    expect(fixture.componentInstance['yTicks']().every((tick) => tick.label.endsWith('%'))).toBe(
+      true,
+    );
+  });
+
+  it('updates the rendered graph whenever the mode input changes', () => {
+    const fixture = setupCandles('line');
+    const svg = () => fixture.nativeElement.querySelector('svg') as SVGElement;
+
+    expect(svg().dataset['chartMode']).toBe('line');
+    expect(fixture.nativeElement.querySelector('.chart-price-line')).not.toBeNull();
+
+    fixture.componentRef.setInput('mode', 'area');
+    fixture.detectChanges();
+    expect(svg().dataset['chartMode']).toBe('area');
+    expect(fixture.nativeElement.querySelector('linearGradient')).not.toBeNull();
+
+    fixture.componentRef.setInput('mode', 'candles');
+    fixture.detectChanges();
+    expect(svg().dataset['chartMode']).toBe('candles');
+    expect(fixture.nativeElement.querySelector('.chart-candle rect')).not.toBeNull();
+
+    fixture.componentRef.setInput('mode', 'ohlc');
+    fixture.detectChanges();
+    expect(svg().dataset['chartMode']).toBe('ohlc');
+    expect(fixture.nativeElement.querySelector('.ohlc-open-tick')).not.toBeNull();
+
+    fixture.componentRef.setInput('mode', 'volume');
+    fixture.detectChanges();
+    expect(svg().dataset['chartMode']).toBe('volume');
+    expect(fixture.nativeElement.querySelector('.chart-price-line')).toBeNull();
+    expect(
+      Math.max(...fixture.componentInstance['volumeBars']().map((bar) => bar.height)),
+    ).toBeGreaterThan(30);
+
+    fixture.componentRef.setInput('mode', 'percent');
+    fixture.detectChanges();
+    expect(svg().dataset['chartMode']).toBe('percent');
+    expect(fixture.componentInstance['yTicks']().every((tick) => tick.label.endsWith('%'))).toBe(
+      true,
+    );
+  });
 
   it('should label the time axis with at most six ticks', () => {
     const component = setup().componentInstance;
@@ -75,6 +189,22 @@ describe('PriceChartComponent', () => {
     expect(fixture.nativeElement.textContent).toContain(ticks[0].label);
   });
 
+  it('should show the latest price on the right axis when enabled', () => {
+    const fixture = setup('1D', [
+      { time: new Date('2026-01-01T15:30:00Z'), value: 100 },
+      { time: new Date('2026-01-01T15:35:00Z'), value: 102.34 },
+    ]);
+    expect(fixture.nativeElement.querySelector('.current-price-axis-label')).toBeNull();
+
+    fixture.componentRef.setInput('showCurrentPrice', true);
+    fixture.detectChanges();
+
+    const label: HTMLElement = fixture.nativeElement.querySelector('.current-price-axis-label');
+    expect(label.textContent?.trim()).toBe('$102.34');
+    expect(label.classList).toContain('current-price-gain');
+    expect(fixture.componentInstance['currentPriceMarker']()?.svgY).toBeGreaterThanOrEqual(0);
+  });
+
   it('should make clustered candle volumes visibly different', () => {
     const component = setup('1D', [
       { time: new Date('2026-01-01T15:30:00Z'), value: 100, volume: 100 },
@@ -126,11 +256,12 @@ describe('PriceChartComponent', () => {
     expect(fixture.nativeElement.querySelector('.price-hover-marker')).toBeNull();
   });
 
-  it('should show a current price dot for a single early-session point without hover', () => {
+  it('should show a horizontal trace and latest marker for a single early-session point', () => {
     const fixture = setup('1D', [{ time: new Date('2026-01-01T08:30:00Z'), value: 100 }]);
     const marker: HTMLElement | null = fixture.nativeElement.querySelector('.price-current-marker');
     expect(marker).not.toBeNull();
-    expect(marker?.style.left).toBe('50%');
+    expect(marker?.style.left).toBe('100%');
+    expect(fixture.componentInstance['linePath']()).toMatch(/^M 0,.* L 100,/);
   });
 
   it('should show a smaller current price dot at the end of the trail', () => {
@@ -141,12 +272,10 @@ describe('PriceChartComponent', () => {
     expect(marker?.classList).toContain('z-10');
   });
 
-  it('should show a fallback dot when there are no chart points', () => {
+  it('should not show a misleading fallback dot when there are no chart points', () => {
     const fixture = setup('1D', []);
     const marker: HTMLElement | null = fixture.nativeElement.querySelector('.price-current-marker');
-    expect(marker).not.toBeNull();
-    expect(marker?.style.left).toBe('50%');
-    expect(marker?.style.top).toBe('50%');
+    expect(marker).toBeNull();
   });
 
   it('should keep the hover label out of the plot and hidden until hovered', () => {

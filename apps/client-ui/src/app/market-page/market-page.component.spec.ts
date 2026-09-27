@@ -1,5 +1,6 @@
 import { PLATFORM_ID } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
@@ -9,6 +10,7 @@ import {
   MarketStreamHandlers,
 } from '../dashboard/market-data.service';
 import { Timeframe } from '../dashboard/mock-data';
+import { PriceChartComponent } from '../dashboard/shared/price-chart.component';
 import { MarketPageComponent } from './market-page.component';
 
 const SNAPSHOT: MarketSnapshot = {
@@ -133,6 +135,67 @@ describe('MarketPageComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Cash before');
     expect(fixture.nativeElement.textContent).toContain('Cash after');
     expect(fixture.nativeElement.textContent).toContain('Buy 3 AAPL');
+    expect(
+      fixture.debugElement
+        .query(By.directive(PriceChartComponent))
+        .componentInstance.showCurrentPrice(),
+    ).toBe(true);
+  });
+
+  it('defaults to a line chart and lets the user select another chart mode', async () => {
+    const fixture = await setup();
+    const chart = fixture.debugElement.query(By.directive(PriceChartComponent)).componentInstance;
+    expect(fixture.componentInstance['chartMode']()).toBe('line');
+    expect(chart.mode()).toBe('line');
+    expect(
+      fixture.nativeElement.querySelector('[aria-controls="chart-mode-picker"]').textContent,
+    ).toContain('Graph view: Line');
+    expect(fixture.nativeElement.querySelector('#chart-mode-picker')).toBeNull();
+
+    (
+      fixture.nativeElement.querySelector(
+        '[aria-controls="chart-mode-picker"]',
+      ) as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('.chart-mode-option')).toHaveLength(6);
+
+    (
+      fixture.nativeElement.querySelector('[aria-label="Candles chart"]') as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance['chartMode']()).toBe('candles');
+    expect(chart.mode()).toBe('candles');
+    expect(
+      fixture.nativeElement.querySelector('[aria-controls="chart-mode-picker"]').textContent,
+    ).toContain('Graph view: Candles');
+    expect(fixture.nativeElement.querySelector('.chart-candle')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.chart-price-line')).toBeNull();
+  });
+
+  it('keeps only one toolbar dropdown open at a time', async () => {
+    const fixture = await setup();
+    const chartModeButton = fixture.nativeElement.querySelector(
+      '[aria-controls="chart-mode-picker"]',
+    ) as HTMLButtonElement;
+    const compareButton = fixture.nativeElement.querySelector(
+      '[aria-controls="comparison-picker"]',
+    ) as HTMLButtonElement;
+
+    chartModeButton.click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#chart-mode-picker')).not.toBeNull();
+
+    compareButton.click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#chart-mode-picker')).toBeNull();
+    expect(fixture.nativeElement.querySelector('#comparison-picker')).not.toBeNull();
+
+    chartModeButton.click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#comparison-picker')).toBeNull();
+    expect(fixture.nativeElement.querySelector('#chart-mode-picker')).not.toBeNull();
   });
 
   it('renders the streamlined header and demo market metrics', async () => {
@@ -221,8 +284,13 @@ describe('MarketPageComponent', () => {
     expect(fixture.nativeElement.querySelector('.comparison-summary')?.textContent).toContain(
       'Microsoft Corporation',
     );
-    expect(fixture.nativeElement.textContent).toContain('Range Volume');
+    expect(fixture.nativeElement.querySelector('.comparison-summary')?.textContent).toContain(
+      'Volume',
+    );
     expect(fixture.nativeElement.textContent).toContain('2,000');
+    const charts = fixture.debugElement.queryAll(By.directive(PriceChartComponent));
+    expect(charts).toHaveLength(2);
+    expect(charts.every((chart) => chart.componentInstance.candles().length === 1)).toBe(true);
   });
 
   it('opens the comparison picker and writes the selected peer to the URL', async () => {

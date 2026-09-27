@@ -17,17 +17,22 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideBell,
   lucideArrowLeft,
-  lucideChartNoAxesCombined,
+  lucideChartArea,
+  lucideChartBar,
+  lucideChartCandlestick,
+  lucideChartLine,
+  lucideChartNoAxesColumn,
   lucidePanelRightClose,
   lucidePanelRightOpen,
   lucideGitCompare,
   lucideRadio,
+  lucidePercent,
   lucideSlidersHorizontal,
   lucideUserRound,
   lucideX,
 } from '@ng-icons/lucide';
 import { Subscription } from 'rxjs';
-import { Instrument, PricePoint, Timeframe, findInstrument } from '../dashboard/mock-data';
+import { Instrument, Timeframe, findInstrument } from '../dashboard/mock-data';
 import {
   MarketDataService,
   MarketSnapshot,
@@ -35,8 +40,11 @@ import {
 } from '../dashboard/market-data.service';
 import { InstrumentSearchComponent } from '../dashboard/shared/instrument-search.component';
 import {
-  applyLivePrice,
-  candlePricePoints,
+  applyLiveCandlePrice,
+  ChartMode,
+  closePricePoints,
+  MarketCandlePoint,
+  marketCandlePoints,
   marketSymbolSlug,
   normalizeMarketSymbol,
 } from '../dashboard/shared/market-chart.models';
@@ -48,6 +56,7 @@ import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
 type InsightTab = 'overview' | 'news' | 'ai';
+type ToolbarMenu = 'chart-mode' | 'comparison';
 
 interface MarketStats {
   bid: number;
@@ -78,11 +87,16 @@ interface MarketStats {
     provideIcons({
       lucideBell,
       lucideArrowLeft,
-      lucideChartNoAxesCombined,
+      lucideChartArea,
+      lucideChartBar,
+      lucideChartCandlestick,
+      lucideChartLine,
+      lucideChartNoAxesColumn,
       lucidePanelRightClose,
       lucidePanelRightOpen,
       lucideGitCompare,
       lucideRadio,
+      lucidePercent,
       lucideSlidersHorizontal,
       lucideUserRound,
       lucideX,
@@ -120,18 +134,33 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly chartStatus = signal<ChartStatus>('loading');
   protected readonly comparisonChartStatus = signal<ChartStatus>('loading');
   protected readonly timeframe = signal<Timeframe>('1D');
+  protected readonly chartMode = signal<ChartMode>('line');
+  protected readonly chartModes = [
+    { value: 'line', label: 'Line', icon: 'lucideChartLine' },
+    { value: 'area', label: 'Area', icon: 'lucideChartArea' },
+    { value: 'candles', label: 'Candles', icon: 'lucideChartCandlestick' },
+    { value: 'ohlc', label: 'OHLC', icon: 'lucideChartBar' },
+    { value: 'volume', label: 'Volume', icon: 'lucideChartNoAxesColumn' },
+    { value: 'percent', label: 'Percent', icon: 'lucidePercent' },
+  ] as const satisfies readonly { value: ChartMode; label: string; icon: string }[];
+  protected readonly selectedChartMode = computed(
+    () => this.chartModes.find((option) => option.value === this.chartMode()) ?? this.chartModes[0],
+  );
   protected readonly insightTab = signal<InsightTab>('overview');
   protected readonly toolsCollapsed = signal(false);
-  protected readonly comparisonPickerOpen = signal(false);
+  protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
+  protected readonly comparisonPickerOpen = computed(() => this.openToolbarMenu() === 'comparison');
+  protected readonly chartModePickerOpen = computed(() => this.openToolbarMenu() === 'chart-mode');
   protected readonly candleRevision = signal(0);
-  private readonly candles = signal<PricePoint[]>([]);
-  private readonly comparisonCandles = signal<PricePoint[]>([]);
-  protected readonly chartPoints = computed(() => {
+  private readonly candles = signal<MarketCandlePoint[]>([]);
+  private readonly comparisonCandles = signal<MarketCandlePoint[]>([]);
+  protected readonly chartCandles = computed(() => {
     const instrument = this.instrument();
     return instrument
-      ? applyLivePrice(this.candles(), instrument.price, this.marketTimestamp())
+      ? applyLiveCandlePrice(this.candles(), instrument.price, this.marketTimestamp())
       : [];
   });
+  protected readonly chartPoints = computed(() => closePricePoints(this.chartCandles()));
   protected readonly rangeVolume = computed(() =>
     this.candles().reduce((total, point) => total + (point.volume ?? 0), 0),
   );
@@ -144,12 +173,15 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly comparisonMarketStats = computed(() =>
     this.calculateMarketStats(this.comparisonInstrument(), this.comparisonCandles()),
   );
-  protected readonly comparisonChartPoints = computed(() => {
+  protected readonly comparisonChartCandles = computed(() => {
     const instrument = this.comparisonInstrument();
     return instrument
-      ? applyLivePrice(this.comparisonCandles(), instrument.price, this.marketTimestamp())
+      ? applyLiveCandlePrice(this.comparisonCandles(), instrument.price, this.marketTimestamp())
       : [];
   });
+  protected readonly comparisonChartPoints = computed(() =>
+    closePricePoints(this.comparisonChartCandles()),
+  );
   protected readonly mockDetails = computed(() => {
     return {
       marketCap: '$3.42T',
@@ -167,7 +199,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     this.candles.set([]);
     const subscription = this.marketData.candles(sessionId, symbol, timeframe).subscribe({
       next: (series) => {
-        const points = candlePricePoints(series.points);
+        const points = marketCandlePoints(series.points);
         this.candles.set(points);
         this.chartStatus.set(points.length ? 'ready' : 'empty');
       },
@@ -189,7 +221,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     this.comparisonCandles.set([]);
     const subscription = this.marketData.candles(sessionId, symbol, timeframe).subscribe({
       next: (series) => {
-        const points = candlePricePoints(series.points);
+        const points = marketCandlePoints(series.points);
         this.comparisonCandles.set(points);
         this.comparisonChartStatus.set(points.length ? 'ready' : 'empty');
       },
@@ -223,7 +255,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
         const rawSymbol = params.get('compare') ?? '';
         const symbol = normalizeMarketSymbol(rawSymbol);
         this.comparisonSymbol.set(symbol);
-        this.comparisonPickerOpen.set(false);
+        this.openToolbarMenu.set(null);
         if (rawSymbol && rawSymbol !== marketSymbolSlug(symbol)) {
           this.updateComparisonQuery(symbol, true);
           return;
@@ -259,22 +291,34 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     ) {
       return;
     }
-    this.comparisonPickerOpen.set(false);
+    this.openToolbarMenu.set(null);
     this.updateComparisonQuery(instrument.symbol);
   }
 
   protected removeComparison(): void {
-    this.comparisonPickerOpen.set(false);
+    this.openToolbarMenu.set(null);
     this.updateComparisonQuery('');
+  }
+
+  protected selectChartMode(mode: ChartMode): void {
+    this.chartMode.set(mode);
+    this.openToolbarMenu.set(null);
+  }
+
+  protected toggleToolbarMenu(menu: ToolbarMenu): void {
+    this.openToolbarMenu.update((open) => (open === menu ? null : menu));
   }
 
   @HostListener('document:click', ['$event'])
   protected closeComparisonPickerOnDocumentClick(event: MouseEvent): void {
     const target = event.target;
-    if (target instanceof Element && target.closest('.comparison-dropdown')) {
+    if (
+      target instanceof Element &&
+      (target.closest('.comparison-dropdown') || target.closest('.chart-mode-dropdown'))
+    ) {
       return;
     }
-    this.comparisonPickerOpen.set(false);
+    this.openToolbarMenu.set(null);
   }
 
   private loadSnapshot(): void {
@@ -339,17 +383,21 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     });
   }
 
-  private calculateMarketStats(instrument: Instrument | null, candles: PricePoint[]): MarketStats {
+  private calculateMarketStats(
+    instrument: Instrument | null,
+    candles: MarketCandlePoint[],
+  ): MarketStats {
     const price = instrument?.price ?? 0;
     const spread = Math.max(0.01, price * 0.0004);
-    const values = candles.map((point) => point.value);
+    const lows = candles.map((point) => point.low);
+    const highs = candles.map((point) => point.high);
     return {
       bid: price - spread / 2,
       ask: price + spread / 2,
       spread,
-      open: values[0] ?? price - (instrument?.change ?? 0),
-      low: values.length ? Math.min(...values) : price,
-      high: values.length ? Math.max(...values) : price,
+      open: candles[0]?.open ?? price - (instrument?.change ?? 0),
+      low: lows.length ? Math.min(...lows) : price,
+      high: highs.length ? Math.max(...highs) : price,
       trend: (instrument?.change ?? 0) >= 0 ? 'Uptrend' : 'Downtrend',
     };
   }

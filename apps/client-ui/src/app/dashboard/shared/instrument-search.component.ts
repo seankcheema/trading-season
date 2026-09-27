@@ -1,5 +1,13 @@
 import { CurrencyPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  booleanAttribute,
+  computed,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideSearch } from '@ng-icons/lucide';
 import { Instrument, searchInstruments } from '../mock-data';
@@ -14,36 +22,33 @@ let nextId = 0;
   providers: [provideIcons({ lucideSearch })],
   host: { class: 'relative block' },
   template: `
-    <label [for]="inputId" class="sr-only">Search instruments</label>
-    <ng-icon
-      name="lucideSearch"
-      class="text-muted-foreground pointer-events-none absolute top-1/2 left-4 -translate-y-1/2"
-      [class]="size() === 'lg' ? 'text-[24px]' : 'text-[16px]'"
-    />
-    <input
-      [id]="inputId"
-      type="search"
-      role="combobox"
-      autocomplete="off"
-      placeholder="Search"
-      class="border-border bg-card placeholder:text-muted-foreground focus-visible:border-ring w-full rounded-xl border transition-colors outline-none"
-      [class]="size() === 'lg' ? 'h-[70px] pr-4 pl-14 text-2xl' : 'h-11 pr-4 pl-11 text-sm'"
-      [value]="query()"
-      [attr.aria-expanded]="open()"
-      [attr.aria-controls]="listId"
-      [attr.aria-activedescendant]="open() ? optionId(activeIndex()) : null"
-      (input)="onInput($event)"
-      (focus)="focused.set(true)"
-      (blur)="focused.set(false)"
-      (keydown)="onKeydown($event)"
-    />
+    <div class="relative">
+      <label [for]="inputId" class="sr-only">Search instruments</label>
+      <ng-icon
+        name="lucideSearch"
+        class="text-muted-foreground pointer-events-none absolute top-1/2 left-4 -translate-y-1/2"
+        [class]="size() === 'lg' ? 'text-[24px]' : 'text-[16px]'"
+      />
+      <input
+        [id]="inputId"
+        type="search"
+        role="combobox"
+        autocomplete="off"
+        placeholder="Search"
+        [class]="inputClasses()"
+        [value]="query()"
+        [attr.aria-expanded]="open()"
+        [attr.aria-controls]="listId"
+        [attr.aria-activedescendant]="open() ? optionId(activeIndex()) : null"
+        (input)="onInput($event)"
+        (focus)="focused.set(true)"
+        (blur)="focused.set(false)"
+        (keydown)="onKeydown($event)"
+      />
+    </div>
 
     @if (open()) {
-      <ul
-        [id]="listId"
-        role="listbox"
-        class="border-border bg-popover absolute inset-x-0 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-[5px] border py-1 shadow-lg"
-      >
+      <ul [id]="listId" role="listbox" [class]="resultsClasses()">
         @for (instrument of results(); track instrument.symbol; let i = $index) {
           <li
             [id]="optionId(i)"
@@ -57,7 +62,9 @@ let nextId = 0;
           >
             <span class="min-w-0">
               <span class="block font-semibold">{{ instrument.symbol }}</span>
-              <span class="text-muted-foreground block truncate text-xs">{{ instrument.name }}</span>
+              <span class="text-muted-foreground block truncate text-xs">{{
+                instrument.name
+              }}</span>
             </span>
             <span class="shrink-0 text-right">
               <span class="block">{{ instrument.price | currency: 'USD' }}</span>
@@ -70,7 +77,9 @@ let nextId = 0;
             </span>
           </li>
         } @empty {
-          <li class="text-muted-foreground px-4 py-2 text-sm">No instruments match "{{ query() }}"</li>
+          <li class="text-muted-foreground px-4 py-2 text-sm">
+            No instruments match "{{ query() }}"
+          </li>
         }
       </ul>
     }
@@ -78,6 +87,7 @@ let nextId = 0;
 })
 export class InstrumentSearchComponent {
   readonly size = input<'md' | 'lg'>('md');
+  readonly embedded = input(false, { transform: booleanAttribute });
   readonly instruments = input<readonly Instrument[]>([]);
   readonly selected = output<Instrument>();
 
@@ -92,6 +102,19 @@ export class InstrumentSearchComponent {
       : searchInstruments(this.query());
   });
   protected readonly open = computed(() => this.focused() && this.query().trim().length > 0);
+  protected readonly inputClasses = computed(() => {
+    const size = this.size() === 'lg' ? 'h-[70px] pr-4 pl-14 text-2xl' : 'h-11 pr-4 pl-11 text-sm';
+    const base =
+      'border-border placeholder:text-muted-foreground focus-visible:border-ring w-full border transition-colors outline-none';
+    return this.embedded()
+      ? `${base} ${size} rounded-none border-x-0 border-t-0 bg-transparent`
+      : `${base} ${size} bg-card rounded-xl`;
+  });
+  protected readonly resultsClasses = computed(() =>
+    this.embedded()
+      ? 'max-h-64 overflow-y-auto py-1'
+      : 'border-border bg-popover absolute inset-x-0 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-[5px] border py-1 shadow-lg',
+  );
 
   private readonly _id = nextId++;
   protected readonly inputId = `instrument-search-${this._id}`;

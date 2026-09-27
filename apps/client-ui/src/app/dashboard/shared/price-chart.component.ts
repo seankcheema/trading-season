@@ -16,6 +16,12 @@ import {
   viewChild,
 } from '@angular/core';
 import { PricePoint, Timeframe } from '../mock-data';
+import {
+  ChartMode,
+  MarketCandlePoint,
+  closePricePoints,
+  percentChangePoints,
+} from './market-chart.models';
 import { SignedPercentPipe } from './signed-percent.pipe';
 
 const WIDTH = 100;
@@ -84,10 +90,28 @@ interface MarkerPoint {
   y: number;
 }
 
+interface CurrentPriceMarker {
+  y: number;
+  svgY: number;
+  label: string;
+}
+
 interface VolumeBar {
   x: number;
   width: number;
   height: number;
+  up: boolean;
+}
+
+interface CandleBar {
+  x: number;
+  width: number;
+  highY: number;
+  lowY: number;
+  openY: number;
+  closeY: number;
+  bodyY: number;
+  bodyHeight: number;
   up: boolean;
 }
 
@@ -174,6 +198,9 @@ interface VolumeBar {
             @if (point.volumeLabel) {
               <span class="text-primary text-[13px]/5">· Vol {{ point.volumeLabel }}</span>
             }
+            @if (point.ohlcLabel) {
+              <span class="text-muted-foreground text-[13px]/5">· {{ point.ohlcLabel }}</span>
+            }
           </div>
         }
       </div>
@@ -216,12 +243,13 @@ interface VolumeBar {
         }
 
         <svg
+          [attr.data-chart-mode]="mode()"
           [attr.viewBox]="viewBox"
           preserveAspectRatio="none"
           class="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
           aria-hidden="true"
         >
-          @if (area()) {
+          @if (showsArea()) {
             <defs>
               <linearGradient [attr.id]="gradientId" x1="0" x2="0" y1="0" y2="1">
                 <stop offset="0" [style.stop-color]="trendColor()" stop-opacity="0.28" />
@@ -252,6 +280,19 @@ interface VolumeBar {
               vector-effect="non-scaling-stroke"
             />
           }
+          @if (currentPriceMarker(); as marker) {
+            <line
+              x1="0"
+              [attr.y1]="marker.svgY"
+              [attr.x2]="WIDTH"
+              [attr.y2]="marker.svgY"
+              [style.stroke]="trendColor()"
+              stroke-width="1"
+              stroke-dasharray="3 3"
+              vector-effect="non-scaling-stroke"
+              opacity="0.8"
+            />
+          }
           <line
             x1="0"
             [attr.y1]="HEIGHT"
@@ -261,11 +302,51 @@ interface VolumeBar {
             stroke-width="0.5"
             vector-effect="non-scaling-stroke"
           />
-          @if (area() && areaPath()) {
+          @if (showsArea() && areaPath()) {
             <path [attr.d]="areaPath()" [attr.fill]="'url(#' + gradientId + ')'" />
+          }
+          @if (showsCandles()) {
+            @for (bar of candleBars(); track $index) {
+              <g class="chart-candle" [class.chart-candle-up]="bar.up">
+                <line
+                  [attr.x1]="bar.x"
+                  [attr.y1]="bar.highY"
+                  [attr.x2]="bar.x"
+                  [attr.y2]="bar.lowY"
+                  vector-effect="non-scaling-stroke"
+                />
+                @if (mode() === 'candles') {
+                  <rect
+                    [attr.x]="bar.x - bar.width / 2"
+                    [attr.y]="bar.bodyY"
+                    [attr.width]="bar.width"
+                    [attr.height]="bar.bodyHeight"
+                    vector-effect="non-scaling-stroke"
+                  />
+                } @else {
+                  <line
+                    class="ohlc-open-tick"
+                    [attr.x1]="bar.x - bar.width / 2"
+                    [attr.y1]="bar.openY"
+                    [attr.x2]="bar.x"
+                    [attr.y2]="bar.openY"
+                    vector-effect="non-scaling-stroke"
+                  />
+                  <line
+                    class="ohlc-close-tick"
+                    [attr.x1]="bar.x"
+                    [attr.y1]="bar.closeY"
+                    [attr.x2]="bar.x + bar.width / 2"
+                    [attr.y2]="bar.closeY"
+                    vector-effect="non-scaling-stroke"
+                  />
+                }
+              </g>
+            }
           }
           @for (bar of volumeBars(); track $index) {
             <rect
+              class="chart-volume-bar"
               [attr.x]="bar.x"
               [attr.y]="HEIGHT - bar.height"
               [attr.width]="bar.width"
@@ -273,15 +354,18 @@ interface VolumeBar {
               [class]="bar.up ? 'fill-gain/45' : 'fill-loss/45'"
             />
           }
-          <path
-            [attr.d]="linePath()"
-            fill="none"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            vector-effect="non-scaling-stroke"
-            [class]="trendingUp() ? 'stroke-gain' : 'stroke-loss'"
-          />
+          @if (showsLine()) {
+            <path
+              class="chart-price-line"
+              [attr.d]="linePath()"
+              fill="none"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              vector-effect="non-scaling-stroke"
+              [class]="trendingUp() ? 'stroke-gain' : 'stroke-loss'"
+            />
+          }
         </svg>
 
         @if (persistentPoint(); as point) {
@@ -310,6 +394,16 @@ interface VolumeBar {
         @for (tick of yTicks(); track tick.value) {
           <span class="absolute right-0 -translate-y-1/2 whitespace-nowrap" [style.top.%]="tick.y">
             {{ tick.label }}
+          </span>
+        }
+        @if (currentPriceMarker(); as marker) {
+          <span
+            class="current-price-axis-label absolute right-0 z-10 -translate-y-1/2 whitespace-nowrap"
+            [class.current-price-gain]="trendingUp()"
+            [class.current-price-loss]="!trendingUp()"
+            [style.top.%]="marker.y"
+          >
+            {{ marker.label }}
           </span>
         }
       </div>
@@ -346,16 +440,59 @@ interface VolumeBar {
       opacity: 0.35;
       cursor: not-allowed;
     }
+    .current-price-axis-label {
+      min-width: 4.5rem;
+      border-radius: 0.2rem;
+      padding: 0.15rem 0.25rem;
+      color: white;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      line-height: 1.1;
+      text-align: right;
+      box-shadow: 0 0 0 1px var(--card);
+    }
+    .current-price-gain {
+      background: #08783e;
+    }
+    .current-price-loss {
+      background: #b4232e;
+    }
+    .chart-candle {
+      stroke: var(--color-loss);
+      fill: var(--color-loss);
+      stroke-width: 1.25;
+    }
+    .chart-candle-up {
+      stroke: var(--color-gain);
+      fill: var(--color-gain);
+    }
+    .chart-candle rect {
+      min-height: 1px;
+    }
   `,
 })
 export class PriceChartComponent {
-  readonly points = input.required<PricePoint[]>();
+  readonly points = input<PricePoint[]>([]);
+  readonly candles = input<MarketCandlePoint[]>([]);
+  readonly mode = input<ChartMode>('line');
   readonly timeframe = input.required<Timeframe>();
   readonly timezone = input('UTC');
   readonly interactive = input(false, { transform: booleanAttribute });
   readonly interactionKey = input('');
+  readonly showCurrentPrice = input(false, { transform: booleanAttribute });
   // Fills the space under the line with a gradient in the trend color.
   readonly area = input(false, { transform: booleanAttribute });
+
+  private readonly activePoints = computed(() => {
+    const candles = this.candles();
+    if (this.mode() === 'percent' && candles.length) {
+      return percentChangePoints(candles);
+    }
+    if (this.points().length) {
+      return this.points();
+    }
+    return closePricePoints(candles);
+  });
 
   private readonly _locale = inject(LOCALE_ID);
   protected readonly gradientId = `price-chart-area-${nextId++}`;
@@ -369,7 +506,7 @@ export class PriceChartComponent {
   private dragStart: { x: number; start: number } | null = null;
 
   protected readonly visiblePoints = computed(() => {
-    const points = this.points();
+    const points = this.activePoints();
     if (!this.interactive()) {
       return points;
     }
@@ -377,18 +514,25 @@ export class PriceChartComponent {
     const start = Math.min(this.viewStart(), Math.max(0, points.length - count));
     return points.slice(start, start + count);
   });
+  protected readonly visibleCandles = computed(() => {
+    const candles = this.candles();
+    if (!this.interactive()) {
+      return candles;
+    }
+    return candles.slice(this.viewStart(), this.viewStart() + this.visiblePoints().length);
+  });
   protected readonly atLatest = computed(
-    () => this.viewStart() + this.visiblePoints().length >= this.points().length,
+    () => this.viewStart() + this.visiblePoints().length >= this.activePoints().length,
   );
   protected readonly canZoomIn = computed(
-    () => this.visiblePoints().length > Math.min(MIN_VISIBLE_POINTS, this.points().length),
+    () => this.visiblePoints().length > Math.min(MIN_VISIBLE_POINTS, this.activePoints().length),
   );
   protected readonly canZoomOut = computed(
-    () => this.visiblePoints().length < this.points().length,
+    () => this.visiblePoints().length < this.activePoints().length,
   );
   private readonly seriesKey = computed(
     () =>
-      `${this.interactive()}:${this.interactionKey()}:${this.timeframe()}:${this.points().length ? 'ready' : 'empty'}`,
+      `${this.interactive()}:${this.interactionKey()}:${this.timeframe()}:${this.mode()}:${this.activePoints().length ? 'ready' : 'empty'}`,
   );
 
   private readonly _plot = viewChild.required<ElementRef<HTMLElement>>('plot');
@@ -420,8 +564,18 @@ export class PriceChartComponent {
     return values.length < 2 || values[values.length - 1].value >= values[0].value;
   });
 
+  protected readonly showsLine = computed(() => ['line', 'area', 'percent'].includes(this.mode()));
+  protected readonly showsArea = computed(
+    () => this.mode() === 'area' || (this.mode() === 'line' && this.area()),
+  );
+  protected readonly showsCandles = computed(() => ['candles', 'ohlc'].includes(this.mode()));
+
   private readonly yScale = computed<ChartScale>(() => {
-    const values = this.visiblePoints().map((point) => point.value);
+    const values = this.showsCandles()
+      ? this.visibleCandles().flatMap((candle) => [candle.low, candle.high])
+      : this.mode() === 'volume'
+        ? this.visiblePoints().map((point) => point.volume ?? 0)
+        : this.visiblePoints().map((point) => point.value);
     if (!values.length) {
       return { min: 0, max: 1, range: 1 };
     }
@@ -436,9 +590,9 @@ export class PriceChartComponent {
     const points = this.visiblePoints();
     const scale = this.yScale();
     const last = Math.max(points.length - 1, 1);
-    return points.map(({ value }, i) => ({
+    return points.map((point, i) => ({
       x: (i / last) * 100,
-      y: this.valueToY(value, scale),
+      y: this.valueToY(this.mode() === 'volume' ? (point.volume ?? 0) : point.value, scale),
     }));
   });
 
@@ -453,6 +607,44 @@ export class PriceChartComponent {
   protected readonly trendColor = computed(() =>
     this.trendingUp() ? 'var(--color-gain)' : 'var(--color-loss)',
   );
+
+  protected readonly candleBars = computed<CandleBar[]>(() => {
+    const candles = this.visibleCandles();
+    const scale = this.yScale();
+    const slot = WIDTH / Math.max(candles.length, 1);
+    const width = Math.max(0.18, Math.min(slot * 0.58, 1.8));
+    return candles.map((candle, index) => {
+      const openY = (this.valueToY(candle.open, scale) / 100) * HEIGHT;
+      const closeY = (this.valueToY(candle.close, scale) / 100) * HEIGHT;
+      return {
+        x: index * slot + slot / 2,
+        width,
+        highY: (this.valueToY(candle.high, scale) / 100) * HEIGHT,
+        lowY: (this.valueToY(candle.low, scale) / 100) * HEIGHT,
+        openY,
+        closeY,
+        bodyY: Math.min(openY, closeY),
+        bodyHeight: Math.max(Math.abs(closeY - openY), 0.35),
+        up: candle.close >= candle.open,
+      };
+    });
+  });
+
+  protected readonly currentPriceMarker = computed<CurrentPriceMarker | null>(() => {
+    if (!this.showCurrentPrice() || this.mode() === 'volume') {
+      return null;
+    }
+    const latest = this.activePoints().at(-1);
+    if (!latest) {
+      return null;
+    }
+    const y = this.clampMarkerPosition(this.valueToY(latest.value, this.yScale()));
+    return {
+      y,
+      svgY: (y / 100) * HEIGHT,
+      label: this.formatValue(latest.value, '1.2-2'),
+    };
+  });
 
   protected readonly volumeBars = computed<VolumeBar[]>(() => {
     const points = this.visiblePoints();
@@ -471,7 +663,10 @@ export class PriceChartComponent {
         x: index * slot + (slot - width) / 2,
         width,
         // Stretch the observed range so differences remain visible when volumes cluster.
-        height: HEIGHT * (0.04 + normalized * 0.2),
+        height:
+          this.mode() === 'volume'
+            ? HEIGHT * (0.08 + normalized * 0.84)
+            : HEIGHT * (0.04 + normalized * 0.2),
         up: index === 0 || point.value >= points[index - 1].value,
       };
     });
@@ -483,15 +678,18 @@ export class PriceChartComponent {
   });
 
   protected readonly persistentPoint = computed<MarkerPoint | null>(() => {
+    if (this.mode() === 'volume') {
+      return null;
+    }
     if (this.hovered()) {
       return null;
     }
     const points = this.visiblePoints();
     if (!points.length) {
-      return { x: 50, y: 50 };
+      return null;
     }
     if (points.length === 1) {
-      return { x: 50, y: this.clampMarkerPosition(this.describePoint(0)?.y ?? 50) };
+      return { x: 100, y: this.clampMarkerPosition(this.describePoint(0)?.y ?? 50) };
     }
     const point = this.describePoint(points.length - 1);
     return point
@@ -569,7 +767,10 @@ export class PriceChartComponent {
         value,
         y,
         svgY: (y / 100) * HEIGHT,
-        label: formatCurrency(value, this._locale, '$', 'USD', '1.0-0'),
+        label:
+          this.mode() === 'volume'
+            ? formatNumber(value, this._locale, '1.0-0')
+            : this.formatValue(value, '1.0-1'),
       };
     });
   });
@@ -577,13 +778,13 @@ export class PriceChartComponent {
   protected readonly ariaLabel = computed(() => {
     const points = this.visiblePoints();
     if (!points.length) {
-      return 'Price chart, no data';
+      return `${this.mode()} chart, no data`;
     }
     const format = TOOLTIP_FORMATS[this.timeframe()];
     const first = points[0];
     const latest = points[points.length - 1];
     return (
-      `Price chart from ${this.formatTime(first.time, format)} to ${this.formatTime(latest.time, format)}, ` +
+      `${this.mode()} chart from ${this.formatTime(first.time, format)} to ${this.formatTime(latest.time, format)}, ` +
       `trending ${this.trendingUp() ? 'up' : 'down'}. Use arrow keys to inspect values.`
     );
   });
@@ -692,8 +893,8 @@ export class PriceChartComponent {
   protected zoom(factor: number, anchor = 0.5): void {
     const oldCount = this.visiblePoints().length;
     const nextCount = Math.max(
-      Math.min(MIN_VISIBLE_POINTS, this.points().length),
-      Math.min(this.points().length, Math.round(oldCount * factor)),
+      Math.min(MIN_VISIBLE_POINTS, this.activePoints().length),
+      Math.min(this.activePoints().length, Math.round(oldCount * factor)),
     );
     this.setView(this.viewStart() + (oldCount - nextCount) * anchor, nextCount);
   }
@@ -703,17 +904,20 @@ export class PriceChartComponent {
   }
 
   protected goLatest(): void {
-    this.setView(this.points().length - this.viewCount(), this.viewCount());
+    this.setView(this.activePoints().length - this.viewCount(), this.viewCount());
   }
 
   protected resetView(): void {
-    const count = Math.min(DEFAULT_VISIBLE_POINTS, this.points().length);
-    this.setView(this.points().length - count, count);
+    const count = Math.min(DEFAULT_VISIBLE_POINTS, this.activePoints().length);
+    this.setView(this.activePoints().length - count, count);
   }
 
   private setView(start: number, count: number): void {
-    const safeCount = Math.max(0, Math.min(this.points().length, Math.round(count)));
-    const safeStart = Math.max(0, Math.min(this.points().length - safeCount, Math.round(start)));
+    const safeCount = Math.max(0, Math.min(this.activePoints().length, Math.round(count)));
+    const safeStart = Math.max(
+      0,
+      Math.min(this.activePoints().length - safeCount, Math.round(start)),
+    );
     this.viewCount.set(safeCount);
     this.viewStart.set(safeStart);
     this.hoverIndex.set(null);
@@ -764,11 +968,17 @@ export class PriceChartComponent {
     }
     return {
       ...this._coords()[index],
-      valueLabel: formatCurrency(point.value, this._locale, '$', 'USD'),
+      valueLabel: this.formatValue(point.value),
       timeLabel: this.formatTime(point.time, TOOLTIP_FORMATS[this.timeframe()]),
       volumeLabel:
         point.volume === undefined ? '' : formatNumber(point.volume, this._locale, '1.0-0'),
-      changePercent: ((point.value - points[0].value) / points[0].value) * 100,
+      changePercent:
+        this.mode() === 'percent'
+          ? point.value
+          : points[0].value
+            ? ((point.value - points[0].value) / points[0].value) * 100
+            : 0,
+      ohlcLabel: this.describeCandle(index),
     };
   }
 
@@ -782,7 +992,7 @@ export class PriceChartComponent {
     }
     if (coords.length === 1) {
       const point = coords[0];
-      return `M ${point.x.toFixed(2)},${point.y.toFixed(2)}`;
+      return `M 0,${point.y.toFixed(2)} L ${WIDTH},${point.y.toFixed(2)}`;
     }
 
     const command = [`M ${coords[0].x.toFixed(2)},${coords[0].y.toFixed(2)}`];
@@ -811,6 +1021,20 @@ export class PriceChartComponent {
       ((HEIGHT - PADDING - ((value - scale.min) / scale.range) * (HEIGHT - PADDING * 2)) / HEIGHT) *
       100
     );
+  }
+
+  private formatValue(value: number, digits = '1.2-2'): string {
+    return this.mode() === 'percent'
+      ? `${formatNumber(value, this._locale, digits)}%`
+      : formatCurrency(value, this._locale, '$', 'USD', digits);
+  }
+
+  private describeCandle(index: number): string {
+    const candle = this.visibleCandles()[index];
+    if (!candle || !this.showsCandles()) {
+      return '';
+    }
+    return `O ${formatCurrency(candle.open, this._locale, '$', 'USD')} H ${formatCurrency(candle.high, this._locale, '$', 'USD')} L ${formatCurrency(candle.low, this._locale, '$', 'USD')} C ${formatCurrency(candle.close, this._locale, '$', 'USD')}`;
   }
 
   private clampMarkerPosition(value: number): number {
