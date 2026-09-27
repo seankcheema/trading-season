@@ -33,9 +33,9 @@ Spring Boot microservice responsible for managing all trading operations, order 
 1. Create the trading_season database and apply migrations (V001, V002, V003):
    ```powershell
    # From repository root
-   py -3 -m venv apps/business-backend/db/.venv
-   apps/business-backend/db/.venv/Scripts/python.exe -m pip install --upgrade pip
-   apps/business-backend/db/.venv/Scripts/python.exe -m pip install -r apps/business-backend/db/scripts/requirements.txt
+   py -3 -m venv apps/market-data/db/.venv
+   apps/market-data/db/.venv/Scripts/python.exe -m pip install --upgrade pip
+   apps/market-data/db/.venv/Scripts/python.exe -m pip install -r apps/market-data/db/scripts/requirements.txt
    ```
 
 2. Run migrations:

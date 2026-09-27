@@ -6,7 +6,7 @@ The Java business backend and NestJS auth service have separate PostgreSQL datab
 
 | Store | Schema source | Application behavior |
 | --- | --- | --- |
-| Business: trading_season | [V001 bootstrap SQL](../../apps/business-backend/db/migrations/V001__Initial_schema.sql) plus incremental SQL such as [V002 synthetic market data replay metadata](../../apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql) and [V003 token authentication](../../apps/business-backend/db/migrations/V003__Token_authentication.sql) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
+| Business: trading_season | [V001 bootstrap SQL](../../apps/market-data/db/migrations/V001__Initial_schema.sql) plus incremental SQL such as [V002 synthetic market data replay metadata](../../apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql) and [V003 token authentication](../../apps/market-data/db/migrations/V003__Token_authentication.sql) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
 | Auth: auth_db | [TypeORM migrations](../../apps/auth-service/src/database/migrations/) | Migrations run on startup; synchronize=false |
 
 The business bootstrap defines more of the trading model than the currently implemented Java auth API. The ERD below is the canonical diagram; SQL remains authoritative for exact columns and constraints.
@@ -59,16 +59,16 @@ If the role or database already exists, skip the command that created it.
 
 Connect pgAdmin Query Tool to the `trading_season` database as the `trading_season` user, then run these files in order. Tables belong to the user that creates them, so running the files as your admin user leaves `trading_season` without table access even though it owns the database.
 
-1. `apps/business-backend/db/migrations/V001__Initial_schema.sql`
-2. `apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql`
-3. `apps/business-backend/db/migrations/V003__Token_authentication.sql`
+1. `apps/market-data/db/migrations/V001__Initial_schema.sql`
+2. `apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql`
+3. `apps/market-data/db/migrations/V003__Token_authentication.sql`
 
 With `psql`, the equivalent commands from the repository root are:
 
 ```sh
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V001__Initial_schema.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/business-backend/db/migrations/V003__Token_authentication.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initial_schema.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V003__Token_authentication.sql
 ```
 
 A database already initialized with V001 and V002 only needs V003 applied.
@@ -115,9 +115,9 @@ On Linux, check the actual free space on the filesystem containing PostgreSQL da
 
 ```sh
 free_disk_gb="$(df -Pk / | awk 'NR == 2 { print $4 / 1048576 }')"
-python3 -m venv apps/business-backend/db/.venv
-apps/business-backend/db/.venv/bin/python -m pip install -r apps/business-backend/db/scripts/requirements.txt
-apps/business-backend/db/.venv/bin/python apps/business-backend/db/scripts/0004-import-synthetic-market-data.py \
+python3 -m venv apps/market-data/db/.venv
+apps/market-data/db/.venv/bin/python -m pip install -r apps/market-data/db/scripts/requirements.txt
+apps/market-data/db/.venv/bin/python apps/market-data/db/scripts/0004-import-synthetic-market-data.py \
   --tick-storage parquet \
   --available-disk-gb "$free_disk_gb" \
   --database-url postgresql://trading_season:password@localhost:5432/trading_season
@@ -125,14 +125,14 @@ apps/business-backend/db/.venv/bin/python apps/business-backend/db/scripts/0004-
 
 Do not inflate the reported value or run this command until the archive has been copied and validated. The importer performs an additional capacity check before each pending month.
 
-The generated `2026-v1` archive is stored locally in `apps/business-backend/db/seeds/synthetic-market-data-2026-v1` and is not committed to Git. A full archive contains 61,074,000 one-second ticks and 1,017,900 tick-derived one-minute candles.
+The generated `2026-v1` archive is stored locally in `apps/market-data/db/seeds/synthetic-market-data-2026-v1` and is not committed to Git. A full archive contains 61,074,000 one-second ticks and 1,017,900 tick-derived one-minute candles.
 
 Run the complete routine workflow from the repository root with one command. It creates the virtual environment if needed, installs dependencies, generates or reuses the archive, carries the completed validation forward to the importer, and displays progress while loading PostgreSQL:
 
 ```powershell
 $freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
 
-apps/business-backend/db/setup-market-data.ps1 `
+apps/market-data/db/setup-market-data.ps1 `
   -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
   -AvailableDiskGb $freeDiskGb
 ```
@@ -146,9 +146,9 @@ The individual commands below remain available for troubleshooting and non-Windo
 Create the virtual environment and install its dependencies once:
 
 ```powershell
-py -3 -m venv apps/business-backend/db/.venv
-apps/business-backend/db/.venv/Scripts/python.exe -m pip install --upgrade pip
-apps/business-backend/db/.venv/Scripts/python.exe -m pip install -r apps/business-backend/db/scripts/requirements.txt
+py -3 -m venv apps/market-data/db/.venv
+apps/market-data/db/.venv/Scripts/python.exe -m pip install --upgrade pip
+apps/market-data/db/.venv/Scripts/python.exe -m pip install -r apps/market-data/db/scripts/requirements.txt
 ```
 
 #### Step 2: Initialize a disposable database
@@ -156,7 +156,7 @@ apps/business-backend/db/.venv/Scripts/python.exe -m pip install -r apps/busines
 Run this step only when setting up the business database for the first time. It applies V001, V002 and V003, and V001 drops existing tables.
 
 ```powershell
-apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/0001-initialize-database.py `
+apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0001-initialize-database.py `
   --database-url postgresql://trading_season:password@localhost:5432/trading_season `
   --disposable-database
 ```
@@ -168,13 +168,13 @@ Do not run step 2 during ordinary seeding.
 Generation does not access PostgreSQL:
 
 ```powershell
-apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/0002-generate-synthetic-market-data.py
+apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0002-generate-synthetic-market-data.py
 ```
 
 For a smaller test archive, add a date range:
 
 ```powershell
-apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/0002-generate-synthetic-market-data.py `
+apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0002-generate-synthetic-market-data.py `
   --start-date 2026-01-05 `
   --end-date 2026-01-06
 ```
@@ -186,7 +186,7 @@ If an older candle-only or otherwise incompatible archive exists, add `--regener
 Validation does not access PostgreSQL:
 
 ```powershell
-apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/0003-validate-synthetic-market-data.py
+apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0003-validate-synthetic-market-data.py
 ```
 
 #### Step 5: Import the archive
@@ -194,7 +194,7 @@ apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scrip
 The importer validates the archive again and commits one calendar month at a time. By default, raw ticks remain in Parquet and only candles are copied into PostgreSQL:
 
 ```powershell
-apps/business-backend/db/.venv/Scripts/python.exe apps/business-backend/db/scripts/0004-import-synthetic-market-data.py `
+apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0004-import-synthetic-market-data.py `
   --tick-storage parquet `
   --database-url postgresql://trading_season:password@localhost:5432/trading_season
 ```
