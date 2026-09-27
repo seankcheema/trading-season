@@ -105,7 +105,10 @@ describe('MarketPageComponent', () => {
     expect(text).toContain('Spread');
     expect(text).toContain('Open');
     expect(text).toContain('Day Range');
-    expect(text).toContain('Trend');
+    expect(text).not.toContain('Trend');
+    expect(fixture.nativeElement.querySelector('.market-metrics')?.textContent).not.toContain(
+      'Data',
+    );
     expect(fixture.componentInstance['rangeVolume']()).toBe(1000);
     expect(text).toContain('$3.42T');
     expect(text).not.toContain('P/E (TTM)');
@@ -118,19 +121,22 @@ describe('MarketPageComponent', () => {
     );
   });
 
-  it('renders consensus and switches News and AI tools to demo states', async () => {
+  it('renders consistent mock content across the Overview, News, and AI tools', async () => {
     const fixture = await setup();
-    expect(fixture.nativeElement.textContent).toContain('Consensus');
-    expect(fixture.nativeElement.textContent).toContain('81% Buy');
+    expect(fixture.nativeElement.textContent).toContain('Current market read');
+    expect(fixture.nativeElement.textContent).toContain('Short-term risk');
+    expect(fixture.nativeElement.querySelectorAll('.insight-item').length).toBe(4);
     const tabs = Array.from(
       fixture.nativeElement.querySelectorAll('[role="tab"]'),
     ) as HTMLButtonElement[];
     tabs.find((tab) => tab.textContent?.trim() === 'News')?.click();
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Demo news brief');
+    expect(fixture.nativeElement.textContent).toContain('Latest headlines');
+    expect(fixture.nativeElement.querySelectorAll('.insight-item').length).toBe(3);
     tabs.find((tab) => tab.textContent?.trim() === 'AI')?.click();
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Demo AI signal');
+    expect(fixture.nativeElement.textContent).toContain('Simple signal summary');
+    expect(fixture.nativeElement.querySelectorAll('.insight-item').length).toBe(3);
   });
 
   it('removes recent orders and expands the chart when tools are collapsed', async () => {
@@ -150,6 +156,16 @@ describe('MarketPageComponent', () => {
     );
     expect(fixture.nativeElement.querySelector('.tools-column').getAttribute('aria-hidden')).toBe(
       'true',
+    );
+    const open = fixture.nativeElement.querySelector(
+      '[aria-label="Open market tools"]',
+    ) as HTMLButtonElement;
+    expect(open).not.toBeNull();
+    open.click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance['toolsCollapsed']()).toBe(false);
+    expect(fixture.nativeElement.querySelector('.market-grid').classList).not.toContain(
+      'tools-collapsed',
     );
   });
 

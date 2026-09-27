@@ -127,18 +127,8 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     };
   });
   protected readonly mockDetails = computed(() => {
-    const instrument = this.instrument();
-    const price = instrument?.price ?? 0;
     return {
       marketCap: '$3.42T',
-      score: 78,
-      targetPrice: price * 1.085,
-      upside: 8.5,
-      buy: 81,
-      hold: 14,
-      sell: 5,
-      thesis:
-        'Demo consensus remains bullish as price momentum and resilient demand offset near-term volatility.',
     } as const;
   });
   private readonly candleLoader = effect((onCleanup) => {

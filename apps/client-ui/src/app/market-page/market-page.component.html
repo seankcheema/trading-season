@@ -87,10 +87,6 @@
                 </div>
                 <dl class="market-metrics">
                   <div>
-                    <dt>Data</dt>
-                    <dd class="text-primary">Demo</dd>
-                  </div>
-                  <div>
                     <dt>Mkt Cap</dt>
                     <dd>{{ mockDetails().marketCap }}</dd>
                   </div>
@@ -122,12 +118,19 @@
                     <dt>Range Volume</dt>
                     <dd>{{ rangeVolume() | number: '1.0-0' }}</dd>
                   </div>
-                  <div>
-                    <dt>Trend</dt>
-                    <dd [class]="active.change >= 0 ? 'text-gain' : 'text-loss'">
-                      {{ marketStats().trend }}
-                    </dd>
-                  </div>
+                  @if (toolsCollapsed()) {
+                    <div class="market-tools-toggle">
+                      <button
+                        type="button"
+                        class="tool-icon tools-open-button"
+                        aria-label="Open market tools"
+                        title="Open market tools"
+                        (click)="toolsCollapsed.set(false)"
+                      >
+                        <ng-icon name="lucidePanelRightOpen" />
+                      </button>
+                    </div>
+                  }
                 </dl>
               </section>
 
@@ -137,20 +140,6 @@
                 >
                   <app-timeframe-toggle [(value)]="timeframe" />
                   <div class="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      class="tool-button collapse-button"
-                      [attr.aria-expanded]="!toolsCollapsed()"
-                      [attr.aria-label]="
-                        toolsCollapsed() ? 'Show market tools' : 'Hide market tools'
-                      "
-                      (click)="toolsCollapsed.set(!toolsCollapsed())"
-                    >
-                      <ng-icon
-                        [name]="toolsCollapsed() ? 'lucidePanelRightOpen' : 'lucidePanelRightClose'"
-                      />
-                      {{ toolsCollapsed() ? 'Show tools' : 'Hide tools' }}
-                    </button>
                     <button
                       type="button"
                       class="tool-button"
@@ -219,23 +208,34 @@
                 <div
                   class="border-primary/15 bg-card sticky top-0 z-10 flex items-center justify-between border-b pb-2"
                 >
-                  <div
-                    class="bg-[#181818] flex rounded-lg border border-white/10 p-0.5"
-                    role="tablist"
-                    aria-label="Instrument tools"
-                  >
-                    @for (tab of ['overview', 'news', 'ai']; track tab) {
-                      <button
-                        type="button"
-                        role="tab"
-                        class="insight-tab"
-                        [class.insight-tab-active]="insightTab() === tab"
-                        [attr.aria-selected]="insightTab() === tab"
-                        (click)="insightTab.set($any(tab))"
-                      >
-                        {{ tab === 'ai' ? 'AI' : (tab | titlecase) }}
-                      </button>
-                    }
+                  <div class="flex min-w-0 items-center gap-2">
+                    <button
+                      type="button"
+                      class="tool-icon tools-close-button"
+                      aria-label="Hide market tools"
+                      title="Hide market tools"
+                      (click)="toolsCollapsed.set(true)"
+                    >
+                      <ng-icon name="lucidePanelRightClose" />
+                    </button>
+                    <div
+                      class="bg-[#181818] flex rounded-lg border border-white/10 p-0.5"
+                      role="tablist"
+                      aria-label="Instrument tools"
+                    >
+                      @for (tab of ['overview', 'news', 'ai']; track tab) {
+                        <button
+                          type="button"
+                          role="tab"
+                          class="insight-tab"
+                          [class.insight-tab-active]="insightTab() === tab"
+                          [attr.aria-selected]="insightTab() === tab"
+                          (click)="insightTab.set($any(tab))"
+                        >
+                          {{ tab === 'ai' ? 'AI' : (tab | titlecase) }}
+                        </button>
+                      }
+                    </div>
                   </div>
                   <span
                     class="flex items-center gap-1 text-[10px] font-semibold uppercase"
@@ -245,64 +245,106 @@
                 </div>
                 @switch (insightTab()) {
                   @case ('overview') {
-                    <div class="mt-3 flex items-center justify-between gap-3">
-                      <span
-                        class="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase"
-                        >Consensus</span
-                      ><strong class="text-sm tabular-nums"
-                        >{{ mockDetails().targetPrice | currency: 'USD' }}
-                        <span class="text-gain text-xs"
-                          >(+{{ mockDetails().upside }}% upside)</span
-                        ></strong
-                      >
-                    </div>
-                    <div
-                      class="border-border mt-2 flex h-2 overflow-hidden rounded-full border"
-                      aria-label="Demo analyst consensus: 81 percent buy, 14 percent hold, 5 percent sell"
-                    >
-                      <span class="bg-gain" [style.width.%]="mockDetails().buy"></span
-                      ><span class="bg-primary" [style.width.%]="mockDetails().hold"></span
-                      ><span class="bg-loss" [style.width.%]="mockDetails().sell"></span>
-                    </div>
-                    <div class="mt-1.5 flex justify-between text-[10px] font-semibold">
-                      <span class="text-gain">{{ mockDetails().buy }}% Buy</span
-                      ><span class="text-primary">{{ mockDetails().hold }}% Hold</span
-                      ><span class="text-loss">{{ mockDetails().sell }}% Sell</span>
-                    </div>
-                    <div class="border-primary/15 mt-3 border-t pt-3">
-                      <div class="flex items-center justify-between">
-                        <h3 class="text-[10px] font-semibold tracking-wider uppercase">
-                          Analyst consensus thesis
-                        </h3>
-                        <span
-                          class="border-gain/30 bg-gain/10 text-gain rounded border px-1.5 py-0.5 text-[10px] font-bold"
-                          >{{ mockDetails().score }} · Bullish</span
-                        >
+                    <div class="insight-content insight-feed">
+                      <header class="insight-intro">
+                        <span>Demo overview</span>
+                        <strong>Current market read</strong>
+                        <p>
+                          {{ active.symbol }} is showing steady short-term strength with balanced
+                          risk.
+                        </p>
+                      </header>
+                      <div class="insight-item">
+                        <div>
+                          <span>Price direction</span><strong class="text-gain">Positive</strong>
+                        </div>
+                        <p>
+                          Price is holding above the session open and momentum remains constructive.
+                        </p>
                       </div>
-                      <p class="text-muted-foreground mt-1 text-xs leading-relaxed">
-                        {{ mockDetails().thesis }}
-                      </p>
-                      <p class="text-muted-foreground mt-2 text-[10px] uppercase tracking-wider">
-                        Demo market intelligence
-                      </p>
+                      <div class="insight-item">
+                        <div><span>Market activity</span><strong>Above average</strong></div>
+                        <p>Trading activity is elevated enough to support the current move.</p>
+                      </div>
+                      <div class="insight-item">
+                        <div>
+                          <span>Short-term risk</span><strong class="text-primary">Moderate</strong>
+                        </div>
+                        <p>
+                          The trend is positive, but price may move quickly near the session high.
+                        </p>
+                      </div>
+                      <div class="insight-item">
+                        <div>
+                          <span>Key level</span
+                          ><strong>{{ marketStats().low | currency: 'USD' }}</strong>
+                        </div>
+                        <p>
+                          The session low is the nearest simple level to watch for weakening
+                          momentum.
+                        </p>
+                      </div>
                     </div>
                   }
                   @case ('news') {
-                    <div class="empty-tool">
-                      <strong>Demo news brief</strong
-                      ><span
-                        >{{ active.symbol }} holds near its session high as simulated volume
-                        increases.</span
-                      >
+                    <div class="insight-content insight-feed">
+                      <header class="insight-intro">
+                        <span>Demo news</span>
+                        <strong>Latest headlines</strong>
+                        <p>Simulated stories that may help explain today’s price movement.</p>
+                      </header>
+                      <div class="insight-item">
+                        <div><span>12 min ago</span><strong>Market update</strong></div>
+                        <p>
+                          {{ active.symbol }} holds near its session high as trading activity
+                          increases.
+                        </p>
+                      </div>
+                      <div class="insight-item">
+                        <div><span>48 min ago</span><strong>Sector watch</strong></div>
+                        <p>
+                          Large-cap peers trade higher as investors favor established companies.
+                        </p>
+                      </div>
+                      <div class="insight-item">
+                        <div><span>2 hr ago</span><strong>Company outlook</strong></div>
+                        <p>
+                          Analysts continue to focus on demand, margins, and the next earnings
+                          update.
+                        </p>
+                      </div>
                     </div>
                   }
                   @case ('ai') {
-                    <div class="empty-tool">
-                      <strong>Demo AI signal</strong
-                      ><span
-                        >Momentum is positive, with confirmation still required from sustained
-                        volume.</span
-                      >
+                    <div class="insight-content insight-feed">
+                      <header class="insight-intro">
+                        <span>Demo AI analysis</span>
+                        <strong>Simple signal summary</strong>
+                        <p>A plain-language interpretation of the current simulated setup.</p>
+                      </header>
+                      <div class="insight-item">
+                        <div><span>Momentum</span><strong class="text-gain">Positive</strong></div>
+                        <p>
+                          Recent price movement favors buyers, but continued activity is needed.
+                        </p>
+                      </div>
+                      <div class="insight-item">
+                        <div><span>Confidence</span><strong>Medium</strong></div>
+                        <p>
+                          The direction is clear, while the available session history is still
+                          limited.
+                        </p>
+                      </div>
+                      <div class="insight-item">
+                        <div>
+                          <span>Watch next</span
+                          ><strong>{{ marketStats().high | currency: 'USD' }}</strong>
+                        </div>
+                        <p>
+                          A sustained move above the session high would strengthen the positive
+                          signal.
+                        </p>
+                      </div>
                     </div>
                   }
                 }

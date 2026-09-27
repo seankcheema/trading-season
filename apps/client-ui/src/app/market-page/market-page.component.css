@@ -55,9 +55,7 @@
 .market-metrics {
   display: grid;
   flex: 1;
-  grid-template-columns:
-    repeat(6, minmax(3.5rem, 1fr)) minmax(8rem, 1.6fr) minmax(6rem, 1.2fr)
-    minmax(4.5rem, 1fr);
+  grid-template-columns: repeat(5, minmax(3.5rem, 1fr)) minmax(8rem, 1.6fr) minmax(6rem, 1.2fr);
   gap: 0.75rem;
   border-left: 1px solid rgba(0, 187, 255, 0.15);
   padding-left: 1rem;
@@ -78,6 +76,16 @@
   margin-top: 0.0625rem;
   font-size: 0.6875rem;
   font-weight: 600;
+}
+.market-grid.tools-collapsed .market-metrics {
+  grid-template-columns:
+    repeat(5, minmax(3.5rem, 1fr)) minmax(8rem, 1.6fr) minmax(6rem, 1.2fr)
+    minmax(2rem, 0.5fr);
+}
+.market-metrics .market-tools-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .market-grid {
@@ -152,9 +160,56 @@
   overflow: visible;
 }
 .insight-panel {
+  display: flex;
   min-height: 0;
-  flex: 0 1 auto;
+  flex: 1 1 0;
+  flex-direction: column;
   overflow: hidden;
+}
+.insight-content {
+  min-height: 0;
+  flex: 1;
+}
+.insight-feed {
+  overflow: auto;
+  padding-top: 0.75rem;
+}
+.insight-intro {
+  padding-bottom: 0.75rem;
+}
+.insight-intro > span,
+.insight-item > div > span {
+  color: rgba(238, 250, 255, 0.42);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.insight-intro > strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.875rem;
+}
+.insight-intro p,
+.insight-item p {
+  margin-top: 0.25rem;
+  color: rgba(238, 250, 255, 0.46);
+  font-size: 0.6875rem;
+  line-height: 1.5;
+}
+.insight-item {
+  border-top: 1px solid rgba(238, 250, 255, 0.08);
+  padding: 0.75rem 0;
+}
+.insight-item > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.insight-item > div > strong {
+  text-align: right;
+  font-size: 0.75rem;
 }
 .insight-tab {
   border-radius: 0.35rem;
@@ -170,23 +225,18 @@
 }
 .tools-column app-trade-ticket {
   min-height: 0;
-  flex: 1;
+  flex: 0 0 auto;
   overflow: visible;
 }
-.empty-tool {
-  display: flex;
-  min-height: 8rem;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.25rem;
-  text-align: center;
-  font-size: 0.75rem;
+.tools-close-button {
+  height: 1.625rem;
+  width: 1.625rem;
+  flex: 0 0 auto;
 }
-.empty-tool span {
-  color: rgba(238, 250, 255, 0.46);
+.tools-open-button {
+  border-color: rgba(0, 187, 255, 0.35);
+  color: #00bbff;
 }
-
 @media (min-width: 1280px) {
   .market-page {
     height: 100dvh;
