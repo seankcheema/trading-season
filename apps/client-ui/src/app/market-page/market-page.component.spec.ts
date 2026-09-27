@@ -227,7 +227,7 @@ describe('MarketPageComponent', () => {
     );
   });
 
-  it('renders consistent mock content across the Overview, News, and AI tools', async () => {
+  it('renders overview and news feeds plus an empty AI chat state', async () => {
     const fixture = await setup();
     expect(fixture.nativeElement.textContent).toContain('Current market read');
     expect(fixture.nativeElement.textContent).toContain('Short-term risk');
@@ -241,8 +241,34 @@ describe('MarketPageComponent', () => {
     expect(fixture.nativeElement.querySelectorAll('.insight-item').length).toBe(3);
     tabs.find((tab) => tab.textContent?.trim() === 'AI')?.click();
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Simple signal summary');
-    expect(fixture.nativeElement.querySelectorAll('.insight-item').length).toBe(3);
+    expect(fixture.nativeElement.textContent).toContain('Ask about AAPL');
+    expect(fixture.nativeElement.textContent).toContain('Explore the chart');
+    expect(fixture.nativeElement.querySelector('[aria-label="Ask market AI"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('.insight-item').length).toBe(0);
+    expect(fixture.nativeElement.querySelectorAll('[aria-hidden="true"]')).not.toHaveLength(0);
+  });
+
+  it('submits a prompt from the AI chat composer', async () => {
+    const fixture = await setup();
+    const tabs = Array.from(
+      fixture.nativeElement.querySelectorAll('[role="tab"]'),
+    ) as HTMLButtonElement[];
+    tabs.find((tab) => tab.textContent?.trim() === 'AI')?.click();
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector(
+      '[aria-label="Ask market AI"]',
+    ) as HTMLInputElement;
+    input.value = 'Explain today’s volume';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    (
+      fixture.nativeElement.querySelector('[aria-label="Send question"]') as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Explain today’s volume');
+    expect(fixture.nativeElement.textContent).toContain('simulated session');
   });
 
   it('removes recent orders and expands the chart when tools are collapsed', async () => {

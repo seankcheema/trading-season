@@ -22,11 +22,13 @@ import {
   lucideChartCandlestick,
   lucideChartLine,
   lucideChartNoAxesColumn,
+  lucideBotMessageSquare,
   lucidePanelRightClose,
   lucidePanelRightOpen,
   lucideGitCompare,
   lucideRadio,
   lucidePercent,
+  lucideSendHorizontal,
   lucideSlidersHorizontal,
   lucideUserRound,
   lucideX,
@@ -57,6 +59,11 @@ type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
 type InsightTab = 'overview' | 'news' | 'ai';
 type ToolbarMenu = 'chart-mode' | 'comparison';
+
+interface AiMessage {
+  role: 'user' | 'assistant';
+  text: string;
+}
 
 interface MarketStats {
   bid: number;
@@ -92,11 +99,13 @@ interface MarketStats {
       lucideChartCandlestick,
       lucideChartLine,
       lucideChartNoAxesColumn,
+      lucideBotMessageSquare,
       lucidePanelRightClose,
       lucidePanelRightOpen,
       lucideGitCompare,
       lucideRadio,
       lucidePercent,
+      lucideSendHorizontal,
       lucideSlidersHorizontal,
       lucideUserRound,
       lucideX,
@@ -147,6 +156,8 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     () => this.chartModes.find((option) => option.value === this.chartMode()) ?? this.chartModes[0],
   );
   protected readonly insightTab = signal<InsightTab>('overview');
+  protected readonly aiDraft = signal('');
+  protected readonly aiMessages = signal<AiMessage[]>([]);
   protected readonly toolsCollapsed = signal(false);
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
   protected readonly comparisonPickerOpen = computed(() => this.openToolbarMenu() === 'comparison');
@@ -307,6 +318,21 @@ export class MarketPageComponent implements OnInit, OnDestroy {
 
   protected toggleToolbarMenu(menu: ToolbarMenu): void {
     this.openToolbarMenu.update((open) => (open === menu ? null : menu));
+  }
+
+  protected submitAiPrompt(event: Event, symbol: string): void {
+    event.preventDefault();
+    const prompt = this.aiDraft().trim();
+    if (!prompt) return;
+    this.aiMessages.update((messages) => [
+      ...messages,
+      { role: 'user', text: prompt },
+      {
+        role: 'assistant',
+        text: `${symbol} is in a simulated session. I can help explain its price, range, volume, and chart in plain language.`,
+      },
+    ]);
+    this.aiDraft.set('');
   }
 
   @HostListener('document:click', ['$event'])

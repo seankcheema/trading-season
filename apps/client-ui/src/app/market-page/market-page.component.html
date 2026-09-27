@@ -431,7 +431,7 @@
                       <ng-icon name="lucidePanelRightClose" />
                     </button>
                     <div
-                      class="bg-[#181818] flex rounded-lg border border-white/10 p-0.5"
+                      class="flex items-center rounded-lg border border-white/10 bg-[#181818] p-0.5"
                       role="tablist"
                       aria-label="Instrument tools"
                     >
@@ -446,6 +446,9 @@
                         >
                           {{ tab === 'ai' ? 'AI' : (tab | titlecase) }}
                         </button>
+                        @if (!$last) {
+                          <span class="text-white/20" aria-hidden="true">|</span>
+                        }
                       }
                     </div>
                   </div>
@@ -528,35 +531,60 @@
                     </div>
                   }
                   @case ('ai') {
-                    <div class="insight-content insight-feed">
-                      <header class="insight-intro">
-                        <span>Demo AI analysis</span>
-                        <strong>Simple signal summary</strong>
-                        <p>A plain-language interpretation of the current simulated setup.</p>
-                      </header>
-                      <div class="insight-item">
-                        <div><span>Momentum</span><strong class="text-gain">Positive</strong></div>
-                        <p>
-                          Recent price movement favors buyers, but continued activity is needed.
-                        </p>
-                      </div>
-                      <div class="insight-item">
-                        <div><span>Confidence</span><strong>Medium</strong></div>
-                        <p>
-                          The direction is clear, while the available session history is still
-                          limited.
-                        </p>
-                      </div>
-                      <div class="insight-item">
-                        <div>
-                          <span>Watch next</span
-                          ><strong>{{ marketStats().high | currency: 'USD' }}</strong>
+                    <div class="insight-content flex min-h-0 flex-col pt-2">
+                      @if (aiMessages().length) {
+                        <div class="min-h-0 flex-1 space-y-3 overflow-auto py-2" aria-live="polite">
+                          @for (message of aiMessages(); track $index) {
+                            <div
+                              class="max-w-[92%] rounded-lg px-3 py-2 text-xs/5"
+                              [class]="
+                                message.role === 'user'
+                                  ? 'bg-primary/15 text-foreground ml-auto'
+                                  : 'bg-white/5 text-muted-foreground mr-auto'
+                              "
+                            >
+                              {{ message.text }}
+                            </div>
+                          }
                         </div>
-                        <p>
-                          A sustained move above the session high would strengthen the positive
-                          signal.
-                        </p>
-                      </div>
+                      } @else {
+                        <div
+                          class="flex min-h-0 flex-1 flex-col items-center justify-center px-5 text-center"
+                        >
+                          <ng-icon
+                            name="lucideBotMessageSquare"
+                            class="text-muted-foreground mb-4 text-4xl"
+                          />
+                          <strong class="text-base font-semibold"
+                            >Ask about {{ active.symbol }}</strong
+                          >
+                          <p class="text-muted-foreground mt-1 max-w-56 text-xs/5">
+                            Explore the chart, price movement, volume, or market terminology.
+                          </p>
+                        </div>
+                      }
+                      <form
+                        class="mt-2 flex min-h-11 items-center gap-2 rounded-lg border border-white/10 bg-[#202020] p-1.5 pl-3 focus-within:border-primary/40"
+                        (submit)="submitAiPrompt($event, active.symbol)"
+                      >
+                        <input
+                          type="text"
+                          class="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-white/30"
+                          [value]="aiDraft()"
+                          [placeholder]="'Ask about ' + active.symbol"
+                          aria-label="Ask market AI"
+                          (input)="aiDraft.set($any($event.target).value)"
+                        />
+                        <button
+                          type="submit"
+                          class="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-md disabled:cursor-not-allowed disabled:opacity-30"
+                          [disabled]="!aiDraft().trim()"
+                          aria-label="Send question"
+                          title="Send question"
+                        >
+                          <ng-icon name="lucideSendHorizontal" />
+                        </button>
+                      </form>
                     </div>
                   }
                 }
