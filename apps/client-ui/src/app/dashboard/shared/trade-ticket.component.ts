@@ -21,7 +21,7 @@ export interface TradeTicketDraft {
   host: { class: 'block' },
   template: `
     <section
-      class="border-primary/20 bg-card flex h-full min-h-0 flex-col rounded-xl border p-3"
+      class="border-border bg-card flex h-full min-h-0 flex-col rounded-xl border p-3"
       aria-label="Order execution"
     >
       <div

@@ -57,7 +57,7 @@
   flex: 1;
   grid-template-columns: repeat(5, minmax(3.5rem, 1fr)) minmax(8rem, 1.6fr) minmax(6rem, 1.2fr);
   gap: 0.75rem;
-  border-left: 1px solid rgba(0, 187, 255, 0.15);
+  border-left: 1px solid var(--border);
   padding-left: 1rem;
 }
 
@@ -103,7 +103,7 @@
   padding: 0 1rem;
 }
 .comparison-summary-item:first-child {
-  border-right: 1px solid rgba(0, 187, 255, 0.15);
+  border-right: 1px solid var(--border);
   padding-left: 0;
 }
 .comparison-summary-item:nth-child(2) {
@@ -448,7 +448,7 @@
     width: 100%;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     justify-content: flex-start;
-    border-top: 1px solid rgba(0, 187, 255, 0.15);
+    border-top: 1px solid var(--border);
     border-left: 0;
     padding-top: 0.75rem;
     padding-left: 0;
@@ -528,7 +528,7 @@
   }
   .comparison-summary-item:first-child {
     border-right: 0;
-    border-bottom: 1px solid rgba(0, 187, 255, 0.15);
+    border-bottom: 1px solid var(--border);
     padding-top: 0;
     padding-bottom: 0.65rem;
   }
