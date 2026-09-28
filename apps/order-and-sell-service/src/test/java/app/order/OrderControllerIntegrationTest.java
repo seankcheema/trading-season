@@ -97,7 +97,7 @@ class OrderControllerIntegrationTest {
         userId = UUID.randomUUID();
         UserAccountFixture.createActiveAccount(jdbcTemplate, userId, "orders@example.com");
 
-        User user = new User();
+        user = new User();
         user.setUserId(userId);
         user.setFirstName("Order");
         user.setLastName("Tester");
@@ -264,11 +264,15 @@ class OrderControllerIntegrationTest {
      * @return the other user's id
      */
     private UUID givenAnOrderBelongingToAnotherUser() {
+        UUID strangerId = UUID.randomUUID();
+        // The profile row no longer carries an email; the account behind it does,
+        // and AccountStatusValidator looks that account up on every order.
+        UserAccountFixture.createActiveAccount(jdbcTemplate, strangerId, "stranger@example.com");
+
         User stranger = new User();
-        stranger.setUserId(UUID.randomUUID());
+        stranger.setUserId(strangerId);
         stranger.setFirstName("Someone");
         stranger.setLastName("Else");
-        stranger.setEmail("stranger@example.com");
         stranger.setSsn("987-65-4321");
         stranger.setAddress("2 Other St");
         stranger.setDateOfBirth(LocalDate.of(1991, 2, 2));

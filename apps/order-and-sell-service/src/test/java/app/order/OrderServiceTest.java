@@ -14,11 +14,13 @@ import app.order.dto.OrderRequest;
 import app.order.execution.CashTransactionRepository;
 import app.order.execution.FillRepository;
 import app.order.execution.HoldingMovementRepository;
+import app.support.UserAccountFixture;
 import app.user.User;
 import app.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -69,6 +71,9 @@ class OrderServiceTest {
     private AuditTrailRepository auditTrailRepository;
 
     private Account account;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     private User user;
     private Instrument instrument;
 
@@ -84,9 +89,16 @@ class OrderServiceTest {
         userRepository.deleteAll();
         instrumentRepository.deleteAll();
 
+        UserAccountFixture.deleteAll(jdbcTemplate);
+
+        // The auth service creates the account before it issues a token, and
+        // AccountStatusValidator reads that row on every order.
+        UUID userId = UUID.randomUUID();
+        UserAccountFixture.createActiveAccount(jdbcTemplate, userId, "trader@example.com");
+
         // Create test user; funds belong to the user (KAN-93)
         user = new User();
-        user.setUserId(UUID.randomUUID());
+        user.setUserId(userId);
         user.setFirstName("Test");
         user.setLastName("User");
         user.setSsn("123-45-6789");
