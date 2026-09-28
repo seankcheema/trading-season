@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<coverage generated="1790368646648" clover="3.2.0">
-  <project timestamp="1790368646648" name="All files">
+<coverage generated="1790626395310" clover="3.2.0">
+  <project timestamp="1790626395311" name="All files">
     <metrics statements="2044" coveredstatements="1951" conditionals="909" coveredconditionals="818" methods="482" coveredmethods="443" elements="3435" coveredelements="3212" complexity="0" loc="2044" ncloc="2044" packages="11" files="37" classes="37"/>
     <package name="app">
       <metrics statements="3" coveredstatements="3" conditionals="10" coveredconditionals="9" methods="1" coveredmethods="1"/>
@@ -1434,7 +1434,7 @@
       </file>
       <file name="instrument-search.component.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\shared\instrument-search.component.ts">
         <metrics statements="67" coveredstatements="67" conditionals="36" coveredconditionals="36" methods="16" coveredmethods="16"/>
-        <line num="8" count="3" type="stmt"/>
+        <line num="8" count="2" type="stmt"/>
         <line num="14" count="174" type="cond" truecount="2" falsecount="0"/>
         <line num="17" count="97" type="stmt"/>
         <line num="18" count="77" type="stmt"/>
@@ -1465,7 +1465,7 @@
         <line num="69" count="18" type="stmt"/>
         <line num="73" count="4" type="stmt"/>
         <line num="75" count="10" type="stmt"/>
-        <line num="79" count="3" type="cond" truecount="8" falsecount="0"/>
+        <line num="79" count="2" type="cond" truecount="8" falsecount="0"/>
         <line num="80" count="77" type="stmt"/>
         <line num="81" count="77" type="stmt"/>
         <line num="82" count="77" type="stmt"/>

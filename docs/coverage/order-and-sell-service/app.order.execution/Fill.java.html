@@ -11,12 +11,13 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
 /**
- * The execution outcome of an ACCEPTED order (BR-06/08). At most one fill
- * per order — this schema doesn't model partial fills.
+ * The execution outcome of an order that passed its trading rules (BR-06/08);
+ * writing it moves the order to FILLED (KAN-93). At most one fill per order —
+ * this schema doesn't model partial fills.
  */
 @Entity
 @Table(name = &quot;fills&quot;)
-<span class="fc" id="L19">public class Fill {</span>
+<span class="fc" id="L20">public class Fill {</span>
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -37,44 +38,44 @@ import java.time.OffsetDateTime;
     private OffsetDateTime filledAt;
 
     public Integer getFillId() {
-<span class="fc" id="L40">        return fillId;</span>
+<span class="fc" id="L41">        return fillId;</span>
     }
 
     public void setFillId(Integer fillId) {
-<span class="fc" id="L44">        this.fillId = fillId;</span>
-<span class="fc" id="L45">    }</span>
+<span class="fc" id="L45">        this.fillId = fillId;</span>
+<span class="fc" id="L46">    }</span>
 
     public Integer getOrderId() {
-<span class="fc" id="L48">        return orderId;</span>
+<span class="fc" id="L49">        return orderId;</span>
     }
 
     public void setOrderId(Integer orderId) {
-<span class="fc" id="L52">        this.orderId = orderId;</span>
-<span class="fc" id="L53">    }</span>
+<span class="fc" id="L53">        this.orderId = orderId;</span>
+<span class="fc" id="L54">    }</span>
 
     public BigDecimal getQuotePrice() {
-<span class="fc" id="L56">        return quotePrice;</span>
+<span class="fc" id="L57">        return quotePrice;</span>
     }
 
     public void setQuotePrice(BigDecimal quotePrice) {
-<span class="fc" id="L60">        this.quotePrice = quotePrice;</span>
-<span class="fc" id="L61">    }</span>
+<span class="fc" id="L61">        this.quotePrice = quotePrice;</span>
+<span class="fc" id="L62">    }</span>
 
     public BigDecimal getQuantity() {
-<span class="fc" id="L64">        return quantity;</span>
+<span class="fc" id="L65">        return quantity;</span>
     }
 
     public void setQuantity(BigDecimal quantity) {
-<span class="fc" id="L68">        this.quantity = quantity;</span>
-<span class="fc" id="L69">    }</span>
+<span class="fc" id="L69">        this.quantity = quantity;</span>
+<span class="fc" id="L70">    }</span>
 
     public OffsetDateTime getFilledAt() {
-<span class="fc" id="L72">        return filledAt;</span>
+<span class="fc" id="L73">        return filledAt;</span>
     }
 
     public void setFilledAt(OffsetDateTime filledAt) {
-<span class="fc" id="L76">        this.filledAt = filledAt;</span>
-<span class="fc" id="L77">    }</span>
+<span class="fc" id="L77">        this.filledAt = filledAt;</span>
+<span class="fc" id="L78">    }</span>
 }
 
 
