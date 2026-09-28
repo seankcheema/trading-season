@@ -11,15 +11,16 @@ import java.time.OffsetDateTime;
  * whether the trade executed, and if not, why.
  *
  * @param orderId          the created order's id
- * @param status           SUBMITTED, ACCEPTED, REJECTED, FILLED, or EXECUTION_FAILED
+ * @param status           PENDING, FILLED, or REJECTED (KAN-93); a response
+ *                         to a submission is always FILLED or REJECTED
  * @param orderType        BUY or SELL
  * @param quantity         units requested
  * @param indicativePrice  the price the client submitted with the order
- * @param rejectionReason  set only when status is REJECTED or EXECUTION_FAILED
+ * @param rejectionReason  set only when status is REJECTED
  * @param submittedAt      when the order was received
  * @param resolvedAt       when the order reached a final status, if it has
  */
-<span class="fc" id="L22">public record OrderResponse(</span>
+<span class="fc" id="L23">public record OrderResponse(</span>
         Integer orderId,
         String status,
         String orderType,
@@ -31,15 +32,15 @@ import java.time.OffsetDateTime;
 ) {
     /** Builds a response from a persisted order. */
     public static OrderResponse from(Order order) {
-<span class="fc" id="L34">        return new OrderResponse(</span>
-<span class="fc" id="L35">                order.getOrderId(),</span>
-<span class="fc" id="L36">                order.getStatus(),</span>
-<span class="fc" id="L37">                order.getOrderType(),</span>
-<span class="fc" id="L38">                order.getQuantity(),</span>
-<span class="fc" id="L39">                order.getIndicativePrice(),</span>
-<span class="fc" id="L40">                order.getRejectionReason(),</span>
-<span class="fc" id="L41">                order.getSubmittedAt(),</span>
-<span class="fc" id="L42">                order.getResolvedAt()</span>
+<span class="fc" id="L35">        return new OrderResponse(</span>
+<span class="fc" id="L36">                order.getOrderId(),</span>
+<span class="fc" id="L37">                order.getStatus(),</span>
+<span class="fc" id="L38">                order.getOrderType(),</span>
+<span class="fc" id="L39">                order.getQuantity(),</span>
+<span class="fc" id="L40">                order.getIndicativePrice(),</span>
+<span class="fc" id="L41">                order.getRejectionReason(),</span>
+<span class="fc" id="L42">                order.getSubmittedAt(),</span>
+<span class="fc" id="L43">                order.getResolvedAt()</span>
         );
     }
 }
