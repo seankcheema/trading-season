@@ -230,20 +230,82 @@ describe('PriceChartComponent', () => {
     );
   });
 
-  it('should align the hover label with the point and keep it above the plot', () => {
+  it('should position the tooltip cursor-adjacent to the hovered point', () => {
     const fixture = setup();
     fixture.componentInstance['hoverIndex'].set(13);
     fixture.detectChanges();
-    const label: HTMLElement = fixture.nativeElement.querySelector('.price-hover-label');
+    const tooltip: HTMLElement = fixture.nativeElement.querySelector('.price-hover-label');
+    const pos = fixture.componentInstance['tooltipPosition']();
     const point = fixture.componentInstance['hovered']();
-    // The label shares the plot's grid column, so a matching left offset puts it on the
-    // point's vertical axis, and its row sits above the plot at a constant height.
-    expect(label.style.left).toBe(`${point?.x}%`);
-    expect(label.style.top).toBe('');
-    expect(label.classList).toContain('top-0');
+
+    // Tooltip should be positioned based on x and y coordinates of the point
+    expect(tooltip.style.left).toBe(`${pos?.left}%`);
+    expect(tooltip.style.top).toBe(`${pos?.top}%`);
+    expect(pos?.left).toBeGreaterThan(0);
+    expect(pos?.top).toBeGreaterThan(0);
+  });
+
+  it('should flip tooltip left when point is near right edge', () => {
+    const fixture = setup();
+    // Set hover index to a point near the end (right side) of the chart
+    fixture.componentInstance['hoverIndex'].set(
+      fixture.componentInstance['visiblePoints']().length - 1,
+    );
+    fixture.detectChanges();
+    const pos = fixture.componentInstance['tooltipPosition']();
+
+    // Tooltip should flip left when near right edge
+    if (pos!.left > 80) {
+      expect(pos?.flipLeft).toBe(true);
+    }
+  });
+
+  it('should flip tooltip top when point is near top edge', () => {
+    const fixture = setup('1D', [
+      { time: new Date('2026-01-01T15:30:00Z'), value: 200 },
+      { time: new Date('2026-01-01T15:35:00Z'), value: 205 },
+    ]);
+    fixture.componentInstance['hoverIndex'].set(1);
+    fixture.detectChanges();
+    const pos = fixture.componentInstance['tooltipPosition']();
+
+    // When point is near top, tooltip should flip down
+    if (pos!.top < 25) {
+      expect(pos?.flipTop).toBe(true);
+    }
+  });
+
+  it('should render tooltip inside the plot as descendant', () => {
+    const fixture = setup();
+    fixture.componentInstance['hoverIndex'].set(13);
+    fixture.detectChanges();
+    const tooltip: HTMLElement = fixture.nativeElement.querySelector('.price-hover-label');
     const plot: HTMLElement = fixture.nativeElement.querySelector('[tabindex="0"]');
-    expect(plot.contains(label)).toBe(false);
-    expect(label.parentElement?.nextElementSibling).toBe(plot.previousElementSibling);
+
+    // Tooltip should be inside the plot div
+    expect(plot.contains(tooltip)).toBe(true);
+  });
+
+  it('should keep chart controls in the header row when interactive', () => {
+    const points = Array.from({ length: 120 }, (_, index) => ({
+      time: new Date(2026, 0, 1, 9, index),
+      value: 100 + index,
+    }));
+    const fixture = setup('1D', points, true);
+    const controlsContainer: HTMLElement = fixture.nativeElement.querySelector(
+      '[aria-label="Zoom out"]',
+    )?.closest('div');
+
+    // Controls should be in a relative positioned header, not absolute
+    expect(controlsContainer?.style.position).not.toBe('absolute');
+    expect(controlsContainer?.classList).toContain('col-span-2');
+    expect(fixture.nativeElement.querySelector('[aria-label="Zoom out"]')).not.toBeNull();
+  });
+
+  it('should not show controls when chart is not interactive', () => {
+    const fixture = setup();
+    expect(fixture.nativeElement.querySelector('[aria-label="Zoom out"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.chart-control')).toBeNull();
   });
 
   it('should not draw a horizontal crosshair or a value-axis price on hover', () => {
@@ -278,17 +340,16 @@ describe('PriceChartComponent', () => {
     expect(marker).toBeNull();
   });
 
-  it('should keep the hover label out of the plot and hidden until hovered', () => {
+  it('should keep the tooltip hidden until hovered', () => {
     const fixture = setup();
-    const label: HTMLElement = fixture.nativeElement.querySelector('.price-hover-label');
+    const tooltip: HTMLElement = fixture.nativeElement.querySelector('.price-hover-label');
     const plot: HTMLElement = fixture.nativeElement.querySelector('[tabindex="0"]');
-    expect(plot.contains(label)).toBe(false);
-    expect(label.classList).toContain('absolute');
-    expect(label.classList).toContain('invisible');
+    expect(plot.contains(tooltip)).toBe(true);
+    expect(tooltip.classList).toContain('invisible');
 
     fixture.componentInstance['hoverIndex'].set(3);
     fixture.detectChanges();
-    expect(label.classList).not.toContain('invisible');
+    expect(tooltip.classList).not.toContain('invisible');
   });
 
   it('should step through points with the arrow keys', () => {

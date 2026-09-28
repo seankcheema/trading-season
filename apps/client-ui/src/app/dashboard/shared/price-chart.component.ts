@@ -115,6 +115,13 @@ interface CandleBar {
   up: boolean;
 }
 
+interface TooltipPosition {
+  left: number;
+  top: number;
+  flipLeft: boolean;
+  flipTop: boolean;
+}
+
 @Component({
   selector: 'app-price-chart',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -179,31 +186,7 @@ interface CandleBar {
           >
         </div>
       }
-      <div class="relative min-w-0" aria-hidden="true">
-        @if (tooltipPoint(); as point) {
-          <div
-            class="price-hover-label pointer-events-none absolute top-0 whitespace-nowrap tabular-nums"
-            [class]="hovered() ? '' : 'invisible'"
-            [style.left.%]="point.x"
-            [style.transform]="edgeTransform(point.x)"
-          >
-            <span class="text-[13px]/5 font-semibold">{{ point.valueLabel }}</span>
-            <span
-              class="text-[13px]/5"
-              [class]="point.changePercent >= 0 ? 'text-gain' : 'text-loss'"
-            >
-              {{ point.changePercent | signedPercent }}
-            </span>
-            <span class="text-muted-foreground text-[13px]/5">· {{ point.timeLabel }}</span>
-            @if (point.volumeLabel) {
-              <span class="text-primary text-[13px]/5">· Vol {{ point.volumeLabel }}</span>
-            }
-            @if (point.ohlcLabel) {
-              <span class="text-muted-foreground text-[13px]/5">· {{ point.ohlcLabel }}</span>
-            }
-          </div>
-        }
-      </div>
+      <div class="relative min-w-0" aria-hidden="true"></div>
       <div aria-hidden="true"></div>
 
       <div
@@ -229,6 +212,36 @@ interface CandleBar {
             class="bg-foreground/40 pointer-events-none absolute inset-y-0 w-px"
             [style.left.%]="point.x"
           ></div>
+        }
+
+        @if (tooltipPoint(); as point) {
+          @if (tooltipPosition(); as pos) {
+            <div
+              class="price-hover-label pointer-events-none absolute whitespace-nowrap tabular-nums overflow-hidden rounded px-2 py-1"
+              [class]="hovered() ? '' : 'invisible'"
+              [style.left.%]="pos.left"
+              [style.top.%]="pos.top"
+              [class.translate-x-0]="!pos.flipLeft"
+              [class.-translate-x-full]="pos.flipLeft"
+              [class.translate-y-0]="!pos.flipTop"
+              [class.-translate-y-full]="pos.flipTop"
+            >
+              <span class="text-[13px]/5 font-semibold">{{ point.valueLabel }}</span>
+              <span
+                class="text-[13px]/5"
+                [class]="point.changePercent >= 0 ? 'text-gain' : 'text-loss'"
+              >
+                {{ point.changePercent | signedPercent }}
+              </span>
+              <span class="text-muted-foreground text-[13px]/5">· {{ point.timeLabel }}</span>
+              @if (point.volumeLabel) {
+                <span class="text-primary text-[13px]/5">· Vol {{ point.volumeLabel }}</span>
+              }
+              @if (point.ohlcLabel) {
+                <span class="text-muted-foreground text-[13px]/5">· {{ point.ohlcLabel }}</span>
+              }
+            </div>
+          }
         }
 
         @if (interactive() && !atLatest()) {
@@ -439,6 +452,17 @@ interface CandleBar {
     .chart-control:disabled {
       opacity: 0.35;
       cursor: not-allowed;
+    }
+    .price-hover-label {
+      max-width: 12rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 0.375rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      z-index: 15;
+    }
+    .price-hover-label > span {
+      display: block;
     }
     .current-price-axis-label {
       min-width: 4.5rem;
@@ -705,6 +729,49 @@ export class PriceChartComponent {
   protected readonly tooltipPoint = computed(
     () => this.hovered() ?? this.describePoint(this.visiblePoints().length - 1),
   );
+
+  // Calculate tooltip position with cursor offset and edge-aware flipping.
+  // Tooltip sits near the hovered point with a small offset, flipping direction when near edges.
+  protected readonly tooltipPosition = computed<TooltipPosition | null>(() => {
+    const point = this.tooltipPoint();
+    if (!point) {
+      return null;
+    }
+
+    // Cursor offset in percentage of plot dimensions
+    const OFFSET_X = 1.5;
+    const OFFSET_Y = 1.2;
+
+    // Edge thresholds for flipping (in percentage)
+    const LEFT_EDGE_THRESHOLD = 20;
+    const RIGHT_EDGE_THRESHOLD = 80;
+    const TOP_EDGE_THRESHOLD = 25;
+    const BOTTOM_EDGE_THRESHOLD = 75;
+
+    // Start with default positioning (top-right of point)
+    let left = point.x + OFFSET_X;
+    let top = point.y - OFFSET_Y;
+    let flipLeft = false;
+    let flipTop = false;
+
+    // Flip left if point is near right edge
+    if (left > RIGHT_EDGE_THRESHOLD) {
+      left = point.x - OFFSET_X;
+      flipLeft = true;
+    }
+
+    // Flip top if point is near top edge
+    if (top < TOP_EDGE_THRESHOLD) {
+      top = point.y + OFFSET_Y;
+      flipTop = true;
+    }
+
+    // Ensure tooltip stays within bounds
+    left = Math.max(0, Math.min(100, left));
+    top = Math.max(0, Math.min(100, top));
+
+    return { left, top, flipLeft, flipTop };
+  });
 
   // Labels on round boundaries of the timeframe — 8:00, 8:15, 8:30, or whole days and
   // months — widened until they fit the chart's current width.

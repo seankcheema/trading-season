@@ -15,22 +15,27 @@ import {
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
+  lucideActivity,
   lucideBell,
-  lucideArrowLeft,
+  lucideChevronLeft,
   lucideChartArea,
   lucideChartBar,
   lucideChartCandlestick,
   lucideChartLine,
   lucideChartNoAxesColumn,
+  lucideCrosshair,
   lucideBotMessageSquare,
+  lucideMessageSquareText,
   lucidePanelRightClose,
   lucidePanelRightOpen,
   lucideGitCompare,
-  lucideRadio,
   lucidePercent,
   lucideSendHorizontal,
+  lucideShieldCheck,
   lucideSlidersHorizontal,
+  lucideTrendingUp,
   lucideUserRound,
+  lucideUsersRound,
   lucideX,
 } from '@ng-icons/lucide';
 import { Subscription } from 'rxjs';
@@ -65,6 +70,13 @@ interface AiMessage {
   text: string;
 }
 
+interface DemoNewsStory {
+  age: string;
+  category: string;
+  title: string;
+  includeSymbol?: boolean;
+}
+
 interface MarketStats {
   bid: number;
   ask: number;
@@ -92,22 +104,27 @@ interface MarketStats {
   ],
   providers: [
     provideIcons({
+      lucideActivity,
       lucideBell,
-      lucideArrowLeft,
+      lucideChevronLeft,
       lucideChartArea,
       lucideChartBar,
       lucideChartCandlestick,
       lucideChartLine,
       lucideChartNoAxesColumn,
+      lucideCrosshair,
       lucideBotMessageSquare,
+      lucideMessageSquareText,
       lucidePanelRightClose,
       lucidePanelRightOpen,
       lucideGitCompare,
-      lucideRadio,
       lucidePercent,
       lucideSendHorizontal,
+      lucideShieldCheck,
       lucideSlidersHorizontal,
+      lucideTrendingUp,
       lucideUserRound,
+      lucideUsersRound,
       lucideX,
     }),
   ],
@@ -156,6 +173,34 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     () => this.chartModes.find((option) => option.value === this.chartMode()) ?? this.chartModes[0],
   );
   protected readonly insightTab = signal<InsightTab>('overview');
+  protected readonly demoNews: readonly DemoNewsStory[] = [
+    {
+      age: '12 min ago',
+      category: 'Market update',
+      title: 'holds near its session high as trading activity increases.',
+      includeSymbol: true,
+    },
+    {
+      age: '48 min ago',
+      category: 'Sector watch',
+      title: 'Large-cap peers trade higher as investors favor established companies.',
+    },
+    {
+      age: '2 hr ago',
+      category: 'Company outlook',
+      title: 'Analysts continue to focus on demand, margins, and the next earnings update.',
+    },
+    {
+      age: '4 hr ago',
+      category: 'Macroeconomy',
+      title: 'Treasury yields ease as markets assess latest economic data.',
+    },
+    {
+      age: '5 hr ago',
+      category: 'Earnings',
+      title: 'Tech stocks extend gains ahead of key earnings reports this week.',
+    },
+  ];
   protected readonly aiDraft = signal('');
   protected readonly aiMessages = signal<AiMessage[]>([]);
   protected readonly toolsCollapsed = signal(false);

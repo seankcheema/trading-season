@@ -1,11 +1,8 @@
 <main class="market-page bg-[#0e0e0e] text-[#eefaff]">
-  <header
-    class="market-nav border-primary/15 bg-[#0e0e0e]/95 border-b px-4 backdrop-blur-xl md:px-6"
-  >
+  <header class="market-nav bg-[#0e0e0e]/95 px-4 backdrop-blur-xl md:px-6">
     <div class="mx-auto flex h-full max-w-[1600px] items-center gap-3">
       <a routerLink="/dashboard" class="nav-back" aria-label="Back to dashboard">
-        <ng-icon name="lucideArrowLeft" />
-        <span>Back</span>
+        <ng-icon name="lucideChevronLeft" />
       </a>
       <div class="mr-auto min-w-48 max-w-2xl flex-1">
         <app-instrument-search
@@ -23,7 +20,7 @@
       </button>
       <button
         type="button"
-        class="border-primary/25 bg-card text-muted-foreground flex size-9 items-center justify-center rounded-full border"
+        class="border-border bg-card text-muted-foreground flex size-9 items-center justify-center rounded-full border"
         disabled
         aria-label="Profile, not available yet"
       >
@@ -142,9 +139,7 @@
                   }
                 </section>
               } @else {
-                <section
-                  class="market-summary border-border bg-card rounded-xl border px-4 py-1"
-                >
+                <section class="market-summary border-border bg-card rounded-xl border px-4 py-1">
                   <div class="market-identity">
                     <div class="min-w-0">
                       <h1 class="text-xl font-bold">{{ active.symbol }}</h1>
@@ -418,7 +413,7 @@
             <aside class="tools-column" [attr.aria-hidden]="toolsCollapsed()">
               <section class="insight-panel border-border bg-card rounded-xl border p-3">
                 <div
-                  class="border-border bg-card sticky top-0 z-10 flex items-center justify-between border-b pb-2"
+                  class="border-border bg-card sticky top-0 z-10 flex items-center border-b pb-2"
                 >
                   <div class="flex min-w-0 items-center gap-2">
                     <button
@@ -431,7 +426,7 @@
                       <ng-icon name="lucidePanelRightClose" />
                     </button>
                     <div
-                      class="flex items-center rounded-lg border border-white/10 bg-[#181818] p-0.5"
+                      class="bg-muted flex gap-0.5 rounded-lg p-0.5"
                       role="tablist"
                       aria-label="Instrument tools"
                     >
@@ -439,94 +434,204 @@
                         <button
                           type="button"
                           role="tab"
-                          class="insight-tab"
-                          [class.insight-tab-active]="insightTab() === tab"
+                          class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors"
+                          [class]="
+                            insightTab() === tab
+                              ? 'bg-primary text-primary-foreground'
+                              : 'text-muted-foreground hover:text-foreground'
+                          "
                           [attr.aria-selected]="insightTab() === tab"
                           (click)="insightTab.set($any(tab))"
                         >
                           {{ tab === 'ai' ? 'AI' : (tab | titlecase) }}
                         </button>
-                        @if (!$last) {
-                          <span class="text-white/20" aria-hidden="true">|</span>
-                        }
                       }
                     </div>
                   </div>
-                  <span
-                    class="flex items-center gap-1 text-[10px] font-semibold uppercase"
-                    [class]="connected() ? 'text-gain' : 'text-muted-foreground'"
-                    ><ng-icon name="lucideRadio" />{{ connected() ? 'Live' : 'Reconnecting' }}</span
-                  >
                 </div>
                 @switch (insightTab()) {
                   @case ('overview') {
-                    <div class="insight-content insight-feed">
-                      <header class="insight-intro">
-                        <span>Demo overview</span>
-                        <strong>Current market read</strong>
-                        <p>
-                          {{ active.symbol }} is showing steady short-term strength with balanced
-                          risk.
-                        </p>
-                      </header>
-                      <div class="insight-item">
-                        <div>
-                          <span>Price direction</span><strong class="text-gain">Positive</strong>
+                    <div class="insight-content insight-feed overview-feed">
+                      <div class="overview-card-list">
+                        <article class="overview-card">
+                          <div class="overview-card-topline">
+                            <div class="overview-card-icon" aria-hidden="true">
+                              <ng-icon name="lucideTrendingUp" />
+                            </div>
+                            <div class="overview-card-heading">
+                              <span>Trend</span>
+                              <strong class="text-gain">Positive</strong>
+                            </div>
+                          </div>
+                          <div
+                            class="overview-progress overview-progress-positive"
+                            role="progressbar"
+                            aria-label="Trend level"
+                            aria-valuemin="0"
+                            aria-valuemax="5"
+                            aria-valuenow="4"
+                          >
+                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
+                              <span [class.overview-progress-filled]="segment <= 4"></span>
+                            }
+                          </div>
+                        </article>
+                        <article class="overview-card">
+                          <div class="overview-card-topline">
+                            <div class="overview-card-icon" aria-hidden="true">
+                              <ng-icon name="lucideUsersRound" />
+                            </div>
+                            <div class="overview-card-heading">
+                              <span>Popularity</span>
+                              <strong>Above average</strong>
+                            </div>
+                          </div>
+                          <div
+                            class="overview-progress"
+                            role="progressbar"
+                            aria-label="Popularity level"
+                            aria-valuemin="0"
+                            aria-valuemax="5"
+                            aria-valuenow="4"
+                          >
+                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
+                              <span [class.overview-progress-filled]="segment <= 4"></span>
+                            }
+                          </div>
+                        </article>
+                        <article class="overview-card">
+                          <div class="overview-card-topline">
+                            <div class="overview-card-icon" aria-hidden="true">
+                              <ng-icon name="lucideActivity" />
+                            </div>
+                            <div class="overview-card-heading">
+                              <span>Activity</span>
+                              <strong>Elevated</strong>
+                            </div>
+                          </div>
+                          <div
+                            class="overview-progress"
+                            role="progressbar"
+                            aria-label="Activity level"
+                            aria-valuemin="0"
+                            aria-valuemax="5"
+                            aria-valuenow="4"
+                          >
+                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
+                              <span [class.overview-progress-filled]="segment <= 4"></span>
+                            }
+                          </div>
+                        </article>
+                        <article class="overview-card">
+                          <div class="overview-card-topline">
+                            <div class="overview-card-icon" aria-hidden="true">
+                              <ng-icon name="lucideShieldCheck" />
+                            </div>
+                            <div class="overview-card-heading">
+                              <span>Short-term risk</span>
+                              <strong class="overview-risk">Moderate</strong>
+                            </div>
+                          </div>
+                          <div
+                            class="overview-progress overview-progress-risk"
+                            role="progressbar"
+                            aria-label="Short-term risk level"
+                            aria-valuemin="0"
+                            aria-valuemax="5"
+                            aria-valuenow="3"
+                          >
+                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
+                              <span [class.overview-progress-filled]="segment <= 3"></span>
+                            }
+                          </div>
+                        </article>
+                        <article class="overview-card">
+                          <div class="overview-card-topline">
+                            <div class="overview-card-icon" aria-hidden="true">
+                              <ng-icon name="lucideCrosshair" />
+                            </div>
+                            <div class="overview-card-heading">
+                              <span>Key level</span>
+                              <strong>{{ marketStats().low | currency: 'USD' }}</strong>
+                            </div>
+                          </div>
+                          <div
+                            class="overview-progress"
+                            role="progressbar"
+                            aria-label="Key level strength"
+                            aria-valuemin="0"
+                            aria-valuemax="5"
+                            aria-valuenow="4"
+                          >
+                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
+                              <span [class.overview-progress-filled]="segment <= 4"></span>
+                            }
+                          </div>
+                        </article>
+                        <article class="overview-card">
+                          <div class="overview-card-topline">
+                            <div class="overview-card-icon" aria-hidden="true">
+                              <ng-icon name="lucideMessageSquareText" />
+                            </div>
+                            <div class="overview-card-heading">
+                              <span>Sentiment</span>
+                              <strong class="text-gain">Bullish</strong>
+                            </div>
+                          </div>
+                          <div
+                            class="overview-progress overview-progress-positive"
+                            role="progressbar"
+                            aria-label="Sentiment level"
+                            aria-valuemin="0"
+                            aria-valuemax="5"
+                            aria-valuenow="4"
+                          >
+                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
+                              <span [class.overview-progress-filled]="segment <= 4"></span>
+                            }
+                          </div>
+                        </article>
+                      </div>
+                      <aside class="overview-summary">
+                        <div class="overview-summary-content">
+                          <strong>Session brief</strong>
+                          <p>
+                            {{ active.symbol }} shows steady strength, elevated activity, and
+                            positive sentiment with moderate near-term risk.
+                          </p>
+                          <p>
+                            Support is forming near
+                            {{ marketStats().low | currency: 'USD' }}, while simulated participation
+                            remains above average. Signal scores are illustrative.
+                          </p>
                         </div>
-                        <p>
-                          Price is holding above the session open and momentum remains constructive.
-                        </p>
-                      </div>
-                      <div class="insight-item">
-                        <div><span>Market activity</span><strong>Above average</strong></div>
-                        <p>Trading activity is elevated enough to support the current move.</p>
-                      </div>
-                      <div class="insight-item">
-                        <div>
-                          <span>Short-term risk</span><strong class="text-primary">Moderate</strong>
-                        </div>
-                        <p>
-                          The trend is positive, but price may move quickly near the session high.
-                        </p>
-                      </div>
-                      <div class="insight-item">
-                        <div>
-                          <span>Key level</span
-                          ><strong>{{ marketStats().low | currency: 'USD' }}</strong>
-                        </div>
-                        <p>
-                          The session low is the nearest simple level to watch for weakening
-                          momentum.
-                        </p>
-                      </div>
+                      </aside>
                     </div>
                   }
                   @case ('news') {
-                    <div class="insight-content insight-feed">
+                    <div class="insight-content insight-feed news-feed">
                       <header class="insight-intro">
-                        <span>Demo news</span>
                         <strong>Latest headlines</strong>
-                        <p>Simulated stories that may help explain today’s price movement.</p>
                       </header>
-                      <div class="insight-item">
-                        <div><span>12 min ago</span><strong>Market update</strong></div>
-                        <p>
-                          {{ active.symbol }} holds near its session high as trading activity
-                          increases.
-                        </p>
-                      </div>
-                      <div class="insight-item">
-                        <div><span>48 min ago</span><strong>Sector watch</strong></div>
-                        <p>
-                          Large-cap peers trade higher as investors favor established companies.
-                        </p>
-                      </div>
-                      <div class="insight-item">
-                        <div><span>2 hr ago</span><strong>Company outlook</strong></div>
-                        <p>
-                          Analysts continue to focus on demand, margins, and the next earnings
-                          update.
-                        </p>
+                      <div class="news-list" aria-label="Simulated market headlines">
+                        @for (story of demoNews; track story.title) {
+                          <article class="news-story">
+                            <div class="news-meta">
+                              <time>{{ story.age }}</time>
+                              <span>{{ story.category }}</span>
+                            </div>
+                            <div class="news-story-heading">
+                              <h3>
+                                @if (story.includeSymbol) {
+                                  {{ active.symbol }} {{ story.title }}
+                                } @else {
+                                  {{ story.title }}
+                                }
+                              </h3>
+                              <span class="news-arrow" aria-hidden="true">›</span>
+                            </div>
+                          </article>
+                        }
                       </div>
                     </div>
                   }

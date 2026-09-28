@@ -227,18 +227,74 @@ describe('MarketPageComponent', () => {
     );
   });
 
+  it('keeps the header search above the chart controls', async () => {
+    const fixture = await setup();
+    const header = fixture.nativeElement.querySelector('.market-nav') as HTMLElement;
+    const profile = fixture.nativeElement.querySelector(
+      '[aria-label="Profile, not available yet"]',
+    ) as HTMLButtonElement;
+
+    expect(getComputedStyle(header).position).toBe('relative');
+    expect(Number(getComputedStyle(header).zIndex)).toBeGreaterThan(30);
+    expect(header.classList).not.toContain('border-b');
+    expect(profile.classList).toContain('border-border');
+    expect(profile.className).not.toContain('border-primary');
+  });
+
   it('renders overview and news feeds plus an empty AI chat state', async () => {
     const fixture = await setup();
-    expect(fixture.nativeElement.textContent).toContain('Current market read');
+    expect(fixture.nativeElement.textContent).not.toContain('Current market read');
     expect(fixture.nativeElement.textContent).toContain('Short-term risk');
-    expect(fixture.nativeElement.querySelectorAll('.insight-item').length).toBe(4);
+    expect(fixture.nativeElement.textContent).toContain('Popularity');
+    expect(fixture.nativeElement.textContent).toContain('Sentiment');
+    expect(fixture.nativeElement.textContent).toContain('Bullish');
+    expect(fixture.nativeElement.querySelectorAll('.overview-card')).toHaveLength(6);
+    expect(fixture.nativeElement.querySelectorAll('.overview-card-icon')).toHaveLength(6);
+    expect(fixture.nativeElement.querySelectorAll('[role="progressbar"]')).toHaveLength(6);
+    expect(fixture.nativeElement.querySelectorAll('.overview-progress span')).toHaveLength(30);
+    expect(fixture.nativeElement.querySelector('.overview-summary')?.textContent).toContain(
+      'AAPL shows steady strength, elevated activity, and positive sentiment',
+    );
+    expect(fixture.nativeElement.querySelector('.overview-summary')?.textContent).toContain(
+      'Signal scores are illustrative',
+    );
+    expect(
+      fixture.nativeElement
+        .querySelector('[aria-label="Short-term risk level"]')
+        ?.getAttribute('aria-valuenow'),
+    ).toBe('3');
+    expect(
+      fixture.nativeElement
+        .querySelector('[aria-label="Key level strength"]')
+        ?.getAttribute('aria-valuenow'),
+    ).toBe('4');
+    expect(fixture.nativeElement.querySelector('.overview-risk')?.textContent).toContain(
+      'Moderate',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain('Reconnecting');
     const tabs = Array.from(
       fixture.nativeElement.querySelectorAll('[role="tab"]'),
     ) as HTMLButtonElement[];
+    expect(tabs.find((tab) => tab.textContent?.trim() === 'Overview')?.classList).toContain(
+      'bg-primary',
+    );
     tabs.find((tab) => tab.textContent?.trim() === 'News')?.click();
     fixture.detectChanges();
+    expect(tabs.find((tab) => tab.textContent?.trim() === 'News')?.classList).toContain(
+      'bg-primary',
+    );
     expect(fixture.nativeElement.textContent).toContain('Latest headlines');
-    expect(fixture.nativeElement.querySelectorAll('.insight-item').length).toBe(3);
+    expect(fixture.nativeElement.querySelector('.news-hero')).toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('.news-story').length).toBe(5);
+    expect(fixture.nativeElement.querySelector('.news-story')?.textContent).toContain(
+      'AAPL holds near its session high',
+    );
+    expect(fixture.nativeElement.textContent).toContain('Market update');
+    expect(fixture.nativeElement.textContent).toContain('Sector watch');
+    expect(fixture.nativeElement.textContent).toContain('Company outlook');
+    expect(fixture.nativeElement.textContent).toContain('Macroeconomy');
+    expect(fixture.nativeElement.textContent).toContain('Earnings');
+    expect(fixture.nativeElement.querySelectorAll('.news-arrow')).toHaveLength(5);
     tabs.find((tab) => tab.textContent?.trim() === 'AI')?.click();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Ask about AAPL');
