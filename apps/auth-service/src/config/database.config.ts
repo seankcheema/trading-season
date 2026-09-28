@@ -23,7 +23,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
   database: process.env.DB_NAME || 'trading_season',
   entities: [User, RefreshToken],
 
-  // The schema belongs to Flyway, in apps/business-backend/db/migrations.
+  // The schema belongs to the migrations in apps/market-data/db/migrations.
   // Two migration tools pointed at one database is how half a schema gets
   // dropped, so this service reads and writes tables it never creates.
   //

@@ -149,9 +149,9 @@ On Linux, check the actual free space on the filesystem containing PostgreSQL da
 
 ```sh
 free_disk_gb="$(df -Pk / | awk 'NR == 2 { print $4 / 1048576 }')"
-python3 -m venv apps/business-backend/db/.venv
-apps/business-backend/db/.venv/bin/python -m pip install -r apps/business-backend/db/scripts/requirements.txt
-apps/business-backend/db/.venv/bin/python apps/business-backend/db/scripts/0004-import-synthetic-market-data.py \
+python3 -m venv apps/market-data/db/.venv
+apps/market-data/db/.venv/bin/python -m pip install -r apps/market-data/db/scripts/requirements.txt
+apps/market-data/db/.venv/bin/python apps/market-data/db/scripts/0004-import-synthetic-market-data.py \
   --tick-storage parquet \
   --available-disk-gb "$free_disk_gb" \
   --database-url postgresql://trading_season:password@localhost:5432/trading_season
@@ -159,7 +159,7 @@ apps/business-backend/db/.venv/bin/python apps/business-backend/db/scripts/0004-
 
 Do not inflate the reported value or run this command until the archive has been copied and validated. The importer performs an additional capacity check before each pending month.
 
-The generated `2026-v1` archive is stored locally in `apps/business-backend/db/seeds/synthetic-market-data-2026-v1` and is not committed to Git. A full archive contains 61,074,000 one-second ticks and 1,017,900 tick-derived one-minute candles.
+The generated `2026-v1` archive is stored locally in `apps/market-data/db/seeds/synthetic-market-data-2026-v1` and is not committed to Git. A full archive contains 61,074,000 one-second ticks and 1,017,900 tick-derived one-minute candles.
 
 Run the complete routine workflow from the repository root with one command. It creates the virtual environment if needed, installs dependencies, generates or reuses the archive, carries the completed validation forward to the importer, and displays progress while loading PostgreSQL:
 
