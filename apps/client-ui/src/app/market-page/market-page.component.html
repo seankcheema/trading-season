@@ -124,18 +124,18 @@
                           <dd>{{ item.volume | number: '1.0-0' }}</dd>
                         </div>
                       </dl>
-                      @if (toolsCollapsed() && item.instrument.symbol === compared.symbol) {
-                        <button
-                          type="button"
-                          class="tool-icon tools-open-button comparison-tools-open"
-                          aria-label="Open market tools"
-                          title="Open market tools"
-                          (click)="toolsCollapsed.set(false)"
-                        >
-                          <ng-icon class="chevron-rotate" name="lucideChevronLeft" />
-                        </button>
-                      }
                     </article>
+                  }
+                  @if (toolsCollapsed() && comparisonInstrument()) {
+                    <button
+                      type="button"
+                      class="tool-icon tools-open-button"
+                      aria-label="Open market tools"
+                      title="Open market tools"
+                      (click)="toolsCollapsed.set(false)"
+                    >
+                      <ng-icon class="chevron-rotate" name="lucideChevronLeft" />
+                    </button>
                   }
                 </section>
               } @else {
@@ -203,9 +203,7 @@
                 class="chart-panel border-border bg-card rounded-xl border p-3"
                 [class.chart-panel-with-rsi]="rsiEnabled()"
               >
-                <div
-                  class="border-border flex flex-wrap items-center justify-between gap-2 border-b pb-2"
-                >
+                <div class="chart-toolbar">
                   <app-timeframe-toggle [(value)]="timeframe" />
                   <div class="flex flex-wrap items-center justify-end gap-1.5">
                     <div class="indicator-dropdown relative">
@@ -304,7 +302,7 @@
                     <div class="comparison-dropdown relative">
                       <button
                         type="button"
-                        class="tool-button"
+                        class="tool-button comparison-button"
                         [class.tool-button-active]="
                           comparisonPickerOpen() || comparisonInstrument()
                         "
@@ -313,8 +311,22 @@
                         aria-controls="comparison-picker"
                         (click)="$event.stopPropagation(); toggleToolbarMenu('comparison')"
                       >
-                        <ng-icon name="lucideGitCompare" />
-                        {{ comparisonInstrument()?.symbol ?? 'Compare' }}
+                        <span class="comparison-left">
+                          <ng-icon name="lucideGitCompare" />
+                          {{ comparisonInstrument()?.symbol ?? 'Compare' }}
+                        </span>
+                        @if (comparisonInstrument()) {
+                          <span
+                            class="comparison-right"
+                            (click)="$event.stopPropagation(); removeComparison()"
+                            role="button"
+                            tabindex="-1"
+                            aria-label="Remove comparison"
+                            title="Remove comparison"
+                          >
+                            <ng-icon name="lucideX" />
+                          </span>
+                        }
                       </button>
                       @if (comparisonPickerOpen()) {
                         <div
@@ -340,21 +352,34 @@
                         </div>
                       }
                     </div>
-                    @if (comparisonInstrument()) {
-                      <button
-                        type="button"
-                        class="tool-icon"
-                        aria-label="Remove comparison"
-                        title="Remove comparison"
-                        (click)="removeComparison()"
-                      >
-                        <ng-icon name="lucideX" />
-                      </button>
-                    }
                   </div>
                 </div>
                 <div class="chart-stage" [class.chart-stage-comparing]="comparisonInstrument()">
                   @if (comparisonInstrument(); as compared) {
+                    <div class="comparison-price-label-left">
+                      <span class="text-xs font-semibold">{{ active.symbol }}</span>
+                      <span class="text-xs font-semibold tabular-nums">
+                        {{ active.price | currency: 'USD': 'symbol': '1.2-2' }}
+                      </span>
+                      <span
+                        class="text-xs font-semibold tabular-nums"
+                        [class]="active.change >= 0 ? 'text-gain' : 'text-loss'"
+                      >
+                        {{ active.change | number: '1.1-1' }} ({{ active.changePercent | signedPercent }})
+                      </span>
+                    </div>
+                    <div class="comparison-price-label-right">
+                      <span class="text-xs font-semibold">{{ compared.symbol }}</span>
+                      <span class="text-xs font-semibold tabular-nums">
+                        {{ compared.price | currency: 'USD': 'symbol': '1.2-2' }}
+                      </span>
+                      <span
+                        class="text-xs font-semibold tabular-nums"
+                        [class]="compared.change >= 0 ? 'text-gain' : 'text-loss'"
+                      >
+                        {{ compared.change | number: '1.1-1' }} ({{ compared.changePercent | signedPercent }})
+                      </span>
+                    </div>
                     <div class="comparison-charts">
                       <section
                         class="comparison-chart"

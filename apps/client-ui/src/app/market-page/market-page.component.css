@@ -10,7 +10,7 @@
 .market-nav {
   position: relative;
   z-index: 100;
-  height: 4rem;
+  height: 4.5rem;
 }
 .nav-back {
   display: flex;
@@ -111,7 +111,7 @@
   padding-left: 0;
 }
 .comparison-summary-item:nth-child(2) {
-  padding-right: 0;
+  padding-right: 3rem;
 }
 .comparison-identity {
   display: flex;
@@ -158,6 +158,14 @@
   margin-left: auto;
 }
 
+.comparison-summary .tools-open-button {
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0;
+}
+
 .market-grid {
   display: grid;
   grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);
@@ -186,11 +194,21 @@
 
 .chart-panel {
   display: flex;
-  min-height: 32rem;
+  min-height: 33.5rem;
   min-width: 0;
   flex: 1;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.chart-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: .75rem;
+  padding-top: 0.25rem;
 }
 
 .chart-mode-option {
@@ -222,7 +240,38 @@
   border-radius: 0.75rem;
   background: #0e0e0e;
   padding: 0.75rem;
+  position: relative;
 }
+
+.comparison-price-label-left {
+  position: absolute;
+  top: 0.75rem;
+  right: calc(50% + 0.75rem);
+  z-index: 20;
+  display: flex;
+  flex-direction: row;
+  gap: 0.5rem;
+  align-items: center;
+  pointer-events: none;
+}
+
+.comparison-price-label-right {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 20;
+  display: flex;
+  flex-direction: row;
+  gap: 0.5rem;
+  align-items: center;
+  pointer-events: none;
+}
+
+.chart-stage ::ng-deep .chart-controls {
+  right: 0.75rem !important;
+  left: auto !important;
+}
+
 .chart-message {
   display: flex;
   height: 100%;
@@ -253,6 +302,50 @@
 }
 .comparison-picker app-instrument-search {
   width: 100%;
+}
+
+.comparison-dropdown {
+  position: relative;
+}
+
+.comparison-button {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.comparison-left {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.comparison-right {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 0 0.125rem;
+  transition: opacity 0.2s;
+}
+
+.comparison-right:hover {
+  opacity: 0.7;
+}
+
+.comparison-picker app-instrument-search ::ng-deep .instrument-search-input {
+  border-bottom: none !important;
+}
+
+.comparison-picker app-instrument-search ::ng-deep input {
+  border-bottom: none !important;
+}
+
+.comparison-picker app-instrument-search ::ng-deep input:hover {
+  border-bottom: none !important;
+}
+
+.comparison-picker app-instrument-search ::ng-deep input:focus {
+  border-bottom: none !important;
 }
 .comparison-charts {
   display: grid;
