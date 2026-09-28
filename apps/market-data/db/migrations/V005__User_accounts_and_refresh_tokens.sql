@@ -1,4 +1,4 @@
--- V004: the auth service no longer has a database of its own (KAN-45/KAN-143).
+-- V005: the auth service no longer has a database of its own (KAN-45/KAN-143).
 -- Its credentials move into this database as user_accounts, and it owns
 -- refresh_tokens here.
 --
@@ -17,7 +17,7 @@
 -- rows, "profile exists" is simply whether a users row is present, and the
 -- users table keeps every NOT NULL it has today.
 --
--- Apply after V003. Purely additive: no column is dropped, altered or relaxed.
+-- Apply after V004. Purely additive: no column is dropped, altered or relaxed.
 
 BEGIN;
 
