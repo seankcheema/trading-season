@@ -51,6 +51,8 @@ import {
   ChartMode,
   closePricePoints,
   MarketCandlePoint,
+  TECHNICAL_INDICATOR_PERIODS,
+  TechnicalIndicator,
   marketCandlePoints,
   marketSymbolSlug,
   normalizeMarketSymbol,
@@ -63,7 +65,7 @@ import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
 type InsightTab = 'overview' | 'news' | 'ai';
-type ToolbarMenu = 'chart-mode' | 'comparison';
+type ToolbarMenu = 'indicators' | 'chart-mode' | 'comparison';
 
 interface AiMessage {
   role: 'user' | 'assistant';
@@ -205,6 +207,25 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly aiMessages = signal<AiMessage[]>([]);
   protected readonly toolsCollapsed = signal(false);
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
+  protected readonly enabledIndicators = signal<readonly TechnicalIndicator[]>([]);
+  protected readonly indicatorOptions = [
+    { value: 'sma', label: 'SMA', period: TECHNICAL_INDICATOR_PERIODS.sma, detail: '' },
+    { value: 'ema', label: 'EMA', period: TECHNICAL_INDICATOR_PERIODS.ema, detail: '' },
+    {
+      value: 'bollinger',
+      label: 'Bollinger Bands',
+      period: TECHNICAL_INDICATOR_PERIODS.bollinger,
+      detail: ' · 2σ',
+    },
+    { value: 'rsi', label: 'RSI', period: TECHNICAL_INDICATOR_PERIODS.rsi, detail: '' },
+  ] as const satisfies readonly {
+    value: TechnicalIndicator;
+    label: string;
+    period: number;
+    detail: string;
+  }[];
+  protected readonly indicatorPickerOpen = computed(() => this.openToolbarMenu() === 'indicators');
+  protected readonly rsiEnabled = computed(() => this.enabledIndicators().includes('rsi'));
   protected readonly comparisonPickerOpen = computed(() => this.openToolbarMenu() === 'comparison');
   protected readonly chartModePickerOpen = computed(() => this.openToolbarMenu() === 'chart-mode');
   protected readonly candleRevision = signal(0);
@@ -365,6 +386,14 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     this.openToolbarMenu.update((open) => (open === menu ? null : menu));
   }
 
+  protected toggleIndicator(indicator: TechnicalIndicator): void {
+    this.enabledIndicators.update((enabled) =>
+      enabled.includes(indicator)
+        ? enabled.filter((candidate) => candidate !== indicator)
+        : [...enabled, indicator],
+    );
+  }
+
   protected submitAiPrompt(event: Event, symbol: string): void {
     event.preventDefault();
     const prompt = this.aiDraft().trim();
@@ -385,7 +414,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     const target = event.target;
     if (
       target instanceof Element &&
-      (target.closest('.comparison-dropdown') || target.closest('.chart-mode-dropdown'))
+      (target.closest('.comparison-dropdown') ||
+        target.closest('.chart-mode-dropdown') ||
+        target.closest('.indicator-dropdown'))
     ) {
       return;
     }

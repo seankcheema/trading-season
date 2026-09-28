@@ -199,20 +199,67 @@
                 </section>
               }
 
-              <section class="chart-panel border-border bg-card rounded-xl border p-3">
+              <section
+                class="chart-panel border-border bg-card rounded-xl border p-3"
+                [class.chart-panel-with-rsi]="rsiEnabled()"
+              >
                 <div
                   class="border-border flex flex-wrap items-center justify-between gap-2 border-b pb-2"
                 >
                   <app-timeframe-toggle [(value)]="timeframe" />
-                  <div class="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      class="tool-button"
-                      disabled
-                      title="Indicators are not available yet"
-                    >
-                      <ng-icon name="lucideSlidersHorizontal" /> Indicators
-                    </button>
+                  <div class="flex flex-wrap items-center justify-end gap-1.5">
+                    <div class="indicator-dropdown relative">
+                      <button
+                        type="button"
+                        class="tool-button"
+                        [class.tool-button-active]="
+                          indicatorPickerOpen() || enabledIndicators().length
+                        "
+                        [attr.aria-expanded]="indicatorPickerOpen()"
+                        aria-haspopup="menu"
+                        aria-controls="indicator-picker"
+                        (click)="$event.stopPropagation(); toggleToolbarMenu('indicators')"
+                      >
+                        <ng-icon name="lucideSlidersHorizontal" /> Indicators
+                        @if (enabledIndicators().length) {
+                          <span
+                            class="text-primary bg-primary/15 inline-flex size-4 items-center justify-center rounded-full text-[9px]"
+                            >{{ enabledIndicators().length }}</span
+                          >
+                        }
+                      </button>
+                      @if (indicatorPickerOpen()) {
+                        <div
+                          id="indicator-picker"
+                          class="comparison-picker indicator-picker"
+                          style="width: 11rem; gap: 0.125rem; padding: 0.25rem"
+                          role="menu"
+                          aria-label="Technical indicators"
+                        >
+                          <span class="text-muted-foreground p-2 text-xs font-semibold"
+                            >Technical indicators</span
+                          >
+                          @for (option of indicatorOptions; track option.value) {
+                            <button
+                              type="button"
+                              class="text-muted-foreground hover:bg-primary/10 hover:text-primary flex min-h-8 items-center gap-2 rounded-md px-2 text-left text-[11px] font-semibold"
+                              role="menuitemcheckbox"
+                              [attr.aria-checked]="enabledIndicators().includes(option.value)"
+                              (click)="$event.stopPropagation(); toggleIndicator(option.value)"
+                            >
+                              <span
+                                class="indicator-checkbox"
+                                [class.indicator-checkbox-checked]="
+                                  enabledIndicators().includes(option.value)
+                                "
+                                aria-hidden="true"
+                              ></span>
+                              <span>{{ option.label }} {{ option.period }}{{ option.detail }}</span>
+                            </button>
+                          }
+                        </div>
+                      }
+                    </div>
                     <div class="chart-mode-dropdown relative">
                       <button
                         type="button"
@@ -323,6 +370,7 @@
                               [candles]="chartCandles()"
                               [points]="chartPoints()"
                               [mode]="chartMode()"
+                              [enabledIndicators]="enabledIndicators()"
                               [timeframe]="timeframe()"
                               timezone="America/Chicago"
                             />
@@ -356,6 +404,7 @@
                               [candles]="comparisonChartCandles()"
                               [points]="comparisonChartPoints()"
                               [mode]="chartMode()"
+                              [enabledIndicators]="enabledIndicators()"
                               [timeframe]="timeframe()"
                               timezone="America/Chicago"
                             />
@@ -387,6 +436,7 @@
                           [candles]="chartCandles()"
                           [points]="chartPoints()"
                           [mode]="chartMode()"
+                          [enabledIndicators]="enabledIndicators()"
                           [timeframe]="timeframe()"
                           timezone="America/Chicago"
                         />
@@ -403,10 +453,24 @@
                     }
                   }
                 </div>
-                <footer class="technical-footer border-border bg-[#181818] border">
-                  <span class="font-semibold">Technical indicators</span
-                  ><span class="text-muted-foreground">Not available yet</span>
-                </footer>
+                @if (!rsiEnabled()) {
+                  <footer class="technical-footer border-border bg-[#181818] border">
+                    <span class="font-semibold">Technical indicators</span>
+                    @if (enabledIndicators().length) {
+                      <div class="indicator-legend" aria-label="Enabled technical indicators">
+                        @for (option of indicatorOptions; track option.value) {
+                          @if (enabledIndicators().includes(option.value)) {
+                            <span [attr.data-indicator]="option.value"
+                              >{{ option.label }} {{ option.period }}{{ option.detail }}</span
+                            >
+                          }
+                        }
+                      </div>
+                    } @else {
+                      <span class="text-muted-foreground">Choose indicators from the toolbar</span>
+                    }
+                  </footer>
+                }
               </section>
             </div>
 
@@ -460,7 +524,7 @@
                             </div>
                             <div class="overview-card-heading">
                               <span>Trend</span>
-                              <strong class="text-gain">Positive</strong>
+                              <strong>Positive</strong>
                             </div>
                           </div>
                           <div
@@ -575,7 +639,7 @@
                             </div>
                             <div class="overview-card-heading">
                               <span>Sentiment</span>
-                              <strong class="text-gain">Bullish</strong>
+                              <strong>Bullish</strong>
                             </div>
                           </div>
                           <div

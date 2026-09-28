@@ -202,6 +202,18 @@
   font-weight: 600;
   text-align: left;
 }
+.indicator-checkbox {
+  width: 0.75rem;
+  height: 0.75rem;
+  flex: 0 0 auto;
+  border: 1px solid rgba(238, 250, 255, 0.3);
+  border-radius: 0.2rem;
+}
+.indicator-checkbox-checked {
+  border-color: #00bbff;
+  background: #00bbff;
+  box-shadow: inset 0 0 0 2px #181818;
+}
 .chart-stage {
   min-height: 25rem;
   flex: 1;
@@ -271,6 +283,24 @@
   border-radius: 0.75rem;
   padding: 0.5rem 0.75rem;
   font-size: 0.6875rem;
+}
+.indicator-legend {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.indicator-legend span[data-indicator='sma'] {
+  color: #f6c453;
+}
+.indicator-legend span[data-indicator='ema'] {
+  color: #b784ff;
+}
+.indicator-legend span[data-indicator='bollinger'] {
+  color: #ff8f66;
+}
+.indicator-legend span[data-indicator='rsi'] {
+  color: #42d3ff;
 }
 
 .tool-button,
@@ -436,16 +466,13 @@
 .overview-card-heading > strong {
   display: flex;
   align-items: flex-start;
-  color: rgba(238, 250, 255, 0.9);
+  color: rgba(255, 255, 255, 0.9);
   font-size: 0.66rem;
   line-height: 1.15;
   overflow-wrap: anywhere;
 }
-.overview-card-heading > strong.text-gain {
-  color: var(--color-gain);
-}
 .overview-card-heading > strong.overview-risk {
-  color: #e8b968;
+  color: rgba(255, 255, 255, 0.9);
 }
 .overview-progress {
   display: grid;
@@ -460,13 +487,7 @@
   background: rgba(238, 250, 255, 0.12);
 }
 .overview-progress span.overview-progress-filled {
-  background: rgba(238, 250, 255, 0.5);
-}
-.overview-progress-positive span.overview-progress-filled {
-  background: rgba(51, 255, 0, 0.72);
-}
-.overview-progress-risk span.overview-progress-filled {
-  background: rgba(232, 185, 104, 0.72);
+  background: rgba(255, 255, 255, 0.8);
 }
 .overview-summary {
   display: grid;
@@ -637,6 +658,9 @@
   .tools-column {
     order: 1;
   }
+  .chart-panel-with-rsi .chart-stage {
+    min-height: 33rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -664,6 +688,9 @@
   .chart-stage-comparing {
     min-height: 43rem;
   }
+  .chart-panel-with-rsi .chart-stage-comparing {
+    min-height: 59rem;
+  }
 }
 
 @media (max-width: 640px) {
@@ -680,6 +707,12 @@
   .chart-stage {
     min-height: 20rem;
     padding: 0.5rem;
+  }
+  .chart-panel-with-rsi .chart-stage {
+    min-height: 26rem;
+  }
+  .chart-panel-with-rsi .chart-stage-comparing {
+    min-height: 55rem;
   }
   .market-metrics {
     display: grid;
@@ -706,5 +739,10 @@
   }
   .tool-button {
     padding: 0 0.4rem;
+  }
+  .technical-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.4rem;
   }
 }

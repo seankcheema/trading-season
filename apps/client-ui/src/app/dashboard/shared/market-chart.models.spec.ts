@@ -1,14 +1,29 @@
 import {
   applyLiveCandlePrice,
   applyLivePrice,
+  bollingerBands,
   candlePricePoints,
+  exponentialMovingAverage,
+  MarketCandlePoint,
   marketCandlePoints,
   marketSymbolSlug,
   normalizeMarketSymbol,
   percentChangePoints,
+  relativeStrengthIndex,
+  simpleMovingAverage,
 } from './market-chart.models';
 
 describe('market chart models', () => {
+  const candlesFromCloses = (closes: number[]): MarketCandlePoint[] =>
+    closes.map((close, index) => ({
+      time: new Date(Date.UTC(2026, 0, 1, 0, index)),
+      open: close,
+      high: close,
+      low: close,
+      close,
+      volume: 1,
+    }));
+
   it('normalizes API symbols and canonical URL slugs', () => {
     expect(normalizeMarketSymbol(' aapl ')).toBe('AAPL');
     expect(marketSymbolSlug('NvDa')).toBe('nvda');
@@ -80,5 +95,52 @@ describe('market chart models', () => {
       { timestamp: '2026-01-05T15:02:00Z', open: 11, high: 11, low: 8, close: 9, volume: 3 },
     ]);
     expect(percentChangePoints(candles).map((point) => point.value)).toEqual([0, 10, -10]);
+  });
+
+  it('calculates SMA only after a complete period and preserves timestamps', () => {
+    const candles = candlesFromCloses([1, 2, 3, 4, 5]);
+    const values = simpleMovingAverage(candles, 3);
+    expect(values.map((point) => point.value)).toEqual([2, 3, 4]);
+    expect(values.map((point) => point.time)).toEqual(candles.slice(2).map((point) => point.time));
+  });
+
+  it('seeds EMA with the first SMA and smooths subsequent closes', () => {
+    const values = exponentialMovingAverage(candlesFromCloses([1, 2, 3, 6]), 3);
+    expect(values.map((point) => point.value)).toEqual([2, 4]);
+  });
+
+  it('calculates Bollinger Bands with a 20-period mean and two standard deviations', () => {
+    const candles = candlesFromCloses([1, 2, 3, 4]);
+    const bands = bollingerBands(candles, 4, 2);
+    expect(bands).toHaveLength(1);
+    expect(bands[0].time).toBe(candles[3].time);
+    expect(bands[0].middle).toBe(2.5);
+    expect(bands[0].upper).toBeCloseTo(4.736, 3);
+    expect(bands[0].lower).toBeCloseTo(0.264, 3);
+  });
+
+  it('calculates Wilder RSI for rising, falling, and flat prices', () => {
+    expect(relativeStrengthIndex(candlesFromCloses([1, 2, 3, 4]), 3)[0].value).toBe(100);
+    expect(relativeStrengthIndex(candlesFromCloses([4, 3, 2, 1]), 3)[0].value).toBe(0);
+    expect(relativeStrengthIndex(candlesFromCloses([2, 2, 2, 2]), 3)[0].value).toBe(50);
+
+    const smoothed = relativeStrengthIndex(candlesFromCloses([1, 2, 3, 4, 3]), 3);
+    expect(smoothed.at(-1)?.value).toBeCloseTo(66.67, 2);
+  });
+
+  it('omits indicators until enough candles exist', () => {
+    const candles = candlesFromCloses([1, 2]);
+    expect(simpleMovingAverage(candles, 3)).toEqual([]);
+    expect(exponentialMovingAverage(candles, 3)).toEqual([]);
+    expect(bollingerBands(candles, 3)).toEqual([]);
+    expect(relativeStrengthIndex(candles, 3)).toEqual([]);
+  });
+
+  it('rejects invalid periods and non-finite candle values', () => {
+    const candles = candlesFromCloses([1, Number.NaN, 3]);
+    expect(simpleMovingAverage(candles, 0)).toEqual([]);
+    expect(exponentialMovingAverage(candles, 2.5)).toEqual([]);
+    expect(bollingerBands(candles, 2, Number.NaN)).toEqual([]);
+    expect(relativeStrengthIndex(candles, 2)).toEqual([]);
   });
 });

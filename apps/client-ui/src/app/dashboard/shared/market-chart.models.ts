@@ -2,6 +2,21 @@ import { CandlePointDto } from '../market-data.service';
 import { PricePoint } from '../mock-data';
 
 export type ChartMode = 'line' | 'area' | 'candles' | 'ohlc' | 'volume' | 'percent';
+export type TechnicalIndicator = 'sma' | 'ema' | 'bollinger' | 'rsi';
+
+export const TECHNICAL_INDICATOR_PERIODS = {
+  sma: 20,
+  ema: 20,
+  bollinger: 20,
+  rsi: 14,
+} as const satisfies Record<TechnicalIndicator, number>;
+
+export interface BollingerBandPoint {
+  time: Date;
+  middle: number;
+  upper: number;
+  lower: number;
+}
 
 export interface MarketCandlePoint {
   time: Date;
@@ -55,6 +70,107 @@ export function percentChangePoints(candles: readonly MarketCandlePoint[]): Pric
     value: ((close - baseline) / baseline) * 100,
     volume,
   }));
+}
+
+/** Calculates a simple moving average and omits points before a complete window exists. */
+export function simpleMovingAverage(
+  candles: readonly MarketCandlePoint[],
+  period: number,
+): PricePoint[] {
+  if (!validIndicatorInput(candles, period)) return [];
+  const points: PricePoint[] = [];
+  let sum = 0;
+  candles.forEach((candle, index) => {
+    sum += candle.close;
+    if (index >= period) sum -= candles[index - period].close;
+    if (index >= period - 1) points.push({ time: candle.time, value: sum / period });
+  });
+  return points;
+}
+
+/** Calculates an EMA seeded by the first complete period's simple moving average. */
+export function exponentialMovingAverage(
+  candles: readonly MarketCandlePoint[],
+  period: number,
+): PricePoint[] {
+  if (!validIndicatorInput(candles, period)) return [];
+  const seed = candles.slice(0, period).reduce((sum, candle) => sum + candle.close, 0) / period;
+  const multiplier = 2 / (period + 1);
+  let value = seed;
+  const points: PricePoint[] = [{ time: candles[period - 1].time, value }];
+  for (let index = period; index < candles.length; index++) {
+    value = (candles[index].close - value) * multiplier + value;
+    points.push({ time: candles[index].time, value });
+  }
+  return points;
+}
+
+/** Calculates Bollinger Bands from a moving average and population standard deviation. */
+export function bollingerBands(
+  candles: readonly MarketCandlePoint[],
+  period: number,
+  deviations = 2,
+): BollingerBandPoint[] {
+  if (!validIndicatorInput(candles, period) || !Number.isFinite(deviations) || deviations < 0) {
+    return [];
+  }
+  const points: BollingerBandPoint[] = [];
+  for (let index = period - 1; index < candles.length; index++) {
+    const window = candles.slice(index - period + 1, index + 1);
+    const middle = window.reduce((sum, candle) => sum + candle.close, 0) / period;
+    const variance = window.reduce((sum, candle) => sum + (candle.close - middle) ** 2, 0) / period;
+    const offset = Math.sqrt(variance) * deviations;
+    points.push({
+      time: candles[index].time,
+      middle,
+      upper: middle + offset,
+      lower: middle - offset,
+    });
+  }
+  return points;
+}
+
+/** Calculates RSI using Wilder smoothing; a flat market is represented by a neutral 50. */
+export function relativeStrengthIndex(
+  candles: readonly MarketCandlePoint[],
+  period: number,
+): PricePoint[] {
+  if (!validIndicatorInput(candles, period) || candles.length <= period) return [];
+  let gains = 0;
+  let losses = 0;
+  for (let index = 1; index <= period; index++) {
+    const change = candles[index].close - candles[index - 1].close;
+    gains += Math.max(change, 0);
+    losses += Math.max(-change, 0);
+  }
+  let averageGain = gains / period;
+  let averageLoss = losses / period;
+  const points: PricePoint[] = [
+    { time: candles[period].time, value: rsiValue(averageGain, averageLoss) },
+  ];
+  for (let index = period + 1; index < candles.length; index++) {
+    const change = candles[index].close - candles[index - 1].close;
+    averageGain = (averageGain * (period - 1) + Math.max(change, 0)) / period;
+    averageLoss = (averageLoss * (period - 1) + Math.max(-change, 0)) / period;
+    points.push({ time: candles[index].time, value: rsiValue(averageGain, averageLoss) });
+  }
+  return points;
+}
+
+function validIndicatorInput(candles: readonly MarketCandlePoint[], period: number): boolean {
+  return (
+    Number.isInteger(period) &&
+    period > 0 &&
+    candles.length >= period &&
+    candles.every((candle) => !Number.isNaN(candle.time.getTime()) && Number.isFinite(candle.close))
+  );
+}
+
+function rsiValue(averageGain: number, averageLoss: number): number {
+  if (averageGain === 0 && averageLoss === 0) return 50;
+  if (averageLoss === 0) return 100;
+  if (averageGain === 0) return 0;
+  return 100 - 100 / (1 + averageGain / averageLoss);
 }
 
 /** Updates the live endpoint without fabricating volume for the incoming price tick. */

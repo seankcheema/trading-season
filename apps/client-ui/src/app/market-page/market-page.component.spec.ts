@@ -174,6 +174,72 @@ describe('MarketPageComponent', () => {
     expect(fixture.nativeElement.querySelector('.chart-price-line')).toBeNull();
   });
 
+  it('starts with indicators off and toggles multiple indicators from the menu', async () => {
+    const fixture = await setup();
+    const component = fixture.componentInstance;
+    const chart = fixture.debugElement.query(By.directive(PriceChartComponent)).componentInstance;
+    const button = fixture.nativeElement.querySelector(
+      '[aria-controls="indicator-picker"]',
+    ) as HTMLButtonElement;
+
+    expect(component['enabledIndicators']()).toEqual([]);
+    expect(chart.enabledIndicators()).toEqual([]);
+    expect(fixture.nativeElement.textContent).toContain('Choose indicators from the toolbar');
+
+    button.click();
+    fixture.detectChanges();
+    const options = Array.from(
+      fixture.nativeElement.querySelectorAll('#indicator-picker [role="menuitemcheckbox"]'),
+    ) as HTMLButtonElement[];
+    expect(options.map((option) => option.textContent?.trim())).toEqual([
+      'SMA 20',
+      'EMA 20',
+      'Bollinger Bands 20 · 2σ',
+      'RSI 14',
+    ]);
+
+    options[0].click();
+    options[2].click();
+    options[3].click();
+    fixture.detectChanges();
+    expect(component['enabledIndicators']()).toEqual(['sma', 'bollinger', 'rsi']);
+    expect(chart.enabledIndicators()).toEqual(['sma', 'bollinger', 'rsi']);
+    expect(fixture.nativeElement.querySelector('.chart-panel').classList).toContain(
+      'chart-panel-with-rsi',
+    );
+    expect(fixture.nativeElement.querySelector('.rsi-pane')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.technical-footer')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.chart-indicator-key').textContent).toContain(
+      'Bollinger 20 · 2σ',
+    );
+  });
+
+  it('closes the indicator menu on outside clicks', async () => {
+    const fixture = await setup();
+    (
+      fixture.nativeElement.querySelector('[aria-controls="indicator-picker"]') as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#indicator-picker')).not.toBeNull();
+
+    document.body.click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#indicator-picker')).toBeNull();
+  });
+
+  it('applies enabled indicators to both comparison charts', async () => {
+    const fixture = await setup('aapl', 'msft');
+    fixture.componentInstance['toggleIndicator']('ema');
+    fixture.componentInstance['toggleIndicator']('rsi');
+    fixture.detectChanges();
+    const charts = fixture.debugElement.queryAll(By.directive(PriceChartComponent));
+    expect(charts).toHaveLength(2);
+    expect(
+      charts.every((chart) => chart.componentInstance.enabledIndicators().join(',') === 'ema,rsi'),
+    ).toBe(true);
+    expect(fixture.nativeElement.querySelectorAll('.rsi-pane')).toHaveLength(2);
+  });
+
   it('keeps only one toolbar dropdown open at a time', async () => {
     const fixture = await setup();
     const chartModeButton = fixture.nativeElement.querySelector(

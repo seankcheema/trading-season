@@ -55,6 +55,27 @@ describe('PriceChartComponent', () => {
     return fixture;
   }
 
+  function setupIndicatorCandles(length = 40, interactive = false) {
+    const candles = Array.from({ length }, (_, index): MarketCandlePoint => {
+      const close = 100 + index + Math.sin(index / 2);
+      return {
+        time: new Date(Date.UTC(2026, 0, 1, 14, index)),
+        open: close - 0.5,
+        high: close + 1,
+        low: close - 1,
+        close,
+        volume: 100 + index,
+      };
+    });
+    const fixture = TestBed.createComponent(PriceChartComponent);
+    fixture.componentRef.setInput('candles', candles);
+    fixture.componentRef.setInput('timeframe', '1D');
+    fixture.componentRef.setInput('interactive', interactive);
+    fixture.componentRef.setInput('enabledIndicators', ['sma', 'ema', 'bollinger', 'rsi']);
+    fixture.detectChanges();
+    return fixture;
+  }
+
   it('renders line and area paths for the simple trend modes', () => {
     const line = setupCandles('line');
     expect(line.nativeElement.querySelector('.chart-price-line')).not.toBeNull();
@@ -83,6 +104,48 @@ describe('PriceChartComponent', () => {
     expect(fixture.nativeElement.querySelectorAll('.chart-volume-bar')).toHaveLength(3);
     expect(fixture.nativeElement.querySelector('.chart-price-line')).toBeNull();
     expect(Math.max(...heights)).toBeGreaterThan(30);
+  });
+
+  it('renders enabled moving-average overlays and the RSI pane', () => {
+    const fixture = setupIndicatorCandles();
+    expect(fixture.nativeElement.querySelector('.chart-indicator-sma')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.chart-indicator-ema')).not.toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('.chart-indicator-bollinger')).toHaveLength(2);
+    expect(fixture.nativeElement.querySelector('.chart-bollinger-area')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.chart-indicator-key').textContent).toContain(
+      'Bollinger 20 · 2σ',
+    );
+    expect(fixture.nativeElement.querySelector('.rsi-pane')).not.toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('.rsi-guide')).toHaveLength(2);
+    expect(fixture.nativeElement.querySelector('.rsi-line')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('RSI 14');
+  });
+
+  it('keeps indicators hidden until they are enabled', () => {
+    const fixture = setupCandles('line');
+    expect(fixture.nativeElement.querySelector('.chart-indicator-line')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.rsi-pane')).toBeNull();
+  });
+
+  it('shows a labeled demo RSI fallback for a short candle series', () => {
+    const fixture = setupIndicatorCandles(10);
+    expect(fixture.nativeElement.querySelector('.chart-indicator-line')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.rsi-line')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Demo');
+    expect(fixture.componentInstance['latestRsi']()).toBe(57);
+  });
+
+  it('keeps indicator paths on the same visible range while zooming', () => {
+    const fixture = setupIndicatorCandles(120, true);
+    const component = fixture.componentInstance;
+    expect(component['visiblePoints']()).toHaveLength(78);
+    component['zoom'](0.5);
+    fixture.detectChanges();
+    expect(component['visiblePoints']()).toHaveLength(39);
+    expect(
+      component['indicatorSvgCoords'](component['smaSeries'](), component['yScale']()).length,
+    ).toBeLessThanOrEqual(39);
+    expect(fixture.nativeElement.querySelector('.rsi-line')).not.toBeNull();
   });
 
   it('normalizes percent mode to zero and formats the axis as percentages', () => {
@@ -292,9 +355,9 @@ describe('PriceChartComponent', () => {
       value: 100 + index,
     }));
     const fixture = setup('1D', points, true);
-    const controlsContainer: HTMLElement = fixture.nativeElement.querySelector(
-      '[aria-label="Zoom out"]',
-    )?.closest('div');
+    const controlsContainer: HTMLElement = fixture.nativeElement
+      .querySelector('[aria-label="Zoom out"]')
+      ?.closest('div');
 
     // Controls should be in a relative positioned header, not absolute
     expect(controlsContainer?.style.position).not.toBe('absolute');

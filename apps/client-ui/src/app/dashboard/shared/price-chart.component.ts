@@ -1,4 +1,10 @@
-import { formatCurrency, formatDate, formatNumber } from '@angular/common';
+import {
+  DecimalPipe,
+  UpperCasePipe,
+  formatCurrency,
+  formatDate,
+  formatNumber,
+} from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -19,8 +25,14 @@ import { PricePoint, Timeframe } from '../mock-data';
 import {
   ChartMode,
   MarketCandlePoint,
+  TECHNICAL_INDICATOR_PERIODS,
+  TechnicalIndicator,
+  bollingerBands,
   closePricePoints,
+  exponentialMovingAverage,
   percentChangePoints,
+  relativeStrengthIndex,
+  simpleMovingAverage,
 } from './market-chart.models';
 import { SignedPercentPipe } from './signed-percent.pipe';
 
@@ -125,7 +137,7 @@ interface TooltipPosition {
 @Component({
   selector: 'app-price-chart',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SignedPercentPipe],
+  imports: [DecimalPipe, SignedPercentPipe, UpperCasePipe],
   host: { class: 'flex flex-col' },
   template: `
     <div
@@ -184,6 +196,20 @@ interface TooltipPosition {
           <span class="text-muted-foreground px-1 text-[10px] tabular-nums"
             >{{ visiblePoints().length }} bars</span
           >
+        </div>
+      }
+      @if (priceIndicatorsEnabled().length) {
+        <div class="chart-indicator-key" aria-label="Price chart indicators">
+          @for (indicator of priceIndicatorsEnabled(); track indicator) {
+            <span [attr.data-indicator]="indicator">
+              {{
+                indicator === 'bollinger' ? 'Bollinger 20 · 2σ' : (indicator | uppercase) + ' 20'
+              }}
+            </span>
+          }
+          @if (!hasEnoughPriceIndicatorData()) {
+            <small>Needs 20 candles</small>
+          }
         </div>
       }
       <div class="relative min-w-0" aria-hidden="true"></div>
@@ -379,6 +405,45 @@ interface TooltipPosition {
               [class]="trendingUp() ? 'stroke-gain' : 'stroke-loss'"
             />
           }
+          @if (showsPriceIndicators()) {
+            @if (bollingerAreaPath()) {
+              <path class="chart-bollinger-area" [attr.d]="bollingerAreaPath()" />
+              <path
+                class="chart-indicator-line chart-indicator-bollinger"
+                [attr.d]="bollingerUpperPath()"
+                fill="none"
+                vector-effect="non-scaling-stroke"
+              />
+              <path
+                class="chart-indicator-line chart-indicator-bollinger"
+                [attr.d]="bollingerLowerPath()"
+                fill="none"
+                vector-effect="non-scaling-stroke"
+              />
+            }
+            @if (smaPath()) {
+              <path
+                class="chart-indicator-line chart-indicator-sma"
+                [attr.d]="smaPath()"
+                fill="none"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                vector-effect="non-scaling-stroke"
+              />
+            }
+            @if (emaPath()) {
+              <path
+                class="chart-indicator-line chart-indicator-ema"
+                [attr.d]="emaPath()"
+                fill="none"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                vector-effect="non-scaling-stroke"
+              />
+            }
+          }
         </svg>
 
         @if (persistentPoint(); as point) {
@@ -434,6 +499,34 @@ interface TooltipPosition {
       </div>
       <div aria-hidden="true"></div>
     </div>
+    @if (rsiEnabled()) {
+      <section class="rsi-pane" aria-label="Relative Strength Index 14">
+        <div class="rsi-header">
+          <span>RSI 14</span>
+          @if (rsiIsMock()) {
+            <em>Demo</em>
+          }
+          @if (latestRsi(); as value) {
+            <strong>{{ value | number: '1.1-1' }}</strong>
+          }
+        </div>
+        <div class="rsi-grid">
+          <div class="rsi-plot">
+            @if (rsiPath()) {
+              <svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
+                <line x1="0" y1="12" x2="100" y2="12" class="rsi-guide" />
+                <line x1="0" y1="28" x2="100" y2="28" class="rsi-guide" />
+                <path class="rsi-line" [attr.d]="rsiPath()" fill="none" />
+              </svg>
+            }
+          </div>
+          <div class="rsi-axis" aria-hidden="true">
+            <span class="rsi-axis-70">70</span>
+            <span class="rsi-axis-30">30</span>
+          </div>
+        </div>
+      </section>
+    }
   `,
   styles: `
     .chart-control {
@@ -452,6 +545,35 @@ interface TooltipPosition {
     .chart-control:disabled {
       opacity: 0.35;
       cursor: not-allowed;
+    }
+    .chart-indicator-key {
+      position: absolute;
+      top: 0;
+      right: 4.75rem;
+      z-index: 20;
+      display: flex;
+      max-width: calc(100% - 15rem);
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 0.25rem;
+      color: var(--muted-foreground);
+      font-size: 0.5625rem;
+    }
+    .chart-indicator-key span,
+    .chart-indicator-key small {
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--card) 90%, transparent);
+      padding: 0.15rem 0.4rem;
+      font-weight: 600;
+    }
+    .chart-indicator-key span[data-indicator='sma'] {
+      color: #f6c453;
+    }
+    .chart-indicator-key span[data-indicator='ema'] {
+      color: #b784ff;
+    }
+    .chart-indicator-key span[data-indicator='bollinger'] {
+      color: #ff8f66;
     }
     .price-hover-label {
       max-width: 12rem;
@@ -493,6 +615,122 @@ interface TooltipPosition {
     .chart-candle rect {
       min-height: 1px;
     }
+    .chart-indicator-line {
+      pointer-events: none;
+    }
+    .chart-indicator-sma {
+      stroke: #f6c453;
+    }
+    .chart-indicator-ema {
+      stroke: #b784ff;
+    }
+    .chart-indicator-bollinger {
+      stroke: #ff8f66;
+      stroke-width: 1;
+      stroke-dasharray: 4 3;
+    }
+    .chart-bollinger-area {
+      fill: rgba(255, 143, 102, 0.08);
+      pointer-events: none;
+    }
+    .rsi-pane {
+      flex: 0 0 8rem;
+      min-height: 0;
+      border-top: 1px solid var(--border);
+      padding-top: 0.45rem;
+    }
+    .rsi-header {
+      display: flex;
+      height: 1rem;
+      align-items: center;
+      gap: 0.45rem;
+      color: var(--muted-foreground);
+      font-size: 0.625rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .rsi-header strong {
+      color: #42d3ff;
+      font-size: 0.6875rem;
+    }
+    .rsi-header em {
+      border-radius: 999px;
+      background: rgba(66, 211, 255, 0.12);
+      padding: 0.1rem 0.35rem;
+      color: #42d3ff;
+      font-size: 0.5rem;
+      font-style: normal;
+    }
+    .rsi-grid {
+      display: grid;
+      height: calc(100% - 1rem);
+      min-height: 0;
+      grid-template-columns: minmax(0, 1fr) 4.75rem;
+      gap: 0.75rem;
+    }
+    .rsi-plot {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      background: rgba(238, 250, 255, 0.015);
+    }
+    .rsi-plot svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+    .rsi-guide {
+      stroke: rgba(238, 250, 255, 0.2);
+      stroke-width: 0.5;
+      stroke-dasharray: 3 3;
+      vector-effect: non-scaling-stroke;
+    }
+    .rsi-line {
+      stroke: #42d3ff;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      vector-effect: non-scaling-stroke;
+    }
+    .rsi-axis {
+      position: relative;
+      border-left: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+      color: var(--muted-foreground);
+      font-size: 0.625rem;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+    .rsi-axis span {
+      position: absolute;
+      right: 0;
+      transform: translateY(-50%);
+    }
+    .rsi-axis-70 {
+      top: 30%;
+    }
+    .rsi-axis-30 {
+      top: 70%;
+    }
+    @media (max-width: 640px) {
+      .chart-indicator-key {
+        top: 1.8rem;
+        right: 2rem;
+        max-width: calc(100% - 2rem);
+      }
+      .rsi-pane {
+        flex-basis: 6rem;
+      }
+      .rsi-grid {
+        grid-template-columns: minmax(0, 1fr) 2rem;
+        gap: 0.35rem;
+      }
+      .rsi-axis {
+        font-size: 0.5625rem;
+      }
+    }
   `,
 })
 export class PriceChartComponent {
@@ -504,6 +742,7 @@ export class PriceChartComponent {
   readonly interactive = input(false, { transform: booleanAttribute });
   readonly interactionKey = input('');
   readonly showCurrentPrice = input(false, { transform: booleanAttribute });
+  readonly enabledIndicators = input<readonly TechnicalIndicator[]>([]);
   // Fills the space under the line with a gradient in the trend color.
   readonly area = input(false, { transform: booleanAttribute });
 
@@ -593,6 +832,44 @@ export class PriceChartComponent {
     () => this.mode() === 'area' || (this.mode() === 'line' && this.area()),
   );
   protected readonly showsCandles = computed(() => ['candles', 'ohlc'].includes(this.mode()));
+  protected readonly showsPriceIndicators = computed(
+    () => this.mode() !== 'volume' && this.mode() !== 'percent',
+  );
+  protected readonly rsiEnabled = computed(() => this.enabledIndicators().includes('rsi'));
+  protected readonly priceIndicatorsEnabled = computed(() =>
+    this.enabledIndicators().filter(
+      (indicator): indicator is Exclude<TechnicalIndicator, 'rsi'> => indicator !== 'rsi',
+    ),
+  );
+  protected readonly hasEnoughPriceIndicatorData = computed(
+    () => this.candles().length >= TECHNICAL_INDICATOR_PERIODS.sma,
+  );
+  private readonly smaSeries = computed(() =>
+    this.enabledIndicators().includes('sma')
+      ? simpleMovingAverage(this.candles(), TECHNICAL_INDICATOR_PERIODS.sma)
+      : [],
+  );
+  private readonly emaSeries = computed(() =>
+    this.enabledIndicators().includes('ema')
+      ? exponentialMovingAverage(this.candles(), TECHNICAL_INDICATOR_PERIODS.ema)
+      : [],
+  );
+  private readonly bollingerSeries = computed(() =>
+    this.enabledIndicators().includes('bollinger')
+      ? bollingerBands(this.candles(), TECHNICAL_INDICATOR_PERIODS.bollinger)
+      : [],
+  );
+  private readonly bollingerUpperSeries = computed(() =>
+    this.bollingerSeries().map(({ time, upper: value }) => ({ time, value })),
+  );
+  private readonly bollingerLowerSeries = computed(() =>
+    this.bollingerSeries().map(({ time, lower: value }) => ({ time, value })),
+  );
+  private readonly rsiSeries = computed(() =>
+    this.rsiEnabled() ? relativeStrengthIndex(this.candles(), TECHNICAL_INDICATOR_PERIODS.rsi) : [],
+  );
+  protected readonly rsiIsMock = computed(() => this.rsiEnabled() && this.rsiSeries().length < 2);
+  private readonly mockRsiValues = [48, 51, 49, 54, 58, 55, 60, 57, 53, 56, 59, 62, 58, 55, 57];
 
   private readonly yScale = computed<ChartScale>(() => {
     const values = this.showsCandles()
@@ -600,6 +877,14 @@ export class PriceChartComponent {
       : this.mode() === 'volume'
         ? this.visiblePoints().map((point) => point.volume ?? 0)
         : this.visiblePoints().map((point) => point.value);
+    if (this.showsPriceIndicators()) {
+      values.push(
+        ...this.visibleIndicatorValues(this.smaSeries()),
+        ...this.visibleIndicatorValues(this.emaSeries()),
+        ...this.visibleIndicatorValues(this.bollingerUpperSeries()),
+        ...this.visibleIndicatorValues(this.bollingerLowerSeries()),
+      );
+    }
     if (!values.length) {
       return { min: 0, max: 1, range: 1 };
     }
@@ -621,6 +906,36 @@ export class PriceChartComponent {
   });
 
   protected readonly linePath = computed(() => this.smoothPath(this.svgCoords()));
+  protected readonly smaPath = computed(() => this.indicatorPath(this.smaSeries(), this.yScale()));
+  protected readonly emaPath = computed(() => this.indicatorPath(this.emaSeries(), this.yScale()));
+  protected readonly bollingerUpperPath = computed(() =>
+    this.indicatorPath(this.bollingerUpperSeries(), this.yScale()),
+  );
+  protected readonly bollingerLowerPath = computed(() =>
+    this.indicatorPath(this.bollingerLowerSeries(), this.yScale()),
+  );
+  protected readonly bollingerAreaPath = computed(() => {
+    const upper = this.indicatorSvgCoords(this.bollingerUpperSeries(), this.yScale());
+    const lower = this.indicatorSvgCoords(this.bollingerLowerSeries(), this.yScale()).reverse();
+    if (upper.length < 2 || upper.length !== lower.length) return '';
+    return `${[...upper, ...lower]
+      .map((point, index) => `${index ? 'L' : 'M'} ${point.x.toFixed(2)},${point.y.toFixed(2)}`)
+      .join(' ')} Z`;
+  });
+  protected readonly rsiPath = computed(() => {
+    const actual = this.indicatorPath(this.rsiSeries(), { min: 0, max: 100, range: 100 });
+    if (actual) return actual;
+    const last = this.mockRsiValues.length - 1;
+    return this.smoothPath(
+      this.mockRsiValues.map((value, index) => ({
+        x: (index / last) * WIDTH,
+        y: (this.valueToY(value, { min: 0, max: 100, range: 100 }) / 100) * HEIGHT,
+      })),
+    );
+  });
+  protected readonly latestRsi = computed(
+    () => this.visibleIndicatorValues(this.rsiSeries()).at(-1) ?? this.mockRsiValues.at(-1),
+  );
 
   // The line's path closed along the bottom edge of the chart.
   protected readonly areaPath = computed(() => {
@@ -1051,6 +1366,38 @@ export class PriceChartComponent {
 
   private svgCoords(): { x: number; y: number }[] {
     return this._coords().map(({ x, y }) => ({ x: (x / 100) * WIDTH, y: (y / 100) * HEIGHT }));
+  }
+
+  private visibleIndicatorValues(series: readonly PricePoint[]): number[] {
+    const visibleTimes = new Set(this.visibleCandles().map((candle) => candle.time.getTime()));
+    return series
+      .filter((point) => visibleTimes.has(point.time.getTime()))
+      .map((point) => point.value);
+  }
+
+  private indicatorSvgCoords(
+    series: readonly PricePoint[],
+    scale: ChartScale,
+  ): { x: number; y: number }[] {
+    const visibleCandles = this.visibleCandles();
+    const valuesByTime = new Map(series.map((point) => [point.time.getTime(), point.value]));
+    const last = Math.max(visibleCandles.length - 1, 1);
+    return visibleCandles.flatMap((candle, index) => {
+      const value = valuesByTime.get(candle.time.getTime());
+      return value === undefined
+        ? []
+        : [
+            {
+              x: (index / last) * WIDTH,
+              y: (this.valueToY(value, scale) / 100) * HEIGHT,
+            },
+          ];
+    });
+  }
+
+  private indicatorPath(series: readonly PricePoint[], scale: ChartScale): string {
+    const coords = this.indicatorSvgCoords(series, scale);
+    return coords.length < 2 ? '' : this.smoothPath(coords);
   }
 
   private smoothPath(coords: { x: number; y: number }[]): string {
