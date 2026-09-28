@@ -6,7 +6,9 @@ pipeline {
         // Manage Jenkins > Tools.
         maven 'Maven'
         // This Jenkins tool must be configured with Node 24.x at 24.8.0 or
-        // later. Angular 21.2.x supports Node 24.x. Reconfigure the Jenkins
+        // later, or Node 26 or later. Angular 21.2.x supports Node 24 and
+        // later. Node 26 exposes Web Storage globals that shadow jsdom; the
+        // client UI test setup file replaces them. Reconfigure the Jenkins
         // NodeJS tool if version mismatches occur.
         nodejs 'NodeJS'
     }
@@ -33,8 +35,8 @@ pipeline {
                     node --version
                     npm --version
                     node -e 'const [major, minor] = process.versions.node.split(".").map(Number);
-                    const supported = major === 24 && minor >= 8;
-                    if (!supported) { console.error(`Node ${process.versions.node} is unsupported. This project requires Node 24.x at 24.8.0 or later, which is compatible with Angular 21.2.x. Reconfigure the Jenkins NodeJS tool named "NodeJS" to use a supported Node 24 release.`); process.exit(1); }'
+                    const supported = (major === 24 && minor >= 8) || major >= 26;
+                    if (!supported) { console.error(`Node ${process.versions.node} is unsupported. This project requires Node 24.x at 24.8.0 or later, or Node 26 or later, which is compatible with Angular 21.2.x. Reconfigure the Jenkins NodeJS tool named "NodeJS" to use a supported Node release.`); process.exit(1); }'
                 '''
             }
         }
