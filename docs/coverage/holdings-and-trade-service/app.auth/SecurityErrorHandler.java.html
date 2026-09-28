@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SecurityErrorHandler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.auth</a> &gt; <span class="el_source">SecurityErrorHandler.java</span></div><h1>SecurityErrorHandler.java</h1><pre class="source lang-java linenums">package app.auth;
+
+import tools.jackson.databind.ObjectMapper;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
+import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.util.Map;
+
+/**
+ * Writes authentication (401) and authorization (403) failures from the security
+ * filter chain in the same {@code {&quot;error&quot;: &quot;...&quot;}} format as
+ * {@link GlobalExceptionHandler}.
+ *
+ * &lt;p&gt;The standard bearer-token handlers run first so the {@code WWW-Authenticate}
+ * header required by RFC 6750 is still set. The body deliberately gives no detail
+ * about why a token was rejected.
+ */
+@Component
+public class SecurityErrorHandler implements AuthenticationEntryPoint, AccessDeniedHandler {
+
+<span class="fc" id="L32">    private final AuthenticationEntryPoint bearerEntryPoint = new BearerTokenAuthenticationEntryPoint();</span>
+<span class="fc" id="L33">    private final AccessDeniedHandler bearerAccessDenied = new BearerTokenAccessDeniedHandler();</span>
+    private final ObjectMapper objectMapper;
+
+    /**
+     * Creates the handler.
+     *
+     * @param objectMapper serializes the error body
+     */
+<span class="fc" id="L41">    public SecurityErrorHandler(ObjectMapper objectMapper) {</span>
+<span class="fc" id="L42">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L43">    }</span>
+
+    /**
+     * Responds 401 when the request has no bearer token or the token is invalid or expired.
+     *
+     * @param request       the rejected request
+     * @param response      the response to write
+     * @param authException why authentication failed
+     * @throws IOException      if the body cannot be written
+     * @throws ServletException if the bearer-token handler fails
+     */
+    @Override
+    public void commence(HttpServletRequest request, HttpServletResponse response,
+                         AuthenticationException authException) throws IOException, ServletException {
+<span class="fc" id="L57">        bearerEntryPoint.commence(request, response, authException);</span>
+<span class="fc" id="L58">        writeError(response, HttpStatus.UNAUTHORIZED, &quot;A valid access token is required&quot;);</span>
+<span class="fc" id="L59">    }</span>
+
+    /**
+     * Responds 403 when an authenticated caller lacks permission for the request.
+     *
+     * @param request               the rejected request
+     * @param response              the response to write
+     * @param accessDeniedException why access was denied
+     * @throws IOException      if the body cannot be written
+     * @throws ServletException if the bearer-token handler fails
+     */
+    @Override
+    public void handle(HttpServletRequest request, HttpServletResponse response,
+                       AccessDeniedException accessDeniedException) throws IOException, ServletException {
+<span class="nc" id="L73">        bearerAccessDenied.handle(request, response, accessDeniedException);</span>
+<span class="nc" id="L74">        writeError(response, HttpStatus.FORBIDDEN, &quot;Access denied&quot;);</span>
+<span class="nc" id="L75">    }</span>
+
+    private void writeError(HttpServletResponse response, HttpStatus status, String message) throws IOException {
+<span class="fc" id="L78">        response.setStatus(status.value());</span>
+<span class="fc" id="L79">        response.setContentType(MediaType.APPLICATION_JSON_VALUE);</span>
+<span class="fc" id="L80">        objectMapper.writeValue(response.getOutputStream(), Map.of(&quot;error&quot;, message));</span>
+<span class="fc" id="L81">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

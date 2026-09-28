@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Fill.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.order.execution</a> &gt; <span class="el_source">Fill.java</span></div><h1>Fill.java</h1><pre class="source lang-java linenums">package app.order.execution;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+
+/**
+ * The execution outcome of an ACCEPTED order (BR-06/08). At most one fill
+ * per order — this schema doesn't model partial fills.
+ */
+@Entity
+@Table(name = &quot;fills&quot;)
+<span class="fc" id="L19">public class Fill {</span>
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = &quot;fill_id&quot;, updatable = false, nullable = false)
+    private Integer fillId;
+
+    @Column(name = &quot;order_id&quot;, nullable = false, updatable = false, unique = true)
+    private Integer orderId;
+
+    /** BR-08: the quote price used at execution time — not necessarily the order's indicative price. */
+    @Column(name = &quot;quote_price&quot;, nullable = false, updatable = false)
+    private BigDecimal quotePrice;
+
+    @Column(nullable = false, updatable = false)
+    private BigDecimal quantity;
+
+    @Column(name = &quot;filled_at&quot;, nullable = false, updatable = false)
+    private OffsetDateTime filledAt;
+
+    public Integer getFillId() {
+<span class="fc" id="L40">        return fillId;</span>
+    }
+
+    public void setFillId(Integer fillId) {
+<span class="fc" id="L44">        this.fillId = fillId;</span>
+<span class="fc" id="L45">    }</span>
+
+    public Integer getOrderId() {
+<span class="fc" id="L48">        return orderId;</span>
+    }
+
+    public void setOrderId(Integer orderId) {
+<span class="fc" id="L52">        this.orderId = orderId;</span>
+<span class="fc" id="L53">    }</span>
+
+    public BigDecimal getQuotePrice() {
+<span class="fc" id="L56">        return quotePrice;</span>
+    }
+
+    public void setQuotePrice(BigDecimal quotePrice) {
+<span class="fc" id="L60">        this.quotePrice = quotePrice;</span>
+<span class="fc" id="L61">    }</span>
+
+    public BigDecimal getQuantity() {
+<span class="fc" id="L64">        return quantity;</span>
+    }
+
+    public void setQuantity(BigDecimal quantity) {
+<span class="fc" id="L68">        this.quantity = quantity;</span>
+<span class="fc" id="L69">    }</span>
+
+    public OffsetDateTime getFilledAt() {
+<span class="fc" id="L72">        return filledAt;</span>
+    }
+
+    public void setFilledAt(OffsetDateTime filledAt) {
+<span class="fc" id="L76">        this.filledAt = filledAt;</span>
+<span class="fc" id="L77">    }</span>
+}
+
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

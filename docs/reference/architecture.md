@@ -69,8 +69,11 @@ Two separate PostgreSQL databases:
 
 | Database | Owner | Purpose |
 | --- | --- | --- |
-| `auth_db` | Auth Service | User credentials, refresh tokens, sessions |
-| `trading_season` | Shared (Market Data) | Business data: users, accounts, orders, holdings, market data |
+| Angular UI | Login and registration against the NestJS auth service, profile submission to the Java backend, dashboard route protection, failed sign-in lockout, inactivity sign-out, shared components | [Routes](../../apps/client-ui/src/app/app.routes.ts) |
+| Spring Boot backend | Token-authenticated profile registration and user APIs, plus public simulated market reads | [Java auth controller](../../apps/holdings-and-trade-service/src/main/java/app/auth/AuthController.java) |
+| NestJS auth service | Email/password login, RS256 access tokens, opaque refresh tokens, JWKS, liveness | [Auth controller](../../apps/auth-service/src/auth/auth.controller.ts) |
+| Shared UI | Angular components consumed through @shared/ui-components subpath exports | [Package manifest](../../packages/shared-ui-components/package.json) |
+| Reporting | Runnable HTTP placeholders only; no reporting behavior | [Reporting proposal](reporting.md) |
 
 The only value shared between them is the user UUID (auth.users.id ↔ trading_season.users.user_id). Credentials and tokens stay in auth_db; profile and trading data stay in trading_season.
 
@@ -90,7 +93,11 @@ The only value shared between them is the user UUID (auth.users.id ↔ trading_s
 
 Neither Java service calls the Auth Service per request. Each fetches and caches the JWKS independently.
 
-## Data ownership
+- UI registration sends a profile without username or password, which the Java register contract does not yet accept, so registration cannot complete end to end until the backend is updated.
+- NestJS logout is guarded by an access JWT and forwards that JWT to a service method expecting an opaque refresh token. Do not rely on this endpoint to revoke a refresh session until the mismatch is fixed.
+- NestJS bootstrap does not install a global validation pipe, cookie parser, or CORS configuration. DTO fields alone do not imply runtime validation; use JSON body refresh tokens.
+- The Passport JWT strategy restricts RS256 and checks expiry but does not configure issuer/audience enforcement.
+- The reporting containers are availability placeholders only and do not establish a reporting runtime or API contract. See [reporting](reporting.md).
 
 The `trading_season` database is shared by Order and Sell Service and Holdings and Trade Service:
 

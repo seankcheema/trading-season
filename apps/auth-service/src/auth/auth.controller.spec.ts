@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
+import { LocalStrategy } from './strategies/local.strategy.js';
 import { buildValidationPipe } from '../config/validation.config.js';
 
 /**
@@ -20,18 +21,35 @@ import { buildValidationPipe } from '../config/validation.config.js';
 describe('AuthController', () => {
   let app: INestApplication;
   let logout: ReturnType<typeof vi.fn>;
+  let register: ReturnType<typeof vi.fn>;
+  let login: ReturnType<typeof vi.fn>;
+  let refreshToken: ReturnType<typeof vi.fn>;
+  let validateUser: ReturnType<typeof vi.fn>;
+
+  const tokens = {
+    accessToken: 'access',
+    refreshToken: 'refresh',
+    expiresIn: 900,
+  };
 
   beforeEach(async () => {
     logout = vi.fn().mockResolvedValue(undefined);
+    register = vi.fn().mockResolvedValue(tokens);
+    login = vi.fn().mockResolvedValue(tokens);
+    refreshToken = vi.fn().mockResolvedValue(tokens);
+    validateUser = vi.fn().mockResolvedValue({ id: 'user-1' });
 
     const module: TestingModule = await Test.createTestingModule({
-      // The login route carries a Passport guard. Nest resolves guard
-      // dependencies when the module initialises, not when the route is
-      // called, so PassportModule is needed even though login is not exercised.
+      // The login route carries the real Passport guard, so the real local
+      // strategy is registered too; only the service beneath it is stubbed.
       imports: [PassportModule.register({})],
       controllers: [AuthController],
       providers: [
-        { provide: AuthService, useValue: { logout } },
+        LocalStrategy,
+        {
+          provide: AuthService,
+          useValue: { logout, register, login, refreshToken, validateUser },
+        },
       ],
     }).compile();
 
@@ -102,6 +120,63 @@ describe('AuthController', () => {
       // silence and the caller gets a 201 that looks like it worked.
       expect(JSON.stringify(res.body)).toMatch(/ssn/);
       expect(logout).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /auth/register', () => {
+    it('should register with the email and password from the body', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email: 'trader@example.com', password: 'long-enough' })
+        .expect(201);
+
+      expect(register).toHaveBeenCalledWith('trader@example.com', 'long-enough');
+      expect(res.body).toEqual(tokens);
+    });
+
+    it('should reject a short password before reaching the service', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email: 'trader@example.com', password: 'short' })
+        .expect(400);
+
+      expect(register).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /auth/login', () => {
+    it('should issue tokens once the local strategy accepts the credentials', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email: 'trader@example.com', password: 'secret' })
+        .expect(201);
+
+      expect(validateUser).toHaveBeenCalledWith('trader@example.com', 'secret');
+      expect(login).toHaveBeenCalledWith('trader@example.com', 'secret');
+      expect(res.body).toEqual(tokens);
+    });
+
+    it('should answer 401 without issuing tokens when the strategy rejects', async () => {
+      validateUser.mockResolvedValue(null);
+
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email: 'trader@example.com', password: 'wrong' })
+        .expect(401);
+
+      expect(login).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /auth/refresh', () => {
+    it('should rotate the refresh token from the body without an access token', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken: 'the-refresh-token' })
+        .expect(201);
+
+      expect(refreshToken).toHaveBeenCalledWith('the-refresh-token');
+      expect(res.body).toEqual(tokens);
     });
   });
 });

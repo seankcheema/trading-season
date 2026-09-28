@@ -1,6 +1,6 @@
 # Reporting proposal
 
-Status: proposed. The reporting UI and service directories contain documentation only. No reporting API, scheduler, Python module, or analytics store is implemented.
+Status: proposed functionality with runnable container placeholders. The reporting UI serves a static placeholder page, and the reporting service exposes only placeholder and health JSON responses. No reporting API, calculation, scheduler, framework, authorization integration, persistence, or analytics store is implemented.
 
 ## Intended capability
 

@@ -6,7 +6,7 @@ Use this runbook when a Jenkins build fails because its agent or Docker host is 
 ERROR: Could not install packages due to an OSError: [Errno 28] No space left on device
 ```
 
-This failure happens before the market-data test fixture is generated. Reducing the test date range does not address an image-build failure.
+This failure happens before the market-data test fixture is generated. Reducing the test date range does not address an image-build failure. The pipeline requires at least 5 GiB free before its explicit depth-1 checkout. Because it builds the complete local container stack, including the Angular client image, more headroom may still be required.
 
 ## Identify the active Jenkins home
 
@@ -155,15 +155,23 @@ df -h /
 docker system df
 ```
 
-Do not rerun the Docker integration stage with only hundreds of megabytes free. Keep at least 5 GB available before starting it; more headroom is appropriate when Jenkins, Docker, SonarQube, and databases share a small root filesystem.
+Do not rerun the Docker integration stage with only hundreds of megabytes free. Keep at least 5 GiB available before starting it; the pipeline enforces that threshold. More headroom is appropriate when Jenkins, Docker, SonarQube, and databases share a small root filesystem.
 
-Rerun the branch job through Jenkins so files are created with the configured agent identity. A manual Maven test verifies only the Java suite and does not exercise the Python image build or the two-day PostgreSQL integration stage.
+Rerun the branch job through Jenkins so files are created with the configured agent identity. A manual Maven test verifies only one Java suite and does not exercise the Python image build or the two-day PostgreSQL integration stage.
+
+## Automatic pipeline cleanup
+
+The pipeline disables the implicit full-history checkout, checks out the current branch at depth 1, and archives test reports before cleanup. Its final cleanup always removes `trading-season-playwright` images for other Playwright versions, any official `mcr.microsoft.com/playwright` images left by earlier builds, and dangling images, trims unused Docker builder cache to 2 GiB, and deletes the complete workspace. Named Docker volumes are not removed.
+
+Dependency caches are kept only while the agent has room for them. When at least 6 GiB will be free after workspace deletion, one GiB above the Disk Preflight floor, the Maven repository, npm cache, and current Playwright image stay on the agent and the next build reuses them. Below that, cleanup also removes the current Playwright image, all Docker builder cache, and the Maven and npm caches, so the next build starts cold. The build log states which path cleanup took. If final cleanup is interrupted, use the manual inspection and cleanup sequence above before retrying.
+
+The end-to-end stage uses a slim Chromium-only image built from [Dockerfile.playwright](../docker/Dockerfile.playwright) instead of the official Playwright image, and only `main` builds the local application stack. Both keep branch builds' disk use and Docker cache growth small.
 
 ## Prevent recurrence
 
 - Configure multibranch jobs to discard orphaned branch jobs and their workspaces after an agreed retention period.
 - Keep build history retention enabled; the pipeline currently retains ten builds, but workspace retention is separate.
 - Review `df -h /`, Jenkins workspace usage, and `docker system df` regularly on small agents.
-- Keep active workspaces only as long as they are useful for build reuse or debugging.
-- Expand the agent's storage when ordinary Jenkins, Docker, and service data cannot maintain at least 5 GB of free working space. Cleanup is not a substitute for adequate CI capacity.
-- Treat automatic workspace or Docker cleanup as a separate operational change. Validate retention and backup requirements before enabling it.
+- The pipeline deletes its workspace after report publication; use archived artifacts and build logs for debugging.
+- Expand the agent's storage when ordinary Jenkins, Docker, and service data cannot maintain at least 5 GiB of free working space. Cleanup is not a substitute for adequate CI capacity.
+- Expand the agent if cleanup logs show it removing all caches on most builds. Each cold build downloads its Maven, npm, and browser dependencies again.

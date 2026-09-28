@@ -3,16 +3,30 @@ FROM jenkins/jenkins:lts-jdk21
 # Run as root to install dependencies
 USER root
 
-# Update package manager and install Node.js 22.x and git
+# Install base tools, configure the Docker and NodeSource repositories, and
+# install the Docker CLI plugins used by the pipeline. The host Docker socket
+# remains mounted by Compose; this image does not run its own Docker daemon.
 RUN apt-get update && \
-    apt-get install -y curl gnupg git && \
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y nodejs && \
+    apt-get install -y ca-certificates curl gnupg git && \
+    install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc && \
+    chmod a+r /etc/apt/keyrings/docker.asc && \
+    . /etc/os-release && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian ${VERSION_CODENAME} stable" > /etc/apt/sources.list.d/docker.list && \
+    curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+    apt-get update && \
+    apt-get install -y nodejs docker-ce-cli docker-buildx-plugin docker-compose-plugin && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
 # Verify installations
-RUN node --version && npm --version && java -version && git --version
+RUN node --version && \
+    npm --version && \
+    java -version && \
+    git --version && \
+    docker --version && \
+    docker buildx version && \
+    docker compose version
 
 # Switch back to jenkins user for security
 USER jenkins

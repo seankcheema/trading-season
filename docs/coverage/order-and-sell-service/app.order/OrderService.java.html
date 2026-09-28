@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OrderService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.order</a> &gt; <span class="el_source">OrderService.java</span></div><h1>OrderService.java</h1><pre class="source lang-java linenums">package app.order;
+
+import app.account.Account;
+import app.account.AccountNotFoundException;
+import app.account.AccountRepository;
+import app.instrument.Instrument;
+import app.instrument.InstrumentNotFoundException;
+import app.instrument.InstrumentRepository;
+import app.order.audit.AuditTrailService;
+import app.order.dto.OrderRequest;
+import app.order.execution.OrderExecutionService;
+import app.order.validation.OrderValidationPipeline;
+import app.order.validation.ValidationResult;
+import app.user.User;
+import app.user.UserRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.Optional;
+
+/**
+ * Orchestrates one order submission: idempotency check, loading the
+ * entities the rule pipeline needs, running the pipeline, and — only if it
+ * passes — handing off to {@link OrderExecutionService}. This is the
+ * &quot;Order controller&quot; + &quot;Trading rule pipeline&quot; handoff from the KAN-95
+ * walkthrough, minus the HTTP concerns, which stay in {@link OrderController}.
+ */
+@Service
+public class OrderService {
+
+    private final OrderRepository orderRepository;
+    private final AccountRepository accountRepository;
+    private final InstrumentRepository instrumentRepository;
+    private final UserRepository userRepository;
+    private final OrderValidationPipeline validationPipeline;
+    private final OrderExecutionService orderExecutionService;
+    private final AuditTrailService auditTrailService;
+
+    public OrderService(OrderRepository orderRepository,
+                         AccountRepository accountRepository,
+                         InstrumentRepository instrumentRepository,
+                         UserRepository userRepository,
+                         OrderValidationPipeline validationPipeline,
+                         OrderExecutionService orderExecutionService,
+<span class="fc" id="L47">                         AuditTrailService auditTrailService) {</span>
+<span class="fc" id="L48">        this.orderRepository = orderRepository;</span>
+<span class="fc" id="L49">        this.accountRepository = accountRepository;</span>
+<span class="fc" id="L50">        this.instrumentRepository = instrumentRepository;</span>
+<span class="fc" id="L51">        this.userRepository = userRepository;</span>
+<span class="fc" id="L52">        this.validationPipeline = validationPipeline;</span>
+<span class="fc" id="L53">        this.orderExecutionService = orderExecutionService;</span>
+<span class="fc" id="L54">        this.auditTrailService = auditTrailService;</span>
+<span class="fc" id="L55">    }</span>
+
+    /**
+     * Submits an order. Never throws for a trade that fails a trading
+     * rule — that's a normal outcome, reflected in the returned order's
+     * status, not an HTTP-level error. It throws only when the request
+     * refers to something that doesn't exist ({@link AccountNotFoundException},
+     * {@link InstrumentNotFoundException}).
+     */
+    @Transactional
+    public Order submitOrder(OrderRequest request) {
+<span class="fc" id="L66">        Optional&lt;Order&gt; existing = orderRepository</span>
+<span class="fc" id="L67">                .findByAccountIdAndClientReference(request.accountId(), request.clientReference());</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (existing.isPresent()) {</span>
+            // Same idempotency key already processed (or in flight) for this account —
+            // return its outcome rather than validating or executing a second time.
+            // Note: a genuinely concurrent duplicate can still race past this check;
+            // the DB's UNIQUE (account_id, client_reference) constraint is the backstop.
+<span class="fc" id="L73">            return existing.get();</span>
+        }
+
+<span class="fc" id="L76">        Account account = accountRepository.findById(request.accountId())</span>
+<span class="fc" id="L77">                .orElseThrow(() -&gt; new AccountNotFoundException(&quot;No account &quot; + request.accountId()));</span>
+<span class="fc" id="L78">        User user = userRepository.findById(account.getUserId())</span>
+<span class="pc" id="L79">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+<span class="nc" id="L80">                        &quot;Account &quot; + account.getAccountId() + &quot; has no owning user&quot;));</span>
+<span class="fc" id="L81">        Instrument instrument = instrumentRepository.findById(request.instrumentId())</span>
+<span class="fc" id="L82">                .orElseThrow(() -&gt; new InstrumentNotFoundException(&quot;No instrument &quot; + request.instrumentId()));</span>
+
+        // KAN-95 follow-up: once identity resolution is wired up (see
+        // OrderController), verify account.getUserId() equals the authenticated
+        // caller's id here — today anyone can submit against any accountId.
+
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        BigDecimal bufferPercent = request.bufferPercent() != null</span>
+<span class="fc" id="L89">                ? request.bufferPercent()</span>
+<span class="fc" id="L90">                : user.getExecutionBufferPercent();</span>
+
+<span class="fc" id="L92">        OffsetDateTime now = OffsetDateTime.now();</span>
+<span class="fc" id="L93">        Order order = new Order();</span>
+<span class="fc" id="L94">        order.setAccountId(account.getAccountId());</span>
+<span class="fc" id="L95">        order.setInstrumentId(instrument.getInstrumentId());</span>
+<span class="fc" id="L96">        order.setClientReference(request.clientReference());</span>
+<span class="fc" id="L97">        order.setOrderType(request.orderType());</span>
+<span class="fc" id="L98">        order.setQuantity(request.quantity());</span>
+<span class="fc" id="L99">        order.setIndicativePrice(request.indicativePrice());</span>
+<span class="fc" id="L100">        order.setBufferPercent(bufferPercent);</span>
+<span class="fc" id="L101">        order.setStatus(Order.STATUS_SUBMITTED);</span>
+<span class="fc" id="L102">        order.setSubmittedAt(now);</span>
+<span class="fc" id="L103">        order = orderRepository.save(order);</span>
+<span class="fc" id="L104">        auditTrailService.record(order.getOrderId(), Order.STATUS_SUBMITTED, null);</span>
+
+<span class="fc" id="L106">        ValidationResult result = validationPipeline.run(request, user, account, instrument);</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        if (!result.passed()) {</span>
+<span class="fc" id="L108">            order.setStatus(Order.STATUS_REJECTED);</span>
+<span class="fc" id="L109">            order.setRejectionReason(result.reason());</span>
+<span class="fc" id="L110">            order.setResolvedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L111">            order = orderRepository.save(order);</span>
+<span class="fc" id="L112">            auditTrailService.record(order.getOrderId(), Order.STATUS_REJECTED, result.reason());</span>
+<span class="fc" id="L113">            return order;</span>
+        }
+
+<span class="fc" id="L116">        order.setStatus(Order.STATUS_ACCEPTED);</span>
+<span class="fc" id="L117">        order.setAcceptedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L118">        order = orderRepository.save(order);</span>
+<span class="fc" id="L119">        auditTrailService.record(order.getOrderId(), Order.STATUS_ACCEPTED, null);</span>
+
+<span class="fc" id="L121">        return orderExecutionService.execute(order, instrument);</span>
+    }
+}
+
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

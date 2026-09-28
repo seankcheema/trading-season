@@ -5,16 +5,14 @@ FROM maven:3.9-eclipse-temurin-21 AS build
 
 WORKDIR /app
 
-# Copy pom.xml first, before source. Docker caches each layer separately, so
-# as long as pom.xml hasn't changed, the next RUN (dependency download) is
-# served from cache even if source files changed. This avoids re-downloading
-# Maven dependencies on every code change — the main layer-caching win.
+# The BuildKit cache mount keeps the Maven repository between builds without
+# storing it in an image layer, so a pom.xml change downloads only the new
+# artifacts. Both Java services share the mount; `locked` stops their parallel
+# Compose builds from writing to it at the same time. Resolving through
+# `package` alone skips the site and report plugins that go-offline fetched.
 COPY pom.xml .
-RUN mvn -B dependency:go-offline
-
-# Now copy source and compile. This layer is re-run only when src/ changes.
 COPY src/ src/
-RUN mvn -B clean package -DskipTests
+RUN --mount=type=cache,target=/root/.m2,sharing=locked     mvn -B package -DskipTests
 
 # ── Stage 2: Runtime ───────────────────────────────────────────────────────────
 # Fresh base image: JRE-only Alpine variant. The JDK, Maven, source code,
