@@ -411,7 +411,7 @@ pipeline {
                         -f "$COMPOSE_FILE" \
                         ps
 
-                    EXPECTED_SERVICES="auth-db auth-service client-ui db holdings-and-trade-service order-and-sell-service reporting-service reporting-ui"
+                    EXPECTED_SERVICES="auth-service client-ui db holdings-and-trade-service order-and-sell-service reporting-service reporting-ui"
                     RUNNING_SERVICES="$(sh infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
                         -f "$COMPOSE_FILE" \
@@ -451,7 +451,7 @@ pipeline {
 
                     echo "All Docker containers after startup:"
                     docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}'
-                    echo "Local application stack is running on host ports 3001, 4200, 4300, 5432, 5433, 8081, 8082, and 8083."
+                    echo "Local application stack is running on host ports 3001, 4200, 4300, 5432, 8081, 8082, and 8083."
                 '''
             }
         }

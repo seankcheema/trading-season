@@ -95,6 +95,9 @@ services:
       -f /migrations/V001__Initial_schema.sql
       -f /migrations/V002__Synthetic_market_data_replay_metadata.sql
       -f /migrations/V003__Token_authentication.sql
+      -f /migrations/V004__Order_status_lifecycle.sql
+      -f /migrations/V005__User_accounts_and_refresh_tokens.sql
+      -f /migrations/V006__Drop_duplicated_account_columns.sql
       && echo "[DB-INIT] Migrations complete"; 
       else echo "[DB-INIT] Database already initialized, skipping migrations"; fi'
 
@@ -135,8 +138,10 @@ services:
     ports:
       - "3001:3001"
     depends_on:
-      db:
-        condition: service_healthy
+      # Not just the database being up: this service creates no tables, so
+      # it needs the migrations applied before its first query.
+      db-init:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: development
       PORT: 3001
