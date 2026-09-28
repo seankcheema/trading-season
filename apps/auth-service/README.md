@@ -869,9 +869,9 @@ node scripts/generate-dev-keys.mjs >> .env
 
 The generator writes PKCS8/SPKI RSA keys with literal backslash-n escapes. The application normalizes them on load. Do not commit or print the resulting private key. Use managed secrets for deployment.
 
-Keep DB_HOST=localhost, DB_PORT=5433, DB_USER=authuser, DB_NAME=auth_db, and the matching local DB_PASSWORD. PORT defaults to 3001. Startup requires JWT_PRIVATE_KEY and JWT_PUBLIC_KEY; set JWT_ISSUER consistently. The .env.example CORS_ORIGIN entry is not wired into bootstrap.
+Keep DB_HOST=localhost, DB_PORT=5432, DB_NAME=trading_season, and the matching local DB_USER and DB_PASSWORD. The service shares the business database and owns two tables in it, `user_accounts` and `refresh_tokens`. PORT defaults to 3001. Startup requires JWT_PRIVATE_KEY and JWT_PUBLIC_KEY; set JWT_ISSUER consistently. The .env.example CORS_ORIGIN entry is not wired into bootstrap.
 
-Follow [development setup](../../docs/guides/development.md#run-locally) to start the auth database, then run npm run start:dev from this directory. Startup loads .env and applies the registered TypeORM migrations with synchronize disabled. The application does not automatically load .env.local.
+Follow [development setup](../../docs/guides/development.md#run-locally) to start the database and apply its migrations, then run npm run start:dev from this directory. Startup loads .env and connects with synchronize disabled and no migration runner: this service reads and writes tables it never creates, so the migrations must already have been applied. The application does not automatically load .env.local.
 
 ## Commands
 
@@ -884,8 +884,7 @@ Run in this directory:
 | Tests | npm test |
 | CI coverage/reports | npm run test:ci |
 | Lint | npm run lint |
-| Inspect migrations | npm run migration:show |
 
-The migration CLI requires database environment variables exported in the shell; see [database guidance](../../docs/reference/database.md#auth-migrations). Tests generate ephemeral keys rather than using deployment credentials. GET /health checks liveness only.
+This service has no migration commands; its tables are created by the shared migrations described in the [database guidance](../../docs/reference/database.md#auth-tables). Tests generate ephemeral keys rather than using deployment credentials, and mock the repository rather than reaching a database. GET /health checks liveness only.
 
-The Java backend maintains a separate authentication implementation; see [architecture](../../docs/reference/architecture.md) before integrating clients.
+The Java services hold no authentication implementation of their own. They verify this service's access tokens locally against the public key published at /.well-known/jwks.json, fetched once and cached, and never handle a password. See [architecture](../../docs/reference/architecture.md) before integrating clients.
