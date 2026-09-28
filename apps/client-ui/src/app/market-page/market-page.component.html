@@ -132,7 +132,7 @@
                           title="Open market tools"
                           (click)="toolsCollapsed.set(false)"
                         >
-                          <ng-icon name="lucidePanelRightOpen" />
+                          <ng-icon class="chevron-rotate" name="lucideChevronLeft" />
                         </button>
                       }
                     </article>
@@ -191,7 +191,7 @@
                           title="Open market tools"
                           (click)="toolsCollapsed.set(false)"
                         >
-                          <ng-icon name="lucidePanelRightOpen" />
+                          <ng-icon class="chevron-rotate" name="lucideChevronLeft" />
                         </button>
                       </div>
                     }
@@ -453,24 +453,6 @@
                     }
                   }
                 </div>
-                @if (!rsiEnabled()) {
-                  <footer class="technical-footer border-border bg-[#181818] border">
-                    <span class="font-semibold">Technical indicators</span>
-                    @if (enabledIndicators().length) {
-                      <div class="indicator-legend" aria-label="Enabled technical indicators">
-                        @for (option of indicatorOptions; track option.value) {
-                          @if (enabledIndicators().includes(option.value)) {
-                            <span [attr.data-indicator]="option.value"
-                              >{{ option.label }} {{ option.period }}{{ option.detail }}</span
-                            >
-                          }
-                        }
-                      </div>
-                    } @else {
-                      <span class="text-muted-foreground">Choose indicators from the toolbar</span>
-                    }
-                  </footer>
-                }
               </section>
             </div>
 
@@ -487,7 +469,7 @@
                       title="Hide market tools"
                       (click)="toolsCollapsed.set(true)"
                     >
-                      <ng-icon name="lucidePanelRightClose" />
+                      <ng-icon class="chevron-rotate" name="lucideChevronRight" />
                     </button>
                     <div
                       class="bg-muted flex gap-0.5 rounded-lg p-0.5"
@@ -498,7 +480,7 @@
                         <button
                           type="button"
                           role="tab"
-                          class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors"
+                          class="cursor-pointer rounded-md px-2 py-0.5 text-xs font-medium capitalize transition-colors"
                           [class]="
                             insightTab() === tab
                               ? 'bg-primary text-primary-foreground'

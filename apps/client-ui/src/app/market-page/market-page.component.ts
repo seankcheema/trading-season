@@ -17,7 +17,9 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideActivity,
   lucideBell,
+  lucideChevronDown,
   lucideChevronLeft,
+  lucideChevronRight,
   lucideChartArea,
   lucideChartBar,
   lucideChartCandlestick,
@@ -108,7 +110,9 @@ interface MarketStats {
     provideIcons({
       lucideActivity,
       lucideBell,
+      lucideChevronDown,
       lucideChevronLeft,
+      lucideChevronRight,
       lucideChartArea,
       lucideChartBar,
       lucideChartCandlestick,

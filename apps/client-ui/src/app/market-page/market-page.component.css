@@ -14,15 +14,17 @@
 }
 .nav-back {
   display: flex;
-  height: 2.75rem;
+  height: 2.5rem;
+  width: 2.5rem;
   flex: 0 0 auto;
   align-items: center;
-  gap: 0.4rem;
+  justify-content: center;
+  gap: 0;
   border: 1px solid rgba(238, 250, 255, 0.15);
   border-radius: 0.5rem;
-  padding: 0 0.75rem;
+  padding: 0;
   color: rgba(238, 250, 255, 0.62);
-  font-size: 0.8125rem;
+  font-size: 1rem;
   font-weight: 600;
   transition: 150ms ease;
 }
@@ -357,6 +359,22 @@
   flex-direction: column;
   overflow: hidden;
 }
+.insight-panel > div:first-child {
+  min-height: 3rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.insight-panel .bg-muted {
+  margin-right: auto;
+  gap: 0.25rem !important;
+  padding: 0.35rem !important;
+}
+.insight-panel .bg-muted button.bg-primary {
+  flex: 1;
+  padding-left: 0.85rem !important;
+  padding-right: 0.85rem !important;
+}
 .insight-content {
   min-height: 0;
   flex: 1;
@@ -580,13 +598,39 @@
   overflow: visible;
 }
 .tools-close-button {
-  height: 1.625rem;
-  width: 1.625rem;
+  position: relative;
+  height: 1.875rem;
+  width: 1.875rem;
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(238, 250, 255, 0.8);
+  border-color: rgba(238, 250, 255, 0.2);
+}
+.tools-close-button::after {
+  display: none;
+}
+.tools-close-button .chevron-rotate {
+  font-size: 1rem;
+  transition: transform 280ms ease;
+}
+.market-grid.tools-collapsed .tools-close-button .chevron-rotate {
+  transform: rotate(180deg);
 }
 .tools-open-button {
-  border-color: rgba(0, 187, 255, 0.35);
-  color: #00bbff;
+  height: 1.875rem;
+  width: 1.875rem;
+  flex: 0 0 auto;
+  color: rgba(238, 250, 255, 0.8);
+  border-color: rgba(238, 250, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tools-open-button .chevron-rotate {
+  font-size: 1rem;
+  transition: transform 280ms ease;
 }
 @media (min-width: 1280px) {
   .market-page {
