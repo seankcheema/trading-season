@@ -97,7 +97,6 @@ class OrderControllerIntegrationTest {
         user.setUserId(userId);
         user.setFirstName("Order");
         user.setLastName("Tester");
-        user.setEmail("orders@example.com");
         user.setSsn("123-45-6789");
         user.setAddress("1 Main St");
         user.setDateOfBirth(LocalDate.of(1990, 1, 1));

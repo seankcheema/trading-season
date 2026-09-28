@@ -58,7 +58,6 @@ class OrderServiceTest {
         user.setUserId(UUID.randomUUID());
         user.setFirstName("Test");
         user.setLastName("User");
-        user.setEmail("test@example.com");
         user.setSsn("123-45-6789");
         user.setAddress("123 Test St");
         user.setDateOfBirth(LocalDate.of(1990, 1, 1));

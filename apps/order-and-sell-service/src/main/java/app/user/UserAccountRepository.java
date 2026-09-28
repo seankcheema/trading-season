@@ -23,4 +23,15 @@ public interface UserAccountRepository extends Repository<UserAccount, UUID> {
      * @return the record, or empty if the account does not exist
      */
     Optional<UserAccount> findById(UUID userId);
+
+    /**
+     * Whether an account is registered with the given email, ignoring case.
+     *
+     * <p>Matches the case-insensitive unique index the auth service registers
+     * against, so this answers the same question sign-up would.
+     *
+     * @param email the email address
+     * @return {@code true} if an account uses the email in any letter case
+     */
+    boolean existsByEmailIgnoreCase(String email);
 }

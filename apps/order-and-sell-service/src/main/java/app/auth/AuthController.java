@@ -37,14 +37,18 @@ public class AuthController {
      * @param request the profile details from the registration form
      * @return the created account's id and email
      * @throws ForbiddenException if the request email differs from the token's email
-     * @throws ConflictException  if the account already exists or the email is taken
+     * @throws ConflictException  if the account already exists
      */
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
     public RegisterResponse register(@AuthenticationPrincipal Jwt jwt,
                                      @Valid @RequestBody RegisterRequest request) {
-        User user = authService.register(AuthenticatedUser.from(jwt), request);
-        return new RegisterResponse(user.getUserId(), user.getEmail());
+        AuthenticatedUser caller = AuthenticatedUser.from(jwt);
+        User user = authService.register(caller, request);
+        // The profile row no longer stores an email. register() has already
+        // checked that the token claim and the request agree, so either is the
+        // same value; the token is the one that is authoritative.
+        return new RegisterResponse(user.getUserId(), caller.email());
     }
 
     /**
