@@ -18,9 +18,9 @@ import java.time.OffsetDateTime;
 
 /**
  * Turns a PENDING order that passed the rule pipeline into a fill,
- * atomically, and moves it to {@code FILLED} and then {@code APPROVED}
- * (KAN-93). This class does not itself decide whether a trade is allowed,
- * it carries out one that already was.
+ * atomically, and moves it to {@code FILLED} (KAN-93). This class does not
+ * itself decide whether a trade is allowed, it carries out one that already
+ * was.
  *
  * <p><b>Simplification:</b> this fills at the order's client-submitted
  * {@code indicativePrice} rather than a live market quote — business-backend
@@ -79,7 +79,7 @@ public class OrderExecutionService {
      *
      * @param order      the {@code PENDING} order to execute
      * @param instrument the instrument being traded
-     * @return the order as {@code APPROVED}, or {@code REJECTED} if funds or
+     * @return the order as {@code FILLED}, or {@code REJECTED} if funds or
      *         holdings were no longer sufficient under the row lock
      * @throws IllegalStateException if the account or its owning user no longer exists
      */
@@ -149,14 +149,10 @@ public class OrderExecutionService {
         holdingRepository.save(holding);
 
         order.setStatus(Order.STATUS_FILLED);
-        Order filledOrder = orderRepository.save(order);
-        auditTrailService.record(filledOrder.getOrderId(), Order.STATUS_FILLED,
-                "Filled " + filledOrder.getQuantity() + " @ " + fillPrice);
-
-        filledOrder.setStatus(Order.STATUS_APPROVED);
-        filledOrder.setResolvedAt(now);
-        final Order savedOrder = orderRepository.save(filledOrder);
-        auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_APPROVED, null);
+        order.setResolvedAt(now);
+        final Order savedOrder = orderRepository.save(order);
+        auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_FILLED,
+                "Filled " + savedOrder.getQuantity() + " @ " + fillPrice);
         return savedOrder;
     }
 

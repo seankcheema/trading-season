@@ -149,15 +149,14 @@ class OrderServiceTest {
     }
 
     @Test
-    void buyOrderIsCreatedPendingAndEndsApproved() {
+    void buyOrderIsCreatedPendingAndEndsFilled() {
         Order order = orderService.submitOrder(order("BUY", "100", "50.00"));
 
-        assertEquals(Order.STATUS_APPROVED, order.getStatus());
+        assertEquals(Order.STATUS_FILLED, order.getStatus());
         assertNull(order.getRejectionReason());
         assertNotNull(order.getAcceptedAt());
         assertNotNull(order.getResolvedAt());
-        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_FILLED, Order.STATUS_APPROVED),
-                auditEventsFor(order));
+        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_FILLED), auditEventsFor(order));
     }
 
     @Test
@@ -198,13 +197,13 @@ class OrderServiceTest {
     }
 
     @Test
-    void buyOrderThatExactlyMatchesAvailableFundsIsApproved() {
+    void buyOrderThatExactlyMatchesAvailableFundsIsFilled() {
         user.setAvailableFunds(new BigDecimal("5000.00"));
         userRepository.save(user);
 
         Order order = orderService.submitOrder(order("BUY", "100", "50.00"));
 
-        assertEquals(Order.STATUS_APPROVED, order.getStatus());
+        assertEquals(Order.STATUS_FILLED, order.getStatus());
         assertEquals(0, BigDecimal.ZERO.compareTo(availableFunds()));
     }
 
@@ -214,14 +213,13 @@ class OrderServiceTest {
 
         Order order = orderService.submitOrder(order("SELL", "50", "100.00"));
 
-        assertEquals(Order.STATUS_APPROVED, order.getStatus());
+        assertEquals(Order.STATUS_FILLED, order.getStatus());
         assertEquals(0, new BigDecimal("105000.00").compareTo(availableFunds()));
         Holding holding = holdingRepository
                 .findByAccountIdAndInstrumentId(account.getAccountId(), instrument.getInstrumentId())
                 .orElseThrow();
         assertEquals(0, BigDecimal.ZERO.compareTo(holding.getQuantity()));
-        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_FILLED, Order.STATUS_APPROVED),
-                auditEventsFor(order));
+        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_FILLED), auditEventsFor(order));
     }
 
     @Test

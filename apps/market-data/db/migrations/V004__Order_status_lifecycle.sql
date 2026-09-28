@@ -2,10 +2,10 @@
 --
 -- V001 listed SUBMITTED -> ACCEPTED/REJECTED -> FILLED/EXECUTION_FAILED as an
 -- open assumption. The confirmed lifecycle is:
---   PENDING -> REJECTED             a trading rule failed (insufficient funds,
---                                   insufficient holdings, untradable, inactive)
---   PENDING -> FILLED -> APPROVED   the fill was written and the funds and
---                                   holdings moved; APPROVED is the final state
+--   PENDING -> REJECTED   a trading rule failed (insufficient funds,
+--                         insufficient holdings, untradable, inactive)
+--   PENDING -> FILLED     the fill was written and the funds and holdings
+--                         moved; FILLED is the final state of a successful order
 -- PENDING is the status an order is created with, before any rule runs.
 --
 -- Buy orders check and debit users.available_funds; sell orders credit it.
@@ -25,23 +25,24 @@ UPDATE orders
 SET status = CASE status
     WHEN 'SUBMITTED'        THEN 'PENDING'
     WHEN 'ACCEPTED'         THEN 'PENDING'
-    WHEN 'FILLED'           THEN 'APPROVED'
+    WHEN 'APPROVED'         THEN 'FILLED'
     WHEN 'EXECUTION_FAILED' THEN 'REJECTED'
     ELSE status
 END
-WHERE status IN ('SUBMITTED', 'ACCEPTED', 'FILLED', 'EXECUTION_FAILED');
+WHERE status IN ('SUBMITTED', 'ACCEPTED', 'APPROVED', 'EXECUTION_FAILED');
 
 ALTER TABLE orders
     ALTER COLUMN status SET DEFAULT 'PENDING',
     ADD CONSTRAINT orders_status_check
-        CHECK (status IN ('PENDING', 'FILLED', 'APPROVED', 'REJECTED'));
+        CHECK (status IN ('PENDING', 'FILLED', 'REJECTED'));
 
 ALTER TABLE audit_trail DROP CONSTRAINT IF EXISTS audit_trail_event_type_check;
 
--- SUBMITTED, ACCEPTED and EXECUTION_FAILED remain only for rows recorded before V004.
+-- SUBMITTED, ACCEPTED, APPROVED and EXECUTION_FAILED are kept only so rows
+-- recorded before V004 stay valid; the application never writes them.
 ALTER TABLE audit_trail
     ADD CONSTRAINT audit_trail_event_type_check
-        CHECK (event_type IN ('PENDING', 'FILLED', 'APPROVED', 'REJECTED',
-                              'SUBMITTED', 'ACCEPTED', 'EXECUTION_FAILED'));
+        CHECK (event_type IN ('PENDING', 'FILLED', 'REJECTED',
+                              'SUBMITTED', 'ACCEPTED', 'APPROVED', 'EXECUTION_FAILED'));
 
 COMMIT;

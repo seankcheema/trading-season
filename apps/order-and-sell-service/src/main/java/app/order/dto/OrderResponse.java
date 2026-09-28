@@ -11,8 +11,8 @@ import java.time.OffsetDateTime;
  * whether the trade executed, and if not, why.
  *
  * @param orderId          the created order's id
- * @param status           PENDING, FILLED, APPROVED, or REJECTED (KAN-93); a
- *                         response to a submission is always APPROVED or REJECTED
+ * @param status           PENDING, FILLED, or REJECTED (KAN-93); a response
+ *                         to a submission is always FILLED or REJECTED
  * @param orderType        BUY or SELL
  * @param quantity         units requested
  * @param indicativePrice  the price the client submitted with the order

@@ -92,7 +92,7 @@ All endpoints require valid RS256 access token except public market GET endpoint
 - `GET /api/orders` - List all orders for authenticated user (requires auth)
 
 **Orders:**
-- `POST /api/orders` - Submit a buy or sell order; created PENDING and returned APPROVED or REJECTED (requires auth)
+- `POST /api/orders` - Submit a buy or sell order; created PENDING and returned FILLED or REJECTED (requires auth)
 - `GET /api/orders/{id}` - Get order details (requires auth)
 
 **Market Data (Public):**

@@ -51,8 +51,7 @@ Statuses confirmed by KAN-93 and applied by [V004](../../../apps/market-data/db/
 | --- | --- |
 | `PENDING` | Created; the trading rules have not yet run |
 | `REJECTED` | A trading rule failed; `rejectionReason` says which. Final |
-| `FILLED` | The fill, cash movement and holding movement have been written |
-| `APPROVED` | Final state of a successful order |
+| `FILLED` | The fill, cash movement and holding movement have been written. Final state of a successful order |
 
 Buy orders check and debit the owning user's `available_funds`; sell orders credit it. `accounts.cash_balance` is not moved by execution. The user row is locked for the duration of execution so concurrent orders cannot overspend. Every transition is recorded in `audit_trail`.
 

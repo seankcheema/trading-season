@@ -8,12 +8,15 @@ import app.instrument.Instrument;
 import app.order.Order;
 import app.order.OrderRepository;
 import app.order.audit.AuditTrailService;
+import app.user.User;
+import app.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -33,7 +36,10 @@ class OrderExecutionServiceTest {
     private static final int INSTRUMENT_ID = 2;
     private static final int FILL_ID = 77;
 
+    private static final UUID USER_ID = UUID.randomUUID();
+
     private final AccountRepository accountRepository = mock(AccountRepository.class);
+    private final UserRepository userRepository = mock(UserRepository.class);
     private final HoldingRepository holdingRepository = mock(HoldingRepository.class);
     private final OrderRepository orderRepository = mock(OrderRepository.class);
     private final FillRepository fillRepository = mock(FillRepository.class);
@@ -43,15 +49,21 @@ class OrderExecutionServiceTest {
 
     private OrderExecutionService service;
     private Account account;
+    private User user;
 
     @BeforeEach
     void setUp() {
-        service = new OrderExecutionService(accountRepository, holdingRepository, orderRepository, fillRepository,
-                cashTransactionRepository, holdingMovementRepository, auditTrailService);
+        service = new OrderExecutionService(accountRepository, userRepository, holdingRepository, orderRepository,
+                fillRepository, cashTransactionRepository, holdingMovementRepository, auditTrailService);
         account = new Account();
         account.setId(ACCOUNT_ID);
-        account.setCashBalance(new BigDecimal("1000.00"));
-        when(accountRepository.findByIdForUpdate(ACCOUNT_ID)).thenReturn(Optional.of(account));
+        account.setUserId(USER_ID);
+        account.setCashBalance(BigDecimal.ZERO);
+        user = new User();
+        user.setUserId(USER_ID);
+        user.setAvailableFunds(new BigDecimal("1000.00"));
+        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account));
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
         when(holdingRepository.findByAccountIdAndInstrumentIdForUpdate(ACCOUNT_ID, INSTRUMENT_ID))
                 .thenReturn(Optional.empty());
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -84,7 +96,9 @@ class OrderExecutionServiceTest {
         assertEquals(new BigDecimal("-250.00"), cash.getAmount());
         assertEquals(CashTransaction.REASON_ORDER_FILL, cash.getReason());
         assertEquals(fill.getFilledAt(), cash.getCreatedAt());
-        assertEquals(new BigDecimal("750.00"), account.getCashBalance());
+        assertEquals(new BigDecimal("750.00"), user.getAvailableFunds());
+        // Cash belongs to the user, not the account (KAN-93)
+        assertEquals(BigDecimal.ZERO, account.getCashBalance());
 
         HoldingMovement movement = savedMovement();
         assertEquals(ACCOUNT_ID, movement.getAccountId());
@@ -114,7 +128,7 @@ class OrderExecutionServiceTest {
 
         assertEquals(Order.STATUS_FILLED, result.getStatus());
         assertEquals(new BigDecimal("120.00"), savedCashTransaction().getAmount());
-        assertEquals(new BigDecimal("1120.00"), account.getCashBalance());
+        assertEquals(new BigDecimal("1120.00"), user.getAvailableFunds());
         assertEquals(new BigDecimal("-3"), savedMovement().getQuantityDelta());
         assertEquals(new BigDecimal("5"), existing.getQuantity());
         assertNotNull(existing.getUpdatedAt());
@@ -122,11 +136,11 @@ class OrderExecutionServiceTest {
     }
 
     @Test
-    void buyFailsWhenCashNoLongerCoversTheTrade() {
+    void buyFailsWhenFundsNoLongerCoverTheTrade() {
         Order result = service.execute(order(Order.TYPE_BUY, "41", "25.00"), new Instrument());
 
         assertFailed(result, "BR-09: insufficient funds at execution time");
-        assertEquals(new BigDecimal("1000.00"), account.getCashBalance());
+        assertEquals(new BigDecimal("1000.00"), user.getAvailableFunds());
     }
 
     @Test
@@ -151,7 +165,7 @@ class OrderExecutionServiceTest {
 
     @Test
     void executionStopsIfTheAccountDisappears() {
-        when(accountRepository.findByIdForUpdate(ACCOUNT_ID)).thenReturn(Optional.empty());
+        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.empty());
 
         var error = assertThrows(IllegalStateException.class,
                 () -> service.execute(order(Order.TYPE_BUY, "1", "1.00"), new Instrument()));
@@ -161,12 +175,12 @@ class OrderExecutionServiceTest {
     }
 
     private void assertFailed(Order result, String reason) {
-        assertEquals(Order.STATUS_EXECUTION_FAILED, result.getStatus());
+        assertEquals(Order.STATUS_REJECTED, result.getStatus());
         assertEquals(reason, result.getRejectionReason());
         assertNotNull(result.getResolvedAt());
         verify(fillRepository, never()).save(any());
         verify(cashTransactionRepository, never()).save(any());
-        verify(auditTrailService).record(result.getOrderId(), Order.STATUS_EXECUTION_FAILED, reason);
+        verify(auditTrailService).record(result.getOrderId(), Order.STATUS_REJECTED, reason);
     }
 
     private static Order order(String type, String quantity, String price) {
@@ -177,7 +191,7 @@ class OrderExecutionServiceTest {
         order.setOrderType(type);
         order.setQuantity(new BigDecimal(quantity));
         order.setIndicativePrice(new BigDecimal(price));
-        order.setStatus(Order.STATUS_ACCEPTED);
+        order.setStatus(Order.STATUS_PENDING);
         return order;
     }
 

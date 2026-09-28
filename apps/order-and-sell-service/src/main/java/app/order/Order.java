@@ -18,9 +18,9 @@ import java.util.UUID;
  *
  * <p>Lifecycle (KAN-93, see V004__Order_status_lifecycle.sql):
  * {@code PENDING -> REJECTED} when a trading rule fails, otherwise
- * {@code PENDING -> FILLED -> APPROVED} once the fill is written and the
- * user's available funds and the account's holdings have moved. This entity
- * is persisted as {@code PENDING} the moment a request is received, before
+ * {@code PENDING -> FILLED} once the fill is written and the user's
+ * available funds and the account's holdings have moved. This entity is
+ * persisted as {@code PENDING} the moment a request is received, before
  * the trading-rule pipeline runs, so a rejected order still leaves a record.
  */
 @Entity
@@ -32,10 +32,11 @@ public class Order {
 
     /** Created and awaiting the trading-rule pipeline. */
     public static final String STATUS_PENDING = "PENDING";
-    /** The fill, funds movement and holding movement have been written. */
+    /**
+     * Final state of a successful order: the fill, funds movement and
+     * holding movement have been written.
+     */
     public static final String STATUS_FILLED = "FILLED";
-    /** Final state of a successful order. */
-    public static final String STATUS_APPROVED = "APPROVED";
     /** Final state of an order that failed a trading rule. */
     public static final String STATUS_REJECTED = "REJECTED";
 

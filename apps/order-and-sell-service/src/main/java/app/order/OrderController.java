@@ -35,7 +35,7 @@ public class OrderController {
 
     /**
      * Submits a buy or sell order (KAN-93). Always returns 201 with the
-     * order's outcome: {@code APPROVED} when it executed and the user's
+     * order's outcome: {@code FILLED} when it executed and the user's
      * available funds moved, or {@code REJECTED} with a reason — a
      * trading-rule rejection is a successful response describing a failed
      * trade, not an HTTP error. See {@link OrderService#submitOrder} for

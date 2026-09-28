@@ -66,6 +66,7 @@ class OrderControllerIntegrationTest {
     @Autowired private AuditTrailRepository auditTrailRepository;
 
     private MockMvc mockMvc;
+    private User user;
     private Account account;
     private Instrument instrument;
 
@@ -82,7 +83,7 @@ class OrderControllerIntegrationTest {
         instrumentRepository.deleteAll();
         userRepository.deleteAll();
 
-        User user = new User();
+        user = new User();
         user.setUserId(UUID.randomUUID());
         user.setFirstName("Order");
         user.setLastName("Tester");
@@ -91,12 +92,14 @@ class OrderControllerIntegrationTest {
         user.setAddress("1 Main St");
         user.setDateOfBirth(LocalDate.of(1990, 1, 1));
         user.setCreatedAt(OffsetDateTime.now());
+        // Cash belongs to the user, not the account (KAN-93)
+        user.setAvailableFunds(new BigDecimal("1000.00"));
         user = userRepository.save(user);
 
         account = new Account();
         account.setUserId(user.getUserId());
         account.setOpenedDate(LocalDate.now());
-        account.setCashBalance(new BigDecimal("1000.00"));
+        account.setCashBalance(BigDecimal.ZERO);
         account = accountRepository.save(account);
 
         instrument = new Instrument();
@@ -125,6 +128,9 @@ class OrderControllerIntegrationTest {
                 .andExpect(jsonPath("$.status").value("FILLED"));
 
         assertEquals(0, new BigDecimal("900.00").compareTo(
+                userRepository.findById(user.getUserId()).orElseThrow().getAvailableFunds()));
+        // Execution does not move the account's own cash balance (KAN-93)
+        assertEquals(0, BigDecimal.ZERO.compareTo(
                 accountRepository.findById(account.getAccountId()).orElseThrow().getCashBalance()));
         assertEquals(0, new BigDecimal("6").compareTo(holdingRepository
                 .findByAccountIdAndInstrumentId(account.getAccountId(), instrument.getInstrumentId())
@@ -149,7 +155,7 @@ class OrderControllerIntegrationTest {
         List<String> events = auditTrailRepository.findAll().stream()
                 .sorted(Comparator.comparing(AuditTrail::getAuditId))
                 .map(AuditTrail::getEventType).toList();
-        assertEquals(List.of("SUBMITTED", "ACCEPTED", "FILLED", "SUBMITTED", "ACCEPTED", "FILLED"), events);
+        assertEquals(List.of("PENDING", "FILLED", "PENDING", "FILLED"), events);
     }
 
     @Test

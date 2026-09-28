@@ -25,7 +25,7 @@ import java.util.Optional;
  * entities the rule pipeline needs, persisting the order as
  * {@code PENDING}, running the pipeline, and — only if it passes — handing
  * off to {@link OrderExecutionService}. A failed rule leaves the order
- * {@code REJECTED}; a successful execution leaves it {@code APPROVED}
+ * {@code REJECTED}; a successful execution leaves it {@code FILLED}
  * (KAN-93). This is the "Order controller" + "Trading rule pipeline"
  * handoff from the KAN-95 walkthrough, minus the HTTP concerns, which stay
  * in {@link OrderController}.
@@ -59,7 +59,7 @@ public class OrderService {
 
     /**
      * Submits an order. The order is created {@code PENDING}; it returns as
-     * {@code REJECTED} when a trading rule fails, or {@code APPROVED} once the
+     * {@code REJECTED} when a trading rule fails, or {@code FILLED} once the
      * fill is written and the owning user's available funds and the account's
      * holdings have moved. Never throws for a trade that fails a trading
      * rule — that's a normal outcome, reflected in the returned order's
@@ -125,7 +125,7 @@ public class OrderService {
         }
 
         // The rules passed (BR-05); the order stays PENDING until execution
-        // moves it to FILLED and then APPROVED, or rejects it under the row lock.
+        // moves it to FILLED, or rejects it under the row lock.
         order.setAcceptedAt(OffsetDateTime.now());
         order = orderRepository.save(order);
 

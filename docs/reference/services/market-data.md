@@ -25,7 +25,7 @@ The schema is applied through four SQL migrations applied in order:
 1. **V001__Initial_schema.sql** – Creates base schema, tables, and relationships
 2. **V002__Synthetic_market_data_replay_metadata.sql** – Adds replay metadata for synthetic data simulation
 3. **V003__Token_authentication.sql** – Removes legacy authentication columns, adds token support
-4. **V004__Order_status_lifecycle.sql** – Replaces order statuses with PENDING, FILLED, APPROVED and REJECTED (KAN-93)
+4. **V004__Order_status_lifecycle.sql** – Replaces order statuses with PENDING, FILLED and REJECTED (KAN-93)
 
 All migrations are applied to the `trading_season` database by either Java service on first startup (via Hibernate/JPA configuration) or manually via `psql`.
 
