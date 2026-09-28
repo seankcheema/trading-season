@@ -6,8 +6,9 @@ Read only the guide or reference relevant to your task. Application READMEs prov
 | --- | --- |
 | Install, run, test, contribute, or regenerate Javadocs | [Development](guides/development.md) |
 | Configure services, investigate failures, or work on CI | [Operations](guides/operations.md) |
-| Understand service ownership and integration gaps | [Architecture](reference/architecture.md) |
-| Change or consume an implemented HTTP endpoint | [API reference](reference/api.md) |
+| Understand service architecture and boundaries | [Architecture](reference/architecture.md) |
+| Review detailed per-service structure and endpoints | [Service Reference](reference/services/) |
+| Change or consume an implemented HTTP endpoint | [API Reference](reference/api.md) |
 | Understand schema ownership, migrations, and relationships | [Database](reference/database.md) |
 | Browse generated Java class and member documentation | [Javadocs](JAVA_DOCS/index.html) |
 | Review test coverage for the client UI, Java services, or auth service | [Code coverage](coverage/README.md) |

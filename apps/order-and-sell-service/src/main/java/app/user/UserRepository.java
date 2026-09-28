@@ -1,7 +1,11 @@
 package app.user;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
 
+import jakarta.persistence.LockModeType;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -9,6 +13,26 @@ import java.util.UUID;
  */
 public interface UserRepository extends JpaRepository<User, UUID> {
 
+    /**
+     * Checks whether an email is already registered, ignoring case.
+     *
+     * @param email the email address
+     * @return {@code true} if an account uses the email in any letter case
+     */
+    boolean existsByEmailIgnoreCase(String email);
+
+    /**
+     * Loads a user with a row lock held until the enclosing transaction completes.
+     * Order execution uses this, not {@code findById}, before checking and moving
+     * {@code availableFunds} (KAN-93) so two concurrent orders cannot both spend
+     * the same balance.
+     *
+     * @param userId the user's UUID
+     * @return the user, or empty if none exists
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM User u WHERE u.userId = :userId")
+    Optional<User> findByIdForUpdate(UUID userId);
 }
 
 
