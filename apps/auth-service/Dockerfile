@@ -8,9 +8,11 @@ WORKDIR /app
 # Copy manifests before source. Docker caches each layer separately, so as long
 # as package-lock.json is unchanged the dependency install below is served from
 # cache even when source files change. Same layer-caching win the backend
-# Dockerfile gets by copying pom.xml first.
+# Dockerfile gets by copying pom.xml first. The BuildKit cache mount keeps the
+# npm download cache between builds without storing it in the image, so a
+# lockfile change fetches only new packages.
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # Source and TypeScript config. This layer re-runs only when they change.
 COPY tsconfig.json tsconfig.build.json nest-cli.json ./
@@ -31,8 +33,10 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 # Production dependencies only. bcrypt is a native addon, so its build scripts
 # must be allowed to run here — npm 11 blocks lifecycle scripts by default.
+# The shared cache mount reuses the build stage's downloads and never becomes
+# part of this layer, so no `npm cache clean` is needed.
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --foreground-scripts && npm cache clean --force
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --foreground-scripts
 
 # Copy only the compiled output from the build stage. Nothing else.
 COPY --from=build /app/dist ./dist
