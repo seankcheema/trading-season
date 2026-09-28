@@ -4,7 +4,7 @@
 
 | Area | Current responsibility | Source |
 | --- | --- | --- |
-| Angular UI | Login and registration against the NestJS auth service, profile submission to the Java backend, dashboard route protection, inactivity sign-out, shared components | [Routes](../../apps/client-ui/src/app/app.routes.ts) |
+| Angular UI | Login and registration against the NestJS auth service, profile submission to the Java backend, dashboard route protection, failed sign-in lockout, inactivity sign-out, shared components | [Routes](../../apps/client-ui/src/app/app.routes.ts) |
 | Spring Boot backend | Token-authenticated profile registration and user APIs, plus public simulated market reads | [Java auth controller](../../apps/holdings-and-trade-service/src/main/java/app/auth/AuthController.java) |
 | NestJS auth service | Email/password login, RS256 access tokens, opaque refresh tokens, JWKS, liveness | [Auth controller](../../apps/auth-service/src/auth/auth.controller.ts) |
 | Shared UI | Angular components consumed through @shared/ui-components subpath exports | [Package manifest](../../packages/shared-ui-components/package.json) |

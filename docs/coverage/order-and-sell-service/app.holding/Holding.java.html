@@ -32,8 +32,8 @@ import java.time.OffsetDateTime;
     @Column(name = &quot;instrument_id&quot;, nullable = false, updatable = false)
     private Integer instrumentId;
 
-    @Column(nullable = false)
-<span class="fc" id="L36">    private BigDecimal quantity = BigDecimal.ZERO;</span>
+<span class="fc" id="L35">    @Column(nullable = false)</span>
+    private BigDecimal quantity = BigDecimal.ZERO;
 
     @Column(name = &quot;updated_at&quot;, nullable = false)
     private OffsetDateTime updatedAt;

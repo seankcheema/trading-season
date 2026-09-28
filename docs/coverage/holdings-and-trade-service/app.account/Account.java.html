@@ -32,14 +32,14 @@ import java.util.UUID;
 @Column(name = &quot;user_id&quot;, nullable = false, updatable = false)
     private UUID userId;
 
-    @Column(name = &quot;cash_balance&quot;, nullable = false)
-<span class="fc" id="L36">    private BigDecimal cashBalance = BigDecimal.ZERO;</span>
+<span class="fc" id="L35">    @Column(name = &quot;cash_balance&quot;, nullable = false)</span>
+    private BigDecimal cashBalance = BigDecimal.ZERO;
 
     @Column(name = &quot;opened_date&quot;, nullable = false)
     private LocalDate openedDate;
 
-    @Column(nullable = false)
-<span class="fc" id="L42">    private String currency = &quot;USD&quot;;</span>
+<span class="fc" id="L41">    @Column(nullable = false)</span>
+    private String currency = &quot;USD&quot;;
 
     public Integer getId() {
 <span class="fc" id="L45">        return id;</span>

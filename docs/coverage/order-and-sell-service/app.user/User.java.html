@@ -46,23 +46,23 @@ import java.util.UUID;
     @Column(name = &quot;date_of_birth&quot;, nullable = false)
     private LocalDate dateOfBirth;
 
-    @Column(name = &quot;trader_level&quot;, nullable = false)
-<span class="fc" id="L50">    private String traderLevel = &quot;BEGINNER&quot;;</span>
+<span class="fc" id="L49">    @Column(name = &quot;trader_level&quot;, nullable = false)</span>
+    private String traderLevel = &quot;BEGINNER&quot;;
 
-    @Column(name = &quot;available_funds&quot;, nullable = false)
-<span class="fc" id="L53">    private BigDecimal availableFunds = BigDecimal.ZERO;</span>
+<span class="fc" id="L52">    @Column(name = &quot;available_funds&quot;, nullable = false)</span>
+    private BigDecimal availableFunds = BigDecimal.ZERO;
 
-    @Column(name = &quot;user_role&quot;, nullable = false)
-<span class="fc" id="L56">    private String userRole = &quot;TRADER&quot;;</span>
+<span class="fc" id="L55">    @Column(name = &quot;user_role&quot;, nullable = false)</span>
+    private String userRole = &quot;TRADER&quot;;
 
-    @Column(name = &quot;account_status&quot;, nullable = false)
-<span class="fc" id="L59">    private String accountStatus = &quot;ACTIVE&quot;;</span>
+<span class="fc" id="L58">    @Column(name = &quot;account_status&quot;, nullable = false)</span>
+    private String accountStatus = &quot;ACTIVE&quot;;
 
-    @Column(name = &quot;session_timeout_minutes&quot;, nullable = false)
+<span class="fc" id="L61">    @Column(name = &quot;session_timeout_minutes&quot;, nullable = false)</span>
 <span class="fc" id="L62">    private Integer sessionTimeoutMinutes = 10;</span>
 
-    @Column(name = &quot;execution_buffer_percent&quot;, nullable = false)
-<span class="fc" id="L65">    private BigDecimal executionBufferPercent = BigDecimal.ZERO;</span>
+<span class="fc" id="L64">    @Column(name = &quot;execution_buffer_percent&quot;, nullable = false)</span>
+    private BigDecimal executionBufferPercent = BigDecimal.ZERO;
 
     @Column(name = &quot;last_activity_at&quot;)
     private OffsetDateTime lastActivityAt;
@@ -163,8 +163,8 @@ import java.util.UUID;
     }
 
     public void setAccountStatus(String accountStatus) {
-<span class="nc" id="L166">        this.accountStatus = accountStatus;</span>
-<span class="nc" id="L167">    }</span>
+<span class="fc" id="L166">        this.accountStatus = accountStatus;</span>
+<span class="fc" id="L167">    }</span>
 
     public Integer getSessionTimeoutMinutes() {
 <span class="nc" id="L170">        return sessionTimeoutMinutes;</span>
@@ -175,12 +175,12 @@ import java.util.UUID;
 <span class="nc" id="L175">    }</span>
 
     public BigDecimal getExecutionBufferPercent() {
-<span class="nc" id="L178">        return executionBufferPercent;</span>
+<span class="fc" id="L178">        return executionBufferPercent;</span>
     }
 
     public void setExecutionBufferPercent(BigDecimal executionBufferPercent) {
-<span class="nc" id="L182">        this.executionBufferPercent = executionBufferPercent;</span>
-<span class="nc" id="L183">    }</span>
+<span class="fc" id="L182">        this.executionBufferPercent = executionBufferPercent;</span>
+<span class="fc" id="L183">    }</span>
 
     public OffsetDateTime getLastActivityAt() {
 <span class="nc" id="L186">        return lastActivityAt;</span>
