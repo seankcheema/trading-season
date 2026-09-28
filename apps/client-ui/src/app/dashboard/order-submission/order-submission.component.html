@@ -12,14 +12,6 @@
     <header class="border-border flex items-center justify-between gap-4 border-b px-5 py-3">
       <h2 id="order-submission-title" class="text-sm font-semibold">New Order</h2>
       <div class="flex items-center gap-1">
-        <a
-          [routerLink]="fullScreenUrl()"
-          class="text-muted-foreground hover:bg-muted hover:text-primary flex h-8 items-center gap-2 rounded-lg px-2 text-xs transition-colors"
-          aria-label="Open full screen market chart"
-        >
-          <ng-icon name="lucideExpand" class="text-[16px]" />
-          <span>Full screen</span>
-        </a>
         <button
           type="button"
           class="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 cursor-pointer items-center justify-center rounded-lg transition-colors"
@@ -39,17 +31,28 @@
           (selected)="activeSymbol.set($event.symbol)"
         />
 
-        <div class="mt-5 flex items-center gap-3">
-          <div
-            class="bg-primary/15 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl text-xs font-semibold"
-            aria-hidden="true"
+        <div class="mt-5 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3 min-w-0">
+            <div
+              class="bg-primary/15 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl text-xs font-semibold"
+              aria-hidden="true"
+            >
+              {{ activeInstrument().symbol.slice(0, 4) }}
+            </div>
+            <div class="min-w-0">
+              <p class="text-lg leading-tight font-semibold">{{ activeInstrument().symbol }}</p>
+              <p class="text-muted-foreground truncate text-xs">{{ activeInstrument().name }}</p>
+            </div>
+          </div>
+          <a
+            [routerLink]="fullScreenUrl()"
+            class="text-muted-foreground hover:bg-muted hover:text-primary flex h-8 items-center gap-2 rounded-lg px-2 transition-colors shrink-0"
+            aria-label="Open full screen market chart"
+            title="Open full screen market chart"
           >
-            {{ activeInstrument().symbol.slice(0, 4) }}
-          </div>
-          <div class="min-w-0">
-            <p class="text-lg leading-tight font-semibold">{{ activeInstrument().symbol }}</p>
-            <p class="text-muted-foreground truncate text-xs">{{ activeInstrument().name }}</p>
-          </div>
+            <ng-icon name="lucideExpand" class="text-[16px]" />
+            <span class="text-xs font-medium">Full screen</span>
+          </a>
         </div>
 
         <div class="mt-4 flex flex-wrap items-end justify-between gap-3">

@@ -24,9 +24,12 @@
   border-radius: 0.5rem;
   padding: 0;
   color: rgba(238, 250, 255, 0.62);
-  font-size: 1rem;
+  font-size: 1.5rem;
   font-weight: 600;
   transition: 150ms ease;
+}
+.nav-back ng-icon {
+  font-size: 1.5rem;
 }
 .nav-back:hover {
   border-color: rgba(0, 187, 255, 0.35);
