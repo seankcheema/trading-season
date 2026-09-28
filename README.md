@@ -157,6 +157,27 @@ psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STO
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V003__Token_authentication.sql
 ```
 
+Verify that `trading_season` owns the tables. Connect to the `trading_season` database and run:
+
+```sql
+SELECT tablename, tableowner
+FROM pg_tables
+WHERE schemaname = 'public'
+ORDER BY tablename;
+```
+
+If another user (such as `postgres`) owns the tables, connect to the `trading_season` database as the admin user and reassign ownership:
+
+```sql
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
+    EXECUTE format('ALTER TABLE public.%I OWNER TO trading_season', r.tablename);
+  END LOOP;
+END $$;
+```
+
 #### 2. Create auth database
 
 Connect to the default `postgres` database as your PostgreSQL admin user and run:
@@ -224,6 +245,31 @@ SELECT id, email, role, is_active, failed_attempts, locked_until, created_at
 FROM users
 ORDER BY created_at DESC;
 ```
+
+### Generate and seed synthetic market data
+
+Synthetic market data is required for the trading simulation. Run the complete routine from the repository root to generate and load mock data:
+
+```powershell
+$freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
+
+apps/market-data/db/setup-market-data.ps1 `
+  -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
+  -AvailableDiskGb $freeDiskGb
+```
+
+For a smaller test archive (e.g., 2 days of data), add `-StartDate 2026-01-05 -EndDate 2026-01-06`.
+
+For a fresh database, add `-InitializeDisposableDatabase` to drop and recreate business tables. Add `-Regenerate` to replace an incompatible archive.
+
+**On first run**, this script will:
+1. Create a Python virtual environment at `apps/market-data/db/.venv`
+2. Install dependencies from `apps/market-data/db/scripts/requirements.txt`
+3. Generate synthetic market data for the year 2026
+4. Validate the generated archive
+5. Import into PostgreSQL (raw ticks stay in Parquet; candles load to the database)
+
+If needed, you can run individual steps for troubleshooting. See the [database guide](docs/reference/database.md#optional-synthetic-market-data-generation-and-import) for step-by-step commands.
 
 See the [development guide](docs/guides/development.md) for additional commands, tests, and troubleshooting.
 
