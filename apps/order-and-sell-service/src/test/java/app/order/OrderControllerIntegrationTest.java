@@ -24,6 +24,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.math.BigDecimal;
@@ -33,12 +34,14 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
+import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -47,7 +50,7 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppC
 /**
  * Submits orders through {@code POST /api/orders} and checks the response contract and the ledger
  * rows a fill leaves behind: one fill, one cash transaction, one holding movement, and the audit
- * trail of status changes.
+ * trail of status changes. Also covers {@code GET /api/orders}, which is scoped to the caller.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -187,6 +190,90 @@ class OrderControllerIntegrationTest {
                 .andExpect(status().isUnauthorized());
 
         assertTrue(orderRepository.findAll().isEmpty());
+    }
+
+    @Test
+    void listingOrdersReturnsTheCallersOwnOrdersNewestFirst() throws Exception {
+        submit("BUY", "10", "20.00").andExpect(status().isCreated());
+        submit("BUY", "5", "10.00").andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/orders").with(tokenFor(user.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].quantity").value(5))
+                .andExpect(jsonPath("$[0].status").value("FILLED"))
+                .andExpect(jsonPath("$[1].quantity").value(10));
+    }
+
+    @Test
+    void listingOrdersNeverReturnsAnotherUsersOrders() throws Exception {
+        submit("BUY", "10", "20.00").andExpect(status().isCreated());
+        UUID strangerId = givenAnOrderBelongingToAnotherUser();
+
+        mockMvc.perform(get("/api/orders").with(tokenFor(user.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].quantity").value(10));
+
+        mockMvc.perform(get("/api/orders").with(tokenFor(strangerId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].quantity").value(7));
+    }
+
+    @Test
+    void listingOrdersIsEmptyForACallerWhoHasNotTraded() throws Exception {
+        mockMvc.perform(get("/api/orders").with(tokenFor(UUID.randomUUID())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    void listingOrdersRequiresAnAccessToken() throws Exception {
+        mockMvc.perform(get("/api/orders"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    /**
+     * Saves an order on an account owned by a different user, so a listing can be
+     * checked for leakage between owners.
+     *
+     * @return the other user's id
+     */
+    private UUID givenAnOrderBelongingToAnotherUser() {
+        User stranger = new User();
+        stranger.setUserId(UUID.randomUUID());
+        stranger.setFirstName("Someone");
+        stranger.setLastName("Else");
+        stranger.setEmail("stranger@example.com");
+        stranger.setSsn("987-65-4321");
+        stranger.setAddress("2 Other St");
+        stranger.setDateOfBirth(LocalDate.of(1991, 2, 2));
+        stranger.setCreatedAt(OffsetDateTime.now());
+        stranger = userRepository.save(stranger);
+
+        Account strangerAccount = new Account();
+        strangerAccount.setUserId(stranger.getUserId());
+        strangerAccount.setOpenedDate(LocalDate.now());
+        strangerAccount.setCashBalance(BigDecimal.ZERO);
+        strangerAccount = accountRepository.save(strangerAccount);
+
+        Order strangerOrder = new Order();
+        strangerOrder.setAccountId(strangerAccount.getAccountId());
+        strangerOrder.setInstrumentId(instrument.getInstrumentId());
+        strangerOrder.setClientReference(UUID.randomUUID());
+        strangerOrder.setOrderType(Order.TYPE_BUY);
+        strangerOrder.setStatus(Order.STATUS_PENDING);
+        strangerOrder.setQuantity(new BigDecimal("7"));
+        strangerOrder.setIndicativePrice(new BigDecimal("20.00"));
+        strangerOrder.setSubmittedAt(OffsetDateTime.now());
+        orderRepository.save(strangerOrder);
+
+        return stranger.getUserId();
+    }
+
+    private static RequestPostProcessor tokenFor(UUID userId) {
+        return jwt().jwt(token -> token.subject(userId.toString()));
     }
 
     private ResultActions submit(String type, String quantity, String price) throws Exception {

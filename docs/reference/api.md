@@ -79,23 +79,25 @@ This service is the primary backend for Client UI. It implements order operation
 | Method | Path | Request | Success |
 | --- | --- | --- | --- |
 | POST | /api/orders | Bearer token + JSON: `accountId`, `instrumentId`, `orderType` (BUY or SELL), `quantity` (> 0), `indicativePrice` (> 0), optional `bufferPercent` (>= 0), `clientReference` (UUID idempotency key) | 201: `orderId`, `status`, `orderType`, `quantity`, `indicativePrice`, `rejectionReason`, `submittedAt`, `resolvedAt` |
+| GET | /api/orders | Bearer token | 200: array of the caller's orders, newest first, each in the same shape as the POST response |
 
 **Order lifecycle (KAN-93):** an order is created `PENDING`, then the trading rules run: the user's account is active, a buy is affordable, a sell is covered by holdings, and the instrument is tradable. A failed rule leaves the order `REJECTED` with a `rejectionReason`. Otherwise the fill is written and the order moves to `FILLED`, its final state. Every transition is recorded in `audit_trail`. A rejection is still a 201 response: it describes a failed trade, not a failed request.
 
 **Funds:** cash belongs to the user, not to an account. A buy is rejected when `quantity * indicativePrice` exceeds the caller's `availableFunds`, the value returned by `GET /api/users/me`. A filled buy decreases `availableFunds` by that amount and a filled sell increases it. `accounts.cash_balance` is not moved. Orders currently fill at `indicativePrice`; see [OrderExecutionService](../../apps/order-and-sell-service/src/main/java/app/order/execution/OrderExecutionService.java).
 
+**Order history:** `GET /api/orders` returns every order placed on any account the caller owns, newest `submittedAt` first, ties broken by descending `orderId`. The owner comes from the token's `sub`, so there is no parameter that can name another user's orders; a caller who has never traded gets `[]`, not a 404.
+
 **Idempotency:** resubmitting the same `accountId` and `clientReference` returns the original order's outcome without executing again.
 
-**Known gap:** `accountId` is taken from the request body and is not yet checked against the token's `sub`; see [OrderController](../../apps/order-and-sell-service/src/main/java/app/order/OrderController.java).
+**Known gap:** on submission, `accountId` is taken from the request body and is not yet checked against the token's `sub`, so a valid token can place an order on another user's account. The listing endpoint is not affected: it is scoped to the caller. See [OrderController](../../apps/order-and-sell-service/src/main/java/app/order/OrderController.java).
 
 ### Planned trading endpoints
 
-These endpoints are **NOT YET IMPLEMENTED**. [OrderController](../../apps/order-and-sell-service/src/main/java/app/order/OrderController.java) exposes only `POST /api/orders`. Do not call them yet.
+These endpoints are **NOT YET IMPLEMENTED**. [OrderController](../../apps/order-and-sell-service/src/main/java/app/order/OrderController.java) exposes only `POST /api/orders` and `GET /api/orders`. Do not call them yet.
 
 | Method | Path | Request | Planned response |
 | --- | --- | --- | --- |
 | GET | /api/orders/{orderId} | Bearer token; owned order | 200: order, fill if present, audit events |
-| GET | /api/me/orders | Bearer token | 200: array of caller's orders |
 | GET | /api/me/cash-transactions | Bearer token; optional limit | 200: user's cash transactions, newest first |
 | POST | /api/me/cash-transactions | Bearer token + JSON: amount, reason (DEPOSIT or WITHDRAWAL) | 201: transaction and updated availableFunds |
 

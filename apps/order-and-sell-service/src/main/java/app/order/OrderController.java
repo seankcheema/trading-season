@@ -1,27 +1,31 @@
 package app.order;
 
+import app.auth.AuthenticatedUser;
 import app.order.dto.OrderRequest;
 import app.order.dto.OrderResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 /**
- * REST endpoint for order submission (KAN-95, KAN-47).
+ * REST endpoints for orders (KAN-95, KAN-47): submitting one, and reading
+ * back the caller's own.
  *
- * <p><b>Known gap:</b> this controller does not yet resolve the caller from
- * an authenticated session — business-backend has no request-time identity
- * check at all today (no {@code SecurityFilterChain}/filter reads the
- * {@code session_id} the auth service issues),
- * and a separate {@code auth-service} issuing real JWTs exists alongside it
- * marked "WIP" in the root README. Until the team decides which of those
- * this endpoint should trust, {@link OrderRequest#accountId()} is taken
- * from the request body as-is, with no ownership check. Don't build
- * anything downstream that assumes this is already secure.
+ * <p><b>Known gap:</b> the read endpoint is scoped to the caller by the
+ * bearer token's {@code sub}, but submission is not.
+ * {@link OrderRequest#accountId()} is still taken from the request body
+ * as-is, with no check that the caller owns that account, so a valid token
+ * can place an order on someone else's account. Don't build anything
+ * downstream that assumes submission is already ownership-checked.
  */
 @RestController
 @RequestMapping("/api/orders")
@@ -49,6 +53,22 @@ public class OrderController {
     public OrderResponse submitOrder(@Valid @RequestBody OrderRequest request) {
         Order order = orderService.submitOrder(request);
         return OrderResponse.from(order);
+    }
+
+    /**
+     * Lists the caller's own orders, newest submission first. The owner is
+     * resolved from the bearer token, so there is no path or query parameter
+     * that can name another user's orders. A caller with no orders gets an
+     * empty array, not a 404.
+     *
+     * @param jwt the verified access token
+     * @return the caller's orders across every account they own
+     */
+    @GetMapping
+    public List<OrderResponse> listOwnOrders(@AuthenticationPrincipal Jwt jwt) {
+        return orderService.getOwnOrders(AuthenticatedUser.from(jwt).userId()).stream()
+                .map(OrderResponse::from)
+                .toList();
     }
 }
 

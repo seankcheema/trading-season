@@ -89,7 +89,7 @@ All endpoints require valid RS256 access token except public market GET endpoint
 - `GET /api/accounts/{accountId}/holdings` - Get current holdings (requires auth)
 
 **Order History:**
-- `GET /api/orders` - List all orders for authenticated user (requires auth)
+- `GET /api/orders` - List the authenticated caller's orders across all of their accounts, newest first (requires auth)
 
 **Orders:**
 - `POST /api/orders` - Submit a buy or sell order; created PENDING and returned FILLED or REJECTED (requires auth)

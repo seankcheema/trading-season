@@ -18,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.UUID;
 import java.util.Optional;
 
 /**
@@ -130,6 +132,20 @@ public class OrderService {
         order = orderRepository.save(order);
 
         return orderExecutionService.execute(order, instrument);
+    }
+
+    /**
+     * Lists the caller's own orders, newest submission first. Callers pass
+     * the id from the verified token, never an id supplied in the request,
+     * so a client can only read orders placed on accounts it owns. A user
+     * with no orders gets an empty list rather than an error.
+     *
+     * @param userId the caller's user id from the token's sub claim
+     * @return the caller's orders across all of their accounts, newest first
+     */
+    @Transactional(readOnly = true)
+    public List<Order> getOwnOrders(UUID userId) {
+        return orderRepository.findAllByOwningUserId(userId);
     }
 }
 

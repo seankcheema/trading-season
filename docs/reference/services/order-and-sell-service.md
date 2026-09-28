@@ -17,7 +17,7 @@ This service implements the complete order processing pipeline and is the author
 - Market data publication (snapshots, candles, streaming quotes)
 - Audit trail recording
 
-Order lookup, order history, and cash transaction endpoints are planned but not implemented; see [API Reference](../api.md#planned-trading-endpoints).
+Single-order lookup and cash transaction endpoints are planned but not implemented; see [API Reference](../api.md#planned-trading-endpoints).
 
 ## Verified API endpoints
 
@@ -27,6 +27,7 @@ Order lookup, order history, and cash transaction endpoints are planned but not 
 | `/api/auth/register` | POST | Bearer token | Register user account |
 | `/api/users/me` | GET | Bearer token | Retrieve caller's profile |
 | `/api/orders` | POST | Bearer token | Submit order for execution |
+| `/api/orders` | GET | Bearer token | List the caller's orders, newest first |
 | `/api/market/snapshot` | GET | Public | Get current market quotes |
 | `/api/market/candles` | GET | Public | Retrieve price candles for analysis |
 | `/api/market/stream` | GET | Public | Stream live market ticks |
