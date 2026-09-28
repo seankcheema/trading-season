@@ -35,6 +35,7 @@ class AccountRepositoryTest {
         UUID owner = UUID.randomUUID();
         Account account = new Account();
         account.setUserId(owner);
+        account.setName("Test Account");
         account.setCashBalance(new BigDecimal("2500.00"));
         account.setOpenedDate(LocalDate.of(2026, 1, 5));
         account.setCurrency("CAD");
@@ -45,6 +46,7 @@ class AccountRepositoryTest {
         assertNotNull(id);
         assertEquals(id, locked.getId());
         assertEquals(owner, locked.getUserId());
+        assertEquals("Test Account", locked.getName());
         assertEquals(0, new BigDecimal("2500.00").compareTo(locked.getCashBalance()));
         assertEquals(LocalDate.of(2026, 1, 5), locked.getOpenedDate());
         assertEquals("CAD", locked.getCurrency());

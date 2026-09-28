@@ -20,7 +20,7 @@
         <test.tags></test.tags>
         <jacoco.version>0.8.13</jacoco.version>
         <!-- Minimum coverage for every JaCoCo counter in every package -->
-        <coverage.minimum>0.70</coverage.minimum>
+        <coverage.minimum>0.85</coverage.minimum>
     </properties>
 
     <dependencies>

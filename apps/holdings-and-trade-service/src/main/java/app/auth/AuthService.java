@@ -1,8 +1,8 @@
 package app.auth;
 
+import app.account.AccountService;
 import app.user.User;
 import app.user.UserRepository;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,19 +20,23 @@ import java.time.OffsetDateTime;
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final AccountService accountService;
 
     /**
      * Creates the service.
      *
-     * @param userRepository persistence for business accounts
+     * @param userRepository  persistence for business accounts
+     * @param accountService  service for managing user accounts
      */
-    public AuthService(UserRepository userRepository) {
+    public AuthService(UserRepository userRepository, AccountService accountService) {
         this.userRepository = userRepository;
+        this.accountService = accountService;
     }
 
     /**
      * Creates the business account for the authenticated caller from the
-     * registration form's profile details.
+     * registration form's profile details. Also creates a default "Main Account"
+     * for the new user.
      *
      * @param caller  the user identified by the verified access token
      * @param request the profile details
@@ -65,7 +69,12 @@ public class AuthService {
         user.setTraderLevel(request.traderLevel());
         user.setAvailableFunds(request.availableFunds());
         user.setCreatedAt(OffsetDateTime.now());
-        return userRepository.save(user);
+        userRepository.save(user);
+
+        // Create a default "Main Account" for the new user
+        accountService.createDefaultAccountForUser(caller.userId());
+
+        return user;
     }
 
     /**

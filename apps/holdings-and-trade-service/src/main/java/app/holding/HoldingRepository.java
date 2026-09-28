@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 
 import jakarta.persistence.LockModeType;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -25,6 +26,14 @@ public interface HoldingRepository extends JpaRepository<Holding, Integer> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select h from Holding h where h.accountId = :accountId and h.instrumentId = :instrumentId")
     Optional<Holding> findByAccountIdAndInstrumentIdForUpdate(Integer accountId, Integer instrumentId);
+
+    /**
+     * Finds all holdings for a given account.
+     *
+     * @param accountId the account ID
+     * @return a list of holdings for this account
+     */
+    List<Holding> findByAccountId(Integer accountId);
 }
 
 

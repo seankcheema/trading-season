@@ -1,5 +1,6 @@
 package app.auth;
 
+import app.account.AccountService;
 import app.user.User;
 import app.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,11 +30,14 @@ class AuthServiceUnitTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private AccountService accountService;
+
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(userRepository);
+        authService = new AuthService(userRepository, accountService);
     }
 
     private static RegisterRequest request(String email) {
@@ -143,5 +147,30 @@ class AuthServiceUnitTest {
         when(userRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(true);
 
         assertTrue(authService.accountExists("  test@example.com "));
+    }
+
+    @Test
+    void registerCreatesDefaultAccountForNewUser() {
+        AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "test@example.com");
+        when(userRepository.existsById(USER_ID)).thenReturn(false);
+        when(userRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(false);
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        authService.register(caller, request("test@example.com"));
+
+        verify(accountService).createDefaultAccountForUser(USER_ID);
+    }
+
+    @Test
+    void registerCreatesAccountAfterUserSave() {
+        AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "test@example.com");
+        when(userRepository.existsById(USER_ID)).thenReturn(false);
+        when(userRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(false);
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        authService.register(caller, request("test@example.com"));
+
+        verify(userRepository).save(any(User.class));
+        verify(accountService).createDefaultAccountForUser(USER_ID);
     }
 }
