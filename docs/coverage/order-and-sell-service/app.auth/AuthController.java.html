@@ -37,14 +37,18 @@ public class AuthController {
      * @param request the profile details from the registration form
      * @return the created account's id and email
      * @throws ForbiddenException if the request email differs from the token's email
-     * @throws ConflictException  if the account already exists or the email is taken
+     * @throws ConflictException  if the account already exists
      */
     @PostMapping(&quot;/register&quot;)
     @ResponseStatus(HttpStatus.CREATED)
     public RegisterResponse register(@AuthenticationPrincipal Jwt jwt,
                                      @Valid @RequestBody RegisterRequest request) {
-<span class="fc" id="L46">        User user = authService.register(AuthenticatedUser.from(jwt), request);</span>
-<span class="fc" id="L47">        return new RegisterResponse(user.getUserId(), user.getEmail());</span>
+<span class="fc" id="L46">        AuthenticatedUser caller = AuthenticatedUser.from(jwt);</span>
+<span class="fc" id="L47">        User user = authService.register(caller, request);</span>
+        // The profile row no longer stores an email. register() has already
+        // checked that the token claim and the request agree, so either is the
+        // same value; the token is the one that is authoritative.
+<span class="fc" id="L51">        return new RegisterResponse(user.getUserId(), caller.email());</span>
     }
 
     /**
@@ -56,7 +60,7 @@ public class AuthController {
      */
     @PostMapping(&quot;/account-exists&quot;)
     public AccountExistsResponse accountExists(@Valid @RequestBody AccountExistsRequest request) {
-<span class="fc" id="L59">        return new AccountExistsResponse(authService.accountExists(request.email()));</span>
+<span class="fc" id="L63">        return new AccountExistsResponse(authService.accountExists(request.email()));</span>
     }
 }
 
