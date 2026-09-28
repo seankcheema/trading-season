@@ -1,11 +1,11 @@
-"""Apply V001, V002 and V003 to an explicitly disposable business database."""
+"""Apply V001 through V004 to an explicitly disposable business database."""
 import argparse, asyncio
 from pathlib import Path
 import asyncpg
 async def run(url: str) -> None:
     migrations=Path(__file__).parents[1]/"migrations"; connection=await asyncpg.connect(url)
     try:
-        for name in ("V001__Initial_schema.sql","V002__Synthetic_market_data_replay_metadata.sql","V003__Token_authentication.sql"):
+        for name in ("V001__Initial_schema.sql","V002__Synthetic_market_data_replay_metadata.sql","V003__Token_authentication.sql","V004__Order_status_lifecycle.sql"):
             await connection.execute((migrations/name).read_text(encoding="utf-8"))
     finally: await connection.close()
 if __name__=="__main__":

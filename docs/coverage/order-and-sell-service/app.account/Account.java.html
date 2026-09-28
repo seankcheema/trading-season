@@ -16,14 +16,15 @@ import java.util.UUID;
  * A user can own more than one account (KAN-78, KAN-103/104)
  * Represents an account with an ID, name, and balance.
  * &lt;p&gt;{@code cashBalance} is a cache (BR-10) reconciled against
- * {@code cash_transactions} - order execution must update it by 
- * inserting a ledger row, never by writing this field directly.
+ * {@code cash_transactions}; never write this field without inserting the
+ * matching ledger row. Since KAN-93 order execution does not move it: buy and
+ * sell orders debit and credit the owning user's {@code availableFunds}.
  */
 
 @Entity
 @Table(name = &quot;accounts&quot;)
 
-<span class="fc" id="L26">public class Account {</span>
+<span class="fc" id="L27">public class Account {</span>
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -32,58 +33,58 @@ import java.util.UUID;
 @Column(name = &quot;user_id&quot;, nullable = false, updatable = false)
     private UUID userId;
 
-<span class="fc" id="L35">    @Column(name = &quot;cash_balance&quot;, nullable = false)</span>
+<span class="fc" id="L36">    @Column(name = &quot;cash_balance&quot;, nullable = false)</span>
     private BigDecimal cashBalance = BigDecimal.ZERO;
 
     @Column(name = &quot;opened_date&quot;, nullable = false)
     private LocalDate openedDate;
 
-<span class="fc" id="L41">    @Column(nullable = false)</span>
+<span class="fc" id="L42">    @Column(nullable = false)</span>
     private String currency = &quot;USD&quot;;
 
     public Integer getId() {
-<span class="fc" id="L45">        return id;</span>
+<span class="fc" id="L46">        return id;</span>
     }
 
     public void setId(Integer id) {
-<span class="fc" id="L49">        this.id = id;</span>
-<span class="fc" id="L50">    }</span>
+<span class="fc" id="L50">        this.id = id;</span>
+<span class="fc" id="L51">    }</span>
 
     public Integer getAccountId() {
-<span class="fc" id="L53">        return id;</span>
+<span class="fc" id="L54">        return id;</span>
     }
 
     public UUID getUserId() {
-<span class="fc" id="L57">        return userId;</span>
+<span class="fc" id="L58">        return userId;</span>
     }
 
     public void setUserId(UUID userId) {
-<span class="fc" id="L61">        this.userId = userId;</span>
-<span class="fc" id="L62">    }</span>
+<span class="fc" id="L62">        this.userId = userId;</span>
+<span class="fc" id="L63">    }</span>
 
     public BigDecimal getCashBalance() {
-<span class="fc" id="L65">        return cashBalance;</span>
+<span class="fc" id="L66">        return cashBalance;</span>
     }
 
     public void setCashBalance(BigDecimal cashBalance) {
-<span class="fc" id="L69">        this.cashBalance = cashBalance;</span>
-<span class="fc" id="L70">    }</span>
+<span class="fc" id="L70">        this.cashBalance = cashBalance;</span>
+<span class="fc" id="L71">    }</span>
 
     public LocalDate getOpenedDate() {
-<span class="fc" id="L73">        return openedDate;</span>
+<span class="fc" id="L74">        return openedDate;</span>
     }
 
     public void setOpenedDate(LocalDate openedDate) {
-<span class="fc" id="L77">        this.openedDate = openedDate;</span>
-<span class="fc" id="L78">    }</span>
+<span class="fc" id="L78">        this.openedDate = openedDate;</span>
+<span class="fc" id="L79">    }</span>
 
     public String getCurrency() {
-<span class="fc" id="L81">        return currency;</span>
+<span class="fc" id="L82">        return currency;</span>
     }
 
     public void setCurrency(String currency) {
-<span class="fc" id="L85">        this.currency = currency;</span>
-<span class="fc" id="L86">    }</span>
+<span class="fc" id="L86">        this.currency = currency;</span>
+<span class="fc" id="L87">    }</span>
 }
 
 
