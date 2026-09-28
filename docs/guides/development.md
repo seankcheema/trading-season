@@ -49,15 +49,16 @@ docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compos
 
 Compose validates JWT variables even when selecting database services, so provide the environment file. If changing the two database passwords, use root Compose variables DB_PASSWORD for the business database and AUTH_DB_PASSWORD for the auth database; the auth app uses DB_PASSWORD for its own connection. Keep these separate when credentials differ.
 
-3. Initialize the business database only if you need the Java API, following the [database guide](../reference/database.md). Auth migrations run on auth-service startup.
+3. Initialize the business database only if you need the Java APIs, following the [database guide](../reference/database.md). Auth migrations run on auth-service startup.
+
 4. Start each application in its own terminal:
 
-| Working directory | Command | Port |
-| --- | --- | --- |
-| Repository root | npm --workspace business-logic-ui start | 4200 |
-| apps/holdings-and-trade-service | mvn spring-boot:run | 8081 |
-| apps/order-and-sell-service | mvn spring-boot:run | 8082 |
-| apps/auth-service | npm run start:dev | 3001 |
+| Working directory | Command | Port | Purpose |
+| --- | --- | --- | --- |
+| Repository root | npm --workspace business-logic-ui start | 4200 | Angular frontend |
+| apps/order-and-sell-service | mvn spring-boot:run | 8081 | Order processing, order validation, order execution (called by UI) |
+| apps/holdings-and-trade-service | mvn spring-boot:run | 8082 | User profiles, market data; account and holdings queries planned (independent; not called by UI) |
+| apps/auth-service | npm run start:dev | 3001 | Authentication, token issuance |
 
 The UI calls the auth service directly on port 3001, which allows the dev server origin through CORS_ORIGINS. Java calls use the relative /api path, which the dev server forwards to the Holdings and Trade Service on port 8081 through [proxy.conf.json](../../apps/client-ui/proxy.conf.json). Registration completes only once the Java register contract accepts the profile the UI sends; see the [API reference](../reference/api.md#ui-integration).
 
@@ -78,6 +79,16 @@ Run from repository root after dependency installation:
 | Market-data scripts | python -m unittest discover apps/market-data/db/tests | Unit checks; use Jenkins for the two-day PostgreSQL integration |
 
 Root Turborepo commands only cover configured workspaces and available scripts. Run Java and auth checks explicitly. See [operations](operations.md) for CI differences and artifact locations.
+
+**Microservice-specific checks:**
+
+When changing Holdings and Trade Service, also run Order and Sell Service tests to verify no schema conflicts:
+```sh
+mvn -B -f apps/holdings-and-trade-service/pom.xml test
+mvn -B -f apps/order-and-sell-service/pom.xml test
+```
+
+Both services must pass independently and share schema compatibility.
 
 ## End-to-end tests
 
@@ -110,7 +121,7 @@ The Java check applies the floor to every package rather than to the service as 
 
 ## Javadocs
 
-When Java code changes, update affected Javadoc comments in the same change, including behavior, parameters, return values, and exceptions. From repository root run:
+When Java code changes, update affected Javadoc comments in the same change, including behavior, parameters, return values, and exceptions. From repository root run both services:
 
 ```sh
 mvn -B -f apps/holdings-and-trade-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc

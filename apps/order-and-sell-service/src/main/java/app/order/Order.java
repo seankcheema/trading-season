@@ -16,10 +16,12 @@ import java.util.UUID;
  * (BR-04/05/06) — deliberately separate from execution, which lives in
  * {@code order.execution.Fill}.
  *
- * <p>Lifecycle (see V001__Initial_schema.sql): {@code SUBMITTED ->
- * ACCEPTED/REJECTED -> FILLED/EXECUTION_FAILED}. This entity is persisted
- * as {@code SUBMITTED} the moment a request is received, before the
- * trading-rule pipeline runs, so a rejected order still leaves a record.
+ * <p>Lifecycle (KAN-93, see V004__Order_status_lifecycle.sql):
+ * {@code PENDING -> REJECTED} when a trading rule fails, otherwise
+ * {@code PENDING -> FILLED} once the fill is written and the user's
+ * available funds and the account's holdings have moved. This entity is
+ * persisted as {@code PENDING} the moment a request is received, before
+ * the trading-rule pipeline runs, so a rejected order still leaves a record.
  */
 @Entity
 @Table(name = "orders")
@@ -28,11 +30,15 @@ public class Order {
     public static final String TYPE_BUY = "BUY";
     public static final String TYPE_SELL = "SELL";
 
-    public static final String STATUS_SUBMITTED = "SUBMITTED";
-    public static final String STATUS_ACCEPTED = "ACCEPTED";
-    public static final String STATUS_REJECTED = "REJECTED";
+    /** Created and awaiting the trading-rule pipeline. */
+    public static final String STATUS_PENDING = "PENDING";
+    /**
+     * Final state of a successful order: the fill, funds movement and
+     * holding movement have been written.
+     */
     public static final String STATUS_FILLED = "FILLED";
-    public static final String STATUS_EXECUTION_FAILED = "EXECUTION_FAILED";
+    /** Final state of an order that failed a trading rule. */
+    public static final String STATUS_REJECTED = "REJECTED";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -53,7 +59,7 @@ public class Order {
     private String orderType;
 
     @Column(nullable = false)
-    private String status = STATUS_SUBMITTED;
+    private String status = STATUS_PENDING;
 
     @Column(nullable = false, updatable = false)
     private BigDecimal quantity;
@@ -66,6 +72,7 @@ public class Order {
     @Column(name = "buffer_percent", updatable = false)
     private BigDecimal bufferPercent;
 
+    /** Set only when {@code status} is {@link #STATUS_REJECTED}. */
     @Column(name = "rejection_reason")
     private String rejectionReason;
 

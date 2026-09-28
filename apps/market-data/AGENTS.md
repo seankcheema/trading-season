@@ -7,7 +7,7 @@ This directory is now dedicated to database setup and management. The Java backe
 
 ## Database Files
 
-- `db/migrations/` - SQL migration scripts (V001, V002, V003)
+- `db/migrations/` - SQL migration scripts (V001 through V004)
 - `db/scripts/` - Python workflow scripts for initialization, generation, validation, import
 - `db/seeds/` - Generated market data archive (local developer data, not committed)
 - `db/setup-market-data.ps1` - Orchestrates market data generation workflow

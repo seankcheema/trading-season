@@ -30,7 +30,7 @@ Spring Boot microservice responsible for managing all trading operations, order 
 
 ### Setup
 
-1. Create the trading_season database and apply migrations (V001, V002, V003):
+1. Create the trading_season database and apply migrations (V001 through V004):
    ```powershell
    # From repository root
    py -3 -m venv apps/market-data/db/.venv
@@ -80,8 +80,19 @@ Environment variables override defaults in [application.properties](src/main/res
 
 All endpoints require valid RS256 access token except public market GET endpoints.
 
+**User Management:**
+- `GET /api/users/{id}` - Get user profile by ID (requires auth)
+- `GET /api/users` - List all users (admin only)
+
+**Account Data:**
+- `GET /api/accounts/{accountId}` - Get account details (requires auth)
+- `GET /api/accounts/{accountId}/holdings` - Get current holdings (requires auth)
+
 **Order History:**
-- `GET /api/orders` - List order history for authenticated user (requires auth)
+- `GET /api/orders` - List the authenticated caller's orders across all of their accounts, newest first (requires auth)
+
+**Orders:**
+- `POST /api/orders` - Submit a buy or sell order; created PENDING and returned FILLED or REJECTED (requires auth)
 - `GET /api/orders/{id}` - Get order details (requires auth)
 
 **Market Data (Public):**
