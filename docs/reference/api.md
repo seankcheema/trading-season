@@ -2,7 +2,7 @@
 
 This reference documents the HTTP contracts for each implemented microservice. Each service has independent authentication, response formats, and error handling. Planned endpoints are labeled as such; everything else is implemented and tested.
 
-**Critical: See [Architecture](architecture.md) for the naming mismatch.** Holdings and Trade Service handles orders; Order and Sell Service does not.
+**Critical:** See [Architecture](architecture.md) for service responsibilities after the KAN-47/KAN-139 restructuring fix. Order and Sell Service (port 8081) handles order operations and is called by Client UI. Holdings and Trade Service (port 8082) provides user profile and account queries.
 
 ## Auth Service (NestJS) — port 3001
 
@@ -30,9 +30,9 @@ Complete implementation. No `/api` prefix.
 
 ---
 
-## Holdings and Trade Service (Spring Boot Java 21) — port 8081
+## Order and Sell Service (Spring Boot Java 21) — port 8081
 
-## Holdings and Trade Service (Spring Boot Java 21) — port 8081
+This service is the primary backend for Client UI. It implements order operations and validates all trades.
 
 ### Authentication registration
 
@@ -74,22 +74,24 @@ Complete implementation. No `/api` prefix.
 
 **Stream:** Server-sent events containing synchronized price batches. Retains 30 events for reconnection via `Last-Event-ID`; outside that window, client receives resync event and must reload snapshot.
 
+### Trading endpoints
+
+| Method | Path | Request | Success |
+| --- | --- | --- | --- |
+| POST | /api/orders | Bearer token + JSON: accountId, ticker or instrumentId, orderType, quantity, clientReference, optional sessionId | 201: order result |
+
 ### Planned trading endpoints
 
-These endpoints are documented in code and tests but **NOT YET IMPLEMENTED**. Do not call them yet.
+These endpoints are **NOT YET IMPLEMENTED**. [OrderController](../../apps/order-and-sell-service/src/main/java/app/order/OrderController.java) exposes only `POST /api/orders`. Do not call them yet.
 
 | Method | Path | Request | Planned response |
 | --- | --- | --- | --- |
-| GET | /api/me/accounts | Bearer token | 200: array of caller's accounts |
-| POST | /api/me/accounts | Bearer token + JSON: `name` only | 201: created account |
-| PUT | /api/me/accounts/{accountId} | Bearer token + JSON: `name`; verify owned account | 200: renamed account |
-| GET | /api/accounts/{accountId}/holdings | Bearer token; owned account | 200: holdings with instrument metadata |
-| POST | /api/orders | Bearer token + JSON: accountId, ticker or instrumentId, orderType, quantity, clientReference, optional sessionId | 201: order result |
 | GET | /api/orders/{orderId} | Bearer token; owned order | 200: order, fill if present, audit events |
+| GET | /api/me/orders | Bearer token | 200: array of caller's orders |
 | GET | /api/me/cash-transactions | Bearer token; optional limit | 200: user's cash transactions, newest first |
 | POST | /api/me/cash-transactions | Bearer token + JSON: amount, reason (DEPOSIT or WITHDRAWAL) | 201: transaction and updated availableFunds |
 
-See [Holdings and Trade Service documentation](services/holdings-and-trade-service.md) for what is actually implemented.
+See [Order and Sell Service documentation](services/order-and-sell-service.md) for implementation status.
 
 ### Errors
 
@@ -105,29 +107,68 @@ Standard format: `{"error": "..."}` with HTTP status. Mismatched bearer token an
 
 ---
 
-## Order and Sell Service (Spring Boot Java 21) — port 8082
+## Holdings and Trade Service (Spring Boot Java 21) — port 8082
 
-**Current reality:** This service is not called by the Client UI. It is documented here for completeness.
+This service provides user registration, profile queries, and market data. Account and holdings queries are planned. It is not called by Client UI.
 
-**Implemented endpoints:**
+### Authentication registration
 
-| Method | Path | Request | Success |
+| Method | Path | Request | Success | Notes |
+| --- | --- | --- | --- | --- |
+| POST | /api/auth/account-exists | Public JSON: `email` | 200: `exists` boolean | Check before register; rate-limit at edge |
+| POST | /api/auth/register | Bearer token + JSON profile | 201: `userId`, `email` | Email must match token's `email` claim |
+| GET | /api/users/me | Bearer token | 200: user profile | Returns caller only; excludes SSN |
+
+**Registration profile fields:** (all required unless marked optional)
+- `email` (must match token; ≤100 chars)
+- `firstName`, `lastName`, `address` (nonblank)
+- `middleName` (optional)
+- `ssn` (XXX-XX-XXXX format)
+- `dateOfBirth` (must be in past)
+- `traderLevel` (BEGINNER, INTERMEDIATE, or ADVANCED)
+- `availableFunds` (≥5000.00; max 2 decimal places)
+
+**Token verification:** Each service caches the auth service's public JWKS independently. Tokens must:
+- Use RS256 signature
+- Not be expired (check `exp`)
+- Have `iss` matching AUTH_JWT_ISSUER config
+- Have valid UUID `sub` (becomes `users.user_id`)
+
+**Data scope:** Endpoints resolve the caller from the bearer token's `sub` only. Clients cannot read other users' data even with explicit IDs in the path.
+
+### Planned account and holdings queries
+
+These endpoints are **NOT YET IMPLEMENTED**. The service has `Account` and `Holding` entities and repositories but no controllers for them.
+
+| Method | Path | Request | Planned response |
 | --- | --- | --- | --- |
-| POST | /api/auth/register | Bearer token + profile (same contract as Holdings and Trade Service) | 201: userId, email |
-| GET | /api/users/me | Bearer token | 200: caller's profile only |
-| GET | /api/market/snapshot | Optional `sessionId` | 200: market snapshot (same as Holdings and Trade) |
-| GET | /api/market/candles | Required: symbol, timeframe; optional sessionId | 200: OHLCV bars (same contract) |
-| GET | /api/market/stream | Optional sessionId, Last-Event-ID | 200 text/event-stream (same contract) |
+| GET | /api/me/accounts | Bearer token | 200: array of caller's accounts |
+| GET | /api/accounts/{accountId}/holdings | Bearer token; owned account | 200: holdings with instrument metadata |
 
-**NOT implemented despite README documentation:**
-- Holdings queries
-- Order history
-- Order submission
-- Account management
+### Market data (public, unauthenticated)
 
-This service's README lists these as responsibilities, but the endpoints do not exist and repositories are unused.
+| Method | Path | Query parameters | Success |
+| --- | --- | --- | --- |
+| GET | /api/market/snapshot | Optional `sessionId` | 200: current market state, all stock prices, trading calendar |
+| GET | /api/market/candles | Required: `symbol`, `timeframe` (1D, 5D, 1M, 1Y); optional `sessionId` | 200: array of ≤500 OHLCV bars |
+| GET | /api/market/stream | Optional `sessionId`, `Last-Event-ID` header | 200 text/event-stream: continuous price ticks |
+| PUT | /api/market/clock | Bearer token + JSON: `timestamp` (ISO-8601); optional `sessionId` | 200: snapshot at nearest seeded tick ≤ timestamp |
 
-**Why this gap exists:** The architecture called for splitting order processing from user profile reads, but the split was not completed in code. Holdings and Trade Service does both. See [Order and Sell Service documentation](services/order-and-sell-service.md) for discussion and suggested next steps.
+**Candle aggregation:** Backend aggregates seeded 1-minute candles; does not emit raw 1-second history. Each timeframe caps results at 500 points.
+
+**Stream:** Server-sent events containing synchronized price batches. Retains 30 events for reconnection via `Last-Event-ID`; outside that window, client receives resync event and must reload snapshot.
+
+### Errors
+
+Standard format: `{"error": "..."}` with HTTP status. Mismatched bearer token and request email produces 403. Always include `WWW-Authenticate: Bearer` challenge on 401.
+
+| Status | Cause |
+| --- | --- |
+| 400 | Request validation failed; message lists each invalid field |
+| 401 | Missing, malformed, expired or untrusted access token |
+| 403 | Registration email does not match token's email claim |
+| 404 | Resource not found (e.g., GET /api/users/me before registration) |
+| 409 | Duplicate account or email; account already registered |
 
 ---
 
@@ -141,7 +182,7 @@ The Angular UI (port 4200) orchestrates these services:
    - POST /auth/refresh (rotate expired token)
    - POST /auth/logout (end session)
 
-2. **Profile and trading:** Calls to Holdings and Trade Service
+2. **Profile and trading:** Calls to Order and Sell Service
    - Use dev proxy (proxy.conf.json) which forwards all `/api/*` to port 8081
    - Bearer token from Auth Service is sent in `Authorization: Bearer` header
    - POST /api/auth/register (submit profile after auth registration)
@@ -150,8 +191,8 @@ The Angular UI (port 4200) orchestrates these services:
    - GET /api/market/candles (dashboard charts)
    - GET /api/market/stream (real-time prices)
 
-3. **No calls to Order and Sell Service**
-   - UI routing contains no `/api/orders` endpoint
+3. **No calls to Holdings and Trade Service**
+   - Nothing in the UI or dev proxy targets port 8082
    - Portfolio data is mock-only (not calling planned account endpoints)
 
 Session management, inactivity timeout, and token refresh are handled by [SessionTimeoutService](../../apps/business-logic-ui/src/app/core/auth/session-timeout.service.ts) and [AuthService](../../apps/business-logic-ui/src/app/core/auth/auth.service.ts). Inactivity timeout (5–60 minutes, default 10) is UI-only; neither backend service implements it.

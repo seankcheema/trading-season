@@ -23,9 +23,9 @@ The npm workspace is named `business-logic-ui` in `package.json`, not `client-ui
 | Concern | Service | Port | Configuration |
 | --- | --- | --- | --- |
 | Authentication | Auth Service | 3001 | Direct HTTP calls |
-| Everything else (`/api/*`) | Holdings and Trade Service | 8081 | Dev proxy (`proxy.conf.json`) |
+| Everything else (`/api/*`) | Order and Sell Service | 8081 | Dev proxy (`proxy.conf.json`) |
 
-**Important:** There is no route to Order and Sell Service (port 8082) anywhere in this application. All backend API calls go to Holdings and Trade Service.
+**Important:** There is no route to Holdings and Trade Service (port 8082) anywhere in this application. All backend API calls go to Order and Sell Service.
 
 ## Development setup
 

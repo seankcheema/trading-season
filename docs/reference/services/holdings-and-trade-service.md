@@ -1,45 +1,37 @@
 # Holdings and Trade Service
 
-**Folder:** `apps/holdings-and-trade-service` | **Port:** 8081 | **Framework:** Spring Boot (Java 21)
+**Folder:** `apps/holdings-and-trade-service` | **Port:** 8082 | **Framework:** Spring Boot (Java 21)
 
-The primary backend service handling order submission, validation, execution, and account management. This is the only backend service called by Client UI.
+Provides user registration, profile queries, and market data. Account and holdings queries are planned but not implemented. This service is not called by Client UI.
 
 ## Service responsibilities
 
-Despite the name, this service implements order processing and execution. It is also the exclusive target of Client UI's `/api` requests (via dev proxy). See [Architecture Reference](../architecture.md#the-naming-does-not-match-the-split) for the naming discrepancy and naming resolution.
+This service handles user profile lookups and is intended to own account and holdings queries. See [Architecture Reference](../architecture.md) for service responsibilities after the restructuring fix.
 
 ### Implemented capabilities
 
 - User account registration and profile management
-- Order submission and validation pipeline
-- Order execution with market impact
-- Holdings tracking and updates
-- Account balance management
-- Market data publication (snapshots, candles, streaming quotes)
-- Audit trail recording
+- Market data publication (snapshots, candles, streaming quotes, simulation clock)
+
+### Planned capabilities
+
+- Account details and holdings queries (`GET /api/me/accounts`, `GET /api/accounts/{accountId}/holdings`). The `Account` and `Holding` entities and repositories exist, but no controller or service exposes them yet.
+
+### Note on Order and Sell Service
+
+Order submission, validation, execution, and complete order history are handled by [Order and Sell Service](order-and-sell-service.md) on port 8081, which is the exclusive backend target of Client UI.
 
 ## Verified API endpoints
 
 | Endpoint | Method | Auth | Purpose |
 | --- | --- | --- | --- |
+| `/api/auth/account-exists` | POST | Public | Check if email exists |
 | `/api/auth/register` | POST | Bearer token | Register user account |
 | `/api/users/me` | GET | Bearer token | Retrieve caller's profile |
-| `/api/orders` | POST | Bearer token | Submit order for execution |
 | `/api/market/snapshot` | GET | Public | Get current market quotes |
 | `/api/market/candles` | GET | Public | Retrieve price candles for analysis |
 | `/api/market/stream` | GET | Public | Stream live market ticks |
-| `/api/market/clock` | PUT | Bearer token | Control simulation clock (admin) |
-
-## Order validation pipeline
-
-Orders are validated in fixed sequence; validation stops at first rejection:
-
-1. **Account Status Validator** – Account must be active and in good standing
-2. **Sufficient Funds Validator** – Caller must have adequate cash balance
-3. **Sufficient Holdings Validator** – Caller must own sufficient shares (for sell orders)
-4. **Tradability Validator** – Instrument must be trading in the current market session
-
-Additional validators can be added by implementing `OrderValidator` under `app.order.validation.impl`; the `OrderValidationPipeline` collects all Spring-managed validator beans automatically.
+| `/api/market/clock` | PUT | Bearer token | Control simulation clock |
 
 ## Internal structure
 
@@ -51,43 +43,21 @@ app/
 ├── user/              # User profile queries
 │   ├── UserController
 │   └── UserService
-├── order/             # Order submission, validation, execution
-│   ├── OrderController
-│   ├── OrderService
-│   ├── validation/    # Pipeline and validator implementations
-│   ├── execution/     # Order execution logic
-│   └── audit/         # Audit trail recording
-├── market/            # Market data publication
-│   ├── MarketController
-│   └── MarketReplayService
-├── account/           # Account JPA entities
-├── holding/           # Holdings JPA entities
-├── instrument/        # Instrument JPA entities
-└── common/            # Shared utilities
+├── account/           # Account JPA entity and repository (no controller yet)
+├── holding/           # Holding JPA entity and repository (no controller yet)
+└── market/            # Market data publication
+    ├── MarketController
+    └── MarketReplayService
 ```
 
 ## Data ownership
 
 Connects to `trading_season` PostgreSQL database with JPA entities for:
-- `accounts` – Account balances and settings
 - `users` – User profiles
-- `orders` – Order records
-- `fills` – Execution records
+- `accounts` – Account records
 - `holdings` – Position tracking
-- `instruments` – Tradable assets
-- `cash_transactions` – Ledger entries
-- `holding_movements` – Position changes
-- `audit_trail` – Event log
 
 Does not own database migrations; see [Market Data](market-data.md).
-
-## Known gaps in this service's own README
-
-The `apps/holdings-and-trade-service/README.md` documents:
-- `GET /api/orders/{id}` – Retrieve order by ID
-- `GET /api/orders` – List orders
-
-**Neither endpoint is implemented.** The `OrderController` contains exactly one `@PostMapping` and no `@GetMapping`. Do not rely on that section of the README for existing functionality.
 
 ## Development setup
 
@@ -96,7 +66,7 @@ cd apps/holdings-and-trade-service
 mvn spring-boot:run
 ```
 
-The service runs on port 8081. Ensure the `trading_season` database is initialized with migrations from [Market Data](market-data.md).
+The service runs on port 8082. Ensure the `trading_season` database is initialized with migrations from [Market Data](market-data.md).
 
 ## Testing
 

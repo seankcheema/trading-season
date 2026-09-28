@@ -33,18 +33,18 @@ Compose validates JWT variables even when selecting database services, so provid
 | Working directory | Command | Port | Purpose |
 | --- | --- | --- | --- |
 | Repository root | npm --workspace business-logic-ui start | 4200 | Angular frontend |
-| apps/holdings-and-trade-service | mvn spring-boot:run | 8081 | Order processing, account management, user profiles (called by UI) |
-| apps/order-and-sell-service | mvn spring-boot:run | 8082 | User profiles, market data (independent; not called by UI) |
+| apps/order-and-sell-service | mvn spring-boot:run | 8081 | Order processing, order validation, order execution (called by UI) |
+| apps/holdings-and-trade-service | mvn spring-boot:run | 8082 | User profiles, market data; account and holdings queries planned (independent; not called by UI) |
 | apps/auth-service | npm run start:dev | 3001 | Authentication, token issuance |
 
 Do not use an unqualified Compose up for the full stack: its backend build context and port mapping are stale.
 
 **UI integration:**
 - The UI calls the Auth Service directly on port 3001 (allowed by CORS_ORIGINS)
-- The UI calls Holdings and Trade Service via dev proxy (relative `/api` paths forward to port 8081 through [proxy.conf.json](../../apps/business-logic-ui/proxy.conf.json))
-- The UI does not call Order and Sell Service
+- The UI calls Order and Sell Service via dev proxy (relative `/api` paths forward to port 8081 through [proxy.conf.json](../../apps/client-ui/proxy.conf.json))
+- The UI does not call Holdings and Trade Service
 
-**Why two Java services?** The architecture was designed to split order processing (Holdings and Trade) from user profile queries (Order and Sell), but Order and Sell Service is not yet implemented with its own endpoints. Currently, both services expose the same market data and user profile endpoints. See [Architecture](../reference/architecture.md) and [Order and Sell Service](../reference/services/order-and-sell-service.md) for details.
+**Why two Java services?** The architecture was designed to split order processing (Order and Sell) from user profile queries (Holdings and Trade). Order and Sell Service handles all order operations and is the exclusive backend target of Client UI. See [Architecture](../reference/architecture.md) and [Order and Sell Service](../reference/services/order-and-sell-service.md) for details.
 
 ## Checks
 

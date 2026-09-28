@@ -4,8 +4,8 @@
 
 | Component | Configuration | Defaults |
 | --- | --- | --- |
-| Holdings and Trade Service | [application.properties](../../apps/holdings-and-trade-service/src/main/resources/application.properties) | HTTP 8081; PostgreSQL localhost:5432/trading_season |
-| Order and Sell Service | [application.properties](../../apps/order-and-sell-service/src/main/resources/application.properties) | HTTP 8082; PostgreSQL localhost:5432/trading_season |
+| Order and Sell Service | [application.properties](../../apps/order-and-sell-service/src/main/resources/application.properties) | HTTP 8081; PostgreSQL localhost:5432/trading_season |
+| Holdings and Trade Service | [application.properties](../../apps/holdings-and-trade-service/src/main/resources/application.properties) | HTTP 8082; PostgreSQL localhost:5432/trading_season |
 | Auth service | [Auth setup](../../apps/auth-service/README.md) and [database configuration](../../apps/auth-service/src/config/database.config.ts) | HTTP 3001; PostgreSQL localhost:5433/auth_db |
 | Local containers | [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) | Business/auth database volumes and archive cache |
 | Jenkins | [Pipeline](../../infrastructure/jenkins/Jenkinsfile), [Compose](../../infrastructure/docker-compose/docker-compose.jenkins.yml) | Jenkins UI on host port 8888 |
@@ -14,7 +14,7 @@ Both Java services read SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRIN
 
 In local Compose, DB_PASSWORD configures the business database and AUTH_DB_PASSWORD configures the auth database. Inside the auth container, the latter is assigned to DB_PASSWORD. Do not confuse those scopes. Defaults are for disposable local development; production credentials and signing keys must come from managed secrets.
 
-**Microservice deployment constraint:** Holdings and Trade Service and Order and Sell Service must use the same database version and schema version. Schema changes require coordinating both service deployments or adding backwards-compatible migrations.
+**Microservice deployment constraint:** Order and Sell Service and Holdings and Trade Service must use the same database version and schema version. Schema changes require coordinating both service deployments or adding backwards-compatible migrations.
 
 ## Local operation
 
@@ -25,7 +25,7 @@ docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compos
 docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml logs --tail 100 db auth-db
 ```
 
-The local Compose file contains outdated Java backend configuration with build context and port mappings. Run both Java services through Maven: Holdings and Trade Service on port 8081 (called by UI) and Order and Sell Service on port 8082 (runs independently). The UI has no active Compose service. No production Compose file or Kubernetes deployment is supplied.
+The local Compose file contains outdated Java backend configuration with build context and port mappings. Run both Java services through Maven: Order and Sell Service on port 8081 (called by UI) and Holdings and Trade Service on port 8082 (runs independently). The UI has no active Compose service. No production Compose file or Kubernetes deployment is supplied.
 
 Both Java services must use the same database connection (localhost:5432/trading_season by default) and verify database compatibility before startup. If your deployment splits services across machines or containers, ensure network connectivity to the shared database and identical schema versions on both services.
 
