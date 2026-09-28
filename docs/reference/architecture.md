@@ -17,25 +17,25 @@ Trading Season is a monorepo containing:
 graph TB
     UI["Client UI<br/>Angular 21+ | Port 4200"]
     Auth["Auth Service<br/>NestJS | Port 3001"]
-    HT["Holdings and Trade Service<br/>Spring Boot | Port 8081<br/><br/>✓ Order submission/validation<br/>✓ Account management<br/>✓ Market data<br/>✓ Called by UI"]
-    OS["Order and Sell Service<br/>Spring Boot | Port 8082<br/><br/>✓ User profile queries<br/>✓ Market data<br/>⚠ Not called by UI"]
+    OS["Order and Sell Service<br/>Spring Boot | Port 8081<br/><br/>Order submission/validation<br/>Order execution<br/>Order history<br/>Called by UI"]
+    HT["Holdings and Trade Service<br/>Spring Boot | Port 8082<br/><br/>User profile queries<br/>Account management<br/>Holdings queries<br/>Not called by UI"]
     
-    AuthDB["auth_db<br/>PostgreSQL<br/>Port 5433<br/><br/>• user credentials<br/>• refresh tokens"]
-    BizDB["trading_season<br/>PostgreSQL<br/>Port 5432<br/><br/>• users (via UUID)<br/>• accounts<br/>• orders<br/>• market data"]
+    AuthDB["auth_db<br/>PostgreSQL<br/>Port 5433<br/><br/>user credentials<br/>refresh tokens"]
+    BizDB["trading_season<br/>PostgreSQL<br/>Port 5432<br/><br/>users (via UUID)<br/>accounts<br/>orders<br/>market data"]
     
     UI -->|POST /login/refresh| Auth
-    UI -->|/api/* (proxy)| HT
+    UI -->|/api/* (proxy)| OS
     
     Auth -->|verify JWKS| Auth
-    HT -->|fetch JWKS cache| Auth
     OS -->|fetch JWKS cache| Auth
+    HT -->|fetch JWKS cache| Auth
     
     Auth --> AuthDB
-    HT --> BizDB
     OS --> BizDB
+    HT --> BizDB
     
-    style HT fill:#90EE90
-    style OS fill:#FFB6C6
+    style OS fill:#90EE90
+    style HT fill:#FFB6C6
     style Auth fill:#87CEEB
     style UI fill:#FFD700
     style AuthDB fill:#E6E6FA
@@ -44,22 +44,24 @@ graph TB
 
 ## Service boundaries
 
-| Service | Technology | Port | Responsibility |
-| --- | --- | --- | --- |
-| **Client UI** | Angular 21+ | 4200 | User interface, login, registration, dashboard |
-| **Auth Service** | NestJS | 3001 | User credentials, token issuance, session management |
-| **Holdings and Trade Service** | Spring Boot (Java 21) | 8081 | Order submission/validation/execution, account management |
-| **Order and Sell Service** | Spring Boot (Java 21) | 8082 | User profile queries, market data access |
-| **Market Data** | Infrastructure | — | Database migrations, synthetic data generation |
+| Service | Technology | Port | Status | Responsibility |
+| --- | --- | --- | --- | --- |
+| **Client UI** | Angular 21+ | 4200 | Implemented | User interface, login, registration, dashboard |
+| **Auth Service** | NestJS | 3001 | Implemented | User credentials, token issuance, session management |
+| **Order and Sell Service** | Spring Boot (Java 21) | 8081 | Implemented | Order submission/validation/execution, order history |
+| **Holdings and Trade Service** | Spring Boot (Java 21) | 8082 | Implemented | User profiles, account management, holdings queries |
+| **Reporting UI** | Angular | 4300 | Proposed | Portfolio performance, trade history, risk summaries |
+| **Reporting Service** | TBD | 8083 | Proposed | Portfolio aggregation, analytics, report generation |
+| **Market Data** | Infrastructure | — | Implemented | Database migrations, synthetic data generation |
 
-## The naming does not match the split
+## Service naming correction
 
-This is the most common source of confusion when navigating this codebase:
+After the KAN-47/KAN-139 restructuring fix, service names now align with responsibilities:
 
-- **Holdings and Trade Service** implements order processing (submission, validation, execution) and executes all orders. It is also the exclusive backend target of Client UI.
-- **Order and Sell Service** does not handle orders; it provides user profile queries and public market data only.
+- **Order and Sell Service** (port 8081) implements order processing (submission, validation, execution) and is the primary backend called by Client UI.
+- **Holdings and Trade Service** (port 8082) provides user profile queries, account management, and market data access.
 
-The names reference an earlier architectural split that was not completed in code. See [Holdings and Trade Service documentation](services/holdings-and-trade-service.md) and [Order and Sell Service documentation](services/order-and-sell-service.md) for current status.
+The restructuring fix corrected an earlier logic mixup. See [Order and Sell Service documentation](services/order-and-sell-service.md) and [Holdings and Trade Service documentation](services/holdings-and-trade-service.md) for current implementation status.
 
 ## Databases
 
@@ -78,7 +80,7 @@ The only value shared between them is the user UUID (auth.users.id ↔ trading_s
 1. Client → Auth Service (POST /auth/login)
    Email + password → RS256 access token + refresh token
 
-2. Client → Holdings and Trade Service (API request with Bearer token)
+2. Client → Order and Sell Service (API request with Bearer token)
    Service verifies signature independently using cached JWKS from Auth Service
 
 3. On token expiry:
@@ -90,30 +92,37 @@ Neither Java service calls the Auth Service per request. Each fetches and caches
 
 ## Data ownership
 
-The `trading_season` database is shared by Holdings and Trade Service and Order and Sell Service:
+The `trading_season` database is shared by Order and Sell Service and Holdings and Trade Service:
 
-- **Holdings and Trade Service** – Reads and writes accounts, orders, fills, holdings, cash transactions, holding movements, audit trail
-- **Order and Sell Service** – Reads user profiles and account metadata only (repository present but unused)
+- **Order and Sell Service** – Reads and writes orders, fills, holdings, cash transactions, holding movements, audit trail
+- **Holdings and Trade Service** – Reads user profiles and account metadata only
 - **Market Data** – Owns all migrations; neither service owns the schema
 
 Both services use JPA to map to the same tables directly. This requires schema version alignment across deployments. See [Market Data documentation](services/market-data.md) for migration rules.
 
 ## Client UI integration
 
-The dev proxy (`apps/client-ui/proxy.conf.json`) forwards all `/api` requests to Holdings and Trade Service (port 8081) exclusively:
+The dev proxy (`apps/client-ui/proxy.conf.json`) forwards all `/api` requests to Order and Sell Service (port 8081) exclusively:
 
 - Auth Service (port 3001) is called directly for login/register/refresh
-- Order and Sell Service (port 8082) is never called from the UI
+- Holdings and Trade Service (port 8082) is not called from the UI in normal operation
 
 ## Known limitations
 
-1. **Duplication** – Holdings and Trade Service and Order and Sell Service both contain auth registration code and market data endpoints. See [Holdings and Trade Service documentation](services/holdings-and-trade-service.md) for why.
+1. **Incomplete account data** – Holdings and Trade Service does not yet implement complete account query endpoints. See [Holdings and Trade Service documentation](services/holdings-and-trade-service.md) for current status.
 
-2. **Order and Sell Service isolation** – This service is not called by Client UI in normal operation. It runs independently and could serve other clients, but currently has no caller.
+2. **Market data duplication** – Both Order and Sell Service and Holdings and Trade Service contain market data endpoints. See [Order and Sell Service documentation](services/order-and-sell-service.md) for why.
 
-3. **Incomplete order history** – Order and Sell Service's README documents order history as a responsibility, but the endpoint is not implemented. See [Order and Sell Service documentation](services/order-and-sell-service.md) for discussion and next steps.
+3. **NestJS integration edge cases** – Bootstrap does not install global validation, cookie parser, or CORS. Refresh tokens must be sent as JSON body, not cookies. See [Auth Service documentation](services/auth-service.md) for details.
 
-4. **NestJS integration edge cases** – Bootstrap does not install global validation, cookie parser, or CORS. Refresh tokens must be sent as JSON body, not cookies. See [Auth Service documentation](services/auth-service.md) for details.
+## Proposed reporting services
+
+Reporting UI and Reporting Service are proposed but not yet implemented. When built, they will:
+
+- **Reporting UI** (port 4300) – Display portfolio performance, trade history, drawdown, returns, and risk summaries. Provide administrative operational and audit views. Use shared Angular components.
+- **Reporting Service** (port 8083) – Read-only access to authorized business data from Order and Sell Service; compute aggregates such as Sharpe/Sortino ratios, win rate, and profit factor. Must not write operational records.
+
+Both services will authenticate via the Auth Service and may read from the `trading_season` database. Reporting store decisions (technology, refresh frequency, retention, timezone) remain unresolved. See [Reporting proposal](reporting.md) for intended capability and first implementation slice.
 
 ## Change boundaries
 
