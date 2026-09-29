@@ -25,11 +25,14 @@ class UserServiceUnitTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private UserAccountRepository userAccountRepository;
+
     private UserService userService;
 
     @BeforeEach
     void setUp() {
-        userService = new UserService(userRepository);
+        userService = new UserService(userRepository, userAccountRepository);
     }
 
     @Test
@@ -41,7 +44,6 @@ class UserServiceUnitTest {
 
         assertEquals(user, result);
         assertEquals(USER_ID, result.getUserId());
-        assertEquals("test@example.com", result.getEmail());
         verify(userRepository).findById(USER_ID);
     }
 
@@ -69,7 +71,6 @@ class UserServiceUnitTest {
     void getOwnAccountPreservesAllUserFields() {
         User user = new User();
         user.setUserId(USER_ID);
-        user.setEmail("john.doe@example.com");
         user.setFirstName("John");
         user.setMiddleName("Q");
         user.setLastName("Doe");
@@ -136,21 +137,19 @@ class UserServiceUnitTest {
     void getOwnAccountHandlesNullEmail() {
         User user = new User();
         user.setUserId(USER_ID);
-        user.setEmail(null);
         user.setFirstName("Test");
         user.setLastName("User");
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
 
         User result = userService.getOwnAccount(USER_ID);
 
-        assertNull(result.getEmail());
+        assertNotNull(result);
     }
 
     @Test
     void getOwnAccountHandlesEmptyStrings() {
         User user = new User();
         user.setUserId(USER_ID);
-        user.setEmail("");
         user.setFirstName("");
         user.setMiddleName("");
         user.setLastName("");
@@ -161,47 +160,93 @@ class UserServiceUnitTest {
 
         User result = userService.getOwnAccount(USER_ID);
 
-        assertEquals("", result.getEmail());
         assertEquals("", result.getFirstName());
+        assertEquals("", result.getTraderLevel());
     }
 
     @Test
     void getOwnAccountWithAllFieldsPopulated() {
         User user = new User();
         user.setUserId(USER_ID);
-        user.setEmail("complete@example.com");
         user.setFirstName("First");
         user.setMiddleName("Middle");
         user.setLastName("Last");
         user.setSsn("123-45-6789");
         user.setAddress("789 Oak Avenue");
         user.setDateOfBirth(LocalDate.of(1980, 3, 15));
-        user.setTraderLevel("PROFESSIONAL");
+        user.setTraderLevel("INTERMEDIATE");
         user.setAvailableFunds(new BigDecimal("250000.00"));
-        user.setUserRole("ADMIN");
-        user.setAccountStatus("ACTIVE");
 
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
 
         User result = userService.getOwnAccount(USER_ID);
 
         assertEquals(USER_ID, result.getUserId());
-        assertEquals("complete@example.com", result.getEmail());
         assertEquals("First", result.getFirstName());
         assertEquals("Middle", result.getMiddleName());
         assertEquals("Last", result.getLastName());
         assertEquals("789 Oak Avenue", result.getAddress());
         assertEquals(LocalDate.of(1980, 3, 15), result.getDateOfBirth());
-        assertEquals("PROFESSIONAL", result.getTraderLevel());
+        assertEquals("INTERMEDIATE", result.getTraderLevel());
         assertEquals(new BigDecimal("250000.00"), result.getAvailableFunds());
+    }
+
+    @Test
+    void getUserAccountReturnsAccountWhenFound() {
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER", "ACTIVE");
+        when(userAccountRepository.findById(USER_ID)).thenReturn(Optional.of(account));
+
+        UserAccount result = userService.getUserAccount(USER_ID);
+
+        assertEquals(account, result);
+        assertEquals("test@example.com", result.getEmail());
+        verify(userAccountRepository).findById(USER_ID);
+    }
+
+    @Test
+    void getUserAccountThrowsUserNotFoundWhenNotFound() {
+        when(userAccountRepository.findById(USER_ID)).thenReturn(Optional.empty());
+
+        assertThrows(UserNotFoundException.class, 
+                () -> userService.getUserAccount(USER_ID));
+        verify(userAccountRepository).findById(USER_ID);
+    }
+
+    @Test
+    void getUserAccountUserNotFoundMessageIsCorrect() {
+        when(userAccountRepository.findById(USER_ID)).thenReturn(Optional.empty());
+
+        UserNotFoundException exception = assertThrows(UserNotFoundException.class, 
+                () -> userService.getUserAccount(USER_ID));
+        
+        assertEquals("Account is not registered", exception.getMessage());
+    }
+
+    @Test
+    void getUserAccountWithAdminRole() {
+        UserAccount account = new UserAccount(USER_ID, "admin@example.com", "ADMIN", "ACTIVE");
+        when(userAccountRepository.findById(USER_ID)).thenReturn(Optional.of(account));
+
+        UserAccount result = userService.getUserAccount(USER_ID);
+
         assertEquals("ADMIN", result.getUserRole());
-        assertEquals("ACTIVE", result.getAccountStatus());
+        assertEquals("admin@example.com", result.getEmail());
+    }
+
+    @Test
+    void getUserAccountWithDeactivatedStatus() {
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER", "DEACTIVATED");
+        when(userAccountRepository.findById(USER_ID)).thenReturn(Optional.of(account));
+
+        UserAccount result = userService.getUserAccount(USER_ID);
+
+        assertEquals("DEACTIVATED", result.getAccountStatus());
+        assertFalse(result.isActive());
     }
 
     private User createTestUser(UUID userId) {
         User user = new User();
         user.setUserId(userId);
-        user.setEmail("test@example.com");
         user.setFirstName("Test");
         user.setLastName("User");
         user.setSsn("123-45-6789");
@@ -209,8 +254,6 @@ class UserServiceUnitTest {
         user.setDateOfBirth(LocalDate.of(1990, 1, 1));
         user.setTraderLevel("INTERMEDIATE");
         user.setAvailableFunds(new BigDecimal("10000.00"));
-        user.setUserRole("TRADER");
-        user.setAccountStatus("ACTIVE");
         return user;
     }
 }

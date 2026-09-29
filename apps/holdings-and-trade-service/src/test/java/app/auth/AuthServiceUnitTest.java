@@ -41,7 +41,7 @@ class AuthServiceUnitTest {
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(userRepository, accountService);
+        authService = new AuthService(userRepository, accountService, userAccountRepository);
     }
 
     private static RegisterRequest request(String email) {
@@ -130,8 +130,6 @@ class AuthServiceUnitTest {
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         assertNotNull(authService.register(caller, request("test@example.com")));
-
-        verify(userAccountRepository, never()).existsByEmailIgnoreCase(any());
     }
 
     @Test
@@ -159,7 +157,6 @@ class AuthServiceUnitTest {
     void registerCreatesDefaultAccountForNewUser() {
         AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "test@example.com");
         when(userRepository.existsById(USER_ID)).thenReturn(false);
-        when(userRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(false);
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         authService.register(caller, request("test@example.com"));
@@ -171,9 +168,8 @@ class AuthServiceUnitTest {
     void registerCreatesAccountAfterUserSave() {
         AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "test@example.com");
         when(userRepository.existsById(USER_ID)).thenReturn(false);
-        when(userRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(false);
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
+        
         authService.register(caller, request("test@example.com"));
 
         verify(userRepository).save(any(User.class));

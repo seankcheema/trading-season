@@ -11,6 +11,8 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 @Tag("unit")
 class UserProfileResponseTest {
@@ -21,7 +23,6 @@ class UserProfileResponseTest {
     void userProfileResponseFromEntity() {
         User user = new User();
         user.setUserId(USER_ID);
-        user.setEmail("test@example.com");
         user.setFirstName("John");
         user.setMiddleName("Q");
         user.setLastName("Doe");
@@ -30,10 +31,10 @@ class UserProfileResponseTest {
         user.setDateOfBirth(LocalDate.of(1990, 1, 1));
         user.setTraderLevel("ADVANCED");
         user.setAvailableFunds(new BigDecimal("50000.00"));
-        user.setUserRole("TRADER");
-        user.setAccountStatus("ACTIVE");
+        
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER", "ACTIVE");
 
-        UserProfileResponse response = UserProfileResponse.from(user);
+        UserProfileResponse response = UserProfileResponse.from(user, account);
 
         assertEquals(USER_ID, response.userId());
         assertEquals("test@example.com", response.email());
@@ -52,7 +53,6 @@ class UserProfileResponseTest {
     void userProfileResponseIncludesAllUserFields() {
         User user = new User();
         user.setUserId(USER_ID);
-        user.setEmail("test@example.com");
         user.setFirstName("John");
         user.setMiddleName("Q");
         user.setLastName("Doe");
@@ -61,10 +61,10 @@ class UserProfileResponseTest {
         user.setDateOfBirth(LocalDate.of(1990, 1, 1));
         user.setTraderLevel("ADVANCED");
         user.setAvailableFunds(new BigDecimal("50000.00"));
-        user.setUserRole("TRADER");
-        user.setAccountStatus("ACTIVE");
+        
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER", "ACTIVE");
 
-        UserProfileResponse response = UserProfileResponse.from(user);
+        UserProfileResponse response = UserProfileResponse.from(user, account);
 
         assertNotNull(response);
         assertEquals(USER_ID, response.userId());
@@ -75,7 +75,6 @@ class UserProfileResponseTest {
     void userProfileResponsePreservesAllUserFields() {
         User user = new User();
         user.setUserId(USER_ID);
-        user.setEmail("alice@example.com");
         user.setFirstName("Alice");
         user.setMiddleName("Marie");
         user.setLastName("Smith");
@@ -84,10 +83,10 @@ class UserProfileResponseTest {
         user.setDateOfBirth(LocalDate.of(1985, 5, 15));
         user.setTraderLevel("INTERMEDIATE");
         user.setAvailableFunds(new BigDecimal("25000.75"));
-        user.setUserRole("TRADER");
-        user.setAccountStatus("ACTIVE");
+        
+        UserAccount account = new UserAccount(USER_ID, "alice@example.com", "TRADER", "ACTIVE");
 
-        UserProfileResponse response = UserProfileResponse.from(user);
+        UserProfileResponse response = UserProfileResponse.from(user, account);
 
         assertNotNull(response);
         assertEquals("alice@example.com", response.email());
@@ -106,7 +105,6 @@ class UserProfileResponseTest {
     void userProfileResponseWithZeroFunds() {
         User user = new User();
         user.setUserId(USER_ID);
-        user.setEmail("test@example.com");
         user.setFirstName("Test");
         user.setMiddleName("");
         user.setLastName("User");
@@ -115,10 +113,10 @@ class UserProfileResponseTest {
         user.setDateOfBirth(LocalDate.now());
         user.setTraderLevel("BEGINNER");
         user.setAvailableFunds(BigDecimal.ZERO);
-        user.setUserRole("TRADER");
-        user.setAccountStatus("ACTIVE");
+        
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER", "ACTIVE");
 
-        UserProfileResponse response = UserProfileResponse.from(user);
+        UserProfileResponse response = UserProfileResponse.from(user, account);
 
         assertEquals(BigDecimal.ZERO, response.availableFunds());
     }
@@ -127,7 +125,6 @@ class UserProfileResponseTest {
     void userProfileResponseWithLargeFunds() {
         User user = new User();
         user.setUserId(USER_ID);
-        user.setEmail("test@example.com");
         user.setFirstName("Rich");
         user.setMiddleName("");
         user.setLastName("Trader");
@@ -136,10 +133,10 @@ class UserProfileResponseTest {
         user.setDateOfBirth(LocalDate.now());
         user.setTraderLevel("ADVANCED");
         user.setAvailableFunds(new BigDecimal("999999999.99"));
-        user.setUserRole("TRADER");
-        user.setAccountStatus("ACTIVE");
+        
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER", "ACTIVE");
 
-        UserProfileResponse response = UserProfileResponse.from(user);
+        UserProfileResponse response = UserProfileResponse.from(user, account);
 
         assertEquals(new BigDecimal("999999999.99"), response.availableFunds());
     }
@@ -148,7 +145,6 @@ class UserProfileResponseTest {
     void userProfileResponseWithEmptyMiddleName() {
         User user = new User();
         user.setUserId(USER_ID);
-        user.setEmail("test@example.com");
         user.setFirstName("John");
         user.setMiddleName("");
         user.setLastName("Doe");
@@ -157,10 +153,10 @@ class UserProfileResponseTest {
         user.setDateOfBirth(LocalDate.of(1990, 1, 1));
         user.setTraderLevel("ADVANCED");
         user.setAvailableFunds(new BigDecimal("50000.00"));
-        user.setUserRole("TRADER");
-        user.setAccountStatus("ACTIVE");
+        
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER", "ACTIVE");
 
-        UserProfileResponse response = UserProfileResponse.from(user);
+        UserProfileResponse response = UserProfileResponse.from(user, account);
 
         assertEquals("", response.middleName());
     }
@@ -172,7 +168,6 @@ class UserProfileResponseTest {
         for (String level : levels) {
             User user = new User();
             user.setUserId(USER_ID);
-            user.setEmail("test@example.com");
             user.setFirstName("Test");
             user.setMiddleName("");
             user.setLastName("User");
@@ -181,10 +176,10 @@ class UserProfileResponseTest {
             user.setDateOfBirth(LocalDate.now());
             user.setTraderLevel(level);
             user.setAvailableFunds(new BigDecimal("10000.00"));
-            user.setUserRole("TRADER");
-            user.setAccountStatus("ACTIVE");
+            
+            UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER", "ACTIVE");
 
-            UserProfileResponse response = UserProfileResponse.from(user);
+            UserProfileResponse response = UserProfileResponse.from(user, account);
 
             assertEquals(level, response.traderLevel());
         }
@@ -197,7 +192,6 @@ class UserProfileResponseTest {
 
         User user1 = new User();
         user1.setUserId(userId1);
-        user1.setEmail("user1@example.com");
         user1.setFirstName("User");
         user1.setMiddleName("One");
         user1.setLastName("Test");
@@ -206,12 +200,11 @@ class UserProfileResponseTest {
         user1.setDateOfBirth(LocalDate.of(1990, 1, 1));
         user1.setTraderLevel("ADVANCED");
         user1.setAvailableFunds(new BigDecimal("50000.00"));
-        user1.setUserRole("TRADER");
-        user1.setAccountStatus("ACTIVE");
+        
+        UserAccount account1 = new UserAccount(userId1, "user1@example.com", "TRADER", "ACTIVE");
 
         User user2 = new User();
         user2.setUserId(userId2);
-        user2.setEmail("user2@example.com");
         user2.setFirstName("User");
         user2.setMiddleName("Two");
         user2.setLastName("Test");
@@ -220,11 +213,11 @@ class UserProfileResponseTest {
         user2.setDateOfBirth(LocalDate.of(1985, 5, 15));
         user2.setTraderLevel("INTERMEDIATE");
         user2.setAvailableFunds(new BigDecimal("25000.00"));
-        user2.setUserRole("TRADER");
-        user2.setAccountStatus("ACTIVE");
+        
+        UserAccount account2 = new UserAccount(userId2, "user2@example.com", "TRADER", "ACTIVE");
 
-        UserProfileResponse response1 = UserProfileResponse.from(user1);
-        UserProfileResponse response2 = UserProfileResponse.from(user2);
+        UserProfileResponse response1 = UserProfileResponse.from(user1, account1);
+        UserProfileResponse response2 = UserProfileResponse.from(user2, account2);
 
         assertEquals(userId1, response1.userId());
         assertEquals(userId2, response2.userId());
@@ -238,7 +231,6 @@ class UserProfileResponseTest {
     void userProfileResponseWithNullMiddleName() {
         User user = new User();
         user.setUserId(USER_ID);
-        user.setEmail("test@example.com");
         user.setFirstName("John");
         user.setMiddleName(null);
         user.setLastName("Doe");
@@ -247,10 +239,10 @@ class UserProfileResponseTest {
         user.setDateOfBirth(LocalDate.of(1990, 1, 1));
         user.setTraderLevel("ADVANCED");
         user.setAvailableFunds(new BigDecimal("50000.00"));
-        user.setUserRole("TRADER");
-        user.setAccountStatus("ACTIVE");
+        
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER", "ACTIVE");
 
-        UserProfileResponse response = UserProfileResponse.from(user);
+        UserProfileResponse response = UserProfileResponse.from(user, account);
 
         assertNull(response.middleName());
     }
@@ -259,7 +251,6 @@ class UserProfileResponseTest {
     void userProfileResponseWithDifferentAccountStatus() {
         User user = new User();
         user.setUserId(USER_ID);
-        user.setEmail("test@example.com");
         user.setFirstName("Test");
         user.setMiddleName("");
         user.setLastName("User");
@@ -268,10 +259,10 @@ class UserProfileResponseTest {
         user.setDateOfBirth(LocalDate.now());
         user.setTraderLevel("ADVANCED");
         user.setAvailableFunds(new BigDecimal("10000.00"));
-        user.setUserRole("TRADER");
-        user.setAccountStatus("DEACTIVATED");
+        
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER", "DEACTIVATED");
 
-        UserProfileResponse response = UserProfileResponse.from(user);
+        UserProfileResponse response = UserProfileResponse.from(user, account);
 
         assertEquals("DEACTIVATED", response.accountStatus());
     }
@@ -280,7 +271,6 @@ class UserProfileResponseTest {
     void userProfileResponseWithAdminRole() {
         User user = new User();
         user.setUserId(USER_ID);
-        user.setEmail("test@example.com");
         user.setFirstName("Admin");
         user.setMiddleName("");
         user.setLastName("User");
@@ -289,11 +279,58 @@ class UserProfileResponseTest {
         user.setDateOfBirth(LocalDate.now());
         user.setTraderLevel("PROFESSIONAL");
         user.setAvailableFunds(new BigDecimal("100000.00"));
-        user.setUserRole("ADMIN");
-        user.setAccountStatus("ACTIVE");
+        
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "ADMIN", "DEACTIVATED");
 
-        UserProfileResponse response = UserProfileResponse.from(user);
+        UserProfileResponse response = UserProfileResponse.from(user, account);
 
         assertEquals("ADMIN", response.userRole());
+    }
+
+    @Test
+    void userAccountGetUserId() {
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER", "ACTIVE");
+        
+        assertEquals(USER_ID, account.getUserId());
+    }
+
+    @Test
+    void userAccountGetUserIdWithDifferentIds() {
+        UUID id1 = UUID.randomUUID();
+        UUID id2 = UUID.randomUUID();
+        
+        UserAccount account1 = new UserAccount(id1, "user1@example.com", "TRADER", "ACTIVE");
+        UserAccount account2 = new UserAccount(id2, "user2@example.com", "ADMIN", "ACTIVE");
+        
+        assertEquals(id1, account1.getUserId());
+        assertEquals(id2, account2.getUserId());
+    }
+
+    @Test
+    void userAccountIsActiveTrueWhenStatusActive() {
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER", "ACTIVE");
+        
+        assertTrue(account.isActive());
+    }
+
+    @Test
+    void userAccountIsActiveFalseWhenStatusDeactivated() {
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER", "DEACTIVATED");
+        
+        assertFalse(account.isActive());
+    }
+
+    @Test
+    void userAccountIsActiveWithAdminRole() {
+        UserAccount account = new UserAccount(USER_ID, "admin@example.com", "ADMIN", "ACTIVE");
+        
+        assertTrue(account.isActive());
+    }
+
+    @Test
+    void userAccountIsActiveFalseWithAdminDeactivated() {
+        UserAccount account = new UserAccount(USER_ID, "admin@example.com", "ADMIN", "DEACTIVATED");
+        
+        assertFalse(account.isActive());
     }
 }
