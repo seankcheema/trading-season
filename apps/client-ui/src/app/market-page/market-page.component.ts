@@ -68,6 +68,11 @@ type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
 type InsightTab = 'overview' | 'news' | 'ai';
 type ToolbarMenu = 'indicators' | 'chart-mode' | 'comparison';
+type TickAnimation = {
+  direction: 'gain' | 'loss';
+  durationMs: number;
+  revision: number;
+};
 
 interface AiMessage {
   role: 'user' | 'assistant';
@@ -146,8 +151,10 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   private routeSubscription?: Subscription;
   private disconnectMarket?: () => void;
   private readonly openingPrices = new Map<string, number>();
+  private readonly tickAnimationTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   protected readonly symbol = signal('');
+  protected readonly tickAnimations = signal(new Map<string, TickAnimation>());
   protected readonly instruments = signal<Instrument[]>([]);
   protected readonly instrument = computed(
     () => findInstrument(this.symbol(), this.instruments()) ?? null,
@@ -351,6 +358,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.routeSubscription?.unsubscribe();
     this.disconnectMarket?.();
+    this.clearTickAnimations();
   }
 
   protected retry(): void {
@@ -472,6 +480,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     const prices = new Map(event.prices.map((price) => [price.symbol, price.price]));
     this.zone.run(() => {
       this.marketTimestamp.set(event.marketTimestamp);
+      const previousPrices = new Map(
+        this.instruments().map((instrument) => [instrument.symbol, instrument.price]),
+      );
       this.instruments.update((instruments) =>
         instruments.map((instrument) => {
           const price = prices.get(instrument.symbol);
@@ -486,7 +497,40 @@ export class MarketPageComponent implements OnInit, OnDestroy {
           };
         }),
       );
+      for (const [symbol, price] of prices) {
+        const previousPrice = previousPrices.get(symbol);
+        if (previousPrice !== undefined && previousPrice !== price) {
+          this.animateTick(symbol, price > previousPrice ? 'gain' : 'loss');
+        }
+      }
     });
+  }
+
+  private animateTick(symbol: string, direction: TickAnimation['direction']): void {
+    const existingTimer = this.tickAnimationTimers.get(symbol);
+    if (existingTimer) clearTimeout(existingTimer);
+    const durationMs = 500 + Math.floor(Math.random() * 501);
+    this.tickAnimations.update((animations) => {
+      const next = new Map(animations);
+      const revision = (next.get(symbol)?.revision ?? 0) + 1;
+      next.set(symbol, { direction, durationMs, revision });
+      return next;
+    });
+    const timer = setTimeout(() => {
+      this.tickAnimationTimers.delete(symbol);
+      this.tickAnimations.update((animations) => {
+        const next = new Map(animations);
+        next.delete(symbol);
+        return next;
+      });
+    }, durationMs);
+    this.tickAnimationTimers.set(symbol, timer);
+  }
+
+  private clearTickAnimations(): void {
+    this.tickAnimationTimers.forEach(clearTimeout);
+    this.tickAnimationTimers.clear();
+    this.tickAnimations.set(new Map());
   }
 
   private calculateMarketStats(

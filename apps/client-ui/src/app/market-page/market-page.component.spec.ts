@@ -522,6 +522,7 @@ describe('MarketPageComponent', () => {
   });
 
   it('updates both instruments from a live market tick', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const fixture = await setup('aapl', 'msft');
     const handlers = marketData.connect.mock.calls[0][1];
     handlers.tick({
@@ -536,6 +537,45 @@ describe('MarketPageComponent', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance['instrument']()?.price).toBe(226.8);
     expect(fixture.componentInstance['comparisonInstrument']()?.price).toBe(418.5);
+    expect(fixture.componentInstance['marketTimestamp']()).toBe('2026-01-05T15:02:00Z');
+    expect(fixture.componentInstance['tickAnimations']().get('AAPL')).toEqual({
+      direction: 'gain',
+      durationMs: 750,
+      revision: 1,
+    });
+    expect(fixture.componentInstance['tickAnimations']().get('MSFT')?.direction).toBe('loss');
+    vi.restoreAllMocks();
+  });
+
+  it('replaces an active price animation when another tick arrives', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const fixture = await setup('aapl');
+    const handlers = marketData.connect.mock.calls[0][1];
+
+    handlers.tick({
+      eventId: 2,
+      marketTimestamp: '2026-01-05T15:01:01Z',
+      serverTimestamp: '2026-01-05T15:01:01Z',
+      prices: [{ symbol: 'AAPL', price: 226.8, sequenceNumber: 2 }],
+    });
+    handlers.tick({
+      eventId: 3,
+      marketTimestamp: '2026-01-05T15:01:02Z',
+      serverTimestamp: '2026-01-05T15:01:02Z',
+      prices: [{ symbol: 'AAPL', price: 224.8, sequenceNumber: 3 }],
+    });
+
+    expect(fixture.componentInstance['instrument']()?.price).toBe(224.8);
+    expect(fixture.componentInstance['tickAnimations']().get('AAPL')).toEqual({
+      direction: 'loss',
+      durationMs: 500,
+      revision: 2,
+    });
+    vi.advanceTimersByTime(500);
+    expect(fixture.componentInstance['tickAnimations']().has('AAPL')).toBe(false);
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('keeps the primary chart ready when comparison candles fail', async () => {

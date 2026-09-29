@@ -101,7 +101,22 @@
                           }}</span>
                         </h1>
                         <div class="comparison-price">
-                          <strong class="tabular-nums">
+                          <strong
+                            class="tick-price tabular-nums"
+                            [class.tick-price-gain]="
+                              tickAnimations().get(item.instrument.symbol)?.direction === 'gain'
+                            "
+                            [class.tick-price-loss]="
+                              tickAnimations().get(item.instrument.symbol)?.direction === 'loss'
+                            "
+                            [class.tick-animation-even]="
+                              (tickAnimations().get(item.instrument.symbol)?.revision ?? 1) % 2 ===
+                              0
+                            "
+                            [style.animation-duration.ms]="
+                              tickAnimations().get(item.instrument.symbol)?.durationMs
+                            "
+                          >
                             {{ item.instrument.price | currency: 'USD' }}
                           </strong>
                           <span
@@ -145,9 +160,22 @@
                       <h1 class="text-xl font-bold">{{ active.symbol }}</h1>
                       <p class="text-muted-foreground truncate text-xs">{{ active.name }}</p>
                     </div>
-                    <span class="text-3xl font-bold tabular-nums">{{
-                      active.price | currency: 'USD'
-                    }}</span>
+                    <span
+                      class="tick-price text-3xl font-bold tabular-nums"
+                      [class.tick-price-gain]="
+                        tickAnimations().get(active.symbol)?.direction === 'gain'
+                      "
+                      [class.tick-price-loss]="
+                        tickAnimations().get(active.symbol)?.direction === 'loss'
+                      "
+                      [class.tick-animation-even]="
+                        (tickAnimations().get(active.symbol)?.revision ?? 1) % 2 === 0
+                      "
+                      [style.animation-duration.ms]="
+                        tickAnimations().get(active.symbol)?.durationMs
+                      "
+                      >{{ active.price | currency: 'USD' }}</span
+                    >
                   </div>
                   <dl class="market-metrics">
                     <div>
@@ -358,26 +386,58 @@
                   @if (comparisonInstrument(); as compared) {
                     <div class="comparison-price-label-left">
                       <span class="text-xs font-semibold">{{ active.symbol }}</span>
-                      <span class="text-xs font-semibold tabular-nums">
-                        {{ active.price | currency: 'USD': 'symbol': '1.2-2' }}
+                      <span
+                        class="tick-price text-xs font-semibold tabular-nums"
+                        [class.tick-price-gain]="
+                          tickAnimations().get(active.symbol)?.direction === 'gain'
+                        "
+                        [class.tick-price-loss]="
+                          tickAnimations().get(active.symbol)?.direction === 'loss'
+                        "
+                        [class.tick-animation-even]="
+                          (tickAnimations().get(active.symbol)?.revision ?? 1) % 2 === 0
+                        "
+                        [style.animation-duration.ms]="
+                          tickAnimations().get(active.symbol)?.durationMs
+                        "
+                      >
+                        {{ active.price | currency: 'USD' : 'symbol' : '1.2-2' }}
                       </span>
                       <span
                         class="text-xs font-semibold tabular-nums"
                         [class]="active.change >= 0 ? 'text-gain' : 'text-loss'"
                       >
-                        {{ active.change | number: '1.1-1' }} ({{ active.changePercent | signedPercent }})
+                        {{ active.change | number: '1.1-1' }} ({{
+                          active.changePercent | signedPercent
+                        }})
                       </span>
                     </div>
                     <div class="comparison-price-label-right">
                       <span class="text-xs font-semibold">{{ compared.symbol }}</span>
-                      <span class="text-xs font-semibold tabular-nums">
-                        {{ compared.price | currency: 'USD': 'symbol': '1.2-2' }}
+                      <span
+                        class="tick-price text-xs font-semibold tabular-nums"
+                        [class.tick-price-gain]="
+                          tickAnimations().get(compared.symbol)?.direction === 'gain'
+                        "
+                        [class.tick-price-loss]="
+                          tickAnimations().get(compared.symbol)?.direction === 'loss'
+                        "
+                        [class.tick-animation-even]="
+                          (tickAnimations().get(compared.symbol)?.revision ?? 1) % 2 === 0
+                        "
+                        [style.animation-duration.ms]="
+                          tickAnimations().get(compared.symbol)?.durationMs
+                        "
+                      >
+                        {{ compared.price | currency: 'USD' : 'symbol' : '1.2-2' }}
                       </span>
                       <span
                         class="text-xs font-semibold tabular-nums"
                         [class]="compared.change >= 0 ? 'text-gain' : 'text-loss'"
                       >
-                        {{ compared.change | number: '1.1-1' }} ({{ compared.changePercent | signedPercent }})
+                        {{ compared.change | number: '1.1-1' }} ({{
+                          compared.changePercent | signedPercent
+                        }})
                       </span>
                     </div>
                     <div class="comparison-charts">

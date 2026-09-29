@@ -84,16 +84,19 @@ describe('DashboardComponent', () => {
   });
 
   it('should limit the portfolio chart to the elapsed market session', () => {
-    const component = TestBed.createComponent(DashboardComponent).componentInstance;
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+    flushAccounts(fixture);
+    const component = fixture.componentInstance;
     component['currentMarketTimestamp'].set('2026-01-05T16:00:00Z');
 
     const points = component['portfolioChart']();
 
     expect(points[0].time.toISOString()).toBe('2026-01-05T15:30:00.000Z');
     expect(points[points.length - 1].time.toISOString()).toBe('2026-01-05T16:00:00.000Z');
-    expect(points.every((point) => point.time.getTime() <= Date.parse('2026-01-05T16:00:00Z'))).toBe(
-      true,
-    );
+    expect(
+      points.every((point) => point.time.getTime() <= Date.parse('2026-01-05T16:00:00Z')),
+    ).toBe(true);
   });
 
   it('should not show the order submission dialog initially', () => {
@@ -301,7 +304,7 @@ describe('DashboardComponent', () => {
     const marketPanel = marketDropdown.querySelector('details > div') as HTMLElement;
 
     expect(accountDropdown.textContent).toContain('Personal Investing Account');
-    expect(marketDropdown.textContent).toContain('Jan 5, 8:30 AM CT');
+    expect(marketDropdown.textContent).toContain('Jan 5, 8:30:00 AM CT');
     expect(accountDetails.className).toContain('w-60');
     expect(marketDetails.className).toContain('w-60');
     expect(accountPanel.className).toContain('w-full');
@@ -321,7 +324,9 @@ describe('DashboardComponent', () => {
     fixture.detectChanges();
     flushAccounts(fixture);
 
-    const table = fixture.nativeElement.querySelector('[data-testid="assets-table"]') as HTMLElement;
+    const table = fixture.nativeElement.querySelector(
+      '[data-testid="assets-table"]',
+    ) as HTMLElement;
     const headers = Array.from(table.querySelectorAll('.dash-table-head span')).map((header) =>
       (header as HTMLElement).textContent?.trim(),
     );
@@ -464,10 +469,12 @@ describe('DashboardComponent', () => {
 
     component['applyMarketDateTime']('2026-01-05T08:30');
 
-    http.expectOne('/api/market/clock?sessionId=2026001').flush(
-      { error: 'Selected date has no seeded trading data' },
-      { status: 400, statusText: 'Bad Request' },
-    );
+    http
+      .expectOne('/api/market/clock?sessionId=2026001')
+      .flush(
+        { error: 'Selected date has no seeded trading data' },
+        { status: 400, statusText: 'Bad Request' },
+      );
     expect(component['clockError']()).toBe('Selected date has no seeded trading data');
   });
 
@@ -483,7 +490,7 @@ describe('DashboardComponent', () => {
     });
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.textContent).toContain('Jan 5, 8:30 AM CT');
+    expect(fixture.nativeElement.textContent).toContain('Jan 5, 8:30:00 AM CT');
   });
 
   it('should show shortened copy in the market clock dropdown', () => {
@@ -584,7 +591,9 @@ describe('DashboardComponent', () => {
     );
   });
 
-  it('should update ticker prices and daily changes without highlight state', () => {
+  it('updates ticker prices immediately and animates the movement for 500 to 1000 ms', () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
     const fixture = TestBed.createComponent(DashboardComponent);
     const component = fixture.componentInstance;
     const instrument: Instrument = {
@@ -597,16 +606,44 @@ describe('DashboardComponent', () => {
     component['instruments'].set([instrument]);
     component['openingPrices'].set('AAPL', 95);
 
-    component['applyTick']('AAPL', 100);
+    component['applyTick']('AAPL', 101);
 
     expect(component['instruments']()[0]).toEqual({
       ...instrument,
-      price: 100,
-      change: 5,
-      changePercent: (5 / 95) * 100,
+      price: 101,
+      change: 6,
+      changePercent: (6 / 95) * 100,
     });
-    expect('changedSymbols' in component).toBe(false);
-    expect('flashDirections' in component).toBe(false);
+    expect(component['tickAnimations']().get('AAPL')).toEqual({
+      direction: 'gain',
+      durationMs: 500,
+      revision: 1,
+    });
+    vi.advanceTimersByTime(500);
+    expect(component['tickAnimations']().has('AAPL')).toBe(false);
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('applies a tick timestamp and prices synchronously without queued price updates', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.999999);
+    const fixture = TestBed.createComponent(DashboardComponent);
+    const component = fixture.componentInstance;
+    component['instruments'].set([{ ...MOCK_INSTRUMENTS[0], price: 100 }]);
+
+    component['queueTickBatch']({
+      eventId: 2,
+      marketTimestamp: '2026-01-05T14:30:01Z',
+      serverTimestamp: '2026-01-05T14:30:01Z',
+      prices: [{ symbol: MOCK_INSTRUMENTS[0].symbol, price: 99, sequenceNumber: 2 }],
+    });
+
+    expect(component['currentMarketTimestamp']()).toBe('2026-01-05T14:30:01Z');
+    expect(component['marketClockLabel']()).toBe('Jan 5, 8:30:01 AM CT');
+    expect(component['instruments']()[0].price).toBe(99);
+    expect(component['tickAnimations']().get(MOCK_INSTRUMENTS[0].symbol)?.direction).toBe('loss');
+    expect(component['tickAnimations']().get(MOCK_INSTRUMENTS[0].symbol)?.durationMs).toBe(1000);
+    vi.restoreAllMocks();
   });
 
   describe('accounts, portfolios and cash', () => {
@@ -626,7 +663,9 @@ describe('DashboardComponent', () => {
 
     function accountItems(fixture: ComponentFixture<DashboardComponent>) {
       return Array.from(
-        element(fixture).querySelectorAll('[data-testid="account-dropdown"] [role="menuitemradio"]'),
+        element(fixture).querySelectorAll(
+          '[data-testid="account-dropdown"] [role="menuitemradio"]',
+        ),
       ) as HTMLButtonElement[];
     }
 
@@ -638,7 +677,9 @@ describe('DashboardComponent', () => {
 
     function assetSymbols(fixture: ComponentFixture<DashboardComponent>) {
       return Array.from(
-        element(fixture).querySelectorAll('[data-testid="assets-table"] [data-testid^="asset-row-"]'),
+        element(fixture).querySelectorAll(
+          '[data-testid="assets-table"] [data-testid^="asset-row-"]',
+        ),
       ).map((row) => row.getAttribute('data-testid')?.replace('asset-row-', ''));
     }
 
@@ -693,7 +734,9 @@ describe('DashboardComponent', () => {
 
       expect(assetSymbols(fixture)).toEqual(['AAPL', 'NVDA', 'MSFT', 'SPY', 'TSLA']);
       expect(text(element(fixture).querySelector('h2.dash-label'))).toBe('Net Worth');
-      expect(element(fixture).textContent).toContain('Portfolio Value · Personal Investing Account');
+      expect(element(fixture).textContent).toContain(
+        'Portfolio Value · Personal Investing Account',
+      );
 
       fixture.componentInstance['selectAccount'](2);
       fixture.detectChanges();
@@ -713,6 +756,52 @@ describe('DashboardComponent', () => {
       expect(element(fixture).textContent).toContain('This account has no holdings yet.');
       expect(fixture.componentInstance['portfolioValue']()).toBe(0);
       expect(fixture.componentInstance['netWorth']()).toBe(CASH);
+      expect(
+        text(element(fixture).querySelector('[data-testid="portfolio-chart-empty-state"]')),
+      ).toBe('Start trading to build your portfolio.');
+      expect(element(fixture).querySelector('app-price-chart')).toBeNull();
+      expect(element(fixture).querySelector('app-timeframe-toggle')).toBeNull();
+      expect(element(fixture).querySelector('[data-testid="portfolio-value"]')).toBeNull();
+      expect(element(fixture).textContent).not.toContain('Portfolio Value · Fresh');
+    });
+
+    it('shows a loading state without rendering a zero-value portfolio chart', () => {
+      const fixture = render();
+
+      expect(text(element(fixture).querySelector('[data-testid="portfolio-chart-status"]'))).toBe(
+        'Loading portfolio…',
+      );
+      expect(element(fixture).querySelector('app-price-chart')).toBeNull();
+      expect(element(fixture).querySelector('app-timeframe-toggle')).toBeNull();
+    });
+
+    it('shows an unavailable state when accounts fail to load', () => {
+      const fixture = render();
+      const http = TestBed.inject(HttpTestingController);
+      http.expectOne('/api/users/me').flush({ availableFunds: CASH });
+      http.expectOne('/api/me/accounts').flush(null, { status: 500, statusText: 'Error' });
+      fixture.detectChanges();
+
+      expect(text(element(fixture).querySelector('[data-testid="portfolio-chart-status"]'))).toBe(
+        'Ready to grow your portfolio? Start trading to get things moving.',
+      );
+      expect(
+        element(fixture).querySelector('[data-testid="portfolio-chart-status"] ng-icon'),
+      ).not.toBeNull();
+      expect(element(fixture).querySelector('app-price-chart')).toBeNull();
+      expect(element(fixture).querySelector('app-timeframe-toggle')).toBeNull();
+    });
+
+    it('shows the portfolio chart and timeframe controls for a positive value', () => {
+      const fixture = render();
+      flushAccounts(fixture);
+
+      expect(fixture.componentInstance['hasChartablePortfolioValue']()).toBe(true);
+      expect(element(fixture).querySelector('app-price-chart')).not.toBeNull();
+      expect(element(fixture).querySelector('app-timeframe-toggle')).not.toBeNull();
+      expect(
+        element(fixture).querySelector('[data-testid="portfolio-chart-empty-state"]'),
+      ).toBeNull();
     });
 
     it('values a holding with no live price at its cost', () => {
@@ -753,7 +842,9 @@ describe('DashboardComponent', () => {
       openDropdown(fixture, 'account-dropdown');
 
       (
-        element(fixture).querySelector('[aria-label="Rename Retirement Account"]') as HTMLButtonElement
+        element(fixture).querySelector(
+          '[aria-label="Rename Retirement Account"]',
+        ) as HTMLButtonElement
       ).click();
       fixture.detectChanges();
 
@@ -800,7 +891,9 @@ describe('DashboardComponent', () => {
 
       expect(fixture.componentInstance['accountLabel']()).toBe('No accounts');
       expect(element(fixture).textContent).toContain("You don't have any accounts yet.");
-      expect(element(fixture).textContent).toContain('Create an account to start building a portfolio.');
+      expect(element(fixture).textContent).toContain(
+        'Create an account to start building a portfolio.',
+      );
       expect(fixture.componentInstance['netWorth']()).toBe(CASH);
       expect(button(fixture, 'Deposit').disabled).toBe(false);
 
@@ -850,7 +943,12 @@ describe('DashboardComponent', () => {
       const fixture = render();
       flushAccounts(fixture, ACCOUNTS, {
         transactions: [
-          { cashTransactionId: 7, amount: 250, reason: 'DEPOSIT', createdAt: '2026-09-20T15:00:00Z' },
+          {
+            cashTransactionId: 7,
+            amount: 250,
+            reason: 'DEPOSIT',
+            createdAt: '2026-09-20T15:00:00Z',
+          },
           {
             cashTransactionId: 8,
             amount: 40,

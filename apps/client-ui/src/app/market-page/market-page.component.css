@@ -210,7 +210,7 @@
   justify-content: space-between;
   gap: 1rem;
   border-bottom: 1px solid var(--border);
-  padding-bottom: .75rem;
+  padding-bottom: 0.75rem;
   padding-top: 0.25rem;
 }
 
@@ -884,5 +884,66 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 0.4rem;
+  }
+}
+@keyframes tick-gain-odd {
+  from {
+    background-color: color-mix(in srgb, var(--color-gain) 28%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+@keyframes tick-gain-even {
+  from {
+    background-color: color-mix(in srgb, var(--color-gain) 28%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+@keyframes tick-loss-odd {
+  from {
+    background-color: color-mix(in srgb, var(--color-loss) 28%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+@keyframes tick-loss-even {
+  from {
+    background-color: color-mix(in srgb, var(--color-loss) 28%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+.tick-price {
+  border-radius: 0.25rem;
+}
+
+.tick-price-gain {
+  animation-name: tick-gain-odd;
+  animation-timing-function: ease-out;
+}
+.tick-price-loss {
+  animation-name: tick-loss-odd;
+  animation-timing-function: ease-out;
+}
+.tick-price-gain.tick-animation-even {
+  animation-name: tick-gain-even;
+}
+.tick-price-loss.tick-animation-even {
+  animation-name: tick-loss-even;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tick-price-gain,
+  .tick-price-loss {
+    animation: none;
   }
 }

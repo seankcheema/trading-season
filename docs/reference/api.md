@@ -56,7 +56,7 @@ Planned protected trading endpoints will use the [token verification](#token-ver
 | --- | --- | --- |
 | GET /api/market/snapshot | Optional `sessionId` | Resolved simulation, replay cursor, market status, available clock range, and every seeded stock's company name, current price, current-session change, percentage change, and tick timestamp |
 | GET /api/market/candles | Optional `sessionId`; required `symbol` and `timeframe` (`1D`, `5D`, `1M`, or `1Y`) | At most 500 chronological OHLCV buckets ending at the current replay cursor |
-| GET /api/market/stream | Optional `sessionId`; optional `Last-Event-ID` request header | Server-sent event stream containing one synchronized price batch per simulated market second |
+| GET /api/market/stream | Optional `sessionId`; optional `Last-Event-ID` request header | Server-sent event stream containing one synchronized price batch per simulated market second, sourced from raw Parquet ticks for Parquet-backed sessions |
 | PUT /api/market/clock | Bearer access token; optional `sessionId`; JSON `timestamp` as an ISO-8601 instant | Moves the shared replay cursor to the closest seeded tick at or before that time and returns a snapshot; non-trading dates inside an imported month use the nearest loaded trading date in that month, preferring the next trading date; months without seeded trading data return 400 |
 
 Snapshots include a `calendar` object that describes the selectable imported archive range:
@@ -74,6 +74,8 @@ Snapshots include a `calendar` object that describes the selectable imported arc
 | POST /api/me/cash-transactions | Bearer token; amount, reason DEPOSIT or WITHDRAWAL | Posted funding transaction and updated availableFunds |
 
 Manual clock changes are limited to the months imported for the resolved simulation session. A local development database can contain a small date range rather than the full generated dataset, so clients should validate against `tradingDates`, `firstTimestamp`, and `lastTimestamp` before calling `PUT /api/market/clock`. If a user selects a weekend or other non-trading date inside an imported month, clients may adjust to the nearest loaded trading date in that month before sending the request; the backend applies the same rule for direct API callers.
+
+Parquet-backed replay requires the selected daily tick partition to be readable by the Java service. The archive root resolves from `MARKET_REPLAY_ARCHIVE_LOCATION`, the location recorded in simulation metadata, or the matching archive in the repository's `apps/market-data/db/seeds` directory. The service does not substitute one-minute candles when raw ticks are unavailable; affected snapshot, stream, or clock requests fail as unavailable market data instead of changing the replay resolution. The dashboard displays seconds in its market clock and applies each streamed price immediately. Its 500–1,000 ms randomized gain/loss highlight is visual only and does not affect replay timing or values.
 
 ### Candle aggregation
 
@@ -107,13 +109,13 @@ Each aggregate uses the first open, maximum high, minimum low, final close, and 
 }
 ```
 
-One shared replay cursor per requested simulation advances at one simulated second per real second. The dashboard staggers the stocks in each synchronized batch across the following 0–1 second window so multiple prices visibly change without rerendering the entire row at once. It uses the current `America/Chicago` date and market time when that timestamp exists in the seed, chooses the nearest applicable seeded session otherwise, skips overnight and weekend gaps, and loops after the final seeded session. `MARKET_REPLAY_START_AT` may override this behavior with an ISO-8601 instant for deterministic tests and demonstrations. `marketTimestamp` is the simulated market time; `serverTimestamp` records delivery time.
+One shared replay cursor per requested simulation advances at one simulated second per real second. The dashboard applies every price and the market timestamp immediately, then shows a randomized 500–1,000 ms visual gain/loss transition without delaying values or changing event order. It uses the current `America/Chicago` date and market time when that timestamp exists in the seed, chooses the nearest applicable seeded session otherwise, skips overnight and weekend gaps, and loops after the final seeded session. `MARKET_REPLAY_START_AT` may override this behavior with an ISO-8601 instant for deterministic tests and demonstrations. `marketTimestamp` is the simulated market time; `serverTimestamp` records delivery time.
 
 The stream sends a heartbeat every 15 events and retains the latest 30 events for reconnection by `Last-Event-ID`. A client outside that window receives a resynchronization event and reloads the snapshot.
 
 ### Data access and safeguards
 
-The replay service supports ticks stored either in PostgreSQL or in the archive location recorded in simulation metadata. It loads only the current trading day's required tick columns into a bounded server-side buffer, so emitting each second does not issue another database query or rescan a Parquet file. When a Parquet tick partition is unavailable but one-minute candles exist for the selected day, replay falls back to candle-close frames so manual clock changes still work at minute granularity.
+The replay service supports ticks stored either in PostgreSQL for sessions explicitly configured with PostgreSQL tick storage or in the resolved Parquet archive for Parquet-backed sessions. It loads only the current trading day's required tick columns into a bounded server-side buffer, so emitting each second does not issue another database query or rescan a Parquet file. An unavailable Parquet archive or partition fails the request; one-minute candles remain chart data and are never substituted for replay ticks.
 
 The three GET endpoints are unauthenticated, read-only simulator operations. Clock changes require a bearer access token because they affect the shared replay for the selected simulation session. The implementation enforces configured CORS origins, validated and bounded parameters, REST rate limits, per-client and global stream connection limits, parameterized database queries, and sanitized request errors. Filesystem paths are never accepted from a request; Parquet access is derived only from trusted simulation metadata.
 
