@@ -54,8 +54,8 @@ The Jenkins pipeline expects a native agent with Docker, the Maven tool named Ma
 | Holdings and Trade Java | apps/holdings-and-trade-service/target/surefire-reports and target/site/jacoco |
 | Order and Sell Java | apps/order-and-sell-service/target/surefire-reports and target/site/jacoco |
 | Auth | apps/auth-service/coverage and reports/junit |
-| UI | apps/business-logic-ui/coverage |
-| End-to-end | apps/business-logic-ui/reports/playwright |
+| UI | apps/client-ui/coverage |
+| End-to-end | apps/client-ui/reports/playwright |
 
 Both Java services must pass their respective test suites. Schema changes or shared dependency upgrades require testing both services together to verify compatibility. Auth CI runs npm ci then npm run test:ci. Frontend CI currently uses npm install --legacy-peer-deps followed by npm test -- --no-watch --coverage. This differs from the preferred root npm ci developer installation. Do not silently treat an absent test tool or empty required report as success.
 
