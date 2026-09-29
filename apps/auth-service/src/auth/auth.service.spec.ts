@@ -1,16 +1,25 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import { UnauthorizedException, BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  UnauthorizedException,
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AuthService } from './auth.service.js';
 import { UsersService } from '../users/users.service.js';
 import { RefreshTokensService } from '../refresh-tokens/refresh-tokens.service.js';
+import { PasswordResetTokensService } from '../password-reset/password-reset-tokens.service.js';
+import { MailService } from '../mail/mail.service.js';
 
 describe('AuthService', () => {
   let service: AuthService;
   let mockUsersService: any;
   let mockJwtService: any;
   let mockRefreshTokens: any;
+  let mockResetTokens: any;
+  let mockMail: any;
 
   beforeEach(async () => {
     mockUsersService = {
@@ -42,6 +51,20 @@ describe('AuthService', () => {
       revokeAllForUser: vi.fn().mockResolvedValue(undefined),
     };
 
+    // Reset tokens are opaque and single-use, held in the database like refresh
+    // tokens. Defaults cover a usable link; individual tests override them.
+    mockResetTokens = {
+      issue: vi.fn().mockResolvedValue('opaque-reset-token'),
+      findByToken: vi.fn(),
+      isUsable: vi.fn().mockReturnValue(true),
+      markUsed: vi.fn().mockResolvedValue(undefined),
+      revokeOutstandingForUser: vi.fn().mockResolvedValue(undefined),
+    };
+
+    mockMail = {
+      sendPasswordReset: vi.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -56,6 +79,14 @@ describe('AuthService', () => {
         {
           provide: RefreshTokensService,
           useValue: mockRefreshTokens,
+        },
+        {
+          provide: PasswordResetTokensService,
+          useValue: mockResetTokens,
+        },
+        {
+          provide: MailService,
+          useValue: mockMail,
         },
       ],
     }).compile();
@@ -571,6 +602,193 @@ describe('AuthService', () => {
       await expect(
         service.refreshToken('revoked-before-restart'),
       ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('requestPasswordReset', () => {
+    const account = {
+      id: 'user-1',
+      email: 'joanna@example.com',
+      isActive: true,
+      role: 'TRADER' as const,
+    };
+
+    it('should email a single-use link to a known address', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(account);
+
+      await service.requestPasswordReset('joanna@example.com');
+
+      expect(mockResetTokens.issue).toHaveBeenCalledWith('user-1');
+      expect(mockMail.sendPasswordReset).toHaveBeenCalledWith(
+        'joanna@example.com',
+        'opaque-reset-token',
+        30,
+      );
+    });
+
+    it('should stay silent and send nothing for an unknown address', async () => {
+      // Same return value as the known-address case. Anything else turns this
+      // credential-free route into a list of registered email addresses.
+      mockUsersService.findByEmail.mockResolvedValue(null);
+
+      await expect(
+        service.requestPasswordReset('nobody@example.com'),
+      ).resolves.toBeUndefined();
+
+      expect(mockResetTokens.issue).not.toHaveBeenCalled();
+      expect(mockMail.sendPasswordReset).not.toHaveBeenCalled();
+    });
+
+    it('should send nothing for a deactivated account', async () => {
+      mockUsersService.findByEmail.mockResolvedValue({ ...account, isActive: false });
+
+      await expect(
+        service.requestPasswordReset('joanna@example.com'),
+      ).resolves.toBeUndefined();
+
+      expect(mockResetTokens.issue).not.toHaveBeenCalled();
+      expect(mockMail.sendPasswordReset).not.toHaveBeenCalled();
+    });
+
+    it('should still send a link to a locked account', async () => {
+      // Lockout stops password guessing. Whoever can read the mailbox is not
+      // the one guessing, and refusing here would leave the account stuck.
+      mockUsersService.findByEmail.mockResolvedValue(account);
+      mockUsersService.isAccountLocked.mockReturnValue(true);
+
+      await service.requestPasswordReset('joanna@example.com');
+
+      expect(mockMail.sendPasswordReset).toHaveBeenCalled();
+    });
+
+    it('should revoke the token and not throw when the mail server rejects it', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(account);
+      mockMail.sendPasswordReset.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      await expect(
+        service.requestPasswordReset('joanna@example.com'),
+      ).resolves.toBeUndefined();
+
+      // Nobody received the link, so leaving it live would be a token with no
+      // owner sitting in the database for its full lifetime.
+      expect(mockResetTokens.revokeOutstandingForUser).toHaveBeenCalledWith('user-1');
+    });
+  });
+
+  describe('resetPassword', () => {
+    const row = { id: 'reset-1', userId: 'user-1' };
+    const account = {
+      id: 'user-1',
+      email: 'joanna@example.com',
+      isActive: true,
+      role: 'TRADER' as const,
+    };
+
+    beforeEach(() => {
+      mockResetTokens.findByToken.mockResolvedValue(row);
+      mockUsersService.findById.mockResolvedValue(account);
+      mockUsersService.updatePassword = vi.fn().mockResolvedValue(undefined);
+    });
+
+    it('should change the stored password and spend the token', async () => {
+      await service.resetPassword('opaque-reset-token', 'new-password-1');
+
+      expect(mockUsersService.updatePassword).toHaveBeenCalledWith(
+        'user-1',
+        'new-password-1',
+      );
+      expect(mockResetTokens.markUsed).toHaveBeenCalledWith(row);
+    });
+
+    it('should end every existing session', async () => {
+      // A reset is what someone does when they think they have lost control of
+      // the account; a seven-day refresh token would outlive the new password.
+      await service.resetPassword('opaque-reset-token', 'new-password-1');
+
+      expect(mockRefreshTokens.revokeAllForUser).toHaveBeenCalledWith('user-1');
+    });
+
+    it('should invalidate any other link the user was sent', async () => {
+      await service.resetPassword('opaque-reset-token', 'new-password-1');
+
+      expect(mockResetTokens.revokeOutstandingForUser).toHaveBeenCalledWith('user-1');
+    });
+
+    it('should reject an unknown token without touching the password', async () => {
+      mockResetTokens.findByToken.mockResolvedValue(null);
+
+      await expect(
+        service.resetPassword('made-up', 'new-password-1'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockUsersService.updatePassword).not.toHaveBeenCalled();
+    });
+
+    it('should reject a spent or expired token', async () => {
+      mockResetTokens.isUsable.mockReturnValue(false);
+
+      await expect(
+        service.resetPassword('already-used', 'new-password-1'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockUsersService.updatePassword).not.toHaveBeenCalled();
+    });
+
+    it('should reject a link whose account has since been deactivated', async () => {
+      mockUsersService.findById.mockResolvedValue({ ...account, isActive: false });
+
+      await expect(
+        service.resetPassword('opaque-reset-token', 'new-password-1'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockUsersService.updatePassword).not.toHaveBeenCalled();
+      expect(mockResetTokens.revokeOutstandingForUser).toHaveBeenCalledWith('user-1');
+    });
+
+    it('should reject a link whose account no longer exists', async () => {
+      mockUsersService.findById.mockRejectedValue(new NotFoundException('User not found'));
+
+      await expect(
+        service.resetPassword('opaque-reset-token', 'new-password-1'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockUsersService.updatePassword).not.toHaveBeenCalled();
+    });
+
+    it('should report the same message for every rejection', async () => {
+      // Distinguishable errors would let a caller sort real token values from
+      // invalid ones without ever reading an email.
+      mockResetTokens.findByToken.mockResolvedValue(null);
+      const unknown = await service
+        .resetPassword('made-up', 'new-password-1')
+        .catch((error: Error) => error.message);
+
+      mockResetTokens.findByToken.mockResolvedValue(row);
+      mockResetTokens.isUsable.mockReturnValue(false);
+      const spent = await service
+        .resetPassword('already-used', 'new-password-1')
+        .catch((error: Error) => error.message);
+
+      expect(unknown).toBe(spent);
+    });
+
+    it('should reject a password shorter than the registration minimum', async () => {
+      await expect(
+        service.resetPassword('opaque-reset-token', 'short'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockUsersService.updatePassword).not.toHaveBeenCalled();
+    });
+
+    it('should reject a missing token or password', async () => {
+      await expect(service.resetPassword('', 'new-password-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(
+        service.resetPassword('opaque-reset-token', ''),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockUsersService.updatePassword).not.toHaveBeenCalled();
     });
   });
 });

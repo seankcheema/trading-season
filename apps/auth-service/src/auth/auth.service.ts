@@ -11,6 +11,11 @@ import { CreateUserDto } from '../users/dto/create-user.dto.js';
 import { AuthTokenDto } from './dto/auth-token.dto.js';
 import { JwtPayload } from './dto/jwt-payload.dto.js';
 import { RefreshTokensService } from '../refresh-tokens/refresh-tokens.service.js';
+import {
+  PASSWORD_RESET_TOKEN_TTL_MINUTES,
+  PasswordResetTokensService,
+} from '../password-reset/password-reset-tokens.service.js';
+import { MailService } from '../mail/mail.service.js';
 
 /**
  * A valid bcrypt hash of a value nobody knows, compared against when no real
@@ -41,6 +46,8 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private refreshTokens: RefreshTokensService,
+    private resetTokens: PasswordResetTokensService,
+    private mail: MailService,
   ) {}
 
   async register(email: string, password: string): Promise<AuthTokenDto> {
@@ -165,6 +172,102 @@ export class AuthService {
       await this.refreshTokens.revoke(row);
       this.logger.debug(`Refresh token revoked for user ${row.userId}`);
     }
+  }
+
+  /**
+   * Start a password reset by emailing a single-use link.
+   *
+   * Returns nothing and reveals nothing. An unknown address, a deactivated
+   * account and a successful send are indistinguishable to the caller, because
+   * anything else makes this route a list of which email addresses hold an
+   * account — and unlike login, it needs no credentials to ask.
+   *
+   * A locked account is deliberately still sent a link: lockout exists to stop
+   * password guessing, and the person who has proved control of the mailbox is
+   * not the one guessing.
+   */
+  async requestPasswordReset(email: string): Promise<void> {
+    const user = await this.usersService.findByEmail(email);
+
+    if (!user) {
+      this.logger.debug(`Password reset requested for unknown address ${email}`);
+      return;
+    }
+
+    if (!user.isActive) {
+      // A deactivated account cannot sign in, so handing it a working reset
+      // link would only produce a password that still cannot be used.
+      this.logger.debug(`Password reset requested for deactivated account ${user.id}`);
+      return;
+    }
+
+    const token = await this.resetTokens.issue(user.id);
+
+    try {
+      await this.mail.sendPasswordReset(
+        user.email,
+        token,
+        PASSWORD_RESET_TOKEN_TTL_MINUTES,
+      );
+    } catch (error) {
+      // The mail server did not accept the message, so the link reached nobody.
+      // Revoke it rather than leaving a live token nothing will ever consume,
+      // and keep the response generic: an SMTP outage is not the caller's to
+      // learn about, and a 500 here would be a slower answer for a known
+      // address than for an unknown one.
+      await this.resetTokens.revokeOutstandingForUser(user.id);
+      this.logger.error(
+        `Failed to send password reset email for account ${user.id}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+  }
+
+  /**
+   * Finish a password reset: set the new password and end every session.
+   *
+   * The emailed token is the only credential. Every rejection — unknown token,
+   * already used, expired, revoked, or belonging to an account that has since
+   * been deactivated — produces the same 400, so a caller cannot use this route
+   * to sort valid token values from invalid ones.
+   *
+   * Existing sessions are revoked because a reset is what someone does when
+   * they suspect they have lost control of the account; leaving the refresh
+   * tokens alone would keep whoever took it signed in for up to seven days.
+   * Access tokens already issued still work until they expire, which is the
+   * same 15-minute window documented for logout.
+   */
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    if (!token || !newPassword) {
+      throw new BadRequestException('Missing required fields');
+    }
+
+    if (newPassword.length < 8) {
+      throw new BadRequestException(
+        'Password must be at least 8 characters long',
+      );
+    }
+
+    const row = await this.resetTokens.findByToken(token);
+
+    if (!row || !this.resetTokens.isUsable(row)) {
+      throw new BadRequestException('This password reset link is invalid or has expired');
+    }
+
+    const user = await this.usersService.findById(row.userId).catch(() => null);
+    if (!user || !user.isActive) {
+      await this.resetTokens.revokeOutstandingForUser(row.userId);
+      throw new BadRequestException('This password reset link is invalid or has expired');
+    }
+
+    await this.usersService.updatePassword(user.id, newPassword);
+    await this.resetTokens.markUsed(row);
+    // Any other link the user was sent is now worthless, including one issued
+    // between this request being made and completed.
+    await this.resetTokens.revokeOutstandingForUser(user.id);
+    await this.refreshTokens.revokeAllForUser(user.id);
+
+    this.logger.log(`Password reset completed for account ${user.id}`);
   }
 
   /**

@@ -309,4 +309,49 @@ describe('UsersService', () => {
       expect(result).toBe(false);
     });
   });
+
+  describe('updatePassword', () => {
+    it('should store a hash of the new password, never the password', async () => {
+      const mockUser = {
+        id: '123',
+        password: 'hashed_old-password',
+        failedAttempts: 3,
+        lockedUntil: new Date(),
+      };
+      mockUserRepository.findOne.mockResolvedValue(mockUser);
+      mockUserRepository.save.mockResolvedValue(mockUser);
+
+      await service.updatePassword('123', 'new-password');
+
+      expect(mockUser.password).toBe('hashed_new-password');
+      expect(mockUserRepository.save).toHaveBeenCalledWith(mockUser);
+    });
+
+    it('should clear the failed-attempt counter and any lock', async () => {
+      // Whoever completes a reset has proved control of the mailbox. Leaving
+      // them locked out of the account they just recovered serves nothing.
+      const mockUser = {
+        id: '123',
+        password: 'hashed_old-password',
+        failedAttempts: 5,
+        lockedUntil: new Date(),
+      };
+      mockUserRepository.findOne.mockResolvedValue(mockUser);
+      mockUserRepository.save.mockResolvedValue(mockUser);
+
+      await service.updatePassword('123', 'new-password');
+
+      expect(mockUser.failedAttempts).toBe(0);
+      expect(mockUser.lockedUntil).toBeNull();
+    });
+
+    it('should throw NotFoundException for an unknown user', async () => {
+      mockUserRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.updatePassword('missing', 'new-password')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockUserRepository.save).not.toHaveBeenCalled();
+    });
+  });
 });

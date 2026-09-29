@@ -7,7 +7,7 @@ This document describes the system-level structure of Trading Season. For per-se
 Trading Season is a monorepo containing:
 
 - **Frontend** – Angular-based Client UI with reusable component library
-- **Authentication** – NestJS service with email/password authentication and RS256 tokens
+- **Authentication** – NestJS service with email/password authentication, RS256 tokens, and emailed password reset links
 - **Backend** – Two independent Spring Boot microservices sharing a single PostgreSQL database
 - **Shared Infrastructure** – Database migrations, synthetic market data tooling, Docker Compose configuration
 
@@ -21,7 +21,10 @@ graph TB
     OS["Order and Sell Service<br/>Spring Boot | Port 8081<br/><br/>Order submission/validation<br/>Order execution<br/>Order history<br/>Called by UI"]
     HT["Holdings and Trade Service<br/>Spring Boot | Port 8082<br/><br/>User profile queries<br/>Account management<br/>Holdings queries<br/>Not called by UI"]
     
-    BizDB["trading_season<br/>PostgreSQL<br/>Port 5432<br/><br/>user_accounts, refresh_tokens (auth)<br/>users, accounts, orders<br/>market data"]
+    Mail["Mailpit<br/>Development SMTP | Ports 1025/8025"]
+
+    AuthDB["auth_db<br/>PostgreSQL<br/>Port 5433<br/><br/>user credentials<br/>refresh tokens<br/>password reset tokens"]
+    BizDB["trading_season<br/>PostgreSQL<br/>Port 5432<br/><br/>users (via UUID)<br/>accounts<br/>orders<br/>market data"]
     
     UI -->|POST /login/refresh| Auth
     UI -->|/api/* (proxy)| OS
@@ -30,10 +33,12 @@ graph TB
     OS -->|fetch JWKS cache| Auth
     HT -->|fetch JWKS cache| Auth
     
-    Auth --> BizDB
+    Auth --> AuthDB
+    Auth -->|password reset email| Mail
     OS --> BizDB
     HT --> BizDB
     
+    style Mail fill:#F5DEB3
     style OS fill:#90EE90
     style HT fill:#FFB6C6
     style Auth fill:#87CEEB
@@ -48,13 +53,14 @@ graph TB
 
 | Service | Technology | Port | Status | Responsibility |
 | --- | --- | --- | --- | --- |
-| **Client UI** | Angular 21+ | 4200 | Implemented | User interface, login, registration, dashboard |
-| **Auth Service** | NestJS | 3001 | Implemented | User credentials, token issuance, session management |
+| **Client UI** | Angular 21+ | 4200 | Implemented | User interface, login, registration, password reset, dashboard |
+| **Auth Service** | NestJS | 3001 | Implemented | User credentials, token issuance, session management, password reset email |
 | **Order and Sell Service** | Spring Boot (Java 21) | 8081 | Implemented | Order submission/validation/execution, order history |
 | **Holdings and Trade Service** | Spring Boot (Java 21) | 8082 | Implemented | User profiles, account management, holdings queries |
 | **Reporting UI** | Angular | 4300 | Proposed | Portfolio performance, trade history, risk summaries |
 | **Reporting Service** | TBD | 8083 | Proposed | Portfolio aggregation, analytics, report generation |
 | **Market Data** | Infrastructure | — | Implemented | Database migrations, synthetic data generation |
+| **Mailpit** | Infrastructure | 1025/8025 | Implemented | Development mail server for the auth service; accepts SMTP and delivers nothing |
 
 ## Service naming correction
 
@@ -71,9 +77,9 @@ Two separate PostgreSQL databases:
 
 | Database | Owner | Purpose |
 | --- | --- | --- |
-| Angular UI | Login and registration against the NestJS auth service, profile submission to the Java backend, dashboard route protection, failed sign-in lockout, inactivity sign-out, shared components | [Routes](../../apps/client-ui/src/app/app.routes.ts) |
+| Angular UI | Login, registration and password reset against the NestJS auth service, profile submission to the Java backend, dashboard route protection, failed sign-in lockout, inactivity sign-out, shared components | [Routes](../../apps/client-ui/src/app/app.routes.ts) |
 | Spring Boot backend | Token-authenticated profile registration and user APIs, plus public simulated market reads | [Java auth controller](../../apps/holdings-and-trade-service/src/main/java/app/auth/AuthController.java) |
-| NestJS auth service | Email/password login, RS256 access tokens, opaque refresh tokens, JWKS, liveness | [Auth controller](../../apps/auth-service/src/auth/auth.controller.ts) |
+| NestJS auth service | Email/password login, RS256 access tokens, opaque refresh tokens, emailed password reset, JWKS, liveness | [Auth controller](../../apps/auth-service/src/auth/auth.controller.ts) |
 | Shared UI | Angular components consumed through @shared/ui-components subpath exports | [Package manifest](../../packages/shared-ui-components/package.json) |
 | Reporting | Runnable HTTP placeholders only; no reporting behavior | [Reporting proposal](reporting.md) |
 
@@ -114,7 +120,7 @@ Both services use JPA to map to the same tables directly. This requires schema v
 
 The dev proxy (`apps/client-ui/proxy.conf.json`) forwards all `/api` requests to Order and Sell Service (port 8081) exclusively:
 
-- Auth Service (port 3001) is called directly for login/register/refresh
+- Auth Service (port 3001) is called directly for login/register/refresh and for password reset
 - Holdings and Trade Service (port 8082) is not called from the UI in normal operation
 
 ## Known limitations
