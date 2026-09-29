@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SufficientFundsValidator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.order.validation.impl</a> &gt; <span class="el_source">SufficientFundsValidator.java</span></div><h1>SufficientFundsValidator.java</h1><pre class="source lang-java linenums">package app.order.validation.impl;
+
+import app.account.Account;
+import app.instrument.Instrument;
+import app.order.Order;
+import app.order.dto.OrderRequest;
+import app.order.validation.OrderValidator;
+import app.order.validation.ValidationResult;
+import app.user.User;
+import org.springframework.stereotype.Component;
+
+import java.math.BigDecimal;
+
+/**
+ * BR-09 (KAN-93): a BUY can't cost more than the owning user's available
+ * funds. Cash belongs to the user, not to an account — every account shares
+ * it — so this checks {@code users.available_funds}, the balance the UI
+ * shows, rather than the account's cached cash balance. This is a fast-reject
+ * check at validation time; {@code OrderExecutionService} re-checks under a
+ * row lock immediately before writing the fill, since two concurrent orders
+ * can both pass this check against the same stale balance.
+ */
+@Component
+<span class="fc" id="L24">public class SufficientFundsValidator implements OrderValidator {</span>
+
+    /**
+     * Passes every SELL, and every BUY whose {@code quantity * indicativePrice}
+     * is no more than {@code user.getAvailableFunds()}.
+     *
+     * @param request    the order being validated
+     * @param user       the account's owner, whose available funds are checked
+     * @param account    the account the order is placed against (unused here)
+     * @param instrument the instrument being traded (unused here)
+     * @return a pass, or a BR-09 rejection when the buy is unaffordable
+     */
+    @Override
+    public ValidationResult validate(OrderRequest request, User user, Account account, Instrument instrument) {
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        if (!Order.TYPE_BUY.equals(request.orderType())) {</span>
+<span class="fc" id="L39">            return ValidationResult.pass();</span>
+        }
+<span class="fc" id="L41">        BigDecimal cost = request.quantity().multiply(request.indicativePrice());</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        if (cost.compareTo(user.getAvailableFunds()) &gt; 0) {</span>
+<span class="fc" id="L43">            return ValidationResult.reject(&quot;BR-09: insufficient funds for this order&quot;);</span>
+        }
+<span class="fc" id="L45">        return ValidationResult.pass();</span>
+    }
+}
+
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

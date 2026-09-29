@@ -34,8 +34,6 @@ public class User {
     @Column(name = "last_name", nullable = false)
     private String lastName;
 
-    @Column(nullable = false, unique = true)
-    private String email;
 
     @Column(nullable = false)
     private String ssn;
@@ -52,11 +50,7 @@ public class User {
     @Column(name = "available_funds", nullable = false)
     private BigDecimal availableFunds = BigDecimal.ZERO;
 
-    @Column(name = "user_role", nullable = false)
-    private String userRole = "TRADER";
 
-    @Column(name = "account_status", nullable = false)
-    private String accountStatus = "ACTIVE";
 
     @Column(name = "session_timeout_minutes", nullable = false)
     private Integer sessionTimeoutMinutes = 10;
@@ -102,13 +96,6 @@ public class User {
         this.lastName = lastName;
     }
 
-    public String getEmail() {
-        return email;
-    }
-
-    public void setEmail(String email) {
-        this.email = email;
-    }
 
     public String getSsn() {
         return ssn;
@@ -150,21 +137,7 @@ public class User {
         this.availableFunds = availableFunds;
     }
 
-    public String getUserRole() {
-        return userRole;
-    }
 
-    public void setUserRole(String userRole) {
-        this.userRole = userRole;
-    }
-
-    public String getAccountStatus() {
-        return accountStatus;
-    }
-
-    public void setAccountStatus(String accountStatus) {
-        this.accountStatus = accountStatus;
-    }
 
     public Integer getSessionTimeoutMinutes() {
         return sessionTimeoutMinutes;

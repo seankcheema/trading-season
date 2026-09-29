@@ -2,7 +2,7 @@
 
 ## Toolchain and installation
 
-Use Node.js 22.22.3+ on the 22.x line, npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. Check exact dependency requirements in [root package.json](../../package.json), the [UI manifest](../../apps/business-logic-ui/package.json), and the Java POMs ([Holdings and Trade](../../apps/holdings-and-trade-service/pom.xml) and [Order and Sell](../../apps/order-and-sell-service/pom.xml)).
+Use Node.js 24.x (24.8.0 or later), npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. The Angular framework packages are pinned to 21.2.23, Angular CLI, build tooling, and SSR are pinned to 21.2.24, and Angular CDK is pinned to its independently published 21.2.14 release. Angular 21.2.x supports Node ^24.0.0; this repository requires Node ^24.8.0 and TypeScript >=5.9.0 <6.0.0. Check exact dependency requirements in [root package.json](../../package.json), the [UI manifest](../../apps/client-ui/package.json), and the Java service POMs for [Holdings and Trade](../../apps/holdings-and-trade-service/pom.xml) and [Order and Sell](../../apps/order-and-sell-service/pom.xml).
 
 From repository root:
 
@@ -16,6 +16,30 @@ The auth service has its own lockfile and is not a root workspace. Reporting has
 ## Run locally
 
 The application consists of four services. The UI routes only to Holdings and Trade Service; Order and Sell Service runs independently.
+### Automated Linux VM setup
+
+From the repository root, `./scripts/setup-local.sh` validates the toolchain, maintains a 3 GiB free-space reserve, prepares missing dependencies and auth keys, selects databases, and supervises the three applications in one terminal. It reports verified stages as `[READY]`, completed work as `[DONE]`, and actionable failures as `[FAIL]`.
+
+The default `--database-mode auto` prefers verified local PostgreSQL databases. Use `--database-mode local` to prohibit Docker or `--database-mode docker` to require Docker Engine and Compose v2. Docker mode starts only `db` and `auth-db`, validates both schemas, and applies V001 through V003 only when the business schema is proven empty. Local and Docker database storage are separate and are never synchronized automatically.
+
+If Compose v2 is already installed as the standalone `docker-compose` command, the bootstrap creates the current user's Docker CLI plugin directory and symlinks that binary so `docker compose` works. An existing plugin entry is never overwritten, and the bootstrap does not download Compose.
+
+The script validates an archive already at `apps/market-data/db/seeds/synthetic-market-data-2026-v1`. Use `--parquet-source PATH` to stage, checksum, and copy an existing archive when enough space remains. It never downloads, generates, imports, or regenerates market data. Use the [database guide](../reference/database.md#optional-synthetic-market-data-generation-and-import) for those explicit operations.
+
+The Windows and fully manual paths below remain supported.
+
+### Full local container stack
+
+From the repository root, Local Compose builds and starts the implemented applications, databases, and reporting placeholders:
+
+```sh
+docker compose --project-name trading-season-local \
+  -f infrastructure/docker-compose/docker-compose.local.yml up -d --build
+```
+
+The client UI is available on port 4200, the reporting UI placeholder on 4300, and the reporting service placeholder on 8083. `GET http://localhost:8083/health` verifies only that the placeholder container is running; it is not a reporting API.
+
+### Manual and Windows setup
 
 1. Follow the [auth setup](../../apps/auth-service/README.md) to create a local environment file and RSA keys.
 2. Start only the databases from repository root:
@@ -97,11 +121,11 @@ Each tier fails its own test command below its coverage floor, so the floor is e
 
 | Tier | Floor | Enforced by | Counters |
 | --- | --- | --- | --- |
-| UI | 60% | coverageThresholds in [angular.json](../../apps/business-logic-ui/angular.json) | statements, branches, functions, lines |
-| Auth | 50% | coverage.thresholds in [vitest.config.ts](../../apps/auth-service/vitest.config.ts) | statements, branches, functions, lines |
-| Java | 50% | jacoco:check in both service POMs | line and instruction ratio |
+| UI | 70% | coverageThresholds in [angular.json](../../apps/client-ui/angular.json) | statements, branches, functions, lines |
+| Auth | 70% | coverage.thresholds in [vitest.config.ts](../../apps/auth-service/vitest.config.ts) | statements, branches, functions, lines |
+| Java services | 70% | jacoco:check in each service POM, per package | instructions, branches, lines, complexity, methods, classes |
 
-The Java tier has the least headroom, and its branch coverage sits below the line figure, so it is not gated on branches. Raise the floor as coverage improves rather than lowering it to accommodate a change.
+The Java check applies the floor to every package rather than to the service as a whole, so a well-tested package cannot hide an untested one. A package with no branches has no branch ratio and is not held to that counter. The UI and auth floors apply to the whole run. Current per-folder and per-package results are in [code coverage](../coverage/README.md). Raise the floor as coverage improves rather than lowering it to accommodate a change.
 
 ## Javadocs
 
