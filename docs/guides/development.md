@@ -56,7 +56,7 @@ Compose validates JWT variables even when selecting database services, so provid
 
 | Working directory | Command | Port | Purpose |
 | --- | --- | --- | --- |
-| Repository root | npm --workspace business-logic-ui start | 4200 | Angular frontend |
+| Repository root | npm --workspace client-ui start | 4200 | Angular frontend |
 | apps/order-and-sell-service | mvn spring-boot:run | 8081 | Order processing, order validation, order execution (called by UI) |
 | apps/holdings-and-trade-service | mvn spring-boot:run | 8082 | User profiles, market data; account and holdings queries planned (independent; not called by UI) |
 | apps/auth-service | npm run start:dev | 3001 | Authentication, token issuance |
@@ -76,9 +76,9 @@ Run from repository root after dependency installation:
 
 | Area | Command | Notes |
 | --- | --- | --- |
-| UI | npm --workspace business-logic-ui run build | Angular production build |
-| UI | npm --workspace business-logic-ui test -- --no-watch --coverage | Angular unit-test builder; do not pass Vitest's --run |
-| UI end-to-end | npm --workspace business-logic-ui run e2e | Playwright login and registration journeys |
+| UI | npm --workspace client-ui run build | Angular production build |
+| UI | npm --workspace client-ui test -- --no-watch --coverage | Angular unit-test builder; do not pass Vitest's --run |
+| UI end-to-end | npm --workspace client-ui run e2e | Playwright login and registration journeys |
 | Holdings and Trade Service | mvn -B -f apps/holdings-and-trade-service/pom.xml test | Unit/integration tests use H2 test configuration |
 | Order and Sell Service | mvn -B -f apps/order-and-sell-service/pom.xml test | Unit/integration tests use H2 test configuration |
 | Auth | npm --prefix apps/auth-service run build | NestJS compilation |
@@ -100,11 +100,11 @@ Both services must pass independently and share schema compatibility.
 
 ## End-to-end tests
 
-The Playwright suite in [apps/business-logic-ui/e2e](../../apps/business-logic-ui/e2e) covers the login and registration journeys through the running application. Install the browser once, then run the suite:
+The Playwright suite in [apps/client-ui/e2e](../../apps/client-ui/e2e) covers the login and registration journeys through the running application. Install the browser once, then run the suite:
 
 ```sh
-npx --prefix apps/business-logic-ui playwright install chromium
-npm --workspace business-logic-ui run e2e
+npx --prefix apps/client-ui playwright install chromium
+npm --workspace client-ui run e2e
 ```
 
 Playwright builds the application and serves it on port 4200 through the Angular SSR server, reusing a server already on that port when one is running. It runs against the production build rather than `ng serve` because the dev server dies part way through a parallel run on Windows, which fails the remaining tests with a connection error.
@@ -113,7 +113,7 @@ The auth service and Java backend are replaced at the network boundary by a stan
 
 The suite passes `NG_ALLOWED_HOSTS=localhost` to the server. The build's `security.allowedHosts` is deliberately empty, and the SSR server rejects every request without a runtime allowlist; naming the host the suite serves on is preferable to relaxing the build setting.
 
-Run `npm --workspace business-logic-ui run e2e:report` to open the HTML report, and `e2e:ui` for interactive debugging. Reports are written to `apps/business-logic-ui/reports/playwright` and are ignored by git.
+Run `npm --workspace client-ui run e2e:report` to open the HTML report, and `e2e:ui` for interactive debugging. Reports are written to `apps/client-ui/reports/playwright` and are ignored by git.
 
 ## Coverage floors
 
