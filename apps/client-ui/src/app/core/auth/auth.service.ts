@@ -71,6 +71,26 @@ export class AuthService {
     );
   }
 
+  // Asks the auth service to email a reset link. It answers the same way whether or not
+  // the address has an account, so there is nothing here to tell the two apart.
+  requestPasswordReset(email: string): Observable<void> {
+    return this._http
+      .post<unknown>(`${this._authApiUrl}/auth/forgot-password`, { email })
+      .pipe(map(() => undefined));
+  }
+
+  // Sets a new password using the token from the emailed link. The reset revokes every
+  // refresh token server-side, so any session stored in this browser is already dead;
+  // clearing it here keeps the guards from trying to use one.
+  resetPassword(token: string, password: string): Observable<void> {
+    return this._http
+      .post<unknown>(`${this._authApiUrl}/auth/reset-password`, { token, password })
+      .pipe(
+        tap(() => this._storage.clear()),
+        map(() => undefined),
+      );
+  }
+
   logout(): Observable<void> {
     const refreshToken = this._storage.refreshToken;
     this._storage.clear();

@@ -8,6 +8,8 @@ import { LocalStrategy } from './strategies/local.strategy.js';
 import { JwtKeysService, normalizePem } from './services/jwt-keys.service.js';
 import { UsersModule } from '../users/users.module.js';
 import { RefreshTokensModule } from '../refresh-tokens/refresh-tokens.module.js';
+import { PasswordResetTokensModule } from '../password-reset/password-reset-tokens.module.js';
+import { MailModule } from '../mail/mail.module.js';
 
 /**
  * The signing configuration the service actually runs on.
@@ -45,6 +47,8 @@ export function buildJwtOptions(): JwtModuleOptions {
     JwtModule.registerAsync({ useFactory: buildJwtOptions }),
     UsersModule,
     RefreshTokensModule,
+    PasswordResetTokensModule,
+    MailModule,
   ],
   providers: [
     JwtKeysService,

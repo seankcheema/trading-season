@@ -165,7 +165,7 @@ The pipeline disables the implicit full-history checkout, checks out the current
 
 Dependency caches are kept only while the agent has room for them. When at least 6 GiB will be free after workspace deletion, one GiB above the Disk Preflight floor, the Maven repository, npm cache, and current Playwright image stay on the agent and the next build reuses them. Below that, cleanup also removes the current Playwright image, all Docker builder cache, and the Maven and npm caches, so the next build starts cold. The build log states which path cleanup took. If final cleanup is interrupted, use the manual inspection and cleanup sequence above before retrying.
 
-The end-to-end stage uses a slim Chromium-only image built from [Dockerfile.playwright](../docker/Dockerfile.playwright) instead of the official Playwright image, and only `main` builds the local application stack. Both keep branch builds' disk use and Docker cache growth small.
+The end-to-end stage uses a slim Chromium-only image built from [Dockerfile.playwright](../docker/Dockerfile.playwright) instead of the official Playwright image, which keeps branch builds' disk use and Docker cache growth small. Every branch builds the local application stack once its test stages pass, so each build's `docker ps` reports the services for the branch under test. That costs image build time and disk on every branch, not only on `main`.
 
 ## Prevent recurrence
 

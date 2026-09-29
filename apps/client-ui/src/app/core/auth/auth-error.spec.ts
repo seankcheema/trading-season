@@ -55,4 +55,51 @@ describe('toAuthErrorMessage', () => {
       AUTH_ERROR_MESSAGES.registrationFailed,
     );
   });
+
+  it('maps a failed reset request to a message that reveals nothing about the address', () => {
+    // Nothing here may differ by whether the address has an account; the service answers
+    // 202 either way, so only transport and validation failures reach this function.
+    expect(toAuthErrorMessage(httpError(500), 'forgot-password')).toBe(
+      AUTH_ERROR_MESSAGES.unavailable,
+    );
+    expect(toAuthErrorMessage(httpError(400), 'forgot-password')).toBe(
+      AUTH_ERROR_MESSAGES.invalidRegistration,
+    );
+    expect(toAuthErrorMessage(httpError(429), 'forgot-password')).toBe(
+      AUTH_ERROR_MESSAGES.resetRequestFailed,
+    );
+  });
+
+  it('passes through the service wording for a rejected reset link', () => {
+    expect(
+      toAuthErrorMessage(
+        httpError(400, { message: 'This password reset link is invalid or has expired' }),
+        'reset-password',
+      ),
+    ).toBe('This password reset link is invalid or has expired');
+  });
+
+  it('reports a rejected password from the reset form', () => {
+    expect(
+      toAuthErrorMessage(
+        httpError(400, { message: ['Password must be at least 8 characters long'] }),
+        'reset-password',
+      ),
+    ).toBe('Password must be at least 8 characters long');
+  });
+
+  it('falls back to a reset-specific message without a usable body', () => {
+    expect(toAuthErrorMessage(httpError(400), 'reset-password')).toBe(
+      AUTH_ERROR_MESSAGES.resetLinkInvalid,
+    );
+    expect(toAuthErrorMessage(httpError(404), 'reset-password')).toBe(
+      AUTH_ERROR_MESSAGES.resetFailed,
+    );
+    expect(toAuthErrorMessage(new Error('boom'), 'reset-password')).toBe(
+      AUTH_ERROR_MESSAGES.resetFailed,
+    );
+    expect(toAuthErrorMessage(new Error('boom'), 'forgot-password')).toBe(
+      AUTH_ERROR_MESSAGES.resetRequestFailed,
+    );
+  });
 });

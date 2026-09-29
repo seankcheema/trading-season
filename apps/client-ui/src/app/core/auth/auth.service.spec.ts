@@ -153,4 +153,68 @@ describe('AuthService', () => {
 
     await result;
   });
+
+  it('asks the auth service to email a reset link', async () => {
+    const result = firstValueFrom(service.requestPasswordReset('jane@example.com'));
+
+    const req = http.expectOne('http://localhost:3001/auth/forgot-password');
+    expect(req.request.body).toEqual({ email: 'jane@example.com' });
+    req.flush({ message: 'If that email has an account, a reset link is on its way.' });
+
+    await expect(result).resolves.toBeUndefined();
+  });
+
+  it('sends no password when asking for a reset link', async () => {
+    const result = firstValueFrom(service.requestPasswordReset('jane@example.com'));
+
+    const req = http.expectOne('http://localhost:3001/auth/forgot-password');
+    expect(JSON.stringify(req.request.body)).not.toContain('password');
+    req.flush({ message: 'accepted' });
+
+    await result;
+  });
+
+  it('resets the password with the emailed token and clears the stored session', async () => {
+    // The reset revokes every refresh token server-side, so a session left in this browser
+    // would only send the guards after a token that no longer works.
+    storage.save(TOKENS);
+
+    const result = firstValueFrom(service.resetPassword('the-reset-token', 'new-pass1!'));
+    const req = http.expectOne('http://localhost:3001/auth/reset-password');
+    expect(req.request.body).toEqual({ token: 'the-reset-token', password: 'new-pass1!' });
+    req.flush({ message: 'Your password has been reset.' });
+
+    await result;
+    expect(service.isAuthenticated()).toBe(false);
+    expect(storage.accessToken).toBeNull();
+  });
+
+  it('keeps the session when the reset is rejected', async () => {
+    storage.save(TOKENS);
+
+    const result = firstValueFrom(service.resetPassword('expired', 'new-pass1!'));
+    http.expectOne('http://localhost:3001/auth/reset-password').flush(
+      { message: 'This password reset link is invalid or has expired' },
+      { status: 400, statusText: 'Bad Request' },
+    );
+
+    await expect(result).rejects.toBeInstanceOf(HttpErrorResponse);
+    expect(service.isAuthenticated()).toBe(true);
+  });
+
+  it('sends no bearer token on either reset call', async () => {
+    // Both routes are unauthenticated by design: someone resetting a password cannot
+    // present the credential they have forgotten.
+    storage.save(TOKENS);
+
+    void firstValueFrom(service.requestPasswordReset('jane@example.com'));
+    const forgot = http.expectOne('http://localhost:3001/auth/forgot-password');
+    expect(forgot.request.headers.has('Authorization')).toBe(false);
+    forgot.flush({ message: 'accepted' });
+
+    void firstValueFrom(service.resetPassword('the-reset-token', 'new-pass1!'));
+    const reset = http.expectOne('http://localhost:3001/auth/reset-password');
+    expect(reset.request.headers.has('Authorization')).toBe(false);
+    reset.flush({ message: 'reset' });
+  });
 });
