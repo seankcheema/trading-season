@@ -1,6 +1,6 @@
 # Code coverage
 
-Generated coverage reports for the four tested services, captured from a full local run on 2026-09-28. Each service keeps its own tooling and its own report format; this directory holds the generated output so the reports can be read without rerunning the suites. Open [index.html](index.html) for a single page of links into all four reports. The reporting placeholders contain no application code and have no coverage.
+Generated coverage reports for the four tested services. The client UI and auth service reports are from a local run on 2026-09-29, after the password reset work; the two Java reports are from the run on 2026-09-28, since no Java code has changed since. Each service keeps its own tooling and its own report format; this directory holds the generated output so the reports can be read without rerunning the suites. Open [index.html](index.html) for a single page of links into all four reports. The reporting placeholders contain no application code and have no coverage.
 
 Every service enforces a 70 percent floor in its own test command rather than reporting a number for a human to check. The Java services apply it to every package on every JaCoCo counter; the UI and auth service apply it to the whole run on each counter. A suite that falls below the floor fails, so a report in this directory describes a run that already passed its gate. The mechanisms are listed under [coverage floors](../guides/development.md#coverage-floors).
 
@@ -21,10 +21,10 @@ Counters differ by tool. JaCoCo measures bytecode instructions and branches; the
 
 | Service | Tests | Statements / Instructions | Branches | Functions / Methods | Lines |
 | --- | --- | --- | --- | --- | --- |
-| Client UI | 244 in 20 files | 94.87 percent (2405/2535) | 89.98 percent (818/909) | 91.90 percent (443/482) | 95.45 percent (1951/2044) |
+| Client UI | 277 in 22 files | 95.25 percent (2648/2780) | 90.94 percent (894/983) | 92.18 percent (472/512) | 95.85 percent (2150/2243) |
 | Holdings and Trade | 100 | 96.96 percent (3028/3123) | 94.53 percent (121/128) | 93.75 percent (195/208) | 95.10 percent (544/572) |
 | Order and Sell | 148 | 97.43 percent (4131/4240) | 95.78 percent (159/166) | 95.52 percent (320/335) | 96.68 percent (873/903) |
-| Auth service | 106 in 10 files | 99.04 percent (208/210) | 92.85 percent (78/84) | 96.00 percent (48/50) | 99.51 percent (207/208) |
+| Auth service | 163 in 12 files | 99.01 percent (302/305) | 93.60 percent (117/125) | 95.52 percent (64/67) | 99.66 percent (300/301) |
 
 Every folder and package is at or above 70 percent on every counter. The weakest in each service:
 
@@ -41,9 +41,9 @@ All four suites passed and all coverage checks were met.
 
 The Java services share their `account`, `holding`, `auth`, `user`, and `market` packages file for file, and the tests for those packages are shared in the same way. `MarketDataRepository`, previously the largest uncovered class, now runs its SQL against H2 in PostgreSQL mode and its Parquet path against a partition written by DuckDB during the test. The Order and Sell order path is covered end to end: unit tests reach every execution-time recheck in `OrderExecutionService`, and endpoint tests submit a buy and a sell through `POST /api/orders` and check the fills, cash transactions, holding movements, and audit trail left behind, then read the caller's own orders back through `GET /api/orders`. The remaining misses are unused entity accessors, `MarketModels.Day`, a record nothing constructs, and the `IllegalStateException` suppliers guarding states the validated order path cannot reach.
 
-In the client UI, template event handlers were the main function-counter gap; the login, registration, and order submission tests now drive them through the rendered DOM. The remaining branch gaps sit mostly in `token-storage.service.ts`, where browser storage is unavailable, and in the dashboard component.
+In the client UI, template event handlers were the main function-counter gap; the login, registration, and order submission tests now drive them through the rendered DOM. The password reset screens are covered the same way: `app/forgot-password` is fully covered and `app/reset-password` misses only two template handlers. The remaining branch gaps sit mostly in `token-storage.service.ts`, where browser storage is unavailable, and in the dashboard component.
 
-In the auth service, the key service, local Passport strategy, and every controller route are now tested. What remains is almost entirely the metadata branches TypeScript emits for decorated constructor parameters and entity column types, which no test can reach.
+In the auth service, the key service, local Passport strategy, and every controller route are tested, as are both password reset routes, the reset-token store and the mail client, whose SMTP transport is stubbed rather than dialled. What remains is almost entirely the metadata branches TypeScript emits for decorated constructor parameters and entity column types, which no test can reach.
 
 ## Regenerate
 

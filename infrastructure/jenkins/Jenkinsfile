@@ -411,7 +411,7 @@ pipeline {
                         -f "$COMPOSE_FILE" \
                         ps
 
-                    EXPECTED_SERVICES="auth-db auth-service client-ui db holdings-and-trade-service order-and-sell-service reporting-service reporting-ui"
+                    EXPECTED_SERVICES="auth-db auth-service client-ui db holdings-and-trade-service mailpit order-and-sell-service reporting-service reporting-ui"
                     RUNNING_SERVICES="$(sh infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
                         -f "$COMPOSE_FILE" \

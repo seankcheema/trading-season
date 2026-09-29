@@ -152,5 +152,12 @@ describe('PasswordResetTokensService', () => {
 
       await expect(service.revokeOutstandingForUser('user-1')).resolves.toBeUndefined();
     });
+
+    it('should revoke several links at once', async () => {
+      repository.update.mockResolvedValue({ affected: 2 });
+
+      await expect(service.revokeOutstandingForUser('user-1')).resolves.toBeUndefined();
+      expect(repository.update).toHaveBeenCalledOnce();
+    });
   });
 });
