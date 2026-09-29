@@ -138,8 +138,10 @@ services:
     ports:
       - "3001:3001"
     depends_on:
-      auth-db:
-        condition: service_healthy
+      # The auth database container is gone; auth-service reads the shared
+      # database, so it waits for the same migration run the Java services do.
+      db-init:
+        condition: service_completed_successfully
       mailpit:
         condition: service_started
     environment:
