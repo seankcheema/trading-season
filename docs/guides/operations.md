@@ -6,15 +6,15 @@
 | --- | --- | --- |
 | Holdings and Trade service | [application.properties](../../apps/holdings-and-trade-service/src/main/resources/application.properties) | HTTP 8081; PostgreSQL localhost:5432/trading_season |
 | Order and Sell service | [application.properties](../../apps/order-and-sell-service/src/main/resources/application.properties) | HTTP 8082; PostgreSQL localhost:5432/trading_season |
-| Auth service | [Auth setup](../../apps/auth-service/README.md) and [database configuration](../../apps/auth-service/src/config/database.config.ts) | HTTP 3001; PostgreSQL localhost:5433/auth_db |
+| Auth service | [Auth setup](../../apps/auth-service/README.md) and [database configuration](../../apps/auth-service/src/config/database.config.ts) | HTTP 3001; PostgreSQL localhost:5432/trading_season |
 | Client UI container | [Client Dockerfile](../../apps/client-ui/Dockerfile) | HTTP 4200; Nginx proxies `/api` to Holdings and Trade |
 | Reporting placeholders | [Reporting proposal](../reference/reporting.md) | UI HTTP 4300; service HTTP 8083 |
-| Local containers | [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) | Application containers, business/auth database volumes, and archive cache |
+| Local containers | [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) | Application containers, the business database volume, and archive cache |
 | Jenkins | [Pipeline](../../infrastructure/jenkins/Jenkinsfile), [disk-space runbook](../../infrastructure/jenkins/README.md), [Compose](../../infrastructure/docker-compose/docker-compose.jenkins.yml) | Jenkins UI on host port 8888 |
 
 Both Java services read SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD, AUTH_JWK_SET_URI, AUTH_JWT_ISSUER, and CORS_ORIGINS. Both must connect to the same trading_season database and must use the same AUTH_JWT_ISSUER value or token validation fails. AUTH_JWT_ISSUER must equal the auth service's JWT_ISSUER or every token is rejected. Auth reads DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, PORT, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, and JWT_ISSUER. Node startup loads .env from its working directory; Compose must receive the appropriate environment file explicitly.
 
-In local Compose, DB_PASSWORD configures the business database and AUTH_DB_PASSWORD configures the auth database. Inside the auth container, the latter is assigned to DB_PASSWORD. Do not confuse those scopes. Defaults are for disposable local development; production credentials and signing keys must come from managed secrets.
+In local Compose, DB_PASSWORD configures the one database every service connects to, auth included. The auth service currently connects as the application role, which can read every trading table; a role granted only `user_accounts` and `refresh_tokens` would restore most of the isolation the separate database used to provide, and is worth adding before this reaches anything but a development machine. Defaults are for disposable local development; production credentials and signing keys must come from managed secrets.
 
 **Microservice deployment constraint:** Order and Sell Service and Holdings and Trade Service must use the same database version and schema version. Schema changes require coordinating both service deployments or adding backwards-compatible migrations.
 
@@ -64,7 +64,7 @@ The end-to-end stage runs inside the official Playwright image whose version mat
 
 The optional [Jenkins image](../../infrastructure/docker/Dockerfile.jenkins) installs Node 24.x, the Docker CLI, Buildx, and the Docker Compose v2 plugin. Compose mounts the host Docker socket so those client tools operate on the host daemon; the Jenkins container does not run a separate Docker daemon. The active pipeline still expects the native Jenkins NodeJS tool to provide a Node 24.x runtime at 24.8.0 or later. The Jenkins Compose example contains development credentials. Review toolchains, credentials, and access before deployment; it is not a production-ready configuration.
 
-The pipeline prints `docker ps` during its initial Docker check, after application-stack startup, and in its final diagnostics. The initial check fails early when Jenkins cannot reach the daemon or neither Compose command is available because later stages require Docker. The pipeline prefers the Compose v2 `docker compose` plugin and falls back to the legacy `docker-compose` command. Immediately after checkout and before dependency installation or tests, Jenkins builds and starts `docker-compose.local.yml` under the `trading-season-local` project name. It verifies eight long-running services and performs HTTP smoke checks against the client UI and both reporting placeholders, then prints every running container so the application services appear separately from Jenkins. A successful build leaves the stack available on host ports 3001, 4200, 4300, 5432, 5433, 8081, 8082, and 8083 for local inspection.
+The pipeline prints `docker ps` during its initial Docker check, after application-stack startup, and in its final diagnostics. The initial check fails early when Jenkins cannot reach the daemon or neither Compose command is available because later stages require Docker. The pipeline prefers the Compose v2 `docker compose` plugin and falls back to the legacy `docker-compose` command. Immediately after checkout and before dependency installation or tests, Jenkins builds and starts `docker-compose.local.yml` under the `trading-season-local` project name. It verifies the long-running services and performs HTTP smoke checks against the client UI and both reporting placeholders, then prints every running container so the application services appear separately from Jenkins. A successful build leaves the stack available on host ports 3001, 4200, 4300, 5432, 8081, 8082, and 8083 for local inspection.
 
 Start the Jenkins controller separately; do not ask the running pipeline to manage its own container. From the repository root, start only the Jenkins service from its Compose file:
 
@@ -80,7 +80,7 @@ Javadoc generation is a required Java change check described in [development](de
 ## Troubleshooting
 
 **General issues:**
-- Connection refused: confirm database containers are healthy, published ports are free, and the app uses host names appropriate to its environment. Host auth connections use port 5433; containers use auth-db:5432.
+- Connection refused: confirm database containers are healthy, published ports are free, and the app uses host names appropriate to its environment. Every service connects to the same database: host connections use port 5432; containers use db:5432.
 - Missing business tables: apply the documented disposable bootstrap in the [database guide](../reference/database.md); Java does not run Flyway automatically.
 - Auth startup fails on keys: generate an RSA pair, replace placeholder values, and preserve literal backslash-n escapes. Run from the auth directory so .env loads.
 

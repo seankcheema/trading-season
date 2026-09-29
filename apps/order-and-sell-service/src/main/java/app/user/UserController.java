@@ -7,6 +7,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.UUID;
+
 /**
  * REST endpoints for the authenticated caller's own account. The account is
  * always resolved from the bearer token, so no path or body parameter can name
@@ -36,6 +38,8 @@ public class UserController {
      */
     @GetMapping("/me")
     public UserProfileResponse me(@AuthenticationPrincipal Jwt jwt) {
-        return UserProfileResponse.from(userService.getOwnAccount(AuthenticatedUser.from(jwt).userId()));
+        UUID userId = AuthenticatedUser.from(jwt).userId();
+        return UserProfileResponse.from(userService.getOwnAccount(userId),
+                userService.getUserAccount(userId));
     }
 }

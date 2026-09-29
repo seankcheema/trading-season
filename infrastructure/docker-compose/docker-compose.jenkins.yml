@@ -59,28 +59,11 @@ services:
       -f /migrations/V001__Initial_schema.sql
       -f /migrations/V002__Synthetic_market_data_replay_metadata.sql
       -f /migrations/V003__Token_authentication.sql
+      -f /migrations/V004__Order_status_lifecycle.sql
+      -f /migrations/V005__User_accounts_and_refresh_tokens.sql
+      -f /migrations/V006__Drop_duplicated_account_columns.sql
       && echo "[DB-INIT] Migrations complete"; 
       else echo "[DB-INIT] Database already initialized, skipping migrations"; fi'
-    networks:
-      - ci-network
-
-  # Authentication database
-  auth-db:
-    image: postgres:16-alpine
-    container_name: auth-db
-    environment:
-      POSTGRES_DB: auth_db
-      POSTGRES_USER: authuser
-      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-changeme}
-    ports:
-      - "5433:5432"
-    volumes:
-      - auth_db_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U authuser -d auth_db"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
     networks:
       - ci-network
 
@@ -92,16 +75,18 @@ services:
     ports:
       - "3001:3001"
     depends_on:
-      auth-db:
-        condition: service_healthy
+      # Not just the database being up: this service creates no tables, so
+      # it needs the migrations applied before its first query.
+      db-init:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: development
       PORT: 3001
-      DB_HOST: auth-db
+      DB_HOST: db
       DB_PORT: 5432
-      DB_NAME: auth_db
-      DB_USER: authuser
-      DB_PASSWORD: ${AUTH_DB_PASSWORD:-changeme}
+      DB_NAME: trading_season
+      DB_USER: trading_season
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
       JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
       JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
@@ -154,7 +139,6 @@ services:
 volumes:
   jenkins_home:
   db_data:
-  auth_db_data:
 
 networks:
   ci-network:
