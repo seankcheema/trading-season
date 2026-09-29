@@ -86,5 +86,5 @@ test('changes chart tools and keeps the selected comparison in the URL', async (
   await expect(page).toHaveURL(/\/dashboard\/markets\/aapl\?compare=msft$/);
   await expect(page.getByRole('region', { name: 'AAPL price chart' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'MSFT price chart' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Remove comparison' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Remove comparison', exact: true })).toBeVisible();
 });
