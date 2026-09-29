@@ -137,6 +137,8 @@ services:
     depends_on:
       auth-db:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     environment:
       NODE_ENV: development
       PORT: 3001
@@ -152,6 +154,29 @@ services:
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
       JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
+      # Password reset email (KAN-89). Mailpit accepts everything and delivers
+      # nothing; point SMTP_* at a real relay to send for real.
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      MAIL_FROM: ${MAIL_FROM:-Trading Season <no-reply@dualeapa.local>}
+      # The emailed reset link opens the Angular client, not this service.
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:4200}
+
+  mailpit:
+    # Development mail server: SMTP in, nothing out. Everything auth-service
+    # sends is readable at http://localhost:8025, which is how the password
+    # reset flow is exercised without delivering to a real mailbox.
+    image: axllent/mailpit:v1.31
+    ports:
+      # 1025 SMTP for auth-service, 8025 for the browser.
+      - "1025:1025"
+      - "8025:8025"
+    environment:
+      # Messages live in the container only, so a restart is a clean mailbox.
+      MP_MAX_MESSAGES: 500
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
 
   auth-db:
     image: postgres:16-alpine

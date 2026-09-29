@@ -2,9 +2,11 @@ import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { User } from '../users/user.entity.js';
 import { RefreshToken } from '../refresh-tokens/refresh-token.entity.js';
+import { PasswordResetToken } from '../password-reset/password-reset-token.entity.js';
 import { RequireUsername1789067284157 } from './migrations/1789067284157-RequireUsername.js';
 import { InitialAuthSchema1789051037692 } from './migrations/1789051037692-InitialAuthSchema.js';
 import { TrimUserToBrsMinimum1789481455425 } from './migrations/1789481455425-TrimUserToBrsMinimum.js';
+import { PasswordResetTokens1790686840697 } from './migrations/1790686840697-PasswordResetTokens.js';
 
 /**
  * DataSource used by the TypeORM CLI (npm run migration:*).
@@ -20,11 +22,12 @@ export default new DataSource({
   username: process.env.DB_USER || 'authuser',
   password: process.env.DB_PASSWORD || 'changeme',
   database: process.env.DB_NAME || 'auth_db',
-  entities: [User, RefreshToken],
+  entities: [User, RefreshToken, PasswordResetToken],
   migrations: [
     InitialAuthSchema1789051037692,
     RequireUsername1789067284157,
     TrimUserToBrsMinimum1789481455425,
+    PasswordResetTokens1790686840697,
   ],
   synchronize: false,
 });
