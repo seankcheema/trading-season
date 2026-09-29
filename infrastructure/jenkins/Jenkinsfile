@@ -451,7 +451,7 @@ pipeline {
 
                     echo "All Docker containers after startup:"
                     docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}'
-                    echo "Local application stack is running on host ports 3001, 4200, 4300, 5432, 5433, 8081, 8082, and 8083."
+                    echo "Local application stack is running on host ports 3001, 4200, 4300, 5432, 8081, 8082, and 8083."
                 '''
             }
         }
