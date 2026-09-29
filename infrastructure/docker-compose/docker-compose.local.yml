@@ -29,7 +29,7 @@ services:
       context: ../../apps/holdings-and-trade-service
       dockerfile: Dockerfile
     ports:
-      - "8081:8081"
+      - "8082:8082"
     depends_on:
       db-init:
         condition: service_completed_successfully
@@ -47,7 +47,7 @@ services:
       context: ../../apps/order-and-sell-service
       dockerfile: Dockerfile
     ports:
-      - "8082:8082"
+      - "8081:8081"
     depends_on:
       db-init:
         condition: service_completed_successfully
