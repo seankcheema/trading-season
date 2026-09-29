@@ -148,7 +148,7 @@ Update the authoritative guide when its contract changes; do not add implementat
 
 ## Troubleshooting
 
-- Node engine errors: check node --version against the installed Angular package engines; a generic Node 22 installation can be too old.
+- Node engine errors: check `node --version` is 24.x at 24.8.0 or later; Angular 21.2.x supports Node 24.x.
 - Missing workspace imports: run npm ci at repository root and check shared package exports.
 - Unknown ng test option: use --no-watch, not --run.
 - Database connection or key failures: use the [operations checklist](operations.md) and [auth environment instructions](../../apps/auth-service/README.md).
