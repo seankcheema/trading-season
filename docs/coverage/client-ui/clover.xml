@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<coverage generated="1790626395310" clover="3.2.0">
-  <project timestamp="1790626395311" name="All files">
+<coverage generated="1790631284288" clover="3.2.0">
+  <project timestamp="1790631284288" name="All files">
     <metrics statements="2044" coveredstatements="1951" conditionals="909" coveredconditionals="818" methods="482" coveredmethods="443" elements="3435" coveredelements="3212" complexity="0" loc="2044" ncloc="2044" packages="11" files="37" classes="37"/>
     <package name="app">
       <metrics statements="3" coveredstatements="3" conditionals="10" coveredconditionals="9" methods="1" coveredmethods="1"/>
-      <file name="app.html" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\app.html">
+      <file name="app.html" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\app.html">
         <metrics statements="1" coveredstatements="1" conditionals="0" coveredconditionals="0" methods="0" coveredmethods="0"/>
         <line num="1" count="2" type="stmt"/>
       </file>
-      <file name="app.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\app.ts">
+      <file name="app.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\app.ts">
         <metrics statements="2" coveredstatements="2" conditionals="10" coveredconditionals="9" methods="1" coveredmethods="1"/>
         <line num="10" count="2" type="cond" truecount="9" falsecount="1"/>
         <line num="11" count="2" type="stmt"/>
@@ -16,7 +16,7 @@
     </package>
     <package name="app.core">
       <metrics statements="4" coveredstatements="4" conditionals="0" coveredconditionals="0" methods="2" coveredmethods="2"/>
-      <file name="api.config.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\core\api.config.ts">
+      <file name="api.config.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\core\api.config.ts">
         <metrics statements="4" coveredstatements="4" conditionals="0" coveredconditionals="0" methods="2" coveredmethods="2"/>
         <line num="4" count="3" type="stmt"/>
         <line num="6" count="52" type="stmt"/>
@@ -26,7 +26,7 @@
     </package>
     <package name="app.core.auth">
       <metrics statements="253" coveredstatements="230" conditionals="163" coveredconditionals="136" methods="67" coveredmethods="64"/>
-      <file name="auth-error.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\core\auth\auth-error.ts">
+      <file name="auth-error.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\core\auth\auth-error.ts">
         <metrics statements="36" coveredstatements="33" conditionals="35" coveredconditionals="29" methods="5" coveredmethods="5"/>
         <line num="7" count="3" type="stmt"/>
         <line num="9" count="2" type="stmt"/>
@@ -65,7 +65,7 @@
         <line num="87" count="1" type="cond" truecount="1" falsecount="1"/>
         <line num="89" count="1" type="cond" truecount="2" falsecount="2"/>
       </file>
-      <file name="auth.guard.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\core\auth\auth.guard.ts">
+      <file name="auth.guard.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\core\auth\auth.guard.ts">
         <metrics statements="8" coveredstatements="8" conditionals="4" coveredconditionals="4" methods="4" coveredmethods="4"/>
         <line num="7" count="1" type="stmt"/>
         <line num="8" count="2" type="stmt"/>
@@ -76,7 +76,7 @@
         <line num="17" count="2" type="stmt"/>
         <line num="19" count="2" type="cond" truecount="2" falsecount="0"/>
       </file>
-      <file name="auth.interceptor.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\core\auth\auth.interceptor.ts">
+      <file name="auth.interceptor.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\core\auth\auth.interceptor.ts">
         <metrics statements="5" coveredstatements="5" conditionals="4" coveredconditionals="4" methods="1" coveredmethods="1"/>
         <line num="8" count="1" type="stmt"/>
         <line num="9" count="13" type="stmt"/>
@@ -84,7 +84,7 @@
         <line num="11" count="10" type="stmt"/>
         <line num="13" count="3" type="stmt"/>
       </file>
-      <file name="auth.service.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\core\auth\auth.service.ts">
+      <file name="auth.service.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\core\auth\auth.service.ts">
         <metrics statements="38" coveredstatements="32" conditionals="21" coveredconditionals="17" methods="21" coveredmethods="18"/>
         <line num="27" count="52" type="cond" truecount="5" falsecount="0"/>
         <line num="28" count="52" type="stmt"/>
@@ -125,7 +125,7 @@
         <line num="114" count="4" type="stmt"/>
         <line num="119" count="3" type="stmt"/>
       </file>
-      <file name="login-lockout.service.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\core\auth\login-lockout.service.ts">
+      <file name="login-lockout.service.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\core\auth\login-lockout.service.ts">
         <metrics statements="51" coveredstatements="50" conditionals="33" coveredconditionals="32" methods="11" coveredmethods="11"/>
         <line num="5" count="2" type="stmt"/>
         <line num="6" count="2" type="stmt"/>
@@ -179,15 +179,15 @@
         <line num="115" count="7" type="stmt"/>
         <line num="116" count="7" type="stmt"/>
       </file>
-      <file name="session-timeout.service.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\core\auth\session-timeout.service.ts">
+      <file name="session-timeout.service.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\core\auth\session-timeout.service.ts">
         <metrics statements="86" coveredstatements="79" conditionals="41" coveredconditionals="34" methods="18" coveredmethods="18"/>
-        <line num="7" count="3" type="stmt"/>
-        <line num="8" count="3" type="stmt"/>
-        <line num="11" count="3" type="stmt"/>
-        <line num="13" count="3" type="stmt"/>
-        <line num="14" count="3" type="stmt"/>
-        <line num="18" count="3" type="stmt"/>
-        <line num="20" count="3" type="stmt"/>
+        <line num="7" count="2" type="stmt"/>
+        <line num="8" count="2" type="stmt"/>
+        <line num="11" count="2" type="stmt"/>
+        <line num="13" count="2" type="stmt"/>
+        <line num="14" count="2" type="stmt"/>
+        <line num="18" count="2" type="stmt"/>
+        <line num="20" count="2" type="stmt"/>
         <line num="26" count="29" type="cond" truecount="5" falsecount="0"/>
         <line num="27" count="29" type="stmt"/>
         <line num="28" count="29" type="stmt"/>
@@ -268,7 +268,7 @@
         <line num="172" count="0" type="stmt"/>
         <line num="178" count="35" type="stmt"/>
       </file>
-      <file name="token-storage.service.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\core\auth\token-storage.service.ts">
+      <file name="token-storage.service.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\core\auth\token-storage.service.ts">
         <metrics statements="29" coveredstatements="23" conditionals="25" coveredconditionals="16" methods="7" coveredmethods="7"/>
         <line num="18" count="3" type="stmt"/>
         <line num="23" count="52" type="cond" truecount="5" falsecount="0"/>
@@ -303,7 +303,7 @@
     </package>
     <package name="app.dashboard">
       <metrics statements="569" coveredstatements="536" conditionals="187" coveredconditionals="154" methods="156" coveredmethods="133"/>
-      <file name="dashboard.component.html" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\dashboard.component.html">
+      <file name="dashboard.component.html" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\dashboard.component.html">
         <metrics statements="228" coveredstatements="224" conditionals="57" coveredconditionals="50" methods="26" coveredmethods="14"/>
         <line num="1" count="44" type="stmt"/>
         <line num="8" count="44" type="stmt"/>
@@ -534,7 +534,7 @@
         <line num="477" count="2" type="stmt"/>
         <line num="478" count="2" type="stmt"/>
       </file>
-      <file name="dashboard.component.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\dashboard.component.ts">
+      <file name="dashboard.component.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\dashboard.component.ts">
         <metrics statements="263" coveredstatements="235" conditionals="101" coveredconditionals="76" methods="101" coveredmethods="90"/>
         <line num="64" count="1" type="stmt"/>
         <line num="135" count="125" type="cond" truecount="2" falsecount="0"/>
@@ -800,7 +800,7 @@
         <line num="734" count="261" type="stmt"/>
         <line num="737" count="1" type="stmt"/>
       </file>
-      <file name="market-data.service.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\market-data.service.ts">
+      <file name="market-data.service.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\market-data.service.ts">
         <metrics statements="19" coveredstatements="19" conditionals="9" coveredconditionals="9" methods="10" coveredmethods="10"/>
         <line num="62" count="69" type="cond" truecount="5" falsecount="0"/>
         <line num="63" count="69" type="stmt"/>
@@ -822,7 +822,7 @@
         <line num="98" count="1" type="stmt"/>
         <line num="99" count="1" type="stmt"/>
       </file>
-      <file name="mock-data.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\mock-data.ts">
+      <file name="mock-data.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\mock-data.ts">
         <metrics statements="59" coveredstatements="58" conditionals="20" coveredconditionals="19" methods="19" coveredmethods="19"/>
         <line num="6" count="3" type="stmt"/>
         <line num="34" count="3" type="stmt"/>
@@ -887,7 +887,7 @@
     </package>
     <package name="app.dashboard.accounts">
       <metrics statements="216" coveredstatements="214" conditionals="133" coveredconditionals="128" methods="70" coveredmethods="70"/>
-      <file name="account-dialog.component.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\accounts\account-dialog.component.ts">
+      <file name="account-dialog.component.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\accounts\account-dialog.component.ts">
         <metrics statements="58" coveredstatements="57" conditionals="34" coveredconditionals="33" methods="10" coveredmethods="10"/>
         <line num="20" count="2" type="stmt"/>
         <line num="35" count="11" type="stmt"/>
@@ -948,7 +948,7 @@
         <line num="148" count="2" type="stmt"/>
         <line num="149" count="2" type="stmt"/>
       </file>
-      <file name="account-error.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\accounts\account-error.ts">
+      <file name="account-error.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\accounts\account-error.ts">
         <metrics statements="24" coveredstatements="24" conditionals="25" coveredconditionals="25" methods="4" coveredmethods="4"/>
         <line num="7" count="3" type="stmt"/>
         <line num="9" count="2" type="stmt"/>
@@ -975,9 +975,9 @@
         <line num="74" count="3" type="stmt"/>
         <line num="75" count="3" type="cond" truecount="4" falsecount="0"/>
       </file>
-      <file name="account-store.service.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\accounts\account-store.service.ts">
+      <file name="account-store.service.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\accounts\account-store.service.ts">
         <metrics statements="60" coveredstatements="60" conditionals="22" coveredconditionals="20" methods="42" coveredmethods="42"/>
-        <line num="18" count="3" type="stmt"/>
+        <line num="18" count="2" type="stmt"/>
         <line num="27" count="60" type="cond" truecount="5" falsecount="0"/>
         <line num="28" count="60" type="stmt"/>
         <line num="29" count="60" type="stmt"/>
@@ -1038,11 +1038,11 @@
         <line num="184" count="35" type="stmt"/>
         <line num="188" count="34" type="stmt"/>
       </file>
-      <file name="account.models.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\accounts\account.models.ts">
+      <file name="account.models.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\accounts\account.models.ts">
         <metrics statements="1" coveredstatements="1" conditionals="0" coveredconditionals="0" methods="0" coveredmethods="0"/>
         <line num="44" count="2" type="stmt"/>
       </file>
-      <file name="cash-transaction-dialog.component.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\accounts\cash-transaction-dialog.component.ts">
+      <file name="cash-transaction-dialog.component.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\accounts\cash-transaction-dialog.component.ts">
         <metrics statements="67" coveredstatements="66" conditionals="45" coveredconditionals="43" methods="12" coveredmethods="12"/>
         <line num="44" count="14" type="stmt"/>
         <line num="45" count="33" type="cond" truecount="4" falsecount="0"/>
@@ -1112,7 +1112,7 @@
         <line num="172" count="48" type="stmt"/>
         <line num="174" count="3" type="cond" truecount="2" falsecount="0"/>
       </file>
-      <file name="money.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\accounts\money.ts">
+      <file name="money.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\accounts\money.ts">
         <metrics statements="6" coveredstatements="6" conditionals="7" coveredconditionals="7" methods="2" coveredmethods="2"/>
         <line num="4" count="2" type="stmt"/>
         <line num="7" count="51" type="stmt"/>
@@ -1124,7 +1124,7 @@
     </package>
     <package name="app.dashboard.order-submission">
       <metrics statements="134" coveredstatements="134" conditionals="55" coveredconditionals="53" methods="29" coveredmethods="29"/>
-      <file name="order-submission.component.html" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\order-submission\order-submission.component.html">
+      <file name="order-submission.component.html" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\order-submission\order-submission.component.html">
         <metrics statements="77" coveredstatements="77" conditionals="20" coveredconditionals="19" methods="9" coveredmethods="9"/>
         <line num="1" count="20" type="stmt"/>
         <line num="3" count="20" type="stmt"/>
@@ -1204,7 +1204,7 @@
         <line num="159" count="20" type="cond" truecount="2" falsecount="0"/>
         <line num="160" count="20" type="stmt"/>
       </file>
-      <file name="order-submission.component.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\order-submission\order-submission.component.ts">
+      <file name="order-submission.component.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\order-submission\order-submission.component.ts">
         <metrics statements="57" coveredstatements="57" conditionals="35" coveredconditionals="34" methods="20" coveredmethods="20"/>
         <line num="41" count="40" type="cond" truecount="2" falsecount="0"/>
         <line num="46" count="40" type="cond" truecount="10" falsecount="0"/>
@@ -1267,7 +1267,7 @@
     </package>
     <package name="app.dashboard.settings-dialog">
       <metrics statements="40" coveredstatements="40" conditionals="14" coveredconditionals="14" methods="10" coveredmethods="9"/>
-      <file name="settings-dialog.component.html" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\settings-dialog\settings-dialog.component.html">
+      <file name="settings-dialog.component.html" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\settings-dialog\settings-dialog.component.html">
         <metrics statements="29" coveredstatements="29" conditionals="2" coveredconditionals="2" methods="3" coveredmethods="3"/>
         <line num="1" count="10" type="stmt"/>
         <line num="3" count="10" type="stmt"/>
@@ -1299,7 +1299,7 @@
         <line num="50" count="10" type="stmt"/>
         <line num="52" count="10" type="stmt"/>
       </file>
-      <file name="settings-dialog.component.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\settings-dialog\settings-dialog.component.ts">
+      <file name="settings-dialog.component.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\settings-dialog\settings-dialog.component.ts">
         <metrics statements="11" coveredstatements="11" conditionals="12" coveredconditionals="12" methods="7" coveredmethods="6"/>
         <line num="26" count="20" type="cond" truecount="2" falsecount="0"/>
         <line num="31" count="20" type="cond" truecount="10" falsecount="0"/>
@@ -1316,7 +1316,7 @@
     </package>
     <package name="app.dashboard.shared">
       <metrics statements="434" coveredstatements="416" conditionals="233" coveredconditionals="213" methods="92" coveredmethods="83"/>
-      <file name="daily-sparkline.component.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\shared\daily-sparkline.component.ts">
+      <file name="daily-sparkline.component.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\shared\daily-sparkline.component.ts">
         <metrics statements="55" coveredstatements="55" conditionals="36" coveredconditionals="36" methods="13" coveredmethods="13"/>
         <line num="4" count="2" type="stmt"/>
         <line num="5" count="2" type="stmt"/>
@@ -1374,9 +1374,9 @@
         <line num="125" count="2072" type="stmt"/>
         <line num="126" count="2072" type="stmt"/>
       </file>
-      <file name="dashboard-dialog.component.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\shared\dashboard-dialog.component.ts">
+      <file name="dashboard-dialog.component.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\shared\dashboard-dialog.component.ts">
         <metrics statements="24" coveredstatements="24" conditionals="12" coveredconditionals="12" methods="9" coveredmethods="8"/>
-        <line num="13" count="3" type="stmt"/>
+        <line num="13" count="2" type="stmt"/>
         <line num="21" count="64" type="cond" truecount="2" falsecount="0"/>
         <line num="24" count="25" type="stmt"/>
         <line num="26" count="25" type="stmt"/>
@@ -1401,7 +1401,7 @@
         <line num="90" count="25" type="stmt"/>
         <line num="94" count="25" type="stmt"/>
       </file>
-      <file name="dashboard-header-dropdown.component.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\shared\dashboard-header-dropdown.component.ts">
+      <file name="dashboard-header-dropdown.component.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\shared\dashboard-header-dropdown.component.ts">
         <metrics statements="28" coveredstatements="28" conditionals="14" coveredconditionals="13" methods="6" coveredmethods="6"/>
         <line num="9" count="147" type="stmt"/>
         <line num="10" count="147" type="stmt"/>
@@ -1432,9 +1432,9 @@
         <line num="72" count="14" type="cond" truecount="1" falsecount="1"/>
         <line num="73" count="14" type="stmt"/>
       </file>
-      <file name="instrument-search.component.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\shared\instrument-search.component.ts">
+      <file name="instrument-search.component.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\shared\instrument-search.component.ts">
         <metrics statements="67" coveredstatements="67" conditionals="36" coveredconditionals="36" methods="16" coveredmethods="16"/>
-        <line num="8" count="2" type="stmt"/>
+        <line num="8" count="3" type="stmt"/>
         <line num="14" count="174" type="cond" truecount="2" falsecount="0"/>
         <line num="17" count="97" type="stmt"/>
         <line num="18" count="77" type="stmt"/>
@@ -1465,7 +1465,7 @@
         <line num="69" count="18" type="stmt"/>
         <line num="73" count="4" type="stmt"/>
         <line num="75" count="10" type="stmt"/>
-        <line num="79" count="2" type="cond" truecount="8" falsecount="0"/>
+        <line num="79" count="3" type="cond" truecount="8" falsecount="0"/>
         <line num="80" count="77" type="stmt"/>
         <line num="81" count="77" type="stmt"/>
         <line num="82" count="77" type="stmt"/>
@@ -1502,7 +1502,7 @@
         <line num="139" count="3" type="stmt"/>
         <line num="140" count="3" type="stmt"/>
       </file>
-      <file name="price-chart.component.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\shared\price-chart.component.ts">
+      <file name="price-chart.component.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\shared\price-chart.component.ts">
         <metrics statements="247" coveredstatements="229" conditionals="116" coveredconditionals="97" methods="45" coveredmethods="37"/>
         <line num="19" count="3" type="stmt"/>
         <line num="20" count="3" type="stmt"/>
@@ -1752,12 +1752,12 @@
         <line num="591" count="5162" type="stmt"/>
         <line num="592" count="5162" type="stmt"/>
       </file>
-      <file name="signed-percent.pipe.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\shared\signed-percent.pipe.ts">
+      <file name="signed-percent.pipe.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\shared\signed-percent.pipe.ts">
         <metrics statements="2" coveredstatements="2" conditionals="7" coveredconditionals="7" methods="1" coveredmethods="1"/>
         <line num="5" count="397" type="cond" truecount="5" falsecount="0"/>
         <line num="7" count="420" type="cond" truecount="2" falsecount="0"/>
       </file>
-      <file name="timeframe-toggle.component.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\dashboard\shared\timeframe-toggle.component.ts">
+      <file name="timeframe-toggle.component.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\dashboard\shared\timeframe-toggle.component.ts">
         <metrics statements="11" coveredstatements="11" conditionals="12" coveredconditionals="12" methods="2" coveredmethods="2"/>
         <line num="8" count="65" type="stmt"/>
         <line num="13" count="48" type="stmt"/>
@@ -1774,7 +1774,7 @@
     </package>
     <package name="app.landing">
       <metrics statements="109" coveredstatements="94" conditionals="18" coveredconditionals="15" methods="19" coveredmethods="16"/>
-      <file name="landing.component.html" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\landing\landing.component.html">
+      <file name="landing.component.html" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\landing\landing.component.html">
         <metrics statements="47" coveredstatements="47" conditionals="0" coveredconditionals="0" methods="0" coveredmethods="0"/>
         <line num="1" count="2" type="stmt"/>
         <line num="3" count="2" type="stmt"/>
@@ -1824,7 +1824,7 @@
         <line num="121" count="2" type="stmt"/>
         <line num="123" count="2" type="stmt"/>
       </file>
-      <file name="landing.component.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\landing\landing.component.ts">
+      <file name="landing.component.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\landing\landing.component.ts">
         <metrics statements="62" coveredstatements="47" conditionals="18" coveredconditionals="15" methods="19" coveredmethods="16"/>
         <line num="13" count="1" type="stmt"/>
         <line num="14" count="1" type="stmt"/>
@@ -1892,7 +1892,7 @@
     </package>
     <package name="app.login">
       <metrics statements="89" coveredstatements="89" conditionals="40" coveredconditionals="40" methods="11" coveredmethods="11"/>
-      <file name="login.component.html" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\login\login.component.html">
+      <file name="login.component.html" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\login\login.component.html">
         <metrics statements="49" coveredstatements="49" conditionals="18" coveredconditionals="18" methods="2" coveredmethods="2"/>
         <line num="1" count="20" type="stmt"/>
         <line num="2" count="20" type="stmt"/>
@@ -1944,7 +1944,7 @@
         <line num="101" count="20" type="stmt"/>
         <line num="102" count="20" type="stmt"/>
       </file>
-      <file name="login.component.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\login\login.component.ts">
+      <file name="login.component.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\login\login.component.ts">
         <metrics statements="40" coveredstatements="40" conditionals="22" coveredconditionals="22" methods="9" coveredmethods="9"/>
         <line num="35" count="43" type="cond" truecount="2" falsecount="0"/>
         <line num="39" count="1" type="cond" truecount="8" falsecount="0"/>
@@ -1990,7 +1990,7 @@
     </package>
     <package name="app.register">
       <metrics statements="193" coveredstatements="191" conditionals="56" coveredconditionals="56" methods="25" coveredmethods="25"/>
-      <file name="register.component.html" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\register\register.component.html">
+      <file name="register.component.html" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\register\register.component.html">
         <metrics statements="141" coveredstatements="139" conditionals="38" coveredconditionals="38" methods="6" coveredmethods="6"/>
         <line num="1" count="14" type="stmt"/>
         <line num="2" count="14" type="stmt"/>
@@ -2134,7 +2134,7 @@
         <line num="300" count="14" type="stmt"/>
         <line num="301" count="14" type="stmt"/>
       </file>
-      <file name="register.component.ts" path="C:\Users\Administrator\Documents\GitHub\trading-season\apps\client-ui\src\app\register\register.component.ts">
+      <file name="register.component.ts" path="C:\Users\Administrator\github-repos\dualeapa-sprint1-project\apps\client-ui\src\app\register\register.component.ts">
         <metrics statements="52" coveredstatements="52" conditionals="18" coveredconditionals="18" methods="19" coveredmethods="19"/>
         <line num="38" count="1" type="stmt"/>
         <line num="39" count="1" type="stmt"/>

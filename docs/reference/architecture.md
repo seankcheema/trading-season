@@ -20,8 +20,7 @@ graph TB
     OS["Order and Sell Service<br/>Spring Boot | Port 8081<br/><br/>Order submission/validation<br/>Order execution<br/>Order history<br/>Called by UI"]
     HT["Holdings and Trade Service<br/>Spring Boot | Port 8082<br/><br/>User profile queries<br/>Account management<br/>Holdings queries<br/>Not called by UI"]
     
-    AuthDB["auth_db<br/>PostgreSQL<br/>Port 5433<br/><br/>user credentials<br/>refresh tokens"]
-    BizDB["trading_season<br/>PostgreSQL<br/>Port 5432<br/><br/>users (via UUID)<br/>accounts<br/>orders<br/>market data"]
+    BizDB["trading_season<br/>PostgreSQL<br/>Port 5432<br/><br/>user_accounts, refresh_tokens (auth)<br/>users, accounts, orders<br/>market data"]
     
     UI -->|POST /login/refresh| Auth
     UI -->|/api/* (proxy)| OS
@@ -30,7 +29,7 @@ graph TB
     OS -->|fetch JWKS cache| Auth
     HT -->|fetch JWKS cache| Auth
     
-    Auth --> AuthDB
+    Auth --> BizDB
     OS --> BizDB
     HT --> BizDB
     
@@ -75,7 +74,7 @@ Two separate PostgreSQL databases:
 | Shared UI | Angular components consumed through @shared/ui-components subpath exports | [Package manifest](../../packages/shared-ui-components/package.json) |
 | Reporting | Runnable HTTP placeholders only; no reporting behavior | [Reporting proposal](reporting.md) |
 
-The only value shared between them is the user UUID (auth.users.id ↔ trading_season.users.user_id). Credentials and tokens stay in auth_db; profile and trading data stay in trading_season.
+All three services share the `trading_season` database, and each table has one writer. The auth service owns `user_accounts` and `refresh_tokens`; the Java services own the profile and trading tables. The value joining an account to its profile is the user UUID (`user_accounts.user_id` ↔ `users.user_id`), which is also the access token's `sub` claim.
 
 ## Authentication flow
 
@@ -134,7 +133,7 @@ Both services will authenticate via the Auth Service and may read from the `trad
 ## Change boundaries
 
 - Put reusable UI components in the shared package; application logic stays in its owning app
-- Keep business database (`trading_season`) and auth database (`auth_db`) changes in separate migrations
+- All schema changes go in the same `trading_season` migrations, including the auth service's tables
 - Never edit an applied database migration; always add new ones
 - Both Java services must deploy against the same `trading_season` schema version
 

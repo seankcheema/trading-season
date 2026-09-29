@@ -1,5 +1,6 @@
 package app.auth;
 
+import app.support.UserAccountFixture;
 import app.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -8,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -48,10 +50,14 @@ class AuthControllerIntegrationTest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @BeforeEach
     void cleanDatabase() {
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
         userRepository.deleteAll();
+        UserAccountFixture.deleteAll(jdbcTemplate);
     }
 
     /** A verified token for the given auth-service user, as the resource server would see it. */
@@ -84,6 +90,16 @@ class AuthControllerIntegrationTest {
             request.with(token);
         }
         return mockMvc.perform(request);
+    }
+
+    /**
+     * A token plus the account row the auth service would have created when
+     * this person signed up. Tests that only need a token use tokenFor; tests
+     * that touch anything reading user_accounts need this.
+     */
+    private RequestPostProcessor signedUp(UUID userId, String email) {
+        UserAccountFixture.createActiveAccount(jdbcTemplate, userId, email);
+        return tokenFor(userId, email);
     }
 
     private ResultActions accountExists(Object body) throws Exception {
@@ -151,12 +167,17 @@ class AuthControllerIntegrationTest {
     }
 
     @Test
-    void registerFailsWithDuplicateEmailInDifferentCase() throws Exception {
+    void registerNoLongerRejectsADuplicateEmailItself() throws Exception {
+        // Email uniqueness belongs to the auth service, which allows one
+        // account per address through a case-insensitive unique index. The
+        // profile row no longer stores an email, so this step cannot check it
+        // and no longer tries. Two subjects sharing an address is unreachable
+        // in practice because no second account can hold that address.
         register(tokenFor(UUID.randomUUID(), "carol@example.com"), registration("carol@example.com"))
             .andExpect(status().isCreated());
 
         register(tokenFor(UUID.randomUUID(), "Carol@Example.com"), registration("Carol@Example.com"))
-            .andExpect(status().isConflict());
+            .andExpect(status().isCreated());
     }
 
     @Test
@@ -214,7 +235,9 @@ class AuthControllerIntegrationTest {
 
     @Test
     void accountExistsIsTrueAfterRegistrationWithoutAccessToken() throws Exception {
-        register(tokenFor(UUID.randomUUID(), "gina@example.com"), registration("gina@example.com"))
+        // True from the moment credentials exist, which is what signedUp
+        // creates. The profile call below is incidental to the answer now.
+        register(signedUp(UUID.randomUUID(), "gina@example.com"), registration("gina@example.com"))
             .andExpect(status().isCreated());
 
         accountExists(Map.of("email", "gina@example.com"))
@@ -224,7 +247,7 @@ class AuthControllerIntegrationTest {
 
     @Test
     void accountExistsIgnoresEmailCase() throws Exception {
-        register(tokenFor(UUID.randomUUID(), "hank@example.com"), registration("hank@example.com"))
+        register(signedUp(UUID.randomUUID(), "hank@example.com"), registration("hank@example.com"))
             .andExpect(status().isCreated());
 
         accountExists(Map.of("email", "HANK@Example.COM"))

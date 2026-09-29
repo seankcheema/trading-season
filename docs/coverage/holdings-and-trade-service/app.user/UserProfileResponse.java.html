@@ -37,16 +37,24 @@ import java.util.UUID;
 ) {
 
     /**
-     * Maps an account to its response, leaving out sensitive fields.
+     * Maps a profile and its credential record to a response, leaving out
+     * sensitive fields.
      *
-     * @param user the account
+     * &lt;p&gt;Email, role and status come from {@code account} rather than
+     * {@code user}. The auth service owns those three, and the copies still
+     * sitting on the profile row are only as fresh as the last registration -
+     * reporting a stale ACTIVE to a deactivated trader is exactly the sort of
+     * answer this endpoint should not give.
+     *
+     * @param user    the profile row
+     * @param account the credential record the auth service owns
      * @return the profile response
      */
-    public static UserProfileResponse from(User user) {
-<span class="fc" id="L46">        return new UserProfileResponse(user.getUserId(), user.getEmail(),</span>
-<span class="fc" id="L47">                user.getFirstName(), user.getMiddleName(), user.getLastName(), user.getAddress(),</span>
-<span class="fc" id="L48">                user.getDateOfBirth(), user.getTraderLevel(), user.getAvailableFunds(),</span>
-<span class="fc" id="L49">                user.getUserRole(), user.getAccountStatus(), user.getCreatedAt());</span>
+    public static UserProfileResponse from(User user, UserAccount account) {
+<span class="fc" id="L54">        return new UserProfileResponse(user.getUserId(), account.getEmail(),</span>
+<span class="fc" id="L55">                user.getFirstName(), user.getMiddleName(), user.getLastName(), user.getAddress(),</span>
+<span class="fc" id="L56">                user.getDateOfBirth(), user.getTraderLevel(), user.getAvailableFunds(),</span>
+<span class="fc" id="L57">                account.getUserRole(), account.getAccountStatus(), user.getCreatedAt());</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

@@ -1,8 +1,8 @@
 <?xml version="1.0" ?>
 <!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd">
-<coverage lines-valid="208" lines-covered="207" line-rate="0.9951000000000001" branches-valid="84" branches-covered="78" branch-rate="0.9285" timestamp="1790626356521" complexity="0" version="0.1">
+<coverage lines-valid="209" lines-covered="208" line-rate="0.9952" branches-valid="84" branches-covered="78" branch-rate="0.9285" timestamp="1790631144835" complexity="0" version="0.1">
   <sources>
-    <source>C:/Users/Administrator/Documents/GitHub/trading-season/apps/auth-service</source>
+    <source>C:/Users/Administrator/github-repos/dualeapa-sprint1-project/apps/auth-service</source>
   </sources>
   <packages>
     <package name="auth" line-rate="1" branch-rate="0.9411">
@@ -481,19 +481,25 @@
       <classes>
         <class name="user.entity.ts" filename="src\users\user.entity.ts" line-rate="1" branch-rate="0.5">
           <methods>
+            <method name="isActive" hits="3" signature="()V">
+              <lines>
+                <line number="69" hits="3"/>
+              </lines>
+            </method>
           </methods>
           <lines>
-            <line number="20" hits="6" branch="false"/>
-            <line number="21" hits="6" branch="false"/>
-            <line number="22" hits="6" branch="false"/>
-            <line number="25" hits="6" branch="false"/>
-            <line number="29" hits="6" branch="false"/>
-            <line number="32" hits="6" branch="false"/>
-            <line number="40" hits="6" branch="false"/>
-            <line number="44" hits="6" branch="false"/>
-            <line number="48" hits="6" branch="false"/>
-            <line number="51" hits="6" branch="true" condition-coverage="50% (1/2)"/>
-            <line number="54" hits="6" branch="true" condition-coverage="50% (1/2)"/>
+            <line number="20" hits="7" branch="false"/>
+            <line number="21" hits="7" branch="false"/>
+            <line number="29" hits="7" branch="false"/>
+            <line number="32" hits="7" branch="false"/>
+            <line number="36" hits="7" branch="false"/>
+            <line number="39" hits="7" branch="false"/>
+            <line number="47" hits="7" branch="false"/>
+            <line number="51" hits="7" branch="false"/>
+            <line number="55" hits="7" branch="false"/>
+            <line number="58" hits="7" branch="true" condition-coverage="50% (1/2)"/>
+            <line number="61" hits="7" branch="true" condition-coverage="50% (1/2)"/>
+            <line number="70" hits="3" branch="false"/>
           </lines>
         </class>
         <class name="users.module.ts" filename="src\users\users.module.ts" line-rate="1" branch-rate="1">

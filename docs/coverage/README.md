@@ -22,17 +22,17 @@ Counters differ by tool. JaCoCo measures bytecode instructions and branches; the
 | Service | Tests | Statements / Instructions | Branches | Functions / Methods | Lines |
 | --- | --- | --- | --- | --- | --- |
 | Client UI | 244 in 20 files | 94.87 percent (2405/2535) | 89.98 percent (818/909) | 91.90 percent (443/482) | 95.45 percent (1951/2044) |
-| Holdings and Trade | 100 | 96.96 percent (3028/3123) | 94.53 percent (121/128) | 93.75 percent (195/208) | 95.10 percent (544/572) |
-| Order and Sell | 148 | 97.43 percent (4131/4240) | 95.78 percent (159/166) | 95.52 percent (320/335) | 96.68 percent (873/903) |
-| Auth service | 106 in 10 files | 99.04 percent (208/210) | 92.85 percent (78/84) | 96.00 percent (48/50) | 99.51 percent (207/208) |
+| Holdings and Trade | 101 | 96.34 percent (3028/3143) | 94.44 percent (119/126) | 92.89 percent (196/211) | 94.46 percent (546/578) |
+| Order and Sell | 152 | 97.36 percent (4162/4275) | 95.78 percent (159/166) | 95.27 percent (322/338) | 96.83 percent (885/914) |
+| Auth service | 109 in 11 files | 99.05 percent (209/211) | 92.85 percent (78/84) | 96.07 percent (49/51) | 99.52 percent (208/209) |
 
 Every folder and package is at or above 70 percent on every counter. The weakest in each service:
 
 | Service | Weakest folder or package | Lowest counter |
 | --- | --- | --- |
-| Client UI | `app/dashboard` | branches, 82.35 percent |
-| Holdings and Trade | `app.user` | complexity and methods, 80.5 percent |
-| Order and Sell | `app.user` | complexity and methods, 87.8 percent |
+| Client UI | `app/dashboard` | branches, 82.4 percent |
+| Holdings and Trade | `app.user` | complexity and methods, 77.3 percent |
+| Order and Sell | `app.user` | complexity and methods, 86.4 percent |
 | Auth service | `auth/strategies` | branches, 75.0 percent |
 
 All four suites passed and all coverage checks were met.
@@ -42,6 +42,8 @@ All four suites passed and all coverage checks were met.
 The Java services share their `account`, `holding`, `auth`, `user`, and `market` packages file for file, and the tests for those packages are shared in the same way. `MarketDataRepository`, previously the largest uncovered class, now runs its SQL against H2 in PostgreSQL mode and its Parquet path against a partition written by DuckDB during the test. The Order and Sell order path is covered end to end: unit tests reach every execution-time recheck in `OrderExecutionService`, and endpoint tests submit a buy and a sell through `POST /api/orders` and check the fills, cash transactions, holding movements, and audit trail left behind, then read the caller's own orders back through `GET /api/orders`. The remaining misses are unused entity accessors, `MarketModels.Day`, a record nothing constructs, and the `IllegalStateException` suppliers guarding states the validated order path cannot reach.
 
 In the client UI, template event handlers were the main function-counter gap; the login, registration, and order submission tests now drive them through the rendered DOM. The remaining branch gaps sit mostly in `token-storage.service.ts`, where browser storage is unavailable, and in the dashboard component.
+
+`app.user` is the weakest package in both Java services because its entities carry accessors nothing calls: the columns V006 removed took six of them with it, and the read-only `UserAccount` view adds getters the services do not all use. Holdings and Trade scores lower than Order and Sell on the same files because it has no order path exercising them.
 
 In the auth service, the key service, local Passport strategy, and every controller route are now tested. What remains is almost entirely the metadata branches TypeScript emits for decorated constructor parameters and entity column types, which no test can reach.
 
@@ -58,4 +60,4 @@ Run from the repository root. Each command writes to its service's own build out
 
 Do not edit these files by hand; regenerate them. See [Development](../guides/development.md) for the full check list and [Operations](../guides/operations.md) for how the Jenkins pipeline publishes the same reports as build artifacts.
 
-[Documentation](../README.md) · [Project overview](../../README.md)
+[Documentation](../README.md)

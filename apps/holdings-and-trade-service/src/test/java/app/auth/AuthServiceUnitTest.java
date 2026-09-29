@@ -2,6 +2,7 @@ package app.auth;
 
 import app.account.AccountService;
 import app.user.User;
+import app.user.UserAccountRepository;
 import app.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -33,6 +34,9 @@ class AuthServiceUnitTest {
     @Mock
     private AccountService accountService;
 
+    @Mock
+    private UserAccountRepository userAccountRepository;
+
     private AuthService authService;
 
     @BeforeEach
@@ -58,7 +62,6 @@ class AuthServiceUnitTest {
     void registerCreatesAccountKeyedByTokenSubject() {
         AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "test@example.com");
         when(userRepository.existsById(USER_ID)).thenReturn(false);
-        when(userRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(false);
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         User result = authService.register(caller, request("test@example.com"));
@@ -68,7 +71,6 @@ class AuthServiceUnitTest {
         User user = saved.getValue();
         assertSame(user, result);
         assertEquals(USER_ID, user.getUserId());
-        assertEquals("test@example.com", user.getEmail());
         assertEquals("John", user.getFirstName());
         assertEquals("Quincy", user.getMiddleName());
         assertEquals("Doe", user.getLastName());
@@ -119,32 +121,36 @@ class AuthServiceUnitTest {
     }
 
     @Test
-    void registerFailsWithDuplicateEmail() {
+    void registerDoesNotCheckEmailUniquenessItself() {
+        // The profile row no longer stores an email, and the auth service already
+        // enforces one account per address through a case-insensitive unique
+        // index. A second check here could only disagree with that one.
         AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "test@example.com");
-        when(userRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(true);
+        when(userRepository.existsById(USER_ID)).thenReturn(false);
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        assertThrows(ConflictException.class,
-            () -> authService.register(caller, request("test@example.com")));
-        verify(userRepository, never()).save(any());
+        assertNotNull(authService.register(caller, request("test@example.com")));
+
+        verify(userAccountRepository, never()).existsByEmailIgnoreCase(any());
     }
 
     @Test
     void accountExistsReturnsTrueForRegisteredEmail() {
-        when(userRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(true);
+        when(userAccountRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(true);
 
         assertTrue(authService.accountExists("test@example.com"));
     }
 
     @Test
     void accountExistsReturnsFalseForUnknownEmail() {
-        when(userRepository.existsByEmailIgnoreCase("nobody@example.com")).thenReturn(false);
+        when(userAccountRepository.existsByEmailIgnoreCase("nobody@example.com")).thenReturn(false);
 
         assertFalse(authService.accountExists("nobody@example.com"));
     }
 
     @Test
     void accountExistsIgnoresSurroundingWhitespace() {
-        when(userRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(true);
+        when(userAccountRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(true);
 
         assertTrue(authService.accountExists("  test@example.com "));
     }
@@ -172,5 +178,18 @@ class AuthServiceUnitTest {
 
         verify(userRepository).save(any(User.class));
         verify(accountService).createDefaultAccountForUser(USER_ID);
+    }
+
+    @Test
+    void accountExistsAsksTheAuthServicesTableNotTheProfileTable() {
+        // The distinction matters: credentials exist from the moment someone
+        // signs up, while a profile row appears only after the second
+        // registration call. Asking the profile table would report an
+        // abandoned half-registration as available.
+        when(userAccountRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(true);
+
+        assertTrue(authService.accountExists("test@example.com"));
+
+        verify(userAccountRepository).existsByEmailIgnoreCase("test@example.com");
     }
 }
