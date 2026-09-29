@@ -397,7 +397,7 @@ pipeline {
                     dir('apps/client-ui') {
                         sh '''
                             set -eu
-                            echo " Running Login and Registration E2E Tests (Playwright)..."
+                            echo " Running Frontend E2E Tests (Playwright)..."
                             # Headless Chromium needs GTK/ATK shared libraries this agent
                             # does not carry (libatk-1.0.so.0 and friends), and installing
                             # them needs root: `playwright install --with-deps` shells out

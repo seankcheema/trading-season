@@ -4,7 +4,7 @@ This reference describes implemented controllers unless a section is explicitly 
 
 ## Java backend: port 8081
 
-Base path: /api/auth. Spring Boot source is rooted at [apps/business-backend/src/main/java/app](../../apps/business-backend/src/main/java/app), and these endpoints are implemented by [controller](../../apps/business-backend/src/main/java/app/auth/AuthController.java).
+Base path: /api/auth. Spring Boot source is rooted at [apps/holdings-and-trade-service/src/main/java/app](../../apps/holdings-and-trade-service/src/main/java/app), and these endpoints are implemented by [controller](../../apps/holdings-and-trade-service/src/main/java/app/auth/AuthController.java).
 
 The Java backend has no login and never receives a password. Sign-up and sign-in happen at the NestJS auth service. User-specific endpoints and market mutations require its access token in an `Authorization: Bearer` header; the account existence check and read-only simulated market endpoints are public.
 
@@ -14,9 +14,9 @@ The Java backend has no login and never receives a password. Sign-up and sign-in
 | POST /api/auth/register | Bearer access token. JSON: email, firstName, optional middleName, lastName, ssn, address, dateOfBirth, traderLevel, availableFunds | 201: userId, email |
 | GET /api/users/me | Bearer access token | 200: caller's profile without ssn |
 
-Registration takes no username and no password; the caller is identified by the bearer token. It requires a valid email up to 100 characters, nonblank firstName, lastName and address, an ssn in XXX-XX-XXXX form, a past dateOfBirth, a traderLevel of BEGINNER, INTERMEDIATE or ADVANCED, and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/business-backend/src/main/java/app/auth/RegisterRequest.java).
+Registration takes no username and no password; the caller is identified by the bearer token. It requires a valid email up to 100 characters, nonblank firstName, lastName and address, an ssn in XXX-XX-XXXX form, a past dateOfBirth, a traderLevel of BEGINNER, INTERMEDIATE or ADVANCED, and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/holdings-and-trade-service/src/main/java/app/auth/RegisterRequest.java).
 
-Errors use an error string: 400 for request validation, 409 for a duplicate account or email, 403 when the request email differs from the token's email claim, and 401 for a missing or untrusted token. See [exception mapping](../../apps/business-backend/src/main/java/app/auth/GlobalExceptionHandler.java).
+Errors use an error string: 400 for request validation, 409 for a duplicate account or email, 403 when the request email differs from the token's email claim, and 401 for a missing or untrusted token. See [exception mapping](../../apps/holdings-and-trade-service/src/main/java/app/auth/GlobalExceptionHandler.java).
 
 ### Token verification
 
@@ -30,11 +30,11 @@ The token's sub is the only identifier shared with the auth service. It becomes 
 2. Create credentials with POST /auth/register on the auth service and keep the returned accessToken.
 3. Call POST /api/auth/register on the Java backend with that token and the profile fields. The password and confirmation stay with step 2.
 
-Registration requires an email up to 100 characters that equals the token's email claim, ignoring case; nonblank names and address; ssn in XXX-XX-XXXX form; a past dateOfBirth; traderLevel BEGINNER, INTERMEDIATE or ADVANCED; and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/business-backend/src/main/java/app/auth/RegisterRequest.java).
+Registration requires an email up to 100 characters that equals the token's email claim, ignoring case; nonblank names and address; ssn in XXX-XX-XXXX form; a past dateOfBirth; traderLevel BEGINNER, INTERMEDIATE or ADVANCED; and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/holdings-and-trade-service/src/main/java/app/auth/RegisterRequest.java).
 
 ### Errors
 
-Errors use an `{"error": "..."}` body. See [exception mapping](../../apps/business-backend/src/main/java/app/auth/GlobalExceptionHandler.java) and [security error handling](../../apps/business-backend/src/main/java/app/auth/SecurityErrorHandler.java).
+Errors use an `{"error": "..."}` body. See [exception mapping](../../apps/holdings-and-trade-service/src/main/java/app/auth/GlobalExceptionHandler.java) and [security error handling](../../apps/holdings-and-trade-service/src/main/java/app/auth/SecurityErrorHandler.java).
 
 | Status | Cause |
 | --- | --- |
@@ -46,7 +46,7 @@ Errors use an `{"error": "..."}` body. See [exception mapping](../../apps/busine
 
 ## Java stock market API: port 8081
 
-These public endpoints expose seeded stock data for the dashboard market ticker, instrument popup, and full-screen `/dashboard/markets/:symbol` view. The full-screen view combines candle history with live stream prices and supports `1D`, `5D`, `1M`, and `1Y`. Its metrics, consensus, news, AI commentary, and recent-order cards are explicitly demo data rather than API responses. Account, portfolio, holding, transaction, and order integration remains outside this slice; the dashboard portfolio chart still uses mock data and the full-screen view keeps Buy and Sell disabled.
+These public endpoints expose seeded stock data for the dashboard market ticker, instrument popup, and full-screen `/dashboard/markets/:symbol` view. The full-screen view combines candle history with live stream prices and supports `1D`, `5D`, `1M`, and `1Y`; chart modes, technical indicators, and peer comparison are computed in the browser. Its metrics, overview signals, news, AI responses, cash balance, held shares, and order preview are demo data rather than API responses. Buy and Sell only calculate a local preview and do not call an order endpoint. Account, portfolio, holding, transaction, and order integration remains outside this slice, and the dashboard portfolio chart still uses mock data.
 
 Planned protected trading endpoints will use the [token verification](#token-verification) described above: clients send the auth service access token as a bearer token, and the Java backend scopes account and order resources to the token's sub.
 
@@ -138,15 +138,15 @@ Refresh rotates the stored token; replay of an unusable stored token revokes the
 
 ## UI integration
 
-The Angular UI authenticates only against the NestJS auth service. See [AuthService](../../apps/business-logic-ui/src/app/core/auth/auth.service.ts).
+The Angular UI authenticates only against the NestJS auth service. See [AuthService](../../apps/client-ui/src/app/core/auth/auth.service.ts).
 
 - Sign-in posts email and password to POST /auth/login and stores the token response in browser localStorage.
 - Registration first posts email and password to POST /auth/register. If that returns 409, the UI tries POST /auth/login with the same credentials, so a user whose earlier profile step failed can resubmit. Once it has tokens, the UI posts the profile to Java POST /api/auth/register with a Bearer access token: email, firstName, middleName, lastName, dateOfBirth, ssn, address, traderLevel, availableFunds. It sends no password or username. If the profile step fails, the UI clears the stored session.
 - The dashboard route requires a stored session and refreshes an expired access token through POST /auth/refresh. Sign-out posts the refresh token to POST /auth/logout.
-- The dashboard reads and changes the signed-in user's accounts and cash through the planned account endpoints above, which the Java backend does not serve yet; see [AccountStore](../../apps/business-logic-ui/src/app/dashboard/accounts/account-store.service.ts) and [the models it expects](../../apps/business-logic-ui/src/app/dashboard/accounts/account.models.ts). Cash belongs to the user, not to an account: it is availableFunds from GET /api/users/me, every account shares it, and deposits and withdrawals move it through /api/me/cash-transactions without naming an account. An account holds positions only, and its portfolio is exactly its holdings, so an account has one portfolio and a new account starts with none. Net worth is availableFunds plus the value of every account's holdings; the Portfolio Value card and assets table show the selected account's holdings. An account is returned as accountId, name and openedDate; a holding as symbol, quantity and averageCost, valued at the live price or at averageCost when there is none; a cash transaction as cashTransactionId, a positive amount, reason and createdAt. After every successful change the UI reloads the affected data rather than trusting the response body. It maps 400 to the backend's error string, 403 and 404 to an unavailable account, and 409 or 422 to a duplicate account name or, for withdrawals, insufficient funds. The UI lists only the accounts these endpoints return for the caller, requests holdings only for those, and sends no change for an account id outside that set; the backend must still enforce ownership from the token's sub.
-- While a session is stored, the UI signs the user out after 10 minutes without mouse, keyboard, scroll or touch input, using the same POST /auth/logout call, then shows the login page with `?reason=inactive`. The limit can be set to 5, 10, 15, 30 or 60 minutes in the dashboard's Settings dialog, opened from the profile menu, and is kept per browser. The last activity time is shared between tabs and survives a reload. This is enforced by the UI only; neither service tracks inactivity. See [SessionTimeoutService](../../apps/business-logic-ui/src/app/core/auth/session-timeout.service.ts).
+- The dashboard reads and changes the signed-in user's accounts and cash through the planned account endpoints above, which the Java backend does not serve yet; see [AccountStore](../../apps/client-ui/src/app/dashboard/accounts/account-store.service.ts) and [the models it expects](../../apps/client-ui/src/app/dashboard/accounts/account.models.ts). Cash belongs to the user, not to an account: it is availableFunds from GET /api/users/me, every account shares it, and deposits and withdrawals move it through /api/me/cash-transactions without naming an account. An account holds positions only, and its portfolio is exactly its holdings, so an account has one portfolio and a new account starts with none. Net worth is availableFunds plus the value of every account's holdings; the Portfolio Value card and assets table show the selected account's holdings. An account is returned as accountId, name and openedDate; a holding as symbol, quantity and averageCost, valued at the live price or at averageCost when there is none; a cash transaction as cashTransactionId, a positive amount, reason and createdAt. After every successful change the UI reloads the affected data rather than trusting the response body. It maps 400 to the backend's error string, 403 and 404 to an unavailable account, and 409 or 422 to a duplicate account name or, for withdrawals, insufficient funds. The UI lists only the accounts these endpoints return for the caller, requests holdings only for those, and sends no change for an account id outside that set; the backend must still enforce ownership from the token's sub.
+- While a session is stored, the UI signs the user out after 10 minutes without mouse, keyboard, scroll or touch input, using the same POST /auth/logout call, then shows the login page with `?reason=inactive`. The limit can be set to 5, 10, 15, 30 or 60 minutes in the dashboard's Settings dialog, opened from the profile menu, and is kept per browser. The last activity time is shared between tabs and survives a reload. This is enforced by the UI only; neither service tracks inactivity. See [SessionTimeoutService](../../apps/client-ui/src/app/core/auth/session-timeout.service.ts).
 
-The registration, sign-in and inactivity timeout journeys are covered end to end by the [Playwright suite](../../apps/business-logic-ui/e2e), which drives the real application against a stand-in for both services. Its stand-in reproduces the contracts on this page, so update the two together.
+Authentication, inactivity timeout, account workflows, and the full-screen market journey are covered end to end by the [Playwright suite](../../apps/client-ui/e2e), which drives the real application against a stand-in for both services. Its stand-in reproduces the contracts on this page, so update the two together.
 
 ## Contract maintenance
 

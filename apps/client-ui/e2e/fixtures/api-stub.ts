@@ -458,6 +458,14 @@ export class ApiStub {
           changePercent: 0.91,
           timestamp: '2026-01-05T15:00:00Z',
         },
+        {
+          symbol: 'MSFT',
+          companyName: 'Microsoft Corporation',
+          price: 420.5,
+          change: -3.5,
+          changePercent: -0.83,
+          timestamp: '2026-01-05T15:00:00Z',
+        },
       ],
     });
   }

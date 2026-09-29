@@ -184,7 +184,8 @@ describe('MarketPageComponent', () => {
 
     expect(component['enabledIndicators']()).toEqual([]);
     expect(chart.enabledIndicators()).toEqual([]);
-    expect(fixture.nativeElement.textContent).toContain('Choose indicators from the toolbar');
+    expect(button.textContent?.trim()).toBe('Indicators');
+    expect(fixture.nativeElement.querySelector('#indicator-picker')).toBeNull();
 
     button.click();
     fixture.detectChanges();
@@ -267,7 +268,7 @@ describe('MarketPageComponent', () => {
   it('renders the streamlined header and demo market metrics', async () => {
     const fixture = await setup();
     const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain('Back');
+    expect(fixture.nativeElement.querySelector('[aria-label="Back to dashboard"]')).not.toBeNull();
     expect(text).not.toContain('TradingSeason');
     expect(text).not.toContain('Watchlist');
     expect(text).not.toContain('Portfolio');
@@ -277,10 +278,9 @@ describe('MarketPageComponent', () => {
     expect(text).toContain('Spread');
     expect(text).toContain('Open');
     expect(text).toContain('Day Range');
-    expect(text).not.toContain('Trend');
-    expect(fixture.nativeElement.querySelector('.market-metrics')?.textContent).not.toContain(
-      'Data',
-    );
+    const metricsText = fixture.nativeElement.querySelector('.market-metrics')?.textContent;
+    expect(metricsText).not.toContain('Trend');
+    expect(metricsText).not.toContain('Data');
     expect(fixture.componentInstance['rangeVolume']()).toBe(1000);
     expect(text).toContain('$3.42T');
     expect(text).not.toContain('P/E (TTM)');
