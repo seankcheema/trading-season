@@ -12,14 +12,18 @@ import java.util.UUID;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final UserAccountRepository userAccountRepository;
 
     /**
      * Creates the service.
      *
-     * @param userRepository persistence for business accounts
+     * @param userRepository        persistence for business accounts
+     * @param userAccountRepository read-only access to the auth service's
+     *                              credential records
      */
-    public UserService(UserRepository userRepository) {
+    public UserService(UserRepository userRepository, UserAccountRepository userAccountRepository) {
         this.userRepository = userRepository;
+        this.userAccountRepository = userAccountRepository;
     }
 
     /**
@@ -34,6 +38,21 @@ public class UserService {
     @Transactional(readOnly = true)
     public User getOwnAccount(UUID userId) {
         return userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("Account is not registered"));
+    }
+
+    /**
+     * Loads the credential record for the given user, so callers can report the
+     * role and status as they stand rather than as the caller's token describes
+     * them.
+     *
+     * @param userId the caller's user id from the token's sub claim
+     * @return the credential record the auth service owns
+     * @throws UserNotFoundException if no account exists for the id
+     */
+    @Transactional(readOnly = true)
+    public UserAccount getUserAccount(UUID userId) {
+        return userAccountRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("Account is not registered"));
     }
 }

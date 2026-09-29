@@ -7,19 +7,26 @@ import {
 } from 'typeorm';
 
 /**
- * Credential record for the auth service.
+ * A credential record, in the shared business database.
  *
- * Column names are snake_case to match the schema conventions used elsewhere in
- * the platform (see apps/business-backend/db/migrations/V001__Initial_schema.sql).
- * TypeScript property names stay camelCase, so the mapping is explicit on every
- * column rather than relying on a naming strategy.
+ * Lives in `user_accounts`, a table the auth service owns outright. The
+ * customer profile is a separate `users` row keyed by the same id and written
+ * only by the Java services; this entity cannot reach it. Splitting the two is
+ * what lets each table keep a single writer now that one database holds both.
  *
- * The table is created by a migration, not by synchronize — see
- * src/database/migrations/.
+ * The schema is owned by Flyway in apps/market-data/db/migrations, not by this
+ * service, so every column mapping below is explicit.
  */
-@Entity('users')
+@Entity('user_accounts')
 export class User {
-  @PrimaryGeneratedColumn('uuid')
+  /**
+   * The access token's `sub`.
+   *
+   * V003 dropped this column's database default because the value is set by
+   * the application at registration. TypeORM's 'uuid' strategy generates it in
+   * JavaScript and includes it in the INSERT, so that still holds.
+   */
+  @PrimaryGeneratedColumn('uuid', { name: 'user_id' })
   id: string;
 
   @Column({ name: 'email', type: 'text', unique: true })
@@ -29,28 +36,37 @@ export class User {
   @Column({ name: 'password_hash', type: 'text' })
   password: string;
 
-  @Column({
-    name: 'role',
-    type: 'text',
-    default: 'TRADER',
-  })
+  @Column({ name: 'user_role', type: 'text', default: 'TRADER' })
   role: 'ADMIN' | 'TRADER';
 
+  /**
+   * The business schema models deactivation as a status string rather than a
+   * boolean. It is translated once, by `isActive` below, so no branch outside
+   * this file has to learn about 'DEACTIVATED'.
+   */
+  @Column({ name: 'account_status', type: 'text', default: 'ACTIVE' })
+  accountStatus: 'ACTIVE' | 'DEACTIVATED';
+
   /** Failed login counter for the lockout rule (KAN-46). */
-  @Column({ name: 'failed_attempts', type: 'int', default: 0 })
+  @Column({ name: 'failed_login_attempts', type: 'int', default: 0 })
   failedAttempts: number;
 
   /** Set while an account is locked out; NULL when it is not. */
   @Column({ name: 'locked_until', type: 'timestamptz', nullable: true })
   lockedUntil: Date | null;
 
-  /** false is the DEACTIVATED state referenced by KAN-86. */
-  @Column({ name: 'is_active', type: 'boolean', default: true })
-  isActive: boolean;
-
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
+
+  /**
+   * Not a column. Presents `account_status` as the boolean that AuthService
+   * and UsersService.mapToDto already read, so the status representation stays
+   * contained to this entity.
+   */
+  get isActive(): boolean {
+    return this.accountStatus === 'ACTIVE';
+  }
 }

@@ -95,6 +95,9 @@ services:
       -f /migrations/V001__Initial_schema.sql
       -f /migrations/V002__Synthetic_market_data_replay_metadata.sql
       -f /migrations/V003__Token_authentication.sql
+      -f /migrations/V004__Order_status_lifecycle.sql
+      -f /migrations/V005__User_accounts_and_refresh_tokens.sql
+      -f /migrations/V006__Drop_duplicated_account_columns.sql
       && echo "[DB-INIT] Migrations complete"; 
       else echo "[DB-INIT] Database already initialized, skipping migrations"; fi'
 
@@ -142,16 +145,18 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3001
-      # Its own database — deliberately not the trading_season db above.
-      DB_HOST: auth-db
+      # Shared with the backend. Flyway owns the schema; this service creates no tables.
+      DB_HOST: db
       DB_PORT: 5432
-      DB_NAME: auth_db
-      DB_USER: authuser
-      DB_PASSWORD: ${AUTH_DB_PASSWORD:-changeme}
-      # RS256 keypair. Generated automatically if not provided in environment.
-      # Provide these if you want to use existing keys:
-      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
-      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
+      DB_NAME: trading_season
+      DB_USER: ${DB_USER:-trading_season}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      # RS256 keypair. No default on purpose — the service refuses to start
+      # without them, and a committed fallback key is how private keys reach
+      # production. Generate with:
+      #   node apps/auth-service/scripts/generate-dev-keys.mjs >> .env
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:?run apps/auth-service/scripts/generate-dev-keys.mjs and append to .env}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?run apps/auth-service/scripts/generate-dev-keys.mjs and append to .env}
       JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
       # Password reset email (KAN-89). Mailpit accepts everything and delivers
@@ -178,33 +183,10 @@ services:
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
 
-  auth-db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: auth_db
-      POSTGRES_USER: authuser
-      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-changeme}
-    ports:
-      # 5432 on the host is already taken by the application db above, so the
-      # auth db is published on 5433. In-container it is still 5432.
-      - "5433:5432"
-    volumes:
-      - auth_db_data:/var/lib/postgresql/data
-    healthcheck:
-      # auth-service waits on this before starting, so it never boots against a
-      # Postgres that is still initialising.
-      test: ["CMD-SHELL", "pg_isready -U authuser -d auth_db"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
 volumes:
   db_data:
     # Named volume: persists Postgres data across `docker compose down` and
     # `docker compose up`. Use `docker compose down -v` to also remove this
     # volume, which wipes the database and starts fresh on the next `up`.
-  auth_db_data:
-    # Separate volume so the auth database can be reset independently of the
-    # application database.
   market_data_archive:
     # Reusable generated Parquet archive, independent of PostgreSQL db_data.

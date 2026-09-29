@@ -1,13 +1,17 @@
 # Database
 
-## Two separate stores
+## One database, two owners
 
 The Java business backend and NestJS auth service have separate PostgreSQL databases and user models. The only value shared between them is the user's UUID: auth_db users.id equals trading_season users.user_id, and it reaches the Java backend as the access token's sub claim. Credentials, lockout, refresh sessions and password reset links exist only in auth_db.
 
-| Store | Schema source | Application behavior |
+An account and its profile are separate rows joined by the same UUID, which is also the access token's `sub` claim: `user_accounts.user_id` equals `users.user_id`, and a foreign key from `users` prevents a profile existing without credentials behind it.
+
+The auth service previously used a database of its own, `auth_db`. V005 moved its tables here and V006 dropped the copies of `email`, `user_role` and `account_status` that `users` had been carrying.
+
+| Table group | Schema source | Application behavior |
 | --- | --- | --- |
-| Business: trading_season | [Market Data migrations](services/market-data.md) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
-| Auth: auth_db | [TypeORM migrations](../../apps/auth-service/src/database/migrations/) | Migrations run on startup; synchronize=false |
+| Business tables | [Market Data migrations](services/market-data.md) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
+| user_accounts, refresh_tokens | the same migrations, from V005 | TypeORM with synchronize=false and no migration runner; the auth service reads and writes tables it never creates |
 
 The business bootstrap defines more of the trading model than the currently implemented Java auth API. The ERD below is the canonical diagram; SQL remains authoritative for exact columns and constraints.
 
@@ -17,6 +21,8 @@ Both Java services share the same `trading_season` database. This table lists wh
 
 | Table | Owned by | Access |
 | --- | --- | --- |
+| user_accounts | Auth Service | Read/write (credentials, role, status, lockout); Java services read only |
+| refresh_tokens | Auth Service | Read/write (issue, rotate, revoke); Java services never read it |
 | users | Holdings and Trade Service | Read/write (profile, funds, settings) |
 | accounts | Holdings and Trade Service | Read/write (account management) |
 | orders | Holdings and Trade Service | Read/write (order lifecycle) |
@@ -143,9 +149,9 @@ On Linux, check the actual free space on the filesystem containing PostgreSQL da
 
 ```sh
 free_disk_gb="$(df -Pk / | awk 'NR == 2 { print $4 / 1048576 }')"
-python3 -m venv apps/business-backend/db/.venv
-apps/business-backend/db/.venv/bin/python -m pip install -r apps/business-backend/db/scripts/requirements.txt
-apps/business-backend/db/.venv/bin/python apps/business-backend/db/scripts/0004-import-synthetic-market-data.py \
+python3 -m venv apps/market-data/db/.venv
+apps/market-data/db/.venv/bin/python -m pip install -r apps/market-data/db/scripts/requirements.txt
+apps/market-data/db/.venv/bin/python apps/market-data/db/scripts/0004-import-synthetic-market-data.py \
   --tick-storage parquet \
   --available-disk-gb "$free_disk_gb" \
   --database-url postgresql://trading_season:password@localhost:5432/trading_season
@@ -153,7 +159,7 @@ apps/business-backend/db/.venv/bin/python apps/business-backend/db/scripts/0004-
 
 Do not inflate the reported value or run this command until the archive has been copied and validated. The importer performs an additional capacity check before each pending month.
 
-The generated `2026-v1` archive is stored locally in `apps/business-backend/db/seeds/synthetic-market-data-2026-v1` and is not committed to Git. A full archive contains 61,074,000 one-second ticks and 1,017,900 tick-derived one-minute candles.
+The generated `2026-v1` archive is stored locally in `apps/market-data/db/seeds/synthetic-market-data-2026-v1` and is not committed to Git. A full archive contains 61,074,000 one-second ticks and 1,017,900 tick-derived one-minute candles.
 
 Run the complete routine workflow from the repository root with one command. It creates the virtual environment if needed, installs dependencies, generates or reuses the archive, carries the completed validation forward to the importer, and displays progress while loading PostgreSQL:
 
@@ -356,20 +362,17 @@ For later routine seeding, run steps 3 through 6 only. The import adds stocks, s
 
 There is no Flyway runner in the Java backend; these files are applied manually.
 
-## Auth migrations
+## Auth tables
 
 [Runtime configuration](../../apps/auth-service/src/config/database.config.ts) and the [CLI data source](../../apps/auth-service/src/database/data-source.ts) must retain matching entity and migration lists. The initial schema creates auth users and refresh-token storage; a later migration added a required username and TrimUserToBrsMinimum removed it along with first and last name, so email is the only login identifier. PasswordResetTokens adds the password_reset_tokens table.
 
 | Migration | Adds |
 | --- | --- |
-| InitialAuthSchema1789051037692 | users, refresh_tokens |
-| RequireUsername1789067284157 | a required username, since removed |
-| TrimUserToBrsMinimum1789481455425 | drops username, first_name, last_name, email_verified |
 | PasswordResetTokens1790686840697 | password_reset_tokens |
 
-From apps/auth-service, npm run migration:show and npm run migration:run inspect/apply migrations. Export the matching database environment variables before invoking the CLI: its data source does not itself load dotenv. Normal application startup loads .env and runs migrations automatically.
+The service therefore assumes the migrations have already been applied. If they have not, its queries fail against missing columns, which is louder than quietly building a second schema alongside the first.
 
-Refresh tokens are stored as hashes with expiry, revocation, and rotation metadata. See the [auth README](../../apps/auth-service/README.md) for connection and key setup.
+Email is the only login identifier, unique without regard to case through `user_accounts_email_lower_key`. Refresh tokens are stored as SHA-256 hashes with expiry, revocation and rotation metadata; the raw value is returned to the client once and never persisted. See the [auth README](../../apps/auth-service/README.md) for connection and key setup.
 
 ### password_reset_tokens
 
@@ -393,12 +396,14 @@ Add incremental migrations rather than editing already applied files. For busine
 
 # Business database ERD
 
-Canonical relationship diagram for the business SQL schema after V001 through V004. SQL defines exact columns and constraints. See this database reference for ownership, initialization, and change rules.
+Canonical relationship diagram for the SQL schema after V001 through V006. SQL defines exact columns and constraints. See this database reference for ownership, initialization, and change rules.
 
 The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change.
 
 ```mermaid
 erDiagram
+    user_accounts ||--|| users : "credentials for"
+    user_accounts ||--o{ refresh_tokens : issues
     users ||--o{ accounts : owns
 
     stocks o|--o| instruments : "optionally powers"

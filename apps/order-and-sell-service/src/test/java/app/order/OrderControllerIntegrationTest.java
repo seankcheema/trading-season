@@ -14,6 +14,7 @@ import app.order.execution.FillRepository;
 import app.order.execution.HoldingMovement;
 import app.order.execution.HoldingMovementRepository;
 import app.user.User;
+import app.support.UserAccountFixture;
 import app.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -67,11 +69,13 @@ class OrderControllerIntegrationTest {
     @Autowired private CashTransactionRepository cashTransactionRepository;
     @Autowired private HoldingMovementRepository holdingMovementRepository;
     @Autowired private AuditTrailRepository auditTrailRepository;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     private MockMvc mockMvc;
     private User user;
     private Account account;
     private Instrument instrument;
+    private UUID userId;
 
     @BeforeEach
     void setUp() {
@@ -85,12 +89,18 @@ class OrderControllerIntegrationTest {
         accountRepository.deleteAll();
         instrumentRepository.deleteAll();
         userRepository.deleteAll();
+        UserAccountFixture.deleteAll(jdbcTemplate);
+
+        // The auth service creates the account before it ever issues a token,
+        // and AccountStatusValidator reads that row on every order, so a test
+        // without one is exercising a state production cannot reach.
+        userId = UUID.randomUUID();
+        UserAccountFixture.createActiveAccount(jdbcTemplate, userId, "orders@example.com");
 
         user = new User();
-        user.setUserId(UUID.randomUUID());
+        user.setUserId(userId);
         user.setFirstName("Order");
         user.setLastName("Tester");
-        user.setEmail("orders@example.com");
         user.setSsn("123-45-6789");
         user.setAddress("1 Main St");
         user.setDateOfBirth(LocalDate.of(1990, 1, 1));
@@ -111,6 +121,19 @@ class OrderControllerIntegrationTest {
         instrument.setAssetClass("EQUITY");
         instrument.setCurrency("USD");
         instrument = instrumentRepository.save(instrument);
+    }
+
+    @Test
+    void rejectsAnOrderFromAnAccountDeactivatedAfterItsTokenWasIssued() throws Exception {
+        // The whole reason status is read from user_accounts rather than taken
+        // from the token: the token here is still perfectly valid, and the
+        // order must be refused anyway.
+        UserAccountFixture.deactivate(jdbcTemplate, userId);
+
+        submit("BUY", "10", "20.00")
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("REJECTED"))
+                .andExpect(jsonPath("$.rejectionReason").value("Account is not active"));
     }
 
     @Test
@@ -241,11 +264,15 @@ class OrderControllerIntegrationTest {
      * @return the other user's id
      */
     private UUID givenAnOrderBelongingToAnotherUser() {
+        UUID strangerId = UUID.randomUUID();
+        // The profile row no longer carries an email; the account behind it does,
+        // and AccountStatusValidator looks that account up on every order.
+        UserAccountFixture.createActiveAccount(jdbcTemplate, strangerId, "stranger@example.com");
+
         User stranger = new User();
-        stranger.setUserId(UUID.randomUUID());
+        stranger.setUserId(strangerId);
         stranger.setFirstName("Someone");
         stranger.setLastName("Else");
-        stranger.setEmail("stranger@example.com");
         stranger.setSsn("987-65-4321");
         stranger.setAddress("2 Other St");
         stranger.setDateOfBirth(LocalDate.of(1991, 2, 2));

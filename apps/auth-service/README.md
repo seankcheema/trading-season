@@ -869,7 +869,7 @@ node scripts/generate-dev-keys.mjs >> .env
 
 The generator writes PKCS8/SPKI RSA keys with literal backslash-n escapes. The application normalizes them on load. Do not commit or print the resulting private key. Use managed secrets for deployment.
 
-Keep DB_HOST=localhost, DB_PORT=5433, DB_USER=authuser, DB_NAME=auth_db, and the matching local DB_PASSWORD. PORT defaults to 3001. Startup requires JWT_PRIVATE_KEY and JWT_PUBLIC_KEY; set JWT_ISSUER consistently. The .env.example CORS_ORIGIN entry is not wired into bootstrap.
+Keep DB_HOST=localhost, DB_PORT=5432, DB_NAME=trading_season, and the matching local DB_USER and DB_PASSWORD. The service shares the business database and owns two tables in it, `user_accounts` and `refresh_tokens`. PORT defaults to 3001. Startup requires JWT_PRIVATE_KEY and JWT_PUBLIC_KEY; set JWT_ISSUER consistently. The .env.example CORS_ORIGIN entry is not wired into bootstrap.
 
 Password reset also needs an SMTP server. The .env.example defaults point at Mailpit on localhost:1025 with APP_BASE_URL=http://localhost:4200, which is the origin of the emailed link and must be the client UI rather than this service. Start Mailpit alone from the repository root:
 
@@ -893,7 +893,6 @@ Run in this directory:
 | Tests | npm test |
 | CI coverage/reports | npm run test:ci |
 | Lint | npm run lint |
-| Inspect migrations | npm run migration:show |
 
 The migration CLI requires database environment variables exported in the shell; see [database guidance](../../docs/reference/database.md#auth-migrations). Tests generate ephemeral keys rather than using deployment credentials, and no test opens an SMTP connection: the mail client is stubbed. GET /health checks liveness only.
 
@@ -903,4 +902,4 @@ Two unauthenticated routes, POST /auth/forgot-password and POST /auth/reset-pass
 
 To try it locally with the stack running: submit the form at http://localhost:4200/forgot-password, open the message in Mailpit at http://localhost:8025, and follow its link. The token is single use and lasts 30 minutes, and completing the reset revokes every refresh token for that account.
 
-The Java backend maintains a separate authentication implementation; see [architecture](../../docs/reference/architecture.md) before integrating clients.
+The Java services hold no authentication implementation of their own. They verify this service's access tokens locally against the public key published at /.well-known/jwks.json, fetched once and cached, and never handle a password. See [architecture](../../docs/reference/architecture.md) before integrating clients.
