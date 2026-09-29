@@ -15,14 +15,6 @@ export interface Instrument {
   changePercent: number;
 }
 
-export interface Transaction {
-  symbol: string;
-  side: OrderSide;
-  shares: number;
-  price: number;
-  date: string;
-}
-
 export interface OrderRequest {
   accountId: string;
   symbol: string;
@@ -42,15 +34,6 @@ export const MOCK_INSTRUMENTS: readonly Instrument[] = [
   { symbol: 'SPCX', name: 'Space Exploration Holdings', price: 127.43, change: 6.3, changePercent: 5.2 },
   { symbol: 'JPM', name: 'JPMorgan Chase & Co.', price: 289.61, change: 0.84, changePercent: 0.29 },
   { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', price: 648.2, change: 3.15, changePercent: 0.49 },
-];
-
-export const MOCK_TRANSACTIONS: readonly Transaction[] = [
-  { symbol: 'TSLA', side: 'buy', shares: 1, price: 301.8, date: '2026-09-12' },
-  { symbol: 'SPY', side: 'buy', shares: 3, price: 610.5, date: '2026-09-10' },
-  { symbol: 'META', side: 'sell', shares: 2, price: 752.1, date: '2026-09-08' },
-  { symbol: 'MSFT', side: 'buy', shares: 2, price: 455.0, date: '2026-09-03' },
-  { symbol: 'NVDA', side: 'buy', shares: 10, price: 190.25, date: '2026-08-28' },
-  { symbol: 'AAPL', side: 'buy', shares: 4, price: 280.1, date: '2026-08-21' },
 ];
 
 export function findInstrument(

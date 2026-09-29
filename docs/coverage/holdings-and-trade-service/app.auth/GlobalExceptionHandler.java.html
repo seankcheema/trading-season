@@ -2,6 +2,8 @@
 
 
 import app.user.UserNotFoundException;
+import app.account.AccountNotFoundException;
+import app.cash.InsufficientFundsException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,7 +20,7 @@ import java.util.stream.Collectors;
  * earlier, by {@link SecurityErrorHandler}.
  */
 @RestControllerAdvice
-<span class="fc" id="L21">public class GlobalExceptionHandler {</span>
+<span class="fc" id="L23">public class GlobalExceptionHandler {</span>
 
     /**
      * Handles duplicate account or email registration attempts.
@@ -28,7 +30,7 @@ import java.util.stream.Collectors;
      */
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleConflict(ConflictException ex) {
-<span class="fc" id="L31">        return error(HttpStatus.CONFLICT, ex.getMessage());</span>
+<span class="fc" id="L33">        return error(HttpStatus.CONFLICT, ex.getMessage());</span>
     }
 
     /**
@@ -40,7 +42,7 @@ import java.util.stream.Collectors;
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleDataIntegrity(DataIntegrityViolationException ex) {
-<span class="nc" id="L43">        return error(HttpStatus.CONFLICT, &quot;Account or email is already registered&quot;);</span>
+<span class="nc" id="L45">        return error(HttpStatus.CONFLICT, &quot;Account or email is already registered&quot;);</span>
     }
 
     /**
@@ -51,7 +53,7 @@ import java.util.stream.Collectors;
      */
     @ExceptionHandler(ForbiddenException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleForbidden(ForbiddenException ex) {
-<span class="fc" id="L54">        return error(HttpStatus.FORBIDDEN, ex.getMessage());</span>
+<span class="fc" id="L56">        return error(HttpStatus.FORBIDDEN, ex.getMessage());</span>
     }
 
     /**
@@ -62,7 +64,43 @@ import java.util.stream.Collectors;
      */
     @ExceptionHandler(UserNotFoundException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleNotFound(UserNotFoundException ex) {
-<span class="fc" id="L65">        return error(HttpStatus.NOT_FOUND, ex.getMessage());</span>
+<span class="fc" id="L67">        return error(HttpStatus.NOT_FOUND, ex.getMessage());</span>
+    }
+
+    /**
+     * Handles lookup of a non-existent account.
+     *
+     * @param ex the account lookup failure
+     * @return 404 with the failure message
+     */
+    @ExceptionHandler(AccountNotFoundException.class)
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleAccountNotFound(AccountNotFoundException ex) {
+<span class="fc" id="L78">        return error(HttpStatus.NOT_FOUND, ex.getMessage());</span>
+    }
+
+    /**
+     * Handles a withdrawal larger than the caller's available funds. The request
+     * is well formed, so this is 422 rather than 400: it is the account state
+     * that refuses it.
+     *
+     * @param ex the refusal
+     * @return 422 with the refusal message
+     */
+    @ExceptionHandler(InsufficientFundsException.class)
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleInsufficientFunds(InsufficientFundsException ex) {
+<span class="fc" id="L91">        return error(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());</span>
+    }
+
+    /**
+     * Handles a request a controller rejected on its own, such as a cash movement
+     * with an unusable amount or reason.
+     *
+     * @param ex the rejection
+     * @return 400 with the rejection message
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleIllegalArgument(IllegalArgumentException ex) {
+<span class="nc" id="L103">        return error(HttpStatus.BAD_REQUEST, ex.getMessage());</span>
     }
 
     /**
@@ -73,14 +111,14 @@ import java.util.stream.Collectors;
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleValidation(MethodArgumentNotValidException ex) {
-<span class="fc" id="L76">        String message = ex.getBindingResult().getFieldErrors().stream()</span>
-<span class="fc" id="L77">                .map(fieldError -&gt; fieldError.getField() + &quot;: &quot; + fieldError.getDefaultMessage())</span>
-<span class="fc" id="L78">                .collect(Collectors.joining(&quot;; &quot;));</span>
-<span class="fc" id="L79">        return error(HttpStatus.BAD_REQUEST, message);</span>
+<span class="fc" id="L114">        String message = ex.getBindingResult().getFieldErrors().stream()</span>
+<span class="fc" id="L115">                .map(fieldError -&gt; fieldError.getField() + &quot;: &quot; + fieldError.getDefaultMessage())</span>
+<span class="fc" id="L116">                .collect(Collectors.joining(&quot;; &quot;));</span>
+<span class="fc" id="L117">        return error(HttpStatus.BAD_REQUEST, message);</span>
     }
 
     private static ResponseEntity&lt;Map&lt;String, String&gt;&gt; error(HttpStatus status, String message) {
-<span class="fc" id="L83">        return ResponseEntity.status(status).body(Map.of(&quot;error&quot;, message));</span>
+<span class="fc" id="L121">        return ResponseEntity.status(status).body(Map.of(&quot;error&quot;, message));</span>
     }
 }
 

@@ -60,7 +60,7 @@ Run all tests with code coverage verification:
 mvn test
 ```
 
-Coverage must be at least 70% in every package on every JaCoCo counter (instructions, branches, lines, complexity, methods, and classes); `mvn test` fails otherwise. Reports are in `target/site/jacoco/`.
+Coverage must be at least 85% in every package on every JaCoCo counter (instructions, branches, lines, complexity, methods, and classes); `mvn test` fails otherwise. The floor is the `coverage.minimum` property in [pom.xml](pom.xml). Reports are in `target/site/jacoco/`.
 
 ## Configuration
 
@@ -79,22 +79,29 @@ Environment variables override defaults in [application.properties](src/main/res
 
 All endpoints require valid RS256 access token except public market GET endpoints.
 
-**User Management:**
-- `GET /api/users/{id}` - Get user profile by ID (requires auth)
-- `GET /api/users` - List all users (admin only)
+Every user-specific endpoint resolves the caller from the token's `sub`, so no path or body parameter can name another user.
 
-**Account Data:**
-- `GET /api/accounts/{accountId}` - Get account details (requires auth)
-- `GET /api/accounts/{accountId}/holdings` - Get current holdings (requires auth)
+**Registration and profile:**
+- `POST /api/auth/account-exists` - Whether an email is registered (public)
+- `POST /api/auth/register` - Create the caller's profile and their default account
+- `GET /api/users/me` - The caller's profile, without the SSN
 
-**Order History:**
-- `GET /api/orders` - List all orders for authenticated user (requires auth)
-- `GET /api/orders/{id}` - Get order details (requires auth)
+**Accounts and holdings:**
+- `GET /api/me/accounts` - The caller's accounts, newest first
+- `POST /api/me/accounts` - Open a new, empty account
+- `PUT /api/me/accounts/{accountId}` - Rename an owned account
+- `GET /api/accounts/{accountId}` - An owned account
+- `GET /api/accounts/{accountId}/holdings` - An owned account's positions, with symbol and average cost
+
+**Cash:**
+- `GET /api/me/cash-transactions` - The caller's deposits and withdrawals, newest first
+- `POST /api/me/cash-transactions` - Deposit or withdraw funds
 
 **Market Data (Public):**
 - `GET /api/market/snapshot` - Current market snapshot
-- `GET /api/market/quotes` - Current quotes for all stocks
+- `GET /api/market/candles` - Aggregated OHLCV bars for a symbol and timeframe
 - `GET /api/market/stream` - SSE stream of market ticks
+- `PUT /api/market/clock` - Move the shared replay cursor (requires auth)
 
 For full API contracts, see [API reference](../../docs/reference/api.md).
 

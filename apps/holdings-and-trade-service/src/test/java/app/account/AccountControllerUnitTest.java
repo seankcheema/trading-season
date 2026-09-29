@@ -103,20 +103,36 @@ class AccountControllerUnitTest {
                 () -> controller.getAccount(99, jwt));
     }
 
+    private static app.instrument.Instrument instrument(int instrumentId, String ticker) {
+        app.instrument.Instrument instrument = new app.instrument.Instrument();
+        instrument.setInstrumentId(instrumentId);
+        instrument.setTicker(ticker);
+        instrument.setName(ticker + " Inc.");
+        return instrument;
+    }
+
     @Test
     void listHoldingsReturnsHoldingResponses() {
         app.holding.Holding holding1 = createHolding(1, 1, 100, BigDecimal.TEN);
         app.holding.Holding holding2 = createHolding(2, 1, 101, BigDecimal.ONE);
-        
+
         when(jwt.getSubject()).thenReturn(USER_ID.toString());
         when(accountService.getHoldingsForAccount(1, USER_ID))
-                .thenReturn(List.of(holding1, holding2));
+                .thenReturn(List.of(
+                        new app.holding.HoldingWithCost(holding1, instrument(100, "AAPL"),
+                                new BigDecimal("280.10")),
+                        new app.holding.HoldingWithCost(holding2, null, null)));
 
         List<HoldingResponse> result = controller.listHoldings(1, jwt);
 
         assertEquals(2, result.size());
         assertEquals(100, result.get(0).instrumentId());
+        assertEquals("AAPL", result.get(0).symbol());
+        assertEquals(new BigDecimal("280.10"), result.get(0).averageCost());
         assertEquals(101, result.get(1).instrumentId());
+        // An unresolved instrument falls back to its id, and an unknown cost to zero.
+        assertEquals("101", result.get(1).symbol());
+        assertEquals(BigDecimal.ZERO, result.get(1).averageCost());
     }
 
     @Test

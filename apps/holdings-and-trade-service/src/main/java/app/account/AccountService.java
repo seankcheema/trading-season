@@ -2,13 +2,22 @@ package app.account;
 
 import app.auth.ForbiddenException;
 import app.holding.Holding;
+import app.holding.HoldingMovementRepository;
 import app.holding.HoldingRepository;
+import app.holding.HoldingWithCost;
+import app.instrument.Instrument;
+import app.instrument.InstrumentRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Service for managing user accounts and their holdings.
@@ -19,16 +28,25 @@ public class AccountService {
 
     private final AccountRepository accountRepository;
     private final HoldingRepository holdingRepository;
+    private final HoldingMovementRepository holdingMovementRepository;
+    private final InstrumentRepository instrumentRepository;
 
     /**
      * Creates the service.
      *
-     * @param accountRepository  persistence for accounts
-     * @param holdingRepository  persistence for holdings
+     * @param accountRepository         persistence for accounts
+     * @param holdingRepository         persistence for holdings
+     * @param holdingMovementRepository the movement ledger positions are priced from
+     * @param instrumentRepository      read access to the instruments held
      */
-    public AccountService(AccountRepository accountRepository, HoldingRepository holdingRepository) {
+    public AccountService(AccountRepository accountRepository,
+                          HoldingRepository holdingRepository,
+                          HoldingMovementRepository holdingMovementRepository,
+                          InstrumentRepository instrumentRepository) {
         this.accountRepository = accountRepository;
         this.holdingRepository = holdingRepository;
+        this.holdingMovementRepository = holdingMovementRepository;
+        this.instrumentRepository = instrumentRepository;
     }
 
     /**
@@ -135,11 +153,58 @@ public class AccountService {
      * @throws ForbiddenException       if the account is owned by a different user
      */
     @Transactional(readOnly = true)
-    public List<Holding> getHoldingsForAccount(Integer accountId, UUID userId) {
+    public List<HoldingWithCost> getHoldingsForAccount(Integer accountId, UUID userId) {
         // Verify ownership first
         getAccountForUser(accountId, userId);
-        
-        // Return all holdings for this account
-        return holdingRepository.findByAccountId(accountId);
+
+        List<Holding> holdings = holdingRepository.findByAccountId(accountId);
+        if (holdings.isEmpty()) {
+            return List.of();
+        }
+
+        // Two batched lookups rather than one query per position.
+        Map<Integer, Instrument> instruments = instrumentRepository
+                .findByInstrumentIdIn(holdings.stream().map(Holding::getInstrumentId).toList())
+                .stream()
+                .collect(Collectors.toMap(Instrument::getInstrumentId, Function.identity()));
+        Map<Integer, BigDecimal> averageCosts = averageCostsFor(accountId);
+
+        return holdings.stream()
+                .map(holding -> new HoldingWithCost(
+                        holding,
+                        instruments.get(holding.getInstrumentId()),
+                        averageCosts.get(holding.getInstrumentId())))
+                .toList();
+    }
+
+    /**
+     * Average price paid per share for each instrument this account has acquired,
+     * keyed by instrument id.
+     *
+     * @param accountId the account whose positions to price
+     * @return the average acquisition cost per instrument; an instrument with no
+     *         recorded acquisitions is absent
+     */
+    private Map<Integer, BigDecimal> averageCostsFor(Integer accountId) {
+        Map<Integer, BigDecimal> costs = new HashMap<>();
+        for (Object[] row : holdingMovementRepository.averageAcquisitionCostByInstrument(accountId)) {
+            if (row[0] != null && row[1] != null) {
+                costs.put((Integer) row[0], toBigDecimal(row[1]));
+            }
+        }
+        return costs;
+    }
+
+    /**
+     * Normalises the numeric type the aggregate query returns, which differs
+     * between Postgres and the in-memory database tests run against.
+     *
+     * @param value the aggregate value
+     * @return the value as a BigDecimal
+     */
+    private static BigDecimal toBigDecimal(Object value) {
+        return value instanceof BigDecimal decimal
+                ? decimal
+                : BigDecimal.valueOf(((Number) value).doubleValue());
     }
 }

@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CashTransactionController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.cash</a> &gt; <span class="el_source">CashTransactionController.java</span></div><h1>CashTransactionController.java</h1><pre class="source lang-java linenums">package app.cash;
+
+import app.auth.AuthenticatedUser;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+/**
+ * REST endpoints for the authenticated caller's cash.
+ *
+ * &lt;p&gt;Cash belongs to the user and is shared by all of their accounts, so no path
+ * or body parameter names an account. The caller is always resolved from the
+ * bearer token, which means these endpoints cannot be pointed at another user's
+ * money.
+ */
+@RestController
+@RequestMapping(&quot;/api/me/cash-transactions&quot;)
+public class CashTransactionController {
+
+    private final CashTransactionService cashTransactionService;
+
+    /**
+     * Creates the controller.
+     *
+     * @param cashTransactionService cash movement and history logic
+     */
+<span class="fc" id="L37">    public CashTransactionController(CashTransactionService cashTransactionService) {</span>
+<span class="fc" id="L38">        this.cashTransactionService = cashTransactionService;</span>
+<span class="fc" id="L39">    }</span>
+
+    /**
+     * Lists the caller's deposits and withdrawals, newest first.
+     *
+     * @param limit how many rows to return, optional
+     * @param jwt   the verified access token
+     * @return the caller's funding history
+     */
+    @GetMapping
+    public List&lt;CashTransactionResponse&gt; listFunding(
+            @RequestParam(required = false) Integer limit,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+<span class="fc" id="L53">        AuthenticatedUser caller = AuthenticatedUser.from(jwt);</span>
+<span class="fc" id="L54">        return cashTransactionService.getFundingHistory(caller.userId(), limit)</span>
+<span class="fc" id="L55">                .stream()</span>
+<span class="fc" id="L56">                .map(CashTransactionResponse::from)</span>
+<span class="fc" id="L57">                .toList();</span>
+    }
+
+    /**
+     * Deposits or withdraws funds for the caller.
+     *
+     * @param request the amount and direction
+     * @param jwt     the verified access token
+     * @return the recorded transaction
+     * @throws InsufficientFundsException     if a withdrawal exceeds the caller's funds
+     * @throws app.user.UserNotFoundException if the caller has not registered
+     */
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public CashTransactionResponse postFunding(
+            @Valid @RequestBody CashTransactionRequest request,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+<span class="fc" id="L75">        AuthenticatedUser caller = AuthenticatedUser.from(jwt);</span>
+<span class="fc" id="L76">        return CashTransactionResponse.from(</span>
+<span class="fc" id="L77">                cashTransactionService.move(caller.userId(), request.amount(), request.reason()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

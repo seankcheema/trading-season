@@ -2,7 +2,11 @@ package app.account;
 
 import app.auth.ForbiddenException;
 import app.holding.Holding;
+import app.holding.HoldingMovementRepository;
 import app.holding.HoldingRepository;
+import app.holding.HoldingWithCost;
+import app.instrument.Instrument;
+import app.instrument.InstrumentRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -35,11 +39,63 @@ class AccountServiceUnitTest {
     @Mock
     private HoldingRepository holdingRepository;
 
+    @Mock
+    private HoldingMovementRepository holdingMovementRepository;
+
+    @Mock
+    private InstrumentRepository instrumentRepository;
+
     private AccountService accountService;
 
     @BeforeEach
     void setUp() {
-        accountService = new AccountService(accountRepository, holdingRepository);
+        accountService = new AccountService(accountRepository, holdingRepository,
+                holdingMovementRepository, instrumentRepository);
+    }
+
+    @Test
+    void averageCostToleratesADatabaseThatReturnsTheAggregateAsAPlainNumber() {
+        Account account = createAccount(1, USER_ID, "Main Account");
+        Holding holding = createHolding(1, 1, 100, BigDecimal.TEN);
+        when(accountRepository.findByIdAndUserId(1, USER_ID)).thenReturn(Optional.of(account));
+        when(holdingRepository.findByAccountId(1)).thenReturn(List.of(holding));
+        when(instrumentRepository.findByInstrumentIdIn(List.of(100)))
+                .thenReturn(List.of(instrument(100, "AAPL")));
+        // The aggregate is a BigDecimal on Postgres and H2, but the query is untyped,
+        // so a driver handing back a Double must not break the read.
+        when(holdingMovementRepository.averageAcquisitionCostByInstrument(1))
+                .thenReturn(List.<Object[]>of(new Object[]{100, Double.valueOf(280.10)}));
+
+        List<HoldingWithCost> result = accountService.getHoldingsForAccount(1, USER_ID);
+
+        assertEquals(0, new BigDecimal("280.10").compareTo(result.get(0).averageCost()));
+    }
+
+    @Test
+    void averageCostSkipsRowsThatCarryNoInstrumentOrNoValue() {
+        Account account = createAccount(1, USER_ID, "Main Account");
+        Holding holding = createHolding(1, 1, 100, BigDecimal.TEN);
+        when(accountRepository.findByIdAndUserId(1, USER_ID)).thenReturn(Optional.of(account));
+        when(holdingRepository.findByAccountId(1)).thenReturn(List.of(holding));
+        when(instrumentRepository.findByInstrumentIdIn(List.of(100)))
+                .thenReturn(List.of(instrument(100, "AAPL")));
+        when(holdingMovementRepository.averageAcquisitionCostByInstrument(1))
+                .thenReturn(List.<Object[]>of(
+                        new Object[]{null, new BigDecimal("1.00")},
+                        new Object[]{100, null}));
+
+        List<HoldingWithCost> result = accountService.getHoldingsForAccount(1, USER_ID);
+
+        // Neither row prices anything, so the position simply has no known cost.
+        assertNull(result.get(0).averageCost());
+    }
+
+    private static Instrument instrument(int instrumentId, String ticker) {
+        Instrument instrument = new Instrument();
+        instrument.setInstrumentId(instrumentId);
+        instrument.setTicker(ticker);
+        instrument.setName(ticker + " Inc.");
+        return instrument;
     }
 
     @Test
@@ -200,12 +256,20 @@ class AccountServiceUnitTest {
                 .thenReturn(Optional.of(account));
         when(holdingRepository.findByAccountId(1))
                 .thenReturn(List.of(holding1, holding2));
+        when(instrumentRepository.findByInstrumentIdIn(List.of(100, 101)))
+                .thenReturn(List.of(instrument(100, "AAPL"), instrument(101, "MSFT")));
+        when(holdingMovementRepository.averageAcquisitionCostByInstrument(1))
+                .thenReturn(List.<Object[]>of(new Object[]{100, new BigDecimal("280.10")}));
 
-        List<Holding> result = accountService.getHoldingsForAccount(1, USER_ID);
+        List<HoldingWithCost> result = accountService.getHoldingsForAccount(1, USER_ID);
 
         assertEquals(2, result.size());
-        assertEquals(holding1, result.get(0));
-        assertEquals(holding2, result.get(1));
+        assertEquals(holding1, result.get(0).holding());
+        assertEquals("AAPL", result.get(0).instrument().displaySymbol());
+        assertEquals(new BigDecimal("280.10"), result.get(0).averageCost());
+        assertEquals(holding2, result.get(1).holding());
+        // No acquisition rows for this instrument, so its cost is simply unknown.
+        assertNull(result.get(1).averageCost());
         verify(holdingRepository).findByAccountId(1);
     }
 
@@ -230,9 +294,12 @@ class AccountServiceUnitTest {
         when(holdingRepository.findByAccountId(1))
                 .thenReturn(List.of());
 
-        List<Holding> result = accountService.getHoldingsForAccount(1, USER_ID);
+        List<HoldingWithCost> result = accountService.getHoldingsForAccount(1, USER_ID);
 
         assertTrue(result.isEmpty());
+        // Nothing held, so neither lookup is worth making.
+        verify(instrumentRepository, never()).findByInstrumentIdIn(any());
+        verify(holdingMovementRepository, never()).averageAcquisitionCostByInstrument(any());
     }
 
     @Test
@@ -338,13 +405,20 @@ class AccountServiceUnitTest {
                 .thenReturn(Optional.of(account));
         when(holdingRepository.findByAccountId(1))
                 .thenReturn(List.of(holding1, holding2, holding3));
+        when(instrumentRepository.findByInstrumentIdIn(List.of(100, 101, 102)))
+                .thenReturn(List.of());
+        when(holdingMovementRepository.averageAcquisitionCostByInstrument(1))
+                .thenReturn(List.of());
 
-        List<Holding> result = accountService.getHoldingsForAccount(1, USER_ID);
+        List<HoldingWithCost> result = accountService.getHoldingsForAccount(1, USER_ID);
 
         assertEquals(3, result.size());
-        assertEquals(holding1, result.get(0));
-        assertEquals(holding2, result.get(1));
-        assertEquals(holding3, result.get(2));
+        assertEquals(holding1, result.get(0).holding());
+        assertEquals(holding2, result.get(1).holding());
+        assertEquals(holding3, result.get(2).holding());
+        // An instrument row that cannot be resolved leaves the position unlabelled
+        // rather than dropping it.
+        assertNull(result.get(0).instrument());
     }
 
     @Test

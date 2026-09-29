@@ -98,8 +98,8 @@ These endpoints are **NOT YET IMPLEMENTED**. [OrderController](../../apps/order-
 | Method | Path | Request | Planned response |
 | --- | --- | --- | --- |
 | GET | /api/orders/{orderId} | Bearer token; owned order | 200: order, fill if present, audit events |
-| GET | /api/me/cash-transactions | Bearer token; optional limit | 200: user's cash transactions, newest first |
-| POST | /api/me/cash-transactions | Bearer token + JSON: amount, reason (DEPOSIT or WITHDRAWAL) | 201: transaction and updated availableFunds |
+
+Cash movements are not served here. They belong to the Holdings and Trade Service, which owns the balance they move; see [Cash](#cash).
 
 See [Order and Sell Service documentation](services/order-and-sell-service.md) for implementation status.
 
@@ -119,7 +119,7 @@ Standard format: `{"error": "..."}` with HTTP status. Mismatched bearer token an
 
 ## Holdings and Trade Service (Spring Boot Java 21) — port 8082
 
-This service provides user registration, profile queries, and market data. Account and holdings queries are planned. It is not called by Client UI.
+This service provides user registration, profile queries, account and holdings queries, cash movements, and market data. It is the backend Client UI calls: the dev server proxies `/api` to this service (see [proxy.conf.json](../../apps/client-ui/proxy.conf.json)).
 
 ### Authentication registration
 
@@ -146,14 +146,32 @@ This service provides user registration, profile queries, and market data. Accou
 
 **Data scope:** Endpoints resolve the caller from the bearer token's `sub` only. Clients cannot read other users' data even with explicit IDs in the path.
 
-### Planned account and holdings queries
+### Accounts and holdings
 
-These endpoints are **NOT YET IMPLEMENTED**. The service has `Account` and `Holding` entities and repositories but no controllers for them.
+Every endpoint resolves the owner from the token's `sub`. An account id in a path is checked against that owner: an account belonging to someone else is 403, one that does not exist is 404. See [AccountController](../../apps/holdings-and-trade-service/src/main/java/app/account/AccountController.java).
 
-| Method | Path | Request | Planned response |
+| Method | Path | Request | Success |
 | --- | --- | --- | --- |
-| GET | /api/me/accounts | Bearer token | 200: array of caller's accounts |
+| GET | /api/me/accounts | Bearer token | 200: caller's accounts, newest first |
+| POST | /api/me/accounts | Bearer token + JSON: `name` | 201: the new account, with no holdings |
+| PUT | /api/me/accounts/{accountId} | Bearer token; owned account; JSON: `name` | 200: the renamed account |
+| GET | /api/accounts/{accountId} | Bearer token; owned account | 200: the account |
 | GET | /api/accounts/{accountId}/holdings | Bearer token; owned account | 200: holdings with instrument metadata |
+
+An account is returned as `accountId`, `userId`, `name`, `cashBalance`, `openedDate` and `currency`. Registration opens a default account named `Main Account`, so a new user starts with one empty account rather than none.
+
+A holding is returned as `holdingId`, `accountId`, `instrumentId`, `symbol`, `name`, `quantity`, `averageCost` and `updatedAt`. Neither `symbol` nor `averageCost` is stored on the holding row: the symbol comes from the instrument, preferring `simulated_stock_symbol` so it matches what the market endpoints report, and `averageCost` is derived from `holding_movements` joined to `fills`, weighted by quantity over acquisitions only. An instrument that cannot be resolved reports its id as the symbol, and a position with no acquisition history reports an average cost of 0.
+
+### Cash
+
+Cash belongs to the user, not to an account: the balance is `availableFunds` from `GET /api/users/me` and every account of theirs shares it. No request names an account, so these endpoints cannot be pointed at another user's money. Each movement writes the balance and appends a `cash_transactions` row in one transaction; the row is booked against the caller's first account, and the balance row is locked before it is read so two concurrent withdrawals cannot both pass the funds check. See [CashTransactionController](../../apps/holdings-and-trade-service/src/main/java/app/cash/CashTransactionController.java).
+
+| Method | Path | Request | Success |
+| --- | --- | --- | --- |
+| GET | /api/me/cash-transactions | Bearer token; optional `limit` (default 50, capped at 200) | 200: caller's deposits and withdrawals, newest first |
+| POST | /api/me/cash-transactions | Bearer token + JSON: `amount` (positive, whole cents, ≤1000000), `reason` (DEPOSIT or WITHDRAWAL) | 201: the recorded transaction |
+
+A transaction is returned as `cashTransactionId`, `amount`, `reason` and `createdAt`. The stored ledger amount is signed so it sums to the balance it backs; the response reports `amount` positive either way, because `reason` already carries the direction. `ORDER_FILL` rows are left out of the history: they are trades rather than funding.
 
 ### Market data (public, unauthenticated)
 
@@ -179,6 +197,7 @@ Standard format: `{"error": "..."}` with HTTP status. Mismatched bearer token an
 | 403 | Registration email does not match token's email claim |
 | 404 | Resource not found (e.g., GET /api/users/me before registration) |
 | 409 | Duplicate account or email; account already registered |
+| 422 | Withdrawal exceeds the caller's available funds |
 
 ---
 
@@ -192,26 +211,31 @@ The Angular UI (port 4200) orchestrates these services:
    - POST /auth/refresh (rotate expired token)
    - POST /auth/logout (end session)
 
-2. **Profile and trading:** Calls to Order and Sell Service
-   - Use dev proxy (proxy.conf.json) which forwards all `/api/*` to port 8081
+2. **Profile, accounts, cash and market data:** Calls to Holdings and Trade Service
+   - Use dev proxy ([proxy.conf.json](../../apps/client-ui/proxy.conf.json)), which forwards all `/api/*` to port 8082
    - Bearer token from Auth Service is sent in `Authorization: Bearer` header
    - POST /api/auth/register (submit profile after auth registration)
-   - GET /api/users/me (verify profile)
+   - GET /api/users/me (profile: the shared cash balance and the name the header initials come from)
+   - GET /api/me/accounts, POST /api/me/accounts, PUT /api/me/accounts/{accountId}
+   - GET /api/accounts/{accountId}/holdings (per-account portfolio)
+   - GET /api/me/cash-transactions, POST /api/me/cash-transactions (deposits and withdrawals)
    - GET /api/market/snapshot (dashboard ticker)
    - GET /api/market/candles (dashboard charts)
    - GET /api/market/stream (real-time prices)
 
-3. **No calls to Holdings and Trade Service**
-   - Nothing in the UI or dev proxy targets port 8082
-   - Portfolio data is mock-only (not calling planned account endpoints)
+3. **No calls to Order and Sell Service**
+   - Nothing in the UI or dev proxy targets port 8081
+   - Order submission is not wired yet; the dashboard logs the request instead of sending it
 
-Session management, inactivity timeout, and token refresh are handled by [SessionTimeoutService](../../apps/business-logic-ui/src/app/core/auth/session-timeout.service.ts) and [AuthService](../../apps/business-logic-ui/src/app/core/auth/auth.service.ts). Inactivity timeout (5–60 minutes, default 10) is UI-only; neither backend service implements it.
+Market prices and instrument names are shared simulation data. Everything else the dashboard shows is the signed-in user's own: accounts, each account's holdings, the shared cash balance and the funding history all come from the endpoints above, scoped to the token's `sub`.
+
+Session management, inactivity timeout, and token refresh are handled by [SessionTimeoutService](../../apps/client-ui/src/app/core/auth/session-timeout.service.ts) and [AuthService](../../apps/client-ui/src/app/core/auth/auth.service.ts). Inactivity timeout (5–60 minutes, default 10) is UI-only; neither backend service implements it.
 
 ---
 
 ## E2E test coverage
 
-The [Playwright suite](../../apps/business-logic-ui/e2e) covers:
+The [Playwright suite](../../apps/client-ui/e2e) covers:
 - Full registration flow (auth service + Holdings and Trade Service profile registration)
 - Sign-in and inactivity timeout
 - Dashboard access and session persistence
@@ -281,17 +305,7 @@ Planned protected trading endpoints will use the [token verification](#token-ver
 
 Snapshots include a `calendar` object that describes the selectable imported archive range:
 
-| Method and path | Request/authentication | Planned success |
-| --- | --- | --- |
-| GET /api/me/accounts | Bearer token | Current user's accounts |
-| POST /api/me/accounts | Bearer token; name only | Created account with no holdings |
-| PUT /api/me/accounts/{accountId} | Bearer token; owned account id; name | Renamed account |
-| GET /api/accounts/{accountId}/holdings | Bearer token; owned account id | Account holdings with instrument metadata and latest price when available |
-| GET /api/accounts/{accountId}/orders | Bearer token; optional status, instrumentId, limit | Account order history |
-| GET /api/orders/{orderId} | Bearer token; owned order id | Order, fill if present, and audit events |
-| POST /api/orders | Bearer token; accountId, ticker or instrumentId, orderType, quantity, clientReference, optional sessionId | Idempotent simulated order result |
-| GET /api/me/cash-transactions | Bearer token; optional limit | Current user's cash transactions, newest first |
-| POST /api/me/cash-transactions | Bearer token; amount, reason DEPOSIT or WITHDRAWAL | Posted funding transaction and updated availableFunds |
+The account, holdings and cash endpoints are documented once, under [Accounts and holdings](#accounts-and-holdings) and [Cash](#cash). Order submission is documented under [Trading endpoints](#trading-endpoints), and per-order and per-account order reads remain [planned](#planned-trading-endpoints).
 
 Manual clock changes are limited to the months imported for the resolved simulation session. A local development database can contain a small date range rather than the full generated dataset, so clients should validate against `tradingDates`, `firstTimestamp`, and `lastTimestamp` before calling `PUT /api/market/clock`. If a user selects a weekend or other non-trading date inside an imported month, clients may adjust to the nearest loaded trading date in that month before sending the request; the backend applies the same rule for direct API callers.
 
@@ -363,7 +377,7 @@ The Angular UI authenticates only against the NestJS auth service. See [AuthServ
 - Sign-in posts email and password to POST /auth/login and stores the token response in browser localStorage.
 - Registration first posts email and password to POST /auth/register. If that returns 409, the UI tries POST /auth/login with the same credentials, so a user whose earlier profile step failed can resubmit. Once it has tokens, the UI posts the profile to Java POST /api/auth/register with a Bearer access token: email, firstName, middleName, lastName, dateOfBirth, ssn, address, traderLevel, availableFunds. It sends no password or username. If the profile step fails, the UI clears the stored session.
 - The dashboard route requires a stored session and refreshes an expired access token through POST /auth/refresh. Sign-out posts the refresh token to POST /auth/logout.
-- The dashboard reads and changes the signed-in user's accounts and cash through the planned account endpoints above, which the Java backend does not serve yet; see [AccountStore](../../apps/client-ui/src/app/dashboard/accounts/account-store.service.ts) and [the models it expects](../../apps/client-ui/src/app/dashboard/accounts/account.models.ts). Cash belongs to the user, not to an account: it is availableFunds from GET /api/users/me, every account shares it, and deposits and withdrawals move it through /api/me/cash-transactions without naming an account. An account holds positions only, and its portfolio is exactly its holdings, so an account has one portfolio and a new account starts with none. Net worth is availableFunds plus the value of every account's holdings; the Portfolio Value card and assets table show the selected account's holdings. An account is returned as accountId, name and openedDate; a holding as symbol, quantity and averageCost, valued at the live price or at averageCost when there is none; a cash transaction as cashTransactionId, a positive amount, reason and createdAt. After every successful change the UI reloads the affected data rather than trusting the response body. It maps 400 to the backend's error string, 403 and 404 to an unavailable account, and 409 or 422 to a duplicate account name or, for withdrawals, insufficient funds. The UI lists only the accounts these endpoints return for the caller, requests holdings only for those, and sends no change for an account id outside that set; the backend must still enforce ownership from the token's sub.
+- The dashboard reads and changes the signed-in user's accounts and cash through the account and cash endpoints the Holdings and Trade Service serves; see [AccountStore](../../apps/client-ui/src/app/dashboard/accounts/account-store.service.ts) and [the models it expects](../../apps/client-ui/src/app/dashboard/accounts/account.models.ts). Cash belongs to the user, not to an account: it is availableFunds from GET /api/users/me, every account shares it, and deposits and withdrawals move it through /api/me/cash-transactions without naming an account. An account holds positions only, and its portfolio is exactly its holdings, so an account has one portfolio and a new account starts with none. Net worth is availableFunds plus the value of every account's holdings; the Portfolio Value card and assets table show the selected account's holdings. The UI reads accountId, name and openedDate from an account; symbol, quantity and averageCost from a holding, valued at the live price or at averageCost when there is none; and cashTransactionId, a positive amount, reason and createdAt from a cash transaction. The responses carry more fields than these, which the UI ignores. After every successful change the UI reloads the affected data rather than trusting the response body. It maps 400 to the backend's error string, 403 and 404 to an unavailable account, and 409 or 422 to a duplicate account name or, for withdrawals, insufficient funds. The UI lists only the accounts these endpoints return for the caller, requests holdings only for those, and sends no change for an account id outside that set; the backend must still enforce ownership from the token's sub.
 - After 3 rejected sign-ins in a row (401 from POST /auth/login), the login form locks for 10 minutes: it shows a lockout notice, disables submission with a countdown, and sends no further login requests until the time is up. Network errors and 5xx responses do not count. A successful sign-in or the lock running out resets the count. The count and lock are kept per browser in localStorage, shared between tabs and kept across a reload. This is enforced by the UI only and is separate from the auth service's own account lockout (5 failed attempts lock the account for 15 minutes; see [UsersService](../../apps/auth-service/src/users/users.service.ts)). See [LoginLockoutService](../../apps/client-ui/src/app/core/auth/login-lockout.service.ts).
 - While a session is stored, the UI signs the user out after 10 minutes without mouse, keyboard, scroll or touch input, using the same POST /auth/logout call, then shows the login page with `?reason=inactive`. The limit can be set to 5, 10, 15, 30 or 60 minutes in the dashboard's Settings dialog, opened from the profile menu, and is kept per browser. The last activity time is shared between tabs and survives a reload. This is enforced by the UI only; neither service tracks inactivity. See [SessionTimeoutService](../../apps/client-ui/src/app/core/auth/session-timeout.service.ts).
 

@@ -3,6 +3,7 @@ package app.auth;
 
 import app.user.UserNotFoundException;
 import app.account.AccountNotFoundException;
+import app.cash.InsufficientFundsException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -75,6 +76,31 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AccountNotFoundException.class)
     public ResponseEntity<Map<String, String>> handleAccountNotFound(AccountNotFoundException ex) {
         return error(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    /**
+     * Handles a withdrawal larger than the caller's available funds. The request
+     * is well formed, so this is 422 rather than 400: it is the account state
+     * that refuses it.
+     *
+     * @param ex the refusal
+     * @return 422 with the refusal message
+     */
+    @ExceptionHandler(InsufficientFundsException.class)
+    public ResponseEntity<Map<String, String>> handleInsufficientFunds(InsufficientFundsException ex) {
+        return error(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
+    }
+
+    /**
+     * Handles a request a controller rejected on its own, such as a cash movement
+     * with an unusable amount or reason.
+     *
+     * @param ex the rejection
+     * @return 400 with the rejection message
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException ex) {
+        return error(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
     /**

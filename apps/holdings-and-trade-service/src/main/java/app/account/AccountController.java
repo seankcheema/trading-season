@@ -79,7 +79,8 @@ public class AccountController {
         AuthenticatedUser caller = AuthenticatedUser.from(jwt);
         return accountService.getHoldingsForAccount(accountId, caller.userId())
                 .stream()
-                .map(HoldingResponse::from)
+                .map(priced -> HoldingResponse.from(
+                        priced.holding(), priced.instrument(), priced.averageCost()))
                 .toList();
     }
 
@@ -112,7 +113,7 @@ public class AccountController {
      * @throws AccountNotFoundException if the account does not exist
      * @throws app.auth.ForbiddenException if the account is owned by a different user
      */
-    @PutMapping("/accounts/{accountId}")
+    @PutMapping("/me/accounts/{accountId}")
     public AccountResponse updateAccount(
             @PathVariable Integer accountId,
             @RequestBody UpdateAccountNameRequest request,

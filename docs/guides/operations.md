@@ -75,7 +75,7 @@ docker compose --project-name trading-season-jenkins \
 
 Using the explicit `jenkins` service avoids starting the duplicate application services that remain in the optional Jenkins Compose example and would otherwise compete for the same host ports. To fit the shared 30 GB agent, Jenkins performs a depth-1 checkout and treats every run as a cold build. An unsuccessful or aborted build stops the local application stack before workspace deletion; a successful build preserves it. After stage-level report publication, final cleanup removes the build's Playwright image, all unused builder cache, Maven and npm caches, and the complete workspace. Named Docker volumes remain intact. Inspection and cleanup failures are protected so they do not replace the build's original result.
 
-Javadoc generation is a required Java change check described in [development](development.md#javadocs); the current Jenkinsfile does not run or publish it automatically. Generate and review both service outputs, then refresh the checked-in docs/JAVA_DOCS copy after successful verification.
+Javadoc generation is a required Java change check described in [development](development.md#javadocs); the current Jenkinsfile does not run or publish it automatically. Generate and review both service outputs, then refresh the affected service's subdirectory under docs/JAVA_DOCS after successful verification.
 
 ## Troubleshooting
 

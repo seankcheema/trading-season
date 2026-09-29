@@ -9,7 +9,7 @@ import {
   AccountHolding,
   CashTransaction,
   CashTransactionReason,
-  UserFunds,
+  UserProfile,
 } from './account.models';
 
 export type AccountLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -31,6 +31,7 @@ export class AccountStore {
   private readonly _accounts = signal<Account[]>([]);
   private readonly _holdings = signal(new Map<number, AccountHolding[]>());
   private readonly _cashBalance = signal(0);
+  private readonly _profile = signal<UserProfile | null>(null);
   private readonly _cashTransactions = signal<CashTransaction[]>([]);
   private readonly _selectedAccountId = signal<number | null>(null);
 
@@ -40,6 +41,17 @@ export class AccountStore {
   // Shared by every account.
   readonly cashBalance = this._cashBalance.asReadonly();
   readonly cashTransactions = this._cashTransactions.asReadonly();
+  readonly profile = this._profile.asReadonly();
+
+  // The signed-in user's first and last initial, for the profile button. Empty until the
+  // profile loads, and never a partial guess: one name alone gives one letter.
+  readonly initials = computed(() => {
+    const profile = this._profile();
+    if (!profile) {
+      return '';
+    }
+    return `${firstLetter(profile.firstName)}${firstLetter(profile.lastName)}`;
+  });
 
   readonly selectedAccount = computed(
     () =>
@@ -65,7 +77,7 @@ export class AccountStore {
     this.status.set('loading');
     forkJoin([
       this.fetchAccounts().pipe(switchMap((accounts) => this.fetchAllHoldings(accounts))),
-      this.fetchCash(),
+      this.fetchProfile(),
     ]).subscribe({
       next: () => {
         this.status.set('ready');
@@ -131,7 +143,7 @@ export class AccountStore {
         // Cash and the transaction list both change, so reload both rather than patching them
         // locally from the response.
         switchMap(() =>
-          this.afterChange(forkJoin([this.fetchCash(), this.fetchCashTransactions()]), undefined),
+          this.afterChange(forkJoin([this.fetchProfile(), this.fetchCashTransactions()]), undefined),
         ),
       );
   }
@@ -174,10 +186,14 @@ export class AccountStore {
       );
   }
 
-  private fetchCash(): Observable<UserFunds> {
-    return this._http
-      .get<UserFunds>(`${this._apiUrl}/users/me`)
-      .pipe(tap((profile) => this._cashBalance.set(Number(profile.availableFunds) || 0)));
+  // One request serves both the shared cash and who the user is.
+  private fetchProfile(): Observable<UserProfile> {
+    return this._http.get<UserProfile>(`${this._apiUrl}/users/me`).pipe(
+      tap((profile) => {
+        this._profile.set(profile);
+        this._cashBalance.set(Number(profile.availableFunds) || 0);
+      }),
+    );
   }
 
   private fetchCashTransactions(): Observable<CashTransaction[]> {
@@ -187,4 +203,8 @@ export class AccountStore {
       })
       .pipe(tap((transactions) => this._cashTransactions.set(transactions)));
   }
+}
+
+function firstLetter(name: string | null | undefined): string {
+  return (name ?? '').trim().charAt(0).toUpperCase();
 }

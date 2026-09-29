@@ -108,14 +108,14 @@ Both services use JPA to map to the same tables directly. This requires schema v
 
 ## Client UI integration
 
-The dev proxy (`apps/client-ui/proxy.conf.json`) forwards all `/api` requests to Order and Sell Service (port 8081) exclusively:
+The dev proxy (`apps/client-ui/proxy.conf.json`) forwards all `/api` requests to Holdings and Trade Service (port 8082) exclusively:
 
 - Auth Service (port 3001) is called directly for login/register/refresh
-- Holdings and Trade Service (port 8082) is not called from the UI in normal operation
+- Order and Sell Service (port 8081) is not called from the UI in normal operation; order submission is not wired yet
 
 ## Known limitations
 
-1. **Incomplete account data** – Holdings and Trade Service does not yet implement complete account query endpoints. See [Holdings and Trade Service documentation](services/holdings-and-trade-service.md) for current status.
+1. **No order history on the dashboard** – Holdings and Trade Service serves accounts, holdings and cash, but order reads live in Order and Sell Service and are not yet exposed per order or per account. The dashboard's recent activity therefore lists cash movements only, and order submission is not wired to a backend.
 
 2. **Market data duplication** – Both Order and Sell Service and Holdings and Trade Service contain market data endpoints. See [Order and Sell Service documentation](services/order-and-sell-service.md) for why.
 

@@ -42,6 +42,16 @@ public interface AccountRepository extends JpaRepository<Account, Integer> {
      * @return the account if it exists and belongs to this user, empty otherwise
      */
     Optional<Account> findByIdAndUserId(Integer accountId, UUID userId);
+
+    /**
+     * Finds the user's first account: the default one opened at sign-up unless it
+     * has since been closed. Cash belongs to the user and every account shares
+     * it, so this is the account a deposit or withdrawal is booked against.
+     *
+     * @param userId the owner's UUID
+     * @return the user's earliest account, or empty if they have none
+     */
+    Optional<Account> findFirstByUserIdOrderByOpenedDateAscIdAsc(UUID userId);
 }
 
 

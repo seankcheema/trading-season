@@ -30,8 +30,11 @@ export interface CashTransaction {
   createdAt: string;
 }
 
-// The part of GET /api/users/me the dashboard reads: the user's shared cash.
-export interface UserFunds {
+// The part of GET /api/users/me the dashboard reads: who the user is, and the cash
+// every one of their accounts shares.
+export interface UserProfile {
+  firstName: string;
+  lastName: string;
   availableFunds: number;
 }
 

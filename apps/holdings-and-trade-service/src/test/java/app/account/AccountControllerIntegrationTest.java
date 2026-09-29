@@ -284,7 +284,7 @@ class AccountControllerIntegrationTest {
         Account saved = accountRepository.save(account);
 
         Map<String, String> request = Map.of("name", "Renamed Account");
-        mockMvc.perform(put("/api/accounts/" + saved.getId())
+        mockMvc.perform(put("/api/me/accounts/" + saved.getId())
                 .with(tokenFor(userId, "user@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
@@ -310,7 +310,7 @@ class AccountControllerIntegrationTest {
         Account saved = accountRepository.save(account);
 
         Map<String, String> request = Map.of("name", "Hacked Name");
-        mockMvc.perform(put("/api/accounts/" + saved.getId())
+        mockMvc.perform(put("/api/me/accounts/" + saved.getId())
                 .with(tokenFor(otherId, "other@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
@@ -356,7 +356,7 @@ class AccountControllerIntegrationTest {
 
         // Bob cannot update Alice's account
         Map<String, String> request = Map.of("name", "Hacked");
-        mockMvc.perform(put("/api/accounts/" + aliceSaved.getId())
+        mockMvc.perform(put("/api/me/accounts/" + aliceSaved.getId())
                 .with(tokenFor(bobId, "bob@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))

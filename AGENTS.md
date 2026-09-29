@@ -53,5 +53,5 @@ Root Turborepo tasks do not cover the Java or auth services. Check manifests bef
 - Keep the checked-in Javadocs in docs/JAVA_DOCS. After a Java change, successfully regenerate both services:
   - `mvn -B -f apps/holdings-and-trade-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc`
   - `mvn -B -f apps/order-and-sell-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc`
-  - Review output in target/reports/apidocs, then refresh the complete checked-in copy in docs/JAVA_DOCS in the same change. Temporary target output remains ignored.
+  - Review output in target/reports/apidocs, then refresh that service's subdirectory under docs/JAVA_DOCS (docs/JAVA_DOCS/holdings-and-trade-service and docs/JAVA_DOCS/order-and-sell-service) in the same change. Temporary target output remains ignored.
 - Check relative documentation links and anchors, scan Markdown for emojis, and run git diff --check.

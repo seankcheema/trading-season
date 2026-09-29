@@ -135,8 +135,7 @@
           triggerClass="bg-primary/15 text-primary hover:bg-primary/25 size-9 justify-center rounded-full text-xs font-semibold"
           panelClass="w-48 p-1"
         >
-          <!-- TODO: replace with the signed-in user's avatar -->
-          <span dropdownTrigger>SC</span>
+          <span dropdownTrigger data-testid="profile-initials">{{ profileInitials() }}</span>
 
           <div role="menu" aria-label="Profile">
             <button
@@ -238,54 +237,33 @@
                 class="border-border/60 flex items-center justify-between gap-4 border-b py-2.5 text-sm last:border-b-0"
                 [attr.data-kind]="transaction.kind"
               >
-                @if (transaction.kind === 'cash') {
-                  <span class="min-w-0">
-                    <span class="font-medium">Cash</span>
-                    <span
-                      class="ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
-                      [class]="
-                        transaction.reason === 'DEPOSIT'
-                          ? 'bg-gain/15 text-gain'
-                          : 'bg-loss/15 text-loss'
-                      "
-                    >
-                      {{ transaction.reason === 'DEPOSIT' ? 'deposit' : 'withdrawal' }}
-                    </span>
-                    <span class="text-muted-foreground block text-xs">
-                      {{ transaction.date | date: 'MMM d' }}
-                    </span>
+                <span class="min-w-0">
+                  <span class="font-medium">Cash</span>
+                  <span
+                    class="ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
+                    [class]="
+                      transaction.reason === 'DEPOSIT'
+                        ? 'bg-gain/15 text-gain'
+                        : 'bg-loss/15 text-loss'
+                    "
+                  >
+                    {{ transaction.reason === 'DEPOSIT' ? 'deposit' : 'withdrawal' }}
                   </span>
-                  <span class="shrink-0 text-right tabular-nums">
-                    <span class="block">
-                      {{ transaction.reason === 'DEPOSIT' ? '+' : '-'
-                      }}{{ transaction.value | currency: 'USD' }}
-                    </span>
-                    <span class="text-muted-foreground block text-xs">Cash transfer</span>
+                  <span class="text-muted-foreground block text-xs">
+                    {{ transaction.date | date: 'MMM d' }}
                   </span>
-                } @else {
-                  <span class="min-w-0">
-                    <span class="font-medium">{{ transaction.symbol }}</span>
-                    <span
-                      class="ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
-                      [class]="
-                        transaction.side === 'buy'
-                          ? 'bg-primary/15 text-primary'
-                          : 'bg-loss/15 text-loss'
-                      "
-                    >
-                      {{ transaction.side }}
-                    </span>
-                    <span class="text-muted-foreground block text-xs">
-                      {{ transaction.date | date: 'MMM d' }}
-                    </span>
+                </span>
+                <span class="shrink-0 text-right tabular-nums">
+                  <span class="block">
+                    {{ transaction.reason === 'DEPOSIT' ? '+' : '-'
+                    }}{{ transaction.value | currency: 'USD' }}
                   </span>
-                  <span class="shrink-0 text-right tabular-nums">
-                    <span class="block">{{ transaction.value | currency: 'USD' }}</span>
-                    <span class="text-muted-foreground block text-xs">
-                      {{ transaction.shares }} &#64; {{ transaction.price | currency: 'USD' }}
-                    </span>
-                  </span>
-                }
+                  <span class="text-muted-foreground block text-xs">Cash transfer</span>
+                </span>
+              </li>
+            } @empty {
+              <li class="text-muted-foreground px-2 py-6 text-center text-sm">
+                No transactions yet. Deposit funds to get started.
               </li>
             }
           </ul>

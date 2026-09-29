@@ -1,8 +1,8 @@
 # Code coverage
 
-Generated coverage reports for the four tested services, captured from a full local run on 2026-09-28. Each service keeps its own tooling and its own report format; this directory holds the generated output so the reports can be read without rerunning the suites. Open [index.html](index.html) for a single page of links into all four reports. The reporting placeholders contain no application code and have no coverage.
+Generated coverage reports for the four tested services, captured from a full local run on 2026-09-29. Each service keeps its own tooling and its own report format; this directory holds the generated output so the reports can be read without rerunning the suites. Open [index.html](index.html) for a single page of links into all four reports. The reporting placeholders contain no application code and have no coverage.
 
-Every service enforces a 70 percent floor in its own test command rather than reporting a number for a human to check. The Java services apply it to every package on every JaCoCo counter; the UI and auth service apply it to the whole run on each counter. A suite that falls below the floor fails, so a report in this directory describes a run that already passed its gate. The mechanisms are listed under [coverage floors](../guides/development.md#coverage-floors).
+Each service enforces its floor in its own test command rather than reporting a number for a human to check. Holdings and Trade is held to 85 percent; the other three are held to 70 percent. The Java services apply the floor to every package on every JaCoCo counter; the UI and auth service apply it to the whole run on each counter. A suite that falls below its floor fails, so a report in this directory describes a run that already passed its gate. The mechanisms are listed under [coverage floors](../guides/development.md#coverage-floors).
 
 ## Reports
 
@@ -21,29 +21,29 @@ Counters differ by tool. JaCoCo measures bytecode instructions and branches; the
 
 | Service | Tests | Statements / Instructions | Branches | Functions / Methods | Lines |
 | --- | --- | --- | --- | --- | --- |
-| Client UI | 244 in 20 files | 94.87 percent (2405/2535) | 89.98 percent (818/909) | 91.90 percent (443/482) | 95.45 percent (1951/2044) |
-| Holdings and Trade | 101 | 96.34 percent (3028/3143) | 94.44 percent (119/126) | 92.89 percent (196/211) | 94.46 percent (546/578) |
+| Client UI | 251 in 20 files | 94.84 percent (2394/2524) | 90.09 percent (819/909) | 91.92 percent (444/483) | 95.43 percent (1946/2039) |
+| Holdings and Trade | 291 | 98.09 percent (3862/3937) | 95.73 percent (157/164) | 97.62 percent (287/294) | 97.70 percent (766/784) |
 | Order and Sell | 152 | 97.36 percent (4162/4275) | 95.78 percent (159/166) | 95.27 percent (322/338) | 96.83 percent (885/914) |
 | Auth service | 109 in 11 files | 99.05 percent (209/211) | 92.85 percent (78/84) | 96.07 percent (49/51) | 99.52 percent (208/209) |
 
-Every folder and package is at or above 70 percent on every counter. The weakest in each service:
+Every folder and package is at or above its service's floor on every counter. The weakest in each service:
 
 | Service | Weakest folder or package | Lowest counter |
 | --- | --- | --- |
-| Client UI | `app/dashboard` | branches, 82.4 percent |
-| Holdings and Trade | `app.user` | complexity and methods, 77.3 percent |
+| Client UI | `app/dashboard` | branches, 82.0 percent |
+| Holdings and Trade | `app.auth` | methods, 92.9 percent |
 | Order and Sell | `app.user` | complexity and methods, 86.4 percent |
-| Auth service | `auth/strategies` | branches, 75.0 percent |
+| Auth service | `refresh-tokens` | functions, 77.8 percent |
 
 All four suites passed and all coverage checks were met.
 
 ## Analysis
 
-The Java services share their `account`, `holding`, `auth`, `user`, and `market` packages file for file, and the tests for those packages are shared in the same way. `MarketDataRepository`, previously the largest uncovered class, now runs its SQL against H2 in PostgreSQL mode and its Parquet path against a partition written by DuckDB during the test. The Order and Sell order path is covered end to end: unit tests reach every execution-time recheck in `OrderExecutionService`, and endpoint tests submit a buy and a sell through `POST /api/orders` and check the fills, cash transactions, holding movements, and audit trail left behind, then read the caller's own orders back through `GET /api/orders`. The remaining misses are unused entity accessors, `MarketModels.Day`, a record nothing constructs, and the `IllegalStateException` suppliers guarding states the validated order path cannot reach.
+The Java services share their `auth`, `user` and `market` packages file for file, and the tests for those packages are shared in the same way. Their `account` and `holding` packages have diverged: Holdings and Trade owns the account, holdings and cash endpoints, so it adds controllers, a service, a `cash` package, and the `Fill` and `HoldingMovement` rows a position's cost basis is derived from. `MarketDataRepository`, previously the largest uncovered class, now runs its SQL against H2 in PostgreSQL mode and its Parquet path against a partition written by DuckDB during the test. The Order and Sell order path is covered end to end: unit tests reach every execution-time recheck in `OrderExecutionService`, and endpoint tests submit a buy and a sell through `POST /api/orders` and check the fills, cash transactions, holding movements, and audit trail left behind, then read the caller's own orders back through `GET /api/orders`. The remaining misses are unused entity accessors, `MarketModels.Day`, a record nothing constructs, and the `IllegalStateException` suppliers guarding states the validated order path cannot reach.
 
 In the client UI, template event handlers were the main function-counter gap; the login, registration, and order submission tests now drive them through the rendered DOM. The remaining branch gaps sit mostly in `token-storage.service.ts`, where browser storage is unavailable, and in the dashboard component.
 
-`app.user` is the weakest package in both Java services because its entities carry accessors nothing calls: the columns V006 removed took six of them with it, and the read-only `UserAccount` view adds getters the services do not all use. Holdings and Trade scores lower than Order and Sell on the same files because it has no order path exercising them.
+`app.user` remains the weakest package in Order and Sell because its entities carry accessors nothing calls: the columns V006 removed took six of them with it, and the read-only `UserAccount` view adds getters the services do not all use. In Holdings and Trade the same package is now well covered, because the cash endpoints read and write `availableFunds` through it; what remains weakest there is `app.auth`, whose `SecurityConfig` and error-handler wiring is exercised through the filter chain rather than called directly.
 
 In the auth service, the key service, local Passport strategy, and every controller route are now tested. What remains is almost entirely the metadata branches TypeScript emits for decorated constructor parameters and entity column types, which no test can reach.
 
