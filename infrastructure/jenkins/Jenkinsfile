@@ -99,21 +99,15 @@ pipeline {
             steps {
                 sh '''
                     set -eu
-                    echo " Installing root workspace dependencies..."
-                    if command -v node > /dev/null; then
-                        node --version
-                        npm --version
-                        # Use npm install if package-lock.json doesn't exist
-                        if [ -f package-lock.json ]; then
-                            npm ci
-                        else
-                            npm install
-                        fi
-                        npm --prefix apps/auth-service ci
-                        echo "✓ Root workspace dependencies installed"
-                    else
-                        echo "  Node.js not available, skipping npm setup"
-                    fi
+                    # No toolchain guard and no npm install fallback. Verify
+                    # Toolchain has already failed the build if Node or npm is
+                    # missing or unsupported, and both lockfiles are committed:
+                    # a missing one is a broken checkout, not a reason to resolve
+                    # fresh versions that no other stage would be testing.
+                    echo "Installing root workspace dependencies..."
+                    npm ci
+                    npm --prefix apps/auth-service ci
+                    echo "✓ Root workspace dependencies installed"
                 '''
                 // Maven dependencies are not pre-resolved here. Each service's
                 // `mvn clean test` resolves exactly what it needs; a separate
@@ -171,15 +165,23 @@ pipeline {
 
         stage('Synthetic Market Data Integration') {
             steps {
+                script {
+                    // Multibranch BUILD_TAG values can contain encoded branch
+                    // separators such as %2F, which Docker rejects in named
+                    // volumes. Hash the complete tag to retain build isolation
+                    // while keeping every Docker resource name portable.
+                    // Derived once and reused by the cleanup in `post`: two
+                    // copies of this expression can drift apart, and cleanup
+                    // that computes a different name silently leaks the
+                    // containers, volumes, and network it was meant to remove.
+                    env.MARKET_TEST_TAG = 'trading-season-market-' + sh(
+                        script: 'printf %s "$BUILD_TAG" | sha256sum | cut -c1-16',
+                        returnStdout: true
+                    ).trim()
+                }
                 sh '''
                     set -eu
-                    command -v docker >/dev/null
-                    # Multibranch BUILD_TAG values can contain encoded branch
-                    # separators such as %2F, which Docker rejects in named
-                    # volumes. Hash the complete tag to retain build isolation
-                    # while keeping every Docker resource name portable.
-                    BUILD_TAG_HASH="$(printf '%s' "$BUILD_TAG" | sha256sum | cut -c1-16)"
-                    TEST_TAG="trading-season-market-${BUILD_TAG_HASH}"
+                    TEST_TAG="$MARKET_TEST_TAG"
                     DB_CONTAINER="${TEST_TAG}-db"
                     TEST_NETWORK="${TEST_TAG}-network"
                     DB_VOLUME="${TEST_TAG}-db-data"
@@ -215,8 +217,7 @@ pipeline {
                     archiveArtifacts artifacts: 'reports/market-data/**/*', allowEmptyArchive: true
                     junit testResults: 'reports/market-data/junit.xml', allowEmptyResults: true
                     sh '''
-                        BUILD_TAG_HASH="$(printf '%s' "$BUILD_TAG" | sha256sum | cut -c1-16)"
-                        TEST_TAG="trading-season-market-${BUILD_TAG_HASH}"
+                        TEST_TAG="$MARKET_TEST_TAG"
                         docker rm -f "${TEST_TAG}-db" 2>/dev/null || true
                         docker volume rm "${TEST_TAG}-db-data" "${TEST_TAG}-archive" 2>/dev/null || true
                         docker network rm "${TEST_TAG}-network" 2>/dev/null || true
@@ -244,9 +245,7 @@ pipeline {
                     dir('apps/auth-service') {
                         sh '''
                             set -eu
-                            echo " Running Auth Service Tests (Vitest)..."
-                            node --version
-                            npm --version
+                            echo "Running Auth Service Tests (Vitest)..."
                             npm run test:ci
                             echo "✓ Auth service tests completed"
                         '''
@@ -321,7 +320,6 @@ pipeline {
                             # only guaranteed to match the Playwright version that
                             # installed them. The image is built once per version and
                             # reused while the agent has room for it.
-                            command -v docker >/dev/null
                             PW_VERSION="$(node -p "require('@playwright/test/package.json').version")"
                             PW_IMAGE="trading-season-playwright:${PW_VERSION}"
                             if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
