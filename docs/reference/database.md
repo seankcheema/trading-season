@@ -2,7 +2,7 @@
 
 ## One database, two owners
 
-All three services share the `trading_season` database. The auth service owns `user_accounts` and `refresh_tokens` and writes nothing else; the Java services own every other table and never write those two. No column has more than one writer.
+The Java business backend and NestJS auth service have separate PostgreSQL databases and user models. The only value shared between them is the user's UUID: auth_db users.id equals trading_season users.user_id, and it reaches the Java backend as the access token's sub claim. Credentials, lockout, refresh sessions and password reset links exist only in auth_db.
 
 An account and its profile are separate rows joined by the same UUID, which is also the access token's `sub` claim: `user_accounts.user_id` equals `users.user_id`, and a foreign key from `users` prevents a profile existing without credentials behind it.
 
@@ -364,11 +364,31 @@ There is no Flyway runner in the Java backend; these files are applied manually.
 
 ## Auth tables
 
-The auth service has no migrations of its own. Its tables are created by V005 alongside the business schema, and its [runtime configuration](../../apps/auth-service/src/config/database.config.ts) runs with an empty migration list and synchronize disabled: it reads and writes tables it never creates. Two migration tools pointed at one database is how half a schema gets dropped.
+[Runtime configuration](../../apps/auth-service/src/config/database.config.ts) and the [CLI data source](../../apps/auth-service/src/database/data-source.ts) must retain matching entity and migration lists. The initial schema creates auth users and refresh-token storage; a later migration added a required username and TrimUserToBrsMinimum removed it along with first and last name, so email is the only login identifier. PasswordResetTokens adds the password_reset_tokens table.
+
+| Migration | Adds |
+| --- | --- |
+| PasswordResetTokens1790686840697 | password_reset_tokens |
 
 The service therefore assumes the migrations have already been applied. If they have not, its queries fail against missing columns, which is louder than quietly building a second schema alongside the first.
 
 Email is the only login identifier, unique without regard to case through `user_accounts_email_lower_key`. Refresh tokens are stored as SHA-256 hashes with expiry, revocation and rotation metadata; the raw value is returned to the client once and never persisted. See the [auth README](../../apps/auth-service/README.md) for connection and key setup.
+
+### password_reset_tokens
+
+One row per reset link the service has emailed. The raw token exists only in the user's mailbox; the table holds its SHA-256 hash, so a leak of auth_db does not allow an account takeover.
+
+| Column | Type | Meaning |
+| --- | --- | --- |
+| id | UUID | Primary key |
+| user_id | UUID | References users(id), ON DELETE CASCADE |
+| token_hash | TEXT | SHA-256 hex of the emailed token, UNIQUE |
+| created_at | TIMESTAMPTZ | When the link was issued |
+| expires_at | TIMESTAMPTZ | 30 minutes after issue |
+| used_at | TIMESTAMPTZ | Set by the reset that consumed the link, so it works once |
+| revoked_at | TIMESTAMPTZ | Set when the link never will be used: superseded by a newer request, or the password changed another way |
+
+used_at and revoked_at are separate states on purpose: one records the link that changed a password, the other a link that cannot. Collapsing them would make "which link was used" unanswerable. Rows are kept rather than deleted for the same reason. A completed reset also clears users.failed_attempts and users.locked_until and revokes every row in refresh_tokens for that user; see [the reset flow](api.md#password-reset-flow).
 
 ## Change rules
 

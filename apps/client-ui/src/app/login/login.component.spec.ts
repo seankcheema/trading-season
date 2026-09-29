@@ -247,4 +247,35 @@ describe('LoginComponent', () => {
       expect(renderWithQuery({})).toBeNull();
     });
   });
+
+  it('offers a way to reach the password reset page', () => {
+    const fixture = TestBed.createComponent(LoginComponent);
+    fixture.detectChanges();
+
+    const link = fixture.nativeElement.querySelector('a[href="/forgot-password"]') as HTMLAnchorElement;
+    expect(link).toBeTruthy();
+    expect(link.textContent).toContain('Forgot password?');
+  });
+
+  it('confirms a completed password reset instead of the inactivity notice', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [LoginComponent],
+      providers: [
+        provideRouter([]),
+        { provide: AuthService, useValue: authService },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { queryParamMap: convertToParamMap({ reason: 'password-reset' }) } },
+        },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(LoginComponent);
+    fixture.detectChanges();
+
+    const status = fixture.nativeElement.querySelector('[role="status"]') as HTMLElement;
+    expect(status.textContent).toContain('Your password has been reset');
+    expect(fixture.nativeElement.textContent).not.toContain('period of inactivity');
+  });
 });

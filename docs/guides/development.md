@@ -51,6 +51,14 @@ Compose validates JWT variables even when selecting database services, so provid
 
 3. Initialize the business database only if you need the Java APIs, following the [database guide](../reference/database.md). Auth migrations run on auth-service startup.
 
+To exercise the password reset flow, start Mailpit as well and read the emailed link at http://localhost:8025:
+
+```sh
+docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml up -d mailpit
+```
+
+Without it the request still succeeds, because the route answers the same way in every case, and the send failure appears only in the auth service log. See [outbound email](operations.md#outbound-email).
+
 4. Start each application in its own terminal:
 
 | Working directory | Command | Port | Purpose |
@@ -101,7 +109,7 @@ npm --workspace business-logic-ui run e2e
 
 Playwright builds the application and serves it on port 4200 through the Angular SSR server, reusing a server already on that port when one is running. It runs against the production build rather than `ng serve` because the dev server dies part way through a parallel run on Windows, which fails the remaining tests with a connection error.
 
-The auth service and Java backend are replaced at the network boundary by a stand-in that reproduces their status codes and bodies, so the suite needs no database, no Docker, and no running service, and no `/api` proxy. What is exercised is the real Angular application: router, guards, reactive forms, HTTP interceptor and token storage. Keep the stand-in aligned with the [API reference](../reference/api.md) whenever an auth or registration contract changes.
+The auth service and Java backend are replaced at the network boundary by a stand-in that reproduces their status codes and bodies, so the suite needs no database, no Docker, no running service, no mail server, and no `/api` proxy. What is exercised is the real Angular application: router, guards, reactive forms, HTTP interceptor and token storage. For password reset the stand-in records the link it would have emailed, and the test reads it from there instead of from a mailbox. Keep the stand-in aligned with the [API reference](../reference/api.md) whenever an auth or registration contract changes.
 
 The suite passes `NG_ALLOWED_HOSTS=localhost` to the server. The build's `security.allowedHosts` is deliberately empty, and the SSR server rejects every request without a runtime allowlist; naming the host the suite serves on is preferable to relaxing the build setting.
 
