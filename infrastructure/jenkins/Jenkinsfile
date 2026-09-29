@@ -397,22 +397,34 @@ pipeline {
                     set -eu
                     COMPOSE_FILE="infrastructure/docker-compose/docker-compose.local.yml"
                     PROJECT_NAME="trading-season-local"
+                    # The local stack requires JWT_PRIVATE_KEY and JWT_PUBLIC_KEY
+                    # with no default, and the .env that normally holds them is
+                    # gitignored, so a fresh checkout has nothing to interpolate
+                    # and compose exits before building anything. Mint a keypair
+                    # for this build alone, for the same reason the auth specs do:
+                    # a key committed or injected for CI is a key that eventually
+                    # reaches a deployment. The workspace is deleted in `post`.
+                    COMPOSE_ENV_FILE="infrastructure/docker-compose/.env"
+                    node apps/auth-service/scripts/generate-dev-keys.mjs > "$COMPOSE_ENV_FILE"
 
                     echo "Building and starting the local application stack..."
                     sh infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
+                        --env-file "$COMPOSE_ENV_FILE" \
                         -f "$COMPOSE_FILE" \
                         up -d --build
 
                     echo "Local application services after startup:"
                     sh infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
+                        --env-file "$COMPOSE_ENV_FILE" \
                         -f "$COMPOSE_FILE" \
                         ps
 
                     EXPECTED_SERVICES="auth-service client-ui db holdings-and-trade-service mailpit order-and-sell-service reporting-service reporting-ui"
                     RUNNING_SERVICES="$(sh infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
+                        --env-file "$COMPOSE_ENV_FILE" \
                         -f "$COMPOSE_FILE" \
                         ps --services --filter status=running | sort | tr '\n' ' ' | sed 's/ $//')"
                     if [ "$RUNNING_SERVICES" != "$EXPECTED_SERVICES" ]; then
@@ -420,6 +432,7 @@ pipeline {
                         echo "Actual running services:   $RUNNING_SERVICES" >&2
                         sh infrastructure/docker/run-compose.sh \
                             --project-name "$PROJECT_NAME" \
+                            --env-file "$COMPOSE_ENV_FILE" \
                             -f "$COMPOSE_FILE" \
                             logs --no-color --tail 100
                         exit 1
@@ -433,6 +446,7 @@ pipeline {
                         while [ "$attempt" -le 30 ]; do
                             if sh infrastructure/docker/run-compose.sh \
                                 --project-name "$PROJECT_NAME" \
+                                --env-file "$COMPOSE_ENV_FILE" \
                                 -f "$COMPOSE_FILE" \
                                 exec -T "$service" wget -qO- "http://127.0.0.1:8080${path}" | grep -F "$expected" >/dev/null; then
                                 return 0
@@ -475,8 +489,19 @@ pipeline {
                 } else {
                     def composeCleanupStatus = sh(
                         script: '''
+                            set -eu
+                            # `down` finds the stack by project name, so these
+                            # values are never used -- they only have to resolve,
+                            # because the required variables have no default. The
+                            # stage can fail before writing the file, so mint a
+                            # throwaway keypair when it is missing.
+                            COMPOSE_ENV_FILE="infrastructure/docker-compose/.env"
+                            if [ ! -f "$COMPOSE_ENV_FILE" ]; then
+                                node apps/auth-service/scripts/generate-dev-keys.mjs > "$COMPOSE_ENV_FILE"
+                            fi
                             sh infrastructure/docker/run-compose.sh \
                                 --project-name trading-season-local \
+                                --env-file "$COMPOSE_ENV_FILE" \
                                 -f infrastructure/docker-compose/docker-compose.local.yml \
                                 down
                         ''',
