@@ -33,9 +33,9 @@ Spring Boot microservice responsible for managing all trading operations, order 
 1. Create the trading_season database and apply migrations (V001 through V004):
    ```powershell
    # From repository root
-   py -3 -m venv apps/business-backend/db/.venv
-   apps/business-backend/db/.venv/Scripts/python.exe -m pip install --upgrade pip
-   apps/business-backend/db/.venv/Scripts/python.exe -m pip install -r apps/business-backend/db/scripts/requirements.txt
+   py -3 -m venv apps/market-data/db/.venv
+   apps/market-data/db/.venv/Scripts/python.exe -m pip install --upgrade pip
+   apps/market-data/db/.venv/Scripts/python.exe -m pip install -r apps/market-data/db/scripts/requirements.txt
    ```
 
 2. Run migrations:
@@ -74,6 +74,9 @@ Environment variables override defaults in [application.properties](src/main/res
 | `AUTH_JWK_SET_URI` | `http://localhost:3001/.well-known/jwks.json` | Auth service JWKS endpoint |
 | `AUTH_JWT_ISSUER` | `https://auth.dualeapa.local` | Required JWT issuer claim |
 | `CORS_ORIGINS` | `http://localhost:4200` | Allowed browser origins (comma-separated) |
+| `MARKET_REPLAY_ARCHIVE_LOCATION` | empty | Optional absolute Parquet archive root override |
+
+Parquet-backed simulation sessions first use `MARKET_REPLAY_ARCHIVE_LOCATION`, then the archive location recorded during import, and finally discover the matching archive under the repository's `apps/market-data/db/seeds` directory. This discovery keeps an existing database usable after the repository moves. Missing raw tick partitions return an unavailable market-data error rather than falling back to one-minute candles.
 
 ## API Endpoints
 

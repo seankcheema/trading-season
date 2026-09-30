@@ -105,6 +105,23 @@ class MarketReplayServiceTest {
     }
 
     @Test
+    void consecutiveAdvancesMoveOneSimulatedSecondAtATime() {
+        when(repository.ticksForDay(session, LocalDate.of(2026, 1, 5))).thenReturn(List.of(
+                frame(0, "100.000000", 1), frame(1, "101.000000", 2), frame(2, "102.000000", 3)));
+        service = new MarketReplayService(repository, Clock.fixed(open, ZoneOffset.UTC), "", 3, 200);
+
+        service.snapshot(null);
+        service.advance();
+        var first = service.snapshot(null);
+        service.advance();
+        var second = service.snapshot(null);
+
+        assertEquals(open.plusSeconds(1), first.marketTimestamp());
+        assertEquals(open.plusSeconds(2), second.marketTimestamp());
+        assertEquals(new BigDecimal("102.000000"), second.stocks().getFirst().price());
+    }
+
+    @Test
     void settingClockMovesReplayToClosestTickAtOrBeforeRequestedTime() {
         var snapshot = service.setClock(null, open.plusMillis(1500));
 

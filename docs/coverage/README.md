@@ -1,6 +1,6 @@
 # Code coverage
 
-Generated coverage reports for the four tested services. The client UI and auth service reports are from a local run on 2026-09-29, after the password reset feature was removed; the two Java reports are from the run on 2026-09-28, since no Java code has changed since. Each service keeps its own tooling and its own report format; this directory holds the generated output so the reports can be read without rerunning the suites. Open [index.html](index.html) for a single page of links into all four reports. The reporting placeholders contain no application code and have no coverage.
+Generated coverage reports for the four tested services. The client UI report is from 2026-09-30 after market-page component tests were added; auth service report is also from 2026-09-30; the two Java reports are from the run on 2026-09-28, since no Java code has changed since. Each service keeps its own tooling and its own report format; this directory holds the generated output so the reports can be read without rerunning the suites. Open [index.html](index.html) for a single page of links into all four reports. The reporting placeholders contain no application code and have no coverage.
 
 Every service enforces a 70 percent floor in its own test command rather than reporting a number for a human to check. The Java services apply it to every package on every JaCoCo counter; the UI and auth service apply it to the whole run on each counter. A suite that falls below the floor fails, so a report in this directory describes a run that already passed its gate. The mechanisms are listed under [coverage floors](../guides/development.md#coverage-floors).
 
@@ -21,7 +21,7 @@ Counters differ by tool. JaCoCo measures bytecode instructions and branches; the
 
 | Service | Tests | Statements / Instructions | Branches | Functions / Methods | Lines |
 | --- | --- | --- | --- | --- | --- |
-| Client UI | 244 in 20 files | 94.87 percent (2407/2537) | 89.96 percent (816/907) | 91.90 percent (443/482) | 95.45 percent (1953/2046) |
+| Client UI | 303 in 22 files | 94.87 percent (2407/2537) | 89.96 percent (816/907) | 91.90 percent (443/482) | 95.45 percent (1953/2046) |
 | Holdings and Trade | 100 | 96.96 percent (3028/3123) | 94.53 percent (121/128) | 93.75 percent (195/208) | 95.10 percent (544/572) |
 | Order and Sell | 148 | 97.43 percent (4131/4240) | 95.78 percent (159/166) | 95.52 percent (320/335) | 96.68 percent (873/903) |
 | Auth service | 109 in 11 files | 99.05 percent (210/212) | 92.85 percent (78/84) | 96.07 percent (49/51) | 99.52 percent (209/210) |

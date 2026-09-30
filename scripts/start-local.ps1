@@ -147,7 +147,10 @@ try {
         -ArgumentList @('run', 'start:dev') -WorkingDirectory $authDirectory
 
     $oldBusinessPassword = $env:SPRING_DATASOURCE_PASSWORD
+    $oldBusinessUrl = $env:SPRING_DATASOURCE_URL
     $env:SPRING_DATASOURCE_PASSWORD = $businessPassword
+    # Ensure Java services connect to trading_season database
+    $env:SPRING_DATASOURCE_URL = "jdbc:postgresql://${dbHost}:${parsedDbPort}/trading_season"
     try {
         $processes += Start-LocalService -Name 'holdings-and-trade' -FilePath $maven `
             -ArgumentList @('spring-boot:run') -WorkingDirectory $holdingsDirectory
@@ -157,6 +160,7 @@ try {
     }
     finally {
         $env:SPRING_DATASOURCE_PASSWORD = $oldBusinessPassword
+        $env:SPRING_DATASOURCE_URL = $oldBusinessUrl
     }
 
     $processes += Start-LocalService -Name 'ui' -FilePath $npm `
