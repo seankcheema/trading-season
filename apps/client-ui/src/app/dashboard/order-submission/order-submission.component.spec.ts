@@ -2,9 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { OrderSubmissionComponent } from './order-submission.component';
 import { Instrument } from '../mock-data';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter } from '@angular/router';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideRouter } from '@angular/router';
 
 const INSTRUMENT: Instrument = {
   symbol: 'AAPL',
