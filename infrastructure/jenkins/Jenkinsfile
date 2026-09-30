@@ -550,6 +550,7 @@ pipeline {
                     fi
                     docker builder prune -af 2>/dev/null
                     rm -rf ~/.m2/repository ~/.npm
+                    exit 0
                 ''', returnStatus: true)
                 if (cacheCleanupStatus != 0) {
                     echo "Dependency-cache cleanup failed with status ${cacheCleanupStatus}; preserving the original build result."
