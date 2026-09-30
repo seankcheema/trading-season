@@ -1,8 +1,8 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { User } from '../users/user.entity.js';
 import { RefreshToken } from '../refresh-tokens/refresh-token.entity.js';
-import { PasswordResetToken } from '../password-reset/password-reset-token.entity.js';
 import { PasswordResetTokens1790686840697 } from '../database/migrations/1790686840697-PasswordResetTokens.js';
+import { DropPasswordResetTokens1790690440697 } from '../database/migrations/1790690440697-DropPasswordResetTokens.js';
 
 /**
  * Connection to the shared business database.
@@ -37,8 +37,13 @@ export const databaseConfig: TypeOrmModuleOptions = {
   // Migration classes are listed explicitly rather than matched by a glob.
   // Globs resolve against compiled output, which differs between `nest start`
   // and `node dist/main.js` under ESM; an explicit list cannot drift.
+  // The reset-token table is created and then dropped by the two migrations
+  // below. The creating migration stays listed because it has already run on
+  // deployed databases; removing it would leave those rows of migration history
+  // pointing at a class TypeORM can no longer find.
   migrations: [
     PasswordResetTokens1790686840697,
+    DropPasswordResetTokens1790690440697,
   ],
   migrationsRun: true,
 

@@ -26,13 +26,6 @@ export interface RecordedResponse {
   body: string;
 }
 
-/** One password reset email the auth service "sent", as Mailpit would show it. */
-export interface SentResetEmail {
-  to: string;
-  /** The token from the link in the email body, which is what the client submits. */
-  token: string;
-}
-
 /** A position the business backend already holds in a seeded trading account. */
 export interface SeedHolding {
   symbol: string;
@@ -79,13 +72,6 @@ interface OwnedTradingAccount extends TradingAccount {
   holdings: SeedHolding[];
 }
 
-interface StoredResetToken {
-  token: string;
-  email: string;
-  usedAt: number | null;
-  expiresAt: number;
-}
-
 interface StoredAccount {
   id: string;
   email: string;
@@ -110,12 +96,6 @@ export interface StubOptions {
   failProfileWith?: number;
   /** Forces POST /api/me/accounts to fail with this status. */
   failAccountCreationWith?: number;
-  /**
-   * Overrides the reset link lifetime. A value of zero expires the link
-   * immediately, which is how a test reaches the expired-link path without
-   * waiting out the real 30 minutes.
-   */
-  resetLinkTtlSeconds?: number;
 }
 
 const ACCOUNT_PATH = /\/api\/me\/accounts\/(\d+)$/;
@@ -123,9 +103,6 @@ const HOLDINGS_PATH = /\/api\/accounts\/(\d+)\/holdings$/;
 const NAME_MAX_LENGTH = 60;
 const MAX_CASH_AMOUNT = 1_000_000;
 const DEFAULT_FUNDS = 5000;
-
-/** Reset link lifetime in seconds, matching PASSWORD_RESET_TOKEN_TTL_MS in the auth service. */
-const RESET_LINK_TTL = 30 * 60;
 
 function base64url(value: string): string {
   return Buffer.from(value, 'utf8').toString('base64url');
@@ -183,17 +160,12 @@ export function decodeJwtPayload(token: string): Record<string, unknown> {
 export class ApiStub {
   readonly requests: RecordedRequest[] = [];
 
-  /** Every reset email the stub has "sent", oldest first: the test's Mailpit inbox. */
-  readonly resetEmails: SentResetEmail[] = [];
-
   private readonly accounts = new Map<string, StoredAccount>();
   private readonly refreshTokens = new Map<string, string>();
-  private readonly resetTokens = new Map<string, StoredResetToken>();
   private readonly pendingResponses: Promise<RecordedResponse>[] = [];
   private readonly accessTokenTtl: number;
   private readonly failProfileWith: number | null;
   private readonly failAccountCreationWith: number | null;
-  private readonly resetLinkTtl: number;
 
   // Business backend trading data. Account ids are sequential across users, as database keys
   // are, so a test can aim a request at another user's id. Cash lives on each user's profile
@@ -206,7 +178,6 @@ export class ApiStub {
     this.accessTokenTtl = options.accessTokenTtlSeconds ?? ACCESS_TOKEN_TTL;
     this.failProfileWith = options.failProfileWith ?? null;
     this.failAccountCreationWith = options.failAccountCreationWith ?? null;
-    this.resetLinkTtl = options.resetLinkTtlSeconds ?? RESET_LINK_TTL;
     for (const seed of options.accounts ?? []) {
       const account: StoredAccount = {
         id: randomUUID(),
@@ -254,10 +225,6 @@ export class ApiStub {
     await page.route(AUTH_ORIGIN + '/auth/login', (route) => this.login(route));
     await page.route(AUTH_ORIGIN + '/auth/refresh', (route) => this.refresh(route));
     await page.route(AUTH_ORIGIN + '/auth/logout', (route) => this.logout(route));
-    await page.route(AUTH_ORIGIN + '/auth/forgot-password', (route) =>
-      this.forgotPassword(route),
-    );
-    await page.route(AUTH_ORIGIN + '/auth/reset-password', (route) => this.resetPassword(route));
     await page.route('**/api/auth/register', (route) => this.registerProfile(route));
     await page.route('**/api/auth/account-exists', (route) => this.accountExists(route));
     await page.route('**/api/users/me', (route) => this.ownProfile(route));
@@ -287,14 +254,6 @@ export class ApiStub {
   /** A user's cash, shared by all of their trading accounts. */
   fundsOf(email: string): number {
     return Number(this.accounts.get(email.toLowerCase())?.profile?.['availableFunds'] ?? 0);
-  }
-
-  /** The token from the most recent reset email sent to an address, or null if none was. */
-  resetTokenFor(email: string): string | null {
-    const sent = this.resetEmails.filter(
-      (message) => message.to.toLowerCase() === email.toLowerCase(),
-    );
-    return sent.length ? sent[sent.length - 1].token : null;
   }
 
   /** Every request whose URL or body contains the value, in wire order. */
@@ -386,89 +345,6 @@ export class ApiStub {
   private async logout(route: Route): Promise<void> {
     this.refreshTokens.delete(String(this.body(route)['refreshToken']));
     await this.json(route, 201, { message: 'Logged out successfully' });
-  }
-
-  /**
-   * Answers POST /auth/forgot-password the way the real service does: 202 and the
-   * same body for every address, with the token recorded in resetEmails instead
-   * of handed to SMTP.
-   */
-  private async forgotPassword(route: Route): Promise<void> {
-    const email = String(this.body(route)['email']);
-    const account = this.accounts.get(email.toLowerCase());
-
-    if (account) {
-      // Issuing a new link revokes any earlier one, as PasswordResetTokensService does.
-      for (const stored of this.resetTokens.values()) {
-        if (stored.email === account.email.toLowerCase()) {
-          this.resetTokens.delete(stored.token);
-        }
-      }
-      const token = randomUUID().replaceAll('-', '');
-      this.resetTokens.set(token, {
-        token,
-        email: account.email.toLowerCase(),
-        usedAt: null,
-        expiresAt: Date.now() + this.resetLinkTtl * 1000,
-      });
-      this.resetEmails.push({ to: account.email, token });
-    }
-
-    // Identical whether or not the address has an account: the route takes no
-    // credentials, so anything else would list who is registered.
-    await this.json(route, 202, {
-      message: 'If that email has an account, a reset link is on its way.',
-    });
-  }
-
-  /**
-   * Answers POST /auth/reset-password: the emailed token is the credential, it works
-   * once, and every rejection is the same 400.
-   */
-  private async resetPassword(route: Route): Promise<void> {
-    const body = this.body(route);
-    const stored = this.resetTokens.get(String(body['token']));
-    const password = String(body['password']);
-
-    if (!stored || stored.usedAt !== null || stored.expiresAt <= Date.now()) {
-      await this.json(route, 400, {
-        statusCode: 400,
-        message: 'This password reset link is invalid or has expired',
-        error: 'Bad Request',
-      });
-      return;
-    }
-    if (password.length < 8 || password.length > 72) {
-      await this.json(route, 400, {
-        statusCode: 400,
-        message: ['Password must be at least 8 characters long'],
-        error: 'Bad Request',
-      });
-      return;
-    }
-
-    const account = this.accounts.get(stored.email);
-    if (!account) {
-      await this.json(route, 400, {
-        statusCode: 400,
-        message: 'This password reset link is invalid or has expired',
-        error: 'Bad Request',
-      });
-      return;
-    }
-
-    account.passwordDigest = digest(password);
-    stored.usedAt = Date.now();
-    // The reset ends every session, so no refresh token issued before it survives.
-    for (const [refreshToken, userId] of [...this.refreshTokens.entries()]) {
-      if (userId === account.id) {
-        this.refreshTokens.delete(refreshToken);
-      }
-    }
-
-    await this.json(route, 200, {
-      message: 'Your password has been reset. Sign in with your new password.',
-    });
   }
 
   private async registerProfile(route: Route): Promise<void> {

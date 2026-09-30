@@ -16,10 +16,6 @@
         <p role="status" class="bg-muted text-foreground mb-5 rounded-[5px] px-3 py-2 text-sm">
           You were signed out after a period of inactivity. Sign in again to continue.
         </p>
-      } @else if (passwordWasReset) {
-        <p role="status" class="bg-muted text-foreground mb-5 rounded-[5px] px-3 py-2 text-sm">
-          Your password has been reset. Sign in with your new password.
-        </p>
       }
       <form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate class="flex flex-col gap-5">
         <div hlmField>
@@ -45,12 +41,7 @@
         </div>
 
         <div hlmField>
-          <div class="flex items-center justify-between">
-            <label hlmFieldLabel for="password" class="text-foreground">Password</label>
-            <a routerLink="/forgot-password" class="text-primary text-sm font-medium hover:underline"
-              >Forgot password?</a
-            >
-          </div>
+          <label hlmFieldLabel for="password" class="text-foreground">Password</label>
           <div class="relative">
             <ng-icon
               name="lucideLock"

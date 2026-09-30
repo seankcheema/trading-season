@@ -5,6 +5,5 @@
 - Keep runtime and CLI migration lists aligned, add migrations instead of editing applied ones, and leave synchronize disabled.
 - Access tokens are RS256 JWTs; refresh tokens are opaque, hashed server-side, rotated, and revocable. Do not interchange them.
 - Preserve generic credential errors and existing failed-login protections. Never add fallback signing keys.
-- Password reset tokens are opaque, hashed, single-use and emailed; keep /auth/forgot-password and /auth/reset-password answering identically for accounts that exist and ones that do not, and keep SMTP out of tests.
 - Use ephemeral keys in tests. Verify contract changes against controller, strategy, service, and tests together; the existing logout mismatch is documented in the [API reference](../../docs/reference/api.md#current-logout-limitation).
 - Use the [local README](README.md) for setup and commands.

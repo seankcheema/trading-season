@@ -4,9 +4,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 export type AuthErrorContext =
   | 'login'
   | 'register-auth'
-  | 'register-profile'
-  | 'forgot-password'
-  | 'reset-password';
+  | 'register-profile';
 
 // Raised by AuthService when an email is taken and the submitted password doesn't sign in to it.
 export class EmailTakenError extends Error {
@@ -38,10 +36,6 @@ export const AUTH_ERROR_MESSAGES = {
   profileEmailTaken: 'This email is already registered.',
   invalidProfile: "We couldn't save your profile details. Please review the form and try again.",
   registrationFailed: "We couldn't finish creating your account. Please try again.",
-  resetRequestFailed: "We couldn't send a reset email just now. Please try again shortly.",
-  resetLinkInvalid:
-    'This reset link is no longer valid. Request a new one and use the most recent email.',
-  resetFailed: "We couldn't reset your password. Please try again.",
 } as const;
 
 // Maps a failed auth or registration call to a message that is safe and useful to show the user.
@@ -83,17 +77,6 @@ export function toAuthErrorMessage(error: unknown, context: AuthErrorContext): s
         return AUTH_ERROR_MESSAGES.invalidProfile;
       }
       return AUTH_ERROR_MESSAGES.registrationFailed;
-    case 'forgot-password':
-      // A 400 here can only be the address itself: the request carries nothing else.
-      return error.status === 400
-        ? (nestValidationMessage(error) ?? AUTH_ERROR_MESSAGES.invalidRegistration)
-        : AUTH_ERROR_MESSAGES.resetRequestFailed;
-    case 'reset-password':
-      // 400 covers both a rejected link and a password the service refused, and the
-      // service's own wording distinguishes them without revealing anything.
-      return error.status === 400
-        ? (nestValidationMessage(error) ?? AUTH_ERROR_MESSAGES.resetLinkInvalid)
-        : AUTH_ERROR_MESSAGES.resetFailed;
   }
 }
 
@@ -102,8 +85,6 @@ const FALLBACK_MESSAGES: Record<AuthErrorContext, string> = {
   login: AUTH_ERROR_MESSAGES.loginFailed,
   'register-auth': AUTH_ERROR_MESSAGES.registrationFailed,
   'register-profile': AUTH_ERROR_MESSAGES.registrationFailed,
-  'forgot-password': AUTH_ERROR_MESSAGES.resetRequestFailed,
-  'reset-password': AUTH_ERROR_MESSAGES.resetFailed,
 };
 
 // NestJS validation errors carry `message` as a string or a list of per-field strings.

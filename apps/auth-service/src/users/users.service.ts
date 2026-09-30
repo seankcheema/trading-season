@@ -6,10 +6,7 @@ import { User } from './user.entity.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
 import { UserDto } from './dto/user.dto.js';
 
-/**
- * bcrypt cost factor, shared by registration and password reset so the two
- * cannot drift into hashing the same password at different strengths.
- */
+/** bcrypt cost factor used whenever a password is hashed. */
 const BCRYPT_ROUNDS = 10;
 
 @Injectable()
@@ -88,27 +85,6 @@ export class UsersService {
     lockedUntil.setMinutes(lockedUntil.getMinutes() + 15);
 
     user.lockedUntil = lockedUntil;
-    await this.usersRepository.save(user);
-  }
-
-  /**
-   * Replace a user's password.
-   *
-   * Clears the failed-attempt counter and any lockout in the same write: the
-   * person completing a reset has proved control of the mailbox, and leaving
-   * them locked out of an account they just recovered serves nothing. Callers
-   * are expected to end existing sessions separately — see
-   * AuthService.resetPassword.
-   */
-  async updatePassword(userId: string, newPassword: string): Promise<void> {
-    const user = await this.usersRepository.findOne({ where: { id: userId } });
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    user.password = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-    user.failedAttempts = 0;
-    user.lockedUntil = null;
     await this.usersRepository.save(user);
   }
 
