@@ -515,6 +515,13 @@ pipeline {
                         exit 1
                     }
 
+                    # -a on a narrow filter rather than on the listing below:
+                    # kafka-init exits once the topic is created, so it is
+                    # invisible to a running-only listing, and its exit status is
+                    # the evidence that topic creation actually ran.
+                    echo "Kafka broker and topic setup:"
+                    docker ps -a --filter name=kafka --format 'table {{.Names}}\t{{.Status}}'
+
                     echo "All Docker containers after startup:"
                     docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}'
                     echo "Local application stack is running on host ports 3001, 4200, 4300, 5432, 8081, 8082, 8083, and 29092."
