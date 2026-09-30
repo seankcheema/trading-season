@@ -15,7 +15,7 @@
   "packageManager": "npm@11.16.0",
   "engines": {
     "node": "^24.8.0",
-    "npm": "11.16.0"
+    "npm": ">=11.6.0"
   },
   "dependencies": {
     "@angular/cdk": "21.2.14",
