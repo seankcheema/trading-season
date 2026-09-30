@@ -760,9 +760,9 @@ describe('DashboardComponent', () => {
         text(element(fixture).querySelector('[data-testid="portfolio-chart-empty-state"]')),
       ).toBe('Start trading to build your portfolio.');
       expect(element(fixture).querySelector('app-price-chart')).toBeNull();
-      expect(element(fixture).querySelector('app-timeframe-toggle')).toBeNull();
-      expect(element(fixture).querySelector('[data-testid="portfolio-value"]')).toBeNull();
-      expect(element(fixture).textContent).not.toContain('Portfolio Value · Fresh');
+      expect(element(fixture).querySelector('app-timeframe-toggle')).not.toBeNull();
+      expect(text(element(fixture).querySelector('[data-testid="portfolio-value"]'))).toBe('$0');
+      expect(element(fixture).textContent).toContain('Portfolio Value · Fresh');
     });
 
     it('shows a loading state without rendering a zero-value portfolio chart', () => {
