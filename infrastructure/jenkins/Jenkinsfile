@@ -410,6 +410,39 @@ pipeline {
             }
         }
 
+        stage('Pre-E2E Disk Cleanup') {
+            steps {
+                sh '''
+                    set +e
+                    echo "Aggressive disk cleanup before E2E tests (large Playwright image pull)..."
+                    
+                    # Remove test artifacts from prior stages that consumed disk
+                    rm -rf apps/holdings-and-trade-service/target
+                    rm -rf apps/order-and-sell-service/target
+                    rm -rf apps/client-ui/coverage
+                    
+                    # Report current disk state
+                    BEFORE_KB="$(df -Pk "$WORKSPACE" | awk 'NR == 2 {print $4}')"
+                    echo "Available disk before cleanup: $((BEFORE_KB / 1024 / 1024)) GiB"
+                    
+                    # Remove unused Docker images, dangling layers, and build cache
+                    docker image prune -af >/dev/null 2>&1
+                    docker builder prune -af >/dev/null 2>&1
+                    
+                    # Clean npm and Maven caches
+                    npm cache clean --force >/dev/null 2>&1
+                    find ~/.m2/repository -type f -name "*.jar" -o -name "*.pom" | xargs rm -f 2>/dev/null || true
+                    
+                    # Report freed space
+                    AFTER_KB="$(df -Pk "$WORKSPACE" | awk 'NR == 2 {print $4}')"
+                    FREED_MB=$(( (AFTER_KB - BEFORE_KB) / 1024 ))
+                    echo "✓ Available disk after cleanup: $((AFTER_KB / 1024 / 1024)) GiB (freed ~$((FREED_MB > 0 ? FREED_MB : 0)) MB)"
+                    
+                    set -e
+                '''
+            }
+        }
+
         stage('End-to-End Tests') {
             environment {
                 CI = 'true'
