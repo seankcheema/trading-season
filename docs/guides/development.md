@@ -38,6 +38,15 @@ docker compose --project-name trading-season-local \
 
 The client UI is available on port 4200, the reporting UI placeholder on 4300, and the reporting service placeholder on 8083. `GET http://localhost:8083/health` verifies only that the placeholder container is running; it is not a reporting API.
 
+The stack also starts a Kafka broker, reachable as `kafka:9092` from other containers and `localhost:29092` from the host. A one-shot `kafka-init` container creates the `trade-events` topic with three partitions; broker-side auto-creation is disabled, so a topic that has not been created explicitly fails rather than appearing with one partition. No service publishes or consumes yet. Inspect the topic with the broker's own tools:
+
+```sh
+docker compose --project-name trading-season-local \
+  -f infrastructure/docker-compose/docker-compose.local.yml \
+  exec -T kafka /opt/kafka/bin/kafka-topics.sh \
+    --bootstrap-server localhost:9092 --describe --topic trade-events
+```
+
 ### Manual and Windows setup
 
 1. Follow the [auth setup](../../apps/auth-service/README.md) to create a local environment file and RSA keys.
