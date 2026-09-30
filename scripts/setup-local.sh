@@ -383,13 +383,23 @@ select_databases() {
         fail 'Port 5432 is already in use by a non-Compose service. The Docker database was not started.'
     fi
 
+    local existing_broker
+    existing_broker="$(docker_compose ps -q kafka 2>/dev/null || true)"
+    if [[ -z "$existing_broker" ]] && port_in_use 29092; then
+        fail 'Port 29092 is already in use by a non-Compose service. The Docker broker was not started.'
+    fi
+
     export DB_PASSWORD="${SPRING_DATASOURCE_PASSWORD:-changeme}"
-    docker_compose up -d db || fail 'Docker database startup failed. Review the Compose output above.'
+    docker_compose up -d db kafka || fail 'Docker database or broker startup failed. Review the Compose output above.'
     wait_for_compose_health db || fail 'Docker database did not become healthy within two minutes.'
-    if [[ "$had_database" == true ]]; then
-        ready 'Docker database — the existing container is healthy; skipping startup.'
+    wait_for_compose_health kafka || fail 'Docker Kafka broker did not become healthy within two minutes.'
+    # Separate from the broker starting: auto-creation is disabled, so
+    # trade-events exists only once this one-shot container has run.
+    docker_compose up -d kafka-init || fail 'Creating the trade-events topic failed. Review the Compose output above.'
+    if [[ "$had_database" == true && -n "$existing_broker" ]]; then
+        ready 'Docker database and broker — the existing containers are healthy; skipping startup.'
     else
-        done_stage 'Docker database — the PostgreSQL container is healthy.'
+        done_stage 'Docker database and broker — the PostgreSQL and Kafka containers are healthy.'
     fi
     validate_or_initialize_docker_business
     check_docker_database_storage
@@ -403,6 +413,10 @@ select_databases() {
     export DB_PORT=5432
     export DB_USER=trading_season
     export DB_NAME=trading_season
+    # The broker is published on the host as localhost:29092; inside Compose it
+    # is kafka:9092. These applications run on the VM, so they take the former.
+    # Nothing reads this yet -- no service publishes or consumes.
+    export KAFKA_BOOTSTRAP_SERVERS=localhost:29092
 }
 
 start_service() {

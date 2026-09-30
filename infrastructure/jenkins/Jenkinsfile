@@ -411,7 +411,38 @@ pipeline {
                         -f "$COMPOSE_FILE" \
                         ps
 
-                    EXPECTED_SERVICES="auth-service client-ui db holdings-and-trade-service order-and-sell-service reporting-service reporting-ui"
+                    # kafka-init exits, so it must not appear in the running-service
+                    # comparison below. Unlike db-init, nothing declares
+                    # depends_on: service_completed_successfully against it, so
+                    # `up -d` returns while it is still starting. docker inspect
+                    # rather than `docker compose wait`, which needs Compose 2.24
+                    # and run-compose.sh may fall back to legacy docker-compose.
+                    attempt=1
+                    while [ "$attempt" -le 60 ]; do
+                        INIT_ID="$(sh infrastructure/docker/run-compose.sh \
+                            --project-name "$PROJECT_NAME" \
+                            -f "$COMPOSE_FILE" \
+                            ps -aq kafka-init)"
+                        if [ -n "$INIT_ID" ]; then
+                            INIT_STATE="$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$INIT_ID")"
+                            case "$INIT_STATE" in
+                                exited:0) break ;;
+                                exited:*)
+                                    echo "kafka-init failed ($INIT_STATE)." >&2
+                                    docker logs "$INIT_ID" >&2
+                                    exit 1
+                                    ;;
+                            esac
+                        fi
+                        attempt=$((attempt + 1))
+                        sleep 2
+                    done
+                    if [ "$attempt" -gt 60 ]; then
+                        echo "kafka-init did not finish within two minutes." >&2
+                        exit 1
+                    fi
+
+                    EXPECTED_SERVICES="auth-service client-ui db holdings-and-trade-service kafka order-and-sell-service reporting-service reporting-ui"
                     RUNNING_SERVICES="$(sh infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
                         -f "$COMPOSE_FILE" \
@@ -449,9 +480,33 @@ pipeline {
                     check_http reporting-ui / 'Reporting UI placeholder'
                     check_http reporting-service /health '"status":"ok"'
 
+                    # check_http cannot be reused: it hardcodes 127.0.0.1:8080
+                    # inside the container. A missing topic makes kafka-topics.sh
+                    # exit non-zero by itself; the awk asserts the partition count
+                    # as a whole tab-delimited field, because a substring match on
+                    # 'PartitionCount: 3' also matches 'PartitionCount: 30'. The
+                    # header line starts at column 0 while per-partition lines
+                    # start with a tab, so ^Topic: anchors to the header.
+                    TOPIC_DESCRIBE="$(sh infrastructure/docker/run-compose.sh \
+                        --project-name "$PROJECT_NAME" \
+                        -f "$COMPOSE_FILE" \
+                        exec -T kafka /opt/kafka/bin/kafka-topics.sh \
+                            --bootstrap-server localhost:9092 \
+                            --describe --topic trade-events)" || {
+                        echo "Topic trade-events does not exist." >&2
+                        exit 1
+                    }
+                    echo "$TOPIC_DESCRIBE"
+                    echo "$TOPIC_DESCRIBE" | awk -F'\t' '
+                        /^Topic: /{for (i = 1; i <= NF; i++) if ($i == "PartitionCount: 3") ok = 1}
+                        END {exit ok ? 0 : 1}' || {
+                        echo "Topic trade-events does not have three partitions." >&2
+                        exit 1
+                    }
+
                     echo "All Docker containers after startup:"
                     docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}'
-                    echo "Local application stack is running on host ports 3001, 4200, 4300, 5432, 8081, 8082, and 8083."
+                    echo "Local application stack is running on host ports 3001, 4200, 4300, 5432, 8081, 8082, 8083, and 29092."
                 '''
             }
         }

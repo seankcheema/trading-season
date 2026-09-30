@@ -101,6 +101,101 @@ services:
       && echo "[DB-INIT] Migrations complete"; 
       else echo "[DB-INIT] Database already initialized, skipping migrations"; fi'
 
+  # Event broker for the trade-events topic. Nothing publishes or consumes
+  # yet; see docs/reference/architecture.md.
+  kafka:
+    # Single-node KRaft: no ZooKeeper, and the controller quorum is this same
+    # node. Sized for a developer machine, not durability -- one replica of
+    # everything. Not apache/kafka-native: that image ships only the GraalVM
+    # binary, with no /opt/kafka/bin, so the healthcheck below and every
+    # console tool used to verify the topic would not exist.
+    image: apache/kafka:4.1.1
+    ports:
+      # Host-facing listener only. In-network clients use kafka:9092, which is
+      # deliberately not published.
+      - "29092:29092"
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
+      # Two listeners on purpose. Containers reach the broker as kafka:9092;
+      # processes on the host reach it as localhost:29092. A broker advertises
+      # the address clients must reconnect to after bootstrap, so a single
+      # listener would hand "kafka:9092" to a host process that cannot resolve
+      # it. 0.0.0.0 is explicit so the healthcheck's localhost:9092 does not
+      # depend on default-interface semantics.
+      KAFKA_LISTENERS: "INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:29092"
+      # CONTROLLER is deliberately absent here: Kafka refuses to start when a
+      # controller listener appears in advertised.listeners on a broker node.
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka:9092,EXTERNAL://localhost:29092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      # Required. This image builds server.properties from the KAFKA_*
+      # environment alone and discards its own packaged defaults, so without
+      # this the broker falls back to the code default /tmp/kafka-logs and the
+      # kafka_data volume silently holds nothing.
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+      # One node, so every internal topic must be replication factor 1. These
+      # default to 3 in code and are lost with the packaged properties file.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: "1"
+      # No waiting for group members that will never arrive.
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      # Deliberate. Auto-creation would build a topic on first publish with the
+      # broker default of one partition, silently discarding the partition
+      # count kafka-init sets and the per-account ordering that depends on it.
+      # A typo in a topic name must fail, not create a topic.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      # Development sizing; the launch script defaults to -Xmx1G -Xms1G.
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms512m"
+      # Not a KAFKA_ variable, so it never reaches server.properties. The image
+      # defaults to this same value; pinning it keeps a formatted volume and
+      # this configuration in step if that default ever changes.
+      CLUSTER_ID: "5L6g3nShT-eMCtK--X86sw"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    # Required, not cosmetic. A real API call rather than a port check: the
+    # listener socket binds before the broker serves requests, so a TCP probe
+    # reports ready too early. And scripts/setup-local.sh waits on a literal
+    # `healthy`, falling back to `.State.Status` when no healthcheck exists --
+    # which returns `running` forever and stalls startup for its full budget.
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 20s
+      retries: 15
+      start_period: 30s
+
+  # Topic creation. Auto-creation is disabled on the broker, so the topic
+  # exists only once this one-shot container has run.
+  kafka-init:
+    image: apache/kafka:4.1.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    # Overriding the entrypoint is required: this image's own entrypoint starts
+    # a broker, so preserving it would run a second one. Same pattern as
+    # market-data-seed.
+    entrypoint: ["/bin/sh", "-ec"]
+    # Three partitions is a decision, not a default. Kafka guarantees order
+    # only within a partition, and the pipeline design depends on the account
+    # id keying all of one account's events to one partition. The count can be
+    # raised later but never safely lowered, and raising it re-hashes keys, so
+    # events already written and events written afterwards would land in
+    # different partitions for the same account.
+    # --if-not-exists makes a rerun a no-op rather than an error.
+    command:
+      - |
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+          --create --if-not-exists --topic trade-events \
+          --partitions 3 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+          --describe --topic trade-events
+
   db-initialize:
     profiles: ["initialize"]
     build:
@@ -167,3 +262,6 @@ volumes:
     # volume, which wipes the database and starts fresh on the next `up`.
   market_data_archive:
     # Reusable generated Parquet archive, independent of PostgreSQL db_data.
+  kafka_data:
+    # KRaft metadata and partition logs. `docker compose down -v` wipes it;
+    # the next up reformats storage and kafka-init recreates the topic.
