@@ -306,7 +306,7 @@ pipeline {
                     dir('apps/client-ui') {
                         sh '''
                             set -eu
-                            echo " Running Login and Registration E2E Tests (Playwright)..."
+                            echo " Running Frontend E2E Tests (Playwright)..."
                             # Headless Chromium needs GTK/ATK shared libraries this agent
                             # does not carry (libatk-1.0.so.0 and friends), and installing
                             # them needs root: `playwright install --with-deps` shells out
@@ -404,16 +404,33 @@ pipeline {
                     # reaches a deployment. The workspace is deleted in `post`.
                     COMPOSE_ENV_FILE="infrastructure/docker-compose/.env"
                     node apps/auth-service/scripts/generate-dev-keys.mjs > "$COMPOSE_ENV_FILE"
+                    
+                    # Source the generated keys into the current shell environment.
+                    # We need both the .env file (for docker-compose --env-file) and
+                    # the shell environment (for docker-compose to inherit via subprocess).
+                    eval "$(grep -E '^JWT_|^DB_PASSWORD' "$COMPOSE_ENV_FILE" 2>/dev/null || true | sed 's/^/export /')"
+                    
+                    # Verify the keys were exported
+                    if [ -z "${JWT_PRIVATE_KEY:-}" ]; then
+                        echo "[ERROR] JWT_PRIVATE_KEY not exported" >&2
+                        exit 1
+                    fi
+                    if [ -z "${JWT_PUBLIC_KEY:-}" ]; then
+                        echo "[ERROR] JWT_PUBLIC_KEY not exported" >&2
+                        exit 1
+                    fi
+                    echo "[INFO] JWT keys exported successfully"
 
                     echo "Building and starting the local application stack..."
-                    sh infrastructure/docker/run-compose.sh \
+                    env JWT_PRIVATE_KEY="$JWT_PRIVATE_KEY" JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY" JWT_ISSUER="${JWT_ISSUER:-https://auth.dualeapa.local}" \
+                    bash infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
                         --env-file "$COMPOSE_ENV_FILE" \
                         -f "$COMPOSE_FILE" \
                         up -d --build
 
                     echo "Local application services after startup:"
-                    sh infrastructure/docker/run-compose.sh \
+                    bash infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
                         --env-file "$COMPOSE_ENV_FILE" \
                         -f "$COMPOSE_FILE" \
@@ -459,7 +476,7 @@ pipeline {
                     if [ "$RUNNING_SERVICES" != "$EXPECTED_SERVICES" ]; then
                         echo "Expected running services: $EXPECTED_SERVICES" >&2
                         echo "Actual running services:   $RUNNING_SERVICES" >&2
-                        sh infrastructure/docker/run-compose.sh \
+                        bash infrastructure/docker/run-compose.sh \
                             --project-name "$PROJECT_NAME" \
                             --env-file "$COMPOSE_ENV_FILE" \
                             -f "$COMPOSE_FILE" \
@@ -473,7 +490,7 @@ pipeline {
                         expected="$3"
                         attempt=1
                         while [ "$attempt" -le 30 ]; do
-                            if sh infrastructure/docker/run-compose.sh \
+                            if bash infrastructure/docker/run-compose.sh \
                                 --project-name "$PROJECT_NAME" \
                                 --env-file "$COMPOSE_ENV_FILE" \
                                 -f "$COMPOSE_FILE" \
@@ -559,7 +576,7 @@ pipeline {
                             if [ ! -f "$COMPOSE_ENV_FILE" ]; then
                                 node apps/auth-service/scripts/generate-dev-keys.mjs > "$COMPOSE_ENV_FILE"
                             fi
-                            sh infrastructure/docker/run-compose.sh \
+                            bash infrastructure/docker/run-compose.sh \
                                 --project-name trading-season-local \
                                 --env-file "$COMPOSE_ENV_FILE" \
                                 -f infrastructure/docker-compose/docker-compose.local.yml \
@@ -612,6 +629,7 @@ pipeline {
                     fi
                     docker builder prune -af 2>/dev/null
                     rm -rf ~/.m2/repository ~/.npm
+                    exit 0
                 ''', returnStatus: true)
                 if (cacheCleanupStatus != 0) {
                     echo "Dependency-cache cleanup failed with status ${cacheCleanupStatus}; preserving the original build result."

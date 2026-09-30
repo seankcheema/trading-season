@@ -3,10 +3,13 @@ package app.market;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.sql.DriverManager;
 import java.time.Instant;
@@ -23,15 +26,24 @@ public class MarketDataRepository implements MarketDataSource {
     private static final ZoneId MARKET_ZONE = ZoneId.of("America/Chicago");
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
+    private final String configuredArchiveLocation;
 
     /**
-     * Creates the repository with JDBC and JSON metadata support.
+     * Creates the repository with JDBC, JSON metadata, and an optional archive override.
      * @param jdbc database query helper
      * @param objectMapper simulation metadata parser
+     * @param configuredArchiveLocation configured Parquet archive root, or blank to discover it
      */
-    public MarketDataRepository(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+    @Autowired
+    public MarketDataRepository(JdbcTemplate jdbc, ObjectMapper objectMapper,
+            @Value("${market.replay.archive-location:}") String configuredArchiveLocation) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
+        this.configuredArchiveLocation = configuredArchiveLocation;
+    }
+
+    MarketDataRepository(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+        this(jdbc, objectMapper, "");
     }
 
     /**
@@ -69,20 +81,14 @@ public class MarketDataRepository implements MarketDataSource {
     }
 
     /**
-     * Loads one trading day's synchronized tick frames from PostgreSQL, Parquet, or candle fallback.
+     * Loads one trading day's synchronized tick frames from PostgreSQL or Parquet.
      * @param session resolved simulation metadata
      * @param day trading date
      * @return chronological synchronized frames
      */
     public List<MarketModels.Frame> ticksForDay(MarketModels.Session session, LocalDate day) {
-        if ("postgres".equals(session.storageMode())) {
-            return postgresTicks(session.id(), day);
-        }
-        try {
-            return parquetTicks(session, day);
-        } catch (RuntimeException | LinkageError ex) {
-            return candleFrames(session.id(), day);
-        }
+        return "postgres".equals(session.storageMode())
+                ? postgresTicks(session.id(), day) : parquetTicks(session, day);
     }
 
     /**
@@ -126,10 +132,7 @@ public class MarketDataRepository implements MarketDataSource {
     }
 
     private List<MarketModels.Frame> parquetTicks(MarketModels.Session session, LocalDate day) {
-        if (session.archiveLocation().isBlank()) {
-            throw new IllegalStateException("Simulation archive location is unavailable");
-        }
-        Path root = Path.of(session.archiveLocation()).toAbsolutePath().normalize();
+        Path root = resolveArchiveRoot(session);
         Path file = root.resolve("ticks-" + day + ".parquet").normalize();
         if (!file.startsWith(root) || !Files.isRegularFile(file)) {
             throw new IllegalStateException("Simulation tick partition is unavailable");
@@ -151,23 +154,28 @@ public class MarketDataRepository implements MarketDataSource {
         return frames(ticks);
     }
 
-    private List<MarketModels.Frame> candleFrames(long sessionId, LocalDate day) {
-        Instant from = day.atTime(8, 30).atZone(MARKET_ZONE).toInstant();
-        Instant to = day.plusDays(1).atStartOfDay(MARKET_ZONE).toInstant();
-        List<MarketModels.Tick> ticks = new ArrayList<>();
-        jdbc.query("SELECT symbol, \"timestamp\", close FROM candles "
-                        + "WHERE session_id = ? AND \"interval\" = '1m' "
-                        + "AND \"timestamp\" >= ? AND \"timestamp\" < ? ORDER BY \"timestamp\", symbol",
-                rs -> {
-                    long sequence = 1;
-                    while (rs.next()) {
-                        ticks.add(new MarketModels.Tick(rs.getString(1), rs.getTimestamp(2).toInstant(),
-                                rs.getBigDecimal(3), sequence++));
-                    }
-                    return null;
-                },
-                sessionId, java.sql.Timestamp.from(from), java.sql.Timestamp.from(to));
-        return frames(ticks);
+    private Path resolveArchiveRoot(MarketModels.Session session) {
+        List<Path> candidates = new ArrayList<>();
+        addPathCandidate(candidates, configuredArchiveLocation);
+        addPathCandidate(candidates, session.archiveLocation());
+        String normalizedArchive = session.archiveLocation().replace('\\', '/');
+        int separator = normalizedArchive.lastIndexOf('/');
+        String archiveName = normalizedArchive.isBlank() ? "synthetic-market-data-2026-v1"
+                : normalizedArchive.substring(separator + 1);
+        candidates.add(Path.of("apps", "market-data", "db", "seeds", archiveName));
+        candidates.add(Path.of("..", "market-data", "db", "seeds", archiveName));
+        return candidates.stream().map(path -> path.toAbsolutePath().normalize())
+                .filter(Files::isDirectory).findFirst()
+                .orElseThrow(() -> new IllegalStateException("Simulation archive location is unavailable"));
+    }
+
+    private void addPathCandidate(List<Path> candidates, String location) {
+        if (location.isBlank()) return;
+        try {
+            candidates.add(Path.of(location));
+        } catch (InvalidPathException ignored) {
+            // A metadata path from another host cannot be used locally; discovery candidates follow.
+        }
     }
 
     private List<MarketModels.Frame> frames(List<MarketModels.Tick> ticks) {

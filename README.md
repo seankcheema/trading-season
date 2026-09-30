@@ -2,15 +2,16 @@
 
 Trading simulation monorepo with an Angular interface, two Spring Boot microservices, and a NestJS authentication service. Reporting applications are placeholders.
 
-The Java backend is split into two independent microservices:
+The backend consists of two independent Java microservices and one NestJS authentication service:
 - **Holdings and Trade Service** (`apps/holdings-and-trade-service/`) – Order submission, validation, execution, and holdings management
 - **Order and Sell Service** (`apps/order-and-sell-service/`) – User profile queries and market data access
+- **Auth Service** (`apps/auth-service/`) – Email/password authentication, RS256 token issuance, refresh token rotation
 
-Both services share a single PostgreSQL database (`trading_season`) and authenticate via the NestJS auth service (`auth_db`).
+All services share a single PostgreSQL database (`trading_season`).
 
 ## Start locally on Windows
 
-Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL (or Docker Compose).
+Install Node.js 24.8.0+ (24.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL (or Docker Compose).
 
 ### Quick start with the startup script (requires local databases)
 
@@ -30,7 +31,7 @@ Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL
    cd ../..
    ```
 
-3. Ensure both databases are running (`trading_season` on port 5432 and `auth_db` on port 5433 for Docker Compose, or 5432 for local PostgreSQL).
+3. Ensure the database is running (`trading_season` on port 5432).
 
 4. Start all services with the startup script:
 
@@ -57,33 +58,52 @@ CREATE ROLE trading_season WITH LOGIN PASSWORD 'password';
 CREATE DATABASE trading_season OWNER trading_season;
 ```
 
-Then apply the business schema. Connect to `trading_season` as the `trading_season` user and run these migration files in order:
+Then apply the schema. Connect to `trading_season` as the `trading_season` user and run these migration files in order:
 
 ```powershell
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initial_schema.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V003__Token_authentication.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V004__Order_status_lifecycle.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V005__User_accounts_and_refresh_tokens.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V006__Drop_duplicated_account_columns.sql
 ```
 
-#### 2. Create auth database
-
-Connect to the default `postgres` database as your PostgreSQL admin user and run:
+Verify that `trading_season` owns the tables. Connect to the `trading_season` database and run:
 
 ```sql
-CREATE ROLE authuser WITH LOGIN PASSWORD 'password';
+SELECT tablename, tableowner
+FROM pg_tables
+WHERE schemaname = 'public'
+ORDER BY tablename;
 ```
+
+If another user (such as `postgres`) owns the tables, connect to the `trading_season` database as the admin user and reassign ownership and permissions:
 
 ```sql
-CREATE DATABASE auth_db OWNER authuser;
+-- Reassign all table ownership to trading_season user
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
+    EXECUTE format('ALTER TABLE public.%I OWNER TO trading_season', r.tablename);
+  END LOOP;
+END $$;
+
+-- Grant permissions to trading_season user
+GRANT USAGE ON SCHEMA public TO trading_season;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO trading_season;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO trading_season;
+
+-- Ensure future tables get the same permissions
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO trading_season;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO trading_season;
+
+-- Verify: all tables should now be owned by trading_season
+SELECT tablename, tableowner FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;
 ```
 
-Then connect to `auth_db` as the `authuser` user and grant schema privileges:
-
-```sql
-GRANT ALL PRIVILEGES ON SCHEMA public TO authuser;
-```
-
-#### 3. Configure auth service
+#### 2. Configure auth service
 
 Copy and configure the auth `.env`:
 
@@ -99,7 +119,7 @@ node scripts/generate-dev-keys.mjs | Add-Content .env
 cd ../..
 ```
 
-#### 4. Start applications
+#### 3. Start applications
 
 Use the startup script as above, or start each application in its own terminal:
 
@@ -129,17 +149,13 @@ If you prefer to use Docker Compose for databases:
 
 1. Install dependencies and configure authentication (steps 1-2 above).
 
-2. Start the databases:
+2. Start the database:
 
    ```powershell
-   docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml up -d db auth-db
+   docker compose -f infrastructure/docker-compose/docker-compose.local.yml up -d db
    ```
 
-   This creates:
-   - Business database (`trading_season`) on `localhost:5432`
-   - Auth database (`auth_db`) on `localhost:5433`
-
-   Auth migrations run automatically on auth-service startup. For the business database, follow the [database setup](docs/reference/database.md#disposable-business-database-setup) to apply migrations V001, V002, and V003 if needed.
+   This creates the `trading_season` database on `localhost:5432` with all required migrations applied.
 
 3. Start all services with the startup script:
 
@@ -148,15 +164,43 @@ If you prefer to use Docker Compose for databases:
    .\scripts\start-local.ps1
    ```
 
-### Verify auth database
+### Verify database setup
 
-To check registered users, connect pgAdmin's Query Tool to `auth_db` and run:
+After startup, verify that the auth tables exist in `trading_season`. Connect pgAdmin's Query Tool (or psql) to `trading_season` and run:
 
 ```sql
-SELECT id, email, role, is_active, failed_attempts, locked_until, created_at
-FROM users
+-- Verify user_accounts table exists and check registered users
+SELECT user_id, email, user_role, account_status, created_at
+FROM user_accounts
 ORDER BY created_at DESC;
 ```
+
+You should see registered users listed here (if any).
+
+### Generate and seed synthetic market data
+
+Synthetic market data is required for the trading simulation. Run the complete routine from the repository root to generate and load mock data:
+
+```powershell
+$freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
+
+apps/market-data/db/setup-market-data.ps1 `
+  -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
+  -AvailableDiskGb $freeDiskGb
+```
+
+For a smaller test archive (e.g., 2 days of data), add `-StartDate 2026-01-05 -EndDate 2026-01-06`.
+
+For a fresh database, add `-InitializeDisposableDatabase` to drop and recreate business tables. Add `-Regenerate` to replace an incompatible archive.
+
+**On first run**, this script will:
+1. Create a Python virtual environment at `apps/market-data/db/.venv`
+2. Install dependencies from `apps/market-data/db/scripts/requirements.txt`
+3. Generate synthetic market data for the year 2026
+4. Validate the generated archive
+5. Import into PostgreSQL (raw ticks stay in Parquet; candles load to the database)
+
+If needed, you can run individual steps for troubleshooting. See the [database guide](docs/reference/database.md#optional-synthetic-market-data-generation-and-import) for step-by-step commands.
 
 See the [development guide](docs/guides/development.md) for additional commands, tests, and troubleshooting.
 

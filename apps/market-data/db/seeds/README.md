@@ -8,7 +8,7 @@ Follow the [numbered script workflow](../scripts/README.md). An existing candle-
 
 ## Interactive archive viewer
 
-The tracked [2026 market-data notebook](view-synthetic-market-data-2026-v1.ipynb) reads the ignored archive directly with DuckDB. It does not require PostgreSQL and does not load the full dataset into memory. Set one stock and one month in the first code cell; the notebook reads only that month's candle partitions and displays a 15-minute candlestick chart, volume, and a daily summary.
+The tracked [2026 market-data notebook](view-synthetic-market-data-2026-v1.ipynb) reads the ignored archive directly with DuckDB. It does not require PostgreSQL and does not load the full tick dataset into memory. The notebook compares all ten stocks across the complete year using normalized performance, return and risk metrics, daily-return correlation, and average intraday patterns. Set one month and one drill-down stock in the first code cell for the detailed candlestick chart and daily summary.
 
 Use the existing virtual environment at `apps/market-data/db/.venv`. If the notebook reports that `duckdb` or another package is missing, it is using the global Python kernel instead of this environment.
 
@@ -16,10 +16,10 @@ From the repository root, install the notebook dependencies and register the vir
 
 ```powershell
 apps/market-data/db/.venv/Scripts/python.exe -m pip install -r apps/market-data/db/scripts/requirements.txt
-apps/market-data/db/.venv/Scripts/python.exe -m ipykernel install --user --name trading-season-market-data --display-name "Python (trading-season market data)"
+apps/market-data/db/.venv/Scripts/python.exe -m ipykernel install --user --name trading-season-market-data --display-name "Python (Trading Season Market Data)"
 ```
 
-Open the notebook in VS Code, choose `Select Kernel > Python Environments`, and select `apps\market-data\db\.venv\Scripts\python.exe`. Change `SELECTED_SYMBOL` and `SELECTED_MONTH` in the first code cell, then run all cells. The default view shows AAPL for January. If the archive is absent, generate it with the numbered workflow before opening the notebook.
+Open the notebook in VS Code, choose `Select Kernel > Python Environments`, and select `apps\market-data\db\.venv\Scripts\python.exe`. Change `SELECTED_MONTH` and `SELECTED_SYMBOL` in the first code cell, then run all cells. The comparison always covers the full year; the defaults use AAPL in January for the detailed drill-down. If the archive is absent, generate it with the numbered workflow before opening the notebook.
 
 Do not select a virtual environment from another repository. If a traceback points to a path such as `Github\FMS\.venv`, change the kernel back to the `trading-season` environment and restart it. Plotly also requires `nbformat`, which is included in the requirements above.
 
