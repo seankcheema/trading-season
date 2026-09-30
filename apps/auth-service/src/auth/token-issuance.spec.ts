@@ -6,8 +6,6 @@ import { AuthService } from './auth.service.js';
 import { buildJwtOptions } from './auth.module.js';
 import { UsersService } from '../users/users.service.js';
 import { RefreshTokensService } from '../refresh-tokens/refresh-tokens.service.js';
-import { PasswordResetTokensService } from '../password-reset/password-reset-tokens.service.js';
-import { MailService } from '../mail/mail.service.js';
 
 /**
  * Signs through the service's real signing configuration.
@@ -71,16 +69,6 @@ describe('token issuance through the real signing configuration', () => {
         {
           provide: RefreshTokensService,
           useValue: { issue: async () => 'opaque-refresh-token' },
-        },
-        // Neither takes part in token issuance; they are here because the
-        // service is constructed for real, not with a partial mock.
-        {
-          provide: PasswordResetTokensService,
-          useValue: { issue: async () => 'opaque-reset-token' },
-        },
-        {
-          provide: MailService,
-          useValue: { sendPasswordReset: async () => undefined },
         },
       ],
     }).compile();

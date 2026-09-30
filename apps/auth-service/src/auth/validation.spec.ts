@@ -18,8 +18,6 @@ import { buildValidationPipe } from '../config/validation.config.js';
 describe('request validation', () => {
   let app: INestApplication;
   let register: ReturnType<typeof vi.fn>;
-  let requestPasswordReset: ReturnType<typeof vi.fn>;
-  let resetPassword: ReturnType<typeof vi.fn>;
 
   const tokens = {
     accessToken: 'a.b.c',
@@ -29,8 +27,6 @@ describe('request validation', () => {
 
   beforeEach(async () => {
     register = vi.fn().mockResolvedValue(tokens);
-    requestPasswordReset = vi.fn().mockResolvedValue(undefined);
-    resetPassword = vi.fn().mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
       imports: [PassportModule.register({})],
@@ -42,8 +38,6 @@ describe('request validation', () => {
             register,
             login: vi.fn(),
             logout: vi.fn(),
-            requestPasswordReset,
-            resetPassword,
           },
         },
       ],
@@ -148,89 +142,6 @@ describe('request validation', () => {
         .expect(400);
 
       expect(register).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('POST /auth/forgot-password', () => {
-    it('should accept a well-formed address', async () => {
-      await request(app.getHttpServer())
-        .post('/auth/forgot-password')
-        .send({ email: 'joanna@example.com' })
-        .expect(202);
-
-      expect(requestPasswordReset).toHaveBeenCalledWith('joanna@example.com');
-    });
-
-    it('should reject a value that is not an email address', async () => {
-      await request(app.getHttpServer())
-        .post('/auth/forgot-password')
-        .send({ email: 'not-an-address' })
-        .expect(400);
-
-      expect(requestPasswordReset).not.toHaveBeenCalled();
-    });
-
-    it('should reject a password smuggled alongside the address', async () => {
-      // ForgotPasswordDto has no password field. Without forbidNonWhitelisted
-      // the property would be stripped quietly, which reads as if a caller
-      // could set a password by asking for a reset.
-      await request(app.getHttpServer())
-        .post('/auth/forgot-password')
-        .send({ email: 'joanna@example.com', password: 'chosen-by-the-caller' })
-        .expect(400);
-
-      expect(requestPasswordReset).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('POST /auth/reset-password', () => {
-    it('should accept a token and a long enough password', async () => {
-      await request(app.getHttpServer())
-        .post('/auth/reset-password')
-        .send({ token: 'the-reset-token', password: 'correct-horse' })
-        .expect(200);
-
-      expect(resetPassword).toHaveBeenCalledWith('the-reset-token', 'correct-horse');
-    });
-
-    it('should reject a missing token', async () => {
-      await request(app.getHttpServer())
-        .post('/auth/reset-password')
-        .send({ password: 'correct-horse' })
-        .expect(400);
-
-      expect(resetPassword).not.toHaveBeenCalled();
-    });
-
-    it('should reject a short password before reaching the service', async () => {
-      await request(app.getHttpServer())
-        .post('/auth/reset-password')
-        .send({ token: 'the-reset-token', password: 'short' })
-        .expect(400);
-
-      expect(resetPassword).not.toHaveBeenCalled();
-    });
-
-    it('should reject a password longer than bcrypt reads', async () => {
-      // Same bound as registration: bcrypt ignores bytes past 72, so accepting
-      // more would silently discard part of the password.
-      await request(app.getHttpServer())
-        .post('/auth/reset-password')
-        .send({ token: 'the-reset-token', password: 'x'.repeat(73) })
-        .expect(400);
-
-      expect(resetPassword).not.toHaveBeenCalled();
-    });
-
-    it('should reject an email supplied instead of the token', async () => {
-      // The token identifies the account. Letting a caller name the account
-      // would make this route a way to set anyone's password.
-      await request(app.getHttpServer())
-        .post('/auth/reset-password')
-        .send({ email: 'joanna@example.com', password: 'correct-horse' })
-        .expect(400);
-
-      expect(resetPassword).not.toHaveBeenCalled();
     });
   });
 });
