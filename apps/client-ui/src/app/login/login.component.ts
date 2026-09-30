@@ -19,7 +19,6 @@ import { toAuthErrorMessage } from '../core/auth/auth-error';
 import { AuthService } from '../core/auth/auth.service';
 import { LOGIN_LOCKOUT_MINUTES, LoginLockoutService } from '../core/auth/login-lockout.service';
 import { INACTIVE_SIGN_OUT_REASON } from '../core/auth/session-timeout.service';
-import { PASSWORD_RESET_SUCCESS_REASON } from '../core/auth/password-reset-reason';
 
 @Component({
   selector: 'app-login',
@@ -48,10 +47,6 @@ export class LoginComponent {
 
   // Set when the inactivity timeout, rather than the user, ended the previous session.
   protected readonly signedOutForInactivity = this._reason === INACTIVE_SIGN_OUT_REASON;
-
-  // Set when the user has just finished a password reset, which ends every session and
-  // sends them back here to use the new password.
-  protected readonly passwordWasReset = this._reason === PASSWORD_RESET_SUCCESS_REASON;
 
   // Toggles masking on the password field.
   protected readonly showPassword = signal(false);

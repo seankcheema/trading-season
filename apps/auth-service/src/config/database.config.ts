@@ -1,8 +1,6 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { User } from '../users/user.entity.js';
 import { RefreshToken } from '../refresh-tokens/refresh-token.entity.js';
-import { PasswordResetToken } from '../password-reset/password-reset-token.entity.js';
-import { PasswordResetTokens1790686840697 } from '../database/migrations/1790686840697-PasswordResetTokens.js';
 
 /**
  * Connection to the shared business database.
@@ -34,13 +32,10 @@ export const databaseConfig: TypeOrmModuleOptions = {
   // quietly building a second schema of its own.
   synchronize: false,
 
-  // Migration classes are listed explicitly rather than matched by a glob.
-  // Globs resolve against compiled output, which differs between `nest start`
-  // and `node dist/main.js` under ESM; an explicit list cannot drift.
-  migrations: [
-    PasswordResetTokens1790686840697,
-  ],
-  migrationsRun: true,
+  // This service runs no migrations of its own. Every table it reads is created
+  // by Flyway in apps/market-data/db/migrations, so there is no migration list
+  // and nothing to run at startup. Adding one back would put a second migration
+  // tool in charge of a schema Flyway already owns.
 
   logging: process.env.NODE_ENV === 'development',
 };

@@ -1,6 +1,6 @@
 # Auth service
 
-NestJS authentication service with PostgreSQL, RS256 access tokens, opaque refresh-token rotation, emailed password reset links, JWKS, and a liveness endpoint. See the [API reference](../../docs/reference/api.md) for contracts, the [password reset flow](../../docs/reference/api.md#password-reset-flow), and the existing logout limitation.
+NestJS authentication service with PostgreSQL, RS256 access tokens, opaque refresh-token rotation, JWKS, and a liveness endpoint. See the [API reference](../../docs/reference/api.md) for contracts and the existing logout limitation.
 
 ## UML Diagram 
 
@@ -871,16 +871,7 @@ The generator writes PKCS8/SPKI RSA keys with literal backslash-n escapes. The a
 
 Keep DB_HOST=localhost, DB_PORT=5432, DB_NAME=trading_season, and the matching local DB_USER and DB_PASSWORD. The service shares the business database and owns two tables in it, `user_accounts` and `refresh_tokens`. PORT defaults to 3001. Startup requires JWT_PRIVATE_KEY and JWT_PUBLIC_KEY; set JWT_ISSUER consistently. The .env.example CORS_ORIGIN entry is not wired into bootstrap.
 
-Password reset also needs an SMTP server. The .env.example defaults point at Mailpit on localhost:1025 with APP_BASE_URL=http://localhost:4200, which is the origin of the emailed link and must be the client UI rather than this service. Start Mailpit alone from the repository root:
-
-```sh
-docker compose --env-file apps/auth-service/.env \
-  -f infrastructure/docker-compose/docker-compose.local.yml up -d mailpit
-```
-
-Everything sent is then readable at http://localhost:8025 and delivered nowhere, so a reset link can be followed without a real mailbox. Without an SMTP server, POST /auth/forgot-password still answers 202 — it answers the same way in every case on purpose — and the send failure appears in this service's log.
-
-Follow [development setup](../../docs/guides/development.md#run-locally) to start the auth database, then run npm run start:dev from this directory. Startup loads .env and applies the registered TypeORM migrations with synchronize disabled. The application does not automatically load .env.local.
+Follow [development setup](../../docs/guides/development.md#run-locally) to start the business database, then run npm run start:dev from this directory. Startup loads .env, runs no migrations, and leaves synchronize disabled, so apply apps/market-data/db/migrations first. The application does not automatically load .env.local.
 
 ## Commands
 
@@ -894,12 +885,6 @@ Run in this directory:
 | CI coverage/reports | npm run test:ci |
 | Lint | npm run lint |
 
-The migration CLI requires database environment variables exported in the shell; see [database guidance](../../docs/reference/database.md#auth-migrations). Tests generate ephemeral keys rather than using deployment credentials, and no test opens an SMTP connection: the mail client is stubbed. GET /health checks liveness only.
-
-## Password reset
-
-Two unauthenticated routes, POST /auth/forgot-password and POST /auth/reset-password, implemented across [AuthService](src/auth/auth.service.ts), [PasswordResetTokensService](src/password-reset/password-reset-tokens.service.ts) and [MailService](src/mail/mail.service.ts). The contract, the security properties and the configuration are documented once, in the [API reference](../../docs/reference/api.md#password-reset-flow) and [Operations](../../docs/guides/operations.md#outbound-email).
-
-To try it locally with the stack running: submit the form at http://localhost:4200/forgot-password, open the message in Mailpit at http://localhost:8025, and follow its link. The token is single use and lasts 30 minutes, and completing the reset revokes every refresh token for that account.
+This service creates no tables of its own; see [database guidance](../../docs/reference/database.md#auth-tables) for the Flyway migrations that create the ones it reads. Tests generate ephemeral keys rather than using deployment credentials. GET /health checks liveness only.
 
 The Java services hold no authentication implementation of their own. They verify this service's access tokens locally against the public key published at /.well-known/jwks.json, fetched once and cached, and never handle a password. See [architecture](../../docs/reference/architecture.md) before integrating clients.

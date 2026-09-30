@@ -40,61 +40,6 @@ export class LoginPage {
   }
 }
 
-export class ForgotPasswordPage {
-  readonly email: Locator;
-  readonly submit: Locator;
-  readonly confirmation: Locator;
-  readonly error: Locator;
-  readonly loginLink: Locator;
-
-  constructor(readonly page: Page) {
-    this.email = page.locator('#email');
-    this.submit = page.getByRole('button', { name: /^Send(ing)? (reset )?link/ });
-    this.confirmation = page.getByRole('status');
-    this.error = page.getByRole('alert');
-    this.loginLink = page.getByRole('link', { name: 'Back to sign in' });
-  }
-
-  async goto(): Promise<void> {
-    await this.page.goto('/forgot-password');
-    await this.email.waitFor();
-  }
-
-  async request(email: string): Promise<void> {
-    await this.email.fill(email);
-    await this.submit.click();
-  }
-}
-
-export class ResetPasswordPage {
-  readonly password: Locator;
-  readonly confirmPassword: Locator;
-  readonly submit: Locator;
-  readonly error: Locator;
-  readonly notice: Locator;
-  readonly requestNewLink: Locator;
-
-  constructor(readonly page: Page) {
-    this.password = page.locator('#password');
-    this.confirmPassword = page.locator('#confirmPassword');
-    this.submit = page.getByRole('button', { name: /^Sav(e|ing) (new )?password/ });
-    this.error = page.getByRole('alert');
-    this.notice = page.getByRole('status');
-    this.requestNewLink = page.getByRole('link', { name: /request a new/i });
-  }
-
-  /** Opens the page the way the emailed link does, token and all. */
-  async open(token: string): Promise<void> {
-    await this.page.goto('/reset-password?token=' + encodeURIComponent(token));
-  }
-
-  async choose(password: string): Promise<void> {
-    await this.password.fill(password);
-    await this.confirmPassword.fill(password);
-    await this.submit.click();
-  }
-}
-
 export class RegisterPage {
   readonly firstName: Locator;
   readonly middleName: Locator;

@@ -111,7 +111,6 @@ Both services use JPA to map to the same tables directly. This requires schema v
 The dev proxy (`apps/client-ui/proxy.conf.json`) forwards all `/api` requests to Holdings and Trade Service (port 8082) exclusively:
 
 - Auth Service (port 3001) is called directly for login/register/refresh
-- Order and Sell Service (port 8081) is not called from the UI in normal operation; order submission is not wired yet
 
 ## Known limitations
 

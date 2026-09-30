@@ -23,16 +23,16 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">91.89% </span>
+                <span class="strong">92.1% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>34/37</span>
+                <span class='fraction'>35/38</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">82.85% </span>
+                <span class="strong">81.81% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>29/35</span>
+                <span class='fraction'>27/33</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">91.66% </span>
+                <span class="strong">91.89% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>33/36</span>
+                <span class='fraction'>34/37</span>
             </div>
         
             
@@ -153,7 +153,18 @@
 <a name='L88'></a><a href='#L88'>88</a>
 <a name='L89'></a><a href='#L89'>89</a>
 <a name='L90'></a><a href='#L90'>90</a>
-<a name='L91'></a><a href='#L91'>91</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -201,8 +212,6 @@
 <span class="cline-any cline-yes">29x</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">27x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -235,6 +244,13 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
@@ -246,7 +262,10 @@
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { HttpErrorResponse } from '@angular/common/http';
 &nbsp;
 // Which call failed, since the same status means different things for each.
-export type AuthErrorContext = 'login' | 'register-auth' | 'register-profile';
+export type AuthErrorContext =
+  | 'login'
+  | 'register-auth'
+  | 'register-profile';
 &nbsp;
 // Raised by AuthService when an email is taken and the submitted password doesn't sign in to it.
 export class EmailTakenError extends Error {
@@ -289,9 +308,7 @@ export function toAuthErrorMessage(error: unknown, context: AuthErrorContext): s
     return toAuthErrorMessage(error.original, error.step);
   }
   if (!(error instanceof HttpErrorResponse)) {
-    return context === 'login'
-      ? AUTH_ERROR_MESSAGES.loginFailed
-      : AUTH_ERROR_MESSAGES.registrationFailed;
+    return FALLBACK_MESSAGES[context];
   }
   if (error.status === 0) {
     return AUTH_ERROR_MESSAGES.network;
@@ -324,6 +341,13 @@ export function toAuthErrorMessage(error: unknown, context: AuthErrorContext): s
   }
 }
 &nbsp;
+// What to show when the failure is not an HTTP response at all, so there is no status to read.
+const FALLBACK_MESSAGES: Record&lt;AuthErrorContext, string&gt; = {
+  login: AUTH_ERROR_MESSAGES.loginFailed,
+  'register-auth': AUTH_ERROR_MESSAGES.registrationFailed,
+  'register-profile': AUTH_ERROR_MESSAGES.registrationFailed,
+};
+&nbsp;
 // NestJS validation errors carry `message` as a string or a list of per-field strings.
 function nestValidationMessage(error: HttpErrorResponse): string | null {
   const message = (error.error as { message?: unknown } | null)?.message;
@@ -340,7 +364,7 @@ function nestValidationMessage(error: HttpErrorResponse): string | null {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-09-29T21:17:46.395Z
+                at 2026-09-29T21:58:36.469Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>
