@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { PriceChartComponent } from './price-chart.component';
 import { PricePoint, mockPriceSeries } from '../mock-data';
 import { TimeframeToggleComponent } from './timeframe-toggle.component';
+import { ChartMode, MarketCandlePoint } from './market-chart.models';
 
 describe('PriceChartComponent', () => {
   beforeEach(async () => {
@@ -10,13 +11,190 @@ describe('PriceChartComponent', () => {
     }).compileComponents();
   });
 
-  function setup(timeframe: '1D' | '5D' | '1Y' = '1D', points?: PricePoint[]) {
+  function setup(timeframe: '1D' | '5D' | '1Y' = '1D', points?: PricePoint[], interactive = false) {
     const fixture = TestBed.createComponent(PriceChartComponent);
     fixture.componentRef.setInput('points', points ?? mockPriceSeries('TEST', timeframe, 100));
     fixture.componentRef.setInput('timeframe', timeframe);
+    fixture.componentRef.setInput('interactive', interactive);
     fixture.detectChanges();
     return fixture;
   }
+
+  function setupCandles(mode: ChartMode) {
+    const candles: MarketCandlePoint[] = [
+      {
+        time: new Date('2026-01-01T15:30:00Z'),
+        open: 100,
+        high: 104,
+        low: 98,
+        close: 103,
+        volume: 100,
+      },
+      {
+        time: new Date('2026-01-01T15:35:00Z'),
+        open: 103,
+        high: 105,
+        low: 99,
+        close: 101,
+        volume: 180,
+      },
+      {
+        time: new Date('2026-01-01T15:40:00Z'),
+        open: 101,
+        high: 112,
+        low: 100,
+        close: 110,
+        volume: 140,
+      },
+    ];
+    const fixture = TestBed.createComponent(PriceChartComponent);
+    fixture.componentRef.setInput('candles', candles);
+    fixture.componentRef.setInput('timeframe', '1D');
+    fixture.componentRef.setInput('mode', mode);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  function setupIndicatorCandles(length = 40, interactive = false) {
+    const candles = Array.from({ length }, (_, index): MarketCandlePoint => {
+      const close = 100 + index + Math.sin(index / 2);
+      return {
+        time: new Date(Date.UTC(2026, 0, 1, 14, index)),
+        open: close - 0.5,
+        high: close + 1,
+        low: close - 1,
+        close,
+        volume: 100 + index,
+      };
+    });
+    const fixture = TestBed.createComponent(PriceChartComponent);
+    fixture.componentRef.setInput('candles', candles);
+    fixture.componentRef.setInput('timeframe', '1D');
+    fixture.componentRef.setInput('interactive', interactive);
+    fixture.componentRef.setInput('enabledIndicators', ['sma', 'ema', 'bollinger', 'rsi']);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('renders line and area paths for the simple trend modes', () => {
+    const line = setupCandles('line');
+    expect(line.nativeElement.querySelector('.chart-price-line')).not.toBeNull();
+    expect(line.nativeElement.querySelector('linearGradient')).toBeNull();
+
+    const area = setupCandles('area');
+    expect(area.nativeElement.querySelector('.chart-price-line')).not.toBeNull();
+    expect(area.nativeElement.querySelector('linearGradient')).not.toBeNull();
+  });
+
+  it('renders candlestick wicks and bodies from OHLC data', () => {
+    const fixture = setupCandles('candles');
+    expect(fixture.nativeElement.querySelectorAll('.chart-candle')).toHaveLength(3);
+    expect(fixture.nativeElement.querySelectorAll('.chart-candle rect')).toHaveLength(3);
+  });
+
+  it('renders OHLC open and close ticks', () => {
+    const fixture = setupCandles('ohlc');
+    expect(fixture.nativeElement.querySelectorAll('.ohlc-open-tick')).toHaveLength(3);
+    expect(fixture.nativeElement.querySelectorAll('.ohlc-close-tick')).toHaveLength(3);
+  });
+
+  it('renders volume as the primary graph without a price line', () => {
+    const fixture = setupCandles('volume');
+    const heights = fixture.componentInstance['volumeBars']().map((bar) => bar.height);
+    expect(fixture.nativeElement.querySelectorAll('.chart-volume-bar')).toHaveLength(3);
+    expect(fixture.nativeElement.querySelector('.chart-price-line')).toBeNull();
+    expect(Math.max(...heights)).toBeGreaterThan(30);
+  });
+
+  it('renders enabled moving-average overlays and the RSI pane', () => {
+    const fixture = setupIndicatorCandles();
+    expect(fixture.nativeElement.querySelector('.chart-indicator-sma')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.chart-indicator-ema')).not.toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('.chart-indicator-bollinger')).toHaveLength(2);
+    expect(fixture.nativeElement.querySelector('.chart-bollinger-area')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.chart-indicator-key').textContent).toContain(
+      'Bollinger 20 · 2σ',
+    );
+    expect(fixture.nativeElement.querySelector('.rsi-pane')).not.toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('.rsi-guide')).toHaveLength(2);
+    expect(fixture.nativeElement.querySelector('.rsi-line')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('RSI 14');
+  });
+
+  it('keeps indicators hidden until they are enabled', () => {
+    const fixture = setupCandles('line');
+    expect(fixture.nativeElement.querySelector('.chart-indicator-line')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.rsi-pane')).toBeNull();
+  });
+
+  it('shows a labeled demo RSI fallback for a short candle series', () => {
+    const fixture = setupIndicatorCandles(10);
+    expect(fixture.nativeElement.querySelector('.chart-indicator-line')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.rsi-line')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Demo');
+    expect(fixture.componentInstance['latestRsi']()).toBe(57);
+  });
+
+  it('keeps indicator paths on the same visible range while zooming', () => {
+    const fixture = setupIndicatorCandles(120, true);
+    const component = fixture.componentInstance;
+    expect(component['visiblePoints']()).toHaveLength(78);
+    component['zoom'](0.5);
+    fixture.detectChanges();
+    expect(component['visiblePoints']()).toHaveLength(39);
+    expect(
+      component['indicatorSvgCoords'](component['smaSeries'](), component['yScale']()).length,
+    ).toBeLessThanOrEqual(39);
+    expect(fixture.nativeElement.querySelector('.rsi-line')).not.toBeNull();
+  });
+
+  it('normalizes percent mode to zero and formats the axis as percentages', () => {
+    const fixture = setupCandles('percent');
+    const points = fixture.componentInstance['visiblePoints']();
+    expect(points[0].value).toBe(0);
+    expect(points[2].value).toBeCloseTo(6.8, 1);
+    expect(fixture.componentInstance['yTicks']().every((tick) => tick.label.endsWith('%'))).toBe(
+      true,
+    );
+  });
+
+  it('updates the rendered graph whenever the mode input changes', () => {
+    const fixture = setupCandles('line');
+    const svg = () => fixture.nativeElement.querySelector('svg') as SVGElement;
+
+    expect(svg().dataset['chartMode']).toBe('line');
+    expect(fixture.nativeElement.querySelector('.chart-price-line')).not.toBeNull();
+
+    fixture.componentRef.setInput('mode', 'area');
+    fixture.detectChanges();
+    expect(svg().dataset['chartMode']).toBe('area');
+    expect(fixture.nativeElement.querySelector('linearGradient')).not.toBeNull();
+
+    fixture.componentRef.setInput('mode', 'candles');
+    fixture.detectChanges();
+    expect(svg().dataset['chartMode']).toBe('candles');
+    expect(fixture.nativeElement.querySelector('.chart-candle rect')).not.toBeNull();
+
+    fixture.componentRef.setInput('mode', 'ohlc');
+    fixture.detectChanges();
+    expect(svg().dataset['chartMode']).toBe('ohlc');
+    expect(fixture.nativeElement.querySelector('.ohlc-open-tick')).not.toBeNull();
+
+    fixture.componentRef.setInput('mode', 'volume');
+    fixture.detectChanges();
+    expect(svg().dataset['chartMode']).toBe('volume');
+    expect(fixture.nativeElement.querySelector('.chart-price-line')).toBeNull();
+    expect(
+      Math.max(...fixture.componentInstance['volumeBars']().map((bar) => bar.height)),
+    ).toBeGreaterThan(30);
+
+    fixture.componentRef.setInput('mode', 'percent');
+    fixture.detectChanges();
+    expect(svg().dataset['chartMode']).toBe('percent');
+    expect(fixture.componentInstance['yTicks']().every((tick) => tick.label.endsWith('%'))).toBe(
+      true,
+    );
+  });
 
   it('should label the time axis with at most six ticks', () => {
     const component = setup().componentInstance;
@@ -74,6 +252,34 @@ describe('PriceChartComponent', () => {
     expect(fixture.nativeElement.textContent).toContain(ticks[0].label);
   });
 
+  it('should show the latest price on the right axis when enabled', () => {
+    const fixture = setup('1D', [
+      { time: new Date('2026-01-01T15:30:00Z'), value: 100 },
+      { time: new Date('2026-01-01T15:35:00Z'), value: 102.34 },
+    ]);
+    expect(fixture.nativeElement.querySelector('.current-price-axis-label')).toBeNull();
+
+    fixture.componentRef.setInput('showCurrentPrice', true);
+    fixture.detectChanges();
+
+    const label: HTMLElement = fixture.nativeElement.querySelector('.current-price-axis-label');
+    expect(label.textContent?.trim()).toBe('$102.34');
+    expect(label.classList).toContain('current-price-gain');
+    expect(fixture.componentInstance['currentPriceMarker']()?.svgY).toBeGreaterThanOrEqual(0);
+  });
+
+  it('should make clustered candle volumes visibly different', () => {
+    const component = setup('1D', [
+      { time: new Date('2026-01-01T15:30:00Z'), value: 100, volume: 100 },
+      { time: new Date('2026-01-01T15:35:00Z'), value: 101, volume: 105 },
+      { time: new Date('2026-01-01T15:40:00Z'), value: 99, volume: 110 },
+    ]).componentInstance;
+
+    const heights = component['volumeBars']().map((bar) => bar.height);
+    expect(new Set(heights).size).toBe(3);
+    expect(Math.max(...heights) - Math.min(...heights)).toBeGreaterThan(6);
+  });
+
   it('should show the value and time of the hovered point', () => {
     const fixture = setup();
     fixture.componentInstance['hoverIndex'].set(26);
@@ -87,20 +293,81 @@ describe('PriceChartComponent', () => {
     );
   });
 
-  it('should align the hover label with the point and keep it above the plot', () => {
+  it('should position the tooltip cursor-adjacent to the hovered point', () => {
     const fixture = setup();
     fixture.componentInstance['hoverIndex'].set(13);
     fixture.detectChanges();
-    const label: HTMLElement = fixture.nativeElement.querySelector('.price-hover-label');
+    const tooltip: HTMLElement = fixture.nativeElement.querySelector('.price-hover-label');
+    const pos = fixture.componentInstance['tooltipPosition']();
     const point = fixture.componentInstance['hovered']();
-    // The label shares the plot's grid column, so a matching left offset puts it on the
-    // point's vertical axis, and its row sits above the plot at a constant height.
-    expect(label.style.left).toBe(`${point?.x}%`);
-    expect(label.style.top).toBe('');
-    expect(label.classList).toContain('top-0');
+
+    // Tooltip should be positioned based on x and y coordinates of the point
+    expect(tooltip.style.left).toBe(`${pos?.left}%`);
+    expect(tooltip.style.top).toBe(`${pos?.top}%`);
+    expect(pos?.left).toBeGreaterThan(0);
+    expect(pos?.top).toBeGreaterThan(0);
+  });
+
+  it('should flip tooltip left when point is near right edge', () => {
+    const fixture = setup();
+    // Set hover index to a point near the end (right side) of the chart
+    fixture.componentInstance['hoverIndex'].set(
+      fixture.componentInstance['visiblePoints']().length - 1,
+    );
+    fixture.detectChanges();
+    const pos = fixture.componentInstance['tooltipPosition']();
+
+    // Tooltip should flip left when near right edge
+    if (pos!.left > 80) {
+      expect(pos?.flipLeft).toBe(true);
+    }
+  });
+
+  it('should flip tooltip top when point is near top edge', () => {
+    const fixture = setup('1D', [
+      { time: new Date('2026-01-01T15:30:00Z'), value: 200 },
+      { time: new Date('2026-01-01T15:35:00Z'), value: 205 },
+    ]);
+    fixture.componentInstance['hoverIndex'].set(1);
+    fixture.detectChanges();
+    const pos = fixture.componentInstance['tooltipPosition']();
+
+    // When point is near top, tooltip should flip down
+    if (pos!.top < 25) {
+      expect(pos?.flipTop).toBe(true);
+    }
+  });
+
+  it('should render tooltip inside the plot as descendant', () => {
+    const fixture = setup();
+    fixture.componentInstance['hoverIndex'].set(13);
+    fixture.detectChanges();
+    const tooltip: HTMLElement = fixture.nativeElement.querySelector('.price-hover-label');
     const plot: HTMLElement = fixture.nativeElement.querySelector('[tabindex="0"]');
-    expect(plot.contains(label)).toBe(false);
-    expect(label.parentElement?.nextElementSibling).toBe(plot.previousElementSibling);
+
+    // Tooltip should be inside the plot div
+    expect(plot.contains(tooltip)).toBe(true);
+  });
+
+  it('should keep chart controls in the plot overlay when interactive', () => {
+    const points = Array.from({ length: 120 }, (_, index) => ({
+      time: new Date(2026, 0, 1, 9, index),
+      value: 100 + index,
+    }));
+    const fixture = setup('1D', points, true);
+    const controlsContainer: HTMLElement = fixture.nativeElement
+      .querySelector('[aria-label="Zoom out"]')
+      ?.closest('div');
+
+    expect(controlsContainer?.classList).toContain('absolute');
+    expect(controlsContainer?.classList).toContain('z-30');
+    expect(fixture.nativeElement.querySelector('[aria-label="Zoom out"]')).not.toBeNull();
+  });
+
+  it('should not show controls when chart is not interactive', () => {
+    const fixture = setup();
+    expect(fixture.nativeElement.querySelector('[aria-label="Zoom out"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.chart-control')).toBeNull();
   });
 
   it('should not draw a horizontal crosshair or a value-axis price on hover', () => {
@@ -113,11 +380,12 @@ describe('PriceChartComponent', () => {
     expect(fixture.nativeElement.querySelector('.price-hover-marker')).toBeNull();
   });
 
-  it('should show a current price dot for a single early-session point without hover', () => {
+  it('should show a horizontal trace and latest marker for a single early-session point', () => {
     const fixture = setup('1D', [{ time: new Date('2026-01-01T08:30:00Z'), value: 100 }]);
     const marker: HTMLElement | null = fixture.nativeElement.querySelector('.price-current-marker');
     expect(marker).not.toBeNull();
-    expect(marker?.style.left).toBe('50%');
+    expect(marker?.style.left).toBe('100%');
+    expect(fixture.componentInstance['linePath']()).toMatch(/^M 0,.* L 100,/);
   });
 
   it('should show a smaller current price dot at the end of the trail', () => {
@@ -128,25 +396,22 @@ describe('PriceChartComponent', () => {
     expect(marker?.classList).toContain('z-10');
   });
 
-  it('should show a fallback dot when there are no chart points', () => {
+  it('should not show a misleading fallback dot when there are no chart points', () => {
     const fixture = setup('1D', []);
     const marker: HTMLElement | null = fixture.nativeElement.querySelector('.price-current-marker');
-    expect(marker).not.toBeNull();
-    expect(marker?.style.left).toBe('50%');
-    expect(marker?.style.top).toBe('50%');
+    expect(marker).toBeNull();
   });
 
-  it('should keep the hover label out of the plot and hidden until hovered', () => {
+  it('should keep the tooltip hidden until hovered', () => {
     const fixture = setup();
-    const label: HTMLElement = fixture.nativeElement.querySelector('.price-hover-label');
+    const tooltip: HTMLElement = fixture.nativeElement.querySelector('.price-hover-label');
     const plot: HTMLElement = fixture.nativeElement.querySelector('[tabindex="0"]');
-    expect(plot.contains(label)).toBe(false);
-    expect(label.classList).toContain('absolute');
-    expect(label.classList).toContain('invisible');
+    expect(plot.contains(tooltip)).toBe(true);
+    expect(tooltip.classList).toContain('invisible');
 
     fixture.componentInstance['hoverIndex'].set(3);
     fixture.detectChanges();
-    expect(label.classList).not.toContain('invisible');
+    expect(tooltip.classList).not.toContain('invisible');
   });
 
   it('should step through points with the arrow keys', () => {
@@ -156,6 +421,44 @@ describe('PriceChartComponent', () => {
     expect(fixture.componentInstance['hoverIndex']()).toBe(25);
     plot.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home' }));
     expect(fixture.componentInstance['hoverIndex']()).toBe(0);
+  });
+
+  it('should zoom and return to the latest bars', () => {
+    const points = Array.from({ length: 120 }, (_, index) => ({
+      time: new Date(2026, 0, 1, 9, index),
+      value: 100 + index,
+    }));
+    const component = setup('1D', points, true).componentInstance;
+    expect(component['visiblePoints']()).toHaveLength(78);
+    component['zoom'](0.8);
+    expect(component['visiblePoints']().length).toBeLessThan(78);
+    component['pan'](-0.5);
+    expect(component['atLatest']()).toBe(false);
+    component['goLatest']();
+    expect(component['atLatest']()).toBe(true);
+  });
+
+  it('should preserve the original full-series chart when interaction is disabled', () => {
+    const points = Array.from({ length: 120 }, (_, index) => ({
+      time: new Date(2026, 0, 1, 9, index),
+      value: 100 + index,
+    }));
+    const fixture = setup('1D', points);
+    expect(fixture.componentInstance['visiblePoints']()).toHaveLength(120);
+    expect(fixture.nativeElement.querySelector('[aria-label="Zoom in"]')).toBeNull();
+  });
+
+  it('should reset an interactive view when its interaction key changes', () => {
+    const points = Array.from({ length: 120 }, (_, index) => ({
+      time: new Date(2026, 0, 1, 9, index),
+      value: 100 + index,
+    }));
+    const fixture = setup('1D', points, true);
+    fixture.componentInstance['pan'](-0.5);
+    expect(fixture.componentInstance['atLatest']()).toBe(false);
+    fixture.componentRef.setInput('interactionKey', 'MSFT');
+    fixture.detectChanges();
+    expect(fixture.componentInstance['atLatest']()).toBe(true);
   });
 });
 

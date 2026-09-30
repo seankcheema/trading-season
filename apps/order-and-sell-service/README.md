@@ -75,6 +75,9 @@ Environment variables override defaults in [application.properties](src/main/res
 | `AUTH_JWK_SET_URI` | `http://localhost:3001/.well-known/jwks.json` | Auth service JWKS endpoint |
 | `AUTH_JWT_ISSUER` | `https://auth.dualeapa.local` | Required JWT issuer claim |
 | `CORS_ORIGINS` | `http://localhost:4200` | Allowed browser origins (comma-separated) |
+| `MARKET_REPLAY_ARCHIVE_LOCATION` | empty | Optional absolute Parquet archive root override |
+
+Parquet-backed simulation sessions first use `MARKET_REPLAY_ARCHIVE_LOCATION`, then the archive location recorded during import, and finally discover the matching archive under the repository's `apps/market-data/db/seeds` directory. This discovery keeps an existing database usable after the repository moves. Missing raw tick partitions return an unavailable market-data error rather than falling back to one-minute candles.
 
 ## API Endpoints
 

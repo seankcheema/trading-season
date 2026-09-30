@@ -1,0 +1,841 @@
+<main class="market-page bg-[#0e0e0e] text-[#eefaff]">
+  <header class="market-nav bg-[#0e0e0e]/95 px-4 backdrop-blur-xl md:px-6">
+    <div class="mx-auto flex h-full max-w-[1600px] items-center gap-3">
+      <a routerLink="/dashboard" class="nav-back" aria-label="Back to dashboard">
+        <ng-icon name="lucideChevronLeft" />
+      </a>
+      <div class="mr-auto min-w-48 max-w-2xl flex-1">
+        <app-instrument-search
+          [instruments]="instruments()"
+          (selected)="selectInstrument($event)"
+        />
+      </div>
+      <button
+        type="button"
+        class="text-muted-foreground relative flex size-9 items-center justify-center"
+        disabled
+        aria-label="Notifications, not available yet"
+      >
+        <ng-icon name="lucideBell" />
+      </button>
+      <button
+        type="button"
+        class="border-border bg-card text-muted-foreground flex size-9 items-center justify-center rounded-full border"
+        disabled
+        aria-label="Profile, not available yet"
+      >
+        <ng-icon name="lucideUserRound" />
+      </button>
+    </div>
+  </header>
+
+  <div class="market-content">
+    @switch (pageStatus()) {
+      @case ('loading') {
+        <div class="text-muted-foreground flex min-h-[60vh] items-center justify-center">
+          Loading live market…
+        </div>
+      }
+      @case ('error') {
+        <section
+          class="border-border bg-card mx-auto mt-20 max-w-lg rounded-xl border p-8 text-center"
+        >
+          <h1 class="text-xl font-bold">Market data unavailable</h1>
+          <p class="text-muted-foreground mt-2 text-sm">
+            The live market service could not be reached.
+          </p>
+          <button
+            type="button"
+            class="bg-primary text-primary-foreground mt-5 h-10 rounded-lg px-5 font-semibold"
+            (click)="retry()"
+          >
+            Retry
+          </button>
+        </section>
+      }
+      @case ('not-found') {
+        <section
+          class="border-border bg-card mx-auto mt-20 max-w-lg rounded-xl border p-8 text-center"
+        >
+          <h1 class="text-xl font-bold">Instrument not found</h1>
+          <p class="text-muted-foreground mt-2 text-sm">
+            “{{ symbol() }}” is not available in this market session.
+          </p>
+          <a
+            routerLink="/dashboard"
+            class="bg-primary text-primary-foreground mt-5 inline-flex h-10 items-center rounded-lg px-5 font-semibold"
+            >Return to dashboard</a
+          >
+        </section>
+      }
+      @case ('ready') {
+        @if (instrument(); as active) {
+          <div class="market-grid" [class.tools-collapsed]="toolsCollapsed()">
+            <div class="market-main">
+              @if (comparisonInstrument(); as compared) {
+                <section
+                  class="comparison-summary border-border bg-card rounded-xl border px-4 py-1"
+                  aria-label="Stock comparison summary"
+                >
+                  @for (
+                    item of [
+                      {
+                        instrument: active,
+                        stats: marketStats(),
+                        volume: rangeVolume(),
+                      },
+                      {
+                        instrument: compared,
+                        stats: comparisonMarketStats(),
+                        volume: comparisonRangeVolume(),
+                      },
+                    ];
+                    track item.instrument.symbol
+                  ) {
+                    <article class="comparison-summary-item">
+                      <div class="comparison-identity">
+                        <h1 class="min-w-0 truncate text-sm font-bold">
+                          {{ item.instrument.symbol }}
+                          <span class="text-muted-foreground ml-1 font-normal">{{
+                            item.instrument.name
+                          }}</span>
+                        </h1>
+                        <div class="comparison-price">
+                          <strong
+                            class="tick-price tabular-nums"
+                            [class.tick-price-gain]="
+                              tickAnimations().get(item.instrument.symbol)?.direction === 'gain'
+                            "
+                            [class.tick-price-loss]="
+                              tickAnimations().get(item.instrument.symbol)?.direction === 'loss'
+                            "
+                            [class.tick-animation-even]="
+                              (tickAnimations().get(item.instrument.symbol)?.revision ?? 1) % 2 ===
+                              0
+                            "
+                            [style.animation-duration.ms]="
+                              tickAnimations().get(item.instrument.symbol)?.durationMs
+                            "
+                          >
+                            {{ item.instrument.price | currency: 'USD' }}
+                          </strong>
+                          <span
+                            class="text-[11px] font-semibold tabular-nums"
+                            [class]="item.instrument.change >= 0 ? 'text-gain' : 'text-loss'"
+                          >
+                            {{ item.instrument.change >= 0 ? '+' : ''
+                            }}{{ item.instrument.change | currency: 'USD' }}
+                            {{ item.instrument.changePercent | signedPercent }}
+                          </span>
+                        </div>
+                      </div>
+                      <dl class="comparison-metrics">
+                        <div>
+                          <dt>Open</dt>
+                          <dd>{{ item.stats.open | currency: 'USD' }}</dd>
+                        </div>
+                        <div>
+                          <dt>Volume</dt>
+                          <dd>{{ item.volume | number: '1.0-0' }}</dd>
+                        </div>
+                      </dl>
+                    </article>
+                  }
+                  @if (toolsCollapsed() && comparisonInstrument()) {
+                    <button
+                      type="button"
+                      class="tool-icon tools-open-button"
+                      aria-label="Open market tools"
+                      title="Open market tools"
+                      (click)="toolsCollapsed.set(false)"
+                    >
+                      <ng-icon class="chevron-rotate" name="lucideChevronLeft" />
+                    </button>
+                  }
+                </section>
+              } @else {
+                <section class="market-summary border-border bg-card rounded-xl border px-4 py-1">
+                  <div class="market-identity">
+                    <div class="min-w-0">
+                      <h1 class="text-xl font-bold">{{ active.symbol }}</h1>
+                      <p class="text-muted-foreground truncate text-xs">{{ active.name }}</p>
+                    </div>
+                    <span
+                      class="tick-price text-3xl font-bold tabular-nums"
+                      [class.tick-price-gain]="
+                        tickAnimations().get(active.symbol)?.direction === 'gain'
+                      "
+                      [class.tick-price-loss]="
+                        tickAnimations().get(active.symbol)?.direction === 'loss'
+                      "
+                      [class.tick-animation-even]="
+                        (tickAnimations().get(active.symbol)?.revision ?? 1) % 2 === 0
+                      "
+                      [style.animation-duration.ms]="
+                        tickAnimations().get(active.symbol)?.durationMs
+                      "
+                      >{{ active.price | currency: 'USD' }}</span
+                    >
+                  </div>
+                  <dl class="market-metrics">
+                    <div>
+                      <dt>Mkt Cap</dt>
+                      <dd>{{ mockDetails().marketCap }}</dd>
+                    </div>
+                    <div>
+                      <dt>Bid</dt>
+                      <dd class="text-gain">{{ marketStats().bid | currency: 'USD' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Ask</dt>
+                      <dd class="text-loss">{{ marketStats().ask | currency: 'USD' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Spread</dt>
+                      <dd>{{ marketStats().spread | currency: 'USD' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Open</dt>
+                      <dd>{{ marketStats().open | currency: 'USD' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Day Range</dt>
+                      <dd>
+                        {{ marketStats().low | currency: 'USD' }}–{{
+                          marketStats().high | currency: 'USD'
+                        }}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Range Volume</dt>
+                      <dd>{{ rangeVolume() | number: '1.0-0' }}</dd>
+                    </div>
+                    @if (toolsCollapsed()) {
+                      <div class="market-tools-toggle">
+                        <button
+                          type="button"
+                          class="tool-icon tools-open-button"
+                          aria-label="Open market tools"
+                          title="Open market tools"
+                          (click)="toolsCollapsed.set(false)"
+                        >
+                          <ng-icon class="chevron-rotate" name="lucideChevronLeft" />
+                        </button>
+                      </div>
+                    }
+                  </dl>
+                </section>
+              }
+
+              <section
+                class="chart-panel border-border bg-card rounded-xl border p-3"
+                [class.chart-panel-with-rsi]="rsiEnabled()"
+              >
+                <div class="chart-toolbar">
+                  <app-timeframe-toggle [(value)]="timeframe" />
+                  <div class="flex flex-wrap items-center justify-end gap-1.5">
+                    <div class="indicator-dropdown relative">
+                      <button
+                        type="button"
+                        class="tool-button"
+                        [class.tool-button-active]="
+                          indicatorPickerOpen() || enabledIndicators().length
+                        "
+                        [attr.aria-expanded]="indicatorPickerOpen()"
+                        aria-haspopup="menu"
+                        aria-controls="indicator-picker"
+                        (click)="$event.stopPropagation(); toggleToolbarMenu('indicators')"
+                      >
+                        <ng-icon name="lucideSlidersHorizontal" /> Indicators
+                        @if (enabledIndicators().length) {
+                          <span
+                            class="text-primary bg-primary/15 inline-flex size-4 items-center justify-center rounded-full text-[9px]"
+                            >{{ enabledIndicators().length }}</span
+                          >
+                        }
+                      </button>
+                      @if (indicatorPickerOpen()) {
+                        <div
+                          id="indicator-picker"
+                          class="comparison-picker indicator-picker"
+                          style="width: 11rem; gap: 0.125rem; padding: 0.25rem"
+                          role="menu"
+                          aria-label="Technical indicators"
+                        >
+                          <span class="text-muted-foreground p-2 text-xs font-semibold"
+                            >Technical indicators</span
+                          >
+                          @for (option of indicatorOptions; track option.value) {
+                            <button
+                              type="button"
+                              class="text-muted-foreground hover:bg-primary/10 hover:text-primary flex min-h-8 items-center gap-2 rounded-md px-2 text-left text-[11px] font-semibold"
+                              role="menuitemcheckbox"
+                              [attr.aria-checked]="enabledIndicators().includes(option.value)"
+                              (click)="$event.stopPropagation(); toggleIndicator(option.value)"
+                            >
+                              <span
+                                class="indicator-checkbox"
+                                [class.indicator-checkbox-checked]="
+                                  enabledIndicators().includes(option.value)
+                                "
+                                aria-hidden="true"
+                              ></span>
+                              <span>{{ option.label }} {{ option.period }}{{ option.detail }}</span>
+                            </button>
+                          }
+                        </div>
+                      }
+                    </div>
+                    <div class="chart-mode-dropdown relative">
+                      <button
+                        type="button"
+                        class="tool-button"
+                        [class.tool-button-active]="chartModePickerOpen()"
+                        [attr.aria-expanded]="chartModePickerOpen()"
+                        aria-haspopup="menu"
+                        aria-controls="chart-mode-picker"
+                        (click)="$event.stopPropagation(); toggleToolbarMenu('chart-mode')"
+                      >
+                        <ng-icon [name]="selectedChartMode().icon" />
+                        Graph view: {{ selectedChartMode().label }}
+                      </button>
+                      @if (chartModePickerOpen()) {
+                        <div
+                          id="chart-mode-picker"
+                          class="comparison-picker chart-mode-picker"
+                          style="width: 7.5rem; gap: 0.125rem; padding: 0.25rem"
+                          role="menu"
+                          aria-label="Chart mode"
+                        >
+                          @for (option of chartModes; track option.value) {
+                            <button
+                              type="button"
+                              [class]="
+                                chartMode() === option.value
+                                  ? 'chart-mode-option bg-primary/15 text-primary'
+                                  : 'chart-mode-option text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                              "
+                              [attr.aria-label]="option.label + ' chart'"
+                              [attr.aria-checked]="chartMode() === option.value"
+                              role="menuitemradio"
+                              (click)="$event.stopPropagation(); selectChartMode(option.value)"
+                            >
+                              <ng-icon class="text-sm" [name]="option.icon" />
+                              <span>{{ option.label }}</span>
+                            </button>
+                          }
+                        </div>
+                      }
+                    </div>
+                    <div class="comparison-dropdown relative">
+                      <button
+                        type="button"
+                        class="tool-button comparison-button"
+                        [class.tool-button-active]="
+                          comparisonPickerOpen() || comparisonInstrument()
+                        "
+                        [attr.aria-expanded]="comparisonPickerOpen()"
+                        aria-haspopup="dialog"
+                        aria-controls="comparison-picker"
+                        (click)="$event.stopPropagation(); toggleToolbarMenu('comparison')"
+                      >
+                        <span class="comparison-left">
+                          <ng-icon name="lucideGitCompare" />
+                          {{ comparisonInstrument()?.symbol ?? 'Compare' }}
+                        </span>
+                        @if (comparisonInstrument()) {
+                          <span
+                            class="comparison-right"
+                            (click)="$event.stopPropagation(); removeComparison()"
+                            role="button"
+                            tabindex="-1"
+                            aria-label="Remove comparison"
+                            title="Remove comparison"
+                          >
+                            <ng-icon name="lucideX" />
+                          </span>
+                        }
+                      </button>
+                      @if (comparisonPickerOpen()) {
+                        <div
+                          id="comparison-picker"
+                          class="comparison-picker"
+                          role="dialog"
+                          aria-label="Choose a stock to compare"
+                        >
+                          <span class="text-muted-foreground text-xs font-semibold"
+                            >Compare {{ active.symbol }} with</span
+                          >
+                          @if (comparisonInstruments().length) {
+                            <app-instrument-search
+                              embedded
+                              [instruments]="comparisonInstruments()"
+                              (selected)="selectComparison($event)"
+                            />
+                          } @else {
+                            <span class="text-muted-foreground text-xs"
+                              >No other stocks are available in this session.</span
+                            >
+                          }
+                        </div>
+                      }
+                    </div>
+                  </div>
+                </div>
+                <div class="chart-stage" [class.chart-stage-comparing]="comparisonInstrument()">
+                  @if (comparisonInstrument(); as compared) {
+                    <div class="comparison-price-label-left">
+                      <span class="text-xs font-semibold">{{ active.symbol }}</span>
+                      <span
+                        class="tick-price text-xs font-semibold tabular-nums"
+                        [class.tick-price-gain]="
+                          tickAnimations().get(active.symbol)?.direction === 'gain'
+                        "
+                        [class.tick-price-loss]="
+                          tickAnimations().get(active.symbol)?.direction === 'loss'
+                        "
+                        [class.tick-animation-even]="
+                          (tickAnimations().get(active.symbol)?.revision ?? 1) % 2 === 0
+                        "
+                        [style.animation-duration.ms]="
+                          tickAnimations().get(active.symbol)?.durationMs
+                        "
+                      >
+                        {{ active.price | currency: 'USD' : 'symbol' : '1.2-2' }}
+                      </span>
+                      <span
+                        class="text-xs font-semibold tabular-nums"
+                        [class]="active.change >= 0 ? 'text-gain' : 'text-loss'"
+                      >
+                        {{ active.change | number: '1.1-1' }} ({{
+                          active.changePercent | signedPercent
+                        }})
+                      </span>
+                    </div>
+                    <div class="comparison-price-label-right">
+                      <span class="text-xs font-semibold">{{ compared.symbol }}</span>
+                      <span
+                        class="tick-price text-xs font-semibold tabular-nums"
+                        [class.tick-price-gain]="
+                          tickAnimations().get(compared.symbol)?.direction === 'gain'
+                        "
+                        [class.tick-price-loss]="
+                          tickAnimations().get(compared.symbol)?.direction === 'loss'
+                        "
+                        [class.tick-animation-even]="
+                          (tickAnimations().get(compared.symbol)?.revision ?? 1) % 2 === 0
+                        "
+                        [style.animation-duration.ms]="
+                          tickAnimations().get(compared.symbol)?.durationMs
+                        "
+                      >
+                        {{ compared.price | currency: 'USD' : 'symbol' : '1.2-2' }}
+                      </span>
+                      <span
+                        class="text-xs font-semibold tabular-nums"
+                        [class]="compared.change >= 0 ? 'text-gain' : 'text-loss'"
+                      >
+                        {{ compared.change | number: '1.1-1' }} ({{
+                          compared.changePercent | signedPercent
+                        }})
+                      </span>
+                    </div>
+                    <div class="comparison-charts">
+                      <section
+                        class="comparison-chart"
+                        [attr.aria-label]="active.symbol + ' price chart'"
+                      >
+                        @switch (chartStatus()) {
+                          @case ('ready') {
+                            <app-price-chart
+                              class="h-full"
+                              interactive
+                              [showCurrentPrice]="true"
+                              [interactionKey]="active.symbol"
+                              [candles]="chartCandles()"
+                              [points]="chartPoints()"
+                              [mode]="chartMode()"
+                              [enabledIndicators]="enabledIndicators()"
+                              [timeframe]="timeframe()"
+                              timezone="America/Chicago"
+                            />
+                          }
+                          @case ('loading') {
+                            <div class="chart-message">Loading {{ active.symbol }} candles…</div>
+                          }
+                          @case ('empty') {
+                            <div class="chart-message">
+                              No candle data is available for {{ active.symbol }}.
+                            </div>
+                          }
+                          @case ('error') {
+                            <div class="chart-message text-loss">
+                              {{ active.symbol }} chart data is unavailable.
+                            </div>
+                          }
+                        }
+                      </section>
+                      <section
+                        class="comparison-chart"
+                        [attr.aria-label]="compared.symbol + ' price chart'"
+                      >
+                        @switch (comparisonChartStatus()) {
+                          @case ('ready') {
+                            <app-price-chart
+                              class="h-full"
+                              interactive
+                              [showCurrentPrice]="true"
+                              [interactionKey]="compared.symbol"
+                              [candles]="comparisonChartCandles()"
+                              [points]="comparisonChartPoints()"
+                              [mode]="chartMode()"
+                              [enabledIndicators]="enabledIndicators()"
+                              [timeframe]="timeframe()"
+                              timezone="America/Chicago"
+                            />
+                          }
+                          @case ('loading') {
+                            <div class="chart-message">Loading {{ compared.symbol }} candles…</div>
+                          }
+                          @case ('empty') {
+                            <div class="chart-message">
+                              No candle data is available for {{ compared.symbol }}.
+                            </div>
+                          }
+                          @case ('error') {
+                            <div class="chart-message text-loss">
+                              {{ compared.symbol }} chart data is unavailable.
+                            </div>
+                          }
+                        }
+                      </section>
+                    </div>
+                  } @else {
+                    @switch (chartStatus()) {
+                      @case ('ready') {
+                        <app-price-chart
+                          class="h-full"
+                          interactive
+                          [showCurrentPrice]="true"
+                          [interactionKey]="active.symbol"
+                          [candles]="chartCandles()"
+                          [points]="chartPoints()"
+                          [mode]="chartMode()"
+                          [enabledIndicators]="enabledIndicators()"
+                          [timeframe]="timeframe()"
+                          timezone="America/Chicago"
+                        />
+                      }
+                      @case ('loading') {
+                        <div class="chart-message">Loading candles…</div>
+                      }
+                      @case ('empty') {
+                        <div class="chart-message">No candle data is available for this range.</div>
+                      }
+                      @case ('error') {
+                        <div class="chart-message text-loss">Live chart data is unavailable.</div>
+                      }
+                    }
+                  }
+                </div>
+              </section>
+            </div>
+
+            <aside class="tools-column" [attr.aria-hidden]="toolsCollapsed()">
+              <section class="insight-panel border-border bg-card rounded-xl border p-3">
+                <div
+                  class="border-border bg-card sticky top-0 z-10 flex items-center border-b pb-2"
+                >
+                  <div class="flex min-w-0 items-center gap-2">
+                    <button
+                      type="button"
+                      class="tool-icon tools-close-button"
+                      aria-label="Hide market tools"
+                      title="Hide market tools"
+                      (click)="toolsCollapsed.set(true)"
+                    >
+                      <ng-icon class="chevron-rotate" name="lucideChevronRight" />
+                    </button>
+                    <div
+                      class="bg-muted flex gap-0.5 rounded-lg p-0.5"
+                      role="tablist"
+                      aria-label="Instrument tools"
+                    >
+                      @for (tab of ['overview', 'news', 'ai']; track tab) {
+                        <button
+                          type="button"
+                          role="tab"
+                          class="cursor-pointer rounded-md px-2 py-0.5 text-xs font-medium capitalize transition-colors"
+                          [class]="
+                            insightTab() === tab
+                              ? 'bg-primary text-primary-foreground'
+                              : 'text-muted-foreground hover:text-foreground'
+                          "
+                          [attr.aria-selected]="insightTab() === tab"
+                          (click)="insightTab.set($any(tab))"
+                        >
+                          {{ tab === 'ai' ? 'AI' : (tab | titlecase) }}
+                        </button>
+                      }
+                    </div>
+                  </div>
+                </div>
+                @switch (insightTab()) {
+                  @case ('overview') {
+                    <div class="insight-content insight-feed overview-feed">
+                      <div class="overview-card-list">
+                        <article class="overview-card">
+                          <div class="overview-card-topline">
+                            <div class="overview-card-icon" aria-hidden="true">
+                              <ng-icon name="lucideTrendingUp" />
+                            </div>
+                            <div class="overview-card-heading">
+                              <span>Trend</span>
+                              <strong>Positive</strong>
+                            </div>
+                          </div>
+                          <div
+                            class="overview-progress overview-progress-positive"
+                            role="progressbar"
+                            aria-label="Trend level"
+                            aria-valuemin="0"
+                            aria-valuemax="5"
+                            aria-valuenow="4"
+                          >
+                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
+                              <span [class.overview-progress-filled]="segment <= 4"></span>
+                            }
+                          </div>
+                        </article>
+                        <article class="overview-card">
+                          <div class="overview-card-topline">
+                            <div class="overview-card-icon" aria-hidden="true">
+                              <ng-icon name="lucideUsersRound" />
+                            </div>
+                            <div class="overview-card-heading">
+                              <span>Popularity</span>
+                              <strong>Above average</strong>
+                            </div>
+                          </div>
+                          <div
+                            class="overview-progress"
+                            role="progressbar"
+                            aria-label="Popularity level"
+                            aria-valuemin="0"
+                            aria-valuemax="5"
+                            aria-valuenow="4"
+                          >
+                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
+                              <span [class.overview-progress-filled]="segment <= 4"></span>
+                            }
+                          </div>
+                        </article>
+                        <article class="overview-card">
+                          <div class="overview-card-topline">
+                            <div class="overview-card-icon" aria-hidden="true">
+                              <ng-icon name="lucideActivity" />
+                            </div>
+                            <div class="overview-card-heading">
+                              <span>Activity</span>
+                              <strong>Elevated</strong>
+                            </div>
+                          </div>
+                          <div
+                            class="overview-progress"
+                            role="progressbar"
+                            aria-label="Activity level"
+                            aria-valuemin="0"
+                            aria-valuemax="5"
+                            aria-valuenow="4"
+                          >
+                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
+                              <span [class.overview-progress-filled]="segment <= 4"></span>
+                            }
+                          </div>
+                        </article>
+                        <article class="overview-card">
+                          <div class="overview-card-topline">
+                            <div class="overview-card-icon" aria-hidden="true">
+                              <ng-icon name="lucideShieldCheck" />
+                            </div>
+                            <div class="overview-card-heading">
+                              <span>Short-term risk</span>
+                              <strong class="overview-risk">Moderate</strong>
+                            </div>
+                          </div>
+                          <div
+                            class="overview-progress overview-progress-risk"
+                            role="progressbar"
+                            aria-label="Short-term risk level"
+                            aria-valuemin="0"
+                            aria-valuemax="5"
+                            aria-valuenow="3"
+                          >
+                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
+                              <span [class.overview-progress-filled]="segment <= 3"></span>
+                            }
+                          </div>
+                        </article>
+                        <article class="overview-card">
+                          <div class="overview-card-topline">
+                            <div class="overview-card-icon" aria-hidden="true">
+                              <ng-icon name="lucideCrosshair" />
+                            </div>
+                            <div class="overview-card-heading">
+                              <span>Key level</span>
+                              <strong>{{ marketStats().low | currency: 'USD' }}</strong>
+                            </div>
+                          </div>
+                          <div
+                            class="overview-progress"
+                            role="progressbar"
+                            aria-label="Key level strength"
+                            aria-valuemin="0"
+                            aria-valuemax="5"
+                            aria-valuenow="4"
+                          >
+                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
+                              <span [class.overview-progress-filled]="segment <= 4"></span>
+                            }
+                          </div>
+                        </article>
+                        <article class="overview-card">
+                          <div class="overview-card-topline">
+                            <div class="overview-card-icon" aria-hidden="true">
+                              <ng-icon name="lucideMessageSquareText" />
+                            </div>
+                            <div class="overview-card-heading">
+                              <span>Sentiment</span>
+                              <strong>Bullish</strong>
+                            </div>
+                          </div>
+                          <div
+                            class="overview-progress overview-progress-positive"
+                            role="progressbar"
+                            aria-label="Sentiment level"
+                            aria-valuemin="0"
+                            aria-valuemax="5"
+                            aria-valuenow="4"
+                          >
+                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
+                              <span [class.overview-progress-filled]="segment <= 4"></span>
+                            }
+                          </div>
+                        </article>
+                      </div>
+                      <aside class="overview-summary">
+                        <div class="overview-summary-content">
+                          <strong>Session brief</strong>
+                          <p>
+                            {{ active.symbol }} shows steady strength, elevated activity, and
+                            positive sentiment with moderate near-term risk.
+                          </p>
+                          <p>
+                            Support is forming near
+                            {{ marketStats().low | currency: 'USD' }}, while simulated participation
+                            remains above average. Signal scores are illustrative.
+                          </p>
+                        </div>
+                      </aside>
+                    </div>
+                  }
+                  @case ('news') {
+                    <div class="insight-content insight-feed news-feed">
+                      <header class="insight-intro">
+                        <strong>Latest headlines</strong>
+                      </header>
+                      <div class="news-list" aria-label="Simulated market headlines">
+                        @for (story of demoNews; track story.title) {
+                          <article class="news-story">
+                            <div class="news-meta">
+                              <time>{{ story.age }}</time>
+                              <span>{{ story.category }}</span>
+                            </div>
+                            <div class="news-story-heading">
+                              <h3>
+                                @if (story.includeSymbol) {
+                                  {{ active.symbol }} {{ story.title }}
+                                } @else {
+                                  {{ story.title }}
+                                }
+                              </h3>
+                              <span class="news-arrow" aria-hidden="true">›</span>
+                            </div>
+                          </article>
+                        }
+                      </div>
+                    </div>
+                  }
+                  @case ('ai') {
+                    <div class="insight-content flex min-h-0 flex-col pt-2">
+                      @if (aiMessages().length) {
+                        <div class="min-h-0 flex-1 space-y-3 overflow-auto py-2" aria-live="polite">
+                          @for (message of aiMessages(); track $index) {
+                            <div
+                              class="max-w-[92%] rounded-lg px-3 py-2 text-xs/5"
+                              [class]="
+                                message.role === 'user'
+                                  ? 'bg-primary/15 text-foreground ml-auto'
+                                  : 'bg-white/5 text-muted-foreground mr-auto'
+                              "
+                            >
+                              {{ message.text }}
+                            </div>
+                          }
+                        </div>
+                      } @else {
+                        <div
+                          class="flex min-h-0 flex-1 flex-col items-center justify-center px-5 text-center"
+                        >
+                          <ng-icon
+                            name="lucideBotMessageSquare"
+                            class="text-muted-foreground mb-4 text-4xl"
+                          />
+                          <strong class="text-base font-semibold"
+                            >Ask about {{ active.symbol }}</strong
+                          >
+                          <p class="text-muted-foreground mt-1 max-w-56 text-xs/5">
+                            Explore the chart, price movement, volume, or market terminology.
+                          </p>
+                        </div>
+                      }
+                      <form
+                        class="mt-2 flex min-h-11 items-center gap-2 rounded-lg border border-white/10 bg-[#202020] p-1.5 pl-3 focus-within:border-primary/40"
+                        (submit)="submitAiPrompt($event, active.symbol)"
+                      >
+                        <input
+                          type="text"
+                          class="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-white/30"
+                          [value]="aiDraft()"
+                          [placeholder]="'Ask about ' + active.symbol"
+                          aria-label="Ask market AI"
+                          (input)="aiDraft.set($any($event.target).value)"
+                        />
+                        <button
+                          type="submit"
+                          class="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-md disabled:cursor-not-allowed disabled:opacity-30"
+                          [disabled]="!aiDraft().trim()"
+                          aria-label="Send question"
+                          title="Send question"
+                        >
+                          <ng-icon name="lucideSendHorizontal" />
+                        </button>
+                      </form>
+                    </div>
+                  }
+                }
+              </section>
+
+              <app-trade-ticket
+                [symbol]="active.symbol"
+                [price]="active.price"
+                [sessionId]="sessionId()"
+                [marketTimestamp]="marketTimestamp()"
+              />
+            </aside>
+          </div>
+        }
+      }
+    }
+  </div>
+</main>

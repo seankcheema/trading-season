@@ -41,7 +41,7 @@ Local Compose builds the client UI, both Java services, auth service, and two re
 
 Auth GET /health reports process liveness, not database readiness. Check startup logs and database connectivity separately. Database volumes persist across ordinary container shutdown; removing volumes deletes their data. Back up retained data before schema or volume changes and verify restoration in a separate database.
 
-Ordinary Compose startup neither initializes nor seeds. `db_data` remains the PostgreSQL store and `market_data_archive` caches generated files across container recreation. Run the `initialize` profile only for first-time disposable setup. Thereafter the opt-in `seed` profile waits for database readiness and runs numbered steps 0002 through 0004 without destructive initialization.
+Ordinary Compose startup neither initializes nor seeds. `db_data` remains the PostgreSQL store and `market_data_archive` caches generated files across container recreation. The archive volume is mounted read-only into both Java services at the same absolute path used by the seed importer, so Parquet-backed sessions can replay their one-second tick partitions. Run the `initialize` profile only for first-time disposable setup. Thereafter the opt-in `seed` profile waits for database readiness and runs numbered steps 0002 through 0004 without destructive initialization.
 
 Because the seed container cannot inspect free space inside the separate PostgreSQL volume, set `MARKET_DATA_AVAILABLE_DISK_GB` to the volume's available capacity before starting the `seed` profile. The default `parquet` mode retains raw ticks in the archive volume and imports only candles into PostgreSQL. The importer commits and checkpoints one month at a time; a rerun verifies and skips completed months. Set tick storage to `postgres` only for an intentional high-capacity deployment.
 
@@ -76,7 +76,7 @@ docker compose --project-name trading-season-jenkins \
 
 Using the explicit `jenkins` service avoids starting the duplicate application services that remain in the optional Jenkins Compose example and would otherwise compete for the same host ports. To fit the shared 30 GB agent, Jenkins performs a depth-1 checkout and treats every run as a cold build. An unsuccessful or aborted build stops the local application stack before workspace deletion; a successful build preserves it. After stage-level report publication, final cleanup removes the build's Playwright image, all unused builder cache, Maven and npm caches, and the complete workspace. Named Docker volumes remain intact. Inspection and cleanup failures are protected so they do not replace the build's original result.
 
-Javadoc generation is a required Java change check described in [development](development.md#javadocs); the current Jenkinsfile does not run or publish it automatically. Generate and review both service outputs, then refresh the affected service's subdirectory under docs/JAVA_DOCS after successful verification.
+Javadoc generation is a required Java change check described in [development](development.md#javadocs); the Jenkinsfile does not run or publish it automatically. Generate and review both service outputs, then refresh the checked-in docs/JAVA_DOCS copy after successful verification.
 
 ## Troubleshooting
 
@@ -98,4 +98,5 @@ Javadoc generation is a required Java change check described in [development](de
 - Jenkins fails before tests: verify the configured Java/Maven paths and Node version on the actual agent, not just the optional image.
 - Jenkins fails before tests: verify the configured Java/Maven paths and Node version (24.x at 24.8.0 or later, compatible with Angular 21.2.x) on the actual agent, not just the optional image.
 - Synthetic market-data CI derives Docker resource names from a normalized hash of the Jenkins build tag, so encoded multibranch names such as `%2F` do not need special handling. The stage creates and removes build-scoped database and archive volumes; do not pre-seed PostgreSQL or generate a persistent archive on the Jenkins VM.
+- Market replay reports unavailable prices: for a Parquet-backed session, verify that the archive contains the selected `ticks-YYYY-MM-DD.parquet` partition. Set `MARKET_REPLAY_ARCHIVE_LOCATION` to its absolute root when the metadata path belongs to an older checkout or another host; local repository runs also discover the matching archive under `apps/market-data/db/seeds`. Replay deliberately does not fall back to one-minute candles.
 - UI renders but login does not reach an API: form submission is not yet wired to a service. See [architecture](../reference/architecture.md).

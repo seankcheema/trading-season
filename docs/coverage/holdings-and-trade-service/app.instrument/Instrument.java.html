@@ -15,7 +15,7 @@ import jakarta.persistence.Table;
  */
 @Entity
 @Table(name = &quot;instruments&quot;)
-<span class="fc" id="L18">public class Instrument {</span>
+public class Instrument {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -35,37 +35,81 @@ import jakarta.persistence.Table;
     @Column(name = &quot;simulated_stock_symbol&quot;)
     private String simulatedStockSymbol;
 
+    /** Creates an empty instrument for the persistence provider to populate. */
+<span class="fc" id="L39">    public Instrument() {</span>
+<span class="fc" id="L40">    }</span>
+
+    /**
+     * Returns the instrument id.
+     *
+     * @return the instrument id, or null before the row is inserted
+     */
     public Integer getInstrumentId() {
-<span class="fc" id="L39">        return instrumentId;</span>
+<span class="fc" id="L48">        return instrumentId;</span>
     }
 
+    /**
+     * Sets the instrument id.
+     *
+     * @param instrumentId the instrument id
+     */
     public void setInstrumentId(Integer instrumentId) {
-<span class="fc" id="L43">        this.instrumentId = instrumentId;</span>
-<span class="fc" id="L44">    }</span>
+<span class="fc" id="L57">        this.instrumentId = instrumentId;</span>
+<span class="fc" id="L58">    }</span>
 
+    /**
+     * Returns the instrument's ticker.
+     *
+     * @return the ticker
+     */
     public String getTicker() {
-<span class="fc" id="L47">        return ticker;</span>
+<span class="fc" id="L66">        return ticker;</span>
     }
 
+    /**
+     * Sets the instrument's ticker.
+     *
+     * @param ticker the ticker
+     */
     public void setTicker(String ticker) {
-<span class="fc" id="L51">        this.ticker = ticker;</span>
-<span class="fc" id="L52">    }</span>
+<span class="fc" id="L75">        this.ticker = ticker;</span>
+<span class="fc" id="L76">    }</span>
 
+    /**
+     * Returns the instrument's name.
+     *
+     * @return the name
+     */
     public String getName() {
-<span class="fc" id="L55">        return name;</span>
+<span class="fc" id="L84">        return name;</span>
     }
 
+    /**
+     * Sets the instrument's name.
+     *
+     * @param name the name
+     */
     public void setName(String name) {
-<span class="fc" id="L59">        this.name = name;</span>
-<span class="fc" id="L60">    }</span>
+<span class="fc" id="L93">        this.name = name;</span>
+<span class="fc" id="L94">    }</span>
 
+    /**
+     * Returns the simulator's symbol for this instrument.
+     *
+     * @return the simulated stock symbol, or null when the simulation does not cover it
+     */
     public String getSimulatedStockSymbol() {
-<span class="fc" id="L63">        return simulatedStockSymbol;</span>
+<span class="fc" id="L102">        return simulatedStockSymbol;</span>
     }
 
+    /**
+     * Sets the simulator's symbol for this instrument.
+     *
+     * @param simulatedStockSymbol the simulated stock symbol, or null
+     */
     public void setSimulatedStockSymbol(String simulatedStockSymbol) {
-<span class="fc" id="L67">        this.simulatedStockSymbol = simulatedStockSymbol;</span>
-<span class="fc" id="L68">    }</span>
+<span class="fc" id="L111">        this.simulatedStockSymbol = simulatedStockSymbol;</span>
+<span class="fc" id="L112">    }</span>
 
     /**
      * The symbol a client should display and match market prices against.
@@ -78,7 +122,7 @@ import jakarta.persistence.Table;
      * @return the simulated stock symbol if there is one, otherwise the ticker
      */
     public String displaySymbol() {
-<span class="fc bfc" id="L81" title="All 2 branches covered.">        return simulatedStockSymbol != null ? simulatedStockSymbol : ticker;</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        return simulatedStockSymbol != null ? simulatedStockSymbol : ticker;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

@@ -40,6 +40,9 @@ services:
       AUTH_JWK_SET_URI: http://auth-service:3001/.well-known/jwks.json
       AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
+      MARKET_REPLAY_ARCHIVE_LOCATION: /workspace/apps/market-data/db/seeds/synthetic-market-data-2026-v1
+    volumes:
+      - market_data_archive:/workspace/apps/market-data/db/seeds:ro
 
   # Order and Sell Service: manages order execution, validation, and holdings movement
   order-and-sell-service:
@@ -58,6 +61,9 @@ services:
       AUTH_JWK_SET_URI: http://auth-service:3001/.well-known/jwks.json
       AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
+      MARKET_REPLAY_ARCHIVE_LOCATION: /workspace/apps/market-data/db/seeds/synthetic-market-data-2026-v1
+    volumes:
+      - market_data_archive:/workspace/apps/market-data/db/seeds:ro
 
   db:
     image: postgres:16-alpine

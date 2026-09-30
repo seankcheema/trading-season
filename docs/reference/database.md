@@ -10,6 +10,8 @@ The auth service previously used a database of its own, `auth_db`. V005 moved it
 
 | Table group | Schema source | Application behavior |
 | --- | --- | --- |
+| Business: trading_season | [V001 bootstrap SQL](../../apps/market-data/db/migrations/V001__Initial_schema.sql) plus incremental SQL such as [V002 synthetic market data replay metadata](../../apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql) and [V003 token authentication](../../apps/market-data/db/migrations/V003__Token_authentication.sql) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
+| Auth: auth_db | [TypeORM migrations](../../apps/auth-service/src/database/migrations/) | Migrations run on startup; synchronize=false |
 | Business tables | [Market Data migrations](services/market-data.md) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
 | user_accounts, refresh_tokens | the same migrations, from V005 | TypeORM with synchronize=false and no migration runner; the auth service reads and writes tables it never creates |
 

@@ -12,9 +12,16 @@ export const routes: Routes = [
   { path: 'login', component: LoginComponent, canActivate: [guestGuard] },
   { path: 'register', component: RegisterComponent, canActivate: [guestGuard] },
   {
+    path: 'dashboard/markets/:symbol',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./market-page/market-page.component').then((m) => m.MarketPageComponent),
+  },
+  {
     path: 'dashboard',
     canActivate: [authGuard],
-    loadComponent: () => import('./dashboard/dashboard.component').then((m) => m.DashboardComponent),
+    loadComponent: () =>
+      import('./dashboard/dashboard.component').then((m) => m.DashboardComponent),
   },
   { path: '**', redirectTo: '' },
 ];

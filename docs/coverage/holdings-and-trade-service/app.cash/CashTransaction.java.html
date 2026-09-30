@@ -24,7 +24,7 @@ import java.time.OffsetDateTime;
  */
 @Entity
 @Table(name = &quot;cash_transactions&quot;)
-<span class="fc" id="L27">public class CashTransaction {</span>
+public class CashTransaction {
 
     /** A deposit of funds: {@code amount} is positive. */
     public static final String REASON_DEPOSIT = &quot;DEPOSIT&quot;;
@@ -54,52 +54,116 @@ import java.time.OffsetDateTime;
     @Column(name = &quot;created_at&quot;, nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
+    /** Creates an empty ledger row for the persistence provider to populate. */
+<span class="fc" id="L58">    public CashTransaction() {</span>
+<span class="fc" id="L59">    }</span>
+
+    /**
+     * Returns the ledger row id.
+     *
+     * @return the transaction id, or null before the row is inserted
+     */
     public Integer getCashTransactionId() {
-<span class="fc" id="L58">        return cashTransactionId;</span>
+<span class="fc" id="L67">        return cashTransactionId;</span>
     }
 
+    /**
+     * Sets the ledger row id.
+     *
+     * @param cashTransactionId the transaction id
+     */
     public void setCashTransactionId(Integer cashTransactionId) {
-<span class="fc" id="L62">        this.cashTransactionId = cashTransactionId;</span>
-<span class="fc" id="L63">    }</span>
+<span class="fc" id="L76">        this.cashTransactionId = cashTransactionId;</span>
+<span class="fc" id="L77">    }</span>
 
+    /**
+     * Returns the account this row is booked against.
+     *
+     * @return the account id
+     */
     public Integer getAccountId() {
-<span class="fc" id="L66">        return accountId;</span>
+<span class="fc" id="L85">        return accountId;</span>
     }
 
+    /**
+     * Sets the account this row is booked against.
+     *
+     * @param accountId the account id
+     */
     public void setAccountId(Integer accountId) {
-<span class="fc" id="L70">        this.accountId = accountId;</span>
-<span class="fc" id="L71">    }</span>
-
-    public Integer getFillId() {
-<span class="fc" id="L74">        return fillId;</span>
-    }
-
-    public void setFillId(Integer fillId) {
-<span class="fc" id="L78">        this.fillId = fillId;</span>
-<span class="fc" id="L79">    }</span>
-
-    public BigDecimal getAmount() {
-<span class="fc" id="L82">        return amount;</span>
-    }
-
-    public void setAmount(BigDecimal amount) {
-<span class="fc" id="L86">        this.amount = amount;</span>
-<span class="fc" id="L87">    }</span>
-
-    public String getReason() {
-<span class="fc" id="L90">        return reason;</span>
-    }
-
-    public void setReason(String reason) {
-<span class="fc" id="L94">        this.reason = reason;</span>
+<span class="fc" id="L94">        this.accountId = accountId;</span>
 <span class="fc" id="L95">    }</span>
 
-    public OffsetDateTime getCreatedAt() {
-<span class="fc" id="L98">        return createdAt;</span>
+    /**
+     * Returns the fill this movement settled, for an order fill.
+     *
+     * @return the fill id, or null for a deposit or withdrawal
+     */
+    public Integer getFillId() {
+<span class="fc" id="L103">        return fillId;</span>
     }
 
+    /**
+     * Sets the fill this movement settled.
+     *
+     * @param fillId the fill id, or null for a deposit or withdrawal
+     */
+    public void setFillId(Integer fillId) {
+<span class="fc" id="L112">        this.fillId = fillId;</span>
+<span class="fc" id="L113">    }</span>
+
+    /**
+     * Returns the signed amount: positive is a credit, negative a debit.
+     *
+     * @return the signed amount
+     */
+    public BigDecimal getAmount() {
+<span class="fc" id="L121">        return amount;</span>
+    }
+
+    /**
+     * Sets the signed amount.
+     *
+     * @param amount the signed amount, positive for a credit and negative for a debit
+     */
+    public void setAmount(BigDecimal amount) {
+<span class="fc" id="L130">        this.amount = amount;</span>
+<span class="fc" id="L131">    }</span>
+
+    /**
+     * Returns why the cash moved.
+     *
+     * @return {@code DEPOSIT}, {@code WITHDRAWAL} or {@code ORDER_FILL}
+     */
+    public String getReason() {
+<span class="fc" id="L139">        return reason;</span>
+    }
+
+    /**
+     * Sets why the cash moved.
+     *
+     * @param reason {@code DEPOSIT}, {@code WITHDRAWAL} or {@code ORDER_FILL}
+     */
+    public void setReason(String reason) {
+<span class="fc" id="L148">        this.reason = reason;</span>
+<span class="fc" id="L149">    }</span>
+
+    /**
+     * Returns when the movement was recorded.
+     *
+     * @return the creation instant
+     */
+    public OffsetDateTime getCreatedAt() {
+<span class="fc" id="L157">        return createdAt;</span>
+    }
+
+    /**
+     * Sets when the movement was recorded.
+     *
+     * @param createdAt the creation instant
+     */
     public void setCreatedAt(OffsetDateTime createdAt) {
-<span class="fc" id="L102">        this.createdAt = createdAt;</span>
-<span class="fc" id="L103">    }</span>
+<span class="fc" id="L166">        this.createdAt = createdAt;</span>
+<span class="fc" id="L167">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

@@ -248,7 +248,7 @@ Tests use a stand-in server that reproduces the contracts documented above. Upda
 
 Update this reference in the same commit as endpoint changes. Proposed endpoints must be explicitly labeled. Key generation and environment setup belong in [Auth Service README](../../apps/auth-service/README.md); Java implementation details belong in source Javadocs.
 
-Base path: /api/auth. Spring Boot source is rooted at [apps/business-backend/src/main/java/app](../../apps/business-backend/src/main/java/app), and these endpoints are implemented by [controller](../../apps/business-backend/src/main/java/app/auth/AuthController.java).
+Base path: /api/auth. Spring Boot source is rooted at [apps/holdings-and-trade-service/src/main/java/app](../../apps/holdings-and-trade-service/src/main/java/app), and these endpoints are implemented by [controller](../../apps/holdings-and-trade-service/src/main/java/app/auth/AuthController.java).
 
 The Java backend has no login and never receives a password. Sign-up and sign-in happen at the NestJS auth service. User-specific endpoints and market mutations require its access token in an `Authorization: Bearer` header; the account existence check and read-only simulated market endpoints are public.
 
@@ -258,9 +258,9 @@ The Java backend has no login and never receives a password. Sign-up and sign-in
 | POST /api/auth/register | Bearer access token. JSON: email, firstName, optional middleName, lastName, ssn, address, dateOfBirth, traderLevel, availableFunds | 201: userId, email |
 | GET /api/users/me | Bearer access token | 200: caller's profile without ssn |
 
-Registration takes no username and no password; the caller is identified by the bearer token. It requires a valid email up to 100 characters, nonblank firstName, lastName and address, an ssn in XXX-XX-XXXX form, a past dateOfBirth, a traderLevel of BEGINNER, INTERMEDIATE or ADVANCED, and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/business-backend/src/main/java/app/auth/RegisterRequest.java).
+Registration takes no username and no password; the caller is identified by the bearer token. It requires a valid email up to 100 characters, nonblank firstName, lastName and address, an ssn in XXX-XX-XXXX form, a past dateOfBirth, a traderLevel of BEGINNER, INTERMEDIATE or ADVANCED, and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/holdings-and-trade-service/src/main/java/app/auth/RegisterRequest.java).
 
-Errors use an error string: 400 for request validation, 409 for a duplicate account or email, 403 when the request email differs from the token's email claim, and 401 for a missing or untrusted token. See [exception mapping](../../apps/business-backend/src/main/java/app/auth/GlobalExceptionHandler.java).
+Errors use an error string: 400 for request validation, 409 for a duplicate account or email, 403 when the request email differs from the token's email claim, and 401 for a missing or untrusted token. See [exception mapping](../../apps/holdings-and-trade-service/src/main/java/app/auth/GlobalExceptionHandler.java).
 
 ### Token verification
 
@@ -274,11 +274,11 @@ The token's sub is the only identifier shared with the auth service. It becomes 
 2. Create credentials with POST /auth/register on the auth service and keep the returned accessToken.
 3. Call POST /api/auth/register on the Java backend with that token and the profile fields. The password and confirmation stay with step 2.
 
-Registration requires an email up to 100 characters that equals the token's email claim, ignoring case; nonblank names and address; ssn in XXX-XX-XXXX form; a past dateOfBirth; traderLevel BEGINNER, INTERMEDIATE or ADVANCED; and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/business-backend/src/main/java/app/auth/RegisterRequest.java).
+Registration requires an email up to 100 characters that equals the token's email claim, ignoring case; nonblank names and address; ssn in XXX-XX-XXXX form; a past dateOfBirth; traderLevel BEGINNER, INTERMEDIATE or ADVANCED; and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/holdings-and-trade-service/src/main/java/app/auth/RegisterRequest.java).
 
 ### Errors
 
-Errors use an `{"error": "..."}` body. See [exception mapping](../../apps/business-backend/src/main/java/app/auth/GlobalExceptionHandler.java) and [security error handling](../../apps/business-backend/src/main/java/app/auth/SecurityErrorHandler.java).
+Errors use an `{"error": "..."}` body. See [exception mapping](../../apps/holdings-and-trade-service/src/main/java/app/auth/GlobalExceptionHandler.java) and [security error handling](../../apps/holdings-and-trade-service/src/main/java/app/auth/SecurityErrorHandler.java).
 
 | Status | Cause |
 | --- | --- |
@@ -290,7 +290,7 @@ Errors use an `{"error": "..."}` body. See [exception mapping](../../apps/busine
 
 ## Java stock market API: port 8081
 
-These public endpoints expose seeded stock data for the dashboard market ticker and future stock charts. Account, portfolio, holding, transaction, and order integration remains outside this slice; the dashboard portfolio chart still uses mock data.
+These public endpoints expose seeded stock data for the dashboard market ticker, instrument popup, and full-screen `/dashboard/markets/:symbol` view. The full-screen view combines candle history with live stream prices and supports `1D`, `5D`, `1M`, and `1Y`; chart modes, technical indicators, and peer comparison are computed in the browser. Its metrics, overview signals, news, AI responses, cash balance, held shares, and order preview are demo data rather than API responses. Buy and Sell only calculate a local preview and do not call an order endpoint. Account, portfolio, holding, transaction, and order integration remains outside this slice, and the dashboard portfolio chart still uses mock data.
 
 Planned protected trading endpoints will use the [token verification](#token-verification) described above: clients send the auth service access token as a bearer token, and the Java backend scopes account and order resources to the token's sub.
 
@@ -300,7 +300,7 @@ Planned protected trading endpoints will use the [token verification](#token-ver
 | --- | --- | --- |
 | GET /api/market/snapshot | Optional `sessionId` | Resolved simulation, replay cursor, market status, available clock range, and every seeded stock's company name, current price, current-session change, percentage change, and tick timestamp |
 | GET /api/market/candles | Optional `sessionId`; required `symbol` and `timeframe` (`1D`, `5D`, `1M`, or `1Y`) | At most 500 chronological OHLCV buckets ending at the current replay cursor |
-| GET /api/market/stream | Optional `sessionId`; optional `Last-Event-ID` request header | Server-sent event stream containing one synchronized price batch per simulated market second |
+| GET /api/market/stream | Optional `sessionId`; optional `Last-Event-ID` request header | Server-sent event stream containing one synchronized price batch per simulated market second, sourced from raw Parquet ticks for Parquet-backed sessions |
 | PUT /api/market/clock | Bearer access token; optional `sessionId`; JSON `timestamp` as an ISO-8601 instant | Moves the shared replay cursor to the closest seeded tick at or before that time and returns a snapshot; non-trading dates inside an imported month use the nearest loaded trading date in that month, preferring the next trading date; months without seeded trading data return 400 |
 
 Snapshots include a `calendar` object that describes the selectable imported archive range:
@@ -308,6 +308,8 @@ Snapshots include a `calendar` object that describes the selectable imported arc
 The account, holdings and cash endpoints are documented once, under [Accounts and holdings](#accounts-and-holdings) and [Cash](#cash). Order submission is documented under [Trading endpoints](#trading-endpoints), and per-order and per-account order reads remain [planned](#planned-trading-endpoints).
 
 Manual clock changes are limited to the months imported for the resolved simulation session. A local development database can contain a small date range rather than the full generated dataset, so clients should validate against `tradingDates`, `firstTimestamp`, and `lastTimestamp` before calling `PUT /api/market/clock`. If a user selects a weekend or other non-trading date inside an imported month, clients may adjust to the nearest loaded trading date in that month before sending the request; the backend applies the same rule for direct API callers.
+
+Parquet-backed replay requires the selected daily tick partition to be readable by the Java service. The archive root resolves from `MARKET_REPLAY_ARCHIVE_LOCATION`, the location recorded in simulation metadata, or the matching archive in the repository's `apps/market-data/db/seeds` directory. The service does not substitute one-minute candles when raw ticks are unavailable; affected snapshot, stream, or clock requests fail as unavailable market data instead of changing the replay resolution. The dashboard displays seconds in its market clock and applies each streamed price immediately. Its 500–1,000 ms randomized gain/loss highlight is visual only and does not affect replay timing or values.
 
 ### Candle aggregation
 
@@ -341,13 +343,13 @@ Each aggregate uses the first open, maximum high, minimum low, final close, and 
 }
 ```
 
-One shared replay cursor per requested simulation advances at one simulated second per real second. The dashboard staggers the stocks in each synchronized batch across the following 0–1 second window so multiple prices visibly change without rerendering the entire row at once. It uses the current `America/Chicago` date and market time when that timestamp exists in the seed, chooses the nearest applicable seeded session otherwise, skips overnight and weekend gaps, and loops after the final seeded session. `MARKET_REPLAY_START_AT` may override this behavior with an ISO-8601 instant for deterministic tests and demonstrations. `marketTimestamp` is the simulated market time; `serverTimestamp` records delivery time.
+One shared replay cursor per requested simulation advances at one simulated second per real second. The dashboard applies every price and the market timestamp immediately, then shows a randomized 500–1,000 ms visual gain/loss transition without delaying values or changing event order. It uses the current `America/Chicago` date and market time when that timestamp exists in the seed, chooses the nearest applicable seeded session otherwise, skips overnight and weekend gaps, and loops after the final seeded session. `MARKET_REPLAY_START_AT` may override this behavior with an ISO-8601 instant for deterministic tests and demonstrations. `marketTimestamp` is the simulated market time; `serverTimestamp` records delivery time.
 
 The stream sends a heartbeat every 15 events and retains the latest 30 events for reconnection by `Last-Event-ID`. A client outside that window receives a resynchronization event and reloads the snapshot.
 
 ### Data access and safeguards
 
-The replay service supports ticks stored either in PostgreSQL or in the archive location recorded in simulation metadata. It loads only the current trading day's required tick columns into a bounded server-side buffer, so emitting each second does not issue another database query or rescan a Parquet file. When a Parquet tick partition is unavailable but one-minute candles exist for the selected day, replay falls back to candle-close frames so manual clock changes still work at minute granularity.
+The replay service supports ticks stored either in PostgreSQL for sessions explicitly configured with PostgreSQL tick storage or in the resolved Parquet archive for Parquet-backed sessions. It loads only the current trading day's required tick columns into a bounded server-side buffer, so emitting each second does not issue another database query or rescan a Parquet file. An unavailable Parquet archive or partition fails the request; one-minute candles remain chart data and are never substituted for replay ticks.
 
 The three GET endpoints are unauthenticated, read-only simulator operations. Clock changes require a bearer access token because they affect the shared replay for the selected simulation session. The implementation enforces configured CORS origins, validated and bounded parameters, REST rate limits, per-client and global stream connection limits, parameterized database queries, and sanitized request errors. Filesystem paths are never accepted from a request; Parquet access is derived only from trusted simulation metadata.
 
@@ -378,6 +380,9 @@ The Angular UI authenticates only against the NestJS auth service. See [AuthServ
 - Registration first posts email and password to POST /auth/register. If that returns 409, the UI tries POST /auth/login with the same credentials, so a user whose earlier profile step failed can resubmit. Once it has tokens, the UI posts the profile to Java POST /api/auth/register with a Bearer access token: email, firstName, middleName, lastName, dateOfBirth, ssn, address, traderLevel, availableFunds. It sends no password or username. If the profile step fails, the UI clears the stored session.
 - The dashboard route requires a stored session and refreshes an expired access token through POST /auth/refresh. Sign-out posts the refresh token to POST /auth/logout.
 - The dashboard reads and changes the signed-in user's accounts and cash through the planned account endpoints above, which the Java backend does not serve yet; see [AccountStore](../../apps/client-ui/src/app/dashboard/accounts/account-store.service.ts) and [the models it expects](../../apps/client-ui/src/app/dashboard/accounts/account.models.ts). Cash belongs to the user, not to an account: it is availableFunds from GET /api/users/me, every account shares it, and deposits and withdrawals move it through /api/me/cash-transactions without naming an account. An account holds positions only, and its portfolio is exactly its holdings, so an account has one portfolio and a new account starts with none. Net worth is availableFunds plus the value of every account's holdings; the Portfolio Value card and assets table show the selected account's holdings. An account is returned as accountId, name and openedDate; a holding as symbol, quantity and averageCost, valued at the live price or at averageCost when there is none; a cash transaction as cashTransactionId, a positive amount, reason and createdAt. After every successful change the UI reloads the affected data rather than trusting the response body. It maps 400 to the backend's error string, 403 and 404 to an unavailable account, and 409 or 422 to a duplicate account name or, for withdrawals, insufficient funds. The UI lists only the accounts these endpoints return for the caller, requests holdings only for those, and sends no change for an account id outside that set; the backend must still enforce ownership from the token's sub.
+- While a session is stored, the UI signs the user out after 10 minutes without mouse, keyboard, scroll or touch input, using the same POST /auth/logout call, then shows the login page with `?reason=inactive`. The limit can be set to 5, 10, 15, 30 or 60 minutes in the dashboard's Settings dialog, opened from the profile menu, and is kept per browser. The last activity time is shared between tabs and survives a reload. This is enforced by the UI only; neither service tracks inactivity. See [SessionTimeoutService](../../apps/client-ui/src/app/core/auth/session-timeout.service.ts).
+
+Authentication, inactivity timeout, account workflows, and the full-screen market journey are covered end to end by the [Playwright suite](../../apps/client-ui/e2e), which drives the real application against a stand-in for both services. Its stand-in reproduces the contracts on this page, so update the two together.
 - After 3 rejected sign-ins in a row (401 from POST /auth/login), the login form locks for 10 minutes: it shows a lockout notice, disables submission with a countdown, and sends no further login requests until the time is up. Network errors and 5xx responses do not count. A successful sign-in or the lock running out resets the count. The count and lock are kept per browser in localStorage, shared between tabs and kept across a reload. This is enforced by the UI only and is separate from the auth service's own account lockout (5 failed attempts lock the account for 15 minutes; see [UsersService](../../apps/auth-service/src/users/users.service.ts)). See [LoginLockoutService](../../apps/client-ui/src/app/core/auth/login-lockout.service.ts).
 - While a session is stored, the UI signs the user out after 10 minutes without mouse, keyboard, scroll or touch input, using the same POST /auth/logout call, then shows the login page with `?reason=inactive`. The limit can be set to 5, 10, 15, 30 or 60 minutes in the dashboard's Settings dialog, opened from the profile menu, and is kept per browser. The last activity time is shared between tabs and survives a reload. This is enforced by the UI only; neither service tracks inactivity. See [SessionTimeoutService](../../apps/client-ui/src/app/core/auth/session-timeout.service.ts).
 

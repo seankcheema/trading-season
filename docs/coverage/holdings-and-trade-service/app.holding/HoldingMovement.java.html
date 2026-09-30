@@ -19,7 +19,7 @@ import java.math.BigDecimal;
  */
 @Entity
 @Table(name = &quot;holding_movements&quot;)
-<span class="fc" id="L22">public class HoldingMovement {</span>
+public class HoldingMovement {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -39,44 +39,98 @@ import java.math.BigDecimal;
     @Column(name = &quot;quantity_delta&quot;, nullable = false, updatable = false)
     private BigDecimal quantityDelta;
 
+    /** Creates an empty movement for the persistence provider to populate. */
+<span class="fc" id="L43">    public HoldingMovement() {</span>
+<span class="fc" id="L44">    }</span>
+
+    /**
+     * Returns the movement id.
+     *
+     * @return the movement id, or null before the row is inserted
+     */
     public Integer getHoldingMovementId() {
-<span class="fc" id="L43">        return holdingMovementId;</span>
+<span class="fc" id="L52">        return holdingMovementId;</span>
     }
 
+    /**
+     * Sets the movement id.
+     *
+     * @param holdingMovementId the movement id
+     */
     public void setHoldingMovementId(Integer holdingMovementId) {
-<span class="fc" id="L47">        this.holdingMovementId = holdingMovementId;</span>
-<span class="fc" id="L48">    }</span>
+<span class="fc" id="L61">        this.holdingMovementId = holdingMovementId;</span>
+<span class="fc" id="L62">    }</span>
 
+    /**
+     * Returns the account whose position moved.
+     *
+     * @return the account id
+     */
     public Integer getAccountId() {
-<span class="fc" id="L51">        return accountId;</span>
+<span class="fc" id="L70">        return accountId;</span>
     }
 
+    /**
+     * Sets the account whose position moved.
+     *
+     * @param accountId the account id
+     */
     public void setAccountId(Integer accountId) {
-<span class="fc" id="L55">        this.accountId = accountId;</span>
-<span class="fc" id="L56">    }</span>
-
-    public Integer getInstrumentId() {
-<span class="fc" id="L59">        return instrumentId;</span>
-    }
-
-    public void setInstrumentId(Integer instrumentId) {
-<span class="fc" id="L63">        this.instrumentId = instrumentId;</span>
-<span class="fc" id="L64">    }</span>
-
-    public Integer getFillId() {
-<span class="fc" id="L67">        return fillId;</span>
-    }
-
-    public void setFillId(Integer fillId) {
-<span class="fc" id="L71">        this.fillId = fillId;</span>
-<span class="fc" id="L72">    }</span>
-
-    public BigDecimal getQuantityDelta() {
-<span class="fc" id="L75">        return quantityDelta;</span>
-    }
-
-    public void setQuantityDelta(BigDecimal quantityDelta) {
-<span class="fc" id="L79">        this.quantityDelta = quantityDelta;</span>
+<span class="fc" id="L79">        this.accountId = accountId;</span>
 <span class="fc" id="L80">    }</span>
+
+    /**
+     * Returns the instrument the position is in.
+     *
+     * @return the instrument id
+     */
+    public Integer getInstrumentId() {
+<span class="fc" id="L88">        return instrumentId;</span>
+    }
+
+    /**
+     * Sets the instrument the position is in.
+     *
+     * @param instrumentId the instrument id
+     */
+    public void setInstrumentId(Integer instrumentId) {
+<span class="fc" id="L97">        this.instrumentId = instrumentId;</span>
+<span class="fc" id="L98">    }</span>
+
+    /**
+     * Returns the fill this movement came from.
+     *
+     * @return the fill id
+     */
+    public Integer getFillId() {
+<span class="fc" id="L106">        return fillId;</span>
+    }
+
+    /**
+     * Sets the fill this movement came from.
+     *
+     * @param fillId the fill id
+     */
+    public void setFillId(Integer fillId) {
+<span class="fc" id="L115">        this.fillId = fillId;</span>
+<span class="fc" id="L116">    }</span>
+
+    /**
+     * Returns the signed change in quantity: positive for a buy, negative for a sell.
+     *
+     * @return the quantity delta
+     */
+    public BigDecimal getQuantityDelta() {
+<span class="fc" id="L124">        return quantityDelta;</span>
+    }
+
+    /**
+     * Sets the signed change in quantity.
+     *
+     * @param quantityDelta the quantity delta, positive for a buy and negative for a sell
+     */
+    public void setQuantityDelta(BigDecimal quantityDelta) {
+<span class="fc" id="L133">        this.quantityDelta = quantityDelta;</span>
+<span class="fc" id="L134">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>
