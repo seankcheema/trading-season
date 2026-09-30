@@ -5,7 +5,7 @@ WORKDIR /workspace
 COPY package.json package-lock.json ./
 COPY apps/client-ui/package.json apps/client-ui/package.json
 COPY packages/shared-ui-components/package.json packages/shared-ui-components/package.json
-RUN npm ci
+RUN npm ci --prefer-offline --fund=false
 
 COPY apps/client-ui/ apps/client-ui/
 COPY packages/shared-ui-components/ packages/shared-ui-components/

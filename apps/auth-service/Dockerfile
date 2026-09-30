@@ -10,7 +10,7 @@ WORKDIR /app
 # cache even when source files change. Same layer-caching win the backend
 # Dockerfile gets by copying pom.xml first.
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --prefer-offline --fund=false
 
 # Source and TypeScript config. This layer re-runs only when they change.
 COPY tsconfig.json tsconfig.build.json nest-cli.json ./
