@@ -39,6 +39,9 @@ public class Account {
     private LocalDate openedDate;
 
     @Column(nullable = false)
+    private String name;
+
+    @Column(nullable = false)
     private String currency = "USD";
 
     public Integer getId() {
@@ -75,6 +78,14 @@ public class Account {
 
     public void setOpenedDate(LocalDate openedDate) {
         this.openedDate = openedDate;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 
     public String getCurrency() {

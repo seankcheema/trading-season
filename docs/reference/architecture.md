@@ -16,7 +16,6 @@ Trading Season is a monorepo containing:
 ```mermaid
 graph TB
     UI["Client UI<br/>Angular 21+ | Port 4200"]
-    RptUI["Reporting UI<br/>Angular | Port 4300<br/><br/>Portfolio performance<br/>Trade history<br/>Risk summaries<br/>PROPOSED"]
     Auth["Auth Service<br/>NestJS | Port 3001"]
     OS["Order and Sell Service<br/>Spring Boot | Port 8081<br/><br/>Order submission/validation<br/>Order execution<br/>Order history<br/>Called by UI"]
     HT["Holdings and Trade Service<br/>Spring Boot | Port 8082<br/><br/>User profile queries<br/>Account management<br/>Holdings queries<br/>Not called by UI"]
@@ -31,7 +30,7 @@ graph TB
     OS -->|fetch JWKS cache| Auth
     HT -->|fetch JWKS cache| Auth
     
-    Auth --> AuthDB
+    Auth --> BizDB
     OS --> BizDB
     HT --> BizDB
     OS -.->|proposed: publish trade-events| Kafka
@@ -40,8 +39,6 @@ graph TB
     style HT fill:#FFB6C6
     style Auth fill:#87CEEB
     style UI fill:#FFD700
-    style RptUI fill:#FFE4B5
-    style RptSvc fill:#FFE4B5
     style AuthDB fill:#E6E6FA
     style BizDB fill:#E6E6FA
     style Kafka fill:#F5DEB3
@@ -99,7 +96,6 @@ All three services share the `trading_season` database, and each table has one w
 
 Neither Java service calls the Auth Service per request. Each fetches and caches the JWKS independently.
 
-## Data ownership
 - UI registration sends a profile without username or password, which the Java register contract does not yet accept, so registration cannot complete end to end until the backend is updated.
 - NestJS logout is guarded by an access JWT and forwards that JWT to a service method expecting an opaque refresh token. Do not rely on this endpoint to revoke a refresh session until the mismatch is fixed.
 - NestJS bootstrap does not install a global validation pipe, cookie parser, or CORS configuration. DTO fields alone do not imply runtime validation; use JSON body refresh tokens.
@@ -116,14 +112,13 @@ Both services use JPA to map to the same tables directly. This requires schema v
 
 ## Client UI integration
 
-The dev proxy (`apps/client-ui/proxy.conf.json`) forwards all `/api` requests to Order and Sell Service (port 8081) exclusively:
+The dev proxy (`apps/client-ui/proxy.conf.json`) forwards all `/api` requests to Holdings and Trade Service (port 8082) exclusively:
 
 - Auth Service (port 3001) is called directly for login/register/refresh
-- Holdings and Trade Service (port 8082) is not called from the UI in normal operation
 
 ## Known limitations
 
-1. **Incomplete account data** – Holdings and Trade Service does not yet implement complete account query endpoints. See [Holdings and Trade Service documentation](services/holdings-and-trade-service.md) for current status.
+1. **No order history on the dashboard** – Holdings and Trade Service serves accounts, holdings and cash, but order reads live in Order and Sell Service and are not yet exposed per order or per account. The dashboard's recent activity therefore lists cash movements only, and order submission is not wired to a backend.
 
 2. **Market data duplication** – Both Order and Sell Service and Holdings and Trade Service contain market data endpoints. See [Order and Sell Service documentation](services/order-and-sell-service.md) for why.
 
@@ -138,40 +133,6 @@ Reporting UI and Reporting Service are proposed but not yet implemented. When bu
 
 Both services will authenticate via the Auth Service and may read from the `trading_season` database. Reporting store decisions (technology, refresh frequency, retention, timezone) remain unresolved. See [Reporting proposal](reporting.md) for intended capability and first implementation slice.
 
-## Proposed reporting services
-
-Reporting UI and Reporting Service are proposed but not yet implemented. When built, they will:
-
-- **Reporting UI** (port 4300) – Display portfolio performance, trade history, drawdown, returns, and risk summaries. Provide administrative operational and audit views. Use shared Angular components.
-- **Reporting Service** (port 8083) – Read-only access to authorized business data; compute aggregates such as Sharpe/Sortino ratios, win rate, and profit factor. Must not write operational records.
-
-Both services will authenticate via the Auth Service and may read from the `trading_season` database. Reporting store decisions (technology, refresh frequency, retention, timezone) remain unresolved. See [Reporting proposal](reporting.md) for intended capability and first implementation slice.
-| Angular UI | Login and registration against the NestJS auth service, profile submission to the Java backend, dashboard route protection, inactivity sign-out, shared components | [Routes](../../apps/client-ui/src/app/app.routes.ts) |
-| Spring Boot backend | Token-authenticated profile registration and user APIs, plus public simulated market reads | [Java auth controller](../../apps/holdings-and-trade-service/src/main/java/app/auth/AuthController.java) |
-| NestJS auth service | Email/password login, RS256 access tokens, opaque refresh tokens, JWKS, liveness | [Auth controller](../../apps/auth-service/src/auth/auth.controller.ts) |
-| Shared UI | Angular components consumed through @shared/ui-components subpath exports | [Package manifest](../../packages/shared-ui-components/package.json) |
-| Reporting | Runnable HTTP placeholders only; no reporting behavior | [Reporting proposal](reporting.md) |
-
-The frontend signs users in through the NestJS auth service and sends registration profile data to the Java backend; see [UI integration](api.md#ui-integration). Java and NestJS currently own separate user models and databases; there is no implemented token-validation bridge in the Java backend. Do not describe centralized authentication as a completed integration.
-
-## Data flows
-
-Java requests first pass through Spring Security. The account existence check and read-only simulated market GET endpoints are public; user-specific endpoints and market mutations require a bearer token whose RS256 signature, expiry, issuer and subject are verified. Requests then pass through validation, services, JPA repositories, and the business PostgreSQL database. Registration stores profile data under the token's sub; there are no passwords or sessions in the business database. See the [API contract](api.md).
-
-NestJS requests pass through controllers/Passport strategies, AuthService, and TypeORM repositories in a separate auth database. Registration/login issue an RS256 access token and a random refresh token. Only the refresh token hash is stored. Refresh rotates it; reuse of an unusable token revokes the user's live refresh sessions. Access tokens expire after 15 minutes and remain stateless.
-
-The trading schema defines simulation, execution, and accounting structures, but their presence does not imply implemented trading endpoints. Its constraints and ERD are described in the [database guide](database.md).
-
-## Integration limitations
-
-- UI registration sends a profile without username or password, which the Java register contract does not yet accept, so registration cannot complete end to end until the backend is updated.
-- NestJS logout is guarded by an access JWT and forwards that JWT to a service method expecting an opaque refresh token. Do not rely on this endpoint to revoke a refresh session until the mismatch is fixed.
-- NestJS bootstrap does not install a global validation pipe, cookie parser, or CORS configuration. DTO fields alone do not imply runtime validation; use JSON body refresh tokens.
-- The Passport JWT strategy restricts RS256 and checks expiry but does not configure issuer/audience enforcement.
-- The reporting containers are availability placeholders only and do not establish a reporting runtime or API contract. See [reporting](reporting.md).
-
-These are current limitations, not changes made by documentation consolidation.
-
 ## Change boundaries
 
 - Put reusable UI components in the shared package; application logic stays in its owning app
@@ -181,7 +142,6 @@ These are current limitations, not changes made by documentation consolidation.
 
 ## See also
 
-- [Reporting proposal](reporting.md) for proposed reporting services and first implementation slice
 - [Service Reference](services/) for per-service structure and endpoints
 - [API Reference](api.md) for implemented HTTP contracts
 - [Database Reference](database.md) for schema, ownership, and relationships

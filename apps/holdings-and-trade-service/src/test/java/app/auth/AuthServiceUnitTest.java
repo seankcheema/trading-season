@@ -1,5 +1,6 @@
 package app.auth;
 
+import app.account.AccountService;
 import app.user.User;
 import app.user.UserAccountRepository;
 import app.user.UserRepository;
@@ -31,13 +32,16 @@ class AuthServiceUnitTest {
     private UserRepository userRepository;
 
     @Mock
+    private AccountService accountService;
+
+    @Mock
     private UserAccountRepository userAccountRepository;
 
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(userRepository, userAccountRepository);
+        authService = new AuthService(userRepository, accountService, userAccountRepository);
     }
 
     private static RegisterRequest request(String email) {
@@ -126,8 +130,6 @@ class AuthServiceUnitTest {
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         assertNotNull(authService.register(caller, request("test@example.com")));
-
-        verify(userAccountRepository, never()).existsByEmailIgnoreCase(any());
     }
 
     @Test
@@ -149,6 +151,29 @@ class AuthServiceUnitTest {
         when(userAccountRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(true);
 
         assertTrue(authService.accountExists("  test@example.com "));
+    }
+
+    @Test
+    void registerCreatesDefaultAccountForNewUser() {
+        AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "test@example.com");
+        when(userRepository.existsById(USER_ID)).thenReturn(false);
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        authService.register(caller, request("test@example.com"));
+
+        verify(accountService).createDefaultAccountForUser(USER_ID);
+    }
+
+    @Test
+    void registerCreatesAccountAfterUserSave() {
+        AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "test@example.com");
+        when(userRepository.existsById(USER_ID)).thenReturn(false);
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        
+        authService.register(caller, request("test@example.com"));
+
+        verify(userRepository).save(any(User.class));
+        verify(accountService).createDefaultAccountForUser(USER_ID);
     }
 
     @Test

@@ -70,12 +70,12 @@ public class UserAccount {
      * @param userRole      ADMIN or TRADER
      * @param accountStatus ACTIVE or DEACTIVATED
      */
-<span class="nc" id="L73">    public UserAccount(UUID userId, String email, String userRole, String accountStatus) {</span>
-<span class="nc" id="L74">        this.userId = userId;</span>
-<span class="nc" id="L75">        this.email = email;</span>
-<span class="nc" id="L76">        this.userRole = userRole;</span>
-<span class="nc" id="L77">        this.accountStatus = accountStatus;</span>
-<span class="nc" id="L78">    }</span>
+<span class="fc" id="L73">    public UserAccount(UUID userId, String email, String userRole, String accountStatus) {</span>
+<span class="fc" id="L74">        this.userId = userId;</span>
+<span class="fc" id="L75">        this.email = email;</span>
+<span class="fc" id="L76">        this.userRole = userRole;</span>
+<span class="fc" id="L77">        this.accountStatus = accountStatus;</span>
+<span class="fc" id="L78">    }</span>
 
     /**
      * Returns the account id.
@@ -83,7 +83,7 @@ public class UserAccount {
      * @return the user UUID
      */
     public UUID getUserId() {
-<span class="nc" id="L86">        return userId;</span>
+<span class="fc" id="L86">        return userId;</span>
     }
 
     /**
@@ -119,7 +119,7 @@ public class UserAccount {
      * @return {@code true} if the status is ACTIVE
      */
     public boolean isActive() {
-<span class="nc" id="L122">        return &quot;ACTIVE&quot;.equals(accountStatus);</span>
+<span class="fc" id="L122">        return &quot;ACTIVE&quot;.equals(accountStatus);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

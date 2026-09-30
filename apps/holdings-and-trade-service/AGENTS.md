@@ -1,37 +1,41 @@
 # Holdings and Trade Service Instructions
 
-This service manages all trading operations, order execution, and holding updates.
+This service owns the signed-in user's own data: their profile, their accounts, the positions those accounts hold, and the cash the accounts share. It also serves the simulated market feed. It is the backend Client UI calls.
+
+Order creation, validation and execution live in [Order and Sell Service](../order-and-sell-service/AGENTS.md), not here.
 
 ## Responsibilities
 
-- **Create trade orders** - Accept and validate new trade requests
-- **Validate trade orders** - Run comprehensive validation pipeline (funds, holdings, tradability, account status)
-- **Execute buys and sells** - Process order execution and settlement
-- **Update holdings** - Maintain current position data through holding movements
-- **Order status and history** - Provide order audit trail and execution details
+- **Profile registration and reads** - Create the caller's profile from the registration form and return it
+- **Accounts** - List, open and rename the caller's accounts; open a default account at registration
+- **Holdings** - Report an owned account's positions with their symbol and average cost
+- **Cash** - Deposit and withdraw the user's shared funds, and list the resulting ledger
+- **Market data** - Serve the shared simulation snapshot, candles and tick stream
 
 ## Key Packages
 
-- `order/` - Order creation, validation, and execution core
-- `order/validation/` - Validation framework and implementations
-- `order/execution/` - Order execution, fills, cash transactions, and movements
-- `order/audit/` - Order event audit trail
-- `account/` - Trading account management
-- `holding/` - Current holdings and position data
-- `instrument/` - Tradable asset definitions
-- `auth/` - Authentication and authorization
+- `auth/` - Registration, token wiring, security configuration, and error mapping
+- `user/` - The caller's profile and the shared cash balance it carries
+- `account/` - The caller's accounts and the assembled view of their holdings
+- `cash/` - Deposits, withdrawals, and the append-only cash ledger
+- `holding/` - Cached positions, plus the movement and fill rows a position's cost is derived from
+- `instrument/` - Read access to tradable asset definitions, for naming a holding
 - `market/` - Shared market data services
 
 ## Architecture
 
-- Shares database schema with Order and Sell Service
-- Runs on port 8081 (default)
-- All order mutations and executions happen here
-- Order and Sell Service queries order data via this service's read APIs
+- Shares the database schema with Order and Sell Service. Each service maps only the tables it reads, so the same table can be mapped in both.
+- Runs on port 8082 (default). The dev server proxies `/api` here; see [proxy.conf.json](../client-ui/proxy.conf.json).
+- Writes to `users.available_funds` only alongside a `cash_transactions` row, in one transaction (BR-09/15). Order fills move the same balance from the other service.
+- Reads `holding_movements` and `fills` to derive cost basis; it never writes them.
+
+## Data scope
+
+Every user-specific endpoint resolves the owner from the verified token's `sub` claim. An account id in a path is checked against that owner before anything is read or written: another user's account is 403, a nonexistent one is 404. Cash endpoints take no account at all. Do not add an endpoint that accepts a user or owner id from the request.
 
 ## Development
 
-Follow [database setup](../../docs/reference/database.md#disposable-business-database-setup) before running.
+Follow [database setup](../../docs/reference/database.md#step-2-initialize-a-disposable-database) before running.
 
 ```sh
 mvn spring-boot:run
@@ -42,31 +46,35 @@ Configuration lives in [application.properties](src/main/resources/application.p
 
 ## HTTP Endpoints
 
-All endpoints require an RS256 access token issued by the auth service (except public market endpoints).
+All endpoints require an RS256 access token issued by the auth service, except `POST /api/auth/account-exists` and the public market GET endpoints.
 
-- `POST /api/orders` - Create a new trade order
-- `GET /api/orders/{id}` - Get order details
-- `GET /api/orders` - List orders for authenticated user
-- `GET /api/market/*` - Public market data endpoints (snapshots, ticks, candles)
+- `POST /api/auth/account-exists` - Whether an email is registered (public)
+- `POST /api/auth/register` - Create the caller's profile and default account
+- `GET /api/users/me` - The caller's profile, without the SSN
+- `GET /api/me/accounts` - The caller's accounts
+- `POST /api/me/accounts` - Open a new, empty account
+- `PUT /api/me/accounts/{accountId}` - Rename an owned account
+- `GET /api/accounts/{accountId}` - An owned account
+- `GET /api/accounts/{accountId}/holdings` - An owned account's positions
+- `GET /api/me/cash-transactions` - The caller's deposits and withdrawals
+- `POST /api/me/cash-transactions` - Deposit or withdraw funds
+- `GET /api/market/*` - Public market data endpoints (snapshots, candles, stream)
+- `PUT /api/market/clock` - Move the shared replay cursor
 
 See [API reference](../../docs/reference/api.md) for full contract details.
 
 ## Code Coverage
 
-Must maintain at least 70% code coverage for all features:
-- Create trade orders: 70%+
-- Validate trade orders: 70%+
-- Execute buys and sells: 70%+
-- Update holdings: 70%+
-- Order status and history: 70%+
-
-`mvn test` enforces this as a JaCoCo check: every package must reach 70% on every counter (instructions, branches, lines, complexity, methods, and classes). Coverage reports are in `target/site/jacoco/`.
+`mvn test` enforces coverage as a JaCoCo check: every package must reach the `coverage.minimum` floor in [pom.xml](pom.xml) on every counter (instructions, branches, lines, complexity, methods, and classes). The floor is currently 85%, so a new package needs tests before the build will pass. A package with no branches has no branch ratio and is not held to that limit. Reports are in `target/site/jacoco/`.
 
 ## Testing
 
 - Use H2 in-memory database for unit and integration tests
 - Test configuration: [application-test.properties](src/test/resources/application-test.properties)
+- The H2 schema is created from the mapped entities, so a query can only reach a table some entity maps
+- `@DataJpaTest` is not available; use `@SpringBootTest` with `@Transactional` for repository tests
 - Mirror source structure: `src/test/java/app/<package>/` mirrors `src/main/java/app/<package>/`
+- Cover cross-user isolation for every user-specific endpoint: one user must never read or change another's data
 - Keep HTTP validation and response mapping in controllers
 - Business logic belongs in services, persistence in repositories
 

@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AccountController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.account</a> &gt; <span class="el_source">AccountController.java</span></div><h1>AccountController.java</h1><pre class="source lang-java linenums">package app.account;
+
+import app.auth.AuthenticatedUser;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+/**
+ * REST endpoints for the authenticated caller's accounts and holdings.
+ * All endpoints filter data by the authenticated user's UUID from the token's sub claim.
+ * Users can only view and modify their own accounts.
+ */
+@RestController
+@RequestMapping(&quot;/api&quot;)
+public class AccountController {
+
+    private final AccountService accountService;
+
+    /**
+     * Creates the controller.
+     *
+     * @param accountService account and holding management logic
+     */
+<span class="fc" id="L27">    public AccountController(AccountService accountService) {</span>
+<span class="fc" id="L28">        this.accountService = accountService;</span>
+<span class="fc" id="L29">    }</span>
+
+    /**
+     * Returns all accounts belonging to the authenticated caller.
+     *
+     * @param jwt the verified access token
+     * @return a list of the caller's accounts
+     */
+    @GetMapping(&quot;/me/accounts&quot;)
+    public List&lt;AccountResponse&gt; listAccounts(@AuthenticationPrincipal Jwt jwt) {
+<span class="fc" id="L39">        AuthenticatedUser caller = AuthenticatedUser.from(jwt);</span>
+<span class="fc" id="L40">        return accountService.getAccountsForUser(caller.userId())</span>
+<span class="fc" id="L41">                .stream()</span>
+<span class="fc" id="L42">                .map(AccountResponse::from)</span>
+<span class="fc" id="L43">                .toList();</span>
+    }
+
+    /**
+     * Returns a specific account if it belongs to the authenticated caller.
+     *
+     * @param accountId the account ID
+     * @param jwt       the verified access token
+     * @return the account details
+     * @throws AccountNotFoundException if the account does not exist
+     * @throws app.auth.ForbiddenException if the account is owned by a different user
+     */
+    @GetMapping(&quot;/accounts/{accountId}&quot;)
+    public AccountResponse getAccount(
+            @PathVariable Integer accountId,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+<span class="fc" id="L60">        AuthenticatedUser caller = AuthenticatedUser.from(jwt);</span>
+<span class="fc" id="L61">        Account account = accountService.getAccountForUser(accountId, caller.userId());</span>
+<span class="fc" id="L62">        return AccountResponse.from(account);</span>
+    }
+
+    /**
+     * Returns all holdings for a specific account if it belongs to the authenticated caller.
+     *
+     * @param accountId the account ID
+     * @param jwt       the verified access token
+     * @return a list of holdings in this account
+     * @throws AccountNotFoundException if the account does not exist
+     * @throws app.auth.ForbiddenException if the account is owned by a different user
+     */
+    @GetMapping(&quot;/accounts/{accountId}/holdings&quot;)
+    public List&lt;HoldingResponse&gt; listHoldings(
+            @PathVariable Integer accountId,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+<span class="fc" id="L79">        AuthenticatedUser caller = AuthenticatedUser.from(jwt);</span>
+<span class="fc" id="L80">        return accountService.getHoldingsForAccount(accountId, caller.userId())</span>
+<span class="fc" id="L81">                .stream()</span>
+<span class="fc" id="L82">                .map(priced -&gt; HoldingResponse.from(</span>
+<span class="fc" id="L83">                        priced.holding(), priced.instrument(), priced.averageCost()))</span>
+<span class="fc" id="L84">                .toList();</span>
+    }
+
+    /**
+     * Creates a new account for the authenticated caller.
+     *
+     * @param request the account creation details
+     * @param jwt     the verified access token
+     * @return the newly created account
+     * @throws IllegalArgumentException if the request is invalid
+     */
+    @PostMapping(&quot;/me/accounts&quot;)
+    @ResponseStatus(HttpStatus.CREATED)
+    public AccountResponse createAccount(
+            @RequestBody CreateAccountRequest request,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+<span class="fc" id="L101">        AuthenticatedUser caller = AuthenticatedUser.from(jwt);</span>
+<span class="fc" id="L102">        Account account = accountService.createAccount(caller.userId(), request.name());</span>
+<span class="fc" id="L103">        return AccountResponse.from(account);</span>
+    }
+
+    /**
+     * Updates the name of an account owned by the authenticated caller.
+     *
+     * @param accountId the account ID
+     * @param request   the update details
+     * @param jwt       the verified access token
+     * @return the updated account
+     * @throws AccountNotFoundException if the account does not exist
+     * @throws app.auth.ForbiddenException if the account is owned by a different user
+     */
+    @PutMapping(&quot;/me/accounts/{accountId}&quot;)
+    public AccountResponse updateAccount(
+            @PathVariable Integer accountId,
+            @RequestBody UpdateAccountNameRequest request,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+<span class="fc" id="L122">        AuthenticatedUser caller = AuthenticatedUser.from(jwt);</span>
+<span class="fc" id="L123">        Account account = accountService.updateAccountName(accountId, caller.userId(), request.name());</span>
+<span class="fc" id="L124">        return AccountResponse.from(account);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

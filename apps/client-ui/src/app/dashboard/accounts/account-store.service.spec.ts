@@ -37,13 +37,17 @@ describe('AccountStore', () => {
 
   afterEach(() => http.verify());
 
-  function load(accounts: Account[] = ACCOUNTS, funds = 5_000): void {
+  function load(
+    accounts: Account[] = ACCOUNTS,
+    funds = 5_000,
+    profile: { firstName: string; lastName: string } = { firstName: 'Ada', lastName: 'Lovelace' },
+  ): void {
     store.load();
     http.expectOne('/api/me/accounts').flush(accounts);
     for (const account of accounts) {
       http.expectOne(holdingsUrl(account.accountId)).flush(HOLDINGS[account.accountId] ?? []);
     }
-    http.expectOne('/api/users/me').flush({ availableFunds: funds });
+    http.expectOne('/api/users/me').flush({ ...profile, availableFunds: funds });
     http.expectOne(isCashTransactions).flush([]);
   }
 
@@ -235,6 +239,25 @@ describe('AccountStore', () => {
 
       expect(failure).toBeTruthy();
       http.expectNone('/api/users/me');
+    });
+  });
+
+  describe('profile', () => {
+    it('has no initials before the profile loads', () => {
+      expect(store.profile()).toBeNull();
+      expect(store.initials()).toBe('');
+    });
+
+    it('takes the initials from the first and last name, upper-cased', () => {
+      load(ACCOUNTS, 5_000, { firstName: 'ada', lastName: 'lovelace' });
+
+      expect(store.initials()).toBe('AL');
+    });
+
+    it('gives one initial when only one name is on file', () => {
+      load(ACCOUNTS, 5_000, { firstName: 'Prince', lastName: '   ' });
+
+      expect(store.initials()).toBe('P');
     });
   });
 });

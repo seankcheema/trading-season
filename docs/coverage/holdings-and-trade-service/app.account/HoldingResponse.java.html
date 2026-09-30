@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HoldingResponse.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.account</a> &gt; <span class="el_source">HoldingResponse.java</span></div><h1>HoldingResponse.java</h1><pre class="source lang-java linenums">package app.account;
+
+import app.holding.Holding;
+import app.instrument.Instrument;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+
+/**
+ * Response DTO for a holding in an account.
+ *
+ * &lt;p&gt;Carries the instrument's symbol and what the position cost, neither of
+ * which is stored on the holding row: the symbol comes from the instrument and
+ * the average cost is derived from the fills that built the position. A client
+ * needs both to show a position and its gain or loss.
+ *
+ * @param holdingId    the holding ID
+ * @param accountId    the account ID
+ * @param instrumentId the instrument ID
+ * @param symbol       the symbol to display and match live prices by
+ * @param name         the instrument's name
+ * @param quantity     the quantity held
+ * @param averageCost  average price paid per share, or zero when unknown
+ * @param updatedAt    when the holding was last updated
+ */
+<span class="fc" id="L26">public record HoldingResponse(</span>
+        Integer holdingId,
+        Integer accountId,
+        Integer instrumentId,
+        String symbol,
+        String name,
+        BigDecimal quantity,
+        BigDecimal averageCost,
+        OffsetDateTime updatedAt
+) {
+
+    /**
+     * Maps a holding to its response.
+     *
+     * @param holding     the holding entity
+     * @param instrument  the instrument held, or null if it cannot be resolved
+     * @param averageCost average price paid per share, or null when no fill
+     *                    history explains the position
+     * @return the holding response, with the instrument id standing in for an
+     *         unresolved symbol and zero for an unknown average cost
+     */
+    public static HoldingResponse from(Holding holding, Instrument instrument, BigDecimal averageCost) {
+<span class="fc" id="L48">        return new HoldingResponse(</span>
+<span class="fc" id="L49">                holding.getHoldingId(),</span>
+<span class="fc" id="L50">                holding.getAccountId(),</span>
+<span class="fc" id="L51">                holding.getInstrumentId(),</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">                instrument != null ? instrument.displaySymbol() : String.valueOf(holding.getInstrumentId()),</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">                instrument != null ? instrument.getName() : null,</span>
+<span class="fc" id="L54">                holding.getQuantity(),</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">                averageCost != null ? averageCost : BigDecimal.ZERO,</span>
+<span class="fc" id="L56">                holding.getUpdatedAt()</span>
+        );
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>
