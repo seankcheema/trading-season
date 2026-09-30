@@ -34,7 +34,10 @@ const HOLDINGS: Record<number, unknown[]> = {
 // The user's cash, shared by every account.
 const CASH = 10_000;
 
-// Answers the account, holdings and cash loads the dashboard starts with in the browser.
+// The signed-in user, as GET /api/users/me reports them.
+const PROFILE = { firstName: 'Ada', lastName: 'Lovelace' };
+
+// Answers the account, holdings and profile loads the dashboard starts with in the browser.
 function flushAccounts(
   fixture: ComponentFixture<DashboardComponent>,
   accounts: { accountId: number; name: string; openedDate: string }[] = ACCOUNTS,
@@ -42,7 +45,13 @@ function flushAccounts(
     holdings = HOLDINGS,
     cash = CASH,
     transactions = [] as unknown[],
-  }: { holdings?: Record<number, unknown[]>; cash?: number; transactions?: unknown[] } = {},
+    profile = PROFILE,
+  }: {
+    holdings?: Record<number, unknown[]>;
+    cash?: number;
+    transactions?: unknown[];
+    profile?: { firstName: string; lastName: string };
+  } = {},
 ): HttpTestingController {
   const http = TestBed.inject(HttpTestingController);
   http.expectOne('/api/me/accounts').flush(accounts);
@@ -51,7 +60,7 @@ function flushAccounts(
       .expectOne(`/api/accounts/${account.accountId}/holdings`)
       .flush(holdings[account.accountId] ?? []);
   }
-  http.expectOne('/api/users/me').flush({ availableFunds: cash });
+  http.expectOne('/api/users/me').flush({ ...profile, availableFunds: cash });
   http.expectOne((request) => request.url === '/api/me/cash-transactions').flush(transactions);
   fixture.detectChanges();
   return http;
@@ -154,7 +163,7 @@ describe('DashboardComponent', () => {
     ) as HTMLButtonElement[];
 
     expect(trigger.className).toContain('rounded-full');
-    expect(trigger.textContent?.trim()).toBe('SC');
+    expect(trigger.textContent?.trim()).toBe('');
     expect(items.map((item) => item.textContent?.trim())).toEqual(['Settings', 'Log out']);
     expect(items[1].className).toContain('text-loss');
     expect(fixture.nativeElement.querySelector('[aria-label="Sign out"]')).toBeNull();
@@ -939,7 +948,7 @@ describe('DashboardComponent', () => {
       ).toHaveLength(1);
     });
 
-    it('lists cash transactions with the trades, newest first', () => {
+    it("lists only the user's own cash transactions, newest first", () => {
       const fixture = render();
       flushAccounts(fixture, ACCOUNTS, {
         transactions: [
@@ -963,11 +972,58 @@ describe('DashboardComponent', () => {
       ) as HTMLElement[];
       const rowText = rows.map((row) => text(row));
 
-      expect(rows[0].dataset['kind']).toBe('cash');
+      // Every row is the caller's own cash movement: no placeholder trades are mixed in.
+      expect(rows.map((row) => row.dataset['kind'])).toEqual(['cash', 'cash']);
       expect(rowText[0]).toContain('deposit');
       expect(rowText[0]).toContain('+$250.00');
-      expect(rows[1].dataset['kind']).toBe('trade');
-      expect(rowText.find((row) => row.includes('withdrawal'))).toContain('-$40.00');
+      expect(rowText[1]).toContain('withdrawal');
+      expect(rowText[1]).toContain('-$40.00');
+    });
+
+    it('shows an empty transactions list for a user who has moved no cash', () => {
+      const fixture = render();
+      flushAccounts(fixture, ACCOUNTS, { transactions: [] });
+
+      const rows = Array.from(
+        element(fixture).querySelectorAll('[data-testid="recent-transactions"] li'),
+      ) as HTMLElement[];
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].dataset['kind']).toBeUndefined();
+      expect(text(rows[0])).toContain('No transactions yet');
+    });
+
+    it('shows a new user an empty dashboard around their default account', () => {
+      const fixture = render();
+      flushAccounts(fixture, [{ accountId: 9, name: 'Main Account', openedDate: '2026-09-29' }], {
+        holdings: {},
+        cash: 0,
+        transactions: [],
+      });
+
+      // The default account is selected and named, with nothing in it and no cash.
+      expect(text(element(fixture).querySelector('[data-testid="portfolio-value"]'))).toBe('$0');
+      expect(text(element(fixture).querySelector('[data-testid="net-worth"]'))).toContain('$0');
+      expect(text(element(fixture).querySelector('[data-testid="assets-table"]'))).toContain(
+        'This account has no holdings yet.',
+      );
+      expect(text(element(fixture).querySelector('[data-testid="recent-transactions"]'))).toContain(
+        'No transactions yet',
+      );
+    });
+
+    it("shows the signed-in user's first and last initial in the profile circle", () => {
+      const fixture = render();
+      flushAccounts(fixture, ACCOUNTS, { profile: { firstName: 'ada', lastName: 'lovelace' } });
+
+      expect(text(element(fixture).querySelector('[data-testid="profile-initials"]'))).toBe('AL');
+    });
+
+    it('shows one initial when the user has only one name on file', () => {
+      const fixture = render();
+      flushAccounts(fixture, ACCOUNTS, { profile: { firstName: 'Prince', lastName: '' } });
+
+      expect(text(element(fixture).querySelector('[data-testid="profile-initials"]'))).toBe('P');
     });
   });
 });

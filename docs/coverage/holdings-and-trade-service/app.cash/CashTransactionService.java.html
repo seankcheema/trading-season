@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CashTransactionService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.cash</a> &gt; <span class="el_source">CashTransactionService.java</span></div><h1>CashTransactionService.java</h1><pre class="source lang-java linenums">package app.cash;
+
+import app.account.Account;
+import app.account.AccountNotFoundException;
+import app.account.AccountRepository;
+import app.user.User;
+import app.user.UserNotFoundException;
+import app.user.UserRepository;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Moves the authenticated user's cash and reads their funding history.
+ *
+ * &lt;p&gt;Cash belongs to the user, not to an account: the balance is
+ * {@code users.available_funds} and every account of theirs shares it, which is
+ * why neither method takes an account id. Each movement writes the balance and
+ * appends a {@link CashTransaction} in one transaction, so the cache and its
+ * ledger cannot drift apart (BR-09/15).
+ *
+ * &lt;p&gt;Every operation is scoped to the user id from the verified token, so a
+ * caller can only read and move their own cash.
+ */
+@Service
+public class CashTransactionService {
+
+    /** Largest history page a caller can ask for. */
+    static final int MAX_LIMIT = 200;
+
+    /** History page size used when the caller does not ask for one. */
+    static final int DEFAULT_LIMIT = 50;
+
+    private final CashTransactionRepository cashTransactionRepository;
+    private final AccountRepository accountRepository;
+    private final UserRepository userRepository;
+
+    /**
+     * Creates the service.
+     *
+     * @param cashTransactionRepository persistence for the cash ledger
+     * @param accountRepository         used to resolve the account a row is booked against
+     * @param userRepository            persistence for the balance the ledger backs
+     */
+    public CashTransactionService(CashTransactionRepository cashTransactionRepository,
+                                  AccountRepository accountRepository,
+<span class="fc" id="L52">                                  UserRepository userRepository) {</span>
+<span class="fc" id="L53">        this.cashTransactionRepository = cashTransactionRepository;</span>
+<span class="fc" id="L54">        this.accountRepository = accountRepository;</span>
+<span class="fc" id="L55">        this.userRepository = userRepository;</span>
+<span class="fc" id="L56">    }</span>
+
+    /**
+     * Lists the user's deposits and withdrawals, newest first.
+     *
+     * @param userId the authenticated user's UUID from the token's sub claim
+     * @param limit  how many rows to return; null or out of range falls back to
+     *               {@link #DEFAULT_LIMIT}, capped at {@link #MAX_LIMIT}
+     * @return the user's funding history, newest first
+     */
+    @Transactional(readOnly = true)
+    public List&lt;CashTransaction&gt; getFundingHistory(UUID userId, Integer limit) {
+<span class="fc" id="L68">        return cashTransactionRepository.findFundingForUser(userId, PageRequest.of(0, pageSize(limit)));</span>
+    }
+
+    /**
+     * Moves money into or out of the user's cash and records it in the ledger.
+     *
+     * &lt;p&gt;The balance row is locked before it is read, so two concurrent
+     * withdrawals cannot both pass the funds check against the same balance.
+     *
+     * @param userId the authenticated user's UUID from the token's sub claim
+     * @param amount how much to move, positive
+     * @param reason {@link CashTransaction#REASON_DEPOSIT} or
+     *               {@link CashTransaction#REASON_WITHDRAWAL}
+     * @return the recorded ledger row
+     * @throws UserNotFoundException      if the caller has not registered a profile
+     * @throws AccountNotFoundException   if the caller has no account to book the row against
+     * @throws InsufficientFundsException if a withdrawal exceeds the available funds
+     * @throws IllegalArgumentException   if the amount is not positive or the reason is unknown
+     */
+    @Transactional
+    public CashTransaction move(UUID userId, BigDecimal amount, String reason) {
+<span class="fc bfc" id="L89" title="All 4 branches covered.">        if (amount == null || amount.signum() &lt;= 0) {</span>
+<span class="fc" id="L90">            throw new IllegalArgumentException(&quot;Amount must be greater than 0&quot;);</span>
+        }
+<span class="fc" id="L92">        boolean deposit = CashTransaction.REASON_DEPOSIT.equals(reason);</span>
+<span class="fc bfc" id="L93" title="All 4 branches covered.">        if (!deposit &amp;&amp; !CashTransaction.REASON_WITHDRAWAL.equals(reason)) {</span>
+<span class="fc" id="L94">            throw new IllegalArgumentException(&quot;Reason must be DEPOSIT or WITHDRAWAL&quot;);</span>
+        }
+
+        // Locked before the balance is read, because the funds check below decides
+        // whether the write is allowed.
+<span class="fc" id="L99">        User user = userRepository.findByIdForUpdate(userId)</span>
+<span class="fc" id="L100">                .orElseThrow(() -&gt; new UserNotFoundException(&quot;Account is not registered&quot;));</span>
+
+        // The schema keys every ledger row to an account. Cash is the user's, so any
+        // of their accounts would do; the first is the default opened at sign-up.
+<span class="fc" id="L104">        Account account = accountRepository.findFirstByUserIdOrderByOpenedDateAscIdAsc(userId)</span>
+<span class="fc" id="L105">                .orElseThrow(() -&gt; new AccountNotFoundException(&quot;No account is open for this user&quot;));</span>
+
+<span class="fc" id="L107">        BigDecimal available = user.getAvailableFunds();</span>
+<span class="fc bfc" id="L108" title="All 4 branches covered.">        if (!deposit &amp;&amp; amount.compareTo(available) &gt; 0) {</span>
+<span class="fc" id="L109">            throw new InsufficientFundsException(&quot;Insufficient funds&quot;);</span>
+        }
+
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        BigDecimal signed = deposit ? amount : amount.negate();</span>
+<span class="fc" id="L113">        user.setAvailableFunds(available.add(signed));</span>
+<span class="fc" id="L114">        userRepository.save(user);</span>
+
+<span class="fc" id="L116">        CashTransaction transaction = new CashTransaction();</span>
+<span class="fc" id="L117">        transaction.setAccountId(account.getAccountId());</span>
+<span class="fc" id="L118">        transaction.setAmount(signed);</span>
+<span class="fc" id="L119">        transaction.setReason(reason);</span>
+<span class="fc" id="L120">        transaction.setCreatedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L121">        return cashTransactionRepository.save(transaction);</span>
+    }
+
+    private static int pageSize(Integer limit) {
+<span class="fc bfc" id="L125" title="All 4 branches covered.">        if (limit == null || limit &lt;= 0) {</span>
+<span class="fc" id="L126">            return DEFAULT_LIMIT;</span>
+        }
+<span class="fc" id="L128">        return Math.min(limit, MAX_LIMIT);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

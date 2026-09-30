@@ -32,9 +32,7 @@ import { AuthService } from '../core/auth/auth.service';
 import {
   Instrument,
   MOCK_INSTRUMENTS,
-  MOCK_TRANSACTIONS,
   OrderRequest,
-  OrderSide,
   PricePoint,
   Timeframe,
   findInstrument,
@@ -92,20 +90,15 @@ interface PricedHolding {
   gainLoss: number;
 }
 
-// One row of the recent transactions list: a cash deposit or withdrawal from the account
-// service, or a trade. Trades are still mock data until order history is integrated.
-type ActivityItem =
-  | { kind: 'cash'; key: string; date: string; reason: CashTransactionReason; value: number }
-  | {
-      kind: 'trade';
-      key: string;
-      date: string;
-      symbol: string;
-      side: OrderSide;
-      shares: number;
-      price: number;
-      value: number;
-    };
+// One row of the recent transactions list: a cash deposit or withdrawal the account service
+// recorded for this user. Trades join it once order history has an endpoint to read.
+interface ActivityItem {
+  kind: 'cash';
+  key: string;
+  date: string;
+  reason: CashTransactionReason;
+  value: number;
+}
 
 @Component({
   selector: 'app-dashboard',
@@ -176,6 +169,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly accountDialog = signal<AccountDialog | null>(null);
   protected readonly openHeaderDropdown = signal<HeaderDropdown | null>(null);
   protected readonly cashBalance = this.accountStore.cashBalance;
+  // First and last initial of the signed-in user; empty until the profile loads.
+  protected readonly profileInitials = this.accountStore.initials;
   protected readonly instruments = signal<Instrument[]>([...MOCK_INSTRUMENTS]);
   protected readonly tickerInstruments = computed(() => this.instruments().slice(0, 6));
   protected readonly tickAnimations = signal(new Map<string, TickAnimation>());
@@ -264,23 +259,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return values;
   });
 
-  protected readonly transactions = computed<ActivityItem[]>(() => {
-    const cash: ActivityItem[] = this.accountStore.cashTransactions().map((transaction) => ({
-      kind: 'cash',
-      key: `cash-${transaction.cashTransactionId}`,
-      date: transaction.createdAt,
-      reason: transaction.reason,
-      value: transaction.amount,
-    }));
-    const trades: ActivityItem[] = MOCK_TRANSACTIONS.map((transaction, index) => ({
-      kind: 'trade',
-      key: `trade-${index}`,
-      ...transaction,
-      value: transaction.shares * transaction.price,
-    }));
-    // ISO dates and instants both sort correctly as strings; newest first.
-    return [...cash, ...trades].sort((a, b) => b.date.localeCompare(a.date));
-  });
+  // Only this user's own cash movements, so a new account's list is genuinely empty.
+  protected readonly transactions = computed<ActivityItem[]>(() =>
+    this.accountStore
+      .cashTransactions()
+      .map((transaction) => ({
+        kind: 'cash' as const,
+        key: `cash-${transaction.cashTransactionId}`,
+        date: transaction.createdAt,
+        reason: transaction.reason,
+        value: transaction.amount,
+      }))
+      // ISO instants sort correctly as strings; newest first.
+      .sort((a, b) => b.date.localeCompare(a.date)),
+  );
 
   protected readonly positions = computed(() =>
     Object.fromEntries(this.holdings().map((holding) => [holding.symbol, holding.shares])),

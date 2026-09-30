@@ -56,19 +56,12 @@ Compose validates JWT variables even when selecting database services, so provid
 
 | Working directory | Command | Port | Purpose |
 | --- | --- | --- | --- |
-| Repository root | npm --workspace client-ui start | 4200 | Angular frontend |
-| apps/order-and-sell-service | mvn spring-boot:run | 8081 | Order processing, order validation, order execution (called by UI) |
-| apps/holdings-and-trade-service | mvn spring-boot:run | 8082 | User profiles, market data; account and holdings queries planned (independent; not called by UI) |
+| Repository root | npm --workspace business-logic-ui start | 4200 | Angular frontend |
+| apps/order-and-sell-service | mvn spring-boot:run | 8081 | Order processing, order validation, order execution (not called by UI yet) |
+| apps/holdings-and-trade-service | mvn spring-boot:run | 8082 | User profiles, accounts, holdings, cash movements, market data (called by UI) |
 | apps/auth-service | npm run start:dev | 3001 | Authentication, token issuance |
 
-Do not use an unqualified Compose up for the full stack: its backend build context and port mapping are stale.
-
-**UI integration:**
-- The UI calls the Auth Service directly on port 3001 (allowed by CORS_ORIGINS)
-- The UI calls Order and Sell Service via dev proxy (relative `/api` paths forward to port 8081 through [proxy.conf.json](../../apps/client-ui/proxy.conf.json))
-- The UI does not call Holdings and Trade Service
-
-**Why two Java services?** The architecture was designed to split order processing (Order and Sell) from user profile queries (Holdings and Trade). Order and Sell Service handles all order operations and is the exclusive backend target of Client UI. See [Architecture](../reference/architecture.md) and [Order and Sell Service](../reference/services/order-and-sell-service.md) for details.
+The UI calls the auth service directly on port 3001, which allows the dev server origin through CORS_ORIGINS. Java calls use the relative /api path, which the dev server forwards to the Holdings and Trade Service on port 8082 through [proxy.conf.json](../../apps/client-ui/proxy.conf.json). Registration completes only once the Java register contract accepts the profile the UI sends; see the [API reference](../reference/api.md#ui-integration).
 
 ## Checks
 
@@ -123,7 +116,8 @@ Each tier fails its own test command below its coverage floor, so the floor is e
 | --- | --- | --- | --- |
 | UI | 70% | coverageThresholds in [angular.json](../../apps/client-ui/angular.json) | statements, branches, functions, lines |
 | Auth | 70% | coverage.thresholds in [vitest.config.ts](../../apps/auth-service/vitest.config.ts) | statements, branches, functions, lines |
-| Java services | 70% | jacoco:check in each service POM, per package | instructions, branches, lines, complexity, methods, classes |
+| Holdings and Trade | 85% | coverage.minimum and jacoco:check in [pom.xml](../../apps/holdings-and-trade-service/pom.xml), per package | instructions, branches, lines, complexity, methods, classes |
+| Order and Sell | 70% | coverage.minimum and jacoco:check in [pom.xml](../../apps/order-and-sell-service/pom.xml), per package | instructions, branches, lines, complexity, methods, classes |
 
 The Java check applies the floor to every package rather than to the service as a whole, so a well-tested package cannot hide an untested one. A package with no branches has no branch ratio and is not held to that counter. The UI and auth floors apply to the whole run. Current per-folder and per-package results are in [code coverage](../coverage/README.md). Raise the floor as coverage improves rather than lowering it to accommodate a change.
 
@@ -136,7 +130,7 @@ mvn -B -f apps/holdings-and-trade-service/pom.xml org.apache.maven.plugins:maven
 mvn -B -f apps/order-and-sell-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc
 ```
 
-Open the generated documentation locally and review pages for changed types and members. Both pinned plugin commands generate documentation from current source. They need JDK and Maven dependency access on first run. The target directories are temporary and ignored. Keep the published [Javadocs](../JAVA_DOCS/index.html) checked in under docs/JAVA_DOCS. After successful generation for a Java change, replace that directory's contents with the complete generated apidocs output from both services, including assets and legal notices; remove obsolete generated pages and include the refreshed copy in the same change. Never replace the checked-in copy after failed generation.
+Open each service's `target/reports/apidocs/index.html` locally and review pages for changed types and members. These pinned plugin commands generate documentation from current source. They need a JDK and Maven dependency access on first run. The target directories are temporary and ignored. Keep the published [Javadocs](../JAVA_DOCS/README.md) checked in under docs/JAVA_DOCS, one subdirectory per service: `holdings-and-trade-service` and `order-and-sell-service`. Both services root their packages at `app` and share several package names, so they cannot share one directory. After successful generation for a Java change, replace the changed service’s subdirectory with the complete generated apidocs output, including assets and legal notices; remove obsolete generated pages and include the refreshed copy in the same change. Never replace a checked-in copy after failed generation.
 
 Fix generation errors and newly introduced warnings before completing a Java change. Existing missing-comment/tag warnings are visible technical debt, not evidence that a changed API is documented. Generation was verified during this consolidation on JDK 25 with the Java 21 source configuration; JDK 21 remains the project toolchain.
 
