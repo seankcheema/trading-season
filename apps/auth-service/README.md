@@ -871,7 +871,7 @@ The generator writes PKCS8/SPKI RSA keys with literal backslash-n escapes. The a
 
 Keep DB_HOST=localhost, DB_PORT=5432, DB_NAME=trading_season, and the matching local DB_USER and DB_PASSWORD. The service shares the business database and owns two tables in it, `user_accounts` and `refresh_tokens`. PORT defaults to 3001. Startup requires JWT_PRIVATE_KEY and JWT_PUBLIC_KEY; set JWT_ISSUER consistently. The .env.example CORS_ORIGIN entry is not wired into bootstrap.
 
-Follow [development setup](../../docs/guides/development.md#run-locally) to start the auth database, then run npm run start:dev from this directory. Startup loads .env and applies the registered TypeORM migrations with synchronize disabled. The application does not automatically load .env.local.
+Follow [development setup](../../docs/guides/development.md#run-locally) to start the business database, then run npm run start:dev from this directory. Startup loads .env, runs no migrations, and leaves synchronize disabled, so apply apps/market-data/db/migrations first. The application does not automatically load .env.local.
 
 ## Commands
 
@@ -885,6 +885,6 @@ Run in this directory:
 | CI coverage/reports | npm run test:ci |
 | Lint | npm run lint |
 
-The migration CLI requires database environment variables exported in the shell; see [database guidance](../../docs/reference/database.md#auth-migrations). Tests generate ephemeral keys rather than using deployment credentials. GET /health checks liveness only.
+This service creates no tables of its own; see [database guidance](../../docs/reference/database.md#auth-tables) for the Flyway migrations that create the ones it reads. Tests generate ephemeral keys rather than using deployment credentials. GET /health checks liveness only.
 
 The Java services hold no authentication implementation of their own. They verify this service's access tokens locally against the public key published at /.well-known/jwks.json, fetched once and cached, and never handle a password. See [architecture](../../docs/reference/architecture.md) before integrating clients.

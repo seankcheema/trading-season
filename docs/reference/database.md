@@ -364,16 +364,9 @@ There is no Flyway runner in the Java backend; these files are applied manually.
 
 ## Auth tables
 
-[Runtime configuration](../../apps/auth-service/src/config/database.config.ts) holds the entity and migration lists. The initial schema creates auth users and refresh-token storage; a later migration added a required username and TrimUserToBrsMinimum removed it along with first and last name, so email is the only login identifier.
+`user_accounts` and `refresh_tokens` are created by Flyway in [V005](../../apps/market-data/db/migrations/V005__User_accounts_and_refresh_tokens.sql), with the rest of the business schema. [Runtime configuration](../../apps/auth-service/src/config/database.config.ts) holds only the entity list: the auth service registers no migrations and runs none at startup, because pointing a second migration tool at a Flyway-owned schema is how half a schema gets dropped.
 
-| Migration | Effect |
-| --- | --- |
-| PasswordResetTokens1790686840697 | Added password_reset_tokens, for the password reset flow since removed |
-| DropPasswordResetTokens1790690440697 | Drops password_reset_tokens |
-
-Both remain listed although the table no longer exists: the first has already run on deployed databases, and removing it would leave those migration-history rows pointing at a class TypeORM can no longer resolve.
-
-The service therefore assumes the migrations have already been applied. If they have not, its queries fail against missing columns, which is louder than quietly building a second schema alongside the first.
+The service therefore assumes Flyway has already been applied. If it has not, its queries fail against missing columns, which is louder than quietly building a second schema alongside the first.
 
 Email is the only login identifier, unique without regard to case through `user_accounts_email_lower_key`. Refresh tokens are stored as SHA-256 hashes with expiry, revocation and rotation metadata; the raw value is returned to the client once and never persisted. See the [auth README](../../apps/auth-service/README.md) for connection and key setup.
 
