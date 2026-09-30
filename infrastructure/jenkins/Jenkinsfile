@@ -405,14 +405,24 @@ pipeline {
                     COMPOSE_ENV_FILE="infrastructure/docker-compose/.env"
                     node apps/auth-service/scripts/generate-dev-keys.mjs > "$COMPOSE_ENV_FILE"
                     
-                    # Source the generated keys into the shell environment
-                    # so docker-compose has them available for interpolation
-                    export JWT_PRIVATE_KEY JWT_PUBLIC_KEY JWT_ISSUER
-                    set -a
-                    source "$COMPOSE_ENV_FILE"
-                    set +a
+                    # Source the generated keys into the current shell environment.
+                    # We need both the .env file (for docker-compose --env-file) and
+                    # the shell environment (for docker-compose to inherit via subprocess).
+                    eval "$(grep -E '^JWT_|^DB_PASSWORD' "$COMPOSE_ENV_FILE" 2>/dev/null || true | sed 's/^/export /')"
+                    
+                    # Verify the keys were exported
+                    if [ -z "${JWT_PRIVATE_KEY:-}" ]; then
+                        echo "[ERROR] JWT_PRIVATE_KEY not exported" >&2
+                        exit 1
+                    fi
+                    if [ -z "${JWT_PUBLIC_KEY:-}" ]; then
+                        echo "[ERROR] JWT_PUBLIC_KEY not exported" >&2
+                        exit 1
+                    fi
+                    echo "[INFO] JWT keys exported successfully"
 
                     echo "Building and starting the local application stack..."
+                    env JWT_PRIVATE_KEY="$JWT_PRIVATE_KEY" JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY" JWT_ISSUER="${JWT_ISSUER:-https://auth.dualeapa.local}" \
                     bash infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
                         --env-file "$COMPOSE_ENV_FILE" \
