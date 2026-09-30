@@ -532,12 +532,7 @@ pipeline {
                     echo 'Preserving the trading-season-local application stack after the successful build.'
                 } else {
                     def composeCleanupStatus = sh(
-                        script: '''
-                            sh infrastructure/docker/run-compose.sh \
-                                --project-name trading-season-local \
-                                -f infrastructure/docker-compose/docker-compose.local.yml \
-                                down
-                        ''',
+                        script: 'docker compose -f infrastructure/docker-compose/docker-compose.local.yml down',
                         returnStatus: true
                     )
                     if (composeCleanupStatus != 0) {
