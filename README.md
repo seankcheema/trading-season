@@ -8,6 +8,12 @@ The Java backend is split into two independent microservices:
 
 Both services share a single PostgreSQL database (`trading_season`) and authenticate via the NestJS auth service (`auth_db`).
 
+## Team
+
+- **Soli** – Team Lead
+- **Chris** – Scrum Master
+- **Sean** – Meeting Scribe (documentation of team matters)
+
 ## Start locally on Windows
 
 Install Node.js 22.22.3+ (22.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL (or Docker Compose).
