@@ -83,9 +83,11 @@ pipeline {
                     echo "Clearing Docker builder cache..."
                     docker builder prune -af --keep-storage=1gb 2>/dev/null || true
                     
-                    # Clean old Maven cache if present
+                    # Clean old Maven cache if present (older than 30 days)
                     echo "Removing old Maven cache..."
-                    find ~/.m2/repository -type d -mtime +30 -exec rm -rf {} \; 2>/dev/null || true
+                    if [ -d ~/.m2/repository ]; then
+                        find ~/.m2/repository -type d -mtime +30 -exec rm -rf {} + 2>/dev/null || true
+                    fi
                     
                     # Clean old npm cache if present
                     echo "Removing old npm cache..."
