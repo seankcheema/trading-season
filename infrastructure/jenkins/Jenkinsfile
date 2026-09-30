@@ -71,17 +71,9 @@ pipeline {
                     set +e
                     echo "Performing early disk cleanup to free space for build..."
                     
-                    # Remove dangling Docker images and build cache
-                    echo "Removing dangling Docker images..."
-                    docker image prune -f --all --filter "until=168h" 2>/dev/null || true
-                    
-                    # Remove dangling volumes
-                    echo "Removing dangling Docker volumes..."
-                    docker volume prune -f 2>/dev/null || true
-                    
-                    # Remove old Docker builder cache
-                    echo "Clearing Docker builder cache..."
-                    docker builder prune -af --keep-storage=1gb 2>/dev/null || true
+                    # Stop and remove trading-season containers
+                    echo "Stopping trading-season-local containers..."
+                    docker compose -f infrastructure/docker-compose/docker-compose.local.yml down 2>/dev/null || true
                     
                     # Clean old Maven cache if present (older than 30 days)
                     echo "Removing old Maven cache..."
