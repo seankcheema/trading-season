@@ -16,6 +16,8 @@ Complete implementation. No `/api` prefix.
 | POST | /auth/login | JSON: `email`, `password` | 201: token response |
 | POST | /auth/refresh | JSON: `refreshToken` string | 201: rotated token response |
 | POST | /auth/logout | JSON: `refreshToken` string | 201: message; revokes session |
+| POST | /auth/forgot-password | JSON: `email` (valid, ≤254 chars) | 202: same message for every address; emails a reset link when the account exists |
+| POST | /auth/reset-password | JSON: `token` (≤512 chars), `password` (8–72 chars) | 200: message; password changed and every session revoked |
 | GET | /.well-known/jwks.json | — (public) | 200: array of public JWK keys |
 | GET | /health | — (public) | 200: status, service name, timestamp (liveness only) |
 
@@ -23,8 +25,10 @@ Complete implementation. No `/api` prefix.
 
 **Validation:** Global validation pipe rejects unknown properties, mismatched types, and invalid values. Send all tokens as JSON body fields, not cookies.
 
+**Password reset:** POST /auth/forgot-password emails a single-use link valid for 30 minutes; POST /auth/reset-password consumes the token from that link. Both are unauthenticated, and both answer the same way for accounts that exist and ones that do not. See [the reset flow](#password-reset-flow).
+
 **Errors:** Standard NestJS exception responses (not the Java `{"error": "..."}` format).
-- 400 – validation failed (missing/invalid fields, extra properties)
+- 400 – validation failed (missing/invalid fields, extra properties, rejected or expired reset token)
 - 401 – missing/invalid credentials or refresh token
 - 409 – email already registered
 
@@ -210,6 +214,8 @@ The Angular UI (port 4200) orchestrates these services:
    - POST /auth/login (sign in)
    - POST /auth/refresh (rotate expired token)
    - POST /auth/logout (end session)
+   - POST /auth/forgot-password (ask for a reset link)
+   - POST /auth/reset-password (set a new password from the emailed token)
 
 2. **Profile, accounts, cash and market data:** Calls to Holdings and Trade Service
    - Use dev proxy ([proxy.conf.json](../../apps/client-ui/proxy.conf.json)), which forwards all `/api/*` to port 8082
@@ -238,6 +244,7 @@ Session management, inactivity timeout, and token refresh are handled by [Sessio
 The [Playwright suite](../../apps/client-ui/e2e) covers:
 - Full registration flow (auth service + Holdings and Trade Service profile registration)
 - Sign-in and inactivity timeout
+- Password reset: requesting a link, using it, and the ways it is refused
 - Dashboard access and session persistence
 
 Tests use a stand-in server that reproduces the contracts documented above. Update this reference and test expectations together.
@@ -361,14 +368,34 @@ There is no /api prefix. Source: [controller](../../apps/auth-service/src/auth/a
 | POST /auth/login | JSON: email, password | 201: same token response |
 | POST /auth/refresh | JSON: refreshToken; no access JWT required | 201: rotated token response |
 | POST /auth/logout | JSON: refreshToken; no access JWT required | 201: message after refresh-token revocation |
+| POST /auth/forgot-password | JSON: email; no authentication | 202: fixed message, whether or not the address has an account |
+| POST /auth/reset-password | JSON: token, password; no access JWT required | 200: message after the password change |
 | GET /.well-known/jwks.json | Public | 200: keys array of public JWKs |
 | GET /health | Public | 200: status, service, timestamp; liveness only |
 
 Token response fields are defined in [AuthTokenDto](../../apps/auth-service/src/auth/dto/auth-token.dto.ts). Access tokens use RS256, expire after 900 seconds, and contain sub, email, roles, iss, iat, and exp. Roles are ADMIN or TRADER. Refresh tokens are opaque random strings with a seven-day server-side lifetime; they are not JWTs. Token verification is delegated to clients and services using the published JWKS document; there is no `/auth/verify` endpoint.
 
-The auth service installs a global validation pipe with whitelisting, unknown-property rejection, and request transformation. Registration accepts only email and password: email must be a valid address up to 254 characters, and password must be 8-72 characters. Login accepts a valid email plus any non-empty password up to 72 characters. Refresh and logout accept only a non-empty `refreshToken` string up to 512 characters. Missing or invalid request fields produce 400, missing/invalid credentials and invalid refresh tokens produce 401, and extra JSON properties are rejected instead of silently stripped. Error bodies use NestJS exception responses rather than the Java error envelope.
+The auth service installs a global validation pipe with whitelisting, unknown-property rejection, and request transformation. Registration accepts only email and password: email must be a valid address up to 254 characters, and password must be 8-72 characters. Login accepts a valid email plus any non-empty password up to 72 characters. Refresh and logout accept only a non-empty `refreshToken` string up to 512 characters. Forgot-password accepts only an email on the same terms as registration. Reset-password accepts only a non-empty `token` up to 512 characters and a `password` of 8-72 characters; a caller cannot name the account, because the token identifies it. Missing or invalid request fields produce 400, missing/invalid credentials and invalid refresh tokens produce 401, and extra JSON properties are rejected instead of silently stripped. Error bodies use NestJS exception responses rather than the Java error envelope.
 
 Refresh rotates the stored token; replay of an unusable stored token revokes the user's live refresh sessions. Logout revokes the supplied refresh token and is deliberately unguarded so clients can end a session even after the access token expires. Send `refreshToken` in JSON for refresh and logout: cookie parsing is not installed in bootstrap. Access JWTs remain valid until expiry.
+
+### Password reset flow
+
+Implemented in [AuthService.requestPasswordReset and resetPassword](../../apps/auth-service/src/auth/auth.service.ts), with tokens held by [PasswordResetTokensService](../../apps/auth-service/src/password-reset/password-reset-tokens.service.ts) and email sent by [MailService](../../apps/auth-service/src/mail/mail.service.ts).
+
+1. POST /auth/forgot-password with the email. The response is 202 with a fixed message in every case.
+2. When the address has an active account, the service issues a 32-byte random token, stores only its SHA-256 hash in `password_reset_tokens`, revokes any link issued earlier for that user, and emails `APP_BASE_URL/reset-password?token=...`. The token is valid for 30 minutes and works once.
+3. POST /auth/reset-password with that token and the new password. The service replaces the bcrypt hash, clears `failed_attempts` and `locked_until`, marks the token used, revokes any other outstanding link, and revokes every refresh token for the user. It returns 200 and no tokens, so the client signs in again.
+
+Properties this flow deliberately has:
+
+- No account enumeration. An unknown address, a deactivated account and a successful send are indistinguishable: same status, same body, no error. A locked account is still sent a link, because lockout exists to stop password guessing and mailbox control is not guessing.
+- One generic 400 for every rejected token: unknown, already used, expired, revoked, or belonging to an account deactivated since the link was sent. The message is `This password reset link is invalid or has expired`.
+- A reset ends existing sessions. Refresh tokens are revoked, so a session opened before the reset cannot be refreshed; access tokens already issued still work until they expire, the same 15-minute window documented for logout.
+- An SMTP failure does not change the response. The token issued for that request is revoked and the failure is logged, because reporting it would answer faster for a known address than for an unknown one. Operators find these in the auth service log, not in the API response.
+- Neither route is rate limited by the service. Anything public that sends email should be rate limited at the edge, as noted for /api/auth/account-exists.
+
+Email is configured with `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, optional `SMTP_USER` and `SMTP_PASSWORD`, `MAIL_FROM`, and `APP_BASE_URL`, which sets the origin of the emailed link. Local development and docker-compose point these at Mailpit; see [Operations](../guides/operations.md#outbound-email) and the [auth README](../../apps/auth-service/README.md).
 
 ## UI integration
 
@@ -381,7 +408,7 @@ The Angular UI authenticates only against the NestJS auth service. See [AuthServ
 - After 3 rejected sign-ins in a row (401 from POST /auth/login), the login form locks for 10 minutes: it shows a lockout notice, disables submission with a countdown, and sends no further login requests until the time is up. Network errors and 5xx responses do not count. A successful sign-in or the lock running out resets the count. The count and lock are kept per browser in localStorage, shared between tabs and kept across a reload. This is enforced by the UI only and is separate from the auth service's own account lockout (5 failed attempts lock the account for 15 minutes; see [UsersService](../../apps/auth-service/src/users/users.service.ts)). See [LoginLockoutService](../../apps/client-ui/src/app/core/auth/login-lockout.service.ts).
 - While a session is stored, the UI signs the user out after 10 minutes without mouse, keyboard, scroll or touch input, using the same POST /auth/logout call, then shows the login page with `?reason=inactive`. The limit can be set to 5, 10, 15, 30 or 60 minutes in the dashboard's Settings dialog, opened from the profile menu, and is kept per browser. The last activity time is shared between tabs and survives a reload. This is enforced by the UI only; neither service tracks inactivity. See [SessionTimeoutService](../../apps/client-ui/src/app/core/auth/session-timeout.service.ts).
 
-The registration, sign-in, failed sign-in lockout and inactivity timeout journeys are covered end to end by the [Playwright suite](../../apps/client-ui/e2e), which drives the real application against a stand-in for both services. Its stand-in reproduces the contracts on this page, so update the two together.
+The registration, sign-in, failed sign-in lockout, password reset and inactivity timeout journeys are covered end to end by the [Playwright suite](../../apps/client-ui/e2e), which drives the real application against a stand-in for both services. Its stand-in reproduces the contracts on this page, so update the two together. For password reset it records the link it would have emailed, which is what the test reads in place of a mailbox.
 
 ## Contract maintenance
 

@@ -11,10 +11,11 @@ npm ci
 npm --prefix apps/auth-service ci
 ```
 
-The auth service has its own lockfile and is not a root workspace. Reporting has no application framework or dependencies; its local containers are static HTTP placeholders. Avoid the root install:all helper, which targets the placeholder reporting UI as though it were an implemented npm application.
+The auth service has its own lockfile and is not a root workspace. Reporting has no runnable application yet. Avoid the root install:all helper, which targets the placeholder reporting UI.
 
 ## Run locally
 
+The application consists of four services. The UI routes only to Holdings and Trade Service; Order and Sell Service runs independently.
 ### Automated Linux VM setup
 
 From the repository root, `./scripts/setup-local.sh` validates the toolchain, maintains a 3 GiB free-space reserve, prepares missing dependencies and auth keys, selects databases, and supervises the three applications in one terminal. It reports verified stages as `[READY]`, completed work as `[DONE]`, and actionable failures as `[FAIL]`.
@@ -51,6 +52,14 @@ Compose validates JWT variables even when selecting database services, so provid
 
 3. Initialize the business database only if you need the Java APIs, following the [database guide](../reference/database.md). Auth migrations run on auth-service startup.
 
+To exercise the password reset flow, start Mailpit as well and read the emailed link at http://localhost:8025:
+
+```sh
+docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml up -d mailpit
+```
+
+Without it the request still succeeds, because the route answers the same way in every case, and the send failure appears only in the auth service log. See [outbound email](operations.md#outbound-email).
+
 4. Start each application in its own terminal:
 
 | Working directory | Command | Port | Purpose |
@@ -68,11 +77,11 @@ Run from repository root after dependency installation:
 
 | Area | Command | Notes |
 | --- | --- | --- |
-| UI | npm --workspace business-logic-ui run build | Angular production build |
-| UI | npm --workspace business-logic-ui test -- --no-watch --coverage | Angular unit-test builder; do not pass Vitest's --run |
-| UI end-to-end | npm --workspace business-logic-ui run e2e | Playwright login and registration journeys |
-| Holdings and Trade | mvn -B -f apps/holdings-and-trade-service/pom.xml test | Unit/integration tests use H2 test configuration |
-| Order and Sell | mvn -B -f apps/order-and-sell-service/pom.xml test | Unit/integration tests use H2 test configuration |
+| UI | npm --workspace client-ui run build | Angular production build |
+| UI | npm --workspace client-ui test -- --no-watch --coverage | Angular unit-test builder; do not pass Vitest's --run |
+| UI end-to-end | npm --workspace client-ui run e2e | Playwright login and registration journeys |
+| Holdings and Trade Service | mvn -B -f apps/holdings-and-trade-service/pom.xml test | Unit/integration tests use H2 test configuration |
+| Order and Sell Service | mvn -B -f apps/order-and-sell-service/pom.xml test | Unit/integration tests use H2 test configuration |
 | Auth | npm --prefix apps/auth-service run build | NestJS compilation |
 | Auth | npm --prefix apps/auth-service run test:ci | Vitest coverage and JUnit reports; tests generate ephemeral keys |
 | Auth | npm --prefix apps/auth-service run lint | Oxlint |
@@ -96,16 +105,16 @@ The Playwright suite in [apps/client-ui/e2e](../../apps/client-ui/e2e) covers th
 
 ```sh
 npx --prefix apps/client-ui playwright install chromium
-npm --workspace business-logic-ui run e2e
+npm --workspace client-ui run e2e
 ```
 
 Playwright builds the application and serves it on port 4200 through the Angular SSR server, reusing a server already on that port when one is running. It runs against the production build rather than `ng serve` because the dev server dies part way through a parallel run on Windows, which fails the remaining tests with a connection error.
 
-The auth service and Java backend are replaced at the network boundary by a stand-in that reproduces their status codes and bodies, so the suite needs no database, no Docker, and no running service, and no `/api` proxy. What is exercised is the real Angular application: router, guards, reactive forms, HTTP interceptor and token storage. Keep the stand-in aligned with the [API reference](../reference/api.md) whenever an auth or registration contract changes.
+The auth service and Java backend are replaced at the network boundary by a stand-in that reproduces their status codes and bodies, so the suite needs no database, no Docker, no running service, no mail server, and no `/api` proxy. What is exercised is the real Angular application: router, guards, reactive forms, HTTP interceptor and token storage. For password reset the stand-in records the link it would have emailed, and the test reads it from there instead of from a mailbox. Keep the stand-in aligned with the [API reference](../reference/api.md) whenever an auth or registration contract changes.
 
 The suite passes `NG_ALLOWED_HOSTS=localhost` to the server. The build's `security.allowedHosts` is deliberately empty, and the SSR server rejects every request without a runtime allowlist; naming the host the suite serves on is preferable to relaxing the build setting.
 
-Run `npm --workspace business-logic-ui run e2e:report` to open the HTML report, and `e2e:ui` for interactive debugging. Reports are written to `apps/client-ui/reports/playwright` and are ignored by git.
+Run `npm --workspace client-ui run e2e:report` to open the HTML report, and `e2e:ui` for interactive debugging. Reports are written to `apps/client-ui/reports/playwright` and are ignored by git.
 
 ## Coverage floors
 
