@@ -1,6 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import { UnauthorizedException, BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  UnauthorizedException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AuthService } from './auth.service.js';
 import { UsersService } from '../users/users.service.js';

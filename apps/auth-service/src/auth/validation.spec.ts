@@ -32,7 +32,14 @@ describe('request validation', () => {
       imports: [PassportModule.register({})],
       controllers: [AuthController],
       providers: [
-        { provide: AuthService, useValue: { register, login: vi.fn(), logout: vi.fn() } },
+        {
+          provide: AuthService,
+          useValue: {
+            register,
+            login: vi.fn(),
+            logout: vi.fn(),
+          },
+        },
       ],
     }).compile();
 

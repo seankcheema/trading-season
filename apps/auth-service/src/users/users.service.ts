@@ -6,6 +6,9 @@ import { User } from './user.entity.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
 import { UserDto } from './dto/user.dto.js';
 
+/** bcrypt cost factor used whenever a password is hashed. */
+const BCRYPT_ROUNDS = 10;
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -21,7 +24,7 @@ export class UsersService {
       throw new ConflictException('Email is already in use');
     }
 
-    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+    const hashedPassword = await bcrypt.hash(createUserDto.password, BCRYPT_ROUNDS);
 
     const user = this.usersRepository.create({
       ...createUserDto,

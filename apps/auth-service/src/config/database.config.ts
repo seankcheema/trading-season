@@ -1,33 +1,41 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { User } from '../users/user.entity.js';
 import { RefreshToken } from '../refresh-tokens/refresh-token.entity.js';
-import { RequireUsername1789067284157 } from '../database/migrations/1789067284157-RequireUsername.js';
-import { InitialAuthSchema1789051037692 } from '../database/migrations/1789051037692-InitialAuthSchema.js';
-import { TrimUserToBrsMinimum1789481455425 } from '../database/migrations/1789481455425-TrimUserToBrsMinimum.js';
 
+/**
+ * Connection to the shared business database.
+ *
+ * This service no longer has a database of its own. It owns two tables inside
+ * `trading_season`: `user_accounts` and `refresh_tokens`. The customer profile
+ * in `users` belongs to the Java services and is never touched from here.
+ *
+ * It currently connects as the application role, which can read every trading
+ * table. A role granted only those two tables would restore most of the
+ * isolation the separate database used to provide, and is worth doing before
+ * this reaches anything but a development machine.
+ */
 export const databaseConfig: TypeOrmModuleOptions = {
   type: 'postgres',
   host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5433'),
-  username: process.env.DB_USER || 'authuser',
+  port: parseInt(process.env.DB_PORT || '5432'),
+  username: process.env.DB_USER || 'trading_season',
   password: process.env.DB_PASSWORD || 'changeme',
-  database: process.env.DB_NAME || 'auth_db',
+  database: process.env.DB_NAME || 'trading_season',
   entities: [User, RefreshToken],
 
-  // The schema is owned by the migrations below, in every environment.
-  // synchronize would let TypeORM silently alter tables to match the entities,
-  // which makes the real schema a function of whatever code last booted.
+  // The schema belongs to the migrations in apps/market-data/db/migrations.
+  // Two migration tools pointed at one database is how half a schema gets
+  // dropped, so this service reads and writes tables it never creates.
+  //
+  // It therefore assumes Flyway has already run. If it has not, queries fail
+  // against missing columns — which is the correct failure, and louder than
+  // quietly building a second schema of its own.
   synchronize: false,
 
-  // Migration classes are listed explicitly rather than matched by a glob.
-  // Globs resolve against compiled output, which differs between `nest start`
-  // and `node dist/main.js` under ESM; an explicit list cannot drift.
-  migrations: [
-    InitialAuthSchema1789051037692,
-    RequireUsername1789067284157,
-    TrimUserToBrsMinimum1789481455425,
-  ],
-  migrationsRun: true,
+  // This service runs no migrations of its own. Every table it reads is created
+  // by Flyway in apps/market-data/db/migrations, so there is no migration list
+  // and nothing to run at startup. Adding one back would put a second migration
+  // tool in charge of a schema Flyway already owns.
 
   logging: process.env.NODE_ENV === 'development',
 };

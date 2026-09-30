@@ -9,13 +9,6 @@ import java.util.UUID;
  */
 public interface UserRepository extends JpaRepository<User, UUID> {
 
-    /**
-     * Checks whether an email is already registered, ignoring case.
-     *
-     * @param email the email address
-     * @return {@code true} if an account uses the email in any letter case
-     */
-    boolean existsByEmailIgnoreCase(String email);
 }
 
 
