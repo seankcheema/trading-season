@@ -468,6 +468,40 @@ pipeline {
                 }
             }
             script {
+                def containerCleanupStatus = sh(script: '''
+                    set +e
+                    echo "Cleaning up Docker containers from this build..."
+                    
+                    # Stop and remove trading-season containers from this build
+                    docker ps -a --filter "label=com.docker.compose.project=trading-season-local" --format "{{.ID}}" | while read -r container_id; do
+                        echo "Stopping container: $container_id"
+                        docker stop "$container_id" 2>/dev/null || true
+                        echo "Removing container: $container_id"
+                        docker rm "$container_id" 2>/dev/null || true
+                    done
+                    
+                    # Remove any dangling containers from market-data tests
+                    docker ps -a --filter "label=trading-season-market" --format "{{.ID}}" | while read -r container_id; do
+                        echo "Stopping test container: $container_id"
+                        docker stop "$container_id" 2>/dev/null || true
+                        echo "Removing test container: $container_id"
+                        docker rm "$container_id" 2>/dev/null || true
+                    done
+                    
+                    # Remove unnamed/orphaned trading-season containers
+                    docker ps -a --filter "ancestor=trading-season-market-*" --format "{{.ID}}" 2>/dev/null | while read -r container_id; do
+                        echo "Removing orphaned container: $container_id"
+                        docker rm "$container_id" 2>/dev/null || true
+                    done
+                    
+                    echo "✓ Docker container cleanup complete"
+                    set -e
+                ''', returnStatus: true)
+                if (containerCleanupStatus != 0) {
+                    echo "Docker container cleanup had issues but build continues (status ${containerCleanupStatus})."
+                }
+            }
+            script {
                 if (currentBuild.currentResult == 'SUCCESS') {
                     echo 'Preserving the trading-season-local application stack after the successful build.'
                 } else {
