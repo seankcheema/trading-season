@@ -181,13 +181,10 @@ pipeline {
                     if command -v node > /dev/null; then
                         node --version
                         npm --version
-                        # Use npm install if package-lock.json doesn't exist
-                        if [ -f package-lock.json ]; then
-                            npm ci
-                        else
-                            npm install
-                        fi
-                        npm --prefix apps/auth-service ci
+                        # Use npm ci for reproducible, locked installations
+                        # Suppress audit, funding, and use offline cache to reduce warnings
+                        npm ci --prefer-offline --audit=false --fund=false
+                        npm --prefix apps/auth-service ci --prefer-offline --audit=false --fund=false
                         echo "✓ Root workspace dependencies installed"
                     else
                         echo "  Node.js not available, skipping npm setup"
