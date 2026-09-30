@@ -99,21 +99,15 @@ pipeline {
             steps {
                 sh '''
                     set -eu
-                    echo " Installing root workspace dependencies..."
-                    if command -v node > /dev/null; then
-                        node --version
-                        npm --version
-                        # Use npm install if package-lock.json doesn't exist
-                        if [ -f package-lock.json ]; then
-                            npm ci
-                        else
-                            npm install
-                        fi
-                        npm --prefix apps/auth-service ci
-                        echo "✓ Root workspace dependencies installed"
-                    else
-                        echo "  Node.js not available, skipping npm setup"
-                    fi
+                    # No toolchain guard and no npm install fallback. Verify
+                    # Toolchain has already failed the build if Node or npm is
+                    # missing or unsupported, and both lockfiles are committed:
+                    # a missing one is a broken checkout, not a reason to resolve
+                    # fresh versions that no other stage would be testing.
+                    echo "Installing root workspace dependencies..."
+                    npm ci
+                    npm --prefix apps/auth-service ci
+                    echo "✓ Root workspace dependencies installed"
                 '''
                 // Maven dependencies are not pre-resolved here. Each service's
                 // `mvn clean test` resolves exactly what it needs; a separate
@@ -171,15 +165,23 @@ pipeline {
 
         stage('Synthetic Market Data Integration') {
             steps {
+                script {
+                    // Multibranch BUILD_TAG values can contain encoded branch
+                    // separators such as %2F, which Docker rejects in named
+                    // volumes. Hash the complete tag to retain build isolation
+                    // while keeping every Docker resource name portable.
+                    // Derived once and reused by the cleanup in `post`: two
+                    // copies of this expression can drift apart, and cleanup
+                    // that computes a different name silently leaks the
+                    // containers, volumes, and network it was meant to remove.
+                    env.MARKET_TEST_TAG = 'trading-season-market-' + sh(
+                        script: 'printf %s "$BUILD_TAG" | sha256sum | cut -c1-16',
+                        returnStdout: true
+                    ).trim()
+                }
                 sh '''
                     set -eu
-                    command -v docker >/dev/null
-                    # Multibranch BUILD_TAG values can contain encoded branch
-                    # separators such as %2F, which Docker rejects in named
-                    # volumes. Hash the complete tag to retain build isolation
-                    # while keeping every Docker resource name portable.
-                    BUILD_TAG_HASH="$(printf '%s' "$BUILD_TAG" | sha256sum | cut -c1-16)"
-                    TEST_TAG="trading-season-market-${BUILD_TAG_HASH}"
+                    TEST_TAG="$MARKET_TEST_TAG"
                     DB_CONTAINER="${TEST_TAG}-db"
                     TEST_NETWORK="${TEST_TAG}-network"
                     DB_VOLUME="${TEST_TAG}-db-data"
@@ -215,8 +217,7 @@ pipeline {
                     archiveArtifacts artifacts: 'reports/market-data/**/*', allowEmptyArchive: true
                     junit testResults: 'reports/market-data/junit.xml', allowEmptyResults: true
                     sh '''
-                        BUILD_TAG_HASH="$(printf '%s' "$BUILD_TAG" | sha256sum | cut -c1-16)"
-                        TEST_TAG="trading-season-market-${BUILD_TAG_HASH}"
+                        TEST_TAG="$MARKET_TEST_TAG"
                         docker rm -f "${TEST_TAG}-db" 2>/dev/null || true
                         docker volume rm "${TEST_TAG}-db-data" "${TEST_TAG}-archive" 2>/dev/null || true
                         docker network rm "${TEST_TAG}-network" 2>/dev/null || true
@@ -244,9 +245,7 @@ pipeline {
                     dir('apps/auth-service') {
                         sh '''
                             set -eu
-                            echo " Running Auth Service Tests (Vitest)..."
-                            node --version
-                            npm --version
+                            echo "Running Auth Service Tests (Vitest)..."
                             npm run test:ci
                             echo "✓ Auth service tests completed"
                         '''
@@ -321,7 +320,6 @@ pipeline {
                             # only guaranteed to match the Playwright version that
                             # installed them. The image is built once per version and
                             # reused while the agent has room for it.
-                            command -v docker >/dev/null
                             PW_VERSION="$(node -p "require('@playwright/test/package.json').version")"
                             PW_IMAGE="trading-season-playwright:${PW_VERSION}"
                             if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
@@ -379,14 +377,13 @@ pipeline {
 
         // No test depends on this stack: E2E stubs the API and market data
         // starts its own database. Building its five images is the heaviest
-        // step in the pipeline, so it runs only after a green main build and
-        // leaves branch and pull-request builds to the test stages.
+        // step in the pipeline, so it runs last, once the test stages are
+        // green. Every branch builds it, so the docker ps output below reports
+        // the services for the branch under test rather than whatever the
+        // previous build left running.
         stage('Build Local Docker Stack') {
             when {
-                allOf {
-                    branch 'main'
-                    expression { currentBuild.currentResult == 'SUCCESS' }
-                }
+                expression { currentBuild.currentResult == 'SUCCESS' }
             }
             steps {
                 script {
@@ -398,16 +395,27 @@ pipeline {
                     set -eu
                     COMPOSE_FILE="infrastructure/docker-compose/docker-compose.local.yml"
                     PROJECT_NAME="trading-season-local"
+                    # The local stack requires JWT_PRIVATE_KEY and JWT_PUBLIC_KEY
+                    # with no default, and the .env that normally holds them is
+                    # gitignored, so a fresh checkout has nothing to interpolate
+                    # and compose exits before building anything. Mint a keypair
+                    # for this build alone, for the same reason the auth specs do:
+                    # a key committed or injected for CI is a key that eventually
+                    # reaches a deployment. The workspace is deleted in `post`.
+                    COMPOSE_ENV_FILE="infrastructure/docker-compose/.env"
+                    node apps/auth-service/scripts/generate-dev-keys.mjs > "$COMPOSE_ENV_FILE"
 
                     echo "Building and starting the local application stack..."
                     sh infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
+                        --env-file "$COMPOSE_ENV_FILE" \
                         -f "$COMPOSE_FILE" \
                         up -d --build
 
                     echo "Local application services after startup:"
                     sh infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
+                        --env-file "$COMPOSE_ENV_FILE" \
                         -f "$COMPOSE_FILE" \
                         ps
 
@@ -445,6 +453,7 @@ pipeline {
                     EXPECTED_SERVICES="auth-service client-ui db holdings-and-trade-service kafka order-and-sell-service reporting-service reporting-ui"
                     RUNNING_SERVICES="$(sh infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
+                        --env-file "$COMPOSE_ENV_FILE" \
                         -f "$COMPOSE_FILE" \
                         ps --services --filter status=running | sort | tr '\n' ' ' | sed 's/ $//')"
                     if [ "$RUNNING_SERVICES" != "$EXPECTED_SERVICES" ]; then
@@ -452,6 +461,7 @@ pipeline {
                         echo "Actual running services:   $RUNNING_SERVICES" >&2
                         sh infrastructure/docker/run-compose.sh \
                             --project-name "$PROJECT_NAME" \
+                            --env-file "$COMPOSE_ENV_FILE" \
                             -f "$COMPOSE_FILE" \
                             logs --no-color --tail 100
                         exit 1
@@ -465,6 +475,7 @@ pipeline {
                         while [ "$attempt" -le 30 ]; do
                             if sh infrastructure/docker/run-compose.sh \
                                 --project-name "$PROJECT_NAME" \
+                                --env-file "$COMPOSE_ENV_FILE" \
                                 -f "$COMPOSE_FILE" \
                                 exec -T "$service" wget -qO- "http://127.0.0.1:8080${path}" | grep -F "$expected" >/dev/null; then
                                 return 0
@@ -531,8 +542,19 @@ pipeline {
                 } else {
                     def composeCleanupStatus = sh(
                         script: '''
+                            set -eu
+                            # `down` finds the stack by project name, so these
+                            # values are never used -- they only have to resolve,
+                            # because the required variables have no default. The
+                            # stage can fail before writing the file, so mint a
+                            # throwaway keypair when it is missing.
+                            COMPOSE_ENV_FILE="infrastructure/docker-compose/.env"
+                            if [ ! -f "$COMPOSE_ENV_FILE" ]; then
+                                node apps/auth-service/scripts/generate-dev-keys.mjs > "$COMPOSE_ENV_FILE"
+                            fi
                             sh infrastructure/docker/run-compose.sh \
                                 --project-name trading-season-local \
+                                --env-file "$COMPOSE_ENV_FILE" \
                                 -f infrastructure/docker-compose/docker-compose.local.yml \
                                 down
                         ''',

@@ -42,9 +42,11 @@ export class LoginComponent {
   private readonly _destroyRef = inject(DestroyRef);
   private readonly _lockout = inject(LoginLockoutService);
 
+  // Why the user arrived here, when something other than a plain visit sent them.
+  private readonly _reason = inject(ActivatedRoute).snapshot.queryParamMap.get('reason');
+
   // Set when the inactivity timeout, rather than the user, ended the previous session.
-  protected readonly signedOutForInactivity =
-    inject(ActivatedRoute).snapshot.queryParamMap.get('reason') === INACTIVE_SIGN_OUT_REASON;
+  protected readonly signedOutForInactivity = this._reason === INACTIVE_SIGN_OUT_REASON;
 
   // Toggles masking on the password field.
   protected readonly showPassword = signal(false);

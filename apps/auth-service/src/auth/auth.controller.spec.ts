@@ -48,7 +48,13 @@ describe('AuthController', () => {
         LocalStrategy,
         {
           provide: AuthService,
-          useValue: { logout, register, login, refreshToken, validateUser },
+          useValue: {
+            logout,
+            register,
+            login,
+            refreshToken,
+            validateUser,
+          },
         },
       ],
     }).compile();

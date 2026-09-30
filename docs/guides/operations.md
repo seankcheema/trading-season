@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | Holdings and Trade service | [application.properties](../../apps/holdings-and-trade-service/src/main/resources/application.properties) | HTTP 8081; PostgreSQL localhost:5432/trading_season |
 | Order and Sell service | [application.properties](../../apps/order-and-sell-service/src/main/resources/application.properties) | HTTP 8082; PostgreSQL localhost:5432/trading_season |
-| Auth service | [Auth setup](../../apps/auth-service/README.md) and [database configuration](../../apps/auth-service/src/config/database.config.ts) | HTTP 3001; PostgreSQL localhost:5432/trading_season |
+| Auth service | [Auth setup](../../apps/auth-service/README.md) and [database configuration](../../apps/auth-service/src/config/database.config.ts) | HTTP 3001; PostgreSQL localhost:5433/auth_db |
 | Client UI container | [Client Dockerfile](../../apps/client-ui/Dockerfile) | HTTP 4200; Nginx proxies `/api` to Holdings and Trade |
 | Reporting placeholders | [Reporting proposal](../reference/reporting.md) | UI HTTP 4300; service HTTP 8083 |
 | Kafka broker | [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) | Host 29092, in-network kafka:9092; topic trade-events with 3 partitions |
@@ -21,13 +21,16 @@ In local Compose, DB_PASSWORD configures the one database every service connects
 
 ## Local operation
 
-Follow [development setup](development.md) for the storage-aware Linux bootstrap, key generation, and database startup. The bootstrap never prunes Docker resources or deletes volumes. From repository root, manual Docker inspection remains available:
+Follow [development setup](development.md) for key generation and database startup. From repository root:
 
 ```sh
 docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml ps
 docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml logs --tail 100 db auth-db
 ```
 
+The local Compose file contains outdated Java backend configuration with build context and port mappings. Run both Java services through Maven: Order and Sell Service on port 8081 (called by UI) and Holdings and Trade Service on port 8082 (runs independently). The UI has no active Compose service. No production Compose file or Kubernetes deployment is supplied.
+
+Both Java services must use the same database connection (localhost:5432/trading_season by default) and verify database compatibility before startup. If your deployment splits services across machines or containers, ensure network connectivity to the shared database and identical schema versions on both services.
 For databases created by `scripts/setup-local.sh`, add `--project-name trading-season-local` to these inspection commands. Stop them without removing data with:
 
 ```sh
@@ -43,8 +46,6 @@ Ordinary Compose startup neither initializes nor seeds. `db_data` remains the Po
 
 Because the seed container cannot inspect free space inside the separate PostgreSQL volume, set `MARKET_DATA_AVAILABLE_DISK_GB` to the volume's available capacity before starting the `seed` profile. The default `parquet` mode retains raw ticks in the archive volume and imports only candles into PostgreSQL. The importer commits and checkpoints one month at a time; a rerun verifies and skips completed months. Set tick storage to `postgres` only for an intentional high-capacity deployment.
 
-The Linux bootstrap uses the Compose project name `trading-season-local`, keeping its service identities and named volumes separate from the optional Jenkins Compose project. It keeps at least 3 GiB free on filesystems it changes and rechecks capacity after dependency installation, archive copy, and Docker startup. This reserve permits copying an existing archive when it fits; it is not permission to regenerate a full archive, whose staging copy needs additional capacity.
-
 ## CI and artifacts
 
 The Jenkins pipeline expects a native agent with Docker, the Maven tool named Maven, and Java 21 at its configured JAVA_HOME. It requires at least 5 GiB of free workspace storage before checkout. This is an early guard rather than a guarantee that the complete Compose and Angular image builds will fit; keep additional headroom when possible. The pipeline runs Java, auth, Angular, end-to-end, script, and build-scoped two-day PostgreSQL integration checks. Full-year generation remains on demand.
@@ -57,15 +58,15 @@ The Jenkins pipeline expects a native agent with Docker, the Maven tool named Ma
 | UI | apps/client-ui/coverage |
 | End-to-end | apps/client-ui/reports/playwright |
 
-Auth CI runs npm ci then npm run test:ci. Frontend CI uses the root workspace npm ci installation followed by npm test -- --no-watch --coverage from the UI workspace. Do not silently treat an absent test tool or empty required report as success.
+Both Java services must pass their respective test suites. Schema changes or shared dependency upgrades require testing both services together to verify compatibility. Auth CI runs npm ci then npm run test:ci. Frontend CI currently uses npm install --legacy-peer-deps followed by npm test -- --no-watch --coverage. This differs from the preferred root npm ci developer installation. Do not silently treat an absent test tool or empty required report as success.
 
 Every tier fails its own stage below 70% coverage; the mechanisms are listed under [coverage floors](development.md#coverage-floors). A stage that passes has already cleared the floor, so the archived reports are for inspection, not for a manual check.
 
-The end-to-end stage runs inside the official Playwright image whose version matches the installed `@playwright/test` package. The image supplies Chromium and its shared libraries without requiring privileged package installation on the agent. Playwright builds the UI and serves it on port 4200 through the Angular SSR server, and stubs the API tier at the network boundary, so the stage needs no database, auth service, or Java backend. Because it builds, the stage is the only one that also proves the production build works; expect it to take longer than the unit stages.
+The end-to-end stage installs the Playwright Chromium build with `npx playwright install chromium`, deliberately without `--with-deps`, which shells out to sudo apt-get that the jenkins user cannot run. If the agent lacks the shared libraries headless Chromium needs, Playwright fails and names them. Playwright then builds the UI and serves it on port 4200 through the Angular SSR server, and stubs the API tier at the network boundary, so the stage needs no database, no auth service, and no Java backend. Because it builds, the stage is the only one that also proves the production build works; expect it to take longer than the unit stages.
 
-The optional [Jenkins image](../../infrastructure/docker/Dockerfile.jenkins) installs Node 24.x, the Docker CLI, Buildx, and the Docker Compose v2 plugin. Compose mounts the host Docker socket so those client tools operate on the host daemon; the Jenkins container does not run a separate Docker daemon. The active pipeline still expects the native Jenkins NodeJS tool to provide a Node 24.x runtime at 24.8.0 or later. The Jenkins Compose example contains development credentials. Review toolchains, credentials, and access before deployment; it is not a production-ready configuration.
+The optional [Jenkins image](../../infrastructure/docker/Dockerfile.jenkins) installs Node 20, which does not meet the current Angular engine requirement. The Jenkins Compose example also mounts the host Docker socket and contains development credentials. Review toolchains, credentials, and access before deployment; it is not a production-ready configuration.
 
-The pipeline prints `docker ps` during its initial Docker check, after application-stack startup, and in its final diagnostics. The initial check fails early when Jenkins cannot reach the daemon or neither Compose command is available because later stages require Docker. The pipeline prefers the Compose v2 `docker compose` plugin and falls back to the legacy `docker-compose` command. Immediately after checkout and before dependency installation or tests, Jenkins builds and starts `docker-compose.local.yml` under the `trading-season-local` project name. It verifies the long-running services, performs HTTP smoke checks against the client UI and both reporting placeholders, and asserts that the trade-events topic exists with three partitions, then prints every running container so the application services appear separately from Jenkins. A successful build leaves the stack available on host ports 3001, 4200, 4300, 5432, 8081, 8082, 8083, and 29092 for local inspection.
+The pipeline prints `docker ps` during its initial Docker check, after application-stack startup, and in its final diagnostics. The initial check fails early when Jenkins cannot reach the daemon or neither Compose command is available because later stages require Docker. The pipeline prefers the Compose v2 `docker compose` plugin and falls back to the legacy `docker-compose` command. After its test stages pass, on every branch, Jenkins builds and starts `docker-compose.local.yml` under the `trading-season-local` project name. That Compose file requires `JWT_PRIVATE_KEY` and `JWT_PUBLIC_KEY` and defines no default for either, and the `.env` holding them locally is not tracked, so the stage generates a keypair for that build alone into `infrastructure/docker-compose/.env` and passes it with `--env-file`; the file leaves with the workspace. No JWT key is committed or injected as a Jenkins credential. It verifies seven long-running services and performs HTTP smoke checks against the client UI and both reporting placeholders, then prints every running container so the application services appear separately from Jenkins. A successful build leaves the stack available on host ports 3001, 4200, 4300, 5432, 8081, 8082, and 8083 for local inspection.
 
 Start the Jenkins controller separately; do not ask the running pipeline to manage its own container. From the repository root, start only the Jenkins service from its Compose file:
 
@@ -95,6 +96,9 @@ Javadoc generation is a required Java change check described in [development](de
 **Token and auth issues:**
 - JWT verification fails: check the signing/public key pair and expiry. The Java backend returns 401 when the JWKS at AUTH_JWK_SET_URI is unreachable, the signature does not match, the token has expired, iss differs from AUTH_JWT_ISSUER, or sub is not a UUID. Java caches the key set for five minutes and refetches early when a token carries an unknown kid; the auth service derives kid from the public key, so a key rotation is picked up on the first token signed with the new key. The auth service's own Passport strategy does not enforce issuer/audience; do not assume it does.
 - Logout appears successful but refresh still works: see the documented [API limitation](../reference/api.md#current-logout-limitation).
+
+**CI and deployment:**
+- Jenkins fails before tests: verify the configured Java/Maven paths and Node version on the actual agent, not just the optional image.
 - Jenkins fails before tests: verify the configured Java/Maven paths and Node version (24.x at 24.8.0 or later, compatible with Angular 21.2.x) on the actual agent, not just the optional image.
 - Synthetic market-data CI derives Docker resource names from a normalized hash of the Jenkins build tag, so encoded multibranch names such as `%2F` do not need special handling. The stage creates and removes build-scoped database and archive volumes; do not pre-seed PostgreSQL or generate a persistent archive on the Jenkins VM.
 - UI renders but login does not reach an API: form submission is not yet wired to a service. See [architecture](../reference/architecture.md).

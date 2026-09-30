@@ -1,7 +1,10 @@
 import { HttpErrorResponse } from '@angular/common/http';
 
 // Which call failed, since the same status means different things for each.
-export type AuthErrorContext = 'login' | 'register-auth' | 'register-profile';
+export type AuthErrorContext =
+  | 'login'
+  | 'register-auth'
+  | 'register-profile';
 
 // Raised by AuthService when an email is taken and the submitted password doesn't sign in to it.
 export class EmailTakenError extends Error {
@@ -44,9 +47,7 @@ export function toAuthErrorMessage(error: unknown, context: AuthErrorContext): s
     return toAuthErrorMessage(error.original, error.step);
   }
   if (!(error instanceof HttpErrorResponse)) {
-    return context === 'login'
-      ? AUTH_ERROR_MESSAGES.loginFailed
-      : AUTH_ERROR_MESSAGES.registrationFailed;
+    return FALLBACK_MESSAGES[context];
   }
   if (error.status === 0) {
     return AUTH_ERROR_MESSAGES.network;
@@ -78,6 +79,13 @@ export function toAuthErrorMessage(error: unknown, context: AuthErrorContext): s
       return AUTH_ERROR_MESSAGES.registrationFailed;
   }
 }
+
+// What to show when the failure is not an HTTP response at all, so there is no status to read.
+const FALLBACK_MESSAGES: Record<AuthErrorContext, string> = {
+  login: AUTH_ERROR_MESSAGES.loginFailed,
+  'register-auth': AUTH_ERROR_MESSAGES.registrationFailed,
+  'register-profile': AUTH_ERROR_MESSAGES.registrationFailed,
+};
 
 // NestJS validation errors carry `message` as a string or a list of per-field strings.
 function nestValidationMessage(error: HttpErrorResponse): string | null {

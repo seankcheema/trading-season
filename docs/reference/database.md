@@ -2,7 +2,7 @@
 
 ## One database, two owners
 
-All three services share the `trading_season` database. The auth service owns `user_accounts` and `refresh_tokens` and writes nothing else; the Java services own every other table and never write those two. No column has more than one writer.
+The Java business backend and NestJS auth service have separate PostgreSQL databases and user models. The only value shared between them is the user's UUID: auth_db users.id equals trading_season users.user_id, and it reaches the Java backend as the access token's sub claim. Credentials, lockout and refresh sessions exist only in auth_db.
 
 An account and its profile are separate rows joined by the same UUID, which is also the access token's `sub` claim: `user_accounts.user_id` equals `users.user_id`, and a foreign key from `users` prevents a profile existing without credentials behind it.
 
@@ -364,9 +364,9 @@ There is no Flyway runner in the Java backend; these files are applied manually.
 
 ## Auth tables
 
-The auth service has no migrations of its own. Its tables are created by V005 alongside the business schema, and its [runtime configuration](../../apps/auth-service/src/config/database.config.ts) runs with an empty migration list and synchronize disabled: it reads and writes tables it never creates. Two migration tools pointed at one database is how half a schema gets dropped.
+`user_accounts` and `refresh_tokens` are created by Flyway in [V005](../../apps/market-data/db/migrations/V005__User_accounts_and_refresh_tokens.sql), with the rest of the business schema. [Runtime configuration](../../apps/auth-service/src/config/database.config.ts) holds only the entity list: the auth service registers no migrations and runs none at startup, because pointing a second migration tool at a Flyway-owned schema is how half a schema gets dropped.
 
-The service therefore assumes the migrations have already been applied. If they have not, its queries fail against missing columns, which is louder than quietly building a second schema alongside the first.
+The service therefore assumes Flyway has already been applied. If it has not, its queries fail against missing columns, which is louder than quietly building a second schema alongside the first.
 
 Email is the only login identifier, unique without regard to case through `user_accounts_email_lower_key`. Refresh tokens are stored as SHA-256 hashes with expiry, revocation and rotation metadata; the raw value is returned to the client once and never persisted. See the [auth README](../../apps/auth-service/README.md) for connection and key setup.
 

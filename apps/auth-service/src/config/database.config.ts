@@ -31,8 +31,11 @@ export const databaseConfig: TypeOrmModuleOptions = {
   // against missing columns — which is the correct failure, and louder than
   // quietly building a second schema of its own.
   synchronize: false,
-  migrations: [],
-  migrationsRun: false,
+
+  // This service runs no migrations of its own. Every table it reads is created
+  // by Flyway in apps/market-data/db/migrations, so there is no migration list
+  // and nothing to run at startup. Adding one back would put a second migration
+  // tool in charge of a schema Flyway already owns.
 
   logging: process.env.NODE_ENV === 'development',
 };

@@ -233,8 +233,8 @@ services:
     ports:
       - "3001:3001"
     depends_on:
-      # Not just the database being up: this service creates no tables, so
-      # it needs the migrations applied before its first query.
+      # The auth database container is gone; auth-service reads the shared
+      # database, so it waits for the same migration run the Java services do.
       db-init:
         condition: service_completed_successfully
     environment:
