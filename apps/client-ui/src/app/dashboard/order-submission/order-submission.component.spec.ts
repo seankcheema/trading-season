@@ -1,3 +1,5 @@
+import { vi, afterEach } from 'vitest';
+import { ToastService } from '../../notifications/toast.service';
 import { TestBed } from '@angular/core/testing';
 import { OrderSubmissionComponent } from './order-submission.component';
 import { Instrument } from '../mock-data';
@@ -65,15 +67,13 @@ describe('OrderSubmissionComponent', () => {
     return fixture;
   }
 
+  afterEach(() => vi.useRealTimers());
+
   beforeEach(async () => {
+    vi.useFakeTimers();
     await TestBed.configureTestingModule({
       imports: [OrderSubmissionComponent],
-      providers: [
-        OrderService,
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        provideRouter([]),
-      ],
+      providers: [OrderService, provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     }).compileComponents();
   });
 
@@ -127,6 +127,81 @@ describe('OrderSubmissionComponent', () => {
     http.verify();
   });
 
+  it('keeps the submitted symbol in the notification after the dialog is destroyed', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const fixture = setup();
+    const component = fixture.componentInstance;
+    component['shares'].set(2);
+    component['submit']();
+    http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
+    const posted = http.expectOne({ method: 'POST', url: '/api/orders' });
+    component['activeSymbol'].set('NVDA');
+    fixture.destroy();
+    posted.flush(filledOrder());
+    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 2 AAPL at $316.59.');
+    http.verify();
+  });
+
+  for (const side of ['buy', 'sell'] as const) {
+    it(`allows consecutive ${side}s but blocks clicks while pending`, () => {
+      const http = TestBed.inject(HttpTestingController);
+      const fixture = setup({ AAPL: 5 });
+      const component = fixture.componentInstance;
+      fixture.detectChanges();
+      component['side'].set(side);
+      fixture.detectChanges();
+      component['shares'].set(2);
+      const emitted: OrderResult[] = [];
+      component.submitted.subscribe((result) => emitted.push(result));
+      component['submit']();
+      component['submit']();
+      http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
+      const first = http.expectOne({ method: 'POST', url: '/api/orders' });
+      const reference = first.request.body.clientReference;
+      expect(component['canSubmit']()).toBe(false);
+      first.flush(filledOrder({ orderType: side === 'buy' ? 'BUY' : 'SELL' }));
+      expect(component['canSubmit']()).toBe(false);
+      expect(component['submitLabel']()).toBe(side === 'buy' ? 'Buying\u2026' : 'Selling\u2026');
+      vi.advanceTimersByTime(999);
+      expect(component['canSubmit']()).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(component['canSubmit']()).toBe(true);
+      expect(component['submitLabel']()).toBe(`${side === 'buy' ? 'Buy' : 'Sell'} 2 AAPL`);
+      component['submit']();
+      const second = http.expectOne({ method: 'POST', url: '/api/orders' });
+      expect(second.request.body.clientReference).not.toBe(reference);
+      second.flush(filledOrder({ orderId: 2, orderType: side === 'buy' ? 'BUY' : 'SELL' }));
+      expect(emitted).toHaveLength(2);
+      expect(TestBed.inject(OrderService).orders().map((order) => order.orderId)).toEqual([2, 1]);
+      expect(TestBed.inject(ToastService).messages()).toHaveLength(1);
+      if (side === 'buy') fixture.componentRef.setInput('cashBalance', 0);
+      else fixture.componentRef.setInput('positions', { AAPL: 0 });
+      fixture.detectChanges();
+      expect(component['shares']()).toBe(0);
+      expect(component['canSubmit']()).toBe(false);
+      component['submit']();
+      http.expectNone({ method: 'POST', url: '/api/orders' });
+      http.verify();
+    });
+  }
+
+  it('keeps the spinner and lock active when the request takes longer than one second', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const component = setup().componentInstance;
+    component['submit']();
+    http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
+    const request = http.expectOne({ method: 'POST', url: '/api/orders' });
+    vi.advanceTimersByTime(1500);
+    expect(component['busy']()).toBe(true);
+    expect(component['canSubmit']()).toBe(false);
+    component['submit']();
+    http.expectNone({ method: 'POST', url: '/api/orders' });
+    request.flush(filledOrder());
+    expect(component['busy']()).toBe(false);
+    expect(component['canSubmit']()).toBe(true);
+    http.verify();
+  });
+
   it('should send a sell as a SELL order', () => {
     const http = TestBed.inject(HttpTestingController);
     const component = setup({ AAPL: 5 }).componentInstance;
@@ -140,6 +215,7 @@ describe('OrderSubmissionComponent', () => {
     expect(posted.request.body).toMatchObject({ orderType: 'SELL', quantity: 3, instrumentId: 7 });
     posted.flush(filledOrder({ orderType: 'SELL', quantity: 3 }));
     expect(component['filled']()).toBe(true);
+    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 3 AAPL at $316.59.');
     http.verify();
   });
 
@@ -152,19 +228,18 @@ describe('OrderSubmissionComponent', () => {
 
     component['submit']();
     http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
-    http
-      .expectOne({ method: 'POST', url: '/api/orders' })
-      .flush(
-        filledOrder({
-          status: 'REJECTED',
-          rejectionReason: 'BR-09: insufficient funds for this order',
-        }),
-      );
+    http.expectOne({ method: 'POST', url: '/api/orders' }).flush(
+      filledOrder({
+        status: 'REJECTED',
+        rejectionReason: 'BR-09: insufficient funds for this order',
+      }),
+    );
 
     expect(component['rejectionReason']()).toBe('BR-09: insufficient funds for this order');
     expect(component['errorMessage']()).toBe('');
     expect(component['filled']()).toBe(false);
     // A rejection leaves the ticket usable, so the trader can change it and retry.
+    vi.advanceTimersByTime(1000);
     expect(component['canSubmit']()).toBe(true);
     expect(emitted).toHaveLength(1);
     http.verify();
@@ -244,6 +319,7 @@ describe('OrderSubmissionComponent', () => {
     fixture.detectChanges();
 
     expect(component['outcome']()).toBeNull();
+    vi.advanceTimersByTime(1000);
     expect(component['canSubmit']()).toBe(true);
     http.verify();
   });
@@ -390,15 +466,49 @@ describe('OrderSubmissionComponent', () => {
 
       setShares(sharesInput, '12.9');
       expect(shares()).toBe(12);
+      expect(sharesInput.value).toBe('12');
+      setShares(sharesInput, '500');
+      setShares(sharesInput, '600');
+      expect(sharesInput.value).toBe('31');
 
       setShares(slider, '500');
       expect(shares()).toBe(31);
 
       setShares(sharesInput, '-3');
       expect(shares()).toBe(0);
+      expect(sharesInput.value).toBe('0');
 
       setShares(sharesInput, 'abc');
       expect(shares()).toBe(0);
+      expect(sharesInput.value).toBe('0');
+    });
+
+    it('preserves valid quantities and clamps when live limits shrink', () => {
+      const { fixture, sharesInput, slider, sideButton } = render({ AAPL: 4.8 });
+      setShares(sharesInput, '12');
+      fixture.componentRef.setInput('cashBalance', 20_000);
+      fixture.detectChanges();
+      expect(sharesInput.value).toBe('12');
+      fixture.componentRef.setInput('instruments', [{ ...INSTRUMENT, price: 5000 }]);
+      fixture.detectChanges();
+      expect(sharesInput.value).toBe('4');
+      expect(slider.value).toBe('4');
+      sideButton('sell').click();
+      fixture.detectChanges();
+      expect(sharesInput.value).toBe('4');
+      fixture.componentRef.setInput('positions', { AAPL: 2 });
+      fixture.detectChanges();
+      expect(sharesInput.value).toBe('2');
+    });
+
+    it('uses zero for invalid buy limits', () => {
+      const { fixture, sharesInput } = render();
+      for (const price of [0, -1, NaN, Infinity]) {
+        fixture.componentRef.setInput('instruments', [{ ...INSTRUMENT, price }]);
+        fixture.detectChanges();
+        expect(sharesInput.value).toBe('0');
+        expect(sharesInput.disabled).toBe(true);
+      }
     });
 
     it('should submit from the button and do nothing when there is nothing to trade', () => {
@@ -412,18 +522,13 @@ describe('OrderSubmissionComponent', () => {
       submitButton().click();
       http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
       http.expectOne({ method: 'POST', url: '/api/orders' }).flush(filledOrder({ quantity: 3 }));
+      vi.advanceTimersByTime(1000);
       fixture.detectChanges();
 
       expect(emitted).toHaveLength(1);
-      expect(el.querySelector('[data-testid="order-filled"]')!.textContent).toContain(
-        'Filled 3 AAPL',
-      );
-      // The trade is done; a second click must not place another one.
-      expect(
-        Array.from(el.querySelectorAll<HTMLButtonElement>('button')).find(
-          (b) => b.textContent?.trim() === 'Order filled',
-        )!.disabled,
-      ).toBe(true);
+      expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 3 AAPL at $316.59.');
+      expect(el.querySelector('[data-testid="order-filled"]')).toBeNull();
+      expect(submitButton().disabled).toBe(false);
 
       setShares(sharesInput, '0');
       fixture.componentInstance['submit']();
@@ -431,7 +536,7 @@ describe('OrderSubmissionComponent', () => {
       http.verify();
     });
 
-    it('should render a rejection and a failure in the ticket', () => {
+    it('should notify a rejection and a failure outside the ticket', () => {
       const http = TestBed.inject(HttpTestingController);
       const { fixture, sharesInput, submitButton, el } = render();
 
@@ -442,11 +547,13 @@ describe('OrderSubmissionComponent', () => {
       http
         .expectOne({ method: 'POST', url: '/api/orders' })
         .flush(filledOrder({ status: 'REJECTED', rejectionReason: 'BR-05: not tradable' }));
+      vi.advanceTimersByTime(1000);
       fixture.detectChanges();
 
-      expect(el.querySelector('[data-testid="order-rejected"]')!.textContent).toContain(
-        'BR-05: not tradable',
+      expect(TestBed.inject(ToastService).messages()[0].message).toBe(
+        'Rejected: BR-05: not tradable',
       );
+      expect(el.querySelector('[data-testid="order-rejected"]')).toBeNull();
 
       submitButton().click();
       http
@@ -454,9 +561,10 @@ describe('OrderSubmissionComponent', () => {
         .flush(null, { status: 500, statusText: 'Server Error' });
       fixture.detectChanges();
 
-      expect(el.querySelector('[data-testid="order-error"]')!.textContent).toContain(
+      expect(TestBed.inject(ToastService).messages()[0].message).toContain(
         'The service is unavailable right now.',
       );
+      expect(el.querySelector('[data-testid="order-error"]')).toBeNull();
       http.verify();
     });
 
@@ -464,7 +572,13 @@ describe('OrderSubmissionComponent', () => {
       const { fixture, el } = render();
       fixture.componentRef.setInput('instruments', [
         INSTRUMENT,
-        { symbol: 'NVDA', name: 'NVIDIA Corporation', price: 100, change: -2, changePercent: -1.96 },
+        {
+          symbol: 'NVDA',
+          name: 'NVIDIA Corporation',
+          price: 100,
+          change: -2,
+          changePercent: -1.96,
+        },
       ]);
       fixture.detectChanges();
       const search = el.querySelector<HTMLInputElement>('app-instrument-search input')!;

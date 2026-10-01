@@ -62,10 +62,14 @@
             </span>
             <span
               class="rounded-full px-2 py-0.5 text-xs font-medium tabular-nums"
-              [class]="activeInstrument().change >= 0 ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'"
+              [class]="
+                activeInstrument().change >= 0 ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'
+              "
             >
-              {{ activeInstrument().change >= 0 ? '+' : '' }}{{ activeInstrument().change | currency: 'USD' }}
-              ({{ activeInstrument().changePercent | signedPercent }})
+              {{ activeInstrument().change >= 0 ? '+' : ''
+              }}{{ activeInstrument().change | currency: 'USD' }} ({{
+                activeInstrument().changePercent | signedPercent
+              }})
             </span>
           </p>
           <app-timeframe-toggle [(value)]="timeframe" />
@@ -80,7 +84,11 @@
 
       <!-- Order ticket -->
       <div class="flex min-w-0 flex-col p-5">
-        <div role="group" aria-label="Order side" class="bg-muted grid grid-cols-2 gap-1 rounded-xl p-1">
+        <div
+          role="group"
+          aria-label="Order side"
+          class="bg-muted grid grid-cols-2 gap-1 rounded-xl p-1"
+        >
           @for (option of sides; track option) {
             <button
               type="button"
@@ -102,7 +110,10 @@
 
         <div class="border-border mt-4 rounded-xl border p-4">
           <div class="flex items-center justify-between gap-4">
-            <label for="order-shares" class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+            <label
+              for="order-shares"
+              class="text-muted-foreground text-xs font-medium tracking-wide uppercase"
+            >
               Shares
             </label>
             <span class="text-muted-foreground text-xs tabular-nums">
@@ -115,6 +126,7 @@
           </div>
           <input
             id="order-shares"
+            step="1"
             type="number"
             min="0"
             [max]="maxShares()"
@@ -163,32 +175,21 @@
 
         <div class="min-h-4 flex-1"></div>
 
-        @if (filled()) {
-          <p
-            role="status"
-            class="text-gain mb-3 text-sm font-medium"
-            data-testid="order-filled"
-          >
-            Filled {{ outcome()!.quantity }} {{ activeInstrument().symbol }} at
-            {{ outcome()!.indicativePrice | currency: 'USD' }}.
-          </p>
-        } @else if (rejectionReason(); as reason) {
-          <p role="alert" class="text-destructive mb-3 text-sm" data-testid="order-rejected">
-            Rejected: {{ reason }}
-          </p>
-        } @else if (errorMessage(); as message) {
-          <p role="alert" class="text-destructive mb-3 text-sm" data-testid="order-error">
-            {{ message }}
-          </p>
-        }
-
         <button
           type="button"
           class="h-11 w-full cursor-pointer rounded-xl text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-          [class]="side() === 'buy' ? 'bg-primary text-primary-foreground hover:bg-primary/85' : 'bg-loss hover:bg-loss/85 text-white'"
+          [class]="
+            side() === 'buy'
+              ? 'bg-primary text-primary-foreground hover:bg-primary/85'
+              : 'bg-loss hover:bg-loss/85 text-white'
+          "
+          [attr.aria-busy]="busy()"
           [disabled]="!canSubmit()"
           (click)="submit()"
         >
+          @if (busy()) {
+            <span class="order-spinner" aria-hidden="true"></span>
+          }
           {{ submitLabel() }}
         </button>
       </div>

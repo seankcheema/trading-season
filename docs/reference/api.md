@@ -104,7 +104,7 @@ These endpoints are **NOT YET IMPLEMENTED**. [OrderController](../../apps/order-
 
 Cash movements are not served here. They belong to the Holdings and Trade Service, which owns the balance they move; see [Cash](#cash).
 
-See [Order and Sell Service documentation](services/order-and-sell-service.md) for implementation status.
+See [Order and Sell Service documentation](../../apps/order-and-sell-service/README.md) for implementation status.
 
 ### Errors
 
@@ -379,6 +379,10 @@ The auth service installs a global validation pipe with whitelisting, unknown-pr
 Refresh rotates the stored token; replay of an unusable stored token revokes the user's live refresh sessions. Logout revokes the supplied refresh token and is deliberately unguarded so clients can end a session even after the access token expires. Send `refreshToken` in JSON for refresh and logout: cookie parsing is not installed in bootstrap. Access JWTs remain valid until expiry.
 
 ## UI integration
+
+Order results from the dashboard buy/sell dialog appear as bottom-center toasts that dismiss automatically: fills use success styling, while rejections and request failures use error styling. Only the newest notification is shown: a new result replaces the previous toast, replays a 240 ms upward slide and fade-in, and resets its timer, so notifications never stack. Reduced-motion preferences disable the entrance animation. Notifications remain visible for two seconds, then fade over 400 ms; they survive closing the dialog and respect reduced-motion preferences. The Buy/Sell button shows a loading circle and Buying/Selling label and stays disabled for at least one second after a click, or longer while the request is pending. It becomes available again afterward when the bounded quantity is positive. Reduced-motion preferences disable spinner rotation. Each subsequent click places a new order with a fresh idempotency key; the ticket stays open and refreshes available cash and holdings.
+
+Both the dashboard order dialog and the full-screen market preview normalize quantity input immediately to whole shares between zero and the current maximum. Buys are capped by available cash divided by a valid positive price; sells are capped by whole shares held. Invalid limits become zero, and changing prices, cash, holdings, symbols, or sides preserves valid quantities while clamping excessive ones. Zero cannot be executed. The full-screen ticket remains a local demo preview; backend validation remains authoritative for actual orders.
 
 The Angular UI authenticates only against the NestJS auth service. See [AuthService](../../apps/client-ui/src/app/core/auth/auth.service.ts).
 

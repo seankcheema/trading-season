@@ -1,5 +1,13 @@
+import { affordableShares, boundedShares, wholeShares } from './share-limits';
 import { CurrencyPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  input,
+  linkedSignal,
+  signal,
+} from '@angular/core';
 import { OrderSide } from '../mock-data';
 
 export const TRADING_AVAILABLE = false;
@@ -66,6 +74,8 @@ export interface TradeTicketDraft {
         </div>
         <input
           id="future-trade-quantity"
+          step="1"
+          [disabled]="maxShares() === 0"
           type="number"
           min="0"
           [max]="maxShares()"
@@ -138,12 +148,15 @@ export class TradeTicketComponent {
   readonly cashBalance = input(10_000);
   readonly heldShares = input(25);
   protected readonly side = signal<OrderSide>('buy');
-  protected readonly quantity = signal(0);
+  protected readonly quantity = linkedSignal<number, number>({
+    source: () => this.maxShares(),
+    computation: (maximum, previous) => boundedShares(previous?.value ?? 0, maximum),
+  });
   protected readonly previewMessage = signal('');
   protected readonly maxShares = computed(() =>
     this.side() === 'buy'
-      ? Math.max(0, Math.floor(this.cashBalance() / this.price()))
-      : Math.max(0, Math.floor(this.heldShares())),
+      ? affordableShares(this.cashBalance(), this.price())
+      : wholeShares(this.heldShares()),
   );
   protected readonly cashAfter = computed(() =>
     this.side() === 'buy'
@@ -167,8 +180,10 @@ export class TradeTicketComponent {
   }
 
   protected onQuantityInput(event: Event): void {
-    const requested = Number((event.target as HTMLInputElement).value);
-    this.quantity.set(Math.min(this.maxShares(), Math.max(0, Math.floor(requested || 0))));
+    const input = event.target as HTMLInputElement;
+    const quantity = boundedShares(Number(input.value), this.maxShares());
+    this.quantity.set(quantity);
+    input.value = String(quantity);
     this.previewMessage.set('');
   }
 

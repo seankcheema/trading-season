@@ -31,6 +31,9 @@
     },
     "./utils": {
       "import": "./src/lib/utils/src/index.ts"
+    },
+    "./toast": {
+      "import": "./src/lib/toast/src/index.ts"
     }
   }
 }
