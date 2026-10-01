@@ -337,6 +337,8 @@ pipeline {
                                   --cov=. \
                                   --cov-report=xml:coverage/coverage.xml \
                                   --cov-report=html:coverage/htmlcov || true
+                                # Fix file permissions so Jenkins can clean up workspace
+                                chmod -R 777 reports coverage
                               "
                             echo "✓ Reporting service tests completed"
                         '''
