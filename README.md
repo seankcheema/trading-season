@@ -19,7 +19,9 @@ All services provide interactive Swagger UI documentation:
 | Holdings and Trade Service | http://localhost:8082/swagger-ui.html | http://localhost:8082/v3/api-docs |
 | Order and Sell Service | http://localhost:8081/swagger-ui.html | http://localhost:8081/v3/api-docs |
 
-See [SWAGGER_DOCS.md](docs/SWAGGER_DOCS.md) for endpoint reference and authentication details.
+**Quick Start**: Use the default test credentials `admin@example.com` / `admin123` to login and test all endpoints. See [TEST_CREDENTIALS.md](docs/TEST_CREDENTIALS.md) for details.
+
+For more information, see [SWAGGER_DOCS.md](docs/SWAGGER_DOCS.md).
 
 ## Start locally on Windows
 

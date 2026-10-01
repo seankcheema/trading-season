@@ -73,6 +73,8 @@ All services expose interactive Swagger UI for API exploration and testing:
 
 Machine-readable OpenAPI specs are available at `/v3/api-docs` (JSON) or `/v3/api-docs.yaml` (YAML) on each service.
 
+**Test Credentials for Development**: See [TEST_CREDENTIALS.md](../TEST_CREDENTIALS.md) for default login credentials and how to authorize in Swagger UI.
+
 See [SWAGGER_DOCS.md](../SWAGGER_DOCS.md) for complete endpoint documentation and authentication details.
 
 ## Checks
