@@ -38,11 +38,16 @@ app.config.from_object(config[config_name])
 # Configure SQLAlchemy
 app.config['SQLALCHEMY_DATABASE_URI'] = app.config['DATABASE_URL']
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_size': 10,
-    'pool_recycle': 3600,
-    'pool_pre_ping': True,
-}
+
+# Set engine options only for PostgreSQL (SQLite doesn't support pool options)
+if 'sqlite' not in app.config['DATABASE_URL']:
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_size': 10,
+        'pool_recycle': 3600,
+        'pool_pre_ping': True,
+    }
+else:
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
 
 # Initialize database
 db.init_app(app)
