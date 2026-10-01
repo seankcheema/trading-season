@@ -13,7 +13,9 @@ All services share a single PostgreSQL database (`trading_season`).
 
 - **Soli** – Team Lead
 - **Chris** – Scrum Master
-- **Sean** – Meeting Scribe (documentation of team matters)
+- **Sean** – Meeting Scribe (documentation of team matters) + Front End Developer
+- **Prisca** – Full Stack Developer
+- **Mohammed** – Full Stack Developer
 
 ## Start locally on Windows
 
