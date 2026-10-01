@@ -597,6 +597,35 @@ def get_user_profile():
 
 
 # ============================================================================
+# System Health & Status Endpoints
+# ============================================================================
+
+@api_bp.route('/scheduler/status', methods=['GET'])
+def get_scheduler_status():
+    """
+    GET /api/reporting/scheduler/status
+    
+    Get current scheduler status (public endpoint for monitoring)
+    Returns: scheduler running status, last refresh time, next job execution
+    """
+    try:
+        from scheduled_tasks import get_refresh_status
+        status = get_refresh_status()
+        
+        return jsonify({
+            'scheduler_status': status,
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Error getting scheduler status: {e}")
+        return jsonify({
+            'error': 'Failed to retrieve scheduler status',
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
+
+# ============================================================================
 # Helper Functions for Statistics and Analysis
 # ============================================================================
 

@@ -21,6 +21,9 @@ from db_service import (
     AuditRepository, MetadataRepository
 )
 
+# Import scheduled tasks
+from scheduled_tasks import init_scheduler, shutdown_scheduler, get_refresh_status
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -265,6 +268,15 @@ def init_app():
             # Register API routes
             register_routes()
             logger.info("Application initialized successfully")
+            
+            # Initialize background scheduler
+            init_scheduler(app)
+            logger.info("Background scheduler initialized")
+            
+            # Register graceful shutdown handler
+            import atexit
+            atexit.register(shutdown_scheduler)
+    
     except Exception as e:
         logger.error(f"Failed to initialize application: {e}")
         raise
