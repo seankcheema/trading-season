@@ -122,6 +122,7 @@ public class OrderService {
         order.setBufferPercent(bufferPercent);
         order.setStatus(Order.STATUS_PENDING);
         order.setSubmittedAt(now);
+        order.setSimulatedAt(request.simulatedAt());
         order = orderRepository.save(order);
         auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, null);
 
