@@ -9,6 +9,18 @@ The backend consists of two independent Java microservices and one NestJS authen
 
 All services share a single PostgreSQL database (`trading_season`).
 
+## API Documentation
+
+All services provide interactive Swagger UI documentation:
+
+| Service | Swagger UI | OpenAPI Spec |
+| --- | --- | --- |
+| Auth Service | http://localhost:3001/api/docs | http://localhost:3001/api-json |
+| Holdings and Trade Service | http://localhost:8082/swagger-ui.html | http://localhost:8082/v3/api-docs |
+| Order and Sell Service | http://localhost:8081/swagger-ui.html | http://localhost:8081/v3/api-docs |
+
+See [SWAGGER_DOCS.md](docs/SWAGGER_DOCS.md) for endpoint reference and authentication details.
+
 ## Start locally on Windows
 
 Install Node.js 24.8.0+ (24.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL (or Docker Compose).
