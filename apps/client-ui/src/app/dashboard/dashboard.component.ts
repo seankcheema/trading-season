@@ -244,6 +244,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.priceHoldings(this.accountStore.selectedHoldings()),
   );
 
+  protected readonly visibleAssets = computed(() =>
+    this.holdings().filter((holding) => holding.value !== 0),
+  );
+
   // Only the symbols, so price ticks don't look like a change of holdings.
   private readonly heldSymbols = computed(() =>
     this.accountStore

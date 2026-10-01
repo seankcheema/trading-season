@@ -801,6 +801,37 @@ describe('DashboardComponent', () => {
       expect(fixture.componentInstance['portfolioChangePercent']()).toBeCloseTo(8.0333, 3);
     });
 
+    it('hides stocks with a zero total from Assets', () => {
+      const fixture = render();
+      flushAccounts(fixture, ACCOUNTS, {
+        holdings: {
+          1: [
+            { symbol: 'AAPL', quantity: 0, averageCost: 280.1 },
+            { symbol: 'ZERO', quantity: 2, averageCost: 0 },
+            { symbol: 'SPY', quantity: 2, averageCost: 600 },
+          ],
+        },
+      });
+
+      expect(assetSymbols(fixture)).toEqual(['SPY']);
+
+      fixture.componentInstance['selectAccount'](2);
+      fixture.detectChanges();
+      expect(assetSymbols(fixture)).toEqual([]);
+    });
+
+    it('shows the Assets empty state when every stock has a zero total', () => {
+      const fixture = render();
+      flushAccounts(fixture, ACCOUNTS, {
+        holdings: { 1: [{ symbol: 'AAPL', quantity: 0, averageCost: 280.1 }] },
+      });
+
+      expect(assetSymbols(fixture)).toEqual([]);
+      expect(text(element(fixture).querySelector('[data-testid="assets-table"]'))).toContain(
+        'This account has no holdings yet.',
+      );
+    });
+
     it('shows a new account as an empty portfolio', () => {
       const fixture = render();
       flushAccounts(fixture, [{ accountId: 3, name: 'Fresh', openedDate: '2026-09-21' }], {
