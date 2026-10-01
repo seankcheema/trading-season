@@ -10,10 +10,16 @@ from datetime import datetime
 import jwt
 import requests
 from functools import wraps
-import psycopg2
-from psycopg2.extras import RealDictCursor
 from config import config
 import logging
+
+# Import database models and services
+from models import db
+from db_service import (
+    UserRepository, AccountRepository, HoldingRepository,
+    OrderRepository, TradeRepository, CashTransactionRepository,
+    AuditRepository, MetadataRepository
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -26,37 +32,20 @@ app = Flask(__name__)
 config_name = os.getenv('FLASK_ENV', 'development')
 app.config.from_object(config[config_name])
 
+# Configure SQLAlchemy
+app.config['SQLALCHEMY_DATABASE_URI'] = app.config['DATABASE_URL']
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_size': 10,
+    'pool_recycle': 3600,
+    'pool_pre_ping': True,
+}
+
+# Initialize database
+db.init_app(app)
+
 # Enable CORS
 CORS(app, origins=app.config['CORS_ORIGINS'])
-
-
-# ============================================================================
-# Database Connection Utilities
-# ============================================================================
-
-def get_db_connection():
-    """Get a connection to the trading_season database"""
-    try:
-        conn = psycopg2.connect(app.config['DATABASE_URL'])
-        return conn
-    except psycopg2.Error as e:
-        logger.error(f"Database connection error: {e}")
-        raise
-
-
-def query_db(query, args=None, one=False):
-    """Execute a database query and return results"""
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute(query, args or ())
-        rv = cur.fetchall()
-        cur.close()
-        conn.close()
-        return (rv[0] if rv else None) if one else rv
-    except psycopg2.Error as e:
-        logger.error(f"Database query error: {e}")
-        raise
 
 
 # ============================================================================
@@ -164,11 +153,7 @@ def health():
     """Service health check endpoint (public, no auth required)"""
     try:
         # Verify database connectivity
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('SELECT 1')
-        cur.close()
-        conn.close()
+        db.session.execute('SELECT 1')
         
         return jsonify({
             'status': 'healthy',
@@ -235,6 +220,16 @@ def internal_error(error):
 
 
 # ============================================================================
+# Context Processor for Database Session
+# ============================================================================
+
+@app.teardown_appcontext
+def shutdown_session(exception=None):
+    """Clean up database session after request"""
+    db.session.remove()
+
+
+# ============================================================================
 # Initialization
 # ============================================================================
 
@@ -246,13 +241,10 @@ def init_app():
     
     # Verify database connectivity
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('SELECT version()')
-        version = cur.fetchone()
-        logger.info(f"Database connected: {version}")
-        cur.close()
-        conn.close()
+        with app.app_context():
+            db.session.execute('SELECT version()')
+            version = db.session.execute('SELECT version()').scalar()
+            logger.info(f"Database connected: {version}")
     except Exception as e:
         logger.error(f"Failed to connect to database: {e}")
         raise
