@@ -16,7 +16,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 2 : 0,
-  workers: process.env['CI'] ? 1 : undefined,
+  // A conservative, explicit worker count rather than CI's single-core
+  // default or local auto-detection: enough to parallelize the six spec
+  // files without assuming the Jenkins agent has local-machine-level cores.
+  workers: process.env['CI'] ? 2 : undefined,
   reporter: [
     ['list'],
     ['html', { outputFolder: 'reports/playwright/html', open: 'never' }],
