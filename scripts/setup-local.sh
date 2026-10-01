@@ -61,6 +61,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$repo_root"
 
 auth_dir="$repo_root/apps/auth-service"
+ui_dir="$repo_root/apps/client-ui"
 env_file="$auth_dir/.env"
 compose_file="$repo_root/infrastructure/docker-compose/docker-compose.local.yml"
 archive_path="$repo_root/$EXPECTED_ARCHIVE"
@@ -186,7 +187,7 @@ configure_auth() {
 }
 
 install_dependencies() {
-    local directory="$1" lockfile="$2" label="$3" command_prefix="$4"
+    local directory="$1" lockfile="$2" label="$3"
     local stamp="$directory/node_modules/.trading-season-lock.sha256" expected current=''
     expected="$(sha256sum "$lockfile" | awk '{print $1}')"
     [[ -f "$stamp" ]] && current="$(cat "$stamp")"
@@ -194,11 +195,7 @@ install_dependencies() {
         ready "$label — lockfile is unchanged; skipping npm ci."
         return
     fi
-    if [[ -n "$command_prefix" ]]; then
-        npm --prefix "$command_prefix" ci || fail "$label installation failed. Review npm output above."
-    else
-        npm ci || fail "$label installation failed. Review npm output above."
-    fi
+    npm --prefix "$directory" ci || fail "$label installation failed. Review npm output above."
     mkdir -p "$(dirname "$stamp")"
     printf '%s\n' "$expected" > "$stamp"
     done_stage "$label — dependencies installed."
@@ -438,7 +435,7 @@ start_applications() {
     start_service auth "$auth_dir" npm run start:dev
     start_service holdings-and-trade "$repo_root/apps/holdings-and-trade-service" mvn spring-boot:run
     start_service order-and-sell "$repo_root/apps/order-and-sell-service" mvn spring-boot:run
-    start_service ui "$repo_root" npm --workspace business-logic-ui start
+    start_service ui "$ui_dir" npm start
     done_stage 'Applications — starting UI :4200, auth :3001, holdings-and-trade :8081, and order-and-sell :8082. Press Ctrl+C to stop them.'
 
     set +e
@@ -451,8 +448,8 @@ start_applications() {
 check_toolchain
 check_storage 'Repository storage' "$repo_root"
 configure_auth
-install_dependencies "$repo_root" "$repo_root/package-lock.json" 'Root dependencies' ''
-install_dependencies "$auth_dir" "$auth_dir/package-lock.json" 'Auth dependencies' "$auth_dir"
+install_dependencies "$ui_dir" "$ui_dir/package-lock.json" 'UI dependencies'
+install_dependencies "$auth_dir" "$auth_dir/package-lock.json" 'Auth dependencies'
 prepare_archive
 select_databases
 start_applications

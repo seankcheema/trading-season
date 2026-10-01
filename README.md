@@ -9,16 +9,24 @@ The backend consists of two independent Java microservices and one NestJS authen
 
 All services share a single PostgreSQL database (`trading_season`).
 
+## Team
+
+- **Soli** – Team Lead
+- **Chris** – Scrum Master
+- **Sean** – Meeting Scribe (documentation of team matters) + Front End Developer
+- **Prisca** – Full Stack Developer
+- **Mohammed** – Full Stack Developer
+
 ## Start locally on Windows
 
 Install Node.js 24.8.0+ (24.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL (or Docker Compose).
 
 ### Quick start with the startup script (requires local databases)
 
-1. Install dependencies from the repository root:
+1. Install dependencies. The UI and auth service are independent npm projects, each with its own lockfile:
 
    ```powershell
-   npm ci
+   npm --prefix apps/client-ui ci
    npm --prefix apps/auth-service ci
    ```
 
@@ -124,11 +132,11 @@ cd ../..
 Use the startup script as above, or start each application in its own terminal:
 
 ```powershell
-npm ci
+npm --prefix apps/client-ui ci
 npm --prefix apps/auth-service ci
 
-# Terminal 1: UI from repository root
-npm --workspace business-logic-ui start
+# Terminal 1: UI
+npm --prefix apps/client-ui start
 
 # Terminal 2: Holdings and Trade Service
 cd apps/holdings-and-trade-service
@@ -213,7 +221,6 @@ See the [development guide](docs/guides/development.md) for additional commands,
 | Holdings and Trade Service | `apps/holdings-and-trade-service` | 8081 | Order submission, validation, execution; holdings and account management |
 | Order and Sell Service | `apps/order-and-sell-service` | 8082 | User profile queries, market data access |
 | Market Data | `apps/market-data` | — | Shared database migrations and synthetic market data tooling |
-| Shared UI Components | `packages/shared-ui-components` | — | Reusable Angular components library |
 | Reporting | `docs/reference/reporting.md` | — | Proposed analytics and portfolio performance reporting |
 
 ## Documentation

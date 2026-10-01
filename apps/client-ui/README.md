@@ -4,19 +4,19 @@ Angular login, registration, and dashboard screens using reactive forms, standal
 
 The dashboard also creates and renames accounts, shows each account's holdings as its portfolio, and deposits and withdraws the cash all of a user's accounts share, through the planned account endpoints in the [API reference](../../docs/reference/api.md#ui-integration); the Java backend does not serve those yet. Net worth is that cash plus every account's portfolio. The full-screen market page's metrics, overview signals, news, AI responses, cash balance, held shares, and order preview are browser-only demo data. Its Buy and Sell controls calculate a preview but never submit an order. Signed-in users are signed out after a configurable period of inactivity, 10 minutes by default; see the [API reference](../../docs/reference/api.md#ui-integration).
 
-From repository root:
+client-ui is a standalone npm project with its own lockfile, independent of the repository root:
 
 ```sh
-npm ci
-npm --workspace business-logic-ui start
-npm --workspace business-logic-ui run build
-npm --workspace business-logic-ui test -- --no-watch
-npm --workspace business-logic-ui run e2e
+npm --prefix apps/client-ui ci
+npm --prefix apps/client-ui start
+npm --prefix apps/client-ui run build
+npm --prefix apps/client-ui test -- --no-watch
+npm --prefix apps/client-ui run e2e
 ```
 
-Development runs on port 4200 and proxies `/api` to the Java backend on port 8081. See [routes](src/app/app.routes.ts), [shared components](../../packages/shared-ui-components/README.md), and [development prerequisites](../../docs/guides/development.md). Angular tests take --no-watch rather than Vitest's --run option.
+Development runs on port 4200 and proxies `/api` to the Java backend on port 8081. See [routes](src/app/app.routes.ts), [shared components](shared-ui-components/README.md), and [development prerequisites](../../docs/guides/development.md). Angular tests take --no-watch rather than Vitest's --run option.
 
-The production container builds this root npm workspace and serves the browser output through unprivileged Nginx on host port 4200. Its Nginx configuration provides SPA fallback and proxies `/api` to the Compose `holdings-and-trade-service`. Build and run it as part of [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml).
+The production container installs and builds this project on its own and serves the browser output through unprivileged Nginx on host port 4200. Its Nginx configuration provides SPA fallback and proxies `/api` to the Compose `holdings-and-trade-service`. Build and run it as part of [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml).
 
 ## Tests
 

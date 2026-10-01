@@ -2,16 +2,16 @@
 
 ## Toolchain and installation
 
-Use Node.js 24.x (24.8.0 or later), npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. The Angular framework packages are pinned to 21.2.23, Angular CLI, build tooling, and SSR are pinned to 21.2.24, and Angular CDK is pinned to its independently published 21.2.14 release. Angular 21.2.x supports Node ^24.0.0; this repository requires Node ^24.8.0 and TypeScript >=5.9.0 <6.0.0. Check exact dependency requirements in [root package.json](../../package.json), the [UI manifest](../../apps/client-ui/package.json), and the Java service POMs for [Holdings and Trade](../../apps/holdings-and-trade-service/pom.xml) and [Order and Sell](../../apps/order-and-sell-service/pom.xml).
+Use Node.js 24.x (24.8.0 or later), npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. The Angular framework packages, CLI, build tooling, and SSR are all pinned to 21.2.24, and Angular CDK is pinned to its independently published 21.2.14 release. Angular 21.2.x supports Node ^24.0.0; this repository requires Node ^24.8.0 and TypeScript >=5.9.0 <6.0.0. Check exact dependency requirements in the [UI manifest](../../apps/client-ui/package.json), the [auth manifest](../../apps/auth-service/package.json), and the Java service POMs for [Holdings and Trade](../../apps/holdings-and-trade-service/pom.xml) and [Order and Sell](../../apps/order-and-sell-service/pom.xml).
 
-From repository root:
+There is no root npm project. The UI and auth service are independent npm projects, each with its own lockfile; install each from repository root:
 
 ```sh
-npm ci
+npm --prefix apps/client-ui ci
 npm --prefix apps/auth-service ci
 ```
 
-The auth service has its own lockfile and is not a root workspace. Reporting has no runnable application yet. Avoid the root install:all helper, which targets the placeholder reporting UI.
+Reporting has no runnable application yet.
 
 ## Run locally
 
@@ -65,7 +65,7 @@ Compose validates JWT variables even when selecting database services, so provid
 
 | Working directory | Command | Port | Purpose |
 | --- | --- | --- | --- |
-| Repository root | npm --workspace business-logic-ui start | 4200 | Angular frontend |
+| Repository root | npm --prefix apps/client-ui start | 4200 | Angular frontend |
 | apps/order-and-sell-service | mvn spring-boot:run | 8081 | Order processing, order validation, order execution (not called by UI yet) |
 | apps/holdings-and-trade-service | mvn spring-boot:run | 8082 | User profiles, accounts, holdings, cash movements, market data (called by UI) |
 | apps/auth-service | npm run start:dev | 3001 | Authentication, token issuance |
@@ -78,9 +78,9 @@ Run from repository root after dependency installation:
 
 | Area | Command | Notes |
 | --- | --- | --- |
-| UI | npm --workspace client-ui run build | Angular production build |
-| UI | npm --workspace client-ui test -- --no-watch --coverage | Angular unit-test builder; do not pass Vitest's --run |
-| UI end-to-end | npm --workspace client-ui run e2e | Playwright login and registration journeys |
+| UI | npm --prefix apps/client-ui run build | Angular production build |
+| UI | npm --prefix apps/client-ui test -- --no-watch --coverage | Angular unit-test builder; do not pass Vitest's --run |
+| UI end-to-end | npm --prefix apps/client-ui run e2e | Playwright login and registration journeys |
 | Holdings and Trade Service | mvn -B -f apps/holdings-and-trade-service/pom.xml test | Unit/integration tests use H2 test configuration |
 | Order and Sell Service | mvn -B -f apps/order-and-sell-service/pom.xml test | Unit/integration tests use H2 test configuration |
 | Auth | npm --prefix apps/auth-service run build | NestJS compilation |
@@ -88,7 +88,7 @@ Run from repository root after dependency installation:
 | Auth | npm --prefix apps/auth-service run lint | Oxlint |
 | Market-data scripts | python -m unittest discover apps/market-data/db/tests | Unit checks; use Jenkins for the two-day PostgreSQL integration |
 
-Root Turborepo commands only cover configured workspaces and available scripts. Run Java and auth checks explicitly. See [operations](operations.md) for CI differences and artifact locations.
+There is no root npm project or task runner. Run each app's commands from its own directory, or with --prefix from repository root. See [operations](operations.md) for CI differences and artifact locations.
 
 **Microservice-specific checks:**
 
@@ -106,7 +106,7 @@ The Playwright suite in [apps/client-ui/e2e](../../apps/client-ui/e2e) covers th
 
 ```sh
 npx --prefix apps/client-ui playwright install chromium
-npm --workspace client-ui run e2e
+npm --prefix apps/client-ui run e2e
 ```
 
 Playwright builds the application and serves it on port 4200 through the Angular SSR server, reusing a server already on that port when one is running. It runs against the production build rather than `ng serve` because the dev server dies part way through a parallel run on Windows, which fails the remaining tests with a connection error.
@@ -115,7 +115,7 @@ The auth service and Java backend are replaced at the network boundary by a stan
 
 The suite passes `NG_ALLOWED_HOSTS=localhost` to the server. The build's `security.allowedHosts` is deliberately empty, and the SSR server rejects every request without a runtime allowlist; naming the host the suite serves on is preferable to relaxing the build setting.
 
-Run `npm --workspace client-ui run e2e:report` to open the HTML report, and `e2e:ui` for interactive debugging. Reports are written to `apps/client-ui/reports/playwright` and are ignored by git.
+Run `npm --prefix apps/client-ui run e2e:report` to open the HTML report, and `e2e:ui` for interactive debugging. Reports are written to `apps/client-ui/reports/playwright` and are ignored by git.
 
 ## Coverage floors
 
@@ -152,7 +152,7 @@ Update the authoritative guide when its contract changes; do not add implementat
 ## Troubleshooting
 
 - Node engine errors: check `node --version` is 24.x at 24.8.0 or later; Angular 21.2.x supports Node 24.x.
-- Missing workspace imports: run npm ci at repository root and check shared package exports.
+- Missing `@shared/ui-components` imports: run npm --prefix apps/client-ui ci and check shared package exports.
 - Unknown ng test option: use --no-watch, not --run.
 - Database connection or key failures: use the [operations checklist](operations.md) and [auth environment instructions](../../apps/auth-service/README.md).
 - Javadoc tool missing: select a full JDK via JAVA_HOME and verify mvn --version and javadoc --version.
