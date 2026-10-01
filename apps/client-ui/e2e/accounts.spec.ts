@@ -383,7 +383,7 @@ test.describe('rewinding executed trades', () => {
       ['2026-01-05T09:30', 1, '$451.60', '$1,251.60'],
       ['2026-01-05T09:29', 0, '$0.00', '$1,000.00'],
     ] as const) {
-      await page.getByRole('button', { name: 'Change simulated market time' }).click();
+      await page.getByTestId('market-clock-dropdown').locator('summary').click();
       await page.getByLabel('Simulated time', { exact: true }).fill(time);
       await page.getByRole('button', { name: 'Apply time', exact: true }).click();
       await expect(activity.locator('[data-kind="trade"]')).toHaveCount(count);
