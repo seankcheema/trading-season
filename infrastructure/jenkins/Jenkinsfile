@@ -352,12 +352,6 @@ pipeline {
                               allowEmptyResults: true,
                               healthScaleFactor: 1.0
                     }
-                    // Publish coverage reports if available
-                    publishHTML(target: [
-                        reportDir: 'apps/reporting-service/coverage/htmlcov',
-                        reportFiles: 'index.html',
-                        reportName: 'Reporting Service Coverage Report'
-                    ])
                 }
             }
         }
