@@ -50,6 +50,8 @@ Because the seed container cannot inspect free space inside the separate Postgre
 
 The Jenkins pipeline expects a native agent with Docker, the Maven tool named Maven, and Java 21 at its configured JAVA_HOME. It requires at least 5 GiB of free workspace storage before checkout. This is an early guard rather than a guarantee that the complete Compose and Angular image builds will fit; keep additional headroom when possible. The pipeline runs Java, auth, Angular, end-to-end, script, and build-scoped two-day PostgreSQL integration checks. Full-year generation remains on demand.
 
+The Holdings and Trade Java, Order and Sell Java, synthetic market-data integration, Auth, and UI suites run concurrently as parallel branches of a single `Test Suites` stage: they read and write only their own app and report directories, so none of them depends on another's output. Each branch still publishes its own archived artifacts and JUnit results from its own `post` block, so one branch failing does not skip publication for the others. End-to-end tests and the local Docker stack build stay sequential afterward because the pre-E2E disk cleanup step removes the Java `target` and UI `coverage` directories those parallel branches produce.
+
 | Suite | Outputs |
 | --- | --- |
 | Holdings and Trade Java | apps/holdings-and-trade-service/target/surefire-reports and target/site/jacoco |
