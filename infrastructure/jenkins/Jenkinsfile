@@ -97,19 +97,10 @@ pipeline {
                 // This prevents "Operation not permitted" errors during workspace cleanup
                 sh '''
                     set +e
-                                        if [ -d apps/reporting-service/reports ] || [ -d apps/reporting-service/coverage ]; then
-                                                echo "Repairing permissions on Docker-generated reporting artifacts..."
-                        docker run --rm \
-                          -v "$(pwd)":/workspace \
-                          -w /workspace \
-                          alpine:latest \
-                                                    sh -c '
-                                                        for path in apps/reporting-service/reports apps/reporting-service/coverage; do
-                                                            if [ -e "$path" ]; then
-                                                                chmod -R 777 "$path"
-                                                            fi
-                                                        done
-                                                    ' || true
+                    if [ -d apps/reporting-service/reports ] || [ -d apps/reporting-service/coverage ]; then
+                        echo "Repairing permissions on Docker-generated reporting artifacts..."
+                        docker run --rm -v "$(pwd)":/ws -w /ws alpine:latest \
+                            chmod -R 777 /ws/apps/reporting-service/reports /ws/apps/reporting-service/coverage 2>/dev/null || true
                     fi
                     set -e
                 '''
