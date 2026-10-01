@@ -185,7 +185,13 @@ def root():
         'version': '0.1.0',
         'description': 'Portfolio performance, trade history, and risk summaries',
         'documentation': '/docs',
-        'health': '/health'
+        'health': '/health',
+        'api_endpoints': {
+            'portfolio': 'GET /api/reporting/portfolio',
+            'account_portfolio': 'GET /api/reporting/portfolio/{accountId}',
+            'trades': 'GET /api/reporting/trades',
+            'profile': 'GET /api/reporting/profile'
+        }
     }), 200
 
 
@@ -230,6 +236,16 @@ def shutdown_session(exception=None):
 
 
 # ============================================================================
+# Register Routes
+# ============================================================================
+
+def register_routes():
+    """Import and register API routes"""
+    from routes import init_routes
+    init_routes(app)
+
+
+# ============================================================================
 # Initialization
 # ============================================================================
 
@@ -245,8 +261,12 @@ def init_app():
             db.session.execute('SELECT version()')
             version = db.session.execute('SELECT version()').scalar()
             logger.info(f"Database connected: {version}")
+            
+            # Register API routes
+            register_routes()
+            logger.info("Application initialized successfully")
     except Exception as e:
-        logger.error(f"Failed to connect to database: {e}")
+        logger.error(f"Failed to initialize application: {e}")
         raise
 
 
