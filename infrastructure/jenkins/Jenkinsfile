@@ -93,6 +93,25 @@ pipeline {
 
         stage('Checkout') {
             steps {
+                // Clean up any root-owned files from previous Docker runs before checkout
+                // This prevents "Operation not permitted" errors during workspace cleanup
+                sh '''
+                    set +e
+                    if [ -d "$(pwd)" ] && [ -n "$(find . -type f -perm /u+s,g+s 2>/dev/null | head -1)" ]; then
+                        echo "Cleaning root-owned files from previous Docker runs..."
+                        docker run --rm \
+                          -v "$(pwd)":/workspace \
+                          -w /workspace \
+                          alpine:latest \
+                          find . -type f -exec chmod 644 {} \; 2>/dev/null || true
+                        docker run --rm \
+                          -v "$(pwd)":/workspace \
+                          -w /workspace \
+                          alpine:latest \
+                          find . -type d -exec chmod 755 {} \; 2>/dev/null || true
+                    fi
+                    set -e
+                '''
                 script {
                     // Preserve the multibranch job's repository, credentials,
                     // refspec, branch selection, and configured extensions,
