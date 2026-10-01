@@ -8,4 +8,4 @@ Install from repository root with npm ci. Consumers import from an exported subp
 import { HlmCardImports } from '@shared/ui-components/card';
 ```
 
-Implementations live under [src/lib](src/lib/). Preserve accessible semantics and component variants when extending them. Verify changes with the consuming [business UI](../../apps/business-logic-ui/README.md) build and relevant tests; consult actual package scripts before assuming a standalone library test command exists.
+Implementations live under [src/lib](src/lib/). Preserve accessible semantics and component variants when extending them. Verify changes with the consuming [client UI](../../apps/client-ui/README.md) build and relevant tests; consult actual package scripts before assuming a standalone library test command exists.

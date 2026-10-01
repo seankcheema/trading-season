@@ -51,7 +51,7 @@ Run from the repository root. Each command writes to its service's own build out
 
 | Service | Command | Source of the copied report |
 | --- | --- | --- |
-| Client UI | `npm --workspace business-logic-ui test -- --no-watch --coverage` | `apps/client-ui/coverage/business-logic-ui` |
+| Client UI | `npm --prefix apps/client-ui test -- --no-watch --coverage` | `apps/client-ui/coverage/client-ui` |
 | Holdings and Trade | `mvn -B -f apps/holdings-and-trade-service/pom.xml clean test` | `apps/holdings-and-trade-service/target/site/jacoco` |
 | Order and Sell | `mvn -B -f apps/order-and-sell-service/pom.xml clean test` | `apps/order-and-sell-service/target/site/jacoco` |
 | Auth service | `npm --prefix apps/auth-service run test:cov` | `apps/auth-service/coverage` |

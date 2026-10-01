@@ -7,6 +7,7 @@ param()
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $authDirectory = Join-Path $repoRoot 'apps/auth-service'
+$clientUiDirectory = Join-Path $repoRoot 'apps/client-ui'
 $holdingsDirectory = Join-Path $repoRoot 'apps/holdings-and-trade-service'
 $orderDirectory = Join-Path $repoRoot 'apps/order-and-sell-service'
 $backendDirectory = Join-Path $repoRoot 'apps/market-data'
@@ -164,7 +165,7 @@ try {
     }
 
     $processes += Start-LocalService -Name 'ui' -FilePath $npm `
-        -ArgumentList @('--workspace', 'business-logic-ui', 'start') -WorkingDirectory $repoRoot
+        -ArgumentList @('start') -WorkingDirectory $clientUiDirectory
 
     Write-Host 'Starting UI :4200, auth :3001, holdings-and-trade :8081, and order-and-sell :8082. Press Ctrl+C to stop all services.'
     while ($true) {

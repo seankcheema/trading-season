@@ -123,14 +123,16 @@ pipeline {
             steps {
                 sh '''
                     set -eu
-                    echo " Installing root workspace dependencies..."
+                    echo " Installing application dependencies..."
                     if command -v node > /dev/null; then
                         node --version
                         npm --version
-                        # Use npm ci for reproducible, locked installations
-                        npm ci --prefer-offline --fund=false
+                        # Use npm ci for reproducible, locked installations. The UI
+                        # and auth service are independent npm projects, each with
+                        # its own lockfile, so each gets its own install.
+                        npm --prefix apps/client-ui ci --prefer-offline --fund=false
                         npm --prefix apps/auth-service ci --prefer-offline --fund=false
-                        echo "✓ Root workspace dependencies installed"
+                        echo "✓ Application dependencies installed"
                     else
                         echo "  Node.js not available, skipping npm setup"
                     fi
@@ -402,10 +404,13 @@ pipeline {
                                     -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
                             fi
                             docker image ls "$PW_IMAGE" --format 'Playwright image {{.Repository}}:{{.Tag}} is {{.Size}}'
-                            # The whole workspace is mounted, not just this app: the
-                            # monorepo root holds node_modules and the @shared/* packages
-                            # the build resolves through it. Those were installed on this
-                            # Linux agent in Setup Dependencies, so they are reused as is.
+                            # The whole workspace is mounted, not just this app: client-ui
+                            # depends on packages/shared-ui-components via a file:
+                            # dependency, and that package's own node_modules is a
+                            # symlink back into client-ui's node_modules (see
+                            # apps/client-ui/scripts/link-shared-ui-components.mjs), so
+                            # both directories must be present. They were installed on
+                            # this Linux agent in Setup Dependencies and are reused as is.
                             # The Jenkins NodeJS tool is mounted in and put first on PATH,
                             # so the container builds with the same Node that Verify
                             # Toolchain checked rather than whatever the image carries.

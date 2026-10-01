@@ -36,7 +36,7 @@ export default defineConfig({
     // remaining tests down with a connection error, and a production build is
     // the closer match to what these journeys run against anyway. /api needs no
     // proxy here because every API call is answered by the stub.
-    command: 'npm run build && node dist/business-logic-ui/server/server.mjs',
+    command: 'npm run build && node dist/client-ui/server/server.mjs',
     // NG_ALLOWED_HOSTS supplies the host allowlist at runtime. The build's
     // security.allowedHosts is empty on purpose, and a deployment is expected
     // to name its own hosts; this names the one the suite serves on rather
