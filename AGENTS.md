@@ -18,7 +18,7 @@ Follow nested AGENTS.md instructions for the area being changed. Reporting is pr
 
 ## Working rules
 
-- Keep deployable applications in apps, shared Angular components in packages, and operational configuration in infrastructure.
+- Keep deployable applications in apps and operational configuration in infrastructure. Keep Angular components that only one app uses inside that app (see apps/client-ui/shared-ui-components); extract a component into a top-level packages directory only once a second app actually consumes it, since that is the point npm workspace tooling becomes worth the added complexity.
 - Inspect source, manifests, tests, and configuration before relying on documentation. Resolve disagreements by correcting docs to match implemented behavior.
 - The Java session API and NestJS token API are separate implementations. Do not assume they share users or credentials.
 - Preserve unrelated working changes. Use git mv for tracked file moves.

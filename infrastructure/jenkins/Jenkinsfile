@@ -404,13 +404,9 @@ pipeline {
                                     -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
                             fi
                             docker image ls "$PW_IMAGE" --format 'Playwright image {{.Repository}}:{{.Tag}} is {{.Size}}'
-                            # The whole workspace is mounted, not just this app: client-ui
-                            # depends on packages/shared-ui-components via a file:
-                            # dependency, and that package's own node_modules is a
-                            # symlink back into client-ui's node_modules (see
-                            # apps/client-ui/scripts/link-shared-ui-components.mjs), so
-                            # both directories must be present. They were installed on
-                            # this Linux agent in Setup Dependencies and are reused as is.
+                            # The whole workspace is mounted rather than just this app so
+                            # client-ui's node_modules, installed on this Linux agent in
+                            # Setup Dependencies, is reused as is.
                             # The Jenkins NodeJS tool is mounted in and put first on PATH,
                             # so the container builds with the same Node that Verify
                             # Toolchain checked rather than whatever the image carries.

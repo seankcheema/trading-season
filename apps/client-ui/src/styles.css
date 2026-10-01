@@ -8,10 +8,10 @@
 @import '@spartan-ng/brain/hlm-tailwind-preset.css';
 
 /* v4 discovers utility classes by scanning from this file's directory, which
-   stops at the app. The hlm-* components live in a sibling workspace package,
-   so their classes have to be pointed at explicitly or they get tree-shaken
-   out of the generated CSS. */
-@source '../../../packages/shared-ui-components/src';
+   stops at src/. The hlm-* components live in the sibling shared-ui-components
+   directory, so their classes have to be pointed at explicitly or they get
+   tree-shaken out of the generated CSS. */
+@source '../shared-ui-components/src';
 
 /* Market up/down colors, e.g. `text-gain`, `stroke-loss`, `bg-loss/15`. */
 @theme {

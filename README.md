@@ -219,7 +219,6 @@ See the [development guide](docs/guides/development.md) for additional commands,
 | Holdings and Trade Service | `apps/holdings-and-trade-service` | 8081 | Order submission, validation, execution; holdings and account management |
 | Order and Sell Service | `apps/order-and-sell-service` | 8082 | User profile queries, market data access |
 | Market Data | `apps/market-data` | — | Shared database migrations and synthetic market data tooling |
-| Shared UI Components | `packages/shared-ui-components` | — | Reusable Angular components library |
 | Reporting | `docs/reference/reporting.md` | — | Proposed analytics and portfolio performance reporting |
 
 ## Documentation
