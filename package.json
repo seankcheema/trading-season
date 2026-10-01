@@ -40,7 +40,10 @@
   "license": "MIT",
   "packageManager": "npm@11.16.0",
   "overrides": {
-    "vite": "8.1.5"
+    "vite": "8.1.5",
+    "@angular-devkit/core": "21.2.24",
+    "@angular-devkit/schematics": "21.2.24",
+    "@schematics/angular": "21.2.24"
   },
   "allowScripts": {
     "@parcel/watcher@2.6.0": true,
