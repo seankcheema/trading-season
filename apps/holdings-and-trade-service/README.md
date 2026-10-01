@@ -30,12 +30,12 @@ Spring Boot microservice responsible for managing all trading operations, order 
 
 ### Setup
 
-1. Create the trading_season database and apply migrations (V001, V002, V003):
+1. Create the trading_season database and apply migrations (V001 through V004):
    ```powershell
    # From repository root
-   py -3 -m venv apps/business-backend/db/.venv
-   apps/business-backend/db/.venv/Scripts/python.exe -m pip install --upgrade pip
-   apps/business-backend/db/.venv/Scripts/python.exe -m pip install -r apps/business-backend/db/scripts/requirements.txt
+   py -3 -m venv apps/market-data/db/.venv
+   apps/market-data/db/.venv/Scripts/python.exe -m pip install --upgrade pip
+   apps/market-data/db/.venv/Scripts/python.exe -m pip install -r apps/market-data/db/scripts/requirements.txt
    ```
 
 2. Run migrations:
@@ -50,7 +50,7 @@ Spring Boot microservice responsible for managing all trading operations, order 
 
 4. Verify it's running:
    ```powershell
-   Invoke-RestMethod http://localhost:8081/api/market/snapshot
+   Invoke-RestMethod http://localhost:8082/api/users
    ```
 
 ### Tests
@@ -60,7 +60,7 @@ Run all tests with code coverage verification:
 mvn test
 ```
 
-Coverage must be at least 60% per AC requirements. Reports are in `target/site/jacoco/`.
+Coverage must be at least 85% in every package on every JaCoCo counter (instructions, branches, lines, complexity, methods, and classes); `mvn test` fails otherwise. The floor is the `coverage.minimum` property in [pom.xml](pom.xml). Reports are in `target/site/jacoco/`.
 
 ## Configuration
 
@@ -74,20 +74,37 @@ Environment variables override defaults in [application.properties](src/main/res
 | `AUTH_JWK_SET_URI` | `http://localhost:3001/.well-known/jwks.json` | Auth service JWKS endpoint |
 | `AUTH_JWT_ISSUER` | `https://auth.dualeapa.local` | Required JWT issuer claim |
 | `CORS_ORIGINS` | `http://localhost:4200` | Allowed browser origins (comma-separated) |
+| `MARKET_REPLAY_ARCHIVE_LOCATION` | empty | Optional absolute Parquet archive root override |
+
+Parquet-backed simulation sessions first use `MARKET_REPLAY_ARCHIVE_LOCATION`, then the archive location recorded during import, and finally discover the matching archive under the repository's `apps/market-data/db/seeds` directory. This discovery keeps an existing database usable after the repository moves. Missing raw tick partitions return an unavailable market-data error rather than falling back to one-minute candles.
 
 ## API Endpoints
 
 All endpoints require valid RS256 access token except public market GET endpoints.
 
-**Order Management:**
-- `POST /api/orders` - Create new order (requires auth)
-- `GET /api/orders/{id}` - Get order by ID (requires auth)
-- `GET /api/orders` - List all orders for authenticated user (requires auth)
+Every user-specific endpoint resolves the caller from the token's `sub`, so no path or body parameter can name another user.
+
+**Registration and profile:**
+- `POST /api/auth/account-exists` - Whether an email is registered (public)
+- `POST /api/auth/register` - Create the caller's profile and their default account
+- `GET /api/users/me` - The caller's profile, without the SSN
+
+**Accounts and holdings:**
+- `GET /api/me/accounts` - The caller's accounts, newest first
+- `POST /api/me/accounts` - Open a new, empty account
+- `PUT /api/me/accounts/{accountId}` - Rename an owned account
+- `GET /api/accounts/{accountId}` - An owned account
+- `GET /api/accounts/{accountId}/holdings` - An owned account's positions, with symbol and average cost
+
+**Cash:**
+- `GET /api/me/cash-transactions` - The caller's deposits and withdrawals, newest first
+- `POST /api/me/cash-transactions` - Deposit or withdraw funds
 
 **Market Data (Public):**
 - `GET /api/market/snapshot` - Current market snapshot
-- `GET /api/market/quotes` - Current quotes for all stocks
+- `GET /api/market/candles` - Aggregated OHLCV bars for a symbol and timeframe
 - `GET /api/market/stream` - SSE stream of market ticks
+- `PUT /api/market/clock` - Move the shared replay cursor (requires auth)
 
 For full API contracts, see [API reference](../../docs/reference/api.md).
 
@@ -108,29 +125,14 @@ app/
 ├── market/          # Market data and replay
 └── Main.java        # Application entry point
 ```
-
-## Requirements
-
-Per user story AC:
-- ✅ Holds order, account, holding, instrument, auth, market packages
-- ✅ All previous tests pass
-- ✅ Code coverage is at least 60% for every sub-bullet:
-  - Create trade orders: 60%+
-  - Validate trade orders: 60%+
-  - Execute buys and sells: 60%+
-  - Update holdings: 60%+
-  - Order status and history: 60%+
-- ✅ Comprehensive README (this file)
-- ✅ Updated docker-compose to reflect architectural changes
-
 ## Development
 
 See [service development guide](AGENTS.md) for coding standards, testing patterns, and contribution workflow.
 
 ## Related Services
 
-- **Order and Sell Service** - Queries orders, holdings, and user data for UI
-- **Auth Service** - Issues and validates RS256 tokens
-- **Business UI** - Consumes this service's APIs
+**Order and Sell Service** - Manages order execution, holds master order data
+**Auth Service** - Issues and validates RS256 tokens
+**Business UI** - Consumes this service's APIs for dashboard and user management
 
 See [Architecture reference](../../docs/reference/architecture.md) for service boundaries and integration patterns.

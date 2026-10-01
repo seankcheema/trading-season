@@ -2,7 +2,7 @@
 
 ## Toolchain and installation
 
-Use Node.js 22.22.3+ on the 22.x line, npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. Check exact dependency requirements in [root package.json](../../package.json), the [UI manifest](../../apps/business-logic-ui/package.json), and the Java POMs ([Holdings and Trade](../../apps/holdings-and-trade-service/pom.xml) and [Order and Sell](../../apps/order-and-sell-service/pom.xml)).
+Use Node.js 24.x (24.8.0 or later), npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. The Angular framework packages are pinned to 21.2.23, Angular CLI, build tooling, and SSR are pinned to 21.2.24, and Angular CDK is pinned to its independently published 21.2.14 release. Angular 21.2.x supports Node ^24.0.0; this repository requires Node ^24.8.0 and TypeScript >=5.9.0 <6.0.0. Check exact dependency requirements in [root package.json](../../package.json), the [UI manifest](../../apps/client-ui/package.json), and the Java service POMs for [Holdings and Trade](../../apps/holdings-and-trade-service/pom.xml) and [Order and Sell](../../apps/order-and-sell-service/pom.xml).
 
 From repository root:
 
@@ -16,6 +16,39 @@ The auth service has its own lockfile and is not a root workspace. Reporting has
 ## Run locally
 
 The application consists of four services. The UI routes only to Holdings and Trade Service; Order and Sell Service runs independently.
+### Automated Linux VM setup
+
+From the repository root, `./scripts/setup-local.sh` validates the toolchain, maintains a 3 GiB free-space reserve, prepares missing dependencies and auth keys, selects databases, and supervises the three applications in one terminal. It reports verified stages as `[READY]`, completed work as `[DONE]`, and actionable failures as `[FAIL]`.
+
+The default `--database-mode auto` prefers verified local PostgreSQL databases. Use `--database-mode local` to prohibit Docker or `--database-mode docker` to require Docker Engine and Compose v2. Docker mode starts only `db` and `auth-db`, validates both schemas, and applies V001 through V003 only when the business schema is proven empty. Local and Docker database storage are separate and are never synchronized automatically.
+
+If Compose v2 is already installed as the standalone `docker-compose` command, the bootstrap creates the current user's Docker CLI plugin directory and symlinks that binary so `docker compose` works. An existing plugin entry is never overwritten, and the bootstrap does not download Compose.
+
+The script validates an archive already at `apps/market-data/db/seeds/synthetic-market-data-2026-v1`. Use `--parquet-source PATH` to stage, checksum, and copy an existing archive when enough space remains. It never downloads, generates, imports, or regenerates market data. Use the [database guide](../reference/database.md#optional-synthetic-market-data-generation-and-import) for those explicit operations.
+
+The Windows and fully manual paths below remain supported.
+
+### Full local container stack
+
+From the repository root, Local Compose builds and starts the implemented applications, databases, and reporting placeholders:
+
+```sh
+docker compose --project-name trading-season-local \
+  -f infrastructure/docker-compose/docker-compose.local.yml up -d --build
+```
+
+The client UI is available on port 4200, the reporting UI placeholder on 4300, and the reporting service placeholder on 8083. `GET http://localhost:8083/health` verifies only that the placeholder container is running; it is not a reporting API.
+
+The stack also starts a Kafka broker, reachable as `kafka:9092` from other containers and `localhost:29092` from the host. A one-shot `kafka-init` container creates the `trade-events` topic with three partitions; broker-side auto-creation is disabled, so a topic that has not been created explicitly fails rather than appearing with one partition. No service publishes or consumes yet. Inspect the topic with the broker's own tools:
+
+```sh
+docker compose --project-name trading-season-local \
+  -f infrastructure/docker-compose/docker-compose.local.yml \
+  exec -T kafka /opt/kafka/bin/kafka-topics.sh \
+    --bootstrap-server localhost:9092 --describe --topic trade-events
+```
+
+### Manual and Windows setup
 
 1. Follow the [auth setup](../../apps/auth-service/README.md) to create a local environment file and RSA keys.
 2. Start only the databases from repository root:
@@ -33,18 +66,11 @@ Compose validates JWT variables even when selecting database services, so provid
 | Working directory | Command | Port | Purpose |
 | --- | --- | --- | --- |
 | Repository root | npm --workspace business-logic-ui start | 4200 | Angular frontend |
-| apps/holdings-and-trade-service | mvn spring-boot:run | 8081 | Order processing, account management, user profiles (called by UI) |
-| apps/order-and-sell-service | mvn spring-boot:run | 8082 | User profiles, market data (independent; not called by UI) |
+| apps/order-and-sell-service | mvn spring-boot:run | 8081 | Order processing, order validation, order execution (not called by UI yet) |
+| apps/holdings-and-trade-service | mvn spring-boot:run | 8082 | User profiles, accounts, holdings, cash movements, market data (called by UI) |
 | apps/auth-service | npm run start:dev | 3001 | Authentication, token issuance |
 
-Do not use an unqualified Compose up for the full stack: its backend build context and port mapping are stale.
-
-**UI integration:**
-- The UI calls the Auth Service directly on port 3001 (allowed by CORS_ORIGINS)
-- The UI calls Holdings and Trade Service via dev proxy (relative `/api` paths forward to port 8081 through [proxy.conf.json](../../apps/business-logic-ui/proxy.conf.json))
-- The UI does not call Order and Sell Service
-
-**Why two Java services?** The architecture was designed to split order processing (Holdings and Trade) from user profile queries (Order and Sell), but Order and Sell Service is not yet implemented with its own endpoints. Currently, both services expose the same market data and user profile endpoints. See [Architecture](../reference/architecture.md) and [Order and Sell Service](../reference/services/order-and-sell-service.md) for details.
+The UI calls the auth service directly on port 3001, which allows the dev server origin through CORS_ORIGINS. Java calls use the relative /api path, which the dev server forwards to the Holdings and Trade Service on port 8082 through [proxy.conf.json](../../apps/client-ui/proxy.conf.json). Registration completes only once the Java register contract accepts the profile the UI sends; see the [API reference](../reference/api.md#ui-integration).
 
 ## Checks
 
@@ -52,9 +78,9 @@ Run from repository root after dependency installation:
 
 | Area | Command | Notes |
 | --- | --- | --- |
-| UI | npm --workspace business-logic-ui run build | Angular production build |
-| UI | npm --workspace business-logic-ui test -- --no-watch --coverage | Angular unit-test builder; do not pass Vitest's --run |
-| UI end-to-end | npm --workspace business-logic-ui run e2e | Playwright login and registration journeys |
+| UI | npm --workspace client-ui run build | Angular production build |
+| UI | npm --workspace client-ui test -- --no-watch --coverage | Angular unit-test builder; do not pass Vitest's --run |
+| UI end-to-end | npm --workspace client-ui run e2e | Playwright login and registration journeys |
 | Holdings and Trade Service | mvn -B -f apps/holdings-and-trade-service/pom.xml test | Unit/integration tests use H2 test configuration |
 | Order and Sell Service | mvn -B -f apps/order-and-sell-service/pom.xml test | Unit/integration tests use H2 test configuration |
 | Auth | npm --prefix apps/auth-service run build | NestJS compilation |
@@ -76,20 +102,20 @@ Both services must pass independently and share schema compatibility.
 
 ## End-to-end tests
 
-The Playwright suite in [apps/business-logic-ui/e2e](../../apps/business-logic-ui/e2e) covers the login and registration journeys through the running application. Install the browser once, then run the suite:
+The Playwright suite in [apps/client-ui/e2e](../../apps/client-ui/e2e) covers the login and registration journeys through the running application. Install the browser once, then run the suite:
 
 ```sh
-npx --prefix apps/business-logic-ui playwright install chromium
-npm --workspace business-logic-ui run e2e
+npx --prefix apps/client-ui playwright install chromium
+npm --workspace client-ui run e2e
 ```
 
 Playwright builds the application and serves it on port 4200 through the Angular SSR server, reusing a server already on that port when one is running. It runs against the production build rather than `ng serve` because the dev server dies part way through a parallel run on Windows, which fails the remaining tests with a connection error.
 
-The auth service and Java backend are replaced at the network boundary by a stand-in that reproduces their status codes and bodies, so the suite needs no database, no Docker, and no running service, and no `/api` proxy. What is exercised is the real Angular application: router, guards, reactive forms, HTTP interceptor and token storage. Keep the stand-in aligned with the [API reference](../reference/api.md) whenever an auth or registration contract changes.
+The auth service and Java backend are replaced at the network boundary by a stand-in that reproduces their status codes and bodies, so the suite needs no database, no Docker, no running service, and no `/api` proxy. What is exercised is the real Angular application: router, guards, reactive forms, HTTP interceptor and token storage. Keep the stand-in aligned with the [API reference](../reference/api.md) whenever an auth or registration contract changes.
 
 The suite passes `NG_ALLOWED_HOSTS=localhost` to the server. The build's `security.allowedHosts` is deliberately empty, and the SSR server rejects every request without a runtime allowlist; naming the host the suite serves on is preferable to relaxing the build setting.
 
-Run `npm --workspace business-logic-ui run e2e:report` to open the HTML report, and `e2e:ui` for interactive debugging. Reports are written to `apps/business-logic-ui/reports/playwright` and are ignored by git.
+Run `npm --workspace client-ui run e2e:report` to open the HTML report, and `e2e:ui` for interactive debugging. Reports are written to `apps/client-ui/reports/playwright` and are ignored by git.
 
 ## Coverage floors
 
@@ -97,11 +123,12 @@ Each tier fails its own test command below its coverage floor, so the floor is e
 
 | Tier | Floor | Enforced by | Counters |
 | --- | --- | --- | --- |
-| UI | 60% | coverageThresholds in [angular.json](../../apps/business-logic-ui/angular.json) | statements, branches, functions, lines |
-| Auth | 50% | coverage.thresholds in [vitest.config.ts](../../apps/auth-service/vitest.config.ts) | statements, branches, functions, lines |
-| Java | 50% | jacoco:check in both service POMs | line and instruction ratio |
+| UI | 70% | coverageThresholds in [angular.json](../../apps/client-ui/angular.json) | statements, branches, functions, lines |
+| Auth | 70% | coverage.thresholds in [vitest.config.ts](../../apps/auth-service/vitest.config.ts) | statements, branches, functions, lines |
+| Holdings and Trade | 85% | coverage.minimum and jacoco:check in [pom.xml](../../apps/holdings-and-trade-service/pom.xml), per package | instructions, branches, lines, complexity, methods, classes |
+| Order and Sell | 70% | coverage.minimum and jacoco:check in [pom.xml](../../apps/order-and-sell-service/pom.xml), per package | instructions, branches, lines, complexity, methods, classes |
 
-The Java tier has the least headroom, and its branch coverage sits below the line figure, so it is not gated on branches. Raise the floor as coverage improves rather than lowering it to accommodate a change.
+The Java check applies the floor to every package rather than to the service as a whole, so a well-tested package cannot hide an untested one. A package with no branches has no branch ratio and is not held to that counter. The UI and auth floors apply to the whole run. Current per-folder and per-package results are in [code coverage](../coverage/README.md). Raise the floor as coverage improves rather than lowering it to accommodate a change.
 
 ## Javadocs
 
@@ -112,7 +139,7 @@ mvn -B -f apps/holdings-and-trade-service/pom.xml org.apache.maven.plugins:maven
 mvn -B -f apps/order-and-sell-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc
 ```
 
-Open the generated documentation locally and review pages for changed types and members. Both pinned plugin commands generate documentation from current source. They need JDK and Maven dependency access on first run. The target directories are temporary and ignored. Keep the published [Javadocs](../JAVA_DOCS/index.html) checked in under docs/JAVA_DOCS. After successful generation for a Java change, replace that directory's contents with the complete generated apidocs output from both services, including assets and legal notices; remove obsolete generated pages and include the refreshed copy in the same change. Never replace the checked-in copy after failed generation.
+Open each service's `target/reports/apidocs/index.html` locally and review pages for changed types and members. These pinned plugin commands generate documentation from current source. They need a JDK and Maven dependency access on first run. The target directories are temporary and ignored. Keep the published [Javadocs](../JAVA_DOCS/README.md) checked in under docs/JAVA_DOCS, one subdirectory per service: `holdings-and-trade-service` and `order-and-sell-service`. Both services root their packages at `app` and share several package names, so they cannot share one directory. After successful generation for a Java change, replace the changed service’s subdirectory with the complete generated apidocs output, including assets and legal notices; remove obsolete generated pages and include the refreshed copy in the same change. Never replace a checked-in copy after failed generation.
 
 Fix generation errors and newly introduced warnings before completing a Java change. Existing missing-comment/tag warnings are visible technical debt, not evidence that a changed API is documented. Generation was verified during this consolidation on JDK 25 with the Java 21 source configuration; JDK 21 remains the project toolchain.
 
@@ -124,7 +151,7 @@ Update the authoritative guide when its contract changes; do not add implementat
 
 ## Troubleshooting
 
-- Node engine errors: check node --version against the installed Angular package engines; a generic Node 22 installation can be too old.
+- Node engine errors: check `node --version` is 24.x at 24.8.0 or later; Angular 21.2.x supports Node 24.x.
 - Missing workspace imports: run npm ci at repository root and check shared package exports.
 - Unknown ng test option: use --no-watch, not --run.
 - Database connection or key failures: use the [operations checklist](operations.md) and [auth environment instructions](../../apps/auth-service/README.md).

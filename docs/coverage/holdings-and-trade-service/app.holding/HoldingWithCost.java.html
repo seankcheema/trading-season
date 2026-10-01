@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HoldingWithCost.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.holding</a> &gt; <span class="el_source">HoldingWithCost.java</span></div><h1>HoldingWithCost.java</h1><pre class="source lang-java linenums">package app.holding;
+
+import app.instrument.Instrument;
+
+import java.math.BigDecimal;
+
+/**
+ * A position together with what it is in and what it cost.
+ *
+ * &lt;p&gt;Neither the instrument nor the cost is on the holding row, so this carries
+ * the three pieces a client needs as one value and keeps the assembling query in
+ * the service rather than the controller.
+ *
+ * @param holding     the cached position
+ * @param instrument  the instrument held, or null when no instrument row matches
+ * @param averageCost average price paid per share, or null when no fill history
+ *                    explains the position
+ */
+<span class="fc" id="L19">public record HoldingWithCost(Holding holding, Instrument instrument, BigDecimal averageCost) {</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

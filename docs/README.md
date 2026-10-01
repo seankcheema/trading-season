@@ -10,10 +10,10 @@ Read only the guide or reference relevant to your task. Application READMEs prov
 | Review detailed per-service structure and endpoints | [Service Reference](reference/services/) |
 | Change or consume an implemented HTTP endpoint | [API Reference](reference/api.md) |
 | Understand schema ownership, migrations, and relationships | [Database](reference/database.md) |
-| Browse generated Java class and member documentation | [Javadocs](JAVA_DOCS/index.html) |
-| Review test coverage for the frontend, backend, or auth service | [Code Coverage](coverage/README.md) |
-| Plan future analytics work | [Reporting Proposal](reference/reporting.md) |
+| Browse generated Java class and member documentation | [Javadocs](JAVA_DOCS/README.md) |
+| Review test coverage for the client UI, Java services, or auth service | [Code coverage](coverage/README.md) |
+| Plan future analytics work | [Reporting proposal](reference/reporting.md) |
 
-Guides contain procedures; references describe the system and clearly label proposed work. Keep each topic in one place and update its document alongside code changes. The checked-in JAVA_DOCS directory holds generated Java documentation; refresh it alongside Java code changes using the development guide. The checked-in coverage directory holds generated coverage reports for all three tested tiers; regenerate it using the commands in that document rather than editing the reports.
+Guides contain procedures; references describe the system and clearly label proposed work. Keep each topic in one place and update its document alongside code changes. The checked-in JAVA_DOCS directory holds generated Java documentation, one subdirectory per Java service; refresh the affected service alongside Java code changes using the development guide. The checked-in coverage directory holds generated coverage reports for all four tested services; regenerate it using the commands in that document rather than editing the reports.
 
 [Project overview](../README.md) · [Agent instructions](../AGENTS.md)

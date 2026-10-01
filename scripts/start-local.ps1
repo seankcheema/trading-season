@@ -74,14 +74,12 @@ $npm = Get-RequiredCommand -Name 'npm.cmd'
 $maven = Get-RequiredCommand -Name 'mvn.cmd'
 $pgIsReady = Get-RequiredCommand -Name 'pg_isready.exe'
 
-& $pgIsReady -h 127.0.0.1 -p 5432 -q
-if ($LASTEXITCODE -ne 0) {
-    throw 'The business PostgreSQL database is not accepting connections at 127.0.0.1:5432.'
-}
-
+# One database serves every service, auth included. The auth service owns
+# user_accounts and refresh_tokens inside it and creates neither, so the
+# migrations must already have been applied.
 & $pgIsReady -h $dbHost -p $parsedDbPort -q
 if ($LASTEXITCODE -ne 0) {
-    throw "The auth PostgreSQL database is not accepting connections at ${dbHost}:${parsedDbPort}."
+    throw "PostgreSQL is not accepting connections at ${dbHost}:${parsedDbPort}."
 }
 
 Assert-PortAvailable -Port 3001
@@ -149,7 +147,10 @@ try {
         -ArgumentList @('run', 'start:dev') -WorkingDirectory $authDirectory
 
     $oldBusinessPassword = $env:SPRING_DATASOURCE_PASSWORD
+    $oldBusinessUrl = $env:SPRING_DATASOURCE_URL
     $env:SPRING_DATASOURCE_PASSWORD = $businessPassword
+    # Ensure Java services connect to trading_season database
+    $env:SPRING_DATASOURCE_URL = "jdbc:postgresql://${dbHost}:${parsedDbPort}/trading_season"
     try {
         $processes += Start-LocalService -Name 'holdings-and-trade' -FilePath $maven `
             -ArgumentList @('spring-boot:run') -WorkingDirectory $holdingsDirectory
@@ -159,6 +160,7 @@ try {
     }
     finally {
         $env:SPRING_DATASOURCE_PASSWORD = $oldBusinessPassword
+        $env:SPRING_DATASOURCE_URL = $oldBusinessUrl
     }
 
     $processes += Start-LocalService -Name 'ui' -FilePath $npm `

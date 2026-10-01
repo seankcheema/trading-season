@@ -1,0 +1,25 @@
+# Slim end-to-end test runner for the Jenkins pipeline.
+#
+# The official mcr.microsoft.com/playwright image ships Chromium, Firefox, and
+# WebKit plus their system libraries. The suite only runs headless Chromium,
+# which Playwright serves with chromium-headless-shell, so this image installs
+# that browser, ffmpeg for failure videos, and only the libraries they need.
+#
+# Build it with no context; nothing from the repository is copied in:
+#   docker build --build-arg PLAYWRIGHT_VERSION=1.63.0 \
+#     -t trading-season-playwright:1.63.0 - < infrastructure/docker/Dockerfile.playwright
+#
+# PLAYWRIGHT_VERSION must equal the installed @playwright/test version; browser
+# builds are only guaranteed to match the Playwright release that installed them.
+FROM node:24.8.0-bookworm-slim
+
+ARG PLAYWRIGHT_VERSION
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+# The pipeline runs this image as the Jenkins user, so the browsers must be
+# readable by any UID. The npm cache and apt lists are removed in the same
+# layer so they never reach the image.
+RUN test -n "$PLAYWRIGHT_VERSION" \
+    && npx -y "playwright@${PLAYWRIGHT_VERSION}" install --with-deps chromium-headless-shell ffmpeg \
+    && chmod -R a+rX "$PLAYWRIGHT_BROWSERS_PATH" \
+    && rm -rf /root/.npm /var/lib/apt/lists/* /tmp/*

@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuthService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.auth</a> &gt; <span class="el_source">AuthService.java</span></div><h1>AuthService.java</h1><pre class="source lang-java linenums">package app.auth;
+
+import app.user.User;
+import app.user.UserAccountRepository;
+import app.user.UserRepository;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.OffsetDateTime;
+
+/**
+ * Creates business accounts for users already signed up with the auth service,
+ * and answers whether an email is already registered.
+ *
+ * &lt;p&gt;This service never handles passwords, logins or sessions; those belong to
+ * the auth service. A business account is keyed by the auth service's user UUID
+ * taken from the verified token.
+ */
+@Service
+public class AuthService {
+
+    private final UserRepository userRepository;
+    private final UserAccountRepository userAccountRepository;
+
+    /**
+     * Creates the service.
+     *
+     * @param userRepository        persistence for business accounts
+     * @param userAccountRepository read-only access to the credential records
+     *                              the auth service owns
+     */
+<span class="fc" id="L33">    public AuthService(UserRepository userRepository, UserAccountRepository userAccountRepository) {</span>
+<span class="fc" id="L34">        this.userRepository = userRepository;</span>
+<span class="fc" id="L35">        this.userAccountRepository = userAccountRepository;</span>
+<span class="fc" id="L36">    }</span>
+
+    /**
+     * Creates the business account for the authenticated caller from the
+     * registration form's profile details.
+     *
+     * @param caller  the user identified by the verified access token
+     * @param request the profile details
+     * @return the newly created user, whose id equals the caller's token subject
+     * @throws ForbiddenException if the request email differs from the token's email claim
+     * @throws ConflictException  if the caller already has an account
+     */
+    @Transactional
+    public User register(AuthenticatedUser caller, RegisterRequest request) {
+<span class="fc bfc" id="L50" title="All 4 branches covered.">        if (caller.email() == null || !caller.email().equalsIgnoreCase(request.email())) {</span>
+<span class="fc" id="L51">            throw new ForbiddenException(&quot;Email does not match the signed-in account&quot;);</span>
+        }
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        if (userRepository.existsById(caller.userId())) {</span>
+<span class="fc" id="L54">            throw new ConflictException(&quot;Account is already registered&quot;);</span>
+        }
+
+<span class="fc" id="L57">        User user = new User();</span>
+<span class="fc" id="L58">        user.setUserId(caller.userId());</span>
+<span class="fc" id="L59">        user.setFirstName(request.firstName());</span>
+<span class="fc" id="L60">        user.setMiddleName(request.middleName());</span>
+<span class="fc" id="L61">        user.setLastName(request.lastName());</span>
+<span class="fc" id="L62">        user.setSsn(request.ssn());</span>
+<span class="fc" id="L63">        user.setAddress(request.address());</span>
+<span class="fc" id="L64">        user.setDateOfBirth(request.dateOfBirth());</span>
+<span class="fc" id="L65">        user.setTraderLevel(request.traderLevel());</span>
+<span class="fc" id="L66">        user.setAvailableFunds(request.availableFunds());</span>
+<span class="fc" id="L67">        user.setCreatedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L68">        return userRepository.save(user);</span>
+    }
+
+    /**
+     * Soft check for whether a business account uses the email, ignoring case.
+     *
+     * &lt;p&gt;Reads user_accounts, which the auth service owns: an address is taken
+     * from the moment credentials exist, whether or not a profile has been
+     * filled in yet. The profile row no longer stores an email to check.
+     *
+     * &lt;p&gt;This is a convenience for the registration form, not an authorization
+     * decision, and it is unauthenticated. Because it reveals whether an email
+     * is registered, callers should rate-limit it at the edge.
+     *
+     * @param email the email to look up
+     * @return {@code true} if an account is registered with the email
+     */
+    @Transactional(readOnly = true)
+    public boolean accountExists(String email) {
+<span class="fc" id="L87">        return userAccountRepository.existsByEmailIgnoreCase(email.trim());</span>
+    }
+}
+
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

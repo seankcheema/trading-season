@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HoldingMovement.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.holding</a> &gt; <span class="el_source">HoldingMovement.java</span></div><h1>HoldingMovement.java</h1><pre class="source lang-java linenums">package app.holding;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+import java.math.BigDecimal;
+
+/**
+ * One append-only change to a position (BR-15): the ledger the cached
+ * {@link Holding} quantity is derived from.
+ *
+ * &lt;p&gt;Read here to derive what a position cost. Each movement names the account,
+ * the instrument and the fill it came from, so joining it to {@link Fill} gives
+ * the price paid for a quantity without needing the orders table.
+ */
+@Entity
+@Table(name = &quot;holding_movements&quot;)
+public class HoldingMovement {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = &quot;holding_movement_id&quot;, updatable = false, nullable = false)
+    private Integer holdingMovementId;
+
+    @Column(name = &quot;account_id&quot;, nullable = false, updatable = false)
+    private Integer accountId;
+
+    @Column(name = &quot;instrument_id&quot;, nullable = false, updatable = false)
+    private Integer instrumentId;
+
+    @Column(name = &quot;fill_id&quot;, nullable = false, updatable = false, unique = true)
+    private Integer fillId;
+
+    /** Signed: positive for a buy, negative for a sell. */
+    @Column(name = &quot;quantity_delta&quot;, nullable = false, updatable = false)
+    private BigDecimal quantityDelta;
+
+    /** Creates an empty movement for the persistence provider to populate. */
+<span class="fc" id="L43">    public HoldingMovement() {</span>
+<span class="fc" id="L44">    }</span>
+
+    /**
+     * Returns the movement id.
+     *
+     * @return the movement id, or null before the row is inserted
+     */
+    public Integer getHoldingMovementId() {
+<span class="fc" id="L52">        return holdingMovementId;</span>
+    }
+
+    /**
+     * Sets the movement id.
+     *
+     * @param holdingMovementId the movement id
+     */
+    public void setHoldingMovementId(Integer holdingMovementId) {
+<span class="fc" id="L61">        this.holdingMovementId = holdingMovementId;</span>
+<span class="fc" id="L62">    }</span>
+
+    /**
+     * Returns the account whose position moved.
+     *
+     * @return the account id
+     */
+    public Integer getAccountId() {
+<span class="fc" id="L70">        return accountId;</span>
+    }
+
+    /**
+     * Sets the account whose position moved.
+     *
+     * @param accountId the account id
+     */
+    public void setAccountId(Integer accountId) {
+<span class="fc" id="L79">        this.accountId = accountId;</span>
+<span class="fc" id="L80">    }</span>
+
+    /**
+     * Returns the instrument the position is in.
+     *
+     * @return the instrument id
+     */
+    public Integer getInstrumentId() {
+<span class="fc" id="L88">        return instrumentId;</span>
+    }
+
+    /**
+     * Sets the instrument the position is in.
+     *
+     * @param instrumentId the instrument id
+     */
+    public void setInstrumentId(Integer instrumentId) {
+<span class="fc" id="L97">        this.instrumentId = instrumentId;</span>
+<span class="fc" id="L98">    }</span>
+
+    /**
+     * Returns the fill this movement came from.
+     *
+     * @return the fill id
+     */
+    public Integer getFillId() {
+<span class="fc" id="L106">        return fillId;</span>
+    }
+
+    /**
+     * Sets the fill this movement came from.
+     *
+     * @param fillId the fill id
+     */
+    public void setFillId(Integer fillId) {
+<span class="fc" id="L115">        this.fillId = fillId;</span>
+<span class="fc" id="L116">    }</span>
+
+    /**
+     * Returns the signed change in quantity: positive for a buy, negative for a sell.
+     *
+     * @return the quantity delta
+     */
+    public BigDecimal getQuantityDelta() {
+<span class="fc" id="L124">        return quantityDelta;</span>
+    }
+
+    /**
+     * Sets the signed change in quantity.
+     *
+     * @param quantityDelta the quantity delta, positive for a buy and negative for a sell
+     */
+    public void setQuantityDelta(BigDecimal quantityDelta) {
+<span class="fc" id="L133">        this.quantityDelta = quantityDelta;</span>
+<span class="fc" id="L134">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

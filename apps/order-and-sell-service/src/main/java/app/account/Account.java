@@ -16,8 +16,9 @@ import java.util.UUID;
  * A user can own more than one account (KAN-78, KAN-103/104)
  * Represents an account with an ID, name, and balance.
  * <p>{@code cashBalance} is a cache (BR-10) reconciled against
- * {@code cash_transactions} - order execution must update it by 
- * inserting a ledger row, never by writing this field directly.
+ * {@code cash_transactions}; never write this field without inserting the
+ * matching ledger row. Since KAN-93 order execution does not move it: buy and
+ * sell orders debit and credit the owning user's {@code availableFunds}.
  */
 
 @Entity

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CashTransactionResponse.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.cash</a> &gt; <span class="el_source">CashTransactionResponse.java</span></div><h1>CashTransactionResponse.java</h1><pre class="source lang-java linenums">package app.cash;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+
+/**
+ * Response DTO for one funding transaction.
+ *
+ * &lt;p&gt;The amount is reported positive whichever way the money moved, because
+ * {@code reason} already carries the direction; the stored ledger amount is
+ * signed.
+ *
+ * @param cashTransactionId the ledger row id
+ * @param amount            how much moved, always positive
+ * @param reason            {@code DEPOSIT} or {@code WITHDRAWAL}
+ * @param createdAt         when the movement was recorded
+ */
+<span class="fc" id="L18">public record CashTransactionResponse(</span>
+        Integer cashTransactionId,
+        BigDecimal amount,
+        String reason,
+        OffsetDateTime createdAt
+) {
+
+    /**
+     * Maps a ledger row to its response.
+     *
+     * @param transaction the ledger row
+     * @return the response, with the amount made positive
+     */
+    public static CashTransactionResponse from(CashTransaction transaction) {
+<span class="fc" id="L32">        return new CashTransactionResponse(</span>
+<span class="fc" id="L33">                transaction.getCashTransactionId(),</span>
+<span class="fc" id="L34">                transaction.getAmount().abs(),</span>
+<span class="fc" id="L35">                transaction.getReason(),</span>
+<span class="fc" id="L36">                transaction.getCreatedAt()</span>
+        );
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.13.202504020838</span></div></body></html>

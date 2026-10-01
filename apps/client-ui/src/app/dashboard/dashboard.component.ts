@@ -21,6 +21,7 @@ import {
   lucideChevronDown,
   lucideLogOut,
   lucidePencil,
+  lucidePiggyBank,
   lucidePlus,
   lucideSettings,
 } from '@ng-icons/lucide';
@@ -31,9 +32,7 @@ import { AuthService } from '../core/auth/auth.service';
 import {
   Instrument,
   MOCK_INSTRUMENTS,
-  MOCK_TRANSACTIONS,
   OrderRequest,
-  OrderSide,
   PricePoint,
   Timeframe,
   findInstrument,
@@ -69,12 +68,16 @@ const DEFAULT_MARKET_CALENDAR: MarketCalendarAvailability = {
 };
 
 type HeaderDropdown = 'account' | 'market-clock' | 'profile';
+type TickAnimation = {
+  direction: 'gain' | 'loss';
+  durationMs: number;
+  revision: number;
+};
 
 // The account or cash dialog currently open over the dashboard, if any. An account dialog
 // with an account renames it; without one it creates a new, empty account.
 type AccountDialog =
-  | { kind: 'account'; account: Account | null }
-  | { kind: 'cash'; mode: CashTransactionMode };
+  { kind: 'account'; account: Account | null } | { kind: 'cash'; mode: CashTransactionMode };
 
 // One position in an account's portfolio, valued at the latest price.
 interface PricedHolding {
@@ -87,20 +90,15 @@ interface PricedHolding {
   gainLoss: number;
 }
 
-// One row of the recent transactions list: a cash deposit or withdrawal from the account
-// service, or a trade. Trades are still mock data until order history is integrated.
-type ActivityItem =
-  | { kind: 'cash'; key: string; date: string; reason: CashTransactionReason; value: number }
-  | {
-      kind: 'trade';
-      key: string;
-      date: string;
-      symbol: string;
-      side: OrderSide;
-      shares: number;
-      price: number;
-      value: number;
-    };
+// One row of the recent transactions list: a cash deposit or withdrawal the account service
+// recorded for this user. Trades join it once order history has an endpoint to read.
+interface ActivityItem {
+  kind: 'cash';
+  key: string;
+  date: string;
+  reason: CashTransactionReason;
+  value: number;
+}
 
 @Component({
   selector: 'app-dashboard',
@@ -129,6 +127,7 @@ type ActivityItem =
       lucideChevronDown,
       lucideLogOut,
       lucidePencil,
+      lucidePiggyBank,
       lucidePlus,
       lucideSettings,
     }),
@@ -142,7 +141,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private readonly document = inject(DOCUMENT);
   private readonly zone = inject(NgZone);
   private disconnectMarket?: () => void;
-  private readonly updateTimers = new Set<ReturnType<typeof setTimeout>>();
+  private readonly tickAnimationTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly openingPrices = new Map<string, number>();
   private readonly assetChartSubscriptions = new Map<string, Subscription>();
   private marketGeneration = 0;
@@ -170,8 +169,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly accountDialog = signal<AccountDialog | null>(null);
   protected readonly openHeaderDropdown = signal<HeaderDropdown | null>(null);
   protected readonly cashBalance = this.accountStore.cashBalance;
+  // First and last initial of the signed-in user; empty until the profile loads.
+  protected readonly profileInitials = this.accountStore.initials;
   protected readonly instruments = signal<Instrument[]>([...MOCK_INSTRUMENTS]);
   protected readonly tickerInstruments = computed(() => this.instruments().slice(0, 6));
+  protected readonly tickAnimations = signal(new Map<string, TickAnimation>());
   protected readonly portfolioTimeframe = signal<Timeframe>('1D');
   protected readonly marketSessionId = signal<number | null>(null);
   protected readonly currentMarketTimestamp = signal('');
@@ -187,6 +189,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           day: 'numeric',
           hour: 'numeric',
           minute: '2-digit',
+          second: '2-digit',
           timeZoneName: 'short',
         })
       : 'Market time',
@@ -231,7 +234,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private readonly orderSymbol = signal<string | null>(null);
   protected readonly orderInstrument = computed(() => {
     const symbol = this.orderSymbol();
-    return symbol ? findInstrument(symbol, this.instruments()) ?? null : null;
+    return symbol ? (findInstrument(symbol, this.instruments()) ?? null) : null;
   });
 
   // The selected account's portfolio.
@@ -256,23 +259,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return values;
   });
 
-  protected readonly transactions = computed<ActivityItem[]>(() => {
-    const cash: ActivityItem[] = this.accountStore.cashTransactions().map((transaction) => ({
-      kind: 'cash',
-      key: `cash-${transaction.cashTransactionId}`,
-      date: transaction.createdAt,
-      reason: transaction.reason,
-      value: transaction.amount,
-    }));
-    const trades: ActivityItem[] = MOCK_TRANSACTIONS.map((transaction, index) => ({
-      kind: 'trade',
-      key: `trade-${index}`,
-      ...transaction,
-      value: transaction.shares * transaction.price,
-    }));
-    // ISO dates and instants both sort correctly as strings; newest first.
-    return [...cash, ...trades].sort((a, b) => b.date.localeCompare(a.date));
-  });
+  // Only this user's own cash movements, so a new account's list is genuinely empty.
+  protected readonly transactions = computed<ActivityItem[]>(() =>
+    this.accountStore
+      .cashTransactions()
+      .map((transaction) => ({
+        kind: 'cash' as const,
+        key: `cash-${transaction.cashTransactionId}`,
+        date: transaction.createdAt,
+        reason: transaction.reason,
+        value: transaction.amount,
+      }))
+      // ISO instants sort correctly as strings; newest first.
+      .sort((a, b) => b.date.localeCompare(a.date)),
+  );
 
   protected readonly positions = computed(() =>
     Object.fromEntries(this.holdings().map((holding) => [holding.symbol, holding.shares])),
@@ -299,12 +299,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         }
         return [
           holding.symbol,
-          mockPriceSeries(
-            holding.symbol,
-            '1D',
-            holding.instrument.price,
-            marketTime ?? undefined,
-          ),
+          mockPriceSeries(holding.symbol, '1D', holding.instrument.price, marketTime ?? undefined),
         ];
       }),
     );
@@ -312,6 +307,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // The selected account's portfolio value.
   protected readonly portfolioValue = computed(() => totalValue(this.holdings()));
+  protected readonly hasChartablePortfolioValue = computed(() => {
+    const value = this.portfolioValue();
+    return Number.isFinite(value) && value > 0;
+  });
 
   protected readonly portfolioChangePercent = computed(() => {
     const cost = this.holdings().reduce((total, h) => total + h.shares * h.costBasis, 0);
@@ -562,22 +561,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.document.hidden) {
       return;
     }
-    const generation = this.marketGeneration;
-    this.zone.run(() => this.currentMarketTimestamp.set(event.marketTimestamp));
-    for (const tick of event.prices) {
-      const timer = setTimeout(
-        () => {
-          this.updateTimers.delete(timer);
-          if (generation !== this.marketGeneration) return;
-          this.zone.run(() => this.applyTick(tick.symbol, tick.price));
-        },
-        Math.floor(Math.random() * 1000),
-      );
-      this.updateTimers.add(timer);
-    }
+    this.zone.run(() => {
+      this.currentMarketTimestamp.set(event.marketTimestamp);
+      for (const tick of event.prices) this.applyTick(tick.symbol, tick.price);
+    });
   }
 
   private applyTick(symbol: string, price: number): void {
+    const previousPrice = this.instruments().find((stock) => stock.symbol === symbol)?.price;
     this.instruments.update((stocks) =>
       stocks.map((stock) => {
         if (stock.symbol !== symbol) return stock;
@@ -586,11 +577,36 @@ export class DashboardComponent implements OnInit, OnDestroy {
         return { ...stock, price, change, changePercent: open ? (change / open) * 100 : 0 };
       }),
     );
+    if (previousPrice !== undefined && previousPrice !== price) {
+      this.animateTick(symbol, price > previousPrice ? 'gain' : 'loss');
+    }
   }
 
   private clearQueuedUpdates(): void {
-    this.updateTimers.forEach(clearTimeout);
-    this.updateTimers.clear();
+    this.tickAnimationTimers.forEach(clearTimeout);
+    this.tickAnimationTimers.clear();
+    this.tickAnimations.set(new Map());
+  }
+
+  private animateTick(symbol: string, direction: TickAnimation['direction']): void {
+    const existingTimer = this.tickAnimationTimers.get(symbol);
+    if (existingTimer) clearTimeout(existingTimer);
+    const durationMs = 500 + Math.floor(Math.random() * 501);
+    this.tickAnimations.update((animations) => {
+      const next = new Map(animations);
+      const revision = (next.get(symbol)?.revision ?? 0) + 1;
+      next.set(symbol, { direction, durationMs, revision });
+      return next;
+    });
+    const timer = setTimeout(() => {
+      this.tickAnimationTimers.delete(symbol);
+      this.tickAnimations.update((animations) => {
+        const next = new Map(animations);
+        next.delete(symbol);
+        return next;
+      });
+    }, durationMs);
+    this.tickAnimationTimers.set(symbol, timer);
   }
 
   private isoToMarketLocal(timestamp: string): string {
@@ -646,7 +662,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private clockErrorMessage(error: HttpErrorResponse): string {
     const message = typeof error.error?.error === 'string' ? error.error.error : '';
-    return message || `Unable to update the market clock. Available range: ${this.marketClockRangeLabel()}.`;
+    return (
+      message ||
+      `Unable to update the market clock. Available range: ${this.marketClockRangeLabel()}.`
+    );
   }
 
   private formatMarketDate(value: string): string {
@@ -659,10 +678,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }).format(new Date(Date.UTC(year, month - 1, day)));
   }
 
-  private formatMarketTime(
-    timestamp: string,
-    options: Intl.DateTimeFormatOptions,
-  ): string {
+  private formatMarketTime(timestamp: string, options: Intl.DateTimeFormatOptions): string {
     const calendar = this.marketCalendar();
     return new Intl.DateTimeFormat('en-US', {
       ...options,

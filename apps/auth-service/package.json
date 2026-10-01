@@ -23,9 +23,6 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
-    "migration:run": "typeorm-ts-node-esm migration:run -d src/database/data-source.ts",
-    "migration:revert": "typeorm-ts-node-esm migration:revert -d src/database/data-source.ts",
-    "migration:show": "typeorm-ts-node-esm migration:show -d src/database/data-source.ts",
     "test:ci": "vitest run --coverage"
   },
   "dependencies": {
@@ -37,6 +34,7 @@
     "@nestjs/platform-express": "^12.0.1",
     "@nestjs/typeorm": "^12.0.1",
     "bcrypt": "^6.0.0",
+    "ci": "^2.3.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "dotenv": "^17.4.2",

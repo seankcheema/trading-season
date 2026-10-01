@@ -1,13 +1,19 @@
 # Database
 
-## Two separate stores
+## One database, two owners
 
 The Java business backend and NestJS auth service have separate PostgreSQL databases and user models. The only value shared between them is the user's UUID: auth_db users.id equals trading_season users.user_id, and it reaches the Java backend as the access token's sub claim. Credentials, lockout and refresh sessions exist only in auth_db.
 
-| Store | Schema source | Application behavior |
+An account and its profile are separate rows joined by the same UUID, which is also the access token's `sub` claim: `user_accounts.user_id` equals `users.user_id`, and a foreign key from `users` prevents a profile existing without credentials behind it.
+
+The auth service previously used a database of its own, `auth_db`. V005 moved its tables here and V006 dropped the copies of `email`, `user_role` and `account_status` that `users` had been carrying.
+
+| Table group | Schema source | Application behavior |
 | --- | --- | --- |
-| Business: trading_season | [Market Data migrations](services/market-data.md) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
+| Business: trading_season | [V001 bootstrap SQL](../../apps/market-data/db/migrations/V001__Initial_schema.sql) plus incremental SQL such as [V002 synthetic market data replay metadata](../../apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql) and [V003 token authentication](../../apps/market-data/db/migrations/V003__Token_authentication.sql) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
 | Auth: auth_db | [TypeORM migrations](../../apps/auth-service/src/database/migrations/) | Migrations run on startup; synchronize=false |
+| Business tables | [Market Data migrations](services/market-data.md) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
+| user_accounts, refresh_tokens | the same migrations, from V005 | TypeORM with synchronize=false and no migration runner; the auth service reads and writes tables it never creates |
 
 The business bootstrap defines more of the trading model than the currently implemented Java auth API. The ERD below is the canonical diagram; SQL remains authoritative for exact columns and constraints.
 
@@ -17,6 +23,8 @@ Both Java services share the same `trading_season` database. This table lists wh
 
 | Table | Owned by | Access |
 | --- | --- | --- |
+| user_accounts | Auth Service | Read/write (credentials, role, status, lockout); Java services read only |
+| refresh_tokens | Auth Service | Read/write (issue, rotate, revoke); Java services never read it |
 | users | Holdings and Trade Service | Read/write (profile, funds, settings) |
 | accounts | Holdings and Trade Service | Read/write (account management) |
 | orders | Holdings and Trade Service | Read/write (order lifecycle) |
@@ -47,11 +55,11 @@ Both services connect with the same credentials and access all tables. The Order
 | Accounts/execution | accounts, holdings, orders, fills: balances, positions, instructions and executions |
 | Ledgers/audit | cash_transactions, holding_movements, audit_trail: accounting and event history |
 
-Orders are distinct from fills. The schema allows at most one fill per order. The account/client_reference pair supplies order idempotency. Cash balances and holdings are caches reconciled against append-only ledgers. Application grants should limit ledger/audit access to the appropriate insert/read operations; table definitions alone do not enforce every operational policy.
+Orders are distinct from fills. The schema allows at most one fill per order. The account/client_reference pair supplies order idempotency. An order's status is PENDING, FILLED or REJECTED (V004). Buy and sell orders move users.available_funds; accounts.cash_balance is not moved by order execution. Cash balances and holdings are caches reconciled against append-only ledgers. Application grants should limit ledger/audit access to the appropriate insert/read operations; table definitions alone do not enforce every operational policy.
 
 Simulation data is scoped by run and stock. Deleting a simulation session cascades through its generated market data. The optional unique instruments.simulated_stock_symbol connects U.S. equity instruments to simulator stocks. V002 adds replay metadata and uniqueness needed by synthetic market data imports; it does not add trading APIs. Trading schema support for other asset classes does not imply their simulation or APIs are implemented.
 
-Use this setup for a local development database whose contents can be discarded. `V001__Initial_schema.sql` drops and recreates tables, so it is not a safe upgrade path for retained data. `V002__Synthetic_market_data_replay_metadata.sql` is applied after V001, then `V003__Token_authentication.sql`. V003 removes the sessions table, the username column, and the users credential columns (password hash, lockout, reset token, last login), drops the user_id default because the application sets it from the token, and adds a case-insensitive unique index on email. Any stored password hashes and sessions are discarded.
+Use this setup for a local development database whose contents can be discarded. `V001__Initial_schema.sql` drops and recreates tables, so it is not a safe upgrade path for retained data. `V002__Synthetic_market_data_replay_metadata.sql` is applied after V001, then `V003__Token_authentication.sql`. V003 removes the sessions table, the username column, and the users credential columns (password hash, lockout, reset token, last login), drops the user_id default because the application sets it from the token, and adds a case-insensitive unique index on email. Any stored password hashes and sessions are discarded. `V004__Order_status_lifecycle.sql` is applied after V003. It replaces the order status set with PENDING, FILLED and REJECTED, maps existing order rows onto it, and widens the audit_trail event types so historical rows are kept.
 
 ### Connection values
 
@@ -86,6 +94,7 @@ All migrations are managed centrally in the [Market Data folder](services/market
 1. `apps/market-data/db/migrations/V001__Initial_schema.sql`
 2. `apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql`
 3. `apps/market-data/db/migrations/V003__Token_authentication.sql`
+4. `apps/market-data/db/migrations/V004__Order_status_lifecycle.sql`
 
 With `psql`, the equivalent commands from the repository root are:
 
@@ -93,9 +102,10 @@ With `psql`, the equivalent commands from the repository root are:
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initial_schema.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V003__Token_authentication.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V004__Order_status_lifecycle.sql
 ```
 
-A database already initialized with V001 and V002 only needs V003 applied.
+A database already initialized with V001 through V003 only needs V004 applied.
 
 **Important:** Both Java services (Holdings and Trade Service and Order and Sell Service) must connect with the same schema version. Never edit an applied migration; add a new one instead. See [Market Data documentation](services/market-data.md) for detailed migration rules.
 
@@ -137,6 +147,20 @@ Changing a table's owner also transfers its indexes and owned sequences.
 
 ### Optional synthetic market data generation and import
 
+On Linux, check the actual free space on the filesystem containing PostgreSQL data before importing and pass that value to `--available-disk-gb`. The storage-aware setup script deliberately does not start an import. For example, when PostgreSQL data and the repository use the root filesystem:
+
+```sh
+free_disk_gb="$(df -Pk / | awk 'NR == 2 { print $4 / 1048576 }')"
+python3 -m venv apps/market-data/db/.venv
+apps/market-data/db/.venv/bin/python -m pip install -r apps/market-data/db/scripts/requirements.txt
+apps/market-data/db/.venv/bin/python apps/market-data/db/scripts/0004-import-synthetic-market-data.py \
+  --tick-storage parquet \
+  --available-disk-gb "$free_disk_gb" \
+  --database-url postgresql://trading_season:password@localhost:5432/trading_season
+```
+
+Do not inflate the reported value or run this command until the archive has been copied and validated. The importer performs an additional capacity check before each pending month.
+
 The generated `2026-v1` archive is stored locally in `apps/market-data/db/seeds/synthetic-market-data-2026-v1` and is not committed to Git. A full archive contains 61,074,000 one-second ticks and 1,017,900 tick-derived one-minute candles.
 
 Run the complete routine workflow from the repository root with one command. It creates the virtual environment if needed, installs dependencies, generates or reuses the archive, carries the completed validation forward to the importer, and displays progress while loading PostgreSQL:
@@ -165,7 +189,7 @@ apps/market-data/db/.venv/Scripts/python.exe -m pip install -r apps/market-data/
 
 #### Step 2: Initialize a disposable database
 
-Run this step only when setting up the business database for the first time. It applies V001, V002 and V003, and V001 drops existing tables.
+Run this step only when setting up the business database for the first time. It applies V001 through V004, and V001 drops existing tables.
 
 ```powershell
 apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0001-initialize-database.py `
@@ -340,13 +364,13 @@ For later routine seeding, run steps 3 through 6 only. The import adds stocks, s
 
 There is no Flyway runner in the Java backend; these files are applied manually.
 
-## Auth migrations
+## Auth tables
 
-[Runtime configuration](../../apps/auth-service/src/config/database.config.ts) and the [CLI data source](../../apps/auth-service/src/database/data-source.ts) must retain matching entity and migration lists. The initial schema creates auth users and refresh-token storage; a later migration added a required username and TrimUserToBrsMinimum removed it along with first and last name, so email is the only login identifier.
+`user_accounts` and `refresh_tokens` are created by Flyway in [V005](../../apps/market-data/db/migrations/V005__User_accounts_and_refresh_tokens.sql), with the rest of the business schema. [Runtime configuration](../../apps/auth-service/src/config/database.config.ts) holds only the entity list: the auth service registers no migrations and runs none at startup, because pointing a second migration tool at a Flyway-owned schema is how half a schema gets dropped.
 
-From apps/auth-service, npm run migration:show and npm run migration:run inspect/apply migrations. Export the matching database environment variables before invoking the CLI: its data source does not itself load dotenv. Normal application startup loads .env and runs migrations automatically.
+The service therefore assumes Flyway has already been applied. If it has not, its queries fail against missing columns, which is louder than quietly building a second schema alongside the first.
 
-Refresh tokens are stored as hashes with expiry, revocation, and rotation metadata. See the [auth README](../../apps/auth-service/README.md) for connection and key setup.
+Email is the only login identifier, unique without regard to case through `user_accounts_email_lower_key`. Refresh tokens are stored as SHA-256 hashes with expiry, revocation and rotation metadata; the raw value is returned to the client once and never persisted. See the [auth README](../../apps/auth-service/README.md) for connection and key setup.
 
 ## Change rules
 
@@ -354,12 +378,14 @@ Add incremental migrations rather than editing already applied files. For busine
 
 # Business database ERD
 
-Canonical relationship diagram for the business SQL schema after V001, V002 and V003. SQL defines exact columns and constraints. See this database reference for ownership, initialization, and change rules.
+Canonical relationship diagram for the SQL schema after V001 through V006. SQL defines exact columns and constraints. See this database reference for ownership, initialization, and change rules.
 
 The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change.
 
 ```mermaid
 erDiagram
+    user_accounts ||--|| users : "credentials for"
+    user_accounts ||--o{ refresh_tokens : issues
     users ||--o{ accounts : owns
 
     stocks o|--o| instruments : "optionally powers"

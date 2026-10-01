@@ -28,12 +28,12 @@ The business database stores trading data (orders, holdings, accounts) and marke
 
 2. Set up Python environment for database scripts:
    ```powershell
-   py -3 -m venv db/.venv
-   db/.venv/Scripts/python.exe -m pip install --upgrade pip
-   db/.venv/Scripts/python.exe -m pip install -r db/scripts/requirements.txt
+   py -3 -m venv apps/market-data/db/.venv
+   apps/market-data/db/.venv/Scripts/python.exe -m pip install --upgrade pip
+   apps/market-data/db/.venv/Scripts/python.exe -m pip install -r apps/market-data/db/scripts/requirements.txt
    ```
 
-3. Run migrations (V001, V002, V003):
+3. Run migrations (V001 through V004):
    ```sh
    # See detailed instructions in ../../docs/reference/database.md
    ```
@@ -44,7 +44,7 @@ Generate and import simulated market data for testing:
 ```powershell
 $freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
 
-db/setup-market-data.ps1 `
+apps/market-data/db/setup-market-data.ps1 `
   -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
   -AvailableDiskGb $freeDiskGb `
   -InitializeDisposableDatabase
@@ -52,7 +52,7 @@ db/setup-market-data.ps1 `
 
 ## Files
 
-- `migrations/` - SQL migration files (V001, V002, V003)
+- `migrations/` - SQL migration files (V001 through V004)
 - `scripts/` - Python scripts for initialization, generation, validation, and import
 - `seeds/` - Generated market data archive (local developer data, not committed)
 - `setup-market-data.ps1` - PowerShell script to orchestrate market data workflow

@@ -1,19 +1,19 @@
 # Order and Sell Service
 
-Spring Boot microservice providing read-only access to user profiles, client information, holdings data, and order history. This service powers the dashboard UI and customer-facing queries.
+Spring Boot microservice responsible for managing all trading operations, order execution, and holding updates. This service is the core trading engine for the Trading Season platform.
 
 ## Architecture
 
 **Responsibilities:**
-- Provide user profile and client information
-- Enable customer lookup functionality
-- Query current holdings by client
-- Access complete trade history
-- Aggregate portfolio data
+- Create and accept trade orders
+- Validate orders (funds, holdings, tradability, account status)
+- Execute buy and sell transactions
+- Update and maintain current holdings
+- Maintain complete order audit trail and history
 
-**Port:** 8082 (default, configurable via `server.port`)
+**Port:** 8081 (default, configurable via `server.port`)
 
-**Database:** Shared PostgreSQL with Holdings and Trade Service. Schema is read-only; migrations managed centrally.
+**Database:** Shared PostgreSQL with Order and Sell Service. Schema is read-only; migrations managed centrally.
 
 **Authentication:** RS256 tokens issued by the NestJS auth service. Verifies tokens, never handles passwords.
 
@@ -25,17 +25,17 @@ Spring Boot microservice providing read-only access to user profiles, client inf
 
 - JDK 21
 - Maven 3.9+
-- PostgreSQL (shared with Holdings and Trade Service)
+- PostgreSQL (shared with Order and Sell Service)
 - NestJS auth service running on port 3001
 
 ### Setup
 
-1. Create the trading_season database and apply migrations (V001, V002, V003):
+1. Create the trading_season database and apply migrations (V001 through V004):
    ```powershell
    # From repository root
-   py -3 -m venv apps/business-backend/db/.venv
-   apps/business-backend/db/.venv/Scripts/python.exe -m pip install --upgrade pip
-   apps/business-backend/db/.venv/Scripts/python.exe -m pip install -r apps/business-backend/db/scripts/requirements.txt
+   py -3 -m venv apps/market-data/db/.venv
+   apps/market-data/db/.venv/Scripts/python.exe -m pip install --upgrade pip
+   apps/market-data/db/.venv/Scripts/python.exe -m pip install -r apps/market-data/db/scripts/requirements.txt
    ```
 
 2. Run migrations:
@@ -49,8 +49,9 @@ Spring Boot microservice providing read-only access to user profiles, client inf
    ```
 
 4. Verify it's running:
-   ```powershell
-   Invoke-RestMethod http://localhost:8082/api/users
+   ```powershel
+
+   Invoke-RestMethod http://localhost:8081/api/market/snapshot
    ```
 
 ### Tests
@@ -60,7 +61,7 @@ Run all tests with code coverage verification:
 mvn test
 ```
 
-Coverage must be at least 60% per AC requirements. Reports are in `target/site/jacoco/`.
+Coverage must be at least 70% in every package on every JaCoCo counter (instructions, branches, lines, complexity, methods, and classes); `mvn test` fails otherwise. Reports are in `target/site/jacoco/`.
 
 ## Configuration
 
@@ -74,6 +75,9 @@ Environment variables override defaults in [application.properties](src/main/res
 | `AUTH_JWK_SET_URI` | `http://localhost:3001/.well-known/jwks.json` | Auth service JWKS endpoint |
 | `AUTH_JWT_ISSUER` | `https://auth.dualeapa.local` | Required JWT issuer claim |
 | `CORS_ORIGINS` | `http://localhost:4200` | Allowed browser origins (comma-separated) |
+| `MARKET_REPLAY_ARCHIVE_LOCATION` | empty | Optional absolute Parquet archive root override |
+
+Parquet-backed simulation sessions first use `MARKET_REPLAY_ARCHIVE_LOCATION`, then the archive location recorded during import, and finally discover the matching archive under the repository's `apps/market-data/db/seeds` directory. This discovery keeps an existing database usable after the repository moves. Missing raw tick partitions return an unavailable market-data error rather than falling back to one-minute candles.
 
 ## API Endpoints
 
@@ -88,7 +92,10 @@ All endpoints require valid RS256 access token except public market GET endpoint
 - `GET /api/accounts/{accountId}/holdings` - Get current holdings (requires auth)
 
 **Order History:**
-- `GET /api/orders` - List all orders for authenticated user (requires auth)
+- `GET /api/orders` - List the authenticated caller's orders across all of their accounts, newest first (requires auth)
+
+**Orders:**
+- `POST /api/orders` - Submit a buy or sell order; created PENDING and returned FILLED or REJECTED (requires auth)
 - `GET /api/orders/{id}` - Get order details (requires auth)
 
 **Market Data (Public):**
@@ -104,27 +111,18 @@ Source is rooted at `src/main/java/app`. Tests mirror structure under `src/test/
 
 ```
 app/
-├── user/        # User profiles and customer information
-├── account/     # Read-only account entities
-├── holding/     # Read-only position data
-├── auth/        # Authentication and authorization
-├── market/      # Market data and replay
-└── Main.java    # Application entry point
+├── order/           # Order management core
+│   ├── validation/  # Validation pipeline
+│   ├── execution/   # Order execution and settlement
+│   └── audit/       # Order event audit
+├── account/         # Trading account entities
+├── holding/         # Current position data
+├── instrument/      # Tradable asset definitions
+├── auth/            # Authentication and authorization
+├── market/          # Market data and replay
+└── Main.java        # Application entry point
 ```
 
-## Requirements
-
-Per user story AC:
-- ✅ Holds user, account, holding, auth, market packages
-- ✅ All previous tests pass
-- ✅ Code coverage is at least 60% for every sub-bullet:
-  - Client information: 60%+
-  - Customer Lookup: 60%+
-  - Holdings by client: 60%+
-  - Trade history: 60%+
-  - Portfolio Data: 60%+
-- ✅ Comprehensive README (this file)
-- ✅ Updated docker-compose to reflect architectural changes
 
 ## Development
 
@@ -132,8 +130,8 @@ See [service development guide](AGENTS.md) for coding standards, testing pattern
 
 ## Related Services
 
-- **Holdings and Trade Service** - Manages order execution, holds master order data
+- **Order and Sell Service** - Queries orders, holdings, and user data for UI
 - **Auth Service** - Issues and validates RS256 tokens
-- **Business UI** - Consumes this service's APIs for dashboard and user management
+- **Business UI** - Consumes this service's APIs
 
 See [Architecture reference](../../docs/reference/architecture.md) for service boundaries and integration patterns.

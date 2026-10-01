@@ -37,15 +37,23 @@ public record UserProfileResponse(
 ) {
 
     /**
-     * Maps an account to its response, leaving out sensitive fields.
+     * Maps a profile and its credential record to a response, leaving out
+     * sensitive fields.
      *
-     * @param user the account
+     * <p>Email, role and status come from {@code account} rather than
+     * {@code user}. The auth service owns those three, and the copies still
+     * sitting on the profile row are only as fresh as the last registration -
+     * reporting a stale ACTIVE to a deactivated trader is exactly the sort of
+     * answer this endpoint should not give.
+     *
+     * @param user    the profile row
+     * @param account the credential record the auth service owns
      * @return the profile response
      */
-    public static UserProfileResponse from(User user) {
-        return new UserProfileResponse(user.getUserId(), user.getEmail(),
+    public static UserProfileResponse from(User user, UserAccount account) {
+        return new UserProfileResponse(user.getUserId(), account.getEmail(),
                 user.getFirstName(), user.getMiddleName(), user.getLastName(), user.getAddress(),
                 user.getDateOfBirth(), user.getTraderLevel(), user.getAvailableFunds(),
-                user.getUserRole(), user.getAccountStatus(), user.getCreatedAt());
+                account.getUserRole(), account.getAccountStatus(), user.getCreatedAt());
     }
 }

@@ -261,7 +261,7 @@ prepare_archive() {
     check_storage 'Repository storage after archive copy' "$repo_root"
 }
 
-business_schema_query="SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('users','simulation_sessions','stocks','instruments','accounts','market_states','market_behaviors','quotes','market_ticks','candles','holdings','orders','fills','cash_transactions','holding_movements','audit_trail');"
+business_schema_query="SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('users','user_accounts','refresh_tokens','simulation_sessions','stocks','instruments','accounts','market_states','market_behaviors','quotes','market_ticks','candles','holdings','orders','fills','cash_transactions','holding_movements','audit_trail');"
 business_total_query="SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';"
 business_v3_query="SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name IN ('password_hash','username');"
 
@@ -271,27 +271,14 @@ validate_business_schema_local() {
         fail 'Local business database is reachable but could not be authenticated or queried. Check SPRING_DATASOURCE_PASSWORD.'
     total="$(PGPASSWORD="$password" psql -h localhost -p 5432 -U trading_season -d trading_season -Atqc "$business_total_query")"
     removed="$(PGPASSWORD="$password" psql -h localhost -p 5432 -U trading_season -d trading_season -Atqc "$business_v3_query")"
-    [[ "$required" == 16 && "$removed" == 0 ]] || \
-        fail "Local business schema is partial or unexpected ($required/16 required tables, $total total tables). No migrations were run."
+    [[ "$required" == 18 && "$removed" == 0 ]] || \
+        fail "Local schema is partial or unexpected ($required/18 required tables, $total total tables). No migrations were run."
     data_directory="$(PGPASSWORD="$password" psql -h localhost -p 5432 -U trading_season -d trading_season -Atqc 'SHOW data_directory' 2>/dev/null || true)"
     if [[ -n "$data_directory" && -e "$data_directory" ]] && df -Pk "$data_directory" >/dev/null 2>&1; then
         check_storage 'Local PostgreSQL storage' "$data_directory"
     else
         ready 'Local PostgreSQL storage — server data path is not inspectable by this user; no import will be started.'
     fi
-}
-
-validate_auth_schema_local() {
-    local host port user password database count
-    host="$(get_env_value DB_HOST)"
-    port="$(get_env_value DB_PORT)"
-    user="$(get_env_value DB_USER)"
-    password="$(get_env_value DB_PASSWORD)"
-    database="$(get_env_value DB_NAME)"
-    count="$(PGPASSWORD="$password" psql -h "$host" -p "$port" -U "$user" -d "$database" -Atqc \
-        "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('users','refresh_tokens','migrations');" 2>/dev/null)" || \
-        fail 'Local auth database could not be authenticated or queried. Check DB_* in apps/auth-service/.env.'
-    [[ "$count" == 3 ]] || fail "Local auth schema is incomplete ($count/3 required tables). Start or migrate the auth service manually, then rerun."
 }
 
 docker_compose() {
@@ -346,32 +333,20 @@ validate_or_initialize_docker_business() {
         for migration in \
             apps/market-data/db/migrations/V001__Initial_schema.sql \
             apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql \
-            apps/market-data/db/migrations/V003__Token_authentication.sql; do
+            apps/market-data/db/migrations/V003__Token_authentication.sql \
+            apps/market-data/db/migrations/V004__Order_status_lifecycle.sql \
+            apps/market-data/db/migrations/V005__User_accounts_and_refresh_tokens.sql \
+            apps/market-data/db/migrations/V006__Drop_duplicated_account_columns.sql; do
             docker_compose exec -T db psql -v ON_ERROR_STOP=1 -U trading_season -d trading_season < "$migration" || \
-                fail "Business database initialization failed while applying $(basename "$migration")."
+                fail "Database initialization failed while applying $(basename "$migration")."
         done
-        done_stage 'Business schema — initialized empty Docker database with V001–V003.'
+        done_stage 'Schema — initialized empty Docker database with V001–V006.'
         return
     fi
     removed="$(docker_compose exec -T db psql -U trading_season -d trading_season -Atqc "$business_v3_query")"
-    [[ "$required" == 16 && "$removed" == 0 ]] || \
-        fail "Docker business schema is partial or unexpected ($required/16 required tables, $total total tables). No migrations were run."
-    ready 'Business schema — existing Docker schema is valid; skipping.'
-}
-
-validate_docker_auth_schema() {
-    local count total
-    total="$(docker_compose exec -T auth-db psql -U authuser -d auth_db -Atqc \
-        "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';")"
-    count="$(docker_compose exec -T auth-db psql -U authuser -d auth_db -Atqc \
-        "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('users','refresh_tokens','migrations');")"
-    if [[ "$total" == 0 ]]; then
-        ready 'Auth schema — empty Docker database will be migrated by auth-service startup.'
-    elif [[ "$count" == 3 ]]; then
-        ready 'Auth schema — existing Docker schema is valid; skipping.'
-    else
-        fail "Docker auth schema is partial or unexpected ($count/3 required tables, $total total tables). No changes were made."
-    fi
+    [[ "$required" == 18 && "$removed" == 0 ]] || \
+        fail "Docker schema is partial or unexpected ($required/18 required tables, $total total tables). No migrations were run."
+    ready 'Schema — existing Docker schema is valid; skipping.'
 }
 
 check_docker_database_storage() {
@@ -392,8 +367,7 @@ select_databases() {
     if [[ "$use_local" == true ]]; then
         require_command psql 'Install the PostgreSQL client tools to verify the existing databases.'
         validate_business_schema_local
-        validate_auth_schema_local
-        ready 'Databases — using verified local trading_season and auth_db databases; Docker skipped.'
+        ready 'Databases — using the verified local trading_season database; Docker skipped.'
         return
     fi
     require_command docker 'Install the Docker CLI and Docker Compose v2, then start Docker Engine.'
@@ -402,39 +376,47 @@ select_databases() {
     ensure_docker_compose
     check_storage 'Docker storage' "$(docker info --format '{{.DockerRootDir}}')"
 
-    local service port existing had_both=true
-    for service in db auth-db; do
-        [[ "$service" == db ]] && port=5432 || port=5433
-        existing="$(docker_compose ps -q "$service" 2>/dev/null || true)"
-        [[ -n "$existing" ]] || had_both=false
-        if [[ -z "$existing" ]] && port_in_use "$port"; then
-            fail "Port $port is already in use by a non-Compose service. Docker databases were not started."
-        fi
-    done
+    local existing had_database=true
+    existing="$(docker_compose ps -q db 2>/dev/null || true)"
+    [[ -n "$existing" ]] || had_database=false
+    if [[ -z "$existing" ]] && port_in_use 5432; then
+        fail 'Port 5432 is already in use by a non-Compose service. The Docker database was not started.'
+    fi
+
+    local existing_broker
+    existing_broker="$(docker_compose ps -q kafka 2>/dev/null || true)"
+    if [[ -z "$existing_broker" ]] && port_in_use 29092; then
+        fail 'Port 29092 is already in use by a non-Compose service. The Docker broker was not started.'
+    fi
 
     export DB_PASSWORD="${SPRING_DATASOURCE_PASSWORD:-changeme}"
-    export AUTH_DB_PASSWORD="$(get_env_value DB_PASSWORD)"
-    docker_compose up -d db auth-db || fail 'Docker database startup failed. Review the Compose output above.'
-    wait_for_compose_health db || fail 'Docker business database did not become healthy within two minutes.'
-    wait_for_compose_health auth-db || fail 'Docker auth database did not become healthy within two minutes.'
-    if [[ "$had_both" == true ]]; then
-        ready 'Docker databases — existing business and auth containers are healthy; skipping startup.'
+    docker_compose up -d db kafka || fail 'Docker database or broker startup failed. Review the Compose output above.'
+    wait_for_compose_health db || fail 'Docker database did not become healthy within two minutes.'
+    wait_for_compose_health kafka || fail 'Docker Kafka broker did not become healthy within two minutes.'
+    # Separate from the broker starting: auto-creation is disabled, so
+    # trade-events exists only once this one-shot container has run.
+    docker_compose up -d kafka-init || fail 'Creating the trade-events topic failed. Review the Compose output above.'
+    if [[ "$had_database" == true && -n "$existing_broker" ]]; then
+        ready 'Docker database and broker — the existing containers are healthy; skipping startup.'
     else
-        done_stage 'Docker databases — business and auth PostgreSQL containers are healthy.'
+        done_stage 'Docker database and broker — the PostgreSQL and Kafka containers are healthy.'
     fi
     validate_or_initialize_docker_business
-    validate_docker_auth_schema
     check_docker_database_storage
     check_storage 'Storage after Docker startup' "$repo_root"
 
-    # The applications run on the VM, so expose the Compose database ports to
-    # their inherited environment even when an existing .env targets local PostgreSQL.
+    # The applications run on the VM, so expose the Compose database port to
+    # their inherited environment even when an existing .env targets local
+    # PostgreSQL. Auth connects to the same database as the Java services.
     export SPRING_DATASOURCE_PASSWORD="$DB_PASSWORD"
     export DB_HOST=localhost
-    export DB_PORT=5433
-    export DB_USER="$(get_env_value DB_USER)"
-    export DB_PASSWORD="$AUTH_DB_PASSWORD"
-    export DB_NAME="$(get_env_value DB_NAME)"
+    export DB_PORT=5432
+    export DB_USER=trading_season
+    export DB_NAME=trading_season
+    # The broker is published on the host as localhost:29092; inside Compose it
+    # is kafka:9092. These applications run on the VM, so they take the former.
+    # Nothing reads this yet -- no service publishes or consumes.
+    export KAFKA_BOOTSTRAP_SERVERS=localhost:29092
 }
 
 start_service() {
