@@ -4,6 +4,7 @@ import { databaseConfig } from './config/database.config.js';
 import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
 import { HealthModule } from './health/health.module.js';
+import { SeedService } from './config/seed.service.js';
 
 @Module({
   imports: [
@@ -12,5 +13,7 @@ import { HealthModule } from './health/health.module.js';
     UsersModule,
     HealthModule,
   ],
+  providers: [SeedService],
+  exports: [SeedService],
 })
 export class AppModule {}
