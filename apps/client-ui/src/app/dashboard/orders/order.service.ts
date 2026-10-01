@@ -45,6 +45,7 @@ export class OrderService {
   // process at all fails this observable.
   submitOrder(order: {
     accountId: number;
+    simulatedAt?: string;
     symbol: string;
     orderType: OrderType;
     quantity: number;
@@ -63,6 +64,7 @@ export class OrderService {
           quantity: order.quantity,
           indicativePrice: order.indicativePrice,
           clientReference: newClientReference(),
+          ...(order.simulatedAt ? { simulatedAt: order.simulatedAt } : {}),
         };
         return this._http.post<OrderResult>(`${this._apiUrl}/orders`, submission);
       }),

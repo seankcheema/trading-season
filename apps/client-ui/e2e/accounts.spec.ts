@@ -217,7 +217,7 @@ test.describe('creating an account from the dashboard', () => {
 test.describe('portfolios and net worth', () => {
   test.use({ stubOptions: { accounts: [EXISTING_SEED] } });
 
-  test('shows a recorded portfolio point on its actual day across chart ranges', async ({
+  test('shows portfolio history on the simulation timeline across chart ranges', async ({
     page,
     loginPage,
     dashboardPage,
@@ -229,7 +229,7 @@ test.describe('portfolios and net worth', () => {
     for (const timeframe of ['5D', '1M', '1Y']) {
       const loaded = page.waitForResponse(
         (response) =>
-          response.url().includes('/portfolio-history') &&
+          response.url().includes('/market/candles') &&
           new URL(response.url()).searchParams.get('timeframe') === timeframe,
       );
       await page.getByRole('button', { name: timeframe, exact: true }).click();
@@ -237,14 +237,13 @@ test.describe('portfolios and net worth', () => {
       await expect(chart.locator('.price-current-marker')).toBeVisible();
     }
     const responses = await api.apiResponses();
-    const history = responses.filter((response) => response.url.includes('/portfolio-history'));
-    expect(history.length).toBeGreaterThanOrEqual(4);
-    for (const response of history) {
-      const points = JSON.parse(response.body) as { timestamp: string; value: number }[];
-      expect(points).toHaveLength(1);
-      expect(new Date(points[0].timestamp).toDateString()).toBe(new Date().toDateString());
-      expect(points[0].value).toBe(600);
-    }
+    const candles = responses.filter((response) => response.url.includes('/market/candles'));
+    expect(candles.length).toBeGreaterThanOrEqual(4);
+    expect(
+      candles.every(
+        (response) => JSON.parse(response.body).marketTimestamp === '2026-01-05T15:00:00Z',
+      ),
+    ).toBe(true);
   });
 
   test("counts the shared cash once plus every account's portfolio", async ({
@@ -329,5 +328,72 @@ test.describe('portfolios and net worth', () => {
       { amount: 25, reason: 'WITHDRAWAL' },
     ]);
     expect(api.fundsOf(EXISTING_USER.email)).toBe(2025.25);
+  });
+});
+
+test.describe('rewinding executed trades', () => {
+  const user = newAccount();
+  const buy = {
+    orderId: 1,
+    instrumentId: 7,
+    status: 'FILLED' as const,
+    orderType: 'BUY' as const,
+    quantity: 2,
+    indicativePrice: 100,
+    simulatedAt: '2026-01-05T15:30:00Z',
+    submittedAt: '2026-10-01T18:00:00Z',
+    resolvedAt: '2026-10-01T18:00:00Z',
+    rejectionReason: null,
+  };
+  test.use({
+    stubOptions: {
+      accounts: [
+        seed(user, {
+          availableFunds: 1040,
+          tradingAccounts: [
+            { name: 'Timeline', holdings: [{ symbol: 'AAPL', quantity: 0, averageCost: 100 }] },
+          ],
+          orders: [
+            buy,
+            {
+              ...buy,
+              orderId: 2,
+              orderType: 'SELL',
+              indicativePrice: 120,
+              simulatedAt: '2026-01-05T16:30:00Z',
+            },
+          ],
+        }),
+      ],
+    },
+  });
+  test('moves shares, funds, and recent trades backward and forward without submitting again', async ({
+    page,
+    loginPage,
+    dashboardPage,
+    api,
+  }) => {
+    await signIn({ loginPage, dashboardPage }, user);
+    const activity = page.getByTestId('recent-transactions');
+    await expect(activity.locator('[data-kind="trade"]')).toHaveCount(0);
+    await expect(dashboardPage.netWorth).toHaveText('$1,000.00');
+    for (const [time, count, portfolio, worth] of [
+      ['2026-01-05T09:30', 1, '$451.60', '$1,251.60'],
+      ['2026-01-05T10:30', 2, '$0.00', '$1,040.00'],
+      ['2026-01-05T09:30', 1, '$451.60', '$1,251.60'],
+      ['2026-01-05T09:29', 0, '$0.00', '$1,000.00'],
+    ] as const) {
+      await page.getByRole('button', { name: 'Change simulated market time' }).click();
+      await page.getByLabel('Simulated time', { exact: true }).fill(time);
+      await page.getByRole('button', { name: 'Apply time', exact: true }).click();
+      await expect(activity.locator('[data-kind="trade"]')).toHaveCount(count);
+      await expect(dashboardPage.portfolioValue).toHaveText(portfolio);
+      await expect(dashboardPage.netWorth).toHaveText(worth);
+    }
+    expect(
+      api.requests.filter(
+        (request) => request.url.includes('/api/orders') && request.method === 'POST',
+      ),
+    ).toHaveLength(0);
   });
 });

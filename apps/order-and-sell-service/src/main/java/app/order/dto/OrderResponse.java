@@ -11,6 +11,7 @@ import java.time.OffsetDateTime;
  * whether the trade executed, and if not, why.
  *
  * @param orderId          the created order's id
+ * @param accountId        owned account, for projecting its simulated positions
  * @param instrumentId     instrument traded, for matching execution history to the catalogue
  * @param status           PENDING, FILLED, or REJECTED (KAN-93); a response
  *                         to a submission is always FILLED or REJECTED
@@ -25,6 +26,7 @@ import java.time.OffsetDateTime;
 public record OrderResponse(
         Integer orderId,
         Integer instrumentId,
+        Integer accountId,
         String status,
         String orderType,
         BigDecimal quantity,
@@ -39,6 +41,7 @@ public record OrderResponse(
         return new OrderResponse(
                 order.getOrderId(),
                 order.getInstrumentId(),
+                order.getAccountId(),
                 order.getStatus(),
                 order.getOrderType(),
                 order.getQuantity(),

@@ -1,3 +1,4 @@
+import { cashAt, executionTime, holdingsAt } from './accounts/simulation-account';
 import { CurrencyPipe, DOCUMENT, DatePipe, isPlatformBrowser } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
@@ -176,7 +177,29 @@ export class DashboardComponent implements OnInit, OnDestroy {
   });
   protected readonly accountDialog = signal<AccountDialog | null>(null);
   protected readonly openHeaderDropdown = signal<HeaderDropdown | null>(null);
-  protected readonly cashBalance = this.accountStore.cashBalance;
+  protected readonly cashBalance = computed(() => {
+    const at = this.marketTimeMillis();
+    return at === null
+      ? this.accountStore.cashBalance()
+      : cashAt(this.accountStore.cashBalance(), this.orderService.orders(), at);
+  });
+  private readonly simulationHoldings = computed(() => {
+    const at = this.marketTimeMillis();
+    return new Map(
+      [...this.accountStore.holdingsByAccount()].map(([accountId, current]) => [
+        accountId,
+        at === null
+          ? current
+          : holdingsAt(
+              current,
+              this.orderService.orders(),
+              this.orderService.catalogue(),
+              accountId,
+              at,
+            ),
+      ]),
+    );
+  });
   // First and last initial of the signed-in user; empty until the profile loads.
   protected readonly profileInitials = this.accountStore.initials;
   protected readonly instruments = signal<Instrument[]>([...MOCK_INSTRUMENTS]);
@@ -185,6 +208,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly portfolioTimeframe = signal<Timeframe>('1D');
   protected readonly marketSessionId = signal<number | null>(null);
   protected readonly currentMarketTimestamp = signal('');
+  private readonly simulationClockRevision = signal(0);
   protected readonly assetCandlePoints = signal(new Map<string, PricePoint[]>());
   protected readonly marketCalendar = signal<MarketCalendarAvailability>(DEFAULT_MARKET_CALENDAR);
   protected readonly marketDateTime = signal('');
@@ -247,7 +271,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // The selected account's portfolio.
   protected readonly holdings = computed(() =>
-    this.priceHoldings(this.accountStore.selectedHoldings()),
+    this.priceHoldings(this.simulationHoldings().get(this.selectedAccountId() ?? -1) ?? []),
   );
 
   protected readonly visibleAssets = computed(() =>
@@ -265,7 +289,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // Value of each owned account's portfolio, keyed by account id.
   protected readonly portfolioValues = computed(() => {
     const values = new Map<number, number>();
-    for (const [accountId, holdings] of this.accountStore.holdingsByAccount()) {
+    for (const [accountId, holdings] of this.simulationHoldings()) {
       values.set(accountId, totalValue(this.priceHoldings(holdings)));
     }
     return values;
@@ -287,14 +311,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
     );
     const trades: ActivityItem[] = this.orderService
       .orders()
-      .filter((order) => order.status === 'FILLED' && order.resolvedAt !== null)
+      .filter(
+        (order) =>
+          order.status === 'FILLED' &&
+          order.resolvedAt !== null &&
+          (this.marketTimeMillis() === null || executionTime(order) <= this.marketTimeMillis()!),
+      )
       .map((order) => {
         const instrument =
           order.instrumentId === undefined ? undefined : catalogue.get(order.instrumentId);
         return {
           kind: 'trade',
           key: `order-${order.orderId}`,
-          date: order.resolvedAt!,
+          date:
+            order.simulatedAt && Number.isFinite(Date.parse(order.simulatedAt))
+              ? order.simulatedAt
+              : order.resolvedAt!,
           reason: order.orderType,
           value: order.quantity * order.indicativePrice,
           label:
@@ -362,20 +394,53 @@ export class DashboardComponent implements OnInit, OnDestroy {
   );
 
   protected readonly portfolioHistory = inject(PortfolioHistoryService);
-  protected readonly portfolioChart = this.portfolioHistory.points;
+  protected readonly portfolioChart = computed(() => {
+    const points = this.portfolioHistory.points();
+    const at = this.marketTimeMillis();
+    if (at === null || !points.length) return points;
+    return [
+      ...points.filter((point) => point.time.getTime() < at),
+      { time: new Date(at), value: this.portfolioValue() },
+    ];
+  });
   protected readonly portfolioObservationInterval = computed(
     () =>
       ({ '1D': 60_000, '5D': 300_000, '1M': 3_600_000, '1Y': 86_400_000 })[
         this.portfolioTimeframe()
       ],
   );
+  private readonly simulationMinute = computed(() => {
+    const at = this.marketTimeMillis();
+    return at === null ? null : Math.floor(at / 60_000);
+  });
   private historyRefreshTimer?: ReturnType<typeof setInterval>;
 
   constructor() {
     effect(() => {
       const accountId = this.selectedAccountId();
       const timeframe = this.portfolioTimeframe();
-      untracked(() => this.portfolioHistory.select(accountId, timeframe));
+      this.simulationClockRevision();
+      const minute = this.simulationMinute();
+      const sessionId = this.marketSessionId();
+      const orders = this.orderService.orders();
+      const catalogue = this.orderService.catalogue();
+      const current = this.accountStore.holdingsByAccount().get(accountId ?? -1) ?? [];
+      untracked(() =>
+        this.portfolioHistory.select(
+          accountId,
+          timeframe,
+          minute !== null && sessionId !== null && accountId !== null
+            ? {
+                accountId,
+                at: Date.parse(this.currentMarketTimestamp()),
+                sessionId,
+                current,
+                orders,
+                catalogue,
+              }
+            : undefined,
+        ),
+      );
     });
     // Holdings arrive after the market snapshot and change with the selected account, so
     // load daily candles for any newly held symbol once there is a market session.
@@ -556,6 +621,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.clearAssetChartSubscriptions();
     this.clearQueuedUpdates();
     this.marketGeneration++;
+    this.simulationClockRevision.update((value) => value + 1);
     this.marketSessionId.set(snapshot.sessionId);
     this.currentMarketTimestamp.set(snapshot.marketTimestamp);
     this.marketCalendar.set(snapshot.calendar);

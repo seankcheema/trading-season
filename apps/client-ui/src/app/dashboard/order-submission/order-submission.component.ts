@@ -179,10 +179,7 @@ export class OrderSubmissionComponent {
 
   // Each completed request leaves the ticket ready for another deliberate order.
   protected readonly canSubmit = computed(
-    () =>
-      this.shares() > 0 &&
-      this.shares() <= this.maxShares() &&
-      !this.busy(),
+    () => this.shares() > 0 && this.shares() <= this.maxShares() && !this.busy(),
   );
 
   protected readonly submitLabel = computed(() => {
@@ -242,6 +239,9 @@ export class OrderSubmissionComponent {
         orderType: this.side() === 'buy' ? 'BUY' : 'SELL',
         quantity: this.shares(),
         indicativePrice: this.activeInstrument().price,
+        simulatedAt: Number.isFinite(Date.parse(this.marketTimestamp()))
+          ? new Date(this.marketTimestamp()).toISOString()
+          : undefined,
       })
       .subscribe({
         next: (result) => {

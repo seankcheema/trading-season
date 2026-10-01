@@ -26,6 +26,7 @@ export interface InstrumentRef {
 }
 
 export interface OrderSubmission {
+  simulatedAt?: string;
   accountId: number;
   instrumentId: number;
   orderType: OrderType;
@@ -37,9 +38,11 @@ export interface OrderSubmission {
 }
 
 export interface OrderResult {
+  simulatedAt?: string | null;
   orderId: number;
   // Optional during rollout against an older backend; identifies the catalogue entry.
   instrumentId?: number;
+  accountId?: number;
   status: OrderStatus;
   orderType: OrderType;
   quantity: number;

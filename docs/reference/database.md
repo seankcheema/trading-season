@@ -11,8 +11,7 @@ The auth service previously used a database of its own, `auth_db`. V005 moved it
 | Table group | Schema source | Application behavior |
 | --- | --- | --- |
 | Business: trading_season | [V001 bootstrap SQL](../../apps/market-data/db/migrations/V001__Initial_schema.sql) plus incremental SQL such as [V002 synthetic market data replay metadata](../../apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql) and [V003 token authentication](../../apps/market-data/db/migrations/V003__Token_authentication.sql) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
-| Auth: auth_db | [TypeORM migrations](../../apps/auth-service/src/database/migrations/) | Migrations run on startup; synchronize=false |
-| Business tables | [Market Data migrations](services/market-data.md) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
+| Business tables | [Market Data migrations](../../apps/market-data/README.md) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
 | user_accounts, refresh_tokens | the same migrations, from V005 | TypeORM with synchronize=false and no migration runner; the auth service reads and writes tables it never creates |
 
 The business bootstrap defines more of the trading model than the currently implemented Java auth API. The ERD below is the canonical diagram; SQL remains authoritative for exact columns and constraints.
@@ -96,7 +95,7 @@ If the role or database already exists, skip the command that created it.
 
 ### Apply the schema
 
-All migrations are managed centrally in the [Market Data folder](services/market-data.md). Connect pgAdmin Query Tool to the `trading_season` database as the `trading_season` user, then run these files in order from `apps/market-data/db/migrations/`. Tables belong to the user that creates them, so running the files as your admin user leaves `trading_season` without table access even though it owns the database.
+All migrations are managed centrally in the [Market Data folder](../../apps/market-data/README.md). Connect pgAdmin Query Tool to the `trading_season` database as the `trading_season` user, then run these files in order from `apps/market-data/db/migrations/`. Tables belong to the user that creates them, so running the files as your admin user leaves `trading_season` without table access even though it owns the database.
 
 1. `apps/market-data/db/migrations/V001__Initial_schema.sql`
 2. `apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql`
@@ -122,7 +121,7 @@ psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STO
 
 A database already initialized through an earlier version only needs the later files applied. V008 is the one to apply to a database that already holds market data: it gives every stock already loaded a tradable instrument, without which the dashboard can show a price for a symbol but no order can name it. It is idempotent, so applying it again, or applying it before any market data exists, is harmless.
 
-**Important:** Both Java services (Holdings and Trade Service and Order and Sell Service) must connect with the same schema version. Never edit an applied migration; add a new one instead. See [Market Data documentation](services/market-data.md) for detailed migration rules.
+**Important:** Both Java services (Holdings and Trade Service and Order and Sell Service) must connect with the same schema version. Never edit an applied migration; add a new one instead. See [Market Data documentation](../../apps/market-data/README.md) for detailed migration rules.
 
 ### Verify the schema
 
@@ -556,3 +555,5 @@ erDiagram
         TIMESTAMPTZ recorded_at
     }
 ```
+
+[V010](../../apps/market-data/db/migrations/V010__Order_simulated_time.sql) adds nullable `orders.simulated_at` (TIMESTAMPTZ) for the replay time selected at submission. Existing orders remain null and display their real execution time. The real audit and fill timestamps remain independent. Apply V010 before deploying the order service update.

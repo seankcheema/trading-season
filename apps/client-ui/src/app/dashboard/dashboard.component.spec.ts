@@ -99,11 +99,10 @@ function flushAccounts(
   if (selected) {
     const positions = holdings[selected.accountId] as
       { quantity: number; averageCost: number }[] | undefined;
-    http
-      .expectOne(
-        (request) => request.url === `/api/accounts/${selected.accountId}/portfolio-history`,
-      )
-      .flush(
+    for (const request of http.match(
+      (request) => request.url === `/api/accounts/${selected.accountId}/portfolio-history`,
+    ))
+      request.flush(
         positions?.some((position) => position.quantity > 0)
           ? [
               {
@@ -184,6 +183,113 @@ describe('DashboardComponent', () => {
     expect(rows[2].textContent).toContain('+$120.00');
   });
 
+  it('shows executions at selected replay times and falls back to audit time', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+    flushAccounts(fixture, ACCOUNTS, {
+      orders: [
+        filledOrder({
+          orderId: 1,
+          simulatedAt: '2026-01-06T17:00:00Z',
+          resolvedAt: '2026-10-01T18:00:00Z',
+        }),
+        filledOrder({
+          orderId: 2,
+          simulatedAt: '2026-01-05T16:00:00Z',
+          resolvedAt: '2026-10-01T18:01:00Z',
+        }),
+        filledOrder({ orderId: 3, simulatedAt: null, resolvedAt: '2026-10-01T18:02:00Z' }),
+      ],
+    });
+    const activity = fixture.componentInstance['transactions']();
+    expect(activity.map((item) => item.key)).toEqual(['order-3', 'order-1', 'order-2']);
+    expect(activity.map((item) => item.date)).toEqual([
+      '2026-10-01T18:02:00Z',
+      '2026-01-06T17:00:00Z',
+      '2026-01-05T16:00:00Z',
+    ]);
+  });
+
+  it('rewinds the complete account view and restores executions without another submission', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+    const component = fixture.componentInstance;
+    component['applySnapshot']({
+      sessionId: 1,
+      status: 'OPEN',
+      marketTimestamp: '2026-01-05T16:00:00Z',
+      serverTimestamp: '2026-10-01T18:00:00Z',
+      calendar: CALENDAR,
+      stocks: [
+        {
+          symbol: 'AAPL',
+          companyName: 'Apple',
+          price: 120,
+          change: 0,
+          changePercent: 0,
+          timestamp: '2026-01-05T16:00:00Z',
+        },
+      ],
+    });
+    const buy = '2026-01-10T16:00:00Z';
+    const sell = '2026-01-20T16:00:00Z';
+    const http = flushAccounts(fixture, [ACCOUNTS[0]], {
+      cash: 1040,
+      holdings: { 1: [{ symbol: 'AAPL', quantity: 0, averageCost: 100 }] },
+      orders: [
+        filledOrder({
+          accountId: 1,
+          instrumentId: 7,
+          quantity: 2,
+          indicativePrice: 100,
+          simulatedAt: buy,
+        }),
+        filledOrder({
+          accountId: 1,
+          instrumentId: 7,
+          orderId: 2,
+          orderType: 'SELL',
+          quantity: 2,
+          indicativePrice: 120,
+          simulatedAt: sell,
+        }),
+      ],
+    });
+    const answerCandles = () => {
+      for (const request of http.match((request) => request.url === '/api/market/candles')) {
+        if (!request.cancelled)
+          request.flush({
+            symbol: 'AAPL',
+            points: [
+              { timestamp: buy, close: 100 },
+              { timestamp: sell, close: 120 },
+            ],
+          });
+      }
+      fixture.detectChanges();
+    };
+    answerCandles();
+    for (const [timestamp, shares, cash, rows] of [
+      ['2026-01-05T16:00:00Z', 0, 1000, 0],
+      [buy, 2, 800, 1],
+      [sell, 0, 1040, 2],
+      [buy, 2, 800, 1],
+      ['2026-01-05T16:00:00Z', 0, 1000, 0],
+    ] as const) {
+      component['currentMarketTimestamp'].set(timestamp);
+      fixture.detectChanges();
+      answerCandles();
+      expect(component['positions']()['AAPL'] ?? 0).toBe(shares);
+      expect(component['cashBalance']()).toBe(cash);
+      expect(component['portfolioValue']()).toBe(shares * 120);
+      expect(component['netWorth']()).toBe(cash + shares * 120);
+      expect(component['transactions']().filter((item) => item.kind === 'trade')).toHaveLength(
+        rows,
+      );
+    }
+    http.expectNone({ method: 'POST', url: '/api/orders' });
+  });
+
   it('should create the dashboard component', () => {
     const fixture = TestBed.createComponent(DashboardComponent);
     expect(fixture.componentInstance).toBeTruthy();
@@ -206,7 +312,7 @@ describe('DashboardComponent', () => {
     },
   );
 
-  it('uses real observation dates independently of the market replay session', () => {
+  it('uses the selected simulation time for the latest displayed value', () => {
     const fixture = TestBed.createComponent(DashboardComponent);
     fixture.detectChanges();
     flushAccounts(fixture);
@@ -216,7 +322,7 @@ describe('DashboardComponent', () => {
     const points = component['portfolioChart']();
 
     expect(points).toHaveLength(1);
-    expect(points[0].time.toISOString()).toBe('2026-10-01T18:00:00.000Z');
+    expect(points[0].time.toISOString()).toBe('2026-01-05T16:00:00.000Z');
   });
 
   it('should not show the order submission dialog initially', () => {
@@ -1125,7 +1231,7 @@ describe('DashboardComponent', () => {
           (request) =>
             request.url === '/api/market/candles' && request.params.get('symbol') === 'SPY',
         ),
-      ).toHaveLength(1);
+      ).toHaveLength(2);
     });
 
     it("lists only the user's own cash transactions, newest first", () => {

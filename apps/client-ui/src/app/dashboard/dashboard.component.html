@@ -267,7 +267,7 @@
                     }}
                   </span>
                   <span class="text-muted-foreground block text-xs">
-                    {{ transaction.date | date: 'MMM d' }}
+                    {{ transaction.date | date: 'MMM d, y, h:mm a' : '' : 'en-US' }}
                   </span>
                 </span>
                 <span class="shrink-0 text-right tabular-nums">

@@ -95,6 +95,24 @@ describe('OrderSubmissionComponent', () => {
     expect(component['cashAfter']()).toBeCloseTo(9366.82);
   });
 
+  it.each(['2026-01-06T17:00:00Z', '2026-01-05T16:00:00Z', 'invalid'])(
+    'uses the selected replay timestamp %s at submission with a real-time fallback',
+    (timestamp) => {
+      const fixture = setup();
+      fixture.componentRef.setInput('marketTimestamp', timestamp);
+      fixture.detectChanges();
+      fixture.componentInstance['submit']();
+      const http = TestBed.inject(HttpTestingController);
+      http.expectOne('/api/instruments').flush(CATALOGUE);
+      const posted = http.expectOne({ method: 'POST', url: '/api/orders' });
+      expect(posted.request.body.simulatedAt).toBe(
+        timestamp === 'invalid' ? undefined : new Date(timestamp).toISOString(),
+      );
+      posted.flush(filledOrder());
+      http.verify();
+    },
+  );
+
   it('should post the order and emit the outcome the backend returned', () => {
     const http = TestBed.inject(HttpTestingController);
     const component = setup().componentInstance;
@@ -172,7 +190,11 @@ describe('OrderSubmissionComponent', () => {
       expect(second.request.body.clientReference).not.toBe(reference);
       second.flush(filledOrder({ orderId: 2, orderType: side === 'buy' ? 'BUY' : 'SELL' }));
       expect(emitted).toHaveLength(2);
-      expect(TestBed.inject(OrderService).orders().map((order) => order.orderId)).toEqual([2, 1]);
+      expect(
+        TestBed.inject(OrderService)
+          .orders()
+          .map((order) => order.orderId),
+      ).toEqual([2, 1]);
       expect(TestBed.inject(ToastService).messages()).toHaveLength(1);
       if (side === 'buy') fixture.componentRef.setInput('cashBalance', 0);
       else fixture.componentRef.setInput('positions', { AAPL: 0 });

@@ -140,6 +140,22 @@ class OrderControllerIntegrationTest {
     }
 
     @Test
+    void storesSelectedReplayTimeAndKeepsRealAuditTimesForBackdatedOrders() throws Exception {
+        for (String replayTime : List.of("2026-01-06T17:00:00Z", "2026-01-05T16:00:00Z")) {
+            String payload = body("BUY", "1", "20.00").trim();
+            payload = payload.substring(0, payload.length() - 1) + ", \"simulatedAt\": \"" + replayTime + "\"}";
+            mockMvc.perform(post("/api/orders").with(tokenFor(user.getUserId()))
+                    .contentType(MediaType.APPLICATION_JSON).content(payload))
+                    .andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("FILLED"))
+                    .andExpect(jsonPath("$.simulatedAt").value(replayTime));
+        }
+        for (Order order : orderRepository.findAll()) {
+            assertTrue(order.getSubmittedAt().isAfter(OffsetDateTime.parse("2026-01-06T17:00:00Z")));
+            assertTrue(order.getResolvedAt().isAfter(order.getSimulatedAt()));
+        }
+    }
+
+    @Test
     void buyThenSellFillsAndLeavesAConsistentLedger() throws Exception {
         submit("BUY", "10", "20.00")
                 .andExpect(status().isCreated())

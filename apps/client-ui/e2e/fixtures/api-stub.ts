@@ -1,3 +1,4 @@
+import type { OrderResult } from '../../src/app/dashboard/orders/order.models';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import type { Page, Route } from '@playwright/test';
 
@@ -50,6 +51,8 @@ export interface SeedAccount {
   availableFunds?: number;
   /** Trading accounts the business backend holds for this user. */
   tradingAccounts?: SeedTradingAccount[];
+  /** Executed orders for the first seeded trading account. */
+  orders?: Omit<OrderResult, 'accountId'>[];
 }
 
 /** Trading account as GET /api/me/accounts returns it. */
@@ -174,6 +177,8 @@ export class ApiStub {
   private readonly cashTransactions = new Map<string, StoredCashTransaction[]>();
   private readonly portfolioValuations = new Map<number, { timestamp: string; value: number }[]>();
   private nextId = 1;
+  private readonly orders = new Map<string, OrderResult[]>();
+  private marketTimestamp = '2026-01-05T15:00:00Z';
 
   constructor(options: StubOptions = {}) {
     this.accessTokenTtl = options.accessTokenTtlSeconds ?? ACCESS_TOKEN_TTL;
@@ -194,6 +199,11 @@ export class ApiStub {
           ...(trading.holdings ?? []),
         );
       }
+      const owned = this.tradingAccounts.find((trading) => trading.ownerId === account.id);
+      this.orders.set(
+        account.id,
+        (seed.orders ?? []).map((order) => ({ ...order, accountId: owned?.accountId })),
+      );
     }
   }
 
@@ -229,10 +239,23 @@ export class ApiStub {
     await page.route('**/api/auth/register', (route) => this.registerProfile(route));
     await page.route('**/api/auth/account-exists', (route) => this.accountExists(route));
     await page.route('**/api/orders', async (route) => {
-      if (await this.caller(route)) await this.json(route, 200, []);
+      const owner = await this.caller(route);
+      if (owner) await this.json(route, 200, this.orders.get(owner) ?? []);
     });
     await page.route('**/api/instruments', async (route) => {
-      if (await this.caller(route)) await this.json(route, 200, []);
+      if (await this.caller(route))
+        await this.json(route, 200, [
+          {
+            instrumentId: 7,
+            ticker: 'AAPL',
+            simulatedStockSymbol: 'AAPL',
+            name: 'Apple',
+            assetClass: 'Equity',
+            market: 'US',
+            currency: 'USD',
+            tradable: true,
+          },
+        ]);
     });
     await page.route('**/api/users/me', (route) => this.ownProfile(route));
     await page.route('**/api/market/**', (route) => this.market(route));
@@ -422,6 +445,9 @@ export class ApiStub {
    * of them, so this only needs to keep it from erroring on load.
    */
   private async market(route: Route): Promise<void> {
+    if (route.request().method() === 'PUT') {
+      this.marketTimestamp = String(this.body(route)['timestamp']);
+    }
     const url = new URL(route.request().url());
 
     if (url.pathname.endsWith('/market/stream')) {
@@ -435,7 +461,7 @@ export class ApiStub {
         sessionId: 1,
         symbol: url.searchParams.get('symbol') ?? 'AAPL',
         timeframe: url.searchParams.get('timeframe') ?? '1D',
-        marketTimestamp: '2026-01-05T15:00:00Z',
+        marketTimestamp: this.marketTimestamp,
         points: [
           {
             timestamp: '2026-01-05T15:00:00Z',
@@ -452,7 +478,7 @@ export class ApiStub {
     await this.json(route, 200, {
       sessionId: 1,
       status: 'OPEN',
-      marketTimestamp: '2026-01-05T15:00:00Z',
+      marketTimestamp: this.marketTimestamp,
       serverTimestamp: new Date().toISOString(),
       calendar: {
         timezone: 'America/Chicago',
