@@ -80,6 +80,7 @@ This service is the primary backend for Client UI. It implements order operation
 | --- | --- | --- | --- |
 | POST | /api/orders | Bearer token + JSON: `accountId`, `instrumentId`, `orderType` (BUY or SELL), `quantity` (> 0), `indicativePrice` (> 0), optional `bufferPercent` (>= 0), `clientReference` (UUID idempotency key) | 201: `orderId`, `status`, `orderType`, `quantity`, `indicativePrice`, `rejectionReason`, `submittedAt`, `resolvedAt` |
 | GET | /api/orders | Bearer token | 200: array of the caller's orders, newest first, each in the same shape as the POST response |
+| GET | /api/instruments | Bearer token | 200: array of every instrument by ticker, each with `instrumentId`, `ticker`, `name`, `assetClass`, `market`, `currency`, `tradable`, `simulatedStockSymbol` |
 
 **Order lifecycle (KAN-93):** an order is created `PENDING`, then the trading rules run: the user's account is active, a buy is affordable, a sell is covered by holdings, and the instrument is tradable. A failed rule leaves the order `REJECTED` with a `rejectionReason`. Otherwise the fill is written and the order moves to `FILLED`, its final state. Every transition is recorded in `audit_trail`. A rejection is still a 201 response: it describes a failed trade, not a failed request.
 
@@ -89,7 +90,9 @@ This service is the primary backend for Client UI. It implements order operation
 
 **Idempotency:** resubmitting the same `accountId` and `clientReference` returns the original order's outcome without executing again.
 
-**Known gap:** on submission, `accountId` is taken from the request body and is not yet checked against the token's `sub`, so a valid token can place an order on another user's account. The listing endpoint is not affected: it is scoped to the caller. See [OrderController](../../apps/order-and-sell-service/src/main/java/app/order/OrderController.java).
+**Ownership:** `accountId` stays in the request body, because a user may own several accounts and has to say which one the order is for, but submission now refuses an account the caller does not own. A `accountId` belonging to another user is a 403 and an `accountId` that does not exist is a 404; neither writes an order row. Ownership is settled before the idempotency lookup, so a caller cannot read back the outcome of an order on an account that is not theirs. An `instrumentId` that does not exist is a 400 — distinct from an instrument that exists but is closed to trading, which is a 201 carrying a `REJECTED` order. See [OrderController](../../apps/order-and-sell-service/src/main/java/app/order/OrderController.java).
+
+**Instrument lookup:** an order names an `instrumentId`, but market data is keyed by symbol and holdings come back by symbol, so `GET /api/instruments` is how a client turns the symbol a trader picked into the id to submit. Non-tradable instruments are listed and flagged rather than hidden, because a position can outlive its instrument being suspended. Match on `simulatedStockSymbol` first, which is the symbol `GET /api/market/snapshot` reports, and fall back to `ticker` for an instrument nothing simulates.
 
 ### Planned trading endpoints
 
@@ -212,7 +215,7 @@ The Angular UI (port 4200) orchestrates these services:
    - POST /auth/logout (end session)
 
 2. **Profile, accounts, cash and market data:** Calls to Holdings and Trade Service
-   - Use dev proxy ([proxy.conf.json](../../apps/client-ui/proxy.conf.json)), which forwards all `/api/*` to port 8082
+   - Use dev proxy ([proxy.conf.json](../../apps/client-ui/proxy.conf.json)), which forwards `/api/*` to port 8082 except the trading paths below
    - Bearer token from Auth Service is sent in `Authorization: Bearer` header
    - POST /api/auth/register (submit profile after auth registration)
    - GET /api/users/me (profile: the shared cash balance and the name the header initials come from)
@@ -223,9 +226,12 @@ The Angular UI (port 4200) orchestrates these services:
    - GET /api/market/candles (dashboard charts)
    - GET /api/market/stream (real-time prices)
 
-3. **No calls to Order and Sell Service**
-   - Nothing in the UI or dev proxy targets port 8081
-   - Order submission is not wired yet; the dashboard logs the request instead of sending it
+3. **Trading:** Calls to Order and Sell Service
+   - The dev proxy forwards `/api/orders` and `/api/instruments` to port 8081; everything else under `/api` goes to port 8082. In containers [nginx.conf](../../apps/client-ui/nginx.conf) splits the same two paths off to `order-and-sell-service:8081`.
+   - GET /api/instruments (resolves the trader's symbol to an `instrumentId`)
+   - POST /api/orders (submit a buy or sell from the dashboard's order dialog)
+   - GET /api/orders (the caller's order history)
+   - The full-screen market page at `/dashboard/markets/:symbol` still has its Buy and Sell controls disabled; its trade ticket is not wired to these endpoints.
 
 Market prices and instrument names are shared simulation data. Everything else the dashboard shows is the signed-in user's own: accounts, each account's holdings, the shared cash balance and the funding history all come from the endpoints above, scoped to the token's `sub`.
 
@@ -288,11 +294,11 @@ Errors use an `{"error": "..."}` body. See [exception mapping](../../apps/holdin
 | 404 | GET /api/users/me before the caller has registered |
 | 409 | The caller already registered, or the email belongs to another account |
 
-## Java stock market API: port 8081
+## Java stock market API
 
-These public endpoints expose seeded stock data for the dashboard market ticker, instrument popup, and full-screen `/dashboard/markets/:symbol` view. The full-screen view combines candle history with live stream prices and supports `1D`, `5D`, `1M`, and `1Y`; chart modes, technical indicators, and peer comparison are computed in the browser. Its metrics, overview signals, news, AI responses, cash balance, held shares, and order preview are demo data rather than API responses. Buy and Sell only calculate a local preview and do not call an order endpoint. Account, portfolio, holding, transaction, and order integration remains outside this slice, and the dashboard portfolio chart still uses mock data.
+These public endpoints expose seeded stock data for the dashboard market ticker, instrument popup, and full-screen `/dashboard/markets/:symbol` view. Both Java services implement them identically; the UI reaches them on port 8082, because only the trading paths are routed to port 8081. The full-screen view combines candle history with live stream prices and supports `1D`, `5D`, `1M`, and `1Y`; chart modes, technical indicators, and peer comparison are computed in the browser. Its metrics, overview signals, news, AI responses, cash balance, held shares, and order preview are demo data rather than API responses. On that page Buy and Sell only calculate a local preview and do not call an order endpoint; the dashboard's own order dialog is what submits a trade, through [Trading endpoints](#trading-endpoints). Account, portfolio, holding and transaction integration remains outside this slice, and the dashboard portfolio chart still uses mock data.
 
-Planned protected trading endpoints will use the [token verification](#token-verification) described above: clients send the auth service access token as a bearer token, and the Java backend scopes account and order resources to the token's sub.
+Protected trading endpoints use the [token verification](#token-verification) described above: clients send the auth service access token as a bearer token, and the Java backend scopes account and order resources to the token's sub.
 
 ### Stock endpoints
 

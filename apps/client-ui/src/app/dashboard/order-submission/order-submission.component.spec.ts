@@ -1,6 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { OrderSubmissionComponent } from './order-submission.component';
 import { Instrument } from '../mock-data';
+import { InstrumentRef, OrderResult } from '../orders/order.models';
+import { OrderService } from '../orders/order.service';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
@@ -13,11 +15,51 @@ const INSTRUMENT: Instrument = {
   changePercent: 5.2,
 };
 
+// The account the dialog places orders against. Numeric, because the backend's accountId is.
+const ACCOUNT_ID = '42';
+
+const CATALOGUE: InstrumentRef[] = [
+  {
+    instrumentId: 7,
+    ticker: 'AAPL',
+    name: 'Apple Inc.',
+    assetClass: 'Equity',
+    market: 'US',
+    currency: 'USD',
+    tradable: true,
+    simulatedStockSymbol: 'AAPL',
+  },
+  {
+    instrumentId: 8,
+    ticker: 'NVDA',
+    name: 'NVIDIA Corporation',
+    assetClass: 'Equity',
+    market: 'US',
+    currency: 'USD',
+    tradable: true,
+    simulatedStockSymbol: 'NVDA',
+  },
+];
+
+function filledOrder(overrides: Partial<OrderResult> = {}): OrderResult {
+  return {
+    orderId: 1,
+    status: 'FILLED',
+    orderType: 'BUY',
+    quantity: 2,
+    indicativePrice: 316.59,
+    rejectionReason: null,
+    submittedAt: '2026-01-05T16:00:00Z',
+    resolvedAt: '2026-01-05T16:00:00Z',
+    ...overrides,
+  };
+}
+
 describe('OrderSubmissionComponent', () => {
   function setup(positions: Record<string, number> = {}) {
     const fixture = TestBed.createComponent(OrderSubmissionComponent);
     fixture.componentRef.setInput('instrument', INSTRUMENT);
-    fixture.componentRef.setInput('accountId', 'personal');
+    fixture.componentRef.setInput('accountId', ACCOUNT_ID);
     fixture.componentRef.setInput('cashBalance', 10_000);
     fixture.componentRef.setInput('positions', positions);
     return fixture;
@@ -26,7 +68,12 @@ describe('OrderSubmissionComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [OrderSubmissionComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      providers: [
+        OrderService,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+      ],
     }).compileComponents();
   });
 
@@ -48,15 +95,157 @@ describe('OrderSubmissionComponent', () => {
     expect(component['cashAfter']()).toBeCloseTo(9366.82);
   });
 
-  it('should emit the order on submit', () => {
+  it('should post the order and emit the outcome the backend returned', () => {
+    const http = TestBed.inject(HttpTestingController);
     const component = setup().componentInstance;
-    const emitted: unknown[] = [];
+    const emitted: OrderResult[] = [];
     component.submitted.subscribe((order) => emitted.push(order));
     component['shares'].set(2);
+
     component['submit']();
-    expect(emitted).toEqual([
-      { accountId: 'personal', symbol: 'AAPL', side: 'buy', shares: 2, price: 316.59 },
-    ]);
+    expect(component['submitting']()).toBe(true);
+
+    // The symbol has to be resolved to an instrument id before the order can be placed.
+    http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
+    const posted = http.expectOne({ method: 'POST', url: '/api/orders' });
+    expect(posted.request.body).toMatchObject({
+      accountId: 42,
+      instrumentId: 7,
+      orderType: 'BUY',
+      quantity: 2,
+      indicativePrice: 316.59,
+    });
+    expect(posted.request.body.clientReference).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+
+    posted.flush(filledOrder());
+
+    expect(component['submitting']()).toBe(false);
+    expect(component['filled']()).toBe(true);
+    expect(emitted).toEqual([filledOrder()]);
+    http.verify();
+  });
+
+  it('should send a sell as a SELL order', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const component = setup({ AAPL: 5 }).componentInstance;
+    component['side'].set('sell');
+    component['shares'].set(3);
+
+    component['submit']();
+    http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
+    const posted = http.expectOne({ method: 'POST', url: '/api/orders' });
+
+    expect(posted.request.body).toMatchObject({ orderType: 'SELL', quantity: 3, instrumentId: 7 });
+    posted.flush(filledOrder({ orderType: 'SELL', quantity: 3 }));
+    expect(component['filled']()).toBe(true);
+    http.verify();
+  });
+
+  it('should show a rejection as the order outcome rather than an error', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const component = setup().componentInstance;
+    const emitted: OrderResult[] = [];
+    component.submitted.subscribe((order) => emitted.push(order));
+    component['shares'].set(2);
+
+    component['submit']();
+    http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
+    http
+      .expectOne({ method: 'POST', url: '/api/orders' })
+      .flush(
+        filledOrder({
+          status: 'REJECTED',
+          rejectionReason: 'BR-09: insufficient funds for this order',
+        }),
+      );
+
+    expect(component['rejectionReason']()).toBe('BR-09: insufficient funds for this order');
+    expect(component['errorMessage']()).toBe('');
+    expect(component['filled']()).toBe(false);
+    // A rejection leaves the ticket usable, so the trader can change it and retry.
+    expect(component['canSubmit']()).toBe(true);
+    expect(emitted).toHaveLength(1);
+    http.verify();
+  });
+
+  it('should fall back to a generic reason for a rejection the backend did not explain', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const component = setup().componentInstance;
+    component['shares'].set(2);
+
+    component['submit']();
+    http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
+    http
+      .expectOne({ method: 'POST', url: '/api/orders' })
+      .flush(filledOrder({ status: 'REJECTED', rejectionReason: null }));
+
+    expect(component['rejectionReason']()).toBe('The order was rejected.');
+    http.verify();
+  });
+
+  it('should show a message when the submission itself fails', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const component = setup().componentInstance;
+    component['shares'].set(2);
+
+    component['submit']();
+    http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
+    http
+      .expectOne({ method: 'POST', url: '/api/orders' })
+      .flush({ error: 'nope' }, { status: 403, statusText: 'Forbidden' });
+
+    expect(component['submitting']()).toBe(false);
+    expect(component['errorMessage']()).toBe("That account isn't available to you.");
+    expect(component['outcome']()).toBeNull();
+    http.verify();
+  });
+
+  it('should refuse to submit without an account to trade against', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const fixture = setup();
+    fixture.componentRef.setInput('accountId', '');
+    const component = fixture.componentInstance;
+    component['shares'].set(2);
+
+    component['submit']();
+
+    expect(component['errorMessage']()).toBe('Select an account before placing an order.');
+    http.expectNone({ method: 'POST', url: '/api/orders' });
+  });
+
+  it('should report a symbol the catalogue does not carry', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const component = setup().componentInstance;
+    component['shares'].set(2);
+
+    component['submit']();
+    http.expectOne({ method: 'GET', url: '/api/instruments' }).flush([]);
+
+    expect(component['errorMessage']()).toBe(
+      "We couldn't find that symbol. Pick another and try again.",
+    );
+    http.expectNone({ method: 'POST', url: '/api/orders' });
+  });
+
+  it('should clear a previous outcome when the ticket changes', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const fixture = setup({ AAPL: 5 });
+    const component = fixture.componentInstance;
+    component['shares'].set(2);
+
+    component['submit']();
+    http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
+    http.expectOne({ method: 'POST', url: '/api/orders' }).flush(filledOrder());
+    expect(component['filled']()).toBe(true);
+
+    component['side'].set('sell');
+    fixture.detectChanges();
+
+    expect(component['outcome']()).toBeNull();
+    expect(component['canSubmit']()).toBe(true);
+    http.verify();
   });
 
   it('should resolve the active instrument from live input updates', () => {
@@ -68,14 +257,17 @@ describe('OrderSubmissionComponent', () => {
     expect(component['maxShares']()).toBe(25);
     component['shares'].set(2);
 
-    const emitted: unknown[] = [];
-    component.submitted.subscribe((order) => emitted.push(order));
+    const http = TestBed.inject(HttpTestingController);
     component['submit']();
+    http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
 
     expect(component['orderValue']()).toBe(800);
-    expect(emitted).toEqual([
-      { accountId: 'personal', symbol: 'AAPL', side: 'buy', shares: 2, price: 400 },
-    ]);
+    // The live price is what the order is submitted at, not the price the dialog opened with.
+    expect(http.expectOne({ method: 'POST', url: '/api/orders' }).request.body).toMatchObject({
+      instrumentId: 7,
+      quantity: 2,
+      indicativePrice: 400,
+    });
   });
 
   it('should link the original modal to the canonical full-screen symbol route', () => {
@@ -210,20 +402,62 @@ describe('OrderSubmissionComponent', () => {
     });
 
     it('should submit from the button and do nothing when there is nothing to trade', () => {
-      const { fixture, sharesInput, submitButton } = render();
-      const emitted: unknown[] = [];
+      const http = TestBed.inject(HttpTestingController);
+      const { fixture, sharesInput, submitButton, el } = render();
+      const emitted: OrderResult[] = [];
       fixture.componentInstance.submitted.subscribe((order) => emitted.push(order));
 
       setShares(sharesInput, '3');
       fixture.detectChanges();
       submitButton().click();
-      expect(emitted).toEqual([
-        { accountId: 'personal', symbol: 'AAPL', side: 'buy', shares: 3, price: 316.59 },
-      ]);
+      http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
+      http.expectOne({ method: 'POST', url: '/api/orders' }).flush(filledOrder({ quantity: 3 }));
+      fixture.detectChanges();
+
+      expect(emitted).toHaveLength(1);
+      expect(el.querySelector('[data-testid="order-filled"]')!.textContent).toContain(
+        'Filled 3 AAPL',
+      );
+      // The trade is done; a second click must not place another one.
+      expect(
+        Array.from(el.querySelectorAll<HTMLButtonElement>('button')).find(
+          (b) => b.textContent?.trim() === 'Order filled',
+        )!.disabled,
+      ).toBe(true);
 
       setShares(sharesInput, '0');
       fixture.componentInstance['submit']();
       expect(emitted).toHaveLength(1);
+      http.verify();
+    });
+
+    it('should render a rejection and a failure in the ticket', () => {
+      const http = TestBed.inject(HttpTestingController);
+      const { fixture, sharesInput, submitButton, el } = render();
+
+      setShares(sharesInput, '3');
+      fixture.detectChanges();
+      submitButton().click();
+      http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
+      http
+        .expectOne({ method: 'POST', url: '/api/orders' })
+        .flush(filledOrder({ status: 'REJECTED', rejectionReason: 'BR-05: not tradable' }));
+      fixture.detectChanges();
+
+      expect(el.querySelector('[data-testid="order-rejected"]')!.textContent).toContain(
+        'BR-05: not tradable',
+      );
+
+      submitButton().click();
+      http
+        .expectOne({ method: 'POST', url: '/api/orders' })
+        .flush(null, { status: 500, statusText: 'Server Error' });
+      fixture.detectChanges();
+
+      expect(el.querySelector('[data-testid="order-error"]')!.textContent).toContain(
+        'The service is unavailable right now.',
+      );
+      http.verify();
     });
 
     it('should swap the instrument from the in-dialog search', () => {

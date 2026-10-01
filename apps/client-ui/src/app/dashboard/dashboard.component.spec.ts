@@ -4,6 +4,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { Router, provideRouter } from '@angular/router';
 import { DashboardComponent } from './dashboard.component';
 import { Instrument, MOCK_INSTRUMENTS } from './mock-data';
+import { OrderResult } from './orders/order.models';
 import { vi } from 'vitest';
 
 const CALENDAR = {
@@ -36,6 +37,21 @@ const CASH = 10_000;
 
 // The signed-in user, as GET /api/users/me reports them.
 const PROFILE = { firstName: 'Ada', lastName: 'Lovelace' };
+
+// An order as POST /api/orders answers it.
+function filledOrder(overrides: Partial<OrderResult> = {}): OrderResult {
+  return {
+    orderId: 1,
+    status: 'FILLED',
+    orderType: 'BUY',
+    quantity: 1,
+    indicativePrice: MOCK_INSTRUMENTS[0].price,
+    rejectionReason: null,
+    submittedAt: '2026-01-05T16:00:00Z',
+    resolvedAt: '2026-01-05T16:00:00Z',
+    ...overrides,
+  };
+}
 
 // Answers the account, holdings and profile loads the dashboard starts with in the browser.
 function flushAccounts(
@@ -122,18 +138,48 @@ describe('DashboardComponent', () => {
     expect(fixture.nativeElement.querySelector('[role="dialog"]')).not.toBeNull();
   });
 
-  it('should close the dialog after an order is submitted', () => {
+  it('should keep the dialog open after an order so its outcome stays visible', () => {
     const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+    const http = flushAccounts(fixture);
     const component = fixture.componentInstance;
     component['openOrder'](MOCK_INSTRUMENTS[0]);
-    component['onOrderSubmitted']({
-      accountId: 'personal',
-      symbol: 'AAPL',
-      side: 'buy',
-      shares: 1,
-      price: MOCK_INSTRUMENTS[0].price,
-    });
-    expect(component['orderInstrument']()).toBeNull();
+
+    component['onOrderSubmitted'](filledOrder());
+
+    expect(component['orderInstrument']()).not.toBeNull();
+    // A fill moved the user's cash and the account's positions, so both are reloaded.
+    http.expectOne('/api/users/me').flush({ ...PROFILE, availableFunds: 9_683.41 });
+    http.expectOne('/api/accounts/1/holdings').flush(HOLDINGS[1]);
+    expect(component['cashBalance']()).toBe(9_683.41);
+  });
+
+  it('should reload nothing when an order was rejected', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+    const http = flushAccounts(fixture);
+
+    fixture.componentInstance['onOrderSubmitted'](
+      filledOrder({ status: 'REJECTED', rejectionReason: 'BR-05: not tradable' }),
+    );
+
+    // Nothing changed, so reloading would only be a wasted round trip.
+    http.expectNone('/api/users/me');
+    http.expectNone('/api/accounts/1/holdings');
+    expect(fixture.componentInstance['cashBalance']()).toBe(CASH);
+  });
+
+  it('should leave the dashboard on its loaded figures when the post-trade reload fails', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+    const http = flushAccounts(fixture);
+
+    fixture.componentInstance['onOrderSubmitted'](filledOrder());
+    // The two reloads run together, so failing one cancels the other.
+    http.expectOne('/api/users/me').flush(null, { status: 500, statusText: 'Server Error' });
+
+    // The trade already happened; a failed reload must not be shown as a failed trade.
+    expect(fixture.componentInstance['cashBalance']()).toBe(CASH);
   });
 
   it('should render market time and account dropdowns in the right header controls', () => {

@@ -166,7 +166,7 @@ try {
     $processes += Start-LocalService -Name 'ui' -FilePath $npm `
         -ArgumentList @('--workspace', 'business-logic-ui', 'start') -WorkingDirectory $repoRoot
 
-    Write-Host 'Starting UI :4200, auth :3001, holdings-and-trade :8081, and order-and-sell :8082. Press Ctrl+C to stop all services.'
+    Write-Host 'Starting UI :4200, auth :3001, order-and-sell :8081, and holdings-and-trade :8082. Press Ctrl+C to stop all services.'
     while ($true) {
         foreach ($service in $processes) {
             Write-NewLogLines -Service $service

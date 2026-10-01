@@ -57,11 +57,11 @@ Compose validates JWT variables even when selecting database services, so provid
 | Working directory | Command | Port | Purpose |
 | --- | --- | --- | --- |
 | Repository root | npm --workspace business-logic-ui start | 4200 | Angular frontend |
-| apps/order-and-sell-service | mvn spring-boot:run | 8081 | Order processing, order validation, order execution (not called by UI yet) |
+| apps/order-and-sell-service | mvn spring-boot:run | 8081 | Order processing, order validation, order execution, instrument reference data (called by UI) |
 | apps/holdings-and-trade-service | mvn spring-boot:run | 8082 | User profiles, accounts, holdings, cash movements, market data (called by UI) |
 | apps/auth-service | npm run start:dev | 3001 | Authentication, token issuance |
 
-The UI calls the auth service directly on port 3001, which allows the dev server origin through CORS_ORIGINS. Java calls use the relative /api path, which the dev server forwards to the Holdings and Trade Service on port 8082 through [proxy.conf.json](../../apps/client-ui/proxy.conf.json). Registration completes only once the Java register contract accepts the profile the UI sends; see the [API reference](../reference/api.md#ui-integration).
+The UI calls the auth service directly on port 3001, which allows the dev server origin through CORS_ORIGINS. Java calls use the relative /api path, which [proxy.conf.json](../../apps/client-ui/proxy.conf.json) forwards by path: /api/orders and /api/instruments to the Order and Sell Service on port 8081, and everything else to the Holdings and Trade Service on port 8082. Both Java services must be running for the dashboard to load accounts and place an order. Registration completes only once the Java register contract accepts the profile the UI sends; see the [API reference](../reference/api.md#ui-integration).
 
 ## Checks
 

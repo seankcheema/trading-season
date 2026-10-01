@@ -204,6 +204,16 @@ async def _prepare_session(connection: asyncpg.Connection, manifest: dict[str, A
           VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(symbol) DO UPDATE SET company_name=excluded.company_name,
           starting_price=excluded.starting_price,sector=excluded.sector,average_volume=excluded.average_volume,base_volatility=excluded.base_volatility""",
           [(s.symbol,s.company_name,s.starting_price,s.sector,s.average_volume,s.base_volatility) for s in STOCKS])
+        # One tradable instrument per simulated stock. Orders reference instrument_id, and
+        # nothing else creates these rows, so without this an imported archive gives the
+        # dashboard prices it cannot trade against. simulated_stock_symbol is the link the
+        # API hands clients to map a quote back to an instrument; the schema allows it only
+        # for US equities, which is what every seeded stock is.
+        await connection.executemany("""INSERT INTO instruments(ticker,name,asset_class,market,currency,is_tradable,simulated_stock_symbol)
+          VALUES($1,$2,'Equity','US','USD',TRUE,$3) ON CONFLICT(ticker) DO UPDATE SET name=excluded.name,
+          asset_class=excluded.asset_class,market=excluded.market,currency=excluded.currency,
+          simulated_stock_symbol=excluded.simulated_stock_symbol""",
+          [(s.symbol,s.company_name,s.symbol) for s in STOCKS])
         if resumable:
             return {"skip": False, "config": old_config}
         config = manifest["config"] | {

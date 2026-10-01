@@ -32,7 +32,6 @@ import { AuthService } from '../core/auth/auth.service';
 import {
   Instrument,
   MOCK_INSTRUMENTS,
-  OrderRequest,
   PricePoint,
   Timeframe,
   findInstrument,
@@ -52,6 +51,8 @@ import {
   CashTransactionMode,
 } from './accounts/cash-transaction-dialog.component';
 import { OrderSubmissionComponent } from './order-submission/order-submission.component';
+import { OrderResult } from './orders/order.models';
+import { OrderService } from './orders/order.service';
 import { SettingsDialogComponent } from './settings-dialog/settings-dialog.component';
 import { DashboardHeaderDropdownComponent } from './shared/dashboard-header-dropdown.component';
 import { DailySparklineComponent } from './shared/daily-sparkline.component';
@@ -120,6 +121,7 @@ interface ActivityItem {
   ],
   providers: [
     AccountStore,
+    OrderService,
     provideIcons({
       lucideBriefcaseBusiness,
       lucideCalendarClock,
@@ -412,10 +414,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.orderSymbol.set(null);
   }
 
-  protected onOrderSubmitted(order: OrderRequest): void {
-    // TODO: send to the order service once the backend endpoint is available
-    console.log('Order submitted', order);
-    this.closeOrder();
+  // The dialog owns the submission and stays open to show the outcome, so this only reacts
+  // to what a trade changed. A rejection changed nothing, so there is nothing to reload.
+  protected onOrderSubmitted(order: OrderResult): void {
+    if (order.status !== 'FILLED') {
+      return;
+    }
+    const accountId = this.accountStore.selectedAccountId();
+    if (accountId === null) {
+      return;
+    }
+    this.accountStore
+      .refreshAfterTrade(accountId)
+      .subscribe({ error: () => undefined });
   }
 
   protected onDeposit(): void {

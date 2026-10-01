@@ -136,6 +136,19 @@ export class AccountStore {
     return this.postCashTransaction(amount, 'WITHDRAWAL');
   }
 
+  // Reloads what a filled order changed: the user's cash, which every account shares, and
+  // the traded account's positions. The fill has already happened, so a failed reload leaves
+  // the dashboard stale rather than reporting the trade as failed.
+  refreshAfterTrade(accountId: number): Observable<void> {
+    if (!this.isOwnedAccount(accountId)) {
+      return of(undefined);
+    }
+    return this.afterChange(
+      forkJoin([this.fetchProfile(), this.fetchHoldings(accountId)]),
+      undefined,
+    );
+  }
+
   private postCashTransaction(amount: number, reason: CashTransactionReason): Observable<void> {
     return this._http
       .post<unknown>(`${this._apiUrl}/me/cash-transactions`, { amount, reason })

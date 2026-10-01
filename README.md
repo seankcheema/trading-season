@@ -3,8 +3,8 @@
 Trading simulation monorepo with an Angular interface, two Spring Boot microservices, and a NestJS authentication service. Reporting applications are placeholders.
 
 The backend consists of two independent Java microservices and one NestJS authentication service:
-- **Holdings and Trade Service** (`apps/holdings-and-trade-service/`) – Order submission, validation, execution, and holdings management
-- **Order and Sell Service** (`apps/order-and-sell-service/`) – User profile queries and market data access
+- **Order and Sell Service** (`apps/order-and-sell-service/`) – Order submission, validation, execution, and instrument reference data
+- **Holdings and Trade Service** (`apps/holdings-and-trade-service/`) – User profiles, accounts, holdings, cash movements, and market data
 - **Auth Service** (`apps/auth-service/`) – Email/password authentication, RS256 token issuance, refresh token rotation
 
 All services share a single PostgreSQL database (`trading_season`).
@@ -40,7 +40,7 @@ Install Node.js 24.8.0+ (24.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL 
    .\scripts\start-local.ps1
    ```
 
-   The launcher consolidates all logs in one terminal and stops all services if any one exits. Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`. See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
+   The launcher consolidates all logs in one terminal and stops all services if any one exits. Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001`, Order and Sell Service on `http://localhost:8081`, and Holdings and Trade Service on `http://localhost:8082`. Each service's port comes from its own `application.properties`. See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
 
 ### Manual setup with local PostgreSQL
 
@@ -67,6 +67,8 @@ psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STO
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V004__Order_status_lifecycle.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V005__User_accounts_and_refresh_tokens.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V006__Drop_duplicated_account_columns.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V007__Add_account_name.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V008__Backfill_instruments_from_stocks.sql
 ```
 
 Verify that `trading_season` owns the tables. Connect to the `trading_season` database and run:
@@ -210,8 +212,8 @@ See the [development guide](docs/guides/development.md) for additional commands,
 | --- | --- | --- | --- |
 | Client UI | `apps/client-ui` | 4200 | Login, registration, dashboard with live market data |
 | Auth Service | `apps/auth-service` | 3001 | Email/password authentication, RS256 token issuance, refresh token rotation |
-| Holdings and Trade Service | `apps/holdings-and-trade-service` | 8081 | Order submission, validation, execution; holdings and account management |
-| Order and Sell Service | `apps/order-and-sell-service` | 8082 | User profile queries, market data access |
+| Order and Sell Service | `apps/order-and-sell-service` | 8081 | Order submission, validation and execution; order history; instrument reference data |
+| Holdings and Trade Service | `apps/holdings-and-trade-service` | 8082 | User profiles, accounts, holdings, cash movements, market data |
 | Market Data | `apps/market-data` | — | Shared database migrations and synthetic market data tooling |
 | Shared UI Components | `packages/shared-ui-components` | — | Reusable Angular components library |
 | Reporting | `docs/reference/reporting.md` | — | Proposed analytics and portfolio performance reporting |
@@ -235,7 +237,7 @@ Review the [documentation index](docs/README.md) for all guides and references. 
 
 # Business database ERD
 
-Canonical relationship diagram for the business SQL schema after V001, V002 and V003. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
+Canonical relationship diagram for the business SQL schema after V001 through V008. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
 
 The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change.
 

@@ -16,6 +16,7 @@ import app.order.execution.HoldingMovementRepository;
 import app.user.User;
 import app.support.UserAccountFixture;
 import app.user.UserRepository;
+import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -52,7 +53,9 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppC
 /**
  * Submits orders through {@code POST /api/orders} and checks the response contract and the ledger
  * rows a fill leaves behind: one fill, one cash transaction, one holding movement, and the audit
- * trail of status changes. Also covers {@code GET /api/orders}, which is scoped to the caller.
+ * trail of status changes. Both endpoints are scoped to the caller, so this also covers what a
+ * token cannot reach: another user's account on submission (DUA-63), and another user's orders on
+ * listing.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -197,7 +200,7 @@ class OrderControllerIntegrationTest {
     @Test
     void malformedOrdersAreRejectedBeforeReachingTheService() throws Exception {
         mockMvc.perform(post("/api/orders")
-                        .with(jwt())
+                        .with(tokenFor(user.getUserId()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body("HOLD", "-1", "20.00")))
                 .andExpect(status().isBadRequest());
@@ -257,6 +260,86 @@ class OrderControllerIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void submittingAnOrderOnSomeoneElsesAccountIsRefused() throws Exception {
+        UUID strangerId = givenAnOrderBelongingToAnotherUser();
+
+        // A perfectly valid token, and an accountId that simply isn't theirs.
+        submitAs(strangerId, "BUY", "1", "20.00")
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("You do not have access to this account"));
+
+        // Nothing was written: the caller's own orders are unchanged, and so are the owner's.
+        assertEquals(1, orderRepository.findAll().size());
+        assertEquals(0, new BigDecimal("1000.00").compareTo(
+                userRepository.findById(user.getUserId()).orElseThrow().getAvailableFunds()));
+    }
+
+    @Test
+    void submittingAnOrderOnAnAccountThatDoesNotExistIsNotFound() throws Exception {
+        mockMvc.perform(post("/api/orders")
+                        .with(tokenFor(user.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bodyFor(account.getAccountId() + 9999,
+                                instrument.getInstrumentId(), "BUY", "1", "20.00")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value(notNullValue()));
+
+        assertTrue(orderRepository.findAll().isEmpty());
+    }
+
+    @Test
+    void submittingAnOrderForAnInstrumentThatDoesNotExistIsABadRequest() throws Exception {
+        // Distinct from a non-tradable instrument, which exists and comes back
+        // as a 201 carrying a REJECTED order.
+        mockMvc.perform(post("/api/orders")
+                        .with(tokenFor(user.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bodyFor(account.getAccountId(),
+                                instrument.getInstrumentId() + 9999, "BUY", "1", "20.00")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(notNullValue()));
+
+        assertTrue(orderRepository.findAll().isEmpty());
+    }
+
+    @Test
+    void resubmittingTheSameClientReferenceExecutesOnce() throws Exception {
+        UUID clientReference = UUID.randomUUID();
+        String payload = """
+                {"accountId": %d, "instrumentId": %d, "orderType": "BUY", "quantity": 10,
+                 "indicativePrice": 20.00, "clientReference": "%s"}
+                """.formatted(account.getAccountId(), instrument.getInstrumentId(), clientReference);
+
+        String orderId = mockMvc.perform(post("/api/orders")
+                        .with(tokenFor(user.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("FILLED"))
+                .andReturn().getResponse().getContentAsString();
+
+        // The retry answers with the same order, not a second one. Its timestamps
+        // are read back from the database and so come back at the column's
+        // precision, which is why this compares the order rather than the body.
+        mockMvc.perform(post("/api/orders")
+                        .with(tokenFor(user.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.orderId").value(
+                        JsonPath.parse(orderId).read("$.orderId", Integer.class)))
+                .andExpect(jsonPath("$.status").value("FILLED"))
+                .andExpect(jsonPath("$.quantity").value(10))
+                .andExpect(jsonPath("$.rejectionReason").value(nullValue()));
+
+        // The retry returned the first outcome rather than buying twice.
+        assertEquals(1, orderRepository.findAll().size());
+        assertEquals(1, fillRepository.findAll().size());
+        assertEquals(0, new BigDecimal("800.00").compareTo(
+                userRepository.findById(user.getUserId()).orElseThrow().getAvailableFunds()));
+    }
+
     /**
      * Saves an order on an account owned by a different user, so a listing can be
      * checked for leakage between owners.
@@ -304,17 +387,26 @@ class OrderControllerIntegrationTest {
     }
 
     private ResultActions submit(String type, String quantity, String price) throws Exception {
+        return submitAs(user.getUserId(), type, quantity, price);
+    }
+
+    private ResultActions submitAs(UUID callerId, String type, String quantity, String price)
+            throws Exception {
         return mockMvc.perform(post("/api/orders")
-                .with(jwt())
+                .with(tokenFor(callerId))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body(type, quantity, price)));
     }
 
     private String body(String type, String quantity, String price) {
+        return bodyFor(account.getAccountId(), instrument.getInstrumentId(), type, quantity, price);
+    }
+
+    private static String bodyFor(Integer accountId, Integer instrumentId, String type,
+                                  String quantity, String price) {
         return """
                 {"accountId": %d, "instrumentId": %d, "orderType": "%s", "quantity": %s,
                  "indicativePrice": %s, "clientReference": "%s"}
-                """.formatted(account.getAccountId(), instrument.getInstrumentId(), type, quantity, price,
-                UUID.randomUUID());
+                """.formatted(accountId, instrumentId, type, quantity, price, UUID.randomUUID());
     }
 }

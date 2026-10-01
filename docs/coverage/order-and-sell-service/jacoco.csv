@@ -2,7 +2,9 @@ GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_
 order-and-sell-service,app.order.validation,OrderValidationPipeline,0,32,0,4,0,9,0,4,0,2
 order-and-sell-service,app.order.validation,ValidationResult,0,24,0,0,0,4,0,4,0,4
 order-and-sell-service,app,Main,0,8,0,0,0,3,0,2,0,2
+order-and-sell-service,app.instrument,InstrumentController,0,14,0,0,0,6,0,2,0,2
 order-and-sell-service,app.instrument,InstrumentNotFoundException,0,9,0,0,0,4,0,2,0,2
+order-and-sell-service,app.instrument,InstrumentResponse,0,49,0,0,0,10,0,2,0,2
 order-and-sell-service,app.instrument,Instrument,0,63,0,0,0,27,0,17,0,17
 order-and-sell-service,app.user,UserProfileResponse,0,67,0,0,0,5,0,2,0,2
 order-and-sell-service,app.user,UserNotFoundException,0,4,0,0,0,2,0,1,0,1
@@ -12,9 +14,9 @@ order-and-sell-service,app.user,UserService,5,30,0,0,0,8,1,4,1,4
 order-and-sell-service,app.user,UserAccount,3,32,0,0,1,12,1,6,1,6
 order-and-sell-service,app.order.dto,OrderRequest,0,24,0,0,0,1,0,1,0,1
 order-and-sell-service,app.order.dto,OrderResponse,0,47,0,0,0,10,0,2,0,2
-order-and-sell-service,app.order,OrderController,0,25,0,0,0,8,0,3,0,3
-order-and-sell-service,app.order,Order,3,94,0,0,1,40,1,26,1,26
-order-and-sell-service,app.order,OrderService,7,201,0,6,1,47,1,8,1,5
+order-and-sell-service,app.order,OrderController,0,28,0,0,0,8,0,3,0,3
+order-and-sell-service,app.order,Order,0,97,0,0,0,41,0,27,0,27
+order-and-sell-service,app.order,OrderService,7,211,0,8,1,49,1,9,1,5
 order-and-sell-service,app.market,MarketModels.Day,6,0,0,0,1,0,1,0,1,0
 order-and-sell-service,app.market,MarketRequestException,0,4,0,0,0,1,0,1,0,1
 order-and-sell-service,app.market,MarketModels.Stock,0,9,0,0,0,1,0,1,0,1
@@ -47,7 +49,7 @@ order-and-sell-service,app.order.validation.impl,SufficientHoldingsValidator,0,3
 order-and-sell-service,app.order.validation.impl,AccountStatusValidator,0,28,0,4,0,9,0,4,0,2
 order-and-sell-service,app.order.validation.impl,SufficientFundsValidator,0,26,0,4,0,7,0,4,0,2
 order-and-sell-service,app.auth,AccountExistsResponse,0,6,0,0,0,1,0,1,0,1
-order-and-sell-service,app.auth,GlobalExceptionHandler,4,46,0,0,1,9,1,7,1,7
+order-and-sell-service,app.auth,GlobalExceptionHandler,4,56,0,0,1,11,1,9,1,9
 order-and-sell-service,app.auth,AccountExistsRequest,0,6,0,0,0,1,0,1,0,1
 order-and-sell-service,app.auth,ConflictException,0,4,0,0,0,2,0,1,0,1
 order-and-sell-service,app.auth,RegisterRequest,0,30,0,0,0,1,0,1,0,1

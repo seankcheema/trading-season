@@ -27,7 +27,7 @@ docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compos
 docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml logs --tail 100 db auth-db
 ```
 
-The local Compose file contains outdated Java backend configuration with build context and port mappings. Run both Java services through Maven: Order and Sell Service on port 8081 (called by UI) and Holdings and Trade Service on port 8082 (runs independently). The UI has no active Compose service. No production Compose file or Kubernetes deployment is supplied.
+The local Compose file contains outdated Java backend configuration with build context and port mappings. Run both Java services through Maven: Order and Sell Service on port 8081 and Holdings and Trade Service on port 8082. The UI calls both, split by path, so the dashboard needs both running. The UI has no active Compose service. No production Compose file or Kubernetes deployment is supplied.
 
 Both Java services must use the same database connection (localhost:5432/trading_season by default) and verify database compatibility before startup. If your deployment splits services across machines or containers, ensure network connectivity to the shared database and identical schema versions on both services.
 For databases created by `scripts/setup-local.sh`, add `--project-name trading-season-local` to these inspection commands. Stop them without removing data with:

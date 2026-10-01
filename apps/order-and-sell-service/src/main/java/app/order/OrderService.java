@@ -3,6 +3,7 @@ package app.order;
 import app.account.Account;
 import app.account.AccountNotFoundException;
 import app.account.AccountRepository;
+import app.auth.ForbiddenException;
 import app.instrument.Instrument;
 import app.instrument.InstrumentNotFoundException;
 import app.instrument.InstrumentRepository;
@@ -23,14 +24,14 @@ import java.util.UUID;
 import java.util.Optional;
 
 /**
- * Orchestrates one order submission: idempotency check, loading the
- * entities the rule pipeline needs, persisting the order as
- * {@code PENDING}, running the pipeline, and — only if it passes — handing
- * off to {@link OrderExecutionService}. A failed rule leaves the order
- * {@code REJECTED}; a successful execution leaves it {@code FILLED}
- * (KAN-93). This is the "Order controller" + "Trading rule pipeline"
- * handoff from the KAN-95 walkthrough, minus the HTTP concerns, which stay
- * in {@link OrderController}.
+ * Orchestrates one order submission: resolving and ownership-checking the
+ * account, the idempotency check, loading the entities the rule pipeline
+ * needs, persisting the order as {@code PENDING}, running the pipeline, and
+ * — only if it passes — handing off to {@link OrderExecutionService}. A
+ * failed rule leaves the order {@code REJECTED}; a successful execution
+ * leaves it {@code FILLED} (KAN-93). This is the "Order controller" +
+ * "Trading rule pipeline" handoff from the KAN-95 walkthrough, minus the
+ * HTTP concerns, which stay in {@link OrderController}.
  */
 @Service
 public class OrderService {
@@ -60,22 +61,36 @@ public class OrderService {
     }
 
     /**
-     * Submits an order. The order is created {@code PENDING}; it returns as
-     * {@code REJECTED} when a trading rule fails, or {@code FILLED} once the
-     * fill is written and the owning user's available funds and the account's
-     * holdings have moved. Never throws for a trade that fails a trading
-     * rule — that's a normal outcome, reflected in the returned order's
-     * status, not an HTTP-level error. It throws only when the request
-     * refers to something that doesn't exist.
+     * Submits an order on an account the caller owns. The order is created
+     * {@code PENDING}; it returns as {@code REJECTED} when a trading rule
+     * fails, or {@code FILLED} once the fill is written and the owning user's
+     * available funds and the account's holdings have moved. Never throws for
+     * a trade that fails a trading rule — that's a normal outcome, reflected
+     * in the returned order's status, not an HTTP-level error. It throws only
+     * when the request names something that doesn't exist or isn't the
+     * caller's.
+     *
+     * <p>Ownership is settled before anything else, including the idempotency
+     * lookup: an idempotency key is scoped to an account, so answering one
+     * before checking the account would hand a caller the outcome of an order
+     * on an account they don't own.
      *
      * @param request the validated submission
+     * @param callerId the caller's user id, from the token's {@code sub} claim
      * @return the persisted order in its final status
      * @throws AccountNotFoundException    if {@code accountId} does not exist
+     * @throws ForbiddenException          if {@code accountId} belongs to another user
      * @throws InstrumentNotFoundException if {@code instrumentId} does not exist
      * @throws IllegalStateException       if the account has no owning user
      */
     @Transactional
-    public Order submitOrder(OrderRequest request) {
+    public Order submitOrder(OrderRequest request, UUID callerId) {
+        Account account = accountRepository.findById(request.accountId())
+                .orElseThrow(() -> new AccountNotFoundException("No account " + request.accountId()));
+        if (!account.getUserId().equals(callerId)) {
+            throw new ForbiddenException("You do not have access to this account");
+        }
+
         Optional<Order> existing = orderRepository
                 .findByAccountIdAndClientReference(request.accountId(), request.clientReference());
         if (existing.isPresent()) {
@@ -86,17 +101,11 @@ public class OrderService {
             return existing.get();
         }
 
-        Account account = accountRepository.findById(request.accountId())
-                .orElseThrow(() -> new AccountNotFoundException("No account " + request.accountId()));
         User user = userRepository.findById(account.getUserId())
                 .orElseThrow(() -> new IllegalStateException(
                         "Account " + account.getAccountId() + " has no owning user"));
         Instrument instrument = instrumentRepository.findById(request.instrumentId())
                 .orElseThrow(() -> new InstrumentNotFoundException("No instrument " + request.instrumentId()));
-
-        // KAN-95 follow-up: once identity resolution is wired up (see
-        // OrderController), verify account.getUserId() equals the authenticated
-        // caller's id here — today anyone can submit against any accountId.
 
         BigDecimal bufferPercent = request.bufferPercent() != null
                 ? request.bufferPercent()

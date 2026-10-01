@@ -162,6 +162,26 @@
         </dl>
 
         <div class="min-h-4 flex-1"></div>
+
+        @if (filled()) {
+          <p
+            role="status"
+            class="text-gain mb-3 text-sm font-medium"
+            data-testid="order-filled"
+          >
+            Filled {{ outcome()!.quantity }} {{ activeInstrument().symbol }} at
+            {{ outcome()!.indicativePrice | currency: 'USD' }}.
+          </p>
+        } @else if (rejectionReason(); as reason) {
+          <p role="alert" class="text-destructive mb-3 text-sm" data-testid="order-rejected">
+            Rejected: {{ reason }}
+          </p>
+        } @else if (errorMessage(); as message) {
+          <p role="alert" class="text-destructive mb-3 text-sm" data-testid="order-error">
+            {{ message }}
+          </p>
+        }
+
         <button
           type="button"
           class="h-11 w-full cursor-pointer rounded-xl text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40"
@@ -169,7 +189,7 @@
           [disabled]="!canSubmit()"
           (click)="submit()"
         >
-          {{ side() === 'buy' ? 'Buy' : 'Sell' }} {{ shares() }} {{ activeInstrument().symbol }}
+          {{ submitLabel() }}
         </button>
       </div>
     </div>

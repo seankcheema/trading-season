@@ -15,14 +15,6 @@ export interface Instrument {
   changePercent: number;
 }
 
-export interface OrderRequest {
-  accountId: string;
-  symbol: string;
-  side: OrderSide;
-  shares: number;
-  price: number;
-}
-
 export const MOCK_INSTRUMENTS: readonly Instrument[] = [
   { symbol: 'AAPL', name: 'Apple Inc.', price: 316.59, change: 15.65, changePercent: 5.2 },
   { symbol: 'MSFT', name: 'Microsoft Corporation', price: 512.3, change: 6.12, changePercent: 1.21 },

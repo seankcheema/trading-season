@@ -1,7 +1,14 @@
-{
-  "/api": {
+[
+  {
+    "context": ["/api/orders", "/api/instruments"],
+    "target": "http://localhost:8081",
+    "secure": false,
+    "changeOrigin": true
+  },
+  {
+    "context": ["/api"],
     "target": "http://localhost:8082",
     "secure": false,
     "changeOrigin": true
   }
-}
+]

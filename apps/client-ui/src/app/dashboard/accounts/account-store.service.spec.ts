@@ -242,6 +242,55 @@ describe('AccountStore', () => {
     });
   });
 
+  describe('refreshAfterTrade', () => {
+    it('should reload the shared cash and the traded account\'s positions', () => {
+      load();
+      const done: unknown[] = [];
+
+      store.refreshAfterTrade(1).subscribe((value) => done.push(value));
+      http.expectOne('/api/users/me').flush({
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        availableFunds: 4_600,
+      });
+      http.expectOne(holdingsUrl(1)).flush([{ symbol: 'AAPL', quantity: 6, averageCost: 290 }]);
+
+      expect(store.cashBalance()).toBe(4_600);
+      expect(store.holdingsOf(1)).toEqual([{ symbol: 'AAPL', quantity: 6, averageCost: 290 }]);
+      // The untraded account is left alone.
+      expect(store.holdingsOf(2)).toEqual(HOLDINGS[2]);
+      expect(done).toEqual([undefined]);
+    });
+
+    it('should complete without reloading for an account the caller does not own', () => {
+      load();
+      const done: unknown[] = [];
+
+      store.refreshAfterTrade(99).subscribe((value) => done.push(value));
+
+      expect(done).toEqual([undefined]);
+      http.expectNone('/api/users/me');
+    });
+
+    it('should complete even when the reload fails, since the trade already happened', () => {
+      load();
+      const done: unknown[] = [];
+      const errors: unknown[] = [];
+
+      store.refreshAfterTrade(1).subscribe({
+        next: (value) => done.push(value),
+        error: (error: unknown) => errors.push(error),
+      });
+      http.expectOne(holdingsUrl(1)).flush(HOLDINGS[1]);
+      http.expectOne('/api/users/me').flush(null, { status: 500, statusText: 'Server Error' });
+
+      // The caller is told the refresh finished, not that the trade failed.
+      expect(errors).toEqual([]);
+      expect(done).toEqual([undefined]);
+      expect(store.cashBalance()).toBe(5_000);
+    });
+  });
+
   describe('profile', () => {
     it('has no initials before the profile loads', () => {
       expect(store.profile()).toBeNull();

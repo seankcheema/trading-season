@@ -17,8 +17,8 @@ Trading Season is a monorepo containing:
 graph TB
     UI["Client UI<br/>Angular 21+ | Port 4200"]
     Auth["Auth Service<br/>NestJS | Port 3001"]
-    OS["Order and Sell Service<br/>Spring Boot | Port 8081<br/><br/>Order submission/validation<br/>Order execution<br/>Order history<br/>Called by UI"]
-    HT["Holdings and Trade Service<br/>Spring Boot | Port 8082<br/><br/>User profile queries<br/>Account management<br/>Holdings queries<br/>Not called by UI"]
+    OS["Order and Sell Service<br/>Spring Boot | Port 8081<br/><br/>Order submission/validation<br/>Order execution<br/>Order history<br/>Instrument reference data<br/>Called by UI"]
+    HT["Holdings and Trade Service<br/>Spring Boot | Port 8082<br/><br/>User profile queries<br/>Account management<br/>Holdings queries<br/>Called by UI"]
     
     BizDB["trading_season<br/>PostgreSQL<br/>Port 5432<br/><br/>user_accounts, refresh_tokens (auth)<br/>users, accounts, orders<br/>market data"]
     
@@ -47,7 +47,7 @@ graph TB
 | --- | --- | --- | --- | --- |
 | **Client UI** | Angular 21+ | 4200 | Implemented | User interface, login, registration, dashboard |
 | **Auth Service** | NestJS | 3001 | Implemented | User credentials, token issuance, session management |
-| **Order and Sell Service** | Spring Boot (Java 21) | 8081 | Implemented | Order submission/validation/execution, order history |
+| **Order and Sell Service** | Spring Boot (Java 21) | 8081 | Implemented | Order submission/validation/execution, order history, instrument reference data |
 | **Holdings and Trade Service** | Spring Boot (Java 21) | 8082 | Implemented | User profiles, account management, holdings queries |
 | **Reporting UI** | Angular | 4300 | Proposed | Portfolio performance, trade history, risk summaries |
 | **Reporting Service** | TBD | 8083 | Proposed | Portfolio aggregation, analytics, report generation |
@@ -58,7 +58,7 @@ graph TB
 After the KAN-47/KAN-139 restructuring fix, service names now align with responsibilities:
 
 - **Order and Sell Service** (port 8081) implements order processing (submission, validation, execution) and is the primary backend called by Client UI.
-- **Holdings and Trade Service** (port 8082) provides user profile queries, account management, and market data access.
+- **Holdings and Trade Service** (port 8082) provides user profile queries, account management, and market data access, and is also called by Client UI.
 
 The restructuring fix corrected an earlier logic mixup. See [Order and Sell Service documentation](services/order-and-sell-service.md) and [Holdings and Trade Service documentation](services/holdings-and-trade-service.md) for current implementation status.
 
@@ -108,13 +108,17 @@ Both services use JPA to map to the same tables directly. This requires schema v
 
 ## Client UI integration
 
-The dev proxy (`apps/client-ui/proxy.conf.json`) forwards all `/api` requests to Holdings and Trade Service (port 8082) exclusively:
+The UI reaches both Java services through one relative `/api` prefix, split by path:
 
+- `/api/orders` and `/api/instruments` go to Order and Sell Service (port 8081), which owns trading
+- Everything else under `/api` goes to Holdings and Trade Service (port 8082): profile, accounts, holdings, cash and market data
 - Auth Service (port 3001) is called directly for login/register/refresh
+
+The split is configured twice, once per environment: [proxy.conf.json](../../apps/client-ui/proxy.conf.json) for the dev server and [nginx.conf](../../apps/client-ui/nginx.conf) for the container image. Adding a path to one and not the other is the failure mode to watch for.
 
 ## Known limitations
 
-1. **No order history on the dashboard** – Holdings and Trade Service serves accounts, holdings and cash, but order reads live in Order and Sell Service and are not yet exposed per order or per account. The dashboard's recent activity therefore lists cash movements only, and order submission is not wired to a backend.
+1. **No order history on the dashboard** – `GET /api/orders` returns the caller's orders, but there is still no per-order or per-account read, and the dashboard's recent activity list shows cash movements only. Order submission itself is wired: the dashboard's order dialog posts to `POST /api/orders` and shows the fill or the rejection reason.
 
 2. **Market data duplication** – Both Order and Sell Service and Holdings and Trade Service contain market data endpoints. See [Order and Sell Service documentation](services/order-and-sell-service.md) for why.
 
