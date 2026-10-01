@@ -67,5 +67,10 @@
   },
   "allowScripts": {
     "bcrypt@6.0.0": true
+  },
+  "overrides": {
+    "@angular-devkit/core": "21.2.24",
+    "@angular-devkit/schematics": "21.2.24",
+    "@angular-devkit/schematics-cli": "21.2.24"
   }
 }
