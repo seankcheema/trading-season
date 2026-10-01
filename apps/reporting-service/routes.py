@@ -11,6 +11,7 @@ from db_service import (
 )
 from app import require_auth
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -420,6 +421,151 @@ def get_trade_drilldown():
 # User Profile Endpoints
 # ============================================================================
 
+# ============================================================================
+# Performance Metrics Endpoints
+# ============================================================================
+
+@api_bp.route('/portfolio/<int:account_id>/performance', methods=['GET'])
+@require_auth
+def get_account_performance(account_id):
+    """
+    GET /api/reporting/portfolio/{accountId}/performance
+    
+    Get detailed performance metrics for a specific account
+    Returns: total return, return %, Sharpe ratio, Sortino ratio, max drawdown
+    Query parameters:
+    - start_date: (optional) ISO-8601 date
+    - end_date: (optional) ISO-8601 date
+    """
+    try:
+        user_id = g.user_id
+        
+        # Verify account belongs to user
+        account = AccountRepository.get_account(account_id)
+        if not account or str(account.user_id) != str(user_id):
+            return jsonify({'error': 'Account not found or access denied'}), 404
+        
+        # Parse dates
+        start_date_str = request.args.get('start_date')
+        end_date_str = request.args.get('end_date')
+        
+        start_date = None
+        end_date = None
+        try:
+            if start_date_str:
+                start_date = datetime.fromisoformat(start_date_str)
+            if end_date_str:
+                end_date = datetime.fromisoformat(end_date_str)
+        except ValueError:
+            return jsonify({'error': 'Invalid date format. Use ISO-8601 (YYYY-MM-DD)'}), 400
+        
+        # Get trade history for account
+        trades = TradeRepository.get_trade_history(account_id, start_date, end_date)
+        
+        # Calculate performance metrics
+        performance = _calculate_performance_metrics(trades)
+        
+        # Get current holdings and cash
+        summary = AccountRepository.get_account_summary(account_id)
+        holdings = HoldingRepository.get_account_holdings(account_id)
+        
+        return jsonify({
+            'account_id': account_id,
+            'performance': performance,
+            'current_position': {
+                'cash_balance': summary['cash_balance'],
+                'total_holdings_value': sum(h['total_value'] for h in holdings),
+                'total_portfolio_value': summary['cash_balance'] + sum(h['total_value'] for h in holdings)
+            },
+            'filters': {
+                'start_date': start_date_str,
+                'end_date': end_date_str
+            },
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Error getting account performance: {e}")
+        return jsonify({'error': 'Failed to retrieve account performance'}), 500
+
+
+@api_bp.route('/portfolio/performance', methods=['GET'])
+@require_auth
+def get_portfolio_performance():
+    """
+    GET /api/reporting/portfolio/performance
+    
+    Get aggregated performance metrics across all user accounts
+    Returns: total return, weighted return %, Sharpe ratio, max drawdown
+    Query parameters:
+    - start_date: (optional) ISO-8601 date
+    - end_date: (optional) ISO-8601 date
+    """
+    try:
+        user_id = g.user_id
+        
+        # Parse dates
+        start_date_str = request.args.get('start_date')
+        end_date_str = request.args.get('end_date')
+        
+        start_date = None
+        end_date = None
+        try:
+            if start_date_str:
+                start_date = datetime.fromisoformat(start_date_str)
+            if end_date_str:
+                end_date = datetime.fromisoformat(end_date_str)
+        except ValueError:
+            return jsonify({'error': 'Invalid date format. Use ISO-8601 (YYYY-MM-DD)'}), 400
+        
+        # Get all user accounts
+        accounts = AccountRepository.get_user_accounts(user_id)
+        if not accounts:
+            return jsonify({'error': 'No accounts found'}), 404
+        
+        # Aggregate trades across all accounts
+        all_trades = []
+        for account in accounts:
+            trades = TradeRepository.get_trade_history(account.account_id, start_date, end_date)
+            all_trades.extend(trades)
+        
+        # Calculate performance metrics
+        performance = _calculate_performance_metrics(all_trades)
+        
+        # Get current portfolio position
+        total_cash = 0.0
+        total_holdings_value = 0.0
+        for account in accounts:
+            summary = AccountRepository.get_account_summary(account.account_id)
+            holdings = HoldingRepository.get_account_holdings(account.account_id)
+            total_cash += summary['cash_balance']
+            total_holdings_value += sum(h['total_value'] for h in holdings)
+        
+        return jsonify({
+            'user_id': str(user_id),
+            'accounts_count': len(accounts),
+            'performance': performance,
+            'current_position': {
+                'total_cash': total_cash,
+                'total_holdings_value': total_holdings_value,
+                'total_portfolio_value': total_cash + total_holdings_value
+            },
+            'filters': {
+                'start_date': start_date_str,
+                'end_date': end_date_str
+            },
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Error getting portfolio performance: {e}")
+        return jsonify({'error': 'Failed to retrieve portfolio performance'}), 500
+
+
+# ============================================================================
+# User Profile Endpoints
+# ============================================================================
+
 @api_bp.route('/profile', methods=['GET'])
 @require_auth
 def get_user_profile():
@@ -582,6 +728,207 @@ def _get_best_worst_trades(trades, limit=5):
         'best': sorted_by_pl[:limit],
         'worst': sorted_by_pl[-limit:] if len(sorted_by_pl) >= limit else sorted_by_pl[:limit]
     }
+
+
+def _calculate_performance_metrics(trades):
+    """
+    Calculate comprehensive performance metrics from trade list
+    Returns dict with: total_return, return_percent, sharpe_ratio, sortino_ratio, max_drawdown
+    
+    Key assumptions:
+    - Risk-free rate: 2.0% annual (0.005% daily)
+    - Assumes regular daily returns calculation
+    """
+    if not trades:
+        return {
+            'total_return': 0.0,
+            'return_percent': 0.0,
+            'sharpe_ratio': 0.0,
+            'sortino_ratio': 0.0,
+            'max_drawdown': 0.0,
+            'current_drawdown': 0.0,
+            'volatility': 0.0,
+            'downside_deviation': 0.0,
+            'trade_count': 0,
+            'starting_capital': 0.0,
+            'ending_capital': 0.0
+        }
+    
+    # Calculate total realized P&L
+    total_return = sum(t.get('realized_pl', 0) for t in trades)
+    
+    # Estimate starting capital (simple: assume 10000 base + total deposits/withdrawals)
+    cash_transactions = []  # Would need to fetch from CashTransactionRepository if detailed analysis
+    estimated_starting_capital = 10000.0  # Default assumption
+    
+    # Calculate return percentage
+    return_percent = (total_return / estimated_starting_capital * 100) if estimated_starting_capital > 0 else 0.0
+    
+    # Calculate daily returns for risk metrics
+    daily_returns = _calculate_daily_returns(trades)
+    
+    # Calculate volatility (standard deviation of daily returns)
+    volatility = _calculate_volatility(daily_returns)
+    
+    # Calculate Sharpe ratio (annual)
+    risk_free_rate = 0.02  # 2% annual
+    excess_return = (total_return / estimated_starting_capital) - risk_free_rate
+    sharpe_ratio = (excess_return / volatility * math.sqrt(252)) if volatility > 0 else 0.0
+    
+    # Calculate downside deviation (for Sortino)
+    downside_deviation = _calculate_downside_deviation(daily_returns)
+    
+    # Calculate Sortino ratio (annual)
+    sortino_ratio = (excess_return / downside_deviation * math.sqrt(252)) if downside_deviation > 0 else 0.0
+    
+    # Calculate maximum drawdown
+    max_drawdown = _calculate_max_drawdown(trades)
+    
+    # Calculate current drawdown (from peak)
+    current_drawdown = _calculate_current_drawdown(trades)
+    
+    return {
+        'total_return': round(total_return, 2),
+        'return_percent': round(return_percent, 2),
+        'sharpe_ratio': round(sharpe_ratio, 2),
+        'sortino_ratio': round(sortino_ratio, 2),
+        'max_drawdown': round(max_drawdown, 2),
+        'current_drawdown': round(current_drawdown, 2),
+        'volatility': round(volatility, 4),
+        'downside_deviation': round(downside_deviation, 4),
+        'trade_count': len(trades),
+        'starting_capital': round(estimated_starting_capital, 2),
+        'ending_capital': round(estimated_starting_capital + total_return, 2)
+    }
+
+
+def _calculate_daily_returns(trades):
+    """
+    Calculate daily returns from trades
+    Returns list of daily return percentages
+    """
+    if not trades:
+        return [0.0]
+    
+    # Group trades by date
+    from collections import defaultdict
+    daily_pnl = defaultdict(float)
+    
+    for trade in trades:
+        executed_at = trade.get('executed_at')
+        if not executed_at:
+            continue
+        
+        # Parse timestamp if string
+        if isinstance(executed_at, str):
+            try:
+                trade_date = datetime.fromisoformat(executed_at).date()
+            except:
+                continue
+        else:
+            trade_date = executed_at.date()
+        
+        daily_pnl[trade_date] += trade.get('realized_pl', 0)
+    
+    if not daily_pnl:
+        return [0.0]
+    
+    # Convert to daily returns (assuming 10000 base per day)
+    daily_returns = [pnl / 10000.0 for pnl in daily_pnl.values()]
+    return daily_returns if daily_returns else [0.0]
+
+
+def _calculate_volatility(daily_returns):
+    """
+    Calculate annualized volatility (standard deviation)
+    """
+    if len(daily_returns) < 2:
+        return 0.0
+    
+    mean_return = sum(daily_returns) / len(daily_returns)
+    variance = sum((r - mean_return) ** 2 for r in daily_returns) / len(daily_returns)
+    daily_volatility = math.sqrt(variance) if variance >= 0 else 0.0
+    
+    # Annualize: multiply by sqrt(252 trading days)
+    annualized_volatility = daily_volatility * math.sqrt(252)
+    return annualized_volatility
+
+
+def _calculate_downside_deviation(daily_returns):
+    """
+    Calculate downside deviation (only negative returns)
+    For Sortino ratio calculation
+    """
+    if len(daily_returns) < 2:
+        return 0.0
+    
+    # Risk-free rate as threshold
+    risk_free_daily = 0.02 / 252
+    
+    # Only include returns below risk-free rate
+    downside_returns = [r - risk_free_daily for r in daily_returns if r < risk_free_daily]
+    
+    if not downside_returns:
+        return 0.0
+    
+    variance = sum(r ** 2 for r in downside_returns) / len(downside_returns)
+    daily_downside_dev = math.sqrt(variance) if variance >= 0 else 0.0
+    
+    # Annualize
+    annualized_downside_dev = daily_downside_dev * math.sqrt(252)
+    return annualized_downside_dev
+
+
+def _calculate_max_drawdown(trades):
+    """
+    Calculate maximum drawdown from peak to trough
+    """
+    if not trades:
+        return 0.0
+    
+    # Sort by executed_at
+    sorted_trades = sorted(trades, key=lambda t: t.get('executed_at', ''))
+    
+    # Calculate cumulative P&L
+    cumulative_pnl = 0.0
+    peak = 0.0
+    max_drawdown = 0.0
+    
+    for trade in sorted_trades:
+        cumulative_pnl += trade.get('realized_pl', 0)
+        
+        if cumulative_pnl > peak:
+            peak = cumulative_pnl
+        
+        drawdown = peak - cumulative_pnl
+        if drawdown > max_drawdown:
+            max_drawdown = drawdown
+    
+    return max_drawdown
+
+
+def _calculate_current_drawdown(trades):
+    """
+    Calculate current drawdown from peak
+    """
+    if not trades:
+        return 0.0
+    
+    # Sort by executed_at
+    sorted_trades = sorted(trades, key=lambda t: t.get('executed_at', ''))
+    
+    # Calculate cumulative P&L
+    cumulative_pnl = 0.0
+    peak = 0.0
+    
+    for trade in sorted_trades:
+        cumulative_pnl += trade.get('realized_pl', 0)
+        if cumulative_pnl > peak:
+            peak = cumulative_pnl
+    
+    # Current drawdown is peak minus current
+    current_drawdown = peak - cumulative_pnl
+    return current_drawdown
 
 
 def init_routes(app):
