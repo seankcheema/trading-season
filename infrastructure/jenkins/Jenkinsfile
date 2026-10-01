@@ -313,6 +313,36 @@ pipeline {
             }
         }
 
+        stage('Reporting Service Tests') {
+            environment {
+                CI = 'true'
+            }
+            steps {
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                    dir('apps/reporting-service') {
+                        sh '''
+                            set -eu
+                            echo "Running Reporting Service Tests (Pytest)..."
+                            pip install -q -r requirements.txt
+                            pytest tests/ -v --junit-xml=reports/junit/results.xml || true
+                            echo "✓ Reporting service tests completed"
+                        '''
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'apps/reporting-service/coverage/**/*, apps/reporting-service/reports/**/*',
+                                      allowEmptyArchive: true
+                    catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                        junit testResults: 'apps/reporting-service/reports/junit/*.xml',
+                              allowEmptyResults: true,
+                              healthScaleFactor: 1.0
+                    }
+                }
+            }
+        }
+
         stage('Frontend Tests') {
             steps {
                 catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {

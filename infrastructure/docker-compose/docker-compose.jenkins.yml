@@ -235,6 +235,32 @@ services:
     networks:
       - ci-network
 
+  # Reporting Service: portfolio analytics, trade history, performance metrics
+  reporting-service:
+    build:
+      context: ../../apps/reporting-service
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8083"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      auth-service:
+        condition: service_started
+    environment:
+      FLASK_ENV: production
+      FLASK_DEBUG: "false"
+      DATABASE_URL: postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season
+      AUTH_SERVICE_URL: http://auth-service:3001
+      AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200,http://localhost:4300}
+      REPORTING_SERVICE_PORT: 8083
+      REPORTING_SERVICE_HOST: 0.0.0.0
+      SCHEDULER_ENABLED: "true"
+      SCHEDULER_INTERVAL_MINUTES: 15
+    networks:
+      - ci-network
+
 volumes:
   jenkins_home:
   db_data:
