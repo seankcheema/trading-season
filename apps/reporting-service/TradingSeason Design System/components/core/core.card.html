@@ -1,0 +1,21 @@
+<!-- @dsCard group="Components" viewport="700x420" name="Core" subtitle="Button, Card, DashCard, Separator, Icon" -->
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{padding:20px;font-size:14px}.r{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.c{display:flex;flex-direction:column;gap:14px}</style></head><body><div id="root"></div>
+<script type="text/babel">
+const NS = window.TradingSeasonDesignSystem_86c3eb;
+
+const { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, DashCard, DashLabel, DashLink, Separator, Icon } = NS;
+function App(){return <div className="c">
+<div className="r"><Button icon="log-in" radius={5}>Sign in</Button><Button variant="outline" radius={5}>Cancel</Button><Button variant="secondary">Secondary</Button><Button variant="ghost">Ghost</Button><Button variant="destructive">Remove</Button><Button variant="sell">Sell 5 AAPL</Button><Button variant="link">Create one</Button><Button disabled>Disabled</Button></div>
+<div className="r"><Button size="xs">xs</Button><Button size="sm">sm</Button><Button>default</Button><Button size="lg">lg</Button><Button size="cta">Get started</Button><Button size="icon" variant="ghost" icon="x" aria-label="Close"/><Button size="icon" variant="outline" icon="pencil" aria-label="Rename"/></div>
+<div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
+<Card radius={10}><CardHeader align="center"><CardTitle style={{fontSize:20}}>Welcome back</CardTitle><CardDescription>Sign in to your account</CardDescription></CardHeader><CardContent><Button fullWidth radius={5} icon="log-in">Sign in</Button></CardContent><CardFooter style={{justifyContent:'center',fontSize:13,color:'var(--muted-foreground)'}}>No account?&nbsp;<a href="#">Create one</a></CardFooter></Card>
+<DashCard variant="net-worth"><DashLabel>Net Worth</DashLabel><div style={{fontSize:30,fontWeight:600,letterSpacing:'-.025em',marginTop:4}} className="tabular-nums">$128,406</div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginTop:16}}><Button size="lg">Deposit</Button><Button size="lg" variant="glass">Withdraw</Button></div></DashCard>
+<DashCard><div style={{display:'flex',justifyContent:'space-between'}}><span style={{fontWeight:600}}>Assets</span><DashLink>View all</DashLink></div><Separator style={{margin:'14px 0'}}/><div className="r" style={{color:'var(--muted-foreground)'}}><Icon name="mail"/><Icon name="lock"/><Icon name="search"/><Icon name="calendar-clock"/><Icon name="briefcase-business"/><Icon name="settings"/><Icon name="log-out"/></div></DashCard>
+</div></div>}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>

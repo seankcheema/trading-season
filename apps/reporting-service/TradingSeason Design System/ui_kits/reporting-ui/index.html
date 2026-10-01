@@ -1,0 +1,42 @@
+<!-- @dsCard group="Reporting UI" viewport="1440x900" name="Reporting console (proposed)" subtitle="Analyst activity overview, customer lookup, orders with audit trail" -->
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Trading Season Reporting</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="../../assets/2b-waves.svg">
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script src="../_shared/market-data.js"></script>
+<script src="reporting-data.js"></script>
+<style>@media print{@page{size:landscape;margin:12mm}html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}[data-print-hide]{display:none!important}#root>div{display:block!important;height:auto!important}#root *{overflow:visible!important;max-height:none!important;-webkit-mask-image:none!important;mask-image:none!important}[role=dialog]{position:static!important}}</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="ReportingShell.jsx"></script>
+<script type="text/babel" src="ActivityScreen.jsx"></script>
+<script type="text/babel" src="OrdersScreen.jsx"></script>
+<script type="text/babel" src="CustomersScreen.jsx"></script>
+<script type="text/babel">
+function ReportingApp() {
+  const saved = JSON.parse(localStorage.getItem('ts-reporting') || '{"screen":"activity"}');
+  const [screen, setScreen] = React.useState(saved.screen);
+  const [userId, setUserId] = React.useState(saved.userId || null);
+  const go = (s, u) => { setScreen(s); setUserId(u || null); localStorage.setItem('ts-reporting', JSON.stringify({ screen: s, userId: u || null })); };
+  return (
+    <ReportingShell screen={screen} go={go}>
+      {screen === 'activity' ? <ActivityScreen go={go} /> : null}
+      {screen === 'customers' ? <CustomersScreen openCustomer={(id) => go('customer', id)} /> : null}
+      {screen === 'customer' ? <CustomerDetail userId={userId} back={() => go('customers')} /> : null}
+      {screen === 'orders' ? <OrdersScreen /> : null}
+    </ReportingShell>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<ReportingApp />);
+</script>
+</body>
+</html>
