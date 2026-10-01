@@ -121,22 +121,37 @@ pipeline {
 
         stage('Setup Dependencies') {
             steps {
-                sh '''
-                    set -eu
-                    echo " Installing application dependencies..."
-                    if command -v node > /dev/null; then
-                        node --version
-                        npm --version
-                        # Use npm ci for reproducible, locked installations. The UI
-                        # and auth service are independent npm projects, each with
-                        # its own lockfile, so each gets its own install.
-                        npm --prefix apps/client-ui ci --prefer-offline --fund=false
-                        npm --prefix apps/auth-service ci --prefer-offline --fund=false
+                script {
+                    if (sh(script: 'command -v node > /dev/null 2>&1', returnStatus: true) == 0) {
+                        sh '''
+                            set -eu
+                            echo " Installing application dependencies..."
+                            node --version
+                            npm --version
+                        '''
+                        // Use npm ci for reproducible, locked installations. The UI
+                        // and auth service are independent npm projects, each with
+                        // its own lockfile and its own node_modules, so the two
+                        // installs cannot race each other.
+                        parallel(
+                            'client-ui': {
+                                sh '''
+                                    set -eu
+                                    npm --prefix apps/client-ui ci --prefer-offline --fund=false
+                                '''
+                            },
+                            'auth-service': {
+                                sh '''
+                                    set -eu
+                                    npm --prefix apps/auth-service ci --prefer-offline --fund=false
+                                '''
+                            }
+                        )
                         echo "✓ Application dependencies installed"
-                    else
+                    } else {
                         echo "  Node.js not available, skipping npm setup"
-                    fi
-                '''
+                    }
+                }
                 // apps/market-data holds only Python and SQL since the
                 // microservice split. The Java code lives in the two Spring Boot
                 // services below, so the cache is warmed from their poms.

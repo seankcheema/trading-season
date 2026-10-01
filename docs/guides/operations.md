@@ -52,6 +52,8 @@ The Jenkins pipeline expects a native agent with Docker, the Maven tool named Ma
 
 The Holdings and Trade Java, Order and Sell Java, synthetic market-data integration, Auth, and UI suites run concurrently as parallel branches of a single `Test Suites` stage: they read and write only their own app and report directories, so none of them depends on another's output. Each branch still publishes its own archived artifacts and JUnit results from its own `post` block, so one branch failing does not skip publication for the others. End-to-end tests and the local Docker stack build stay sequential afterward because the pre-E2E disk cleanup step removes the Java `target` and UI `coverage` directories those parallel branches produce.
 
+Setup Dependencies also installs the UI and auth service's npm dependencies concurrently, since each is an independent npm project with its own lockfile and node_modules. The Maven dependency warm-up for both Java services stays sequential: it writes into the shared `~/.m2/repository` local repository, and Maven does not guarantee safe concurrent writes into one local repository.
+
 | Suite | Outputs |
 | --- | --- |
 | Holdings and Trade Java | apps/holdings-and-trade-service/target/surefire-reports and target/site/jacoco |
