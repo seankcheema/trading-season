@@ -78,13 +78,15 @@ This service is the primary backend for Client UI. It implements order operation
 
 | Method | Path | Request | Success |
 | --- | --- | --- | --- |
-| POST | /api/orders | Bearer token + JSON: `accountId`, `instrumentId`, `orderType` (BUY or SELL), `quantity` (> 0), `indicativePrice` (> 0), optional `bufferPercent` (>= 0), `clientReference` (UUID idempotency key) | 201: `orderId`, `status`, `orderType`, `quantity`, `indicativePrice`, `rejectionReason`, `submittedAt`, `resolvedAt` |
+| POST | /api/orders | Bearer token + JSON: `accountId`, `instrumentId`, `orderType` (BUY or SELL), `quantity` (> 0), `indicativePrice` (> 0), optional `bufferPercent` (>= 0), `clientReference` (UUID idempotency key) | 201: `orderId`, `instrumentId`, `status`, `orderType`, `quantity`, `indicativePrice`, `rejectionReason`, `submittedAt`, `resolvedAt` |
 | GET | /api/orders | Bearer token | 200: array of the caller's orders, newest first, each in the same shape as the POST response |
 | GET | /api/instruments | Bearer token | 200: array of every instrument by ticker, each with `instrumentId`, `ticker`, `name`, `assetClass`, `market`, `currency`, `tradable`, `simulatedStockSymbol` |
 
 **Order lifecycle (KAN-93):** an order is created `PENDING`, then the trading rules run: the user's account is active, a buy is affordable, a sell is covered by holdings, and the instrument is tradable. A failed rule leaves the order `REJECTED` with a `rejectionReason`. Otherwise the fill is written and the order moves to `FILLED`, its final state. Every transition is recorded in `audit_trail`. A rejection is still a 201 response: it describes a failed trade, not a failed request.
 
 **Funds:** cash belongs to the user, not to an account. A buy is rejected when `quantity * indicativePrice` exceeds the caller's `availableFunds`, the value returned by `GET /api/users/me`. A filled buy decreases `availableFunds` by that amount and a filled sell increases it. `accounts.cash_balance` is not moved. Orders currently fill at `indicativePrice`; see [OrderExecutionService](../../apps/order-and-sell-service/src/main/java/app/order/execution/OrderExecutionService.java).
+
+The dashboard recent transactions merges cash transfers with filled orders across the caller's accounts, ordered by `resolvedAt` for executions and `createdAt` for cash transfers. It shows the latest 20 entries. Instrument reference data supplies the stock symbol; trade amounts are `quantity * indicativePrice`, negative for buys and positive for sells. Pending and rejected orders are excluded. Order history already stores these timestamps; this integration requires no additional migration.
 
 **Order history:** `GET /api/orders` returns every order placed on any account the caller owns, newest `submittedAt` first, ties broken by descending `orderId`. The owner comes from the token's `sub`, so there is no parameter that can name another user's orders; a caller who has never traded gets `[]`, not a 404.
 
@@ -164,6 +166,21 @@ Every endpoint resolves the owner from the token's `sub`. An account id in a pat
 An account is returned as `accountId`, `userId`, `name`, `cashBalance`, `openedDate` and `currency`. Registration opens a default account named `Main Account`, so a new user starts with one empty account rather than none.
 
 A holding is returned as `holdingId`, `accountId`, `instrumentId`, `symbol`, `name`, `quantity`, `averageCost` and `updatedAt`. Neither `symbol` nor `averageCost` is stored on the holding row: the symbol comes from the instrument, preferring `simulated_stock_symbol` so it matches what the market endpoints report, and `averageCost` is derived from `holding_movements` joined to `fills`, weighted by quantity over acquisitions only. An instrument that cannot be resolved reports its id as the symbol, and a position with no acquisition history reports an average cost of 0.
+
+### Portfolio valuation history
+
+These authenticated endpoints use the same account ownership checks as holdings (403 for another user's account, 404 for a missing account). See [PortfolioValuationController](../../apps/holdings-and-trade-service/src/main/java/app/account/PortfolioValuationController.java).
+
+| Method | Path | Request | Success |
+| --- | --- | --- | --- |
+| GET | /api/accounts/{accountId}/portfolio-history | Bearer token; optional `timeframe` (default `1D`; `1D`, `5D`, `1W`, `1M`, `1Y`) | 200: chronological `{timestamp, value}` observations |
+| POST | /api/accounts/{accountId}/portfolio-valuations | Bearer token; no valuation data required | 200: server-calculated `{timestamp, value}`, or an empty body before any purchase |
+
+`timestamp` is the actual UTC observation time, independent of the simulated market timestamp. Value is the sum of held quantities multiplied by current replay prices, with average acquisition cost as the fallback for unavailable quotes; shared cash is excluded. The dashboard requests capture after a filled order. A background job also records eligible accounts once per minute, including liquidated accounts at zero; scheduled captures in a minute already recorded are coalesced. Rejected orders do not trigger capture.
+
+History begins with the first capture after deployment, including a current baseline for existing portfolios. No historical prices are fabricated from replay candles. Empty accounts have no observations until the ledger contains an acquisition. Lookbacks and buckets follow [MarketTimeframe](../../apps/holdings-and-trade-service/src/main/java/app/market/MarketTimeframe.java), ending at real current time; each bucket retains its latest observation and actual timestamp. The chart connects recorded values into a continuous line and carries the latest value forward to the current time. When the first acquisition falls within the selected range, history includes zero from the range start until immediately before that execution, using the existing `fills.filled_at` timestamp. These baseline and carry-forward endpoints are presentation values, not additional stored observations. Earlier investments outside the selected range do not receive a zero baseline. Unsupported timeframes return 400. The dashboard refreshes each minute, on selection/range changes, and after filled orders; capture failures are displayed separately from successful trades and retried on the next refresh. Net Worth and Portfolio Value display exactly two decimal places.
+
+Apply [V009](../../apps/market-data/db/migrations/V009__Portfolio_valuations.sql) before starting the updated Holdings and Trade service. There is no automatic Java migration runner.
 
 ### Cash
 
@@ -296,7 +313,7 @@ Errors use an `{"error": "..."}` body. See [exception mapping](../../apps/holdin
 
 ## Java stock market API
 
-These public endpoints expose seeded stock data for the dashboard market ticker, instrument popup, and full-screen `/dashboard/markets/:symbol` view. Both Java services implement them identically; the UI reaches them on port 8082, because only the trading paths are routed to port 8081. The full-screen view combines candle history with live stream prices and supports `1D`, `5D`, `1M`, and `1Y`; chart modes, technical indicators, and peer comparison are computed in the browser. Its metrics, overview signals, news, AI responses, cash balance, held shares, and order preview are demo data rather than API responses. On that page Buy and Sell only calculate a local preview and do not call an order endpoint; the dashboard's own order dialog is what submits a trade, through [Trading endpoints](#trading-endpoints). Account, portfolio, holding and transaction integration remains outside this slice, and the dashboard portfolio chart still uses mock data.
+These public endpoints expose seeded stock data for the dashboard market ticker, instrument popup, and full-screen `/dashboard/markets/:symbol` view. Both Java services implement them identically; the UI reaches them on port 8082, because only the trading paths are routed to port 8081. The full-screen view combines candle history with live stream prices and supports `1D`, `5D`, `1M`, and `1Y`; chart modes, technical indicators, and peer comparison are computed in the browser. Its metrics, overview signals, news, AI responses, cash balance, held shares, and order preview are demo data rather than API responses. On that page Buy and Sell only calculate a local preview and do not call an order endpoint; the dashboard's own order dialog is what submits a trade, through [Trading endpoints](#trading-endpoints). The dashboard portfolio chart reads real-time account observations through [Portfolio valuation history](#portfolio-valuation-history).
 
 Protected trading endpoints use the [token verification](#token-verification) described above: clients send the auth service access token as a bearer token, and the Java backend scopes account and order resources to the token's sub.
 

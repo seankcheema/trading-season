@@ -55,6 +55,16 @@ describe('OrderService', () => {
 
   afterEach(() => http.verify());
 
+  it('reports a failed history load and recovers on retry', () => {
+    service.loadOrders().subscribe({ error: () => {} });
+    http.expectOne('/api/orders').flush({}, { status: 503, statusText: 'Unavailable' });
+    expect(service.historyStatus()).toBe('error');
+    service.loadOrders().subscribe();
+    http.expectOne('/api/orders').flush([order()]);
+    expect(service.historyStatus()).toBe('ready');
+    expect(service.orders()).toEqual([order()]);
+  });
+
   describe('instruments', () => {
     it('should fetch the catalogue once and share it between callers', () => {
       const first: InstrumentRef[][] = [];
@@ -67,6 +77,7 @@ describe('OrderService', () => {
       // A third subscriber after the response still gets the cached catalogue, not a request.
       service.instruments().subscribe((value) => second.push(value));
 
+      expect(service.catalogue()).toEqual([instrument()]);
       expect(first).toHaveLength(1);
       expect(second).toHaveLength(2);
       expect(first[0][0].instrumentId).toBe(7);
@@ -80,10 +91,12 @@ describe('OrderService', () => {
       // ticker collides with another's market symbol, and the market symbol must win.
       const matches: (InstrumentRef | null)[] = [];
       service.instrumentFor('AAPL').subscribe((value) => matches.push(value));
-      http.expectOne({ method: 'GET', url: '/api/instruments' }).flush([
-        instrument({ instrumentId: 1, ticker: 'AAPL', simulatedStockSymbol: 'APLX' }),
-        instrument({ instrumentId: 2, ticker: 'AAPL2', simulatedStockSymbol: 'AAPL' }),
-      ]);
+      http
+        .expectOne({ method: 'GET', url: '/api/instruments' })
+        .flush([
+          instrument({ instrumentId: 1, ticker: 'AAPL', simulatedStockSymbol: 'APLX' }),
+          instrument({ instrumentId: 2, ticker: 'AAPL2', simulatedStockSymbol: 'AAPL' }),
+        ]);
 
       expect(matches[0]?.instrumentId).toBe(2);
     });
@@ -224,9 +237,7 @@ describe('OrderService', () => {
 
       const key = submitAndReadKey();
 
-      expect(key).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-      );
+      expect(key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
     });
 
     it('should pad a zero byte rather than emit a short key', () => {
@@ -240,6 +251,18 @@ describe('OrderService', () => {
 
       expect(submitAndReadKey()).toBe('00000000-0000-4000-8000-000000000000');
     });
+  });
+
+  it('shows a newly submitted execution once even when its response repeats', () => {
+    service.loadOrders().subscribe();
+    http.expectOne('/api/orders').flush([order()]);
+    service.submitOrder(BUY).subscribe();
+    http.expectOne('/api/instruments').flush([instrument()]);
+    http.expectOne('/api/orders').flush(order());
+    expect(service.orders()).toHaveLength(1);
+    service.submitOrder(BUY).subscribe();
+    http.expectOne('/api/orders').flush(order({ orderId: 2 }));
+    expect(service.orders().map((value) => value.orderId)).toEqual([2, 1]);
   });
 
   describe('loadOrders', () => {

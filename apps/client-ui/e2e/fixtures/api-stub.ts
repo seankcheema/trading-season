@@ -172,6 +172,7 @@ export class ApiStub {
   // as availableFunds and is shared by all of that user's accounts.
   private readonly tradingAccounts: OwnedTradingAccount[] = [];
   private readonly cashTransactions = new Map<string, StoredCashTransaction[]>();
+  private readonly portfolioValuations = new Map<number, { timestamp: string; value: number }[]>();
   private nextId = 1;
 
   constructor(options: StubOptions = {}) {
@@ -227,6 +228,12 @@ export class ApiStub {
     await page.route(AUTH_ORIGIN + '/auth/logout', (route) => this.logout(route));
     await page.route('**/api/auth/register', (route) => this.registerProfile(route));
     await page.route('**/api/auth/account-exists', (route) => this.accountExists(route));
+    await page.route('**/api/orders', async (route) => {
+      if (await this.caller(route)) await this.json(route, 200, []);
+    });
+    await page.route('**/api/instruments', async (route) => {
+      if (await this.caller(route)) await this.json(route, 200, []);
+    });
     await page.route('**/api/users/me', (route) => this.ownProfile(route));
     await page.route('**/api/market/**', (route) => this.market(route));
     await page.route('**/api/me/accounts', (route) => this.meAccounts(route));
@@ -236,6 +243,10 @@ export class ApiStub {
       (route) => this.accountHoldings(route),
     );
     await page.route('**/api/me/cash-transactions**', (route) => this.meCashTransactions(route));
+    await page.route(
+      (url) => /^\/api\/accounts\/\d+\/portfolio-(history|valuations)$/.test(url.pathname),
+      (route) => this.portfolioHistory(route),
+    );
   }
 
   /** Trading accounts the business backend holds for a user, oldest first. */
@@ -533,6 +544,38 @@ export class ApiStub {
     }
     account.name = name;
     await this.json(route, 200, publicAccount(account));
+  }
+
+  /** Portfolio observations for the caller's owned account. */
+  private async portfolioHistory(route: Route): Promise<void> {
+    const ownerId = await this.caller(route);
+    if (!ownerId) return;
+    const accountId = Number(new URL(route.request().url()).pathname.split('/')[3]);
+    const account = this.ownedAccounts(ownerId).find(
+      (candidate) => candidate.accountId === accountId,
+    );
+    if (!account) {
+      await this.json(route, 404, { error: 'Account not found' });
+      return;
+    }
+    let points = this.portfolioValuations.get(accountId) ?? [];
+    // Seeded holdings represent an existing portfolio's first observed baseline.
+    if (route.request().method() === 'POST' || (!points.length && account.holdings.length)) {
+      const point = {
+        timestamp: new Date().toISOString(),
+        value: account.holdings.reduce(
+          (sum, holding) => sum + holding.quantity * holding.averageCost,
+          0,
+        ),
+      };
+      points = [...points, point];
+      this.portfolioValuations.set(accountId, points);
+    }
+    await this.json(
+      route,
+      200,
+      route.request().method() === 'POST' ? (points.at(-1) ?? null) : points,
+    );
   }
 
   /** GET lists an owned account's holdings: its portfolio. */

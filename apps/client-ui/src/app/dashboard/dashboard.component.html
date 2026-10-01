@@ -175,7 +175,7 @@
             class="mt-1 truncate text-4xl font-semibold tracking-tight tabular-nums"
             data-testid="net-worth"
           >
-            {{ netWorth() | currency: 'USD' : 'symbol' : '1.0-0' }}
+            {{ netWorth() | currency: 'USD' : 'symbol' : '1.2-2' }}
           </p>
 
           <div class="mt-5 flex items-baseline justify-between text-xs">
@@ -235,22 +235,36 @@
             class="dash-scroll dash-fade min-h-0 flex-1 overflow-y-auto"
             data-testid="recent-transactions"
           >
+            @if (orderService.historyStatus() === 'error') {
+              <li
+                class="text-muted-foreground px-2 py-2 text-sm"
+                role="status"
+                data-testid="order-history-error"
+              >
+                Unable to load executed orders.
+                <button type="button" class="text-primary underline" (click)="loadRecentOrders()">
+                  Retry
+                </button>
+              </li>
+            }
             @for (transaction of transactions(); track transaction.key) {
               <li
                 class="border-border/60 flex items-center justify-between gap-4 border-b py-2.5 text-sm last:border-b-0"
                 [attr.data-kind]="transaction.kind"
               >
                 <span class="min-w-0">
-                  <span class="font-medium">Cash</span>
+                  <span class="font-medium">{{ transaction.label }}</span>
                   <span
                     class="ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
-                    [class]="
-                      transaction.reason === 'DEPOSIT'
-                        ? 'bg-gain/15 text-gain'
-                        : 'bg-loss/15 text-loss'
-                    "
+                    [class]="transaction.positive ? 'bg-gain/15 text-gain' : 'bg-loss/15 text-loss'"
                   >
-                    {{ transaction.reason === 'DEPOSIT' ? 'deposit' : 'withdrawal' }}
+                    {{
+                      transaction.reason === 'DEPOSIT'
+                        ? 'deposit'
+                        : transaction.reason === 'WITHDRAWAL'
+                          ? 'withdrawal'
+                          : transaction.reason
+                    }}
                   </span>
                   <span class="text-muted-foreground block text-xs">
                     {{ transaction.date | date: 'MMM d' }}
@@ -258,15 +272,18 @@
                 </span>
                 <span class="shrink-0 text-right tabular-nums">
                   <span class="block">
-                    {{ transaction.reason === 'DEPOSIT' ? '+' : '-'
-                    }}{{ transaction.value | currency: 'USD' }}
+                    {{ transaction.positive ? '+' : '-' }}{{ transaction.value | currency: 'USD' }}
                   </span>
-                  <span class="text-muted-foreground block text-xs">Cash transfer</span>
+                  <span class="text-muted-foreground block text-xs">{{ transaction.detail }}</span>
                 </span>
               </li>
             } @empty {
               <li class="text-muted-foreground px-2 py-6 text-center text-sm">
-                No transactions yet. Deposit funds to get started.
+                @if (orderService.historyStatus() === 'loading') {
+                  Loading transactions…
+                } @else if (orderService.historyStatus() !== 'error') {
+                  No transactions yet. Deposit funds or execute a trade to get started.
+                }
               </li>
             }
           </ul>
@@ -329,7 +346,7 @@
                     class="text-3xl font-semibold tracking-tight tabular-nums"
                     data-testid="portfolio-value"
                   >
-                    {{ portfolioValue() | currency: 'USD' : 'symbol' : '1.0-0' }}
+                    {{ portfolioValue() | currency: 'USD' : 'symbol' : '1.2-2' }}
                   </span>
                   <span
                     class="rounded-full px-2 py-0.5 text-xs font-medium tabular-nums"
@@ -345,21 +362,44 @@
               </div>
               <app-timeframe-toggle [(value)]="portfolioTimeframe" />
             </div>
+            @if (portfolioHistory.status() === 'error') {
+              <p
+                class="text-muted-foreground mt-2 text-sm"
+                role="status"
+                data-testid="portfolio-history-error"
+              >
+                Unable to refresh portfolio history. Your completed trades are unaffected.
+                <button
+                  type="button"
+                  class="text-primary underline"
+                  (click)="portfolioHistory.refresh()"
+                >
+                  Retry
+                </button>
+              </p>
+            }
             @if (hasChartablePortfolioValue()) {
               <app-price-chart
                 class="mt-1 min-h-0 flex-1"
-                area
+                [observationIntervalMs]="portfolioObservationInterval()"
                 [points]="portfolioChart()"
                 [timeframe]="portfolioTimeframe()"
                 timezone="America/Chicago"
               />
-            } @else {
+            } @else if (portfolioHistory.status() === 'loading') {
+              <p
+                class="text-muted-foreground flex min-h-32 flex-1 items-center justify-center text-sm"
+                role="status"
+              >
+                Loading portfolio history…
+              </p>
+            } @else if (portfolioHistory.status() !== 'error') {
               <p
                 class="text-muted-foreground flex min-h-32 flex-1 items-center justify-center text-center text-sm"
                 data-testid="portfolio-chart-empty-state"
                 role="status"
               >
-                Start trading to build your portfolio.
+                No portfolio history in this range yet.
               </p>
             }
           } @else {

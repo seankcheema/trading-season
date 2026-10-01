@@ -62,11 +62,13 @@ function flushAccounts(
     cash = CASH,
     transactions = [] as unknown[],
     profile = PROFILE,
+    orders = [] as OrderResult[],
   }: {
     holdings?: Record<number, unknown[]>;
     cash?: number;
     transactions?: unknown[];
     profile?: { firstName: string; lastName: string };
+    orders?: OrderResult[];
   } = {},
 ): HttpTestingController {
   const http = TestBed.inject(HttpTestingController);
@@ -78,7 +80,44 @@ function flushAccounts(
   }
   http.expectOne('/api/users/me').flush({ ...profile, availableFunds: cash });
   http.expectOne((request) => request.url === '/api/me/cash-transactions').flush(transactions);
+  for (const request of http.match('/api/orders')) request.flush(orders);
+  for (const request of http.match('/api/instruments'))
+    request.flush([
+      {
+        instrumentId: 7,
+        ticker: 'AAPL',
+        simulatedStockSymbol: 'AAPL',
+        name: 'Apple',
+        assetClass: 'Equity',
+        market: 'US',
+        currency: 'USD',
+        tradable: true,
+      },
+    ]);
   fixture.detectChanges();
+  const selected = accounts[0];
+  if (selected) {
+    const positions = holdings[selected.accountId] as
+      { quantity: number; averageCost: number }[] | undefined;
+    http
+      .expectOne(
+        (request) => request.url === `/api/accounts/${selected.accountId}/portfolio-history`,
+      )
+      .flush(
+        positions?.some((position) => position.quantity > 0)
+          ? [
+              {
+                timestamp: '2026-10-01T18:00:00Z',
+                value: positions.reduce(
+                  (total, position) => total + position.quantity * position.averageCost,
+                  0,
+                ),
+              },
+            ]
+          : [],
+      );
+    fixture.detectChanges();
+  }
   return http;
 }
 
@@ -103,12 +142,71 @@ describe('DashboardComponent', () => {
     }).compileComponents();
   });
 
+  it('merges filled executions with cash by execution time and excludes unfilled orders', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+    flushAccounts(fixture, ACCOUNTS, {
+      transactions: [
+        { cashTransactionId: 8, amount: 500, reason: 'DEPOSIT', createdAt: '2026-01-05T16:30:00Z' },
+      ],
+      orders: [
+        filledOrder({
+          instrumentId: 7,
+          quantity: 2,
+          indicativePrice: 100,
+          submittedAt: '2026-01-05T15:00:00Z',
+          resolvedAt: '2026-01-05T17:00:00Z',
+        }),
+        filledOrder({
+          orderId: 2,
+          instrumentId: 7,
+          orderType: 'SELL',
+          quantity: 1,
+          indicativePrice: 120,
+          resolvedAt: '2026-01-05T10:00:00-06:00',
+        }),
+        filledOrder({ orderId: 3, status: 'PENDING', resolvedAt: null }),
+        filledOrder({ orderId: 4, status: 'REJECTED' }),
+      ],
+    });
+    const rows = [
+      ...fixture.nativeElement.querySelectorAll(
+        '[data-testid="recent-transactions"] li[data-kind]',
+      ),
+    ] as HTMLElement[];
+    expect(rows).toHaveLength(3);
+    expect(rows[0].textContent).toContain('AAPL');
+    expect(rows[0].textContent).toContain('BUY');
+    expect(rows[0].textContent).toContain('-$200.00');
+    expect(rows[0].textContent).toContain('2 shares');
+    expect(rows[1].dataset['kind']).toBe('cash');
+    expect(rows[2].textContent).toContain('SELL');
+    expect(rows[2].textContent).toContain('+$120.00');
+  });
+
   it('should create the dashboard component', () => {
     const fixture = TestBed.createComponent(DashboardComponent);
     expect(fixture.componentInstance).toBeTruthy();
   });
 
-  it('should limit the portfolio chart to the elapsed market session', () => {
+  it.each([100, 100.5, 0])(
+    'displays two decimal places for both financial cards at %s',
+    (value) => {
+      const fixture = TestBed.createComponent(DashboardComponent);
+      fixture.detectChanges();
+      flushAccounts(fixture, [ACCOUNTS[0]], {
+        holdings: { 1: [{ symbol: 'UNQUOTED', quantity: 1, averageCost: value }] },
+        cash: 0,
+      });
+      for (const testId of ['net-worth', 'portfolio-value']) {
+        expect(
+          fixture.nativeElement.querySelector(`[data-testid="${testId}"]`).textContent.trim(),
+        ).toBe(`$${value.toFixed(2)}`);
+      }
+    },
+  );
+
+  it('uses real observation dates independently of the market replay session', () => {
     const fixture = TestBed.createComponent(DashboardComponent);
     fixture.detectChanges();
     flushAccounts(fixture);
@@ -117,11 +215,8 @@ describe('DashboardComponent', () => {
 
     const points = component['portfolioChart']();
 
-    expect(points[0].time.toISOString()).toBe('2026-01-05T15:30:00.000Z');
-    expect(points[points.length - 1].time.toISOString()).toBe('2026-01-05T16:00:00.000Z');
-    expect(
-      points.every((point) => point.time.getTime() <= Date.parse('2026-01-05T16:00:00Z')),
-    ).toBe(true);
+    expect(points).toHaveLength(1);
+    expect(points[0].time.toISOString()).toBe('2026-10-01T18:00:00.000Z');
   });
 
   it('should not show the order submission dialog initially', () => {
@@ -151,7 +246,14 @@ describe('DashboardComponent', () => {
     // A fill moved the user's cash and the account's positions, so both are reloaded.
     http.expectOne('/api/users/me').flush({ ...PROFILE, availableFunds: 9_683.41 });
     http.expectOne('/api/accounts/1/holdings').flush(HOLDINGS[1]);
+    http
+      .expectOne('/api/accounts/1/portfolio-valuations')
+      .flush({ timestamp: '2026-10-01T18:00:00Z', value: 6500 });
+    http
+      .expectOne((request) => request.url === '/api/accounts/1/portfolio-history')
+      .flush([{ timestamp: '2026-10-01T18:00:00Z', value: 6500 }]);
     expect(component['cashBalance']()).toBe(9_683.41);
+    expect(component['portfolioChart']()[0].value).toBe(6500);
   });
 
   it('should reload nothing when an order was rejected', () => {
@@ -166,6 +268,7 @@ describe('DashboardComponent', () => {
     // Nothing changed, so reloading would only be a wasted round trip.
     http.expectNone('/api/users/me');
     http.expectNone('/api/accounts/1/holdings');
+    http.expectNone('/api/accounts/1/portfolio-valuations');
     expect(fixture.componentInstance['cashBalance']()).toBe(CASH);
   });
 
@@ -844,10 +947,10 @@ describe('DashboardComponent', () => {
       expect(fixture.componentInstance['netWorth']()).toBe(CASH);
       expect(
         text(element(fixture).querySelector('[data-testid="portfolio-chart-empty-state"]')),
-      ).toBe('Start trading to build your portfolio.');
+      ).toBe('No portfolio history in this range yet.');
       expect(element(fixture).querySelector('app-price-chart')).toBeNull();
       expect(element(fixture).querySelector('app-timeframe-toggle')).not.toBeNull();
-      expect(text(element(fixture).querySelector('[data-testid="portfolio-value"]'))).toBe('$0');
+      expect(text(element(fixture).querySelector('[data-testid="portfolio-value"]'))).toBe('$0.00');
       expect(element(fixture).textContent).toContain('Portfolio Value · Fresh');
     });
 
@@ -1079,8 +1182,8 @@ describe('DashboardComponent', () => {
       });
 
       // The default account is selected and named, with nothing in it and no cash.
-      expect(text(element(fixture).querySelector('[data-testid="portfolio-value"]'))).toBe('$0');
-      expect(text(element(fixture).querySelector('[data-testid="net-worth"]'))).toContain('$0');
+      expect(text(element(fixture).querySelector('[data-testid="portfolio-value"]'))).toBe('$0.00');
+      expect(text(element(fixture).querySelector('[data-testid="net-worth"]'))).toBe('$0.00');
       expect(text(element(fixture).querySelector('[data-testid="assets-table"]'))).toContain(
         'This account has no holdings yet.',
       );

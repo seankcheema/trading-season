@@ -38,6 +38,8 @@ export interface OrderSubmission {
 
 export interface OrderResult {
   orderId: number;
+  // Optional during rollout against an older backend; identifies the catalogue entry.
+  instrumentId?: number;
   status: OrderStatus;
   orderType: OrderType;
   quantity: number;

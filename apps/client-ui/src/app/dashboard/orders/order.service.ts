@@ -18,19 +18,23 @@ export class OrderService {
   private readonly _apiUrl = inject(BACKEND_API_URL);
 
   // The catalogue does not change while the app is open, so it is fetched once and shared.
-  // Kept unresolved until something needs an instrument id, which is the first submission.
+  // Loaded when recent activity or a submission needs instrument reference data.
   private _instruments: Observable<InstrumentRef[]> | null = null;
 
   private readonly _orders = signal<OrderResult[]>([]);
+  private readonly _catalogue = signal<InstrumentRef[]>([]);
+  readonly catalogue = this._catalogue.asReadonly();
+  readonly historyStatus = signal<'idle' | 'loading' | 'ready' | 'error'>('idle');
 
   // The caller's orders, newest first. Empty until loadOrders() succeeds.
   readonly orders = this._orders.asReadonly();
 
   // Every instrument, ordered by ticker. Repeated calls share one request.
   instruments(): Observable<InstrumentRef[]> {
-    this._instruments ??= this._http
-      .get<InstrumentRef[]>(`${this._apiUrl}/instruments`)
-      .pipe(shareReplay({ bufferSize: 1, refCount: false }));
+    this._instruments ??= this._http.get<InstrumentRef[]>(`${this._apiUrl}/instruments`).pipe(
+      tap((instruments) => this._catalogue.set(instruments)),
+      shareReplay({ bufferSize: 1, refCount: false }),
+    );
     return this._instruments;
   }
 
@@ -64,15 +68,27 @@ export class OrderService {
       }),
       // A fill moves funds and holdings, so the history the dashboard shows is stale
       // the moment one lands.
-      tap((result) => this._orders.update((orders) => [result, ...orders])),
+      tap((result) =>
+        this._orders.update((orders) => [
+          result,
+          ...orders.filter((order) => order.orderId !== result.orderId),
+        ]),
+      ),
     );
   }
 
   // Replaces the cached history with the caller's orders as the backend has them.
   loadOrders(): Observable<OrderResult[]> {
-    return this._http
-      .get<OrderResult[]>(`${this._apiUrl}/orders`)
-      .pipe(tap((orders) => this._orders.set(orders)));
+    this.historyStatus.set('loading');
+    return this._http.get<OrderResult[]>(`${this._apiUrl}/orders`).pipe(
+      tap({
+        next: (orders) => {
+          this._orders.set(orders);
+          this.historyStatus.set('ready');
+        },
+        error: () => this.historyStatus.set('error'),
+      }),
+    );
   }
 
   // Resolves a market-data symbol to the instrument behind it, for callers that need the id

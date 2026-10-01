@@ -19,6 +19,12 @@ The business bootstrap defines more of the trading model than the currently impl
 
 ## Service ownership in trading_season
 
+Portfolio history adds [V009](../../apps/market-data/db/migrations/V009__Portfolio_valuations.sql), an additive migration creating `portfolio_valuations` with `valuation_id`, `account_id`, `observed_at` (TIMESTAMPTZ), and `portfolio_value` (NUMERIC(38,10)). Its account/time index supports history queries, and the account foreign key cascades deletion. Holdings and Trade owns writing these observations; trade execution continues to write the existing fills and holding movements. No existing purchase timestamps change and no historical valuation backfill runs. Apply V009 once to an existing database before deploying the updated backend; do not rerun the destructive V001 bootstrap to upgrade retained data.
+
+```powershell
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V009__Portfolio_valuations.sql
+```
+
 Both Java services share the same `trading_season` database. This table lists which service has primary responsibility for each table:
 
 | Table | Owned by | Access |
@@ -30,6 +36,7 @@ Both Java services share the same `trading_season` database. This table lists wh
 | orders | Holdings and Trade Service | Read/write (order lifecycle) |
 | fills | Holdings and Trade Service | Read/write (execution results) |
 | holdings | Holdings and Trade Service | Read/write (position tracking) |
+| portfolio_valuations | Holdings and Trade Service | Append/read (real-time portfolio history) |
 | cash_transactions | Holdings and Trade Service | Read/write (ledger entries) |
 | holding_movements | Holdings and Trade Service | Read/write (position ledger) |
 | audit_trail | Holdings and Trade Service | Read/write (event history) |

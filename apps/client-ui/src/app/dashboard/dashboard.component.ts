@@ -44,6 +44,7 @@ import {
   MarketTickEvent,
 } from './market-data.service';
 import { AccountStore } from './accounts/account-store.service';
+import { PortfolioHistoryService } from './accounts/portfolio-history.service';
 import { AccountDialogComponent } from './accounts/account-dialog.component';
 import { Account, AccountHolding, CashTransactionReason } from './accounts/account.models';
 import {
@@ -91,14 +92,16 @@ interface PricedHolding {
   gainLoss: number;
 }
 
-// One row of the recent transactions list: a cash deposit or withdrawal the account service
-// recorded for this user. Trades join it once order history has an endpoint to read.
+// User-wide cash movements and successful executions across the caller's owned accounts.
 interface ActivityItem {
-  kind: 'cash';
+  kind: 'cash' | 'trade';
   key: string;
   date: string;
-  reason: CashTransactionReason;
+  reason: CashTransactionReason | 'BUY' | 'SELL';
   value: number;
+  label: string;
+  detail: string;
+  positive: boolean;
 }
 
 @Component({
@@ -121,6 +124,7 @@ interface ActivityItem {
   ],
   providers: [
     AccountStore,
+    PortfolioHistoryService,
     OrderService,
     provideIcons({
       lucideBriefcaseBusiness,
@@ -153,6 +157,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // Only ever the signed-in user's own accounts; see AccountStore. Each account's portfolio
   // is its holdings, and the user's cash is shared by all of them.
   protected readonly accountStore = inject(AccountStore);
+  protected readonly orderService = inject(OrderService);
+  private readonly recentOrderSubscriptions = new Subscription();
   protected readonly accounts = this.accountStore.accounts;
   protected readonly selectedAccount = this.accountStore.selectedAccount;
   protected readonly selectedAccountId = this.accountStore.selectedAccountId;
@@ -265,20 +271,42 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return values;
   });
 
-  // Only this user's own cash movements, so a new account's list is genuinely empty.
-  protected readonly transactions = computed<ActivityItem[]>(() =>
-    this.accountStore
-      .cashTransactions()
-      .map((transaction) => ({
-        kind: 'cash' as const,
-        key: `cash-${transaction.cashTransactionId}`,
-        date: transaction.createdAt,
-        reason: transaction.reason,
-        value: transaction.amount,
-      }))
-      // ISO instants sort correctly as strings; newest first.
-      .sort((a, b) => b.date.localeCompare(a.date)),
-  );
+  protected readonly transactions = computed<ActivityItem[]>(() => {
+    const cash: ActivityItem[] = this.accountStore.cashTransactions().map((transaction) => ({
+      kind: 'cash' as const,
+      key: `cash-${transaction.cashTransactionId}`,
+      date: transaction.createdAt,
+      reason: transaction.reason,
+      value: transaction.amount,
+      label: 'Cash',
+      detail: 'Cash transfer',
+      positive: transaction.reason === 'DEPOSIT',
+    }));
+    const catalogue = new Map(
+      this.orderService.catalogue().map((instrument) => [instrument.instrumentId, instrument]),
+    );
+    const trades: ActivityItem[] = this.orderService
+      .orders()
+      .filter((order) => order.status === 'FILLED' && order.resolvedAt !== null)
+      .map((order) => {
+        const instrument =
+          order.instrumentId === undefined ? undefined : catalogue.get(order.instrumentId);
+        return {
+          kind: 'trade',
+          key: `order-${order.orderId}`,
+          date: order.resolvedAt!,
+          reason: order.orderType,
+          value: order.quantity * order.indicativePrice,
+          label:
+            instrument?.simulatedStockSymbol ?? instrument?.ticker ?? `Order #${order.orderId}`,
+          detail: `${order.quantity} ${order.quantity === 1 ? 'share' : 'shares'} · Filled`,
+          positive: order.orderType === 'SELL',
+        };
+      });
+    return [...cash, ...trades]
+      .sort((a, b) => Date.parse(b.date) - Date.parse(a.date) || b.key.localeCompare(a.key))
+      .slice(0, 20);
+  });
 
   protected readonly positions = computed(() =>
     Object.fromEntries(this.holdings().map((holding) => [holding.symbol, holding.shares])),
@@ -313,10 +341,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // The selected account's portfolio value.
   protected readonly portfolioValue = computed(() => totalValue(this.holdings()));
-  protected readonly hasChartablePortfolioValue = computed(() => {
-    const value = this.portfolioValue();
-    return Number.isFinite(value) && value > 0;
-  });
+  protected readonly hasChartablePortfolioValue = computed(() => this.portfolioChart().length > 0);
 
   protected readonly portfolioChangePercent = computed(() => {
     const cost = this.holdings().reduce((total, h) => total + h.shares * h.costBasis, 0);
@@ -336,16 +361,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.netWorth() ? (this.investedValue() / this.netWorth()) * 100 : 0,
   );
 
-  protected readonly portfolioChart = computed(() =>
-    mockPriceSeries(
-      `portfolio-${this.selectedAccountId()}`,
-      this.portfolioTimeframe(),
-      this.portfolioValue(),
-      this.marketTimeMillis() ?? undefined,
-    ),
+  protected readonly portfolioHistory = inject(PortfolioHistoryService);
+  protected readonly portfolioChart = this.portfolioHistory.points;
+  protected readonly portfolioObservationInterval = computed(
+    () =>
+      ({ '1D': 60_000, '5D': 300_000, '1M': 3_600_000, '1Y': 86_400_000 })[
+        this.portfolioTimeframe()
+      ],
   );
+  private historyRefreshTimer?: ReturnType<typeof setInterval>;
 
   constructor() {
+    effect(() => {
+      const accountId = this.selectedAccountId();
+      const timeframe = this.portfolioTimeframe();
+      untracked(() => this.portfolioHistory.select(accountId, timeframe));
+    });
     // Holdings arrive after the market snapshot and change with the selected account, so
     // load daily candles for any newly held symbol once there is a market session.
     effect(() => {
@@ -361,10 +392,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (isPlatformBrowser(this.platformId)) {
       this.loadMarketSnapshot();
       this.accountStore.load();
+      this.loadRecentOrders();
+      this.historyRefreshTimer = setInterval(() => this.portfolioHistory.refresh(), 60_000);
     }
   }
 
   ngOnDestroy(): void {
+    this.recentOrderSubscriptions.unsubscribe();
+    clearInterval(this.historyRefreshTimer);
     this.disconnectMarket?.();
     this.clearAssetChartSubscriptions();
     this.clearQueuedUpdates();
@@ -390,6 +425,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   protected retryAccounts(): void {
     this.accountStore.load();
+  }
+
+  protected loadRecentOrders(): void {
+    this.recentOrderSubscriptions.add(
+      this.orderService.loadOrders().subscribe({ error: () => undefined }),
+    );
+    this.recentOrderSubscriptions.add(
+      this.orderService.instruments().subscribe({ error: () => undefined }),
+    );
   }
 
   protected openCreateAccount(): void {
@@ -428,9 +472,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (accountId === null) {
       return;
     }
-    this.accountStore
-      .refreshAfterTrade(accountId)
-      .subscribe({ error: () => undefined });
+    this.accountStore.refreshAfterTrade(accountId).subscribe({
+      next: () => this.portfolioHistory.afterTrade(accountId),
+      error: () => this.portfolioHistory.afterTrade(accountId),
+    });
   }
 
   protected onDeposit(): void {

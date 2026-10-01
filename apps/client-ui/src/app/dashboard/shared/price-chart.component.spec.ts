@@ -55,6 +55,28 @@ describe('PriceChartComponent', () => {
     return fixture;
   }
 
+  it('shows one recorded observation as a marker without inventing a horizontal history', () => {
+    const fixture = setup('1D', [{ time: new Date('2026-10-01T18:00:00Z'), value: 100 }]);
+    fixture.componentRef.setInput('observationIntervalMs', 60_000);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.price-current-marker')).not.toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('.chart-price-line').getAttribute('d'),
+    ).not.toContain('L');
+  });
+
+  it('positions observations by elapsed time and connects them into a line', () => {
+    const fixture = setup('1D', [
+      { time: new Date('2026-10-01T18:00:00Z'), value: 100 },
+      { time: new Date('2026-10-01T18:01:00Z'), value: 101 },
+      { time: new Date('2026-10-01T18:10:00Z'), value: 110 },
+    ]);
+    fixture.componentRef.setInput('observationIntervalMs', 60_000);
+    fixture.detectChanges();
+    const path = fixture.nativeElement.querySelector('.chart-price-line').getAttribute('d');
+    expect(path).toMatch(/M 0\.00,.* L 10\.00,.* L 100\.00,/);
+  });
+
   function setupIndicatorCandles(length = 40, interactive = false) {
     const candles = Array.from({ length }, (_, index): MarketCandlePoint => {
       const close = 100 + index + Math.sin(index / 2);

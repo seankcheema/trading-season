@@ -54,7 +54,7 @@ test.describe('creating an account from the dashboard', () => {
 
       await expect(dashboardPage.accountMenu).toContainText('No accounts');
       await expect(dashboardPage.cash).toHaveText('Cash $5,000.00');
-      await expect(dashboardPage.netWorth).toHaveText('$5,000');
+      await expect(dashboardPage.netWorth).toHaveText('$5,000.00');
       // Cash belongs to the user, not an account, so it can move before any account exists.
       await expect(dashboardPage.deposit).toBeEnabled();
       expect(await dashboardPage.listedAccounts()).toEqual([]);
@@ -73,10 +73,10 @@ test.describe('creating an account from the dashboard', () => {
       await expect(dialog).toBeHidden();
       await expect(dashboardPage.accountMenu).toContainText('Brokerage');
       // The new account's portfolio is empty and the shared cash is untouched.
-      await expect(dashboardPage.portfolioValue).toHaveText('$0');
+      await expect(dashboardPage.portfolioValue).toHaveText('$0.00');
       await expect(dashboardPage.assets).toContainText('This account has no holdings yet.');
       await expect(dashboardPage.cash).toHaveText('Cash $5,000.00');
-      await expect(dashboardPage.netWorth).toHaveText('$5,000');
+      await expect(dashboardPage.netWorth).toHaveText('$5,000.00');
 
       const creates = api.requests.filter(
         (request) => request.method === 'POST' && request.url.endsWith('/api/me/accounts'),
@@ -175,13 +175,13 @@ test.describe('creating an account from the dashboard', () => {
       dashboardPage,
     }) => {
       await signIn({ loginPage, dashboardPage }, EXISTING_USER);
-      await expect(dashboardPage.netWorth).toHaveText('$3,300');
+      await expect(dashboardPage.netWorth).toHaveText('$3,300.00');
 
       await dashboardPage.createAccount('Retirement');
 
       await expect(dashboardPage.accountMenu).toContainText('Retirement');
-      await expect(dashboardPage.portfolioValue).toHaveText('$0');
-      await expect(dashboardPage.netWorth).toHaveText('$3,300');
+      await expect(dashboardPage.portfolioValue).toHaveText('$0.00');
+      await expect(dashboardPage.netWorth).toHaveText('$3,300.00');
       expect(await dashboardPage.listedAccounts()).toEqual(['Brokerage', 'IRA', 'Retirement']);
     });
 
@@ -209,13 +209,43 @@ test.describe('creating an account from the dashboard', () => {
       await expect(page.locator('body')).not.toContainText('Other savings');
       await expect(page.locator('body')).not.toContainText('99,999');
       await expect(dashboardPage.assets).not.toContainText('PEP');
-      await expect(dashboardPage.netWorth).toHaveText('$3,300');
+      await expect(dashboardPage.netWorth).toHaveText('$3,300.00');
     });
   });
 });
 
 test.describe('portfolios and net worth', () => {
   test.use({ stubOptions: { accounts: [EXISTING_SEED] } });
+
+  test('shows a recorded portfolio point on its actual day across chart ranges', async ({
+    page,
+    loginPage,
+    dashboardPage,
+    api,
+  }) => {
+    await signIn({ loginPage, dashboardPage }, EXISTING_USER);
+    const chart = page.locator('app-price-chart');
+    await expect(chart.locator('.price-current-marker')).toBeVisible();
+    for (const timeframe of ['5D', '1M', '1Y']) {
+      const loaded = page.waitForResponse(
+        (response) =>
+          response.url().includes('/portfolio-history') &&
+          new URL(response.url()).searchParams.get('timeframe') === timeframe,
+      );
+      await page.getByRole('button', { name: timeframe, exact: true }).click();
+      await loaded;
+      await expect(chart.locator('.price-current-marker')).toBeVisible();
+    }
+    const responses = await api.apiResponses();
+    const history = responses.filter((response) => response.url.includes('/portfolio-history'));
+    expect(history.length).toBeGreaterThanOrEqual(4);
+    for (const response of history) {
+      const points = JSON.parse(response.body) as { timestamp: string; value: number }[];
+      expect(points).toHaveLength(1);
+      expect(new Date(points[0].timestamp).toDateString()).toBe(new Date().toDateString());
+      expect(points[0].value).toBe(600);
+    }
+  });
 
   test("counts the shared cash once plus every account's portfolio", async ({
     loginPage,
@@ -224,18 +254,18 @@ test.describe('portfolios and net worth', () => {
     await signIn({ loginPage, dashboardPage }, EXISTING_USER);
 
     // $2,000 cash + $600 Brokerage portfolio + $700 IRA portfolio.
-    await expect(dashboardPage.netWorth).toHaveText('$3,300');
+    await expect(dashboardPage.netWorth).toHaveText('$3,300.00');
     await expect(dashboardPage.cash).toHaveText('Cash $2,000.00');
-    await expect(dashboardPage.portfolioValue).toHaveText('$600');
+    await expect(dashboardPage.portfolioValue).toHaveText('$600.00');
     await expect(dashboardPage.assets).toContainText('IBM');
 
     // An account's portfolio is its holdings; switching accounts switches portfolios only.
     await dashboardPage.selectAccount('IRA');
-    await expect(dashboardPage.portfolioValue).toHaveText('$700');
+    await expect(dashboardPage.portfolioValue).toHaveText('$700.00');
     await expect(dashboardPage.assets).toContainText('KO');
     await expect(dashboardPage.assets).not.toContainText('IBM');
     await expect(dashboardPage.cash).toHaveText('Cash $2,000.00');
-    await expect(dashboardPage.netWorth).toHaveText('$3,300');
+    await expect(dashboardPage.netWorth).toHaveText('$3,300.00');
   });
 
   test('renames an account, and so its portfolio', async ({
@@ -272,7 +302,7 @@ test.describe('portfolios and net worth', () => {
     const deposit = await dashboardPage.moveCash('Deposit', '50.25');
     await expect(deposit).toBeHidden();
     await expect(dashboardPage.cash).toHaveText('Cash $2,050.25');
-    await expect(dashboardPage.netWorth).toHaveText('$3,350');
+    await expect(dashboardPage.netWorth).toHaveText('$3,350.25');
     await expect(dashboardPage.recentTransactions.locator('li').first()).toContainText('+$50.25');
 
     // Cash is shared, so the selected account makes no difference to it.

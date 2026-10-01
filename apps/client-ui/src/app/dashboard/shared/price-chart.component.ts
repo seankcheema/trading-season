@@ -455,6 +455,15 @@ interface TooltipPosition {
           ></div>
         }
 
+        @for (point of isolatedObservations(); track point.x) {
+          <div
+            class="price-observation-marker pointer-events-none absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
+            [class]="trendingUp() ? 'bg-gain' : 'bg-loss'"
+            [style.left.%]="point.x"
+            [style.top.%]="point.y"
+          ></div>
+        }
+
         @if (hovered(); as point) {
           <div
             class="ring-card pointer-events-none absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2"
@@ -745,6 +754,8 @@ export class PriceChartComponent {
   readonly enabledIndicators = input<readonly TechnicalIndicator[]>([]);
   // Fills the space under the line with a gradient in the trend color.
   readonly area = input(false, { transform: booleanAttribute });
+  // Recorded observations use elapsed time and leave missing intervals disconnected.
+  readonly observationIntervalMs = input(0);
 
   private readonly activePoints = computed(() => {
     const candles = this.candles();
@@ -900,12 +911,40 @@ export class PriceChartComponent {
     const scale = this.yScale();
     const last = Math.max(points.length - 1, 1);
     return points.map((point, i) => ({
-      x: (i / last) * 100,
+      x: this.observationIntervalMs() ? this.observationX(i) : (i / last) * 100,
       y: this.valueToY(this.mode() === 'volume' ? (point.volume ?? 0) : point.value, scale),
     }));
   });
 
-  protected readonly linePath = computed(() => this.smoothPath(this.svgCoords()));
+  protected readonly linePath = computed(() => {
+    const interval = this.observationIntervalMs();
+    if (!interval) return this.smoothPath(this.svgCoords());
+    return this.svgCoords()
+      .map((point, index) => {
+        return `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)},${point.y.toFixed(2)}`;
+      })
+      .join(' ');
+  });
+
+  protected readonly isolatedObservations = computed(() => {
+    const interval = this.observationIntervalMs();
+    if (!interval) return [];
+    const points = this.visiblePoints();
+    return this._coords().filter(
+      (_, index) =>
+        index < points.length - 1 &&
+        (index === 0 ||
+          points[index].time.getTime() - points[index - 1].time.getTime() > interval * 2) &&
+        points[index + 1].time.getTime() - points[index].time.getTime() > interval * 2,
+    );
+  });
+
+  private observationX(index: number): number {
+    const points = this.visiblePoints();
+    const start = points[0]?.time.getTime() ?? 0;
+    const span = (points.at(-1)?.time.getTime() ?? start) - start;
+    return span > 0 ? ((points[index].time.getTime() - start) / span) * 100 : 100;
+  }
   protected readonly smaPath = computed(() => this.indicatorPath(this.smaSeries(), this.yScale()));
   protected readonly emaPath = computed(() => this.indicatorPath(this.emaSeries(), this.yScale()));
   protected readonly bollingerUpperPath = computed(() =>
@@ -1108,7 +1147,7 @@ export class PriceChartComponent {
         previous = slot;
         // The first point of each slot carries the label, so labels sit on the boundary
         // itself rather than wherever the thinning happened to land.
-        const x = (index / last) * 100;
+        const x = this.observationIntervalMs() ? this.observationX(index) : (index / last) * 100;
         ticks.push({
           index,
           label: this.formatTime(point.time, format),
@@ -1228,7 +1267,17 @@ export class PriceChartComponent {
       return;
     }
     const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
-    this.hoverIndex.set(Math.round(ratio * (count - 1)));
+    if (this.observationIntervalMs()) {
+      const coords = this._coords();
+      let nearest = 0;
+      for (let index = 1; index < coords.length; index++) {
+        if (Math.abs(coords[index].x - ratio * 100) < Math.abs(coords[nearest].x - ratio * 100))
+          nearest = index;
+      }
+      this.hoverIndex.set(nearest);
+    } else {
+      this.hoverIndex.set(Math.round(ratio * (count - 1)));
+    }
   }
 
   protected onPointerDown(event: PointerEvent, plot: HTMLElement): void {
