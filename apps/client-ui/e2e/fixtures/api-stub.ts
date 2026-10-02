@@ -457,10 +457,20 @@ export class ApiStub {
       return;
     }
     if (url.pathname.endsWith('/market/candles')) {
+      const timeframe = url.searchParams.get('timeframe') ?? '1D';
+      const cursor = new Date(this.marketTimestamp);
+      const from = new Date(cursor);
+      const open = this.marketTimestamp.slice(0, 10) + 'T14:30:00Z';
+      const close = this.marketTimestamp.slice(0, 10) + 'T21:00:00Z';
+      if (timeframe === '1M') from.setUTCMonth(from.getUTCMonth() - 1);
+      if (timeframe === '1Y') from.setUTCFullYear(from.getUTCFullYear() - 1);
       await this.json(route, 200, {
         sessionId: 1,
         symbol: url.searchParams.get('symbol') ?? 'AAPL',
-        timeframe: url.searchParams.get('timeframe') ?? '1D',
+        timeframe,
+        rangeStart: timeframe === '1D' || timeframe === '5D' ? open : from.toISOString(),
+        rangeEnd: timeframe === '1D' || timeframe === '5D' ? close : this.marketTimestamp,
+        tradingSessions: [{ start: open, end: close }],
         marketTimestamp: this.marketTimestamp,
         points: [
           {

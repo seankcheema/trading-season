@@ -400,7 +400,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (at === null || !points.length) return points;
     return [
       ...points.filter((point) => point.time.getTime() < at),
-      { time: new Date(at), value: this.portfolioValue() },
+      {
+        time: new Date(at),
+        value: this.portfolioValue(),
+        transition: points.find((point) => point.time.getTime() === at)?.transition,
+      },
     ];
   });
   protected readonly portfolioObservationInterval = computed(
@@ -434,6 +438,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
                 accountId,
                 at: Date.parse(this.currentMarketTimestamp()),
                 sessionId,
+                rangeSymbol: this.instruments()[0]?.symbol,
+                quoteSymbols: this.instruments().map((instrument) => instrument.symbol),
                 current,
                 orders,
                 catalogue,

@@ -38,6 +38,9 @@ export interface CandlePointDto {
 }
 
 export interface CandleSeries {
+  rangeStart?: string;
+  rangeEnd?: string;
+  tradingSessions?: { start: string; end: string }[];
   sessionId: number;
   symbol: string;
   timeframe: Timeframe;

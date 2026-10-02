@@ -1,3 +1,4 @@
+import { ChartTimeDomain, timePosition, monotonePath } from './portfolio-axis';
 import {
   DecimalPipe,
   UpperCasePipe,
@@ -756,6 +757,8 @@ export class PriceChartComponent {
   readonly area = input(false, { transform: booleanAttribute });
   // Recorded observations use elapsed time and leave missing intervals disconnected.
   readonly observationIntervalMs = input(0);
+  readonly timeDomain = input<ChartTimeDomain | null>(null);
+  readonly curveMode = input<'default' | 'monotone'>('default');
 
   private readonly activePoints = computed(() => {
     const candles = this.candles();
@@ -911,12 +914,20 @@ export class PriceChartComponent {
     const scale = this.yScale();
     const last = Math.max(points.length - 1, 1);
     return points.map((point, i) => ({
-      x: this.observationIntervalMs() ? this.observationX(i) : (i / last) * 100,
+      x:
+        this.timeDomain() || this.observationIntervalMs() ? this.observationX(i) : (i / last) * 100,
       y: this.valueToY(this.mode() === 'volume' ? (point.volume ?? 0) : point.value, scale),
     }));
   });
 
   protected readonly linePath = computed(() => {
+    if (this.curveMode() === 'monotone')
+      return monotonePath(
+        this.svgCoords().map((point, index) => ({
+          ...point,
+          transition: this.visiblePoints()[index].transition,
+        })),
+      );
     const interval = this.observationIntervalMs();
     if (!interval) return this.smoothPath(this.svgCoords());
     return this.svgCoords()
@@ -941,6 +952,8 @@ export class PriceChartComponent {
 
   private observationX(index: number): number {
     const points = this.visiblePoints();
+    const domain = this.timeDomain();
+    if (domain) return timePosition(points[index].time.getTime(), domain);
     const start = points[0]?.time.getTime() ?? 0;
     const span = (points.at(-1)?.time.getTime() ?? start) - start;
     return span > 0 ? ((points[index].time.getTime() - start) / span) * 100 : 100;
@@ -979,7 +992,10 @@ export class PriceChartComponent {
   // The line's path closed along the bottom edge of the chart.
   protected readonly areaPath = computed(() => {
     const line = this.linePath();
-    return line ? `${line} L ${WIDTH},${HEIGHT} L 0,${HEIGHT} Z` : '';
+    const coords = this.svgCoords();
+    return line
+      ? `${line} L ${coords.at(-1)?.x ?? WIDTH},${HEIGHT} L ${coords[0]?.x ?? 0},${HEIGHT} Z`
+      : '';
   });
 
   protected readonly trendColor = computed(() =>
@@ -1133,6 +1149,42 @@ export class PriceChartComponent {
     const points = this.visiblePoints();
     const timeframe = this.timeframe();
     const format = AXIS_FORMATS[timeframe];
+    const domain = this.timeDomain();
+    if (domain) {
+      const width = this._plotWidth() || 600;
+      const count = Math.max(2, Math.min(MAX_TICKS, Math.floor(width / 100) + 1));
+      if (domain.sessions?.length) {
+        const sessions = domain.sessions;
+        const visible =
+          sessions.length <= count
+            ? sessions
+            : Array.from(
+                { length: count },
+                (_, i) => sessions[Math.round((i * (sessions.length - 1)) / (count - 1))],
+              );
+        return visible.map((session) => {
+          const x = timePosition((session.start + session.end) / 2, domain);
+          return {
+            index: session.start,
+            x,
+            svgX: x,
+            label: this.formatTime(new Date(session.start), format),
+            transform: this.edgeTransform(x),
+          };
+        });
+      }
+      return Array.from({ length: count }, (_, i) => {
+        const x = (i / (count - 1)) * 100;
+        const time = domain.start + ((domain.end - domain.start) * x) / 100;
+        return {
+          index: i,
+          x,
+          svgX: x,
+          label: this.formatTime(new Date(time), format),
+          transform: this.edgeTransform(x),
+        };
+      });
+    }
     const last = Math.max(points.length - 1, 1);
     const slots = points.map((point) => this.slot(point.time, timeframe));
 
@@ -1147,7 +1199,10 @@ export class PriceChartComponent {
         previous = slot;
         // The first point of each slot carries the label, so labels sit on the boundary
         // itself rather than wherever the thinning happened to land.
-        const x = this.observationIntervalMs() ? this.observationX(index) : (index / last) * 100;
+        const x =
+          this.timeDomain() || this.observationIntervalMs()
+            ? this.observationX(index)
+            : (index / last) * 100;
         ticks.push({
           index,
           label: this.formatTime(point.time, format),
@@ -1267,8 +1322,12 @@ export class PriceChartComponent {
       return;
     }
     const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
-    if (this.observationIntervalMs()) {
+    if (this.timeDomain() || this.observationIntervalMs()) {
       const coords = this._coords();
+      if (this.timeDomain() && ratio * 100 > (coords.at(-1)?.x ?? 0) + 0.5) {
+        this.hoverIndex.set(null);
+        return;
+      }
       let nearest = 0;
       for (let index = 1; index < coords.length; index++) {
         if (Math.abs(coords[index].x - ratio * 100) < Math.abs(coords[nearest].x - ratio * 100))

@@ -55,6 +55,41 @@ describe('PriceChartComponent', () => {
     return fixture;
   }
 
+  it('keeps the daily right edge at session close and places the current sample inside the domain', () => {
+    const open = Date.parse('2026-01-05T14:30:00Z'),
+      close = Date.parse('2026-01-05T21:00:00Z');
+    const fixture = setup('1D', [
+      { time: new Date(open), value: 100 },
+      { time: new Date((open + close) / 2), value: 110 },
+    ]);
+    fixture.componentRef.setInput('timeDomain', { start: open, end: close });
+    fixture.componentRef.setInput('curveMode', 'monotone');
+    fixture.detectChanges();
+    const path = fixture.nativeElement.querySelector('.chart-price-line').getAttribute('d');
+    expect(path).toContain('50.0000,');
+    const ticks = fixture.componentInstance['ticks']();
+    expect(ticks[0].x).toBe(0);
+    expect(ticks.at(-1)?.x).toBe(100);
+  });
+
+  it('thins five-session labels on narrow screens independently of sparse values', () => {
+    const sessions = Array.from({ length: 5 }, (_, i) => ({
+      start: Date.UTC(2026, 0, 5 + i, 14, 30),
+      end: Date.UTC(2026, 0, 5 + i, 21),
+    }));
+    const fixture = setup('5D', [{ time: new Date(sessions[4].start), value: 100 }]);
+    fixture.componentRef.setInput('timeDomain', {
+      start: sessions[0].start,
+      end: sessions[4].end,
+      sessions,
+    });
+    fixture.componentInstance['_plotWidth'].set(200);
+    fixture.detectChanges();
+    const ticks = fixture.componentInstance['ticks']();
+    expect(ticks).toHaveLength(3);
+    expect(ticks.map((tick) => Math.round(tick.x))).toEqual([10, 50, 90]);
+  });
+
   it('shows one recorded observation as a marker without inventing a horizontal history', () => {
     const fixture = setup('1D', [{ time: new Date('2026-10-01T18:00:00Z'), value: 100 }]);
     fixture.componentRef.setInput('observationIntervalMs', 60_000);

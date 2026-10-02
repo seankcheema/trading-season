@@ -72,6 +72,35 @@ describe('PortfolioHistoryService', () => {
     http.expectNone((request) => request.url.includes('portfolio-valuations'));
   });
 
+  it('uses supplied session boundaries and marks executions without adding future values', () => {
+    const at = Date.parse('2026-01-05T16:00:00Z');
+    service.select(1, '1D', {
+      accountId: 1,
+      at,
+      sessionId: 1,
+      rangeSymbol: 'AAPL',
+      current: [],
+      catalogue: [],
+      orders: [],
+    });
+    http
+      .expectOne((request) => request.url === '/api/market/candles')
+      .flush({
+        symbol: 'AAPL',
+        rangeStart: '2026-01-05T14:30:00Z',
+        rangeEnd: '2026-01-05T21:00:00Z',
+        tradingSessions: [],
+        points: [],
+      });
+    expect(service.domain()).toEqual({
+      start: Date.parse('2026-01-05T14:30:00Z'),
+      end: Date.parse('2026-01-05T21:00:00Z'),
+      sessions: undefined,
+    });
+    expect(service.points().at(-1)?.time.getTime()).toBe(at);
+    expect(service.points().every((point) => point.time.getTime() <= at)).toBe(true);
+  });
+
   it('uses actual observation timestamps without generating earlier values', () => {
     service.select(1, '1D');
     expect(service.status()).toBe('loading');

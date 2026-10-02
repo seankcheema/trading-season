@@ -17,15 +17,51 @@ export interface Instrument {
 
 export const MOCK_INSTRUMENTS: readonly Instrument[] = [
   { symbol: 'AAPL', name: 'Apple Inc.', price: 316.59, change: 15.65, changePercent: 5.2 },
-  { symbol: 'MSFT', name: 'Microsoft Corporation', price: 512.3, change: 6.12, changePercent: 1.21 },
-  { symbol: 'NVDA', name: 'NVIDIA Corporation', price: 184.77, change: -3.41, changePercent: -1.81 },
+  {
+    symbol: 'MSFT',
+    name: 'Microsoft Corporation',
+    price: 512.3,
+    change: 6.12,
+    changePercent: 1.21,
+  },
+  {
+    symbol: 'NVDA',
+    name: 'NVIDIA Corporation',
+    price: 184.77,
+    change: -3.41,
+    changePercent: -1.81,
+  },
   { symbol: 'AMZN', name: 'Amazon.com, Inc.', price: 231.05, change: 2.88, changePercent: 1.26 },
-  { symbol: 'GOOGL', name: 'Alphabet Inc. Class A', price: 208.44, change: -1.02, changePercent: -0.49 },
+  {
+    symbol: 'GOOGL',
+    name: 'Alphabet Inc. Class A',
+    price: 208.44,
+    change: -1.02,
+    changePercent: -0.49,
+  },
   { symbol: 'TSLA', name: 'Tesla, Inc.', price: 347.12, change: 12.4, changePercent: 3.7 },
-  { symbol: 'META', name: 'Meta Platforms, Inc.', price: 741.9, change: -9.33, changePercent: -1.24 },
-  { symbol: 'SPCX', name: 'Space Exploration Holdings', price: 127.43, change: 6.3, changePercent: 5.2 },
+  {
+    symbol: 'META',
+    name: 'Meta Platforms, Inc.',
+    price: 741.9,
+    change: -9.33,
+    changePercent: -1.24,
+  },
+  {
+    symbol: 'SPCX',
+    name: 'Space Exploration Holdings',
+    price: 127.43,
+    change: 6.3,
+    changePercent: 5.2,
+  },
   { symbol: 'JPM', name: 'JPMorgan Chase & Co.', price: 289.61, change: 0.84, changePercent: 0.29 },
-  { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', price: 648.2, change: 3.15, changePercent: 0.49 },
+  {
+    symbol: 'SPY',
+    name: 'SPDR S&P 500 ETF Trust',
+    price: 648.2,
+    change: 3.15,
+    changePercent: 0.49,
+  },
 ];
 
 export function findInstrument(
@@ -45,11 +81,13 @@ export function searchInstruments(
   }
   return instruments.filter(
     (instrument) =>
-      instrument.symbol.toLowerCase().includes(term) || instrument.name.toLowerCase().includes(term),
+      instrument.symbol.toLowerCase().includes(term) ||
+      instrument.name.toLowerCase().includes(term),
   );
 }
 
 export interface PricePoint {
+  transition?: boolean;
   time: Date;
   value: number;
   /** Candle volume when the point came from the live market API. */

@@ -91,7 +91,7 @@ public class MarketReplayService {
      * @param requestedSessionId optional completed simulation identifier
      * @param symbol seeded stock symbol
      * @param timeframeValue supported public timeframe value
-     * @return at most 500 aggregated points
+     * @return at most 500 aggregated points with explicit chart boundaries and session intervals
      */
     public CandleSeries candles(Long requestedSessionId, String symbol, String timeframeValue) {
         ReplayState state = state(requestedSessionId);
@@ -102,14 +102,22 @@ public class MarketReplayService {
         }
         Instant cursor;
         Instant from;
+        List<TradingSession> sessions;
+        Instant end;
         synchronized (state) {
             cursor = state.currentFrame().timestamp();
             from = rangeStart(state, timeframe, cursor);
+            sessions = state.days.stream().filter(day -> !day.isAfter(cursor.atZone(MARKET_ZONE).toLocalDate()))
+                    .map(day -> new TradingSession(day.atTime(MARKET_OPEN).atZone(MARKET_ZONE).toInstant(),
+                            day.atTime(MARKET_CLOSE).plusSeconds(1).atZone(MARKET_ZONE).toInstant()))
+                    .filter(day -> !day.end().isBefore(from)).toList();
+            end = timeframe == MarketTimeframe.ONE_DAY || timeframe == MarketTimeframe.FIVE_DAYS
+                    ? sessions.getLast().end() : cursor;
         }
         List<MarketModels.Candle> raw = repository.candles(state.session.id(), normalizedSymbol, from, cursor);
         List<CandlePoint> points = aggregate(raw, timeframe);
         if (points.size() > MAX_POINTS) points = points.subList(points.size() - MAX_POINTS, points.size());
-        return new CandleSeries(state.session.id(), normalizedSymbol, timeframeValue, cursor, points);
+        return new CandleSeries(state.session.id(), normalizedSymbol, timeframeValue, cursor, points, from, end, sessions);
     }
 
     /**
@@ -287,6 +295,8 @@ public class MarketReplayService {
             LocalDate first = eligible.get(Math.max(0, eligible.size() - 5));
             return first.atTime(MARKET_OPEN).atZone(MARKET_ZONE).toInstant();
         }
+        if (timeframe == MarketTimeframe.ONE_MONTH) return cursor.atZone(MARKET_ZONE).minusMonths(1).toInstant();
+        if (timeframe == MarketTimeframe.ONE_YEAR) return cursor.atZone(MARKET_ZONE).minusYears(1).toInstant();
         return cursor.minus(timeframe.lookback());
     }
 

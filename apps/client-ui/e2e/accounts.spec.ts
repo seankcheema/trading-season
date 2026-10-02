@@ -226,6 +226,12 @@ test.describe('portfolios and net worth', () => {
     await signIn({ loginPage, dashboardPage }, EXISTING_USER);
     const chart = page.locator('app-price-chart');
     await expect(chart.locator('.price-current-marker')).toBeVisible();
+    const markerX = await chart
+      .locator('.price-current-marker')
+      .evaluate((element) => parseFloat((element as HTMLElement).style.left));
+    expect(markerX).toBeGreaterThan(0);
+    expect(markerX).toBeLessThan(100);
+    expect(await chart.locator('.chart-price-line').getAttribute('d')).toContain('C');
     for (const timeframe of ['5D', '1M', '1Y']) {
       const loaded = page.waitForResponse(
         (response) =>
@@ -237,7 +243,12 @@ test.describe('portfolios and net worth', () => {
       await expect(chart.locator('.price-current-marker')).toBeVisible();
     }
     const responses = await api.apiResponses();
-    const candles = responses.filter((response) => response.url.includes('/market/candles'));
+    const candles = responses.filter(
+      (response) =>
+        response.url.includes('/market/candles') &&
+        response.status === 200 &&
+        response.body.length > 0,
+    );
     expect(candles.length).toBeGreaterThanOrEqual(4);
     expect(
       candles.every(

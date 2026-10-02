@@ -420,3 +420,10 @@ The registration, sign-in, failed sign-in lockout and inactivity timeout journey
 ## Contract maintenance
 
 Update this reference and relevant tests in the same change as endpoint behavior. Proposed endpoints must be clearly labeled as planned or in progress until implemented. Key generation and environment setup belong in the [auth README](../../apps/auth-service/README.md); Java implementation details belong in source Javadocs.
+
+
+### Portfolio chart domains
+
+Candle responses include `rangeStart`, `rangeEnd`, and `tradingSessions` (`start`, `end` instants). For 1D the domain covers the selected session from 08:30 to the exclusive 15:00 closing boundary in America/Chicago. For 5D it covers the latest five seeded sessions, or the available sessions near the archive start. Month and year bounds subtract a calendar month or year in the market timezone, clamping month ends and respecting daylight saving time. Returned candle values still end at `marketTimestamp`.
+
+The dashboard portfolio chart uses these explicit domains: daily future time stays blank, five-day sessions occupy equal widths with overnight/weekend gaps omitted, and longer ranges use elapsed calendar time. Axis labels are independent of sample density and adapt to available width. Portfolio curves use monotone cubic interpolation between observations without overshoot. Execution boundaries remain sharp and zero baselines remain flat. Hover reports underlying observations; interpolation changes only presentation. Other chart consumers retain their existing rendering defaults.

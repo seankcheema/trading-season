@@ -1,3 +1,4 @@
+import { ChartTimeDomain } from '../shared/portfolio-axis';
 import { HttpClient } from '@angular/common/http';
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -13,6 +14,8 @@ export interface SimulationPortfolio {
   accountId: number;
   at: number;
   sessionId: number;
+  rangeSymbol?: string;
+  quoteSymbols?: readonly string[];
   current: readonly AccountHolding[];
   orders: readonly OrderResult[];
   catalogue: readonly InstrumentRef[];
@@ -36,10 +39,12 @@ export class PortfolioHistoryService {
   private timeframe: Timeframe = '1D';
   private readonly pendingCaptures = new Set<number>();
   readonly points = signal<PricePoint[]>([]);
+  readonly domain = signal<ChartTimeDomain | null>(null);
   readonly status = signal<'loading' | 'ready' | 'error'>('ready');
 
   select(accountId: number | null, timeframe: Timeframe, simulation?: SimulationPortfolio): void {
     this.simulation = simulation;
+    this.domain.set(null);
     this.request?.unsubscribe();
     this.accountId = accountId;
     this.timeframe = timeframe;
@@ -99,15 +104,28 @@ export class PortfolioHistoryService {
       const symbol = instrument?.simulatedStockSymbol ?? instrument?.ticker;
       if (symbol) symbols.add(symbol);
     }
-    const requests = [...symbols].map((symbol) =>
-      this.market.candles(context.sessionId, symbol, this.timeframe),
-    );
+    if (context.rangeSymbol) symbols.add(context.rangeSymbol);
+    const requests = [...symbols]
+      .filter((symbol) => !context.quoteSymbols?.length || context.quoteSymbols.includes(symbol))
+      .map((symbol) => this.market.candles(context.sessionId, symbol, this.timeframe));
     this.request = (requests.length ? forkJoin(requests) : of([]))
       .pipe(
         takeUntilDestroyed(this.destroyRef),
         map((series) => {
           const days = { '1D': 1, '5D': 7, '1M': 31, '1Y': 366 }[this.timeframe];
-          const start = context.at - days * 86_400_000;
+          const metadata = series.find((item) => item.rangeStart && item.rangeEnd);
+          const start = metadata
+            ? Date.parse(metadata.rangeStart!)
+            : context.at - days * 86_400_000;
+          const end = metadata ? Date.parse(metadata.rangeEnd!) : context.at;
+          const sessions =
+            this.timeframe === '5D'
+              ? metadata?.tradingSessions?.map((item) => ({
+                  start: Date.parse(item.start),
+                  end: Date.parse(item.end),
+                }))
+              : undefined;
+          this.domain.set({ start, end, sessions });
           const times = new Set<number>([start, context.at]);
           for (const candle of series.flatMap((item) => item.points)) {
             const time = Date.parse(candle.timestamp);
@@ -135,7 +153,11 @@ export class PortfolioHistoryService {
                 const quote = candles.findLast((point) => Date.parse(point.timestamp) <= time);
                 return sum + holding.quantity * (quote?.close ?? holding.averageCost);
               }, 0);
-              return { time: new Date(time), value };
+              return {
+                time: new Date(time),
+                value,
+                transition: trades.some((order) => executionTime(order) === time),
+              };
             });
         }),
       )
