@@ -123,8 +123,10 @@ pipeline {
             steps {
                 dir('apps/holdings-and-trade-service') {
                     sh '''
+                        set -eu
                         echo " Running Holdings and Trade Service Tests..."
                         mvn -B clean test
+                        test -s target/site/jacoco/jacoco.xml
                         echo "✓ Holdings and Trade Service tests completed"
                     '''
                 }
@@ -134,7 +136,7 @@ pipeline {
                     archiveArtifacts artifacts: 'apps/holdings-and-trade-service/target/surefire-reports/**/*, apps/holdings-and-trade-service/target/site/jacoco/**/*',
                                       allowEmptyArchive: true
                     junit testResults: 'apps/holdings-and-trade-service/target/surefire-reports/**/*.xml',
-                          allowEmptyResults: true,
+                          allowEmptyResults: false,
                           healthScaleFactor: 1.0
                     echo "✓ Holdings and Trade Service test results published"
                 }
@@ -145,8 +147,12 @@ pipeline {
             steps {
                 dir('apps/order-and-sell-service') {
                     sh '''
+                        set -eu
+                        # Includes controller/service buy-sell integration and ledger assertions.
+                        # JaCoCo reporting and the coverage floor are bound to Maven test.
                         echo " Running Order and Sell Service Tests..."
                         mvn -B clean test
+                        test -s target/site/jacoco/jacoco.xml
                         echo "✓ Order and Sell Service tests completed"
                     '''
                 }
@@ -156,7 +162,7 @@ pipeline {
                     archiveArtifacts artifacts: 'apps/order-and-sell-service/target/surefire-reports/**/*, apps/order-and-sell-service/target/site/jacoco/**/*',
                                       allowEmptyArchive: true
                     junit testResults: 'apps/order-and-sell-service/target/surefire-reports/**/*.xml',
-                          allowEmptyResults: true,
+                          allowEmptyResults: false,
                           healthScaleFactor: 1.0
                     echo "✓ Order and Sell Service test results published"
                 }
@@ -283,7 +289,10 @@ pipeline {
                             # "Unknown argument: run" before any test executes.
                             # coverageThresholds in angular.json fails the run
                             # below the agreed floor.
-                            npm test -- --no-watch --coverage
+                            mkdir -p reports/junit
+                            # Discover all specs, including dashboard and full-screen trading.
+                            npm test -- --no-watch --coverage --reporters=junit --reporters=default --output-file=reports/junit/ui.xml --coverage-reporters=text --coverage-reporters=html --coverage-reporters=lcovonly --coverage-reporters=cobertura
+                            test -s coverage/business-logic-ui/lcov.info
                             echo "✓ Frontend tests completed"
                         '''
                     }
@@ -291,8 +300,13 @@ pipeline {
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'apps/client-ui/coverage/**/*',
+                    archiveArtifacts artifacts: 'apps/client-ui/coverage/**/*, apps/client-ui/reports/junit/*.xml',
                                       allowEmptyArchive: true
+                    catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                        junit testResults: 'apps/client-ui/reports/junit/ui.xml',
+                              allowEmptyResults: false,
+                              healthScaleFactor: 1.0
+                    }
                 }
             }
         }
@@ -354,6 +368,7 @@ pipeline {
                                 -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
                                 -w /workspace/apps/client-ui \
                                 "$PW_IMAGE" \
+                                # Includes order-toasts, market-chart, and account rewind journeys.
                                 npm run e2e
                             echo "✓ End-to-end tests completed"
                         '''
