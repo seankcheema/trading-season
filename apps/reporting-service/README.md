@@ -12,7 +12,7 @@ The Reporting Service reads authorized business data from the `trading_season` d
 
 ## Technology Stack
 
-- **Runtime:** Python 3.11+ (validated on Python 3.14)
+- **Runtime:** Python 3.14+
 - **Framework:** Flask 3.0
 - **Database:** PostgreSQL (trading_season)
 - **Authentication:** RS256 JWT via Auth Service JWKS
@@ -23,7 +23,7 @@ The Reporting Service reads authorized business data from the `trading_season` d
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.14+
 - PostgreSQL 14+ with `trading_season` database initialized
 - Auth Service running on port 3001
 
