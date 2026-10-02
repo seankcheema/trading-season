@@ -9,10 +9,11 @@
 | Auth service | [Auth setup](../../apps/auth-service/README.md) and [database configuration](../../apps/auth-service/src/config/database.config.ts) | HTTP 3001; PostgreSQL localhost:5433/auth_db |
 | Client UI container | [Client Dockerfile](../../apps/client-ui/Dockerfile) | HTTP 4200; Nginx proxies `/api` to Holdings and Trade |
 | Reporting placeholders | [Reporting proposal](../reference/reporting.md) | UI HTTP 4300; service HTTP 8083 |
+| Kafka broker | [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) | Host 29092, in-network kafka:9092; topic trade-events with 3 partitions |
 | Local containers | [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) | Application containers, the business database volume, and archive cache |
 | Jenkins | [Pipeline](../../infrastructure/jenkins/Jenkinsfile), [disk-space runbook](../../infrastructure/jenkins/README.md), [Compose](../../infrastructure/docker-compose/docker-compose.jenkins.yml) | Jenkins UI on host port 8888 |
 
-Both Java services read SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD, AUTH_JWK_SET_URI, AUTH_JWT_ISSUER, and CORS_ORIGINS. Both must connect to the same trading_season database and must use the same AUTH_JWT_ISSUER value or token validation fails. AUTH_JWT_ISSUER must equal the auth service's JWT_ISSUER or every token is rejected. Auth reads DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, PORT, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, and JWT_ISSUER. Node startup loads .env from its working directory; Compose must receive the appropriate environment file explicitly.
+Both Java services read SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD, AUTH_JWK_SET_URI, AUTH_JWT_ISSUER, and CORS_ORIGINS. Both must connect to the same trading_season database and must use the same AUTH_JWT_ISSUER value or token validation fails. AUTH_JWT_ISSUER must equal the auth service's JWT_ISSUER or every token is rejected. Auth reads DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, PORT, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, and JWT_ISSUER. Node startup loads .env from its working directory; Compose must receive the appropriate environment file explicitly. KAFKA_BOOTSTRAP_SERVERS names the event broker and defaults to localhost:29092 on the host and kafka:9092 inside Compose; no service reads it yet.
 
 In local Compose, DB_PASSWORD configures the one database every service connects to, auth included. The auth service currently connects as the application role, which can read every trading table; a role granted only `user_accounts` and `refresh_tokens` would restore most of the isolation the separate database used to provide, and is worth adding before this reaches anything but a development machine. Defaults are for disposable local development; production credentials and signing keys must come from managed secrets.
 
@@ -37,17 +38,23 @@ docker compose --project-name trading-season-local --env-file apps/auth-service/
   -f infrastructure/docker-compose/docker-compose.local.yml stop db auth-db
 ```
 
-Local Compose builds the client UI, both Java services, auth service, and two reporting placeholders. It publishes the client UI on 4200, reporting UI on 4300, reporting service on 8083, Java services on 8081 and 8082, and auth on 3001. The reporting containers prove only that those future boundaries can run; they do not implement reporting. No production Compose file or Kubernetes deployment is supplied.
+Local Compose builds the client UI, both Java services, auth service, and two reporting placeholders. It publishes the client UI on 4200, reporting UI on 4300, reporting service on 8083, Java services on 8081 and 8082, auth on 3001, and the Kafka broker on 29092. The reporting containers prove only that those future boundaries can run; they do not implement reporting. The broker runs and holds the trade-events topic, but no service publishes to it or consumes from it yet; producing and consuming are proposed work. No production Compose file or Kubernetes deployment is supplied.
 
 Auth GET /health reports process liveness, not database readiness. Check startup logs and database connectivity separately. Database volumes persist across ordinary container shutdown; removing volumes deletes their data. Back up retained data before schema or volume changes and verify restoration in a separate database.
 
-Ordinary Compose startup neither initializes nor seeds. `db_data` remains the PostgreSQL store and `market_data_archive` caches generated files across container recreation. The archive volume is mounted read-only into both Java services at the same absolute path used by the seed importer, so Parquet-backed sessions can replay their one-second tick partitions. Run the `initialize` profile only for first-time disposable setup. Thereafter the opt-in `seed` profile waits for database readiness and runs numbered steps 0002 through 0004 without destructive initialization.
+Ordinary Compose startup neither initializes nor seeds. `db_data` remains the PostgreSQL store, `kafka_data` holds the broker's KRaft metadata and partition logs, and `market_data_archive` caches generated files across container recreation. Removing `kafka_data` discards every published event and every consumer group's committed position; the next startup reformats storage and recreates the topic. Run the `initialize` profile only for first-time disposable setup. Thereafter the opt-in `seed` profile waits for database readiness and runs numbered steps 0002 through 0004 without destructive initialization.
 
 Because the seed container cannot inspect free space inside the separate PostgreSQL volume, set `MARKET_DATA_AVAILABLE_DISK_GB` to the volume's available capacity before starting the `seed` profile. The default `parquet` mode retains raw ticks in the archive volume and imports only candles into PostgreSQL. The importer commits and checkpoints one month at a time; a rerun verifies and skips completed months. Set tick storage to `postgres` only for an intentional high-capacity deployment.
 
 ## CI and artifacts
 
 The Jenkins pipeline expects a native agent with Docker, the Maven tool named Maven, and Java 21 at its configured JAVA_HOME. It requires at least 5 GiB of free workspace storage before checkout. This is an early guard rather than a guarantee that the complete Compose and Angular image builds will fit; keep additional headroom when possible. The pipeline runs Java, auth, Angular, end-to-end, script, and build-scoped two-day PostgreSQL integration checks. Full-year generation remains on demand.
+
+The Holdings and Trade Java, Order and Sell Java, synthetic market-data integration, Auth, and UI suites run concurrently as parallel branches of a single `Test Suites` stage: they read and write only their own app and report directories, so none of them depends on another's output. Each branch still publishes its own archived artifacts and JUnit results from its own `post` block, so one branch failing does not skip publication for the others.
+
+End-to-end was tried as a sixth parallel branch of that same stage. Playwright enforces its own per-test timeouts, and the added CPU contention from its Docker image build/run on top of the other five tripped those timeouts and failed the suite outright. End-to-End Tests runs as its own sequential stage after `Test Suites` instead, getting the agent's full CPU budget to itself.
+
+Setup Dependencies also installs the UI and auth service's npm dependencies concurrently, since each is an independent npm project with its own lockfile and node_modules. The Maven dependency warm-up for both Java services stays sequential: it writes into the shared `~/.m2/repository` local repository, and Maven does not guarantee safe concurrent writes into one local repository.
 
 | Suite | Outputs |
 | --- | --- |
@@ -62,6 +69,8 @@ Both Java services must pass their respective test suites. Schema changes or sha
 Every tier fails its own stage below 70% coverage; the mechanisms are listed under [coverage floors](development.md#coverage-floors). A stage that passes has already cleared the floor, so the archived reports are for inspection, not for a manual check.
 
 The end-to-end stage installs the Playwright Chromium build with `npx playwright install chromium`, deliberately without `--with-deps`, which shells out to sudo apt-get that the jenkins user cannot run. If the agent lacks the shared libraries headless Chromium needs, Playwright fails and names them. Playwright then builds the UI and serves it on port 4200 through the Angular SSR server, and stubs the API tier at the network boundary, so the stage needs no database, no auth service, and no Java backend. Because it builds, the stage is the only one that also proves the production build works; expect it to take longer than the unit stages.
+
+Within that stage, Playwright itself runs the suite's spec files across 2 workers in CI (see [end-to-end tests](development.md#end-to-end-tests)), since every spec creates its own accounts and nothing is shared between workers. That worker count is internal to the end-to-end stage; the stage itself now runs sequentially, after `Test Suites` and the disk cleanup described below, rather than as one of its parallel branches.
 
 The optional [Jenkins image](../../infrastructure/docker/Dockerfile.jenkins) installs Node 20, which does not meet the current Angular engine requirement. The Jenkins Compose example also mounts the host Docker socket and contains development credentials. Review toolchains, credentials, and access before deployment; it is not a production-ready configuration.
 
@@ -83,6 +92,8 @@ Javadoc generation is a required Java change check described in [development](de
 **General issues:**
 - Connection refused: confirm database containers are healthy, published ports are free, and the app uses host names appropriate to its environment. Every service connects to the same database: host connections use port 5432; containers use db:5432.
 - Missing business tables: apply the documented disposable bootstrap in the [database guide](../reference/database.md); Java does not run Flyway automatically.
+- Kafka never becomes healthy: the broker needs roughly 30 seconds to start, and the healthcheck makes a real API call rather than checking the port. Check `logs kafka` before raising the timeout.
+- Topic trade-events is missing: auto-creation is disabled on purpose, so the topic exists only once the one-shot `kafka-init` container has run. Check `logs kafka-init`; it is safe to rerun.
 - Auth startup fails on keys: generate an RSA pair, replace placeholder values, and preserve literal backslash-n escapes. Run from the auth directory so .env loads.
 
 **Microservice-specific issues:**

@@ -6,7 +6,7 @@ Spring Boot microservice responsible for managing all trading operations, order 
 
 **Responsibilities:**
 - Create and accept trade orders
-- Validate orders (funds, holdings, tradability, account status)
+- Validate orders (funds, holdings, tradability)
 - Execute buy and sell transactions
 - Update and maintain current holdings
 - Maintain complete order audit trail and history

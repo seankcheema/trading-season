@@ -110,7 +110,6 @@ export class UsersService {
     return {
       id: user.id,
       email: user.email,
-      isActive: user.isActive,
       role: user.role,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,

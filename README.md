@@ -23,16 +23,24 @@ All services provide interactive Swagger UI documentation:
 
 For more information, see [SWAGGER_DOCS.md](docs/SWAGGER_DOCS.md).
 
+## Team
+
+- **Soli** – Team Lead
+- **Chris** – Scrum Master
+- **Sean** – Meeting Scribe (documentation of team matters) + Front End Developer
+- **Prisca** – Full Stack Developer
+- **Mohammed** – Full Stack Developer
+
 ## Start locally on Windows
 
 Install Node.js 24.8.0+ (24.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL (or Docker Compose).
 
 ### Quick start with the startup script (requires local databases)
 
-1. Install dependencies from the repository root:
+1. Install dependencies. The UI and auth service are independent npm projects, each with its own lockfile:
 
    ```powershell
-   npm ci
+   npm --prefix apps/client-ui ci
    npm --prefix apps/auth-service ci
    ```
 
@@ -81,6 +89,8 @@ psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STO
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V004__Order_status_lifecycle.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V005__User_accounts_and_refresh_tokens.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V006__Drop_duplicated_account_columns.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V007__Add_account_name.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V008__Drop_account_status.sql
 ```
 
 Verify that `trading_season` owns the tables. Connect to the `trading_season` database and run:
@@ -138,11 +148,11 @@ cd ../..
 Use the startup script as above, or start each application in its own terminal:
 
 ```powershell
-npm ci
+npm --prefix apps/client-ui ci
 npm --prefix apps/auth-service ci
 
-# Terminal 1: UI from repository root
-npm --workspace business-logic-ui start
+# Terminal 1: UI
+npm --prefix apps/client-ui start
 
 # Terminal 2: Holdings and Trade Service
 cd apps/holdings-and-trade-service
@@ -184,7 +194,7 @@ After startup, verify that the auth tables exist in `trading_season`. Connect pg
 
 ```sql
 -- Verify user_accounts table exists and check registered users
-SELECT user_id, email, user_role, account_status, created_at
+SELECT user_id, email, user_role, created_at
 FROM user_accounts
 ORDER BY created_at DESC;
 ```
@@ -227,7 +237,6 @@ See the [development guide](docs/guides/development.md) for additional commands,
 | Holdings and Trade Service | `apps/holdings-and-trade-service` | 8081 | Order submission, validation, execution; holdings and account management |
 | Order and Sell Service | `apps/order-and-sell-service` | 8082 | User profile queries, market data access |
 | Market Data | `apps/market-data` | — | Shared database migrations and synthetic market data tooling |
-| Shared UI Components | `packages/shared-ui-components` | — | Reusable Angular components library |
 | Reporting | `docs/reference/reporting.md` | — | Proposed analytics and portfolio performance reporting |
 
 ## Documentation
@@ -249,12 +258,13 @@ Review the [documentation index](docs/README.md) for all guides and references. 
 
 # Business database ERD
 
-Canonical relationship diagram for the business SQL schema after V001, V002 and V003. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
+Canonical relationship diagram for the business SQL schema after V001 through V008. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
 
 The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change.
 
 ```mermaid
 erDiagram
+    user_accounts ||--|| users : "credentials for"
     users ||--o{ accounts : owns
 
     stocks o|--o| instruments : "optionally powers"
@@ -284,11 +294,10 @@ erDiagram
     instruments ||--o{ holding_movements : changes
     fills ||--o| holding_movements : creates
 
-    users {
+    user_accounts {
         UUID user_id PK
         TEXT email UK
         TEXT user_role
-        TEXT account_status
     }
     simulation_sessions {
         BIGINT id PK

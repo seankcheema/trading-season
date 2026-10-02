@@ -26,18 +26,8 @@ public final class UserAccountFixture {
      * @param email  the account email, matching the token's email claim
      */
     public static void createActiveAccount(JdbcTemplate jdbc, UUID userId, String email) {
-        jdbc.update("insert into user_accounts (user_id, email, user_role, account_status) "
-                + "values (?, ?, 'TRADER', 'ACTIVE')", userId, email);
-    }
-
-    /**
-     * Deactivates an existing account, as an administrator would.
-     *
-     * @param jdbc   template bound to the test database
-     * @param userId the account to deactivate
-     */
-    public static void deactivate(JdbcTemplate jdbc, UUID userId) {
-        jdbc.update("update user_accounts set account_status = 'DEACTIVATED' where user_id = ?", userId);
+        jdbc.update("insert into user_accounts (user_id, email, user_role) "
+                + "values (?, ?, 'TRADER')", userId, email);
     }
 
     /**

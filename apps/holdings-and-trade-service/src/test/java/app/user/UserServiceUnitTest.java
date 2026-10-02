@@ -193,7 +193,7 @@ class UserServiceUnitTest {
 
     @Test
     void getUserAccountReturnsAccountWhenFound() {
-        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER", "ACTIVE");
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER");
         when(userAccountRepository.findById(USER_ID)).thenReturn(Optional.of(account));
 
         UserAccount result = userService.getUserAccount(USER_ID);
@@ -224,7 +224,7 @@ class UserServiceUnitTest {
 
     @Test
     void getUserAccountWithAdminRole() {
-        UserAccount account = new UserAccount(USER_ID, "admin@example.com", "ADMIN", "ACTIVE");
+        UserAccount account = new UserAccount(USER_ID, "admin@example.com", "ADMIN");
         when(userAccountRepository.findById(USER_ID)).thenReturn(Optional.of(account));
 
         UserAccount result = userService.getUserAccount(USER_ID);
@@ -233,16 +233,6 @@ class UserServiceUnitTest {
         assertEquals("admin@example.com", result.getEmail());
     }
 
-    @Test
-    void getUserAccountWithDeactivatedStatus() {
-        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER", "DEACTIVATED");
-        when(userAccountRepository.findById(USER_ID)).thenReturn(Optional.of(account));
-
-        UserAccount result = userService.getUserAccount(USER_ID);
-
-        assertEquals("DEACTIVATED", result.getAccountStatus());
-        assertFalse(result.isActive());
-    }
 
     private User createTestUser(UUID userId) {
         User user = new User();
