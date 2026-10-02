@@ -121,22 +121,37 @@ pipeline {
 
         stage('Setup Dependencies') {
             steps {
-                sh '''
-                    set -eu
-                    echo " Installing application dependencies..."
-                    if command -v node > /dev/null; then
-                        node --version
-                        npm --version
-                        # Use npm ci for reproducible, locked installations. The UI
-                        # and auth service are independent npm projects, each with
-                        # its own lockfile, so each gets its own install.
-                        npm --prefix apps/client-ui ci --prefer-offline --fund=false
-                        npm --prefix apps/auth-service ci --prefer-offline --fund=false
+                script {
+                    if (sh(script: 'command -v node > /dev/null 2>&1', returnStatus: true) == 0) {
+                        sh '''
+                            set -eu
+                            echo " Installing application dependencies..."
+                            node --version
+                            npm --version
+                        '''
+                        // Use npm ci for reproducible, locked installations. The UI
+                        // and auth service are independent npm projects, each with
+                        // its own lockfile and its own node_modules, so the two
+                        // installs cannot race each other.
+                        parallel(
+                            'client-ui': {
+                                sh '''
+                                    set -eu
+                                    npm --prefix apps/client-ui ci --prefer-offline --fund=false
+                                '''
+                            },
+                            'auth-service': {
+                                sh '''
+                                    set -eu
+                                    npm --prefix apps/auth-service ci --prefer-offline --fund=false
+                                '''
+                            }
+                        )
                         echo "✓ Application dependencies installed"
-                    else
+                    } else {
                         echo "  Node.js not available, skipping npm setup"
-                    fi
-                '''
+                    }
+                }
                 // apps/market-data holds only Python and SQL since the
                 // microservice split. The Java code lives in the two Spring Boot
                 // services below, so the cache is warmed from their poms.
@@ -152,9 +167,11 @@ pipeline {
                     done
                     echo "✓ Maven dependencies cached"
                 '''
-                // Maven dependencies are not pre-resolved here. Each service's
-                // `mvn clean test` resolves exactly what it needs; a separate
-                // resolve pass also downloaded unused site and report plugins.
+                // This pre-resolve is what makes it safe for Holdings and Trade
+                // and Order and Sell to run `mvn clean test` concurrently below:
+                // without it, both would race to download first-use dependencies
+                // into this same shared ~/.m2/repository, and Maven does not
+                // guarantee safe concurrent writes into one local repository.
             }
         }
 
@@ -168,6 +185,12 @@ pipeline {
         // shared Maven local repository for both Java services, so the
         // concurrent `mvn clean test` runs below should only need cache
         // reads rather than racing on new downloads.
+        //
+        // End-to-End Tests was tried as a sixth branch here. Playwright
+        // enforces its own per-test timeouts, and under the added CPU
+        // contention from its own Docker image build/run on top of these
+        // five, those timeouts tripped and failed the suite outright. It
+        // runs as its own sequential stage after this one instead.
         stage('Test Suites') {
             parallel {
                 stage('Holdings and Trade Service Tests') {
@@ -356,29 +379,29 @@ pipeline {
                 sh '''
                     set +e
                     echo "Aggressive disk cleanup before E2E tests (large Playwright image pull)..."
-                    
+
                     # Remove test artifacts from prior stages that consumed disk
                     rm -rf apps/holdings-and-trade-service/target
                     rm -rf apps/order-and-sell-service/target
                     rm -rf apps/client-ui/coverage
-                    
+
                     # Report current disk state
                     BEFORE_KB="$(df -Pk "$WORKSPACE" | awk 'NR == 2 {print $4}')"
                     echo "Available disk before cleanup: $((BEFORE_KB / 1024 / 1024)) GiB"
-                    
+
                     # Remove unused Docker images, dangling layers, and build cache
                     docker image prune -af >/dev/null 2>&1
                     docker builder prune -af >/dev/null 2>&1
-                    
+
                     # Clean npm and Maven caches
                     npm cache clean --force >/dev/null 2>&1
                     find ~/.m2/repository -type f -name "*.jar" -o -name "*.pom" | xargs rm -f 2>/dev/null || true
-                    
+
                     # Report freed space
                     AFTER_KB="$(df -Pk "$WORKSPACE" | awk 'NR == 2 {print $4}')"
                     FREED_MB=$(( (AFTER_KB - BEFORE_KB) / 1024 ))
                     echo "✓ Available disk after cleanup: $((AFTER_KB / 1024 / 1024)) GiB (freed ~$((FREED_MB > 0 ? FREED_MB : 0)) MB)"
-                    
+
                     set -e
                 '''
             }

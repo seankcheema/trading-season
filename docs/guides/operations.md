@@ -50,7 +50,11 @@ Because the seed container cannot inspect free space inside the separate Postgre
 
 The Jenkins pipeline expects a native agent with Docker, the Maven tool named Maven, and Java 21 at its configured JAVA_HOME. It requires at least 5 GiB of free workspace storage before checkout. This is an early guard rather than a guarantee that the complete Compose and Angular image builds will fit; keep additional headroom when possible. The pipeline runs Java, auth, Angular, end-to-end, script, and build-scoped two-day PostgreSQL integration checks. Full-year generation remains on demand.
 
-The Holdings and Trade Java, Order and Sell Java, synthetic market-data integration, Auth, and UI suites run concurrently as parallel branches of a single `Test Suites` stage: they read and write only their own app and report directories, so none of them depends on another's output. Each branch still publishes its own archived artifacts and JUnit results from its own `post` block, so one branch failing does not skip publication for the others. End-to-end tests and the local Docker stack build stay sequential afterward because the pre-E2E disk cleanup step removes the Java `target` and UI `coverage` directories those parallel branches produce.
+The Holdings and Trade Java, Order and Sell Java, synthetic market-data integration, Auth, and UI suites run concurrently as parallel branches of a single `Test Suites` stage: they read and write only their own app and report directories, so none of them depends on another's output. Each branch still publishes its own archived artifacts and JUnit results from its own `post` block, so one branch failing does not skip publication for the others.
+
+End-to-end was tried as a sixth parallel branch of that same stage. Playwright enforces its own per-test timeouts, and the added CPU contention from its Docker image build/run on top of the other five tripped those timeouts and failed the suite outright. End-to-End Tests runs as its own sequential stage after `Test Suites` instead, getting the agent's full CPU budget to itself.
+
+Setup Dependencies also installs the UI and auth service's npm dependencies concurrently, since each is an independent npm project with its own lockfile and node_modules. The Maven dependency warm-up for both Java services stays sequential: it writes into the shared `~/.m2/repository` local repository, and Maven does not guarantee safe concurrent writes into one local repository.
 
 | Suite | Outputs |
 | --- | --- |
@@ -65,6 +69,8 @@ Both Java services must pass their respective test suites. Schema changes or sha
 Every tier fails its own stage below 70% coverage; the mechanisms are listed under [coverage floors](development.md#coverage-floors). A stage that passes has already cleared the floor, so the archived reports are for inspection, not for a manual check.
 
 The end-to-end stage installs the Playwright Chromium build with `npx playwright install chromium`, deliberately without `--with-deps`, which shells out to sudo apt-get that the jenkins user cannot run. If the agent lacks the shared libraries headless Chromium needs, Playwright fails and names them. Playwright then builds the UI and serves it on port 4200 through the Angular SSR server, and stubs the API tier at the network boundary, so the stage needs no database, no auth service, and no Java backend. Because it builds, the stage is the only one that also proves the production build works; expect it to take longer than the unit stages.
+
+Within that stage, Playwright itself runs the suite's spec files across 2 workers in CI (see [end-to-end tests](development.md#end-to-end-tests)), since every spec creates its own accounts and nothing is shared between workers. That worker count is internal to the end-to-end stage; the stage itself now runs sequentially, after `Test Suites` and the disk cleanup described below, rather than as one of its parallel branches.
 
 The optional [Jenkins image](../../infrastructure/docker/Dockerfile.jenkins) installs Node 20, which does not meet the current Angular engine requirement. The Jenkins Compose example also mounts the host Docker socket and contains development credentials. Review toolchains, credentials, and access before deployment; it is not a production-ready configuration.
 
