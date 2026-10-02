@@ -31,3 +31,7 @@ print(sys.executable)
 ```
 
 The path should end with `apps\market-data\db\.venv\Scripts\python.exe`.
+
+## Development trader seed
+
+[seed-demo-trader-2026.sql](seed-demo-trader-2026.sql) is a tracked, additive SQL seed for a dummy login with trading history through October 1, 2026. It reads imported simulation candles and writes reconciled trading records. See the canonical [dummy trader instructions](../../../../docs/reference/database.md#dummy-trader-with-januaryoctober-history) for prerequisites, credentials, execution, and validation.

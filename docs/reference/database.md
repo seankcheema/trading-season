@@ -67,6 +67,24 @@ Simulation data is scoped by run and stock. Deleting a simulation session cascad
 
 Use this setup for a local development database whose contents can be discarded. `V001__Initial_schema.sql` drops and recreates tables, so it is not a safe upgrade path for retained data. `V002__Synthetic_market_data_replay_metadata.sql` is applied after V001, then `V003__Token_authentication.sql`. V003 removes the sessions table, the username column, and the users credential columns (password hash, lockout, reset token, last login), drops the user_id default because the application sets it from the token, and adds a case-insensitive unique index on email. Any stored password hashes and sessions are discarded. `V004__Order_status_lifecycle.sql` is applied after V003. It replaces the order status set with PENDING, FILLED and REJECTED, maps existing order rows onto it, and widens the audit_trail event types so historical rows are kept.
 
+### Dummy trader with January–October history
+
+[seed-demo-trader-2026.sql](../../apps/market-data/db/seeds/seed-demo-trader-2026.sql) creates the development login `johedoe@gmail.com`, a John Doe dummy profile, and the account `2026 Trading Demo`. Apply V001 through V010 and import the market archive first. This is an optional seed, not a migration; it does not recreate tables, change the market clock, or modify existing users.
+
+In pgAdmin, open Query Tool for your local `trading_season` database, open the seed file, and execute the entire file. If a previous attempt left the connection in an aborted transaction, run `ROLLBACK;` first. The seed is plain SQL and also runs from repository root with:
+
+```powershell
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/seeds/seed-demo-trader-2026.sql
+```
+
+The seed uses session `2026001` by default; edit `session_id` in the file's `demo_seed_options` statement to select another imported session with the same 2026 coverage. Sign in with the email above and the development password supplied for this seed. Only its bcrypt hash is stored in the SQL file, using the auth service's cost factor of 10. Both credentials satisfy the signup email and password-length rules. To use a different password on first insertion, edit the empty `password` SQL literal in `demo_seed_options` (8–72 UTF-8 bytes); keep local password overrides out of version control.
+
+The account starts with $50,000 and makes 51 whole-share executions from January 5 through October 1, 2026. AAPL, MSFT, NVDA, JPM, XOM, and TSLA form a diversified starting portfolio, followed by monthly buying, trimming, liquidation, and re-entry. This is 2026 year-to-date history, not a trailing twelve months. Prices come from the existing synthetic simulation archive, not historical exchange prices. Each order fills at an available one-minute candle close, with `simulated_at` set to the completed minute; weekend requests move to the next available archive bucket within seven days. Missing instruments/prices, insufficient cash, or insufficient shares abort the entire transaction.
+
+The seed writes matching orders, fills, holdings, cash transactions, holding movements, and audit events. Opening funding is the shared starting budget, and `users.available_funds` matches the signed cash ledger. Real audit timestamps record the import time; only `orders.simulated_at` carries the historical replay date. Historical portfolio charts reconstruct positions from these orders and archived prices, so the seed does not manufacture historical valuation observations. Use the dashboard or market page's time dropdown to review October 1 or rewind the history.
+
+A repeat run leaves the existing demo's password, funds, holdings, and any later trades unchanged. Conflicting identities fail rather than overwrite another login. The seed prints the account ID, cash balance, order count, and first/last simulated execution times after completion.
+
 ### Connection values
 
 | Setting | Value |
