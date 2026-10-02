@@ -310,12 +310,11 @@ class MetadataRepository:
     @staticmethod
     def get_last_refresh_time():
         """Get last data refresh timestamp"""
-        refresh_time = MetadataRepository.get_metadata('last_refresh_time')
-        if refresh_time:
-            return datetime.fromisoformat(refresh_time)
-        return None
+        return MetadataRepository.get_metadata('last_refresh_time')
     
     @staticmethod
-    def update_last_refresh_time():
+    def update_last_refresh_time(refresh_time=None):
         """Update last refresh timestamp"""
-        MetadataRepository.set_metadata('last_refresh_time', datetime.utcnow().isoformat())
+        if refresh_time is None:
+            refresh_time = datetime.utcnow().isoformat()
+        MetadataRepository.set_metadata('last_refresh_time', refresh_time)

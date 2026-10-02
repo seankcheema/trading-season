@@ -1,6 +1,15 @@
 import os
 from datetime import timedelta
 
+
+def normalize_database_url(database_url: str) -> str:
+    """Normalize PostgreSQL URLs to the Python 3.14-compatible psycopg driver."""
+    if database_url.startswith('postgres://'):
+        return database_url.replace('postgres://', 'postgresql+psycopg://', 1)
+    if database_url.startswith('postgresql://'):
+        return database_url.replace('postgresql://', 'postgresql+psycopg://', 1)
+    return database_url
+
 class Config:
     """Base configuration"""
     
@@ -9,10 +18,10 @@ class Config:
     ENV = os.getenv('FLASK_ENV', 'production')
     
     # Database
-    DATABASE_URL = os.getenv(
+    DATABASE_URL = normalize_database_url(os.getenv(
         'DATABASE_URL',
-        'postgresql://trading_season:password@localhost:5432/trading_season'
-    )
+        'postgresql+psycopg://trading_season:password@localhost:5432/trading_season'
+    ))
     
     # Auth Service
     AUTH_SERVICE_URL = os.getenv('AUTH_SERVICE_URL', 'http://localhost:3001')
@@ -52,10 +61,10 @@ class TestingConfig(Config):
     """Testing configuration"""
     DEBUG = True
     TESTING = True
-    DATABASE_URL = os.getenv(
+    DATABASE_URL = normalize_database_url(os.getenv(
         'TEST_DATABASE_URL',
-        'postgresql://trading_season:password@localhost:5432/trading_season_test'
-    )
+        'postgresql+psycopg://trading_season:password@localhost:5432/trading_season_test'
+    ))
 
 
 config = {

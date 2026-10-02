@@ -12,7 +12,7 @@ The Reporting Service reads authorized business data from the `trading_season` d
 
 ## Technology Stack
 
-- **Runtime:** Python 3.11+
+- **Runtime:** Python 3.11+ (validated on Python 3.14)
 - **Framework:** Flask 3.0
 - **Database:** PostgreSQL (trading_season)
 - **Authentication:** RS256 JWT via Auth Service JWKS
@@ -73,7 +73,7 @@ See [reporting proposal](../../docs/reference/reporting.md) for full specificati
 See [.env.example](.env.example) for all available configuration options.
 
 Key settings:
-- `DATABASE_URL` – PostgreSQL connection string
+- `DATABASE_URL` – PostgreSQL connection string using the `postgresql+psycopg://` SQLAlchemy URL form
 - `AUTH_SERVICE_URL` – Auth Service location for JWKS
 - `SCHEDULER_ENABLED` – Enable/disable periodic data refresh
 - `SCHEDULER_INTERVAL_MINUTES` – Refresh frequency
@@ -127,7 +127,7 @@ docker build -t reporting-service:latest .
 Run the container:
 ```bash
 docker run -p 8083:8083 \
-  -e DATABASE_URL=postgresql://... \
+   -e DATABASE_URL=postgresql+psycopg://... \
   -e AUTH_SERVICE_URL=http://auth-service:3001 \
   reporting-service:latest
 ```

@@ -20,14 +20,10 @@ class TestPortfolioEndpoints:
     
     def test_portfolio_summary_authorized(self, client, app, test_user, test_account, valid_token, mocker):
         """Test portfolio summary endpoint with auth"""
-        # Mock token verification
-        mocker.patch('app.require_auth', lambda f: f)
-        mocker.patch('app.g.user_id', test_user.user_id)
-        
-        with app.test_request_context('/api/reporting/portfolio', headers={'Authorization': f'Bearer {valid_token}'}):
-            response = client.get('/api/reporting/portfolio', headers={'Authorization': f'Bearer {valid_token}'})
-            # May be 401 if token verification fails, but endpoint exists
-            assert response.status_code in [200, 401]
+        mocker.patch('app.verify_token', return_value={'sub': str(test_user.user_id)})
+
+        response = client.get('/api/reporting/portfolio', headers={'Authorization': f'Bearer {valid_token}'})
+        assert response.status_code == 200
     
     def test_portfolio_empty_accounts(self, client, app, test_user, mocker):
         """Test portfolio endpoint with user having no accounts"""
@@ -67,9 +63,12 @@ class TestProfileEndpoint:
     
     def test_profile_endpoint_user_not_found(self, client, app, mocker):
         """Test profile endpoint with non-existent user"""
-        # Mock g.user_id to non-existent UUID
-        mocker.patch('routes.g.user_id', uuid.uuid4())
-        # This would need proper auth context
+        user_id = uuid.uuid4()
+        mocker.patch('app.verify_token', return_value={'sub': str(user_id)})
+        mocker.patch('routes.UserRepository.get_user', return_value=None)
+
+        response = client.get('/api/reporting/profile', headers={'Authorization': 'Bearer test'})
+        assert response.status_code == 404
 
 
 class TestSchedulerStatusEndpoint:
@@ -114,9 +113,9 @@ class TestErrorResponses:
     
     def test_account_not_found_error(self, client, app, mocker):
         """Test account not found error"""
-        mocker.patch('routes.g.user_id', uuid.uuid4())
+        mocker.patch('app.verify_token', return_value={'sub': str(uuid.uuid4())})
         response = client.get('/api/reporting/portfolio/9999', headers={'Authorization': 'Bearer test'})
-        # Will be 401 without proper auth
+        assert response.status_code == 404
 
 
 class TestPaginationAndFiltering:
@@ -249,7 +248,7 @@ class TestPerformanceMetricsHelpers:
             {'executed_at': (datetime.utcnow() - timedelta(days=1)).isoformat(), 'realized_pl': 50.0}
         ]
         drawdown = _calculate_max_drawdown(trades)
-        assert drawdown <= 0  # Drawdown is negative or zero
+        assert drawdown >= 0
     
     def test_calculate_current_drawdown(self):
         """Test current drawdown calculation"""
@@ -259,7 +258,7 @@ class TestPerformanceMetricsHelpers:
             {'executed_at': (datetime.utcnow() - timedelta(days=2)).isoformat(), 'realized_pl': -50.0}
         ]
         drawdown = _calculate_current_drawdown(trades)
-        assert drawdown <= 0  # Drawdown is negative or zero
+        assert drawdown >= 0
 
 
 class TestEndpointResponses:

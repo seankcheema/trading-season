@@ -4,6 +4,7 @@ Python Flask microservice for portfolio performance, trade history, and risk sum
 """
 
 import os
+import uuid
 from flask import Flask, jsonify, request, g
 from flask_cors import CORS
 from datetime import datetime
@@ -12,6 +13,7 @@ import requests
 from functools import wraps
 from config import config
 import logging
+from sqlalchemy import text
 
 # Import database models and services
 from models import db
@@ -143,7 +145,12 @@ def require_auth(f):
         try:
             decoded = verify_token(token)
             g.user = decoded
-            g.user_id = decoded.get('sub')  # UUID from token
+
+            user_id = decoded.get('sub')
+            if isinstance(user_id, str):
+                user_id = uuid.UUID(user_id)
+
+            g.user_id = user_id
         except ValueError as e:
             return jsonify({'error': str(e)}), 401
         
@@ -161,7 +168,7 @@ def health():
     """Service health check endpoint (public, no auth required)"""
     try:
         # Verify database connectivity
-        db.session.execute('SELECT 1')
+        db.session.execute(text('SELECT 1'))
         
         return jsonify({
             'status': 'healthy',
@@ -249,8 +256,9 @@ def shutdown_session(exception=None):
 
 def register_routes():
     """Import and register API routes"""
-    from routes import init_routes
-    init_routes(app)
+    if 'api' not in app.blueprints:
+        from routes import init_routes
+        init_routes(app)
 
 
 # ============================================================================
@@ -266,8 +274,14 @@ def init_app():
     # Verify database connectivity
     try:
         with app.app_context():
-            db.session.execute('SELECT version()')
-            version = db.session.execute('SELECT version()').scalar()
+            db.session.execute(text('SELECT 1'))
+
+            if db.engine.dialect.name == 'sqlite':
+                version_query = text('SELECT sqlite_version()')
+            else:
+                version_query = text('SELECT version()')
+
+            version = db.session.execute(version_query).scalar()
             logger.info(f"Database connected: {version}")
             
             # Register API routes

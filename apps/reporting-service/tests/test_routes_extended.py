@@ -66,14 +66,14 @@ class TestHelperFunctions:
     def test_calculate_trade_statistics_single_trade(self):
         """Test statistics with single trade"""
         from routes import _calculate_trade_statistics
-        from models import Order
-        
-        mock_trade = Mock()
-        mock_trade.quantity = 100
-        mock_trade.price = 50.0
-        mock_trade.fill_quantity = 100
-        mock_trade.average_fill_price = 50.0
-        
+ 
+        mock_trade = {
+            'realized_pl': 0.0,
+            'filled_quantity': 100,
+            'symbol': 'AAPL',
+            'order_type': 'BUY'
+        }
+
         stats = _calculate_trade_statistics([mock_trade])
         assert isinstance(stats, dict)
     
@@ -86,12 +86,17 @@ class TestHelperFunctions:
     def test_analyze_by_symbol_single_trade(self):
         """Test symbol analysis with one trade"""
         from routes import _analyze_by_symbol
-        
-        mock_trade = Mock()
-        mock_trade.symbol = 'AAPL'
-        
+ 
+        mock_trade = {
+            'symbol': 'AAPL',
+            'realized_pl': 0.0,
+            'filled_quantity': 100,
+            'order_type': 'BUY'
+        }
+
         result = _analyze_by_symbol([mock_trade])
-        assert isinstance(result, dict)
+        assert isinstance(result, list)
+        assert result[0]['symbol'] == 'AAPL'
     
     def test_calculate_performance_metrics_empty_fills(self):
         """Test performance metrics with no fills"""
@@ -104,10 +109,10 @@ class TestHelperFunctions:
     def test_calculate_daily_returns_empty_fills(self):
         """Test daily returns with no fills"""
         from routes import _calculate_daily_returns
-        
+
         result = _calculate_daily_returns([])
         assert result is not None
-        assert isinstance(result, dict)
+        assert isinstance(result, list)
     
     def test_calculate_volatility_insufficient_data(self):
         """Test volatility with less than 2 data points"""
@@ -180,26 +185,32 @@ class TestDatabaseServiceEdgeCases:
     def test_user_repository_with_none_id(self, db_session):
         """Test UserRepository.get_user with None"""
         from db_service import UserRepository
-        result = UserRepository.get_user(db_session, None)
+        result = UserRepository.get_user(None)
         assert result is None
     
     def test_account_repository_get_summary(self, db_session, test_account):
         """Test account summary retrieval"""
         from db_service import AccountRepository
-        summary = AccountRepository.get_account_summary(db_session, test_account.account_id)
+        summary = AccountRepository.get_account_summary(test_account.account_id)
         assert summary is not None
     
     def test_holding_repository_empty_account(self, db_session, test_user):
         """Test holdings for account with no positions"""
-        from db_session import HoldingRepository
+        from db_service import HoldingRepository
         from models import Account
         
         # Create account with no holdings
-        account = Account(user_id=test_user.user_id, cash_balance=Decimal('10000'))
+        account = Account(
+            user_id=test_user.user_id,
+            account_name='No Holdings Account',
+            account_type='TRADING',
+            status='ACTIVE',
+            cash_balance=Decimal('10000')
+        )
         db_session.add(account)
         db_session.commit()
         
-        holdings = HoldingRepository.get_account_holdings(db_session, account.account_id)
+        holdings = HoldingRepository.get_account_holdings(account.account_id)
         assert holdings is not None
         assert len(holdings) == 0
     
@@ -207,9 +218,10 @@ class TestDatabaseServiceEdgeCases:
         """Test filtering orders by status"""
         from db_service import OrderRepository
         
-        orders = OrderRepository.get_orders_by_status(
-            db_session, test_account.account_id, 'PENDING'
-        )
+        orders = [
+            order for order in OrderRepository.get_account_orders(test_account.account_id)
+            if order['status'] == 'PENDING'
+        ]
         assert orders is not None
         assert isinstance(orders, list)
 
@@ -219,10 +231,11 @@ class TestSchedulerEdgeCases:
     
     def test_scheduler_config_from_environment(self, app):
         """Test scheduler respects environment config"""
+        import scheduled_tasks
+
         with app.app_context():
-            from scheduled_tasks import scheduler
-            # Scheduler should be initialized
-            assert scheduler is not None
+            scheduled_tasks.init_scheduler(app)
+            assert scheduled_tasks.scheduler is not None
     
     def test_scheduler_status_when_disabled(self, app, monkeypatch):
         """Test status when scheduler is disabled"""
@@ -239,7 +252,7 @@ class TestConfigurationValidation:
     
     def test_config_cors_origins_none(self, app):
         """Test CORS origins configuration"""
-        assert hasattr(app.config, 'CORS_ORIGINS')
+        assert 'CORS_ORIGINS' in app.config
         origins = app.config.get('CORS_ORIGINS', [])
         assert isinstance(origins, (list, tuple))
     
@@ -251,9 +264,11 @@ class TestConfigurationValidation:
     
     def test_config_jwt_settings(self, app):
         """Test JWT configuration"""
+        from app import jwks_cache
+
         assert app.config.get('JWT_ALGORITHM') == 'RS256'
-        assert app.config.get('JWT_AUDIENCE') is not None
-        assert app.config.get('JWKS_URL_CACHE_TTL') == 3600
+        assert app.config.get('AUTH_JWT_AUDIENCE') is not None
+        assert jwks_cache.cache_ttl == 3600
 
 
 class TestDatabaseModelsEdgeCases:
@@ -263,10 +278,16 @@ class TestDatabaseModelsEdgeCases:
         """Test creating user with only required fields"""
         from models import User
         import uuid
+        from datetime import datetime
         
         user = User(
             user_id=uuid.uuid4(),
             email=f'minimal-{uuid.uuid4()}@example.com',
+            first_name='Min',
+            last_name='User',
+            address='1 Minimal St',
+            ssn='111-11-1111',
+            date_of_birth=datetime(1990, 1, 1),
             trader_level='BEGINNER',
             available_funds=Decimal('0')
         )
@@ -282,6 +303,9 @@ class TestDatabaseModelsEdgeCases:
         
         account = Account(
             user_id=test_user.user_id,
+            account_name='Zero Cash Account',
+            account_type='TRADING',
+            status='ACTIVE',
             cash_balance=Decimal('0')
         )
         db_session.add(account)
@@ -292,19 +316,20 @@ class TestDatabaseModelsEdgeCases:
     def test_order_with_all_status_types(self, db_session, test_user, test_account, test_instrument):
         """Test orders with all possible statuses"""
         from models import Order
-        import uuid
+        from datetime import datetime
         
         statuses = ['PENDING', 'PARTIAL_FILL', 'FILLED', 'CANCELLED', 'REJECTED']
         
         for status in statuses:
             order = Order(
-                order_id=uuid.uuid4(),
                 account_id=test_account.account_id,
-                symbol=test_instrument.symbol,
-                quantity=100,
-                price=Decimal('50.00'),
+                user_id=test_user.user_id,
+                instrument_id=test_instrument.instrument_id,
+                quantity=Decimal('100'),
+                indicative_price=Decimal('50.00'),
                 order_type='BUY',
-                status=status
+                status=status,
+                submitted_at=datetime.utcnow()
             )
             db_session.add(order)
         
@@ -334,5 +359,6 @@ class TestAuthenticationEdgeCases:
     def test_verify_token_with_invalid_format(self):
         """Test token verification rejects invalid formats"""
         from app import verify_token
-        result = verify_token('invalid.token')
-        assert result is None
+
+        with pytest.raises(ValueError):
+            verify_token('invalid.token')

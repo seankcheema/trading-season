@@ -17,7 +17,7 @@ class TestUserModel:
     
     def test_user_creation(self, test_user):
         """Test user can be created"""
-        assert 'testuser-' in test_user.email
+        assert test_user.email == 'testuser@example.com'
         assert test_user.first_name == 'Test'
         assert test_user.trader_level == 'INTERMEDIATE'
     
@@ -32,7 +32,7 @@ class TestUserModel:
     
     def test_user_repr(self, test_user):
         """Test user string representation"""
-        assert 'testuser-' in repr(test_user)
+        assert 'testuser@example.com' in repr(test_user)
 
 
 class TestAccountModel:
@@ -64,8 +64,8 @@ class TestInstrumentModel:
     
     def test_instrument_creation(self, test_instrument):
         """Test instrument can be created"""
-        assert test_instrument.symbol.startswith('TST')
-        assert test_instrument.name == 'Test Company Inc.'
+        assert test_instrument.symbol == 'AAPL'
+        assert test_instrument.name == 'Apple Inc.'
         assert test_instrument.asset_class == 'EQUITY'
     
     def test_instrument_fields(self, test_instrument):
@@ -75,7 +75,7 @@ class TestInstrumentModel:
     
     def test_instrument_repr(self, test_instrument):
         """Test instrument string representation"""
-        assert 'TST' in repr(test_instrument)
+        assert 'AAPL' in repr(test_instrument)
 
 
 class TestOrderModel:

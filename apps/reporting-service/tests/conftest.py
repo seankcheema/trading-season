@@ -22,11 +22,13 @@ os.environ['TEST_DATABASE_URL'] = 'sqlite:///:memory:'
 def app():
     """Create Flask application for testing"""
     from app import app as flask_app, db
+    from app import register_routes
     from config import TestingConfig
     
     flask_app.config.from_object(TestingConfig)
     flask_app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
     flask_app.config['TESTING'] = True
+    register_routes()
     
     # Create test database
     with flask_app.app_context():
@@ -63,19 +65,17 @@ def db_session(app):
         db.session.rollback()
         db.session.remove()
         db.drop_all()
+        db.create_all()
 
 
 @pytest.fixture
 def test_user(db_session):
     """Create a test user"""
     from models import User
-    import uuid as uuid_module
-    
-    # Use unique email per test to avoid constraint violations
-    unique_id = str(uuid_module.uuid4())[:8]
+
     user = User(
         user_id=uuid.uuid4(),
-        email=f'testuser-{unique_id}@example.com',
+        email='testuser@example.com',
         first_name='Test',
         last_name='User',
         middle_name='M',
@@ -111,15 +111,10 @@ def test_account(db_session, test_user):
 def test_instrument(db_session):
     """Create a test instrument"""
     from models import Instrument
-    import uuid as uuid_module
-    
-    # Use unique symbol per test
-    unique_id = str(uuid_module.uuid4())[:4].upper()
-    symbol = f'TST{unique_id}'
-    
+
     instrument = Instrument(
-        symbol=symbol,
-        name='Test Company Inc.',
+        symbol='AAPL',
+        name='Apple Inc.',
         asset_class='EQUITY',
         is_tradable=True
     )

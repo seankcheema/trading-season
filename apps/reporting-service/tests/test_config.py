@@ -2,8 +2,17 @@
 Tests for Flask application configuration and initialization
 """
 
+import os
+
 import pytest
-from config import Config, DevelopmentConfig, ProductionConfig, TestingConfig
+from sqlalchemy import text
+from config import (
+    Config,
+    DevelopmentConfig,
+    ProductionConfig,
+    TestingConfig,
+    normalize_database_url,
+)
 
 
 class TestConfig:
@@ -45,6 +54,36 @@ class TestConfig:
         assert isinstance(config.CORS_ORIGINS, list)
         assert len(config.CORS_ORIGINS) > 0
 
+    def test_normalize_database_url_postgresql_scheme(self):
+        """Test PostgreSQL URLs use the psycopg driver."""
+        database_url = 'postgresql://user:pass@localhost:5432/reporting'
+
+        assert normalize_database_url(database_url) == (
+            'postgresql+psycopg://user:pass@localhost:5432/reporting'
+        )
+
+    def test_normalize_database_url_postgres_alias(self):
+        """Test postgres:// aliases are normalized."""
+        database_url = 'postgres://user:pass@localhost:5432/reporting'
+
+        assert normalize_database_url(database_url) == (
+            'postgresql+psycopg://user:pass@localhost:5432/reporting'
+        )
+
+    def test_testing_config_normalizes_environment_url(self, monkeypatch):
+        """Test TEST_DATABASE_URL is normalized when loaded from the environment."""
+        monkeypatch.setenv(
+            'TEST_DATABASE_URL',
+            'postgresql://trading_season:password@localhost:5432/trading_season_test'
+        )
+
+        class RuntimeTestingConfig(Config):
+            DATABASE_URL = normalize_database_url(os.getenv('TEST_DATABASE_URL', ''))
+
+        assert RuntimeTestingConfig.DATABASE_URL == (
+            'postgresql+psycopg://trading_season:password@localhost:5432/trading_season_test'
+        )
+
 
 class TestAppInitialization:
     """Test Flask application initialization"""
@@ -63,12 +102,13 @@ class TestAppInitialization:
         """Test database is initialized"""
         with app.app_context():
             # Verify we can execute a simple query
-            result = app.extensions['sqlalchemy'].session.execute('SELECT 1')
+            result = app.extensions['sqlalchemy'].session.execute(text('SELECT 1'))
             assert result is not None
     
-    def test_cors_enabled(self, app):
-        """Test CORS is enabled"""
-        assert 'CORS' in dir(app.extensions) or app.extensions.get('cors') is not None
+    def test_cors_enabled(self, client):
+        """Test CORS is enabled on responses."""
+        response = client.get('/', headers={'Origin': 'http://localhost:4200'})
+        assert response.headers.get('Access-Control-Allow-Origin') == 'http://localhost:4200'
 
 
 class TestHealthCheckEndpoint:
