@@ -45,7 +45,6 @@ describe('UsersService', () => {
         id: '123',
         ...createUserDto,
         password: 'hashedpassword',
-        isActive: true,
         failedAttempts: 0,
         lockedUntil: null,
         role: 'TRADER',
@@ -122,7 +121,6 @@ describe('UsersService', () => {
         id: '123',
         email: 'test@example.com',
         password: 'hashedpassword',
-        isActive: true,
         role: 'TRADER',
         createdAt,
         updatedAt: createdAt,
@@ -134,7 +132,6 @@ describe('UsersService', () => {
       expect(result).toEqual({
         id: '123',
         email: 'test@example.com',
-        isActive: true,
         role: 'TRADER',
         createdAt,
         updatedAt: createdAt,

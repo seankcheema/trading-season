@@ -43,8 +43,6 @@ describe('token issuance through the real signing configuration', () => {
       email: 'joanna@example.com',
       password: 'hashed',
       role: 'TRADER' as const,
-      // validateUser still gates on this; commit 4 removes the field.
-      isActive: true,
     };
 
     const module: TestingModule = await Test.createTestingModule({

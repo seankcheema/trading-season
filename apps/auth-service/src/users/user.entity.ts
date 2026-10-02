@@ -39,14 +39,6 @@ export class User {
   @Column({ name: 'user_role', type: 'text', default: 'TRADER' })
   role: 'ADMIN' | 'TRADER';
 
-  /**
-   * The business schema models deactivation as a status string rather than a
-   * boolean. It is translated once, by `isActive` below, so no branch outside
-   * this file has to learn about 'DEACTIVATED'.
-   */
-  @Column({ name: 'account_status', type: 'text', default: 'ACTIVE' })
-  accountStatus: 'ACTIVE' | 'DEACTIVATED';
-
   /** Failed login counter for the lockout rule (KAN-46). */
   @Column({ name: 'failed_login_attempts', type: 'int', default: 0 })
   failedAttempts: number;
@@ -60,13 +52,4 @@ export class User {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
-
-  /**
-   * Not a column. Presents `account_status` as the boolean that AuthService
-   * and UsersService.mapToDto already read, so the status representation stays
-   * contained to this entity.
-   */
-  get isActive(): boolean {
-    return this.accountStatus === 'ACTIVE';
-  }
 }
