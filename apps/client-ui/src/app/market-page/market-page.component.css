@@ -735,7 +735,7 @@
     overflow: hidden;
   }
   .market-content {
-    height: calc(100dvh - 4rem);
+    height: calc(100dvh - 4.5rem);
     min-height: 0;
   }
   .market-grid {
@@ -797,6 +797,11 @@
   }
   .tools-column {
     order: 1;
+  }
+  .insight-panel {
+    flex: 0 0 auto;
+    height: min(28rem, 60dvh);
+    min-height: 18rem;
   }
   .chart-panel-with-rsi .chart-stage {
     min-height: 33rem;
@@ -945,5 +950,27 @@
   .tick-price-gain,
   .tick-price-loss {
     animation: none;
+  }
+}
+
+/* Shared dashboard controls wrap above the chart on smaller screens. */
+@media (max-width: 1100px) {
+  .market-nav {
+    height: auto;
+    min-height: 4.5rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+  .market-nav-inner {
+    flex-wrap: wrap;
+  }
+  .market-header-controls {
+    width: 100%;
+  }
+}
+@media (max-width: 540px) {
+  .market-header-controls > * {
+    flex: 1;
+    min-width: 0;
   }
 }

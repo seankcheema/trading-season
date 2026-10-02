@@ -1,6 +1,9 @@
+import { ActivityItem, ActivityRowComponent } from './shared/activity-row.component';
+import { AccountControlComponent } from './shared/account-control.component';
+import { MarketClockControlComponent } from './shared/market-clock-control.component';
+import { MarketClockService } from './shared/market-clock.service';
 import { cashAt, executionTime, holdingsAt } from './accounts/simulation-account';
-import { CurrencyPipe, DOCUMENT, DatePipe, isPlatformBrowser } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
+import { CurrencyPipe, DOCUMENT, isPlatformBrowser } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -38,16 +41,11 @@ import {
   findInstrument,
   mockPriceSeries,
 } from './mock-data';
-import {
-  MarketCalendarAvailability,
-  MarketDataService,
-  MarketSnapshot,
-  MarketTickEvent,
-} from './market-data.service';
+import { MarketDataService, MarketSnapshot, MarketTickEvent } from './market-data.service';
 import { AccountStore } from './accounts/account-store.service';
 import { PortfolioHistoryService } from './accounts/portfolio-history.service';
 import { AccountDialogComponent } from './accounts/account-dialog.component';
-import { Account, AccountHolding, CashTransactionReason } from './accounts/account.models';
+import { Account, AccountHolding } from './accounts/account.models';
 import {
   CashTransactionDialogComponent,
   CashTransactionMode,
@@ -62,13 +60,6 @@ import { InstrumentSearchComponent } from './shared/instrument-search.component'
 import { PriceChartComponent } from './shared/price-chart.component';
 import { SignedPercentPipe } from './shared/signed-percent.pipe';
 import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
-
-const DEFAULT_MARKET_CALENDAR: MarketCalendarAvailability = {
-  timezone: 'America/Chicago',
-  firstTimestamp: '2026-01-01T14:30:00Z',
-  lastTimestamp: '2026-12-31T20:59:59Z',
-  tradingDates: marketWeekdays(2026),
-};
 
 type HeaderDropdown = 'account' | 'market-clock' | 'profile';
 type TickAnimation = {
@@ -94,25 +85,16 @@ interface PricedHolding {
 }
 
 // User-wide cash movements and successful executions across the caller's owned accounts.
-interface ActivityItem {
-  kind: 'cash' | 'trade';
-  key: string;
-  date: string;
-  reason: CashTransactionReason | 'BUY' | 'SELL';
-  value: number;
-  label: string;
-  detail: string;
-  positive: boolean;
-}
-
 @Component({
   selector: 'app-dashboard',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ActivityRowComponent,
     AccountDialogComponent,
+    AccountControlComponent,
+    MarketClockControlComponent,
     CashTransactionDialogComponent,
     CurrencyPipe,
-    DatePipe,
     DashboardHeaderDropdownComponent,
     DailySparklineComponent,
     InstrumentSearchComponent,
@@ -125,6 +107,7 @@ interface ActivityItem {
   ],
   providers: [
     AccountStore,
+    MarketClockService,
     PortfolioHistoryService,
     OrderService,
     provideIcons({
@@ -143,6 +126,7 @@ interface ActivityItem {
   styleUrl: './dashboard.component.css',
 })
 export class DashboardComponent implements OnInit, OnDestroy {
+  protected readonly clock = inject(MarketClockService);
   private readonly marketData = inject(MarketDataService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly document = inject(DOCUMENT);
@@ -163,6 +147,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly accounts = this.accountStore.accounts;
   protected readonly selectedAccount = this.accountStore.selectedAccount;
   protected readonly selectedAccountId = this.accountStore.selectedAccountId;
+  private initialAccountRestored = false;
+  private readonly restoreAccount = effect(() => {
+    const id = Number(this._router.routerState.snapshot.root.firstChild?.queryParams['accountId']);
+    if (this.accountStore.status() === 'ready' && !this.initialAccountRestored) {
+      this.initialAccountRestored = true;
+      if (id > 0) this.accountStore.selectAccount(id);
+    }
+  });
   protected readonly hasAccounts = computed(() => this.accounts().length > 0);
   protected readonly accountLabel = computed(() => {
     switch (this.accountStore.status()) {
@@ -206,60 +198,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly tickerInstruments = computed(() => this.instruments().slice(0, 6));
   protected readonly tickAnimations = signal(new Map<string, TickAnimation>());
   protected readonly portfolioTimeframe = signal<Timeframe>('1D');
-  protected readonly marketSessionId = signal<number | null>(null);
-  protected readonly currentMarketTimestamp = signal('');
+  protected readonly marketSessionId = this.clock.marketSessionId;
+  protected readonly currentMarketTimestamp = this.clock.currentMarketTimestamp;
   private readonly simulationClockRevision = signal(0);
   protected readonly assetCandlePoints = signal(new Map<string, PricePoint[]>());
-  protected readonly marketCalendar = signal<MarketCalendarAvailability>(DEFAULT_MARKET_CALENDAR);
-  protected readonly marketDateTime = signal('');
-  protected readonly clockError = signal('');
-  protected readonly clockUpdating = signal(false);
-  protected readonly marketClockLabel = computed(() =>
-    this.currentMarketTimestamp()
-      ? this.formatMarketTime(this.currentMarketTimestamp(), {
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-          second: '2-digit',
-          timeZoneName: 'short',
-        })
-      : 'Market time',
-  );
-  protected readonly marketClockRangeLabel = computed(() => {
-    const calendar = this.marketCalendar();
-    return `${this.formatMarketTime(calendar.firstTimestamp, {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    })} - ${this.formatMarketTime(calendar.lastTimestamp, {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      timeZoneName: 'short',
-    })}`;
-  });
-  protected readonly marketClockShortRangeLabel = computed(() => {
-    const calendar = this.marketCalendar();
-    return `${this.formatMarketTime(calendar.firstTimestamp, {
-      month: 'short',
-      day: 'numeric',
-    })} - ${this.formatMarketTime(calendar.lastTimestamp, {
-      month: 'short',
-      day: 'numeric',
-    })}`;
-  });
-  protected readonly marketDateTimeMin = computed(() => {
-    const calendar = this.marketCalendar();
-    return this.isoToMarketLocal(calendar.firstTimestamp);
-  });
-  protected readonly marketDateTimeMax = computed(() => {
-    const calendar = this.marketCalendar();
-    return this.isoToMarketLocal(calendar.lastTimestamp);
-  });
-
+  protected readonly marketCalendar = this.clock.marketCalendar;
+  protected readonly marketDateTime = this.clock.marketDateTime;
+  protected readonly clockError = this.clock.clockError;
+  protected readonly clockUpdating = this.clock.clockUpdating;
+  protected readonly marketClockLabel = this.clock.marketClockLabel;
   protected readonly settingsOpen = signal(false);
 
   // Symbol currently open in the order submission dialog, if any.
@@ -374,7 +321,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // The selected account's portfolio value.
   protected readonly portfolioValue = computed(() => totalValue(this.holdings()));
   protected readonly hasChartablePortfolioValue = computed(() => this.portfolioChart().length > 0);
-
   protected readonly portfolioChangePercent = computed(() => {
     const cost = this.holdings().reduce((total, h) => total + h.shares * h.costBasis, 0);
     return cost ? ((this.portfolioValue() - cost) / cost) * 100 : 0;
@@ -483,7 +429,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   @HostListener('document:click', ['$event'])
   protected closeHeaderDropdownOnDocumentClick(event: MouseEvent): void {
     const target = event.target;
-    if (target instanceof Element && target.closest('app-dashboard-header-dropdown')) {
+    if (
+      target instanceof Element &&
+      target.closest('app-dashboard-header-dropdown, app-market-clock-control, app-account-control')
+    ) {
       return;
     }
     this.openHeaderDropdown.set(null);
@@ -589,30 +538,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   protected applyMarketDateTime(value = this.marketDateTime()): void {
-    const sessionId = this.marketSessionId();
-    this.marketDateTime.set(value);
-    if (sessionId === null || !value) {
-      return;
-    }
-    const resolved = this.resolveMarketDateTime(value);
-    if (resolved.error) {
-      this.clockError.set(resolved.error);
-      return;
-    }
-    this.marketDateTime.set(resolved.value);
-    this.clockUpdating.set(true);
-    this.clockError.set('');
-    this.marketData.setClock(sessionId, this.marketLocalToIso(resolved.value)).subscribe({
-      next: (snapshot) => {
-        this.applySnapshot(snapshot);
-        this.clockUpdating.set(false);
-        this.openHeaderDropdown.set(null);
-      },
-      error: (error: HttpErrorResponse) => {
-        this.clockError.set(this.clockErrorMessage(error));
-        this.clockUpdating.set(false);
-      },
-    });
+    this.clock.applyMarketDateTime(
+      value,
+      (snapshot) => this.applySnapshot(snapshot),
+      () => this.openHeaderDropdown.set(null),
+    );
+  }
+  protected onClockSnapshot(snapshot: MarketSnapshot): void {
+    this.applySnapshot(snapshot);
   }
 
   private loadMarketSnapshot(): void {
@@ -630,8 +563,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.simulationClockRevision.update((value) => value + 1);
     this.marketSessionId.set(snapshot.sessionId);
     this.currentMarketTimestamp.set(snapshot.marketTimestamp);
-    this.marketCalendar.set(snapshot.calendar);
-    this.marketDateTime.set(this.isoToMarketLocal(snapshot.marketTimestamp));
+    this.clock.sync(snapshot);
     const instruments = snapshot.stocks.map((stock) => {
       this.openingPrices.set(stock.symbol, stock.price - stock.change);
       return {
@@ -741,116 +673,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.tickAnimationTimers.set(symbol, timer);
   }
 
-  private isoToMarketLocal(timestamp: string): string {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Chicago',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    }).formatToParts(new Date(timestamp));
-    const part = (type: Intl.DateTimeFormatPartTypes) =>
-      parts.find((value) => value.type === type)?.value ?? '';
-    return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
-  }
-
-  private resolveMarketDateTime(value: string): { value: string; error: string } {
-    const calendar = this.marketCalendar();
-    const selected = value.slice(0, 10);
-    const min = this.marketDateTimeMin();
-    const max = this.marketDateTimeMax();
-    if ((min && value < min) || (max && value > max)) {
-      return {
-        value,
-        error: `This simulation has market data from ${this.marketClockRangeLabel()}.`,
-      };
-    }
-    if (!calendar.tradingDates.includes(selected)) {
-      const replacement = this.nearestLoadedDateInMonth(selected);
-      if (!replacement) {
-        return {
-          value,
-          error: `${this.formatMarketDate(selected)} is not in this simulation archive. Choose one of the loaded trading dates.`,
-        };
-      }
-      return { value: `${replacement}${value.slice(10)}`, error: '' };
-    }
-    return { value, error: '' };
-  }
-
-  private nearestLoadedDateInMonth(value: string): string {
-    const calendar = this.marketCalendar();
-    const month = value.slice(0, 7);
-    const dates = calendar.tradingDates.filter((date) => date.startsWith(month));
-    const next = dates.find((date) => date >= value);
-    if (next) return next;
-    for (let index = dates.length - 1; index >= 0; index--) {
-      if (dates[index] <= value) return dates[index];
-    }
-    return '';
-  }
-
-  private clockErrorMessage(error: HttpErrorResponse): string {
-    const message = typeof error.error?.error === 'string' ? error.error.error : '';
-    return (
-      message ||
-      `Unable to update the market clock. Available range: ${this.marketClockRangeLabel()}.`
-    );
-  }
-
-  private formatMarketDate(value: string): string {
-    const [year, month, day] = value.split('-').map(Number);
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      timeZone: 'UTC',
-    }).format(new Date(Date.UTC(year, month - 1, day)));
-  }
-
-  private formatMarketTime(timestamp: string, options: Intl.DateTimeFormatOptions): string {
-    const calendar = this.marketCalendar();
-    return new Intl.DateTimeFormat('en-US', {
-      ...options,
-      timeZone: calendar?.timezone ?? 'America/Chicago',
-    })
-      .format(new Date(timestamp))
-      .replace(/\bC[DS]T\b/, 'CT');
-  }
-
-  private marketLocalToIso(value: string): string {
-    const [date, time] = value.split('T');
-    const [year, month, day] = date.split('-').map(Number);
-    const [hour, minute] = time.split(':').map(Number);
-    const desired = Date.UTC(year, month - 1, day, hour, minute);
-    let instant = desired;
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/Chicago',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    });
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const parts = formatter.formatToParts(new Date(instant));
-      const part = (type: Intl.DateTimeFormatPartTypes) =>
-        Number(parts.find((item) => item.type === type)?.value);
-      const represented = Date.UTC(
-        part('year'),
-        part('month') - 1,
-        part('day'),
-        part('hour'),
-        part('minute'),
-      );
-      instant += desired - represented;
-    }
-    return new Date(instant).toISOString();
-  }
-
   protected onSettings(): void {
     this.openHeaderDropdown.set(null);
     this.settingsOpen.set(true);
@@ -868,19 +690,4 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
 function totalValue(holdings: readonly PricedHolding[]): number {
   return holdings.reduce((total, holding) => total + holding.value, 0);
-}
-
-function marketWeekdays(year: number): string[] {
-  const dates: string[] = [];
-  for (
-    let time = Date.UTC(year, 0, 1);
-    time <= Date.UTC(year, 11, 31);
-    time += 24 * 60 * 60 * 1000
-  ) {
-    const day = new Date(time).getUTCDay();
-    if (day !== 0 && day !== 6) {
-      dates.push(new Date(time).toISOString().slice(0, 10));
-    }
-  }
-  return dates;
 }

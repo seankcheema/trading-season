@@ -13,122 +13,22 @@
         class="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:w-auto md:gap-3"
         data-testid="dashboard-header-controls"
       >
-        <app-dashboard-header-dropdown
+        <app-market-clock-control
           data-testid="market-clock-dropdown"
-          iconName="lucideCalendarClock"
-          [label]="marketClockLabel()"
-          ariaLabel="Change simulated market time"
           [open]="openHeaderDropdown() === 'market-clock'"
           (openChange)="onHeaderDropdownOpenChange('market-clock', $event)"
-          containerClass="w-60"
-          panelClass="w-full p-3"
-        >
-          <p class="text-sm font-medium tabular-nums">{{ marketClockLabel() }}</p>
-          <p class="text-muted-foreground mt-1 text-xs">
-            Range: {{ marketClockShortRangeLabel() }}
-          </p>
-          <label for="market-date-time" class="dash-label mt-3 block">Simulated time</label>
-          <input
-            #marketDateTimeInput
-            id="market-date-time"
-            type="datetime-local"
-            class="border-border bg-background mt-2 h-9 w-full rounded-lg border px-3 text-sm"
-            [value]="marketDateTime()"
-            [attr.min]="marketDateTimeMin()"
-            [attr.max]="marketDateTimeMax()"
-            (input)="onMarketDateTimeChange($event)"
-            (change)="onMarketDateTimeChange($event)"
-          />
-          @if (clockError()) {
-            <p class="text-loss mt-2 text-xs">{{ clockError() }}</p>
-          }
-          <button
-            type="button"
-            class="bg-primary text-primary-foreground mt-3 h-9 w-full rounded-lg text-sm font-medium disabled:opacity-50"
-            [disabled]="clockUpdating() || !marketDateTime() || marketSessionId() === null"
-            (click)="applyMarketDateTime(marketDateTimeInput.value)"
-          >
-            {{ clockUpdating() ? 'Updating…' : 'Apply time' }}
-          </button>
-        </app-dashboard-header-dropdown>
-
-        <app-dashboard-header-dropdown
+          (snapshotApplied)="onClockSnapshot($event)"
+        />
+        <app-account-control
           data-testid="account-dropdown"
-          iconName="lucideBriefcaseBusiness"
-          [label]="accountLabel()"
-          ariaLabel="Select account"
+          [store]="accountStore"
+          [portfolioValues]="portfolioValues()"
           [open]="openHeaderDropdown() === 'account'"
           (openChange)="onHeaderDropdownOpenChange('account', $event)"
-          containerClass="w-60"
-          panelClass="w-full"
-        >
-          <div class="p-1" role="menu" aria-label="Accounts">
-            @switch (accountStore.status()) {
-              @case ('error') {
-                <p class="text-loss px-2 py-1.5 text-xs">We couldn't load your accounts.</p>
-                <button
-                  type="button"
-                  role="menuitem"
-                  class="hover:bg-muted flex h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-sm transition-colors"
-                  (click)="retryAccounts()"
-                >
-                  Try again
-                </button>
-              }
-              @case ('ready') {
-                @for (account of accounts(); track account.accountId) {
-                  <div class="flex items-center gap-1">
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      class="hover:bg-muted flex min-h-9 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors"
-                      [attr.aria-checked]="account.accountId === selectedAccountId()"
-                      (click)="selectAccount(account.accountId)"
-                    >
-                      <span class="min-w-0 flex-1">
-                        <span class="block truncate">{{ account.name }}</span>
-                        <span class="text-muted-foreground block text-xs tabular-nums">
-                          Portfolio
-                          {{ portfolioValues().get(account.accountId) ?? 0 | currency: 'USD' }}
-                        </span>
-                      </span>
-                      @if (account.accountId === selectedAccountId()) {
-                        <ng-icon name="lucideCheck" class="text-primary shrink-0 text-[16px]" />
-                      }
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      class="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors"
-                      [attr.aria-label]="'Rename ' + account.name"
-                      (click)="openRenameAccount(account)"
-                    >
-                      <ng-icon name="lucidePencil" class="text-[14px]" />
-                    </button>
-                  </div>
-                } @empty {
-                  <p class="text-muted-foreground px-2 py-1.5 text-xs">
-                    You don't have any accounts yet.
-                  </p>
-                }
-                <div class="border-border my-1 border-t"></div>
-                <button
-                  type="button"
-                  role="menuitem"
-                  class="text-primary hover:bg-muted flex h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-sm transition-colors"
-                  (click)="openCreateAccount()"
-                >
-                  <ng-icon name="lucidePlus" class="shrink-0 text-[16px]" />
-                  <span>New account</span>
-                </button>
-              }
-              @default {
-                <p class="text-muted-foreground px-2 py-1.5 text-xs">Loading accounts…</p>
-              }
-            }
-          </div>
-        </app-dashboard-header-dropdown>
-
+          (selected)="selectAccount($event)"
+          (create)="openCreateAccount()"
+          (rename)="openRenameAccount($event)"
+        />
         <app-dashboard-header-dropdown
           data-testid="profile-dropdown"
           ariaLabel="Open profile menu"
@@ -248,35 +148,7 @@
               </li>
             }
             @for (transaction of transactions(); track transaction.key) {
-              <li
-                class="border-border/60 flex items-center justify-between gap-4 border-b py-2.5 text-sm last:border-b-0"
-                [attr.data-kind]="transaction.kind"
-              >
-                <span class="min-w-0">
-                  <span class="font-medium">{{ transaction.label }}</span>
-                  <span
-                    class="ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
-                    [class]="transaction.positive ? 'bg-gain/15 text-gain' : 'bg-loss/15 text-loss'"
-                  >
-                    {{
-                      transaction.reason === 'DEPOSIT'
-                        ? 'deposit'
-                        : transaction.reason === 'WITHDRAWAL'
-                          ? 'withdrawal'
-                          : transaction.reason
-                    }}
-                  </span>
-                  <span class="text-muted-foreground block text-xs">
-                    {{ transaction.date | date: 'MMM d, y, h:mm a' : '' : 'en-US' }}
-                  </span>
-                </span>
-                <span class="shrink-0 text-right tabular-nums">
-                  <span class="block">
-                    {{ transaction.positive ? '+' : '-' }}{{ transaction.value | currency: 'USD' }}
-                  </span>
-                  <span class="text-muted-foreground block text-xs">{{ transaction.detail }}</span>
-                </span>
-              </li>
+              <li app-activity-row [transaction]="transaction"></li>
             } @empty {
               <li class="text-muted-foreground px-2 py-6 text-center text-sm">
                 @if (orderService.historyStatus() === 'loading') {

@@ -46,6 +46,7 @@
           </div>
           <a
             [routerLink]="fullScreenUrl()"
+            [queryParams]="{ accountId: accountId() }"
             class="text-muted-foreground hover:bg-muted hover:text-primary flex h-8 items-center gap-2 rounded-lg px-2 transition-colors shrink-0"
             aria-label="Open full screen market chart"
             title="Open full screen market chart"

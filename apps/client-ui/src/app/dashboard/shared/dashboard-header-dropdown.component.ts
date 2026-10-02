@@ -10,7 +10,7 @@ import { NgIcon } from '@ng-icons/core';
       <summary [class]="triggerClasses()" [attr.aria-label]="ariaLabel()">
         <ng-content select="[dropdownTrigger]">
           <ng-icon [name]="iconName()" class="shrink-0 text-[16px]" />
-          <span class="min-w-0 flex-1 whitespace-nowrap text-left leading-tight">{{ label() }}</span>
+          <span class="min-w-0 flex-1 truncate text-left leading-tight">{{ label() }}</span>
           <ng-icon name="lucideChevronDown" class="text-muted-foreground shrink-0 text-[14px]" />
         </ng-content>
       </summary>

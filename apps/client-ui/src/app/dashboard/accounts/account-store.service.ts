@@ -137,15 +137,14 @@ export class AccountStore {
   }
 
   // Reloads what a filled order changed: the user's cash, which every account shares, and
-  // the traded account's positions. The fill has already happened, so a failed reload leaves
-  // the dashboard stale rather than reporting the trade as failed.
+  // the traded account's positions. Errors describe the reload only: the fill has already
+  // happened, so callers can retry balances without reporting the trade as failed.
   refreshAfterTrade(accountId: number): Observable<void> {
     if (!this.isOwnedAccount(accountId)) {
       return of(undefined);
     }
-    return this.afterChange(
-      forkJoin([this.fetchProfile(), this.fetchHoldings(accountId)]),
-      undefined,
+    return forkJoin([this.fetchProfile(), this.fetchHoldings(accountId)]).pipe(
+      map(() => undefined),
     );
   }
 
@@ -156,7 +155,10 @@ export class AccountStore {
         // Cash and the transaction list both change, so reload both rather than patching them
         // locally from the response.
         switchMap(() =>
-          this.afterChange(forkJoin([this.fetchProfile(), this.fetchCashTransactions()]), undefined),
+          this.afterChange(
+            forkJoin([this.fetchProfile(), this.fetchCashTransactions()]),
+            undefined,
+          ),
         ),
       );
   }

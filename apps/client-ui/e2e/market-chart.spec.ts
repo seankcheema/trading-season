@@ -7,7 +7,14 @@ const USER = newAccount();
 
 test.use({
   stubOptions: {
-    accounts: [{ email: USER.email, password: USER.password, hasProfile: true }],
+    accounts: [
+      {
+        email: USER.email,
+        password: USER.password,
+        hasProfile: true,
+        tradingAccounts: [{ name: 'Investing' }, { name: 'Retirement' }],
+      },
+    ],
   },
 });
 
@@ -23,11 +30,11 @@ async function openMarketPage(page: Page, loginPage: LoginPage): Promise<void> {
   await expect(dialog.getByRole('link', { name: 'Open full screen market chart' })).toBeVisible();
 
   await dialog.getByRole('link', { name: 'Open full screen market chart' }).click();
-  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl$/);
+  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl\?accountId=\d+$/);
   await expect(page.getByRole('heading', { name: 'AAPL', exact: true })).toBeVisible();
 }
 
-test('opens the full-screen market page and previews a trade without submitting it', async ({
+test('executes a trade and shows recent orders within the full-screen layout', async ({
   page,
   loginPage,
   api,
@@ -40,14 +47,20 @@ test('opens the full-screen market page and previews a trade without submitting 
 
   await page.locator('#future-trade-quantity').fill('3');
   await page.getByRole('button', { name: 'Buy 3 AAPL', exact: true }).click();
-  await expect(page.getByRole('status')).toHaveText('Demo buy preview: 3 AAPL at market price.');
+  await expect(page.locator('app-trade-ticket [role="status"]')).toHaveText(
+    'Filled 3 AAPL at $225.80.',
+  );
+  await page.getByRole('tab', { name: 'Recent Orders', exact: true }).click();
+  await expect(page.getByTestId('market-recent-orders')).toContainText('3 shares · Filled');
+  await expect(page.locator('app-trade-ticket')).toContainText('$4,322.60');
   expect(
     api.requests.filter(
       (request) => request.method === 'POST' && request.url.endsWith('/api/orders'),
     ),
-  ).toHaveLength(0);
+  ).toHaveLength(1);
 
   for (const viewport of [
+    { width: 1280, height: 900 },
     { width: 1440, height: 900 },
     { width: 1600, height: 900 },
   ]) {
@@ -55,12 +68,26 @@ test('opens the full-screen market page and previews a trade without submitting 
     expect(
       await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
     ).toBe(true);
+    const panel = page.locator('.insight-panel');
+    const recentTab = page.getByRole('tab', { name: 'Recent Orders', exact: true });
+    const bounds = await panel.boundingBox();
+    const tabBounds = await recentTab.boundingBox();
+    expect(tabBounds!.x + tabBounds!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width);
+    await page.screenshot({ path: `reports/playwright/market-orders-${viewport.width}.png` });
   }
 
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight),
   ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  const mobileHistory = page.getByTestId('market-recent-orders');
+  await mobileHistory.scrollIntoViewIfNeeded();
+  expect((await mobileHistory.boundingBox())!.height).toBeGreaterThan(200);
+  await expect(mobileHistory).toBeInViewport({ ratio: 0.9 });
+  await page.screenshot({ path: 'reports/playwright/market-orders-mobile.png', fullPage: true });
 });
 
 test('changes chart tools and keeps the selected comparison in the URL', async ({
@@ -83,8 +110,67 @@ test('changes chart tools and keeps the selected comparison in the URL', async (
   await comparisonPicker.getByRole('combobox', { name: 'Search instruments' }).fill('MSFT');
   await comparisonPicker.getByRole('option', { name: /MSFT/ }).click();
 
-  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl\?compare=msft$/);
+  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl\?accountId=\d+&compare=msft$/);
   await expect(page.getByRole('region', { name: 'AAPL price chart' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'MSFT price chart' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Remove comparison', exact: true })).toBeVisible();
+});
+
+test('keeps account selection and rewinds executions with the shared clock', async ({
+  page,
+  loginPage,
+  api,
+}) => {
+  await loginPage.goto();
+  await loginPage.signIn(USER.email, USER.password);
+  await page.getByTestId('account-dropdown').locator('summary').click();
+  await page.getByRole('menuitemradio', { name: /Retirement/ }).click();
+  await page.getByRole('button', { name: /AAPL/ }).first().click();
+  await page.getByRole('link', { name: 'Open full screen market chart' }).click();
+  await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');
+  await page.locator('#future-trade-quantity').fill('2');
+  await page.getByRole('button', { name: 'Buy 2 AAPL', exact: true }).click();
+  await expect(page.locator('app-trade-ticket [role="status"]')).toContainText('Filled 2');
+  await page.getByRole('tab', { name: 'Recent Orders', exact: true }).click();
+  const history = page.getByTestId('market-recent-orders');
+  await expect(history).toContainText('2 shares · Filled');
+  const clock = page.getByTestId('market-clock-dropdown');
+  await clock.locator('summary').click();
+  await clock.locator('input').fill('2026-01-05T08:30');
+  await clock.getByRole('button', { name: 'Apply time' }).click();
+  await expect(history).toContainText('No orders at this simulated time.');
+  await expect(page.locator('app-trade-ticket')).toContainText('$5,000.00');
+  await clock.locator('summary').click();
+  await clock.locator('input').fill('2026-01-05T09:00');
+  await clock.getByRole('button', { name: 'Apply time' }).click();
+  await expect(history).toContainText('2 shares · Filled');
+  expect(
+    api.requests.filter((r) => r.method === 'POST' && r.url.endsWith('/api/orders')),
+  ).toHaveLength(1);
+  await page.getByRole('link', { name: 'Back to dashboard' }).click();
+  await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');
+});
+
+test('creates and renames accounts from the reused market dropdown', async ({
+  page,
+  loginPage,
+}) => {
+  await openMarketPage(page, loginPage);
+  const account = page.getByTestId('account-dropdown');
+  await account.locator('summary').click();
+  await page.getByRole('menuitem', { name: 'New account', exact: true }).click();
+  const create = page.getByRole('dialog', { name: 'New account', exact: true });
+  await create.getByLabel('Account name', { exact: true }).fill('Market trades');
+  await create.getByRole('button', { name: 'Create account', exact: true }).click();
+  await expect(create).not.toBeVisible();
+  await expect(account.locator('summary')).toContainText('Market trades');
+  await account.locator('summary').click();
+  await page.getByRole('menuitem', { name: 'Rename Market trades', exact: true }).click();
+  const rename = page.getByRole('dialog', { name: 'Rename account', exact: true });
+  await rename.getByLabel('Account name', { exact: true }).fill('Market savings');
+  await rename.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(rename).not.toBeVisible();
+  await expect(account.locator('summary')).toContainText('Market savings');
+  await page.reload();
+  await expect(account.locator('summary')).toContainText('Market savings');
 });

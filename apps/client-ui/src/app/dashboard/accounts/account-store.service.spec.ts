@@ -243,7 +243,7 @@ describe('AccountStore', () => {
   });
 
   describe('refreshAfterTrade', () => {
-    it('should reload the shared cash and the traded account\'s positions', () => {
+    it("should reload the shared cash and the traded account's positions", () => {
       load();
       const done: unknown[] = [];
 
@@ -272,7 +272,7 @@ describe('AccountStore', () => {
       http.expectNone('/api/users/me');
     });
 
-    it('should complete even when the reload fails, since the trade already happened', () => {
+    it('reports refresh failure so callers can retry balances without retrying a fill', () => {
       load();
       const done: unknown[] = [];
       const errors: unknown[] = [];
@@ -284,9 +284,9 @@ describe('AccountStore', () => {
       http.expectOne(holdingsUrl(1)).flush(HOLDINGS[1]);
       http.expectOne('/api/users/me').flush(null, { status: 500, statusText: 'Server Error' });
 
-      // The caller is told the refresh finished, not that the trade failed.
-      expect(errors).toEqual([]);
-      expect(done).toEqual([undefined]);
+      // A balance reload failure is independent of the already completed order.
+      expect(errors).toHaveLength(1);
+      expect(done).toEqual([]);
       expect(store.cashBalance()).toBe(5_000);
     });
   });

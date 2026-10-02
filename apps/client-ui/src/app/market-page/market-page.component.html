@@ -1,7 +1,12 @@
 <main class="market-page bg-[#0e0e0e] text-[#eefaff]">
   <header class="market-nav bg-[#0e0e0e]/95 px-4 backdrop-blur-xl md:px-6">
-    <div class="mx-auto flex h-full max-w-[1600px] items-center gap-3">
-      <a routerLink="/dashboard" class="nav-back" aria-label="Back to dashboard">
+    <div class="market-nav-inner mx-auto flex h-full max-w-[1600px] items-center gap-3">
+      <a
+        routerLink="/dashboard"
+        [queryParams]="{ accountId: accountStore.selectedAccountId() }"
+        class="nav-back"
+        aria-label="Back to dashboard"
+      >
         <ng-icon name="lucideChevronLeft" />
       </a>
       <div class="mr-auto min-w-48 max-w-2xl flex-1">
@@ -10,22 +15,24 @@
           (selected)="selectInstrument($event)"
         />
       </div>
-      <button
-        type="button"
-        class="text-muted-foreground relative flex size-9 items-center justify-center"
-        disabled
-        aria-label="Notifications, not available yet"
-      >
-        <ng-icon name="lucideBell" />
-      </button>
-      <button
-        type="button"
-        class="border-border bg-card text-muted-foreground flex size-9 items-center justify-center rounded-full border"
-        disabled
-        aria-label="Profile, not available yet"
-      >
-        <ng-icon name="lucideUserRound" />
-      </button>
+      <div class="market-header-controls flex flex-wrap justify-end gap-2">
+        <app-market-clock-control
+          data-testid="market-clock-dropdown"
+          [open]="openHeaderDropdown() === 'market-clock'"
+          (openChange)="openHeaderDropdown.set($event ? 'market-clock' : null)"
+          (snapshotApplied)="onClockSnapshot($event)"
+        />
+        <app-account-control
+          data-testid="account-dropdown"
+          [store]="accountStore"
+          [portfolioValues]="portfolioValues()"
+          [open]="openHeaderDropdown() === 'account'"
+          (openChange)="openHeaderDropdown.set($event ? 'account' : null)"
+          (selected)="selectAccount($event)"
+          (create)="openCreateAccount()"
+          (rename)="openRenameAccount($event)"
+        />
+      </div>
     </div>
   </header>
 
@@ -561,7 +568,7 @@
                       role="tablist"
                       aria-label="Instrument tools"
                     >
-                      @for (tab of ['overview', 'news', 'ai']; track tab) {
+                      @for (tab of ['overview', 'news', 'ai', 'recent-orders']; track tab) {
                         <button
                           type="button"
                           role="tab"
@@ -574,13 +581,56 @@
                           [attr.aria-selected]="insightTab() === tab"
                           (click)="insightTab.set($any(tab))"
                         >
-                          {{ tab === 'ai' ? 'AI' : (tab | titlecase) }}
+                          {{
+                            tab === 'ai'
+                              ? 'AI'
+                              : tab === 'recent-orders'
+                                ? 'Recent Orders'
+                                : (tab | titlecase)
+                          }}
                         </button>
                       }
                     </div>
                   </div>
                 </div>
                 @switch (insightTab()) {
+                  @case ('recent-orders') {
+                    <div
+                      class="insight-content insight-feed"
+                      role="tabpanel"
+                      aria-label="Recent Orders"
+                      data-testid="market-recent-orders"
+                    >
+                      <p class="text-muted-foreground mb-2 text-xs">
+                        {{ accountStore.selectedAccount()?.name ?? 'No account selected' }} · All
+                        stocks
+                      </p>
+                      @if (orders.historyStatus() === 'error' || catalogueStatus() === 'error') {
+                        <p class="text-loss text-xs" role="alert">Recent orders unavailable.</p>
+                        <button
+                          type="button"
+                          class="text-primary mt-2 text-xs"
+                          (click)="loadTradingData()"
+                        >
+                          Retry orders
+                        </button>
+                      }
+                      <ul>
+                        @for (order of recentOrders(); track order.key) {
+                          <li app-activity-row [transaction]="order"></li>
+                        } @empty {
+                          <li class="text-muted-foreground py-6 text-center text-sm">
+                            {{
+                              orders.historyStatus() === 'loading' ||
+                              accountStore.status() === 'loading'
+                                ? 'Loading orders…'
+                                : 'No orders at this simulated time.'
+                            }}
+                          </li>
+                        }
+                      </ul>
+                    </div>
+                  }
                   @case ('overview') {
                     <div class="insight-content insight-feed overview-feed">
                       <div class="overview-card-list">
@@ -826,9 +876,44 @@
                 }
               </section>
 
+              @if (accountStore.status() === 'error') {
+                <p class="text-loss text-xs">
+                  Accounts unavailable.
+                  <button type="button" class="text-primary" (click)="accountStore.load()">
+                    Retry accounts
+                  </button>
+                </p>
+              }
+              @if (orders.historyStatus() === 'error' || catalogueStatus() === 'error') {
+                <button type="button" class="text-primary text-xs" (click)="loadTradingData()">
+                  Retry trading data
+                </button>
+              }
+              @if (
+                accountStore.status() === 'loading' ||
+                catalogueStatus() === 'loading' ||
+                orders.historyStatus() === 'loading'
+              ) {
+                <p class="text-muted-foreground text-xs">Loading trading data…</p>
+              }
+              @if (accountStore.status() === 'ready' && !accountStore.selectedAccount()) {
+                <button type="button" class="text-primary text-xs" (click)="openCreateAccount()">
+                  Create an account to trade
+                </button>
+              }
               <app-trade-ticket
                 [symbol]="active.symbol"
                 [price]="active.price"
+                [accountId]="accountStore.selectedAccountId()?.toString() ?? ''"
+                [cashBalance]="cashBalance()"
+                [heldShares]="heldShares()"
+                [ready]="tradeReady()"
+                [busy]="busy()"
+                [message]="orderMessage()"
+                [error]="orderError()"
+                [refreshFailed]="refreshAccountId() !== null"
+                (submitted)="submitOrder($event)"
+                (refresh)="retryBalances()"
                 [sessionId]="sessionId()"
                 [marketTimestamp]="marketTimestamp()"
               />
@@ -839,3 +924,11 @@
     }
   </div>
 </main>
+
+@if (accountDialog(); as dialog) {
+  <app-account-dialog
+    [account]="dialog.account"
+    (closed)="accountDialog.set(null)"
+    (saved)="onAccountSaved($event)"
+  />
+}

@@ -569,18 +569,18 @@ describe('DashboardComponent', () => {
 
     expect(accountDropdown.textContent).toContain('Personal Investing Account');
     expect(marketDropdown.textContent).toContain('Jan 5, 8:30:00 AM CT');
-    expect(accountDetails.className).toContain('w-60');
-    expect(marketDetails.className).toContain('w-60');
+    expect(accountDropdown.className).toContain('w-60');
+    expect(accountDetails.className).toContain('w-full');
+    expect(marketDropdown.className).toContain('w-60');
+    expect(marketDetails.className).toContain('w-full');
     expect(accountPanel.className).toContain('w-full');
     expect(marketPanel.className).toContain('w-full');
     expect(accountLabel.className).toContain('min-w-0');
     expect(accountLabel.className).toContain('flex-1');
-    expect(accountLabel.className).toContain('whitespace-nowrap');
+    expect(accountLabel.className).toContain('truncate');
     expect(accountLabel.className).not.toContain('break-words');
-    expect(accountLabel.className).not.toContain('truncate');
-    expect(marketLabel.className).toContain('whitespace-nowrap');
+    expect(marketLabel.className).toContain('truncate');
     expect(marketLabel.className).not.toContain('break-words');
-    expect(marketLabel.className).not.toContain('truncate');
   });
 
   it('should render separate assets table columns for shares, prices, changes, and values', () => {

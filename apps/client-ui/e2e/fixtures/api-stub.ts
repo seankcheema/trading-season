@@ -177,6 +177,7 @@ export class ApiStub {
   private readonly cashTransactions = new Map<string, StoredCashTransaction[]>();
   private readonly portfolioValuations = new Map<number, { timestamp: string; value: number }[]>();
   private nextId = 1;
+  private readonly orderReferences = new Map<string, OrderResult>();
   private readonly orders = new Map<string, OrderResult[]>();
   private marketTimestamp = '2026-01-05T15:00:00Z';
 
@@ -238,10 +239,7 @@ export class ApiStub {
     await page.route(AUTH_ORIGIN + '/auth/logout', (route) => this.logout(route));
     await page.route('**/api/auth/register', (route) => this.registerProfile(route));
     await page.route('**/api/auth/account-exists', (route) => this.accountExists(route));
-    await page.route('**/api/orders', async (route) => {
-      const owner = await this.caller(route);
-      if (owner) await this.json(route, 200, this.orders.get(owner) ?? []);
-    });
+    await page.route('**/api/orders', (route) => this.orderRequest(route));
     await page.route('**/api/instruments', async (route) => {
       if (await this.caller(route))
         await this.json(route, 200, [
@@ -250,6 +248,16 @@ export class ApiStub {
             ticker: 'AAPL',
             simulatedStockSymbol: 'AAPL',
             name: 'Apple',
+            assetClass: 'Equity',
+            market: 'US',
+            currency: 'USD',
+            tradable: true,
+          },
+          {
+            instrumentId: 8,
+            ticker: 'MSFT',
+            simulatedStockSymbol: 'MSFT',
+            name: 'Microsoft',
             assetClass: 'Equity',
             market: 'US',
             currency: 'USD',
@@ -270,6 +278,89 @@ export class ApiStub {
       (url) => /^\/api\/accounts\/\d+\/portfolio-(history|valuations)$/.test(url.pathname),
       (route) => this.portfolioHistory(route),
     );
+  }
+
+  /** Submit at the quoted price; apply only fills to persisted cash and holdings. */
+  private async orderRequest(route: Route): Promise<void> {
+    const owner = await this.caller(route);
+    if (!owner) return;
+    if (route.request().method() === 'GET') {
+      await this.json(route, 200, this.orders.get(owner) ?? []);
+      return;
+    }
+    const body = this.body(route);
+    const accountId = Number(body['accountId']);
+    const account = this.ownedAccounts(owner).find((a) => a.accountId === accountId);
+    if (!account) {
+      await this.json(route, 404, { error: 'Account not found' });
+      return;
+    }
+    const key = `${owner}:${body['clientReference']}`;
+    const existing = this.orderReferences.get(key);
+    if (existing) {
+      await this.json(route, 201, existing);
+      return;
+    }
+    const quantity = Number(body['quantity']),
+      price = Number(body['indicativePrice']);
+    const side = body['orderType'];
+    const symbol =
+      Number(body['instrumentId']) === 7
+        ? 'AAPL'
+        : Number(body['instrumentId']) === 8
+          ? 'MSFT'
+          : '';
+    if (
+      !symbol ||
+      !Number.isInteger(quantity) ||
+      quantity <= 0 ||
+      !Number.isFinite(price) ||
+      price <= 0 ||
+      (side !== 'BUY' && side !== 'SELL')
+    ) {
+      await this.json(route, 400, { error: 'Invalid order' });
+      return;
+    }
+    const profile = [...this.accounts.values()].find((a) => a.id === owner)!.profile!;
+    const funds = Number(profile['availableFunds']);
+    const held = account.holdings.find((h) => h.symbol === symbol);
+    const reason =
+      side === 'BUY' && funds < quantity * price
+        ? 'Insufficient funds'
+        : side === 'SELL' && (held?.quantity ?? 0) < quantity
+          ? 'Insufficient holdings'
+          : null;
+    const now = new Date().toISOString();
+    const result: OrderResult = {
+      orderId: Math.max(0, ...[...this.orders.values()].flat().map((o) => o.orderId)) + 1,
+      accountId,
+      instrumentId: Number(body['instrumentId']),
+      orderType: side,
+      quantity,
+      indicativePrice: price,
+      status: reason ? 'REJECTED' : 'FILLED',
+      rejectionReason: reason,
+      submittedAt: now,
+      resolvedAt: now,
+      simulatedAt:
+        typeof body['simulatedAt'] === 'string' ? body['simulatedAt'] : this.marketTimestamp,
+    };
+    if (!reason) {
+      profile['availableFunds'] = funds + (side === 'BUY' ? -1 : 1) * quantity * price;
+      if (side === 'BUY') {
+        if (held) {
+          held.averageCost =
+            (held.quantity * held.averageCost + quantity * price) / (held.quantity + quantity);
+          held.quantity += quantity;
+        } else account.holdings.push({ symbol, quantity, averageCost: price });
+      } else if (held) {
+        held.quantity -= quantity;
+        account.holdings = account.holdings.filter((h) => h.quantity > 0);
+      }
+    }
+    this.orders.set(owner, [result, ...(this.orders.get(owner) ?? [])]);
+    this.orderReferences.set(key, result);
+    await this.json(route, 201, result);
   }
 
   /** Trading accounts the business backend holds for a user, oldest first. */
