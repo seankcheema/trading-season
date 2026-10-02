@@ -51,12 +51,12 @@ holdings-and-trade-service,app.account,CreateAccountRequest,0,6,0,0,0,1,0,1,0,1
 holdings-and-trade-service,app.account,HoldingResponse,0,60,0,6,0,10,0,5,0,2
 holdings-and-trade-service,app.account,AccountController,0,83,0,0,0,23,0,7,0,7
 holdings-and-trade-service,app.instrument,Instrument,0,40,0,2,0,15,0,11,0,10
-holdings-and-trade-service,app.user,UserProfileResponse,0,67,0,0,0,5,0,2,0,2
+holdings-and-trade-service,app.user,UserProfileResponse,0,62,0,0,0,5,0,2,0,2
 holdings-and-trade-service,app.user,UserNotFoundException,0,4,0,0,0,2,0,1,0,1
 holdings-and-trade-service,app.user,User,0,107,0,0,0,45,0,27,0,27
 holdings-and-trade-service,app.user,UserController,0,20,0,0,0,6,0,2,0,2
 holdings-and-trade-service,app.user,UserService,0,35,0,0,0,8,0,5,0,5
-holdings-and-trade-service,app.user,UserAccount,0,35,0,0,0,13,0,7,0,7
+holdings-and-trade-service,app.user,UserAccount,0,24,0,0,0,10,0,5,0,5
 holdings-and-trade-service,app.cash,CashTransactionRequest,0,9,0,0,0,1,0,1,0,1
 holdings-and-trade-service,app.cash,CashTransaction,0,45,0,0,0,20,0,13,0,13
 holdings-and-trade-service,app.cash,CashTransactionService,0,138,0,18,0,30,0,15,0,6
