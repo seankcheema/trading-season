@@ -132,22 +132,37 @@ pipeline {
 
         stage('Setup Dependencies') {
             steps {
-                sh '''
-                    set -eu
-                    echo " Installing application dependencies..."
-                    if command -v node > /dev/null; then
-                        node --version
-                        npm --version
-                        # Use npm ci for reproducible, locked installations. The UI
-                        # and auth service are independent npm projects, each with
-                        # its own lockfile, so each gets its own install.
-                        npm --prefix apps/client-ui ci --prefer-offline --fund=false
-                        npm --prefix apps/auth-service ci --prefer-offline --fund=false
+                script {
+                    if (sh(script: 'command -v node > /dev/null 2>&1', returnStatus: true) == 0) {
+                        sh '''
+                            set -eu
+                            echo " Installing application dependencies..."
+                            node --version
+                            npm --version
+                        '''
+                        // Use npm ci for reproducible, locked installations. The UI
+                        // and auth service are independent npm projects, each with
+                        // its own lockfile and its own node_modules, so the two
+                        // installs cannot race each other.
+                        parallel(
+                            'client-ui': {
+                                sh '''
+                                    set -eu
+                                    npm --prefix apps/client-ui ci --prefer-offline --fund=false
+                                '''
+                            },
+                            'auth-service': {
+                                sh '''
+                                    set -eu
+                                    npm --prefix apps/auth-service ci --prefer-offline --fund=false
+                                '''
+                            }
+                        )
                         echo "✓ Application dependencies installed"
-                    else
+                    } else {
                         echo "  Node.js not available, skipping npm setup"
-                    fi
-                '''
+                    }
+                }
                 // apps/market-data holds only Python and SQL since the
                 // microservice split. The Java code lives in the two Spring Boot
                 // services below, so the cache is warmed from their poms.
@@ -163,235 +178,254 @@ pipeline {
                     done
                     echo "✓ Maven dependencies cached"
                 '''
-                // Maven dependencies are not pre-resolved here. Each service's
-                // `mvn clean test` resolves exactly what it needs; a separate
-                // resolve pass also downloaded unused site and report plugins.
+                // This pre-resolve is what makes it safe for Holdings and Trade
+                // and Order and Sell to run `mvn clean test` concurrently below:
+                // without it, both would race to download first-use dependencies
+                // into this same shared ~/.m2/repository, and Maven does not
+                // guarantee safe concurrent writes into one local repository.
             }
         }
 
-        // Each test suite below gets its own stage, and each publishes its own
-        // results from `post`. An earlier layout ran every suite inside one
-        // stage, so the first failure skipped Archive and Publish and threw
-        // away results from suites that had already passed.
-        stage('Holdings and Trade Service Tests') {
-            steps {
-                dir('apps/holdings-and-trade-service') {
-                    sh '''
-                        echo " Running Holdings and Trade Service Tests..."
-                        mvn -B clean test
-                        echo "✓ Holdings and Trade Service tests completed"
-                    '''
+        // The six suites below are mutually independent: each reads and
+        // writes only its own app/report directories, and Synthetic Market
+        // Data Integration derives build-scoped Docker resource names so it
+        // never collides with another branch. Running them inside `parallel`
+        // cuts wall-clock time; each nested stage still publishes its own
+        // results from `post`, so one branch's failure cannot skip Archive
+        // and Publish for the others. Setup Dependencies already warmed the
+        // shared Maven local repository for both Java services, so the
+        // concurrent `mvn clean test` runs below should only need cache
+        // reads rather than racing on new downloads.
+        //
+        // End-to-End Tests was tried as a seventh branch here. Playwright
+        // enforces its own per-test timeouts, and under the added CPU
+        // contention from its own Docker image build/run on top of these
+        // six, those timeouts tripped and failed the suite outright. It
+        // runs as its own sequential stage after this one instead.
+        stage('Test Suites') {
+            parallel {
+                stage('Holdings and Trade Service Tests') {
+                    steps {
+                        dir('apps/holdings-and-trade-service') {
+                            sh '''
+                                echo " Running Holdings and Trade Service Tests..."
+                                mvn -B clean test
+                                echo "✓ Holdings and Trade Service tests completed"
+                            '''
+                        }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'apps/holdings-and-trade-service/target/surefire-reports/**/*, apps/holdings-and-trade-service/target/site/jacoco/**/*',
+                                              allowEmptyArchive: true
+                            junit testResults: 'apps/holdings-and-trade-service/target/surefire-reports/**/*.xml',
+                                  allowEmptyResults: true,
+                                  healthScaleFactor: 1.0
+                            echo "✓ Holdings and Trade Service test results published"
+                        }
+                    }
                 }
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'apps/holdings-and-trade-service/target/surefire-reports/**/*, apps/holdings-and-trade-service/target/site/jacoco/**/*',
-                                      allowEmptyArchive: true
-                    junit testResults: 'apps/holdings-and-trade-service/target/surefire-reports/**/*.xml',
-                          allowEmptyResults: true,
-                          healthScaleFactor: 1.0
-                    echo "✓ Holdings and Trade Service test results published"
-                }
-            }
-        }
 
-        stage('Order and Sell Service Tests') {
-            steps {
-                dir('apps/order-and-sell-service') {
-                    sh '''
-                        echo " Running Order and Sell Service Tests..."
-                        mvn -B clean test
-                        echo "✓ Order and Sell Service tests completed"
-                    '''
+                stage('Order and Sell Service Tests') {
+                    steps {
+                        dir('apps/order-and-sell-service') {
+                            sh '''
+                                echo " Running Order and Sell Service Tests..."
+                                mvn -B clean test
+                                echo "✓ Order and Sell Service tests completed"
+                            '''
+                        }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'apps/order-and-sell-service/target/surefire-reports/**/*, apps/order-and-sell-service/target/site/jacoco/**/*',
+                                              allowEmptyArchive: true
+                            junit testResults: 'apps/order-and-sell-service/target/surefire-reports/**/*.xml',
+                                  allowEmptyResults: true,
+                                  healthScaleFactor: 1.0
+                            echo "✓ Order and Sell Service test results published"
+                        }
+                    }
                 }
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'apps/order-and-sell-service/target/surefire-reports/**/*, apps/order-and-sell-service/target/site/jacoco/**/*',
-                                      allowEmptyArchive: true
-                    junit testResults: 'apps/order-and-sell-service/target/surefire-reports/**/*.xml',
-                          allowEmptyResults: true,
-                          healthScaleFactor: 1.0
-                    echo "✓ Order and Sell Service test results published"
-                }
-            }
-        }
 
-        stage('Synthetic Market Data Integration') {
-            steps {
-                script {
-                    // Multibranch BUILD_TAG values can contain encoded branch
-                    // separators such as %2F, which Docker rejects in named
-                    // volumes. Hash the complete tag to retain build isolation
-                    // while keeping every Docker resource name portable.
-                    // Derived once and reused by the cleanup in `post`: two
-                    // copies of this expression can drift apart, and cleanup
-                    // that computes a different name silently leaks the
-                    // containers, volumes, and network it was meant to remove.
-                    env.MARKET_TEST_TAG = 'trading-season-market-' + sh(
-                        script: 'printf %s "$BUILD_TAG" | sha256sum | cut -c1-16',
-                        returnStdout: true
-                    ).trim()
-                }
-                sh '''
-                    set -eu
-                    TEST_TAG="$MARKET_TEST_TAG"
-                    DB_CONTAINER="${TEST_TAG}-db"
-                    TEST_NETWORK="${TEST_TAG}-network"
-                    DB_VOLUME="${TEST_TAG}-db-data"
-                    ARCHIVE_VOLUME="${TEST_TAG}-archive"
-                    mkdir -p reports/market-data
-                    docker network create "$TEST_NETWORK"
-                    docker volume create "$DB_VOLUME"
-                    docker volume create "$ARCHIVE_VOLUME"
-                    docker build -f infrastructure/docker/Dockerfile.market-data -t "$TEST_TAG" .
-                    docker run -d --name "$DB_CONTAINER" --network "$TEST_NETWORK" -e POSTGRES_DB=trading_season -e POSTGRES_USER=trading_season -e POSTGRES_PASSWORD=test-password -v "$DB_VOLUME:/var/lib/postgresql/data" postgres:16-alpine
-                    until docker exec "$DB_CONTAINER" pg_isready -U trading_season -d trading_season; do sleep 1; done
-                    DATABASE_URL="postgresql://trading_season:test-password@${DB_CONTAINER}:5432/trading_season"
-                    docker run --rm --network "$TEST_NETWORK" "$TEST_TAG" apps/market-data/db/scripts/0001-initialize-database.py --database-url "$DATABASE_URL" --disposable-database
-                    docker rm -f "$DB_CONTAINER"
-                    docker run -d --name "$DB_CONTAINER" --network "$TEST_NETWORK" -e POSTGRES_DB=trading_season -e POSTGRES_USER=trading_season -e POSTGRES_PASSWORD=test-password -v "$DB_VOLUME:/var/lib/postgresql/data" postgres:16-alpine
-                    until docker exec "$DB_CONTAINER" pg_isready -U trading_season -d trading_season; do sleep 1; done
-                    docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select count(*) from information_schema.tables where table_schema='public';" | grep -Eq '^[1-9][0-9]*$'
-                    docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select pg_database_size(current_database());" > reports/market-data/database-before.txt
-                    docker exec "$DB_CONTAINER" du -sb /var/lib/postgresql/data > reports/market-data/disk-before.txt
-                    AVAILABLE_DISK_GB="$(docker exec "$DB_CONTAINER" df -Pk /var/lib/postgresql/data | awk 'NR==2 {print $4/1048576}')"
-                    docker run --rm --network "$TEST_NETWORK" -e TEST_DATABASE_URL="$DATABASE_URL" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" "$TEST_TAG" -m pytest apps/market-data/db/tests --junitxml=/reports/junit.xml
-                    docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/generation-resources.txt python apps/market-data/db/scripts/0002-generate-synthetic-market-data.py --start-date 2026-01-05 --end-date 2026-01-06
-                    docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" "$TEST_TAG" apps/market-data/db/scripts/0003-validate-synthetic-market-data.py
-                    docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/import-resources.txt python apps/market-data/db/scripts/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
-                    docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" "$TEST_TAG" apps/market-data/db/scripts/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
-                    docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select count(*) from market_ticks; select count(*) from candles; select pg_database_size(current_database()); select coalesce(sum(pg_indexes_size(quote_ident(schemaname)||'.'||quote_ident(tablename))),0) from pg_tables where schemaname='public';" > reports/market-data/database-after.txt
-                    docker exec "$DB_CONTAINER" du -sb /var/lib/postgresql/data > reports/market-data/disk-after.txt
-                    docker run --rm -v "$ARCHIVE_VOLUME:/archive" alpine:3.20 du -sb /archive > reports/market-data/archive.txt
-                '''
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'reports/market-data/**/*', allowEmptyArchive: true
-                    junit testResults: 'reports/market-data/junit.xml', allowEmptyResults: true
-                    sh '''
-                        TEST_TAG="$MARKET_TEST_TAG"
-                        docker rm -f "${TEST_TAG}-db" 2>/dev/null || true
-                        docker volume rm "${TEST_TAG}-db-data" "${TEST_TAG}-archive" 2>/dev/null || true
-                        docker network rm "${TEST_TAG}-network" 2>/dev/null || true
-                        docker image rm "$TEST_TAG" 2>/dev/null || true
-                    '''
-                }
-            }
-        }
-
-        stage('Auth Service Tests') {
-            // Deliberately NOT wrapped in a `command -v npm` check. A missing
-            // toolchain is a broken pipeline, not a reason to pass: the build
-            // fails instead of quietly skipping, which is what the acceptance
-            // criteria require.
-            environment {
-                CI = 'true'
-            }
-            steps {
-                // catchError marks this stage and the build as failed but lets
-                // later stages run, so one red suite cannot hide another.
-                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                    // No JWT credentials needed: the specs generate an ephemeral
-                    // RSA keypair per run. A committed or injected test key would
-                    // eventually be copied into a deployment config.
-                    dir('apps/auth-service') {
+                stage('Synthetic Market Data Integration') {
+                    steps {
+                        script {
+                            // Multibranch BUILD_TAG values can contain encoded branch
+                            // separators such as %2F, which Docker rejects in named
+                            // volumes. Hash the complete tag to retain build isolation
+                            // while keeping every Docker resource name portable.
+                            // Derived once and reused by the cleanup in `post`: two
+                            // copies of this expression can drift apart, and cleanup
+                            // that computes a different name silently leaks the
+                            // containers, volumes, and network it was meant to remove.
+                            env.MARKET_TEST_TAG = 'trading-season-market-' + sh(
+                                script: 'printf %s "$BUILD_TAG" | sha256sum | cut -c1-16',
+                                returnStdout: true
+                            ).trim()
+                        }
                         sh '''
                             set -eu
-                            echo "Running Auth Service Tests (Vitest)..."
-                            npm run test:ci
-                            echo "✓ Auth service tests completed"
+                            TEST_TAG="$MARKET_TEST_TAG"
+                            DB_CONTAINER="${TEST_TAG}-db"
+                            TEST_NETWORK="${TEST_TAG}-network"
+                            DB_VOLUME="${TEST_TAG}-db-data"
+                            ARCHIVE_VOLUME="${TEST_TAG}-archive"
+                            mkdir -p reports/market-data
+                            docker network create "$TEST_NETWORK"
+                            docker volume create "$DB_VOLUME"
+                            docker volume create "$ARCHIVE_VOLUME"
+                            docker build -f infrastructure/docker/Dockerfile.market-data -t "$TEST_TAG" .
+                            docker run -d --name "$DB_CONTAINER" --network "$TEST_NETWORK" -e POSTGRES_DB=trading_season -e POSTGRES_USER=trading_season -e POSTGRES_PASSWORD=test-password -v "$DB_VOLUME:/var/lib/postgresql/data" postgres:16-alpine
+                            until docker exec "$DB_CONTAINER" pg_isready -U trading_season -d trading_season; do sleep 1; done
+                            DATABASE_URL="postgresql://trading_season:test-password@${DB_CONTAINER}:5432/trading_season"
+                            docker run --rm --network "$TEST_NETWORK" "$TEST_TAG" apps/market-data/db/scripts/0001-initialize-database.py --database-url "$DATABASE_URL" --disposable-database
+                            docker rm -f "$DB_CONTAINER"
+                            docker run -d --name "$DB_CONTAINER" --network "$TEST_NETWORK" -e POSTGRES_DB=trading_season -e POSTGRES_USER=trading_season -e POSTGRES_PASSWORD=test-password -v "$DB_VOLUME:/var/lib/postgresql/data" postgres:16-alpine
+                            until docker exec "$DB_CONTAINER" pg_isready -U trading_season -d trading_season; do sleep 1; done
+                            docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select count(*) from information_schema.tables where table_schema='public';" | grep -Eq '^[1-9][0-9]*$'
+                            docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select pg_database_size(current_database());" > reports/market-data/database-before.txt
+                            docker exec "$DB_CONTAINER" du -sb /var/lib/postgresql/data > reports/market-data/disk-before.txt
+                            AVAILABLE_DISK_GB="$(docker exec "$DB_CONTAINER" df -Pk /var/lib/postgresql/data | awk 'NR==2 {print $4/1048576}')"
+                            docker run --rm --network "$TEST_NETWORK" -e TEST_DATABASE_URL="$DATABASE_URL" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" "$TEST_TAG" -m pytest apps/market-data/db/tests --junitxml=/reports/junit.xml
+                            docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/generation-resources.txt python apps/market-data/db/scripts/0002-generate-synthetic-market-data.py --start-date 2026-01-05 --end-date 2026-01-06
+                            docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" "$TEST_TAG" apps/market-data/db/scripts/0003-validate-synthetic-market-data.py
+                            docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/import-resources.txt python apps/market-data/db/scripts/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
+                            docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" "$TEST_TAG" apps/market-data/db/scripts/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
+                            docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select count(*) from market_ticks; select count(*) from candles; select pg_database_size(current_database()); select coalesce(sum(pg_indexes_size(quote_ident(schemaname)||'.'||quote_ident(tablename))),0) from pg_tables where schemaname='public';" > reports/market-data/database-after.txt
+                            docker exec "$DB_CONTAINER" du -sb /var/lib/postgresql/data > reports/market-data/disk-after.txt
+                            docker run --rm -v "$ARCHIVE_VOLUME:/archive" alpine:3.20 du -sb /archive > reports/market-data/archive.txt
                         '''
                     }
-                }
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'apps/auth-service/coverage/**/*, apps/auth-service/reports/**/*',
-                                      allowEmptyArchive: true
-                    // allowEmptyResults: false is what makes "tests never ran"
-                    // a failure rather than a silent pass. It throws to do so,
-                    // and an uncaught throw in `post` aborts the whole run --
-                    // which skipped the frontend stage. catchError keeps the
-                    // build red without taking the later stages down with it.
-                    catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                        junit testResults: 'apps/auth-service/reports/junit/*.xml',
-                              allowEmptyResults: false,
-                              healthScaleFactor: 1.0
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'reports/market-data/**/*', allowEmptyArchive: true
+                            junit testResults: 'reports/market-data/junit.xml', allowEmptyResults: true
+                            sh '''
+                                TEST_TAG="$MARKET_TEST_TAG"
+                                docker rm -f "${TEST_TAG}-db" 2>/dev/null || true
+                                docker volume rm "${TEST_TAG}-db-data" "${TEST_TAG}-archive" 2>/dev/null || true
+                                docker network rm "${TEST_TAG}-network" 2>/dev/null || true
+                                docker image rm "$TEST_TAG" 2>/dev/null || true
+                            '''
+                        }
                     }
                 }
-            }
-        }
 
-        stage('Reporting Service Tests') {
-            environment {
-                CI = 'true'
-            }
-            steps {
-                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                    dir('apps/reporting-service') {
-                        sh '''
-                            set -eu
-                            echo "Running Reporting Service Tests (Pytest)..."
-                            # Run tests in Docker container - no Jenkins configuration needed
-                            docker run --rm \
-                              -v "$(pwd)":/app \
-                              -w /app \
-                              python:3.14 \
-                              bash -c "
-                                mkdir -p reports/junit coverage
-                                python -m pip install --upgrade pip setuptools wheel
-                                python -m pip install -q -r requirements.txt
-                                python -m pytest tests/ -v \
-                                  --junit-xml=reports/junit/results.xml \
-                                  --cov=. \
-                                  --cov-report=xml:coverage/coverage.xml \
-                                  --cov-report=html:coverage/htmlcov || true
-                                # Fix file permissions so Jenkins can clean up workspace
-                                chmod -R 777 reports coverage
-                              "
-                            echo "✓ Reporting service tests completed"
-                        '''
+                stage('Auth Service Tests') {
+                    // Deliberately NOT wrapped in a `command -v npm` check. A missing
+                    // toolchain is a broken pipeline, not a reason to pass: the build
+                    // fails instead of quietly skipping, which is what the acceptance
+                    // criteria require.
+                    environment {
+                        CI = 'true'
+                    }
+                    steps {
+                        // catchError marks this stage and the build as failed but lets
+                        // other parallel branches finish, so one red suite cannot hide
+                        // another.
+                        catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                            // No JWT credentials needed: the specs generate an ephemeral
+                            // RSA keypair per run. A committed or injected test key would
+                            // eventually be copied into a deployment config.
+                            dir('apps/auth-service') {
+                                sh '''
+                                    set -eu
+                                    echo "Running Auth Service Tests (Vitest)..."
+                                    npm run test:ci
+                                    echo "✓ Auth service tests completed"
+                                '''
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'apps/auth-service/coverage/**/*, apps/auth-service/reports/**/*',
+                                              allowEmptyArchive: true
+                            // allowEmptyResults: false is what makes "tests never ran"
+                            // a failure rather than a silent pass. It throws to do so,
+                            // and an uncaught throw in `post` would otherwise abort the
+                            // whole run; catchError keeps the build red without taking
+                            // the other parallel branches down with it.
+                            catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                                junit testResults: 'apps/auth-service/reports/junit/*.xml',
+                                      allowEmptyResults: false,
+                                      healthScaleFactor: 1.0
+                            }
+                        }
                     }
                 }
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'apps/reporting-service/coverage/**/*, apps/reporting-service/reports/**/*',
-                                      allowEmptyArchive: true
-                    catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                        junit testResults: 'apps/reporting-service/reports/junit/*.xml',
-                              allowEmptyResults: true,
-                              healthScaleFactor: 1.0
-                    }
-                }
-            }
-        }
 
-        stage('Frontend Tests') {
-            steps {
-                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                    dir('apps/client-ui') {
-                        sh '''
-                            set -eu
-                            echo " Running Frontend Tests (Angular + Vitest)..."
-                            # --no-watch and --coverage are options of the
-                            # @angular/build:unit-test builder. Vitest's own
-                            # --run is not: `ng test --run` fails with
-                            # "Unknown argument: run" before any test executes.
-                            # coverageThresholds in angular.json fails the run
-                            # below the agreed floor.
-                            npm test -- --no-watch --coverage
-                            echo "✓ Frontend tests completed"
-                        '''
+                stage('Reporting Service Tests') {
+                    environment {
+                        CI = 'true'
+                    }
+                    steps {
+                        catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                            dir('apps/reporting-service') {
+                                sh '''
+                                    set -eu
+                                    echo "Running Reporting Service Tests (Pytest)..."
+                                    # Run tests in Docker container - no Jenkins configuration needed
+                                    docker run --rm \
+                                      -v "$(pwd)":/app \
+                                      -w /app \
+                                      python:3.14 \
+                                      bash -c "
+                                        mkdir -p reports/junit coverage
+                                        python -m pip install --upgrade pip setuptools wheel
+                                        python -m pip install -q -r requirements.txt
+                                        python -m pytest tests/ -v \
+                                          --junit-xml=reports/junit/results.xml \
+                                          --cov=. \
+                                          --cov-report=xml:coverage/coverage.xml \
+                                          --cov-report=html:coverage/htmlcov || true
+                                        # Fix file permissions so Jenkins can clean up workspace
+                                        chmod -R 777 reports coverage
+                                      "
+                                    echo "✓ Reporting service tests completed"
+                                '''
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'apps/reporting-service/coverage/**/*, apps/reporting-service/reports/**/*',
+                                              allowEmptyArchive: true
+                            catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                                junit testResults: 'apps/reporting-service/reports/junit/*.xml',
+                                      allowEmptyResults: true,
+                                      healthScaleFactor: 1.0
+                            }
+                        }
                     }
                 }
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'apps/client-ui/coverage/**/*',
-                                      allowEmptyArchive: true
+
+                stage('Frontend Tests') {
+                    steps {
+                        catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                            dir('apps/client-ui') {
+                                sh '''
+                                    set -eu
+                                    echo " Running Frontend Tests (Angular + Vitest)..."
+                                    # --no-watch and --coverage are options of the
+                                    # @angular/build:unit-test builder. Vitest's own
+                                    # --run is not: `ng test --run` fails with
+                                    # "Unknown argument: run" before any test executes.
+                                    # coverageThresholds in angular.json fails the run
+                                    # below the agreed floor.
+                                    npm test -- --no-watch --coverage
+                                    echo "✓ Frontend tests completed"
+                                '''
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'apps/client-ui/coverage/**/*',
+                                              allowEmptyArchive: true
+                        }
+                    }
                 }
             }
         }
@@ -401,29 +435,29 @@ pipeline {
                 sh '''
                     set +e
                     echo "Aggressive disk cleanup before E2E tests (large Playwright image pull)..."
-                    
+
                     # Remove test artifacts from prior stages that consumed disk
                     rm -rf apps/holdings-and-trade-service/target
                     rm -rf apps/order-and-sell-service/target
                     rm -rf apps/client-ui/coverage
-                    
+
                     # Report current disk state
                     BEFORE_KB="$(df -Pk "$WORKSPACE" | awk 'NR == 2 {print $4}')"
                     echo "Available disk before cleanup: $((BEFORE_KB / 1024 / 1024)) GiB"
-                    
+
                     # Remove unused Docker images, dangling layers, and build cache
                     docker image prune -af >/dev/null 2>&1
                     docker builder prune -af >/dev/null 2>&1
-                    
+
                     # Clean npm and Maven caches
                     npm cache clean --force >/dev/null 2>&1
                     find ~/.m2/repository -type f -name "*.jar" -o -name "*.pom" | xargs rm -f 2>/dev/null || true
-                    
+
                     # Report freed space
                     AFTER_KB="$(df -Pk "$WORKSPACE" | awk 'NR == 2 {print $4}')"
                     FREED_MB=$(( (AFTER_KB - BEFORE_KB) / 1024 ))
                     echo "✓ Available disk after cleanup: $((AFTER_KB / 1024 / 1024)) GiB (freed ~$((FREED_MB > 0 ? FREED_MB : 0)) MB)"
-                    
+
                     set -e
                 '''
             }
