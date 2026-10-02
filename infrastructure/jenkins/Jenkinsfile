@@ -366,11 +366,20 @@ pipeline {
                                 sh '''
                                     set -eu
                                     echo "Running Reporting Service Tests (Pytest)..."
-                                    # Run tests in Docker container - no Jenkins configuration needed
+                                    # Run tests in Docker container - no Jenkins configuration needed.
+                                    # python:3.14-slim, not the full python:3.14 image: the full
+                                    # image is built on buildpack-deps and pulls a large set of
+                                    # "-dev" libraries (e.g. libfftw3l) meant for compiling native
+                                    # extensions. requirements.txt only needs pure-Python packages
+                                    # or ones with precompiled wheels (psycopg[binary], gunicorn,
+                                    # etc.), so nothing here needs a compiler. Pulling the full
+                                    # image concurrently with the Synthetic Market Data
+                                    # Integration branch's own image build has exhausted the
+                                    # agent's disk before ("no space left on device").
                                     docker run --rm \
                                       -v "$(pwd)":/app \
                                       -w /app \
-                                      python:3.14 \
+                                      python:3.14-slim \
                                       bash -c "
                                         mkdir -p reports/junit coverage
                                         python -m pip install --upgrade pip setuptools wheel
