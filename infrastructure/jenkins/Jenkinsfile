@@ -358,17 +358,18 @@ pipeline {
                             # Playwright starts its own server on 4200 and waits for it;
                             # the API tier is stubbed at the network boundary, so no
                             # database or backend service is required.
+                            # Includes order-toasts, market-chart, and account rewind journeys.
                             docker run --rm \
                                 --user "$(id -u):$(id -g)" \
                                 --ipc=host \
                                 -v "$WORKSPACE:/workspace" \
                                 -v "$NODE_HOME:/opt/node:ro" \
                                 -e HOME=/tmp \
+                                -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
                                 -e CI=true \
                                 -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
                                 -w /workspace/apps/client-ui \
                                 "$PW_IMAGE" \
-                                # Includes order-toasts, market-chart, and account rewind journeys.
                                 npm run e2e
                             echo "✓ End-to-end tests completed"
                         '''
