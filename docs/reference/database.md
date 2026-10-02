@@ -23,7 +23,7 @@ Both Java services share the same `trading_season` database. This table lists wh
 
 | Table | Owned by | Access |
 | --- | --- | --- |
-| user_accounts | Auth Service | Read/write (credentials, role, status, lockout); Java services read only |
+| user_accounts | Auth Service | Read/write (credentials, role, lockout); Java services read only |
 | refresh_tokens | Auth Service | Read/write (issue, rotate, revoke); Java services never read it |
 | users | Holdings and Trade Service | Read/write (profile, funds, settings) |
 | accounts | Holdings and Trade Service | Read/write (account management) |
@@ -378,7 +378,7 @@ Add incremental migrations rather than editing already applied files. For busine
 
 # Business database ERD
 
-Canonical relationship diagram for the SQL schema after V001 through V006. SQL defines exact columns and constraints. See this database reference for ownership, initialization, and change rules.
+Canonical relationship diagram for the SQL schema after V001 through V008. SQL defines exact columns and constraints. See this database reference for ownership, initialization, and change rules.
 
 The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change.
 
@@ -415,11 +415,10 @@ erDiagram
     instruments ||--o{ holding_movements : changes
     fills ||--o| holding_movements : creates
 
-    users {
+    user_accounts {
         UUID user_id PK
         TEXT email UK
         TEXT user_role
-        TEXT account_status
     }
     simulation_sessions {
         BIGINT id PK

@@ -41,7 +41,7 @@ class UserControllerUnitTest {
     @Test
     void meReturnsUserProfileResponseForAuthenticatedUser() {
         User user = createTestUser(USER_ID);
-        UserAccount account = createTestAccount("test@example.com", "TRADER", "ACTIVE");
+        UserAccount account = createTestAccount("test@example.com", "TRADER");
         
         when(jwt.getSubject()).thenReturn(USER_ID.toString());
         when(userService.getOwnAccount(USER_ID)).thenReturn(user);
@@ -68,7 +68,7 @@ class UserControllerUnitTest {
     @Test
     void meExtractsUserIdFromJwtToken() {
         User user = createTestUser(USER_ID);
-        UserAccount account = createTestAccount("test@example.com", "TRADER", "ACTIVE");
+        UserAccount account = createTestAccount("test@example.com", "TRADER");
         
         when(jwt.getSubject()).thenReturn(USER_ID.toString());
         when(userService.getOwnAccount(USER_ID)).thenReturn(user);
@@ -82,7 +82,7 @@ class UserControllerUnitTest {
     @Test
     void meReturnsProfileWithUserRole() {
         User user = createTestUser(USER_ID);
-        UserAccount account = createTestAccount("test@example.com", "TRADER", "ACTIVE");
+        UserAccount account = createTestAccount("test@example.com", "TRADER");
         
         when(jwt.getSubject()).thenReturn(USER_ID.toString());
         when(userService.getOwnAccount(USER_ID)).thenReturn(user);
@@ -91,7 +91,6 @@ class UserControllerUnitTest {
         UserProfileResponse result = controller.me(jwt);
 
         assertEquals("TRADER", result.userRole());
-        assertEquals("ACTIVE", result.accountStatus());
     }
 
     @Test
@@ -106,7 +105,7 @@ class UserControllerUnitTest {
         user.setDateOfBirth(LocalDate.of(1990, 1, 1));
         user.setTraderLevel("ADVANCED");
         user.setAvailableFunds(new BigDecimal("50000.00"));
-        UserAccount account = createTestAccount("john@example.com", "TRADER", "ACTIVE");
+        UserAccount account = createTestAccount("john@example.com", "TRADER");
         
         when(jwt.getSubject()).thenReturn(USER_ID.toString());
         when(userService.getOwnAccount(USER_ID)).thenReturn(user);
@@ -127,8 +126,8 @@ class UserControllerUnitTest {
     void meWithDifferentUsers() {
         UUID userId1 = UUID.randomUUID();
         UUID userId2 = UUID.randomUUID();
-        UserAccount account1 = createTestAccount("user1@example.com", "TRADER", "ACTIVE");
-        UserAccount account2 = createTestAccount("user2@example.com", "TRADER", "ACTIVE");
+        UserAccount account1 = createTestAccount("user1@example.com", "TRADER");
+        UserAccount account2 = createTestAccount("user2@example.com", "TRADER");
         
         User user1 = createTestUser(userId1);
         User user2 = createTestUser(userId2);
@@ -151,7 +150,7 @@ class UserControllerUnitTest {
     @Test
     void meCallsServiceWithExtractedUserId() {
         User user = createTestUser(USER_ID);
-        UserAccount account = createTestAccount("test@example.com", "TRADER", "ACTIVE");
+        UserAccount account = createTestAccount("test@example.com", "TRADER");
         
         when(jwt.getSubject()).thenReturn(USER_ID.toString());
         when(userService.getOwnAccount(USER_ID)).thenReturn(user);
@@ -166,7 +165,7 @@ class UserControllerUnitTest {
     void meReturnsUserWithZeroFunds() {
         User user = createTestUser(USER_ID);
         user.setAvailableFunds(BigDecimal.ZERO);
-        UserAccount account = createTestAccount("test@example.com", "TRADER", "ACTIVE");
+        UserAccount account = createTestAccount("test@example.com", "TRADER");
         
         when(jwt.getSubject()).thenReturn(USER_ID.toString());
         when(userService.getOwnAccount(USER_ID)).thenReturn(user);
@@ -180,7 +179,7 @@ class UserControllerUnitTest {
     @Test
     void meReturnsUserWithDifferentTraderLevels() {
         String[] levels = {"BEGINNER", "INTERMEDIATE", "ADVANCED"};
-        UserAccount account = createTestAccount("test@example.com", "TRADER", "ACTIVE");
+        UserAccount account = createTestAccount("test@example.com", "TRADER");
         
         for (String level : levels) {
             User user = createTestUser(USER_ID);
@@ -200,7 +199,7 @@ class UserControllerUnitTest {
     void meHandlesNullMiddleName() {
         User user = createTestUser(USER_ID);
         user.setMiddleName(null);
-        UserAccount account = createTestAccount("test@example.com", "TRADER", "ACTIVE");
+        UserAccount account = createTestAccount("test@example.com", "TRADER");
         
         when(jwt.getSubject()).thenReturn(USER_ID.toString());
         when(userService.getOwnAccount(USER_ID)).thenReturn(user);
@@ -214,7 +213,7 @@ class UserControllerUnitTest {
     @Test
     void meWithEmptyEmail() {
         User user = createTestUser(USER_ID);
-        UserAccount account = createTestAccount("", "TRADER", "ACTIVE");
+        UserAccount account = createTestAccount("", "TRADER");
         
         when(jwt.getSubject()).thenReturn(USER_ID.toString());
         when(userService.getOwnAccount(USER_ID)).thenReturn(user);
@@ -238,7 +237,7 @@ class UserControllerUnitTest {
         return user;
     }
 
-    private UserAccount createTestAccount(String email, String userRole, String accountStatus) {
-        return new UserAccount(USER_ID, email, userRole, accountStatus);
+    private UserAccount createTestAccount(String email, String userRole) {
+        return new UserAccount(USER_ID, email, userRole);
     }
 }

@@ -8,7 +8,7 @@ The registration flow validates new account creation, hashes passwords with bcry
 - Email uniqueness enforced by database unique index + application-level check
 - Password hashing with bcrypt (10 rounds)
 - Handles concurrent registration race conditions (two requests pass email check but only one wins)
-- New accounts start with `isActive=true`, `failedAttempts=0`, `lockedUntil=null`
+- New accounts start with `failedAttempts=0`, `lockedUntil=null`
 - Access token valid for 15 minutes; refresh token stored server-side for revocation
 
 ## Sequence Diagram (Mermaid)
@@ -64,7 +64,7 @@ sequenceDiagram
                 UsersSvc->>UsersSvc: bcrypt.hash(password, 10)
                 Note over UsersSvc: ~100-150ms (cost factor 10)
                 
-                UsersSvc->>DB: INSERT INTO users<br/>(email, password_hash, isActive, role, etc.)
+                UsersSvc->>DB: INSERT INTO user_accounts<br/>(email, password_hash, role, etc.)
                 
                 alt Unique constraint violated<br/>(Race condition)
                     Note over DB: Two concurrent registrations<br/>both passed findByEmail check
@@ -173,11 +173,10 @@ bcrypt.hash(password, 10)
 
 ### 7. Database insert
 ```
-INSERT INTO users (
+INSERT INTO user_accounts (
   id (UUID),
   email,
   password (hashed),
-  isActive (true),
   role ('TRADER'),
   failedAttempts (0),
   lockedUntil (null),
@@ -332,7 +331,6 @@ export class User {
   id: UUID;
   email: string;            // Unique, max 254 chars
   password: string;         // bcrypt hash, 60 chars
-  isActive: boolean = true; // New accounts always active
   role: 'ADMIN' | 'TRADER' = 'TRADER';
   failedAttempts: number = 0;   // Login failure counter
   lockedUntil: Date | null = null;  // Account lockout deadline
@@ -376,7 +374,6 @@ export class RefreshToken {
 - **Result:** Only one registration succeeds; other gets 409 Conflict
 
 ### 4. New Account Defaults
-- **isActive:** true (account can log in immediately)
 - **role:** 'TRADER' (not 'ADMIN')
 - **failedAttempts:** 0 (no previous login failures)
 - **lockedUntil:** null (not locked)
@@ -429,7 +426,6 @@ export class RefreshToken {
 - ✅ Password hashing with bcrypt (resistant to brute force)
 - ✅ Race condition handling (concurrent registrations)
 - ✅ No account enumeration (valid/invalid emails both return success if email unique)
-- ✅ New accounts immediately usable (isActive=true by default)
 - ✅ Refresh tokens can be revoked server-side
 - ✅ Access tokens stateless but time-limited (15 minutes)
 
