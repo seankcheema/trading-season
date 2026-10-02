@@ -61,10 +61,13 @@ Setup Dependencies also installs the UI and auth service's npm dependencies conc
 | Holdings and Trade Java | apps/holdings-and-trade-service/target/surefire-reports and target/site/jacoco |
 | Order and Sell Java | apps/order-and-sell-service/target/surefire-reports and target/site/jacoco |
 | Auth | apps/auth-service/coverage and reports/junit |
+| Reporting service | apps/reporting-service/coverage and reports/junit |
 | UI | apps/client-ui/coverage |
 | End-to-end | apps/client-ui/reports/playwright |
 
 Both Java services must pass their respective test suites. Schema changes or shared dependency upgrades require testing both services together to verify compatibility. Auth CI runs npm ci then npm run test:ci. Frontend CI currently uses npm install --legacy-peer-deps followed by npm test -- --no-watch --coverage. This differs from the preferred root npm ci developer installation. Do not silently treat an absent test tool or empty required report as success.
+
+Reporting-service CI runs inside the upstream `python:3.14` container rather than a Jenkins-managed Python tool. The stage installs `requirements.txt`, runs `pytest`, archives `apps/reporting-service/coverage` and `apps/reporting-service/reports`, and repairs permissions on those artifact directories before checkout and after the test run so stale Docker-owned files do not block the next workspace cleanup.
 
 Every tier fails its own stage below 70% coverage; the mechanisms are listed under [coverage floors](development.md#coverage-floors). A stage that passes has already cleared the floor, so the archived reports are for inspection, not for a manual check.
 
@@ -108,6 +111,7 @@ Javadoc generation is a required Java change check described in [development](de
 **CI and deployment:**
 - Jenkins fails before tests: verify the configured Java/Maven paths and Node version on the actual agent, not just the optional image.
 - Jenkins fails before tests: verify the configured Java/Maven paths and Node version (24.x at 24.8.0 or later, compatible with Angular 21.2.x) on the actual agent, not just the optional image.
+- Jenkins checkout fails with `Operation not permitted` under `apps/reporting-service/reports` or `apps/reporting-service/coverage`: run the latest pipeline definition. The reporting-service stage now repairs permissions on those Docker-generated artifact directories before checkout and again after pytest finishes.
 - Synthetic market-data CI derives Docker resource names from a normalized hash of the Jenkins build tag, so encoded multibranch names such as `%2F` do not need special handling. The stage creates and removes build-scoped database and archive volumes; do not pre-seed PostgreSQL or generate a persistent archive on the Jenkins VM.
 - Market replay reports unavailable prices: for a Parquet-backed session, verify that the archive contains the selected `ticks-YYYY-MM-DD.parquet` partition. Set `MARKET_REPLAY_ARCHIVE_LOCATION` to its absolute root when the metadata path belongs to an older checkout or another host; local repository runs also discover the matching archive under `apps/market-data/db/seeds`. Replay deliberately does not fall back to one-minute candles.
 - UI renders but login does not reach an API: form submission is not yet wired to a service. See [architecture](../reference/architecture.md).

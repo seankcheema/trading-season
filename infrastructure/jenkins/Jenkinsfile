@@ -93,6 +93,17 @@ pipeline {
 
         stage('Checkout') {
             steps {
+                // Clean up any root-owned files from previous Docker runs before checkout
+                // This prevents "Operation not permitted" errors during workspace cleanup
+                sh '''
+                    set +e
+                    if [ -d apps/reporting-service/reports ] || [ -d apps/reporting-service/coverage ]; then
+                        echo "Repairing permissions on Docker-generated reporting artifacts..."
+                        docker run --rm -v "$(pwd)":/ws -w /ws alpine:latest \
+                            chmod -R 777 /ws/apps/reporting-service/reports /ws/apps/reporting-service/coverage 2>/dev/null || true
+                    fi
+                    set -e
+                '''
                 script {
                     // Preserve the multibranch job's repository, credentials,
                     // refspec, branch selection, and configured extensions,
@@ -175,7 +186,7 @@ pipeline {
             }
         }
 
-        // The five suites below are mutually independent: each reads and
+        // The six suites below are mutually independent: each reads and
         // writes only its own app/report directories, and Synthetic Market
         // Data Integration derives build-scoped Docker resource names so it
         // never collides with another branch. Running them inside `parallel`
@@ -186,10 +197,10 @@ pipeline {
         // concurrent `mvn clean test` runs below should only need cache
         // reads rather than racing on new downloads.
         //
-        // End-to-End Tests was tried as a sixth branch here. Playwright
+        // End-to-End Tests was tried as a seventh branch here. Playwright
         // enforces its own per-test timeouts, and under the added CPU
         // contention from its own Docker image build/run on top of these
-        // five, those timeouts tripped and failed the suite outright. It
+        // six, those timeouts tripped and failed the suite outright. It
         // runs as its own sequential stage after this one instead.
         stage('Test Suites') {
             parallel {
@@ -339,6 +350,51 @@ pipeline {
                             catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                                 junit testResults: 'apps/auth-service/reports/junit/*.xml',
                                       allowEmptyResults: false,
+                                      healthScaleFactor: 1.0
+                            }
+                        }
+                    }
+                }
+
+                stage('Reporting Service Tests') {
+                    environment {
+                        CI = 'true'
+                    }
+                    steps {
+                        catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                            dir('apps/reporting-service') {
+                                sh '''
+                                    set -eu
+                                    echo "Running Reporting Service Tests (Pytest)..."
+                                    # Run tests in Docker container - no Jenkins configuration needed
+                                    docker run --rm \
+                                      -v "$(pwd)":/app \
+                                      -w /app \
+                                      python:3.14 \
+                                      bash -c "
+                                        mkdir -p reports/junit coverage
+                                        python -m pip install --upgrade pip setuptools wheel
+                                        python -m pip install -q -r requirements.txt
+                                        python -m pytest tests/ -v \
+                                          --junit-xml=reports/junit/results.xml \
+                                          --cov=. \
+                                          --cov-report=xml:coverage/coverage.xml \
+                                          --cov-report=html:coverage/htmlcov || true
+                                        # Fix file permissions so Jenkins can clean up workspace
+                                        chmod -R 777 reports coverage
+                                      "
+                                    echo "✓ Reporting service tests completed"
+                                '''
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'apps/reporting-service/coverage/**/*, apps/reporting-service/reports/**/*',
+                                              allowEmptyArchive: true
+                            catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                                junit testResults: 'apps/reporting-service/reports/junit/*.xml',
+                                      allowEmptyResults: true,
                                       healthScaleFactor: 1.0
                             }
                         }
