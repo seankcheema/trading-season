@@ -18,7 +18,6 @@ import java.util.UUID;
  * @param traderLevel    BEGINNER, INTERMEDIATE or ADVANCED
  * @param availableFunds cash available for trading
  * @param userRole       ADMIN or TRADER
- * @param accountStatus  ACTIVE or DEACTIVATED
  * @param createdAt      when the account was registered
  */
 public record UserProfileResponse(
@@ -32,7 +31,6 @@ public record UserProfileResponse(
         String traderLevel,
         BigDecimal availableFunds,
         String userRole,
-        String accountStatus,
         OffsetDateTime createdAt
 ) {
 
@@ -40,11 +38,9 @@ public record UserProfileResponse(
      * Maps a profile and its credential record to a response, leaving out
      * sensitive fields.
      *
-     * <p>Email, role and status come from {@code account} rather than
-     * {@code user}. The auth service owns those three, and the copies still
-     * sitting on the profile row are only as fresh as the last registration -
-     * reporting a stale ACTIVE to a deactivated trader is exactly the sort of
-     * answer this endpoint should not give.
+     * <p>Email and role come from {@code account} rather than {@code user}:
+     * the auth service owns both, and V006 dropped the stale copies the profile
+     * row used to carry.
      *
      * @param user    the profile row
      * @param account the credential record the auth service owns
@@ -54,6 +50,6 @@ public record UserProfileResponse(
         return new UserProfileResponse(user.getUserId(), account.getEmail(),
                 user.getFirstName(), user.getMiddleName(), user.getLastName(), user.getAddress(),
                 user.getDateOfBirth(), user.getTraderLevel(), user.getAvailableFunds(),
-                account.getUserRole(), account.getAccountStatus(), user.getCreatedAt());
+                account.getUserRole(), user.getCreatedAt());
     }
 }
