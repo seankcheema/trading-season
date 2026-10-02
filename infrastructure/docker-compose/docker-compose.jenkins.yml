@@ -62,6 +62,8 @@ services:
       -f /migrations/V004__Order_status_lifecycle.sql
       -f /migrations/V005__User_accounts_and_refresh_tokens.sql
       -f /migrations/V006__Drop_duplicated_account_columns.sql
+      -f /migrations/V007__Add_account_name.sql
+      -f /migrations/V008__Drop_account_status.sql
       && echo "[DB-INIT] Migrations complete"; 
       else echo "[DB-INIT] Database already initialized, skipping migrations"; fi'
     networks:
