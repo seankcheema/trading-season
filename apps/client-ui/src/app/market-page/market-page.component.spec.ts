@@ -515,13 +515,12 @@ describe('MarketPageComponent', () => {
     expect(marketData.candles).toHaveBeenCalledWith(7, 'AAPL', '1D');
     expect(marketData.candles).toHaveBeenCalledWith(7, 'MSFT', '1D');
     expect(fixture.nativeElement.querySelectorAll('.comparison-chart').length).toBe(2);
-    expect(fixture.nativeElement.querySelector('.comparison-summary')?.textContent).toContain(
-      'Microsoft Corporation',
-    );
-    expect(fixture.nativeElement.querySelector('.comparison-summary')?.textContent).toContain(
-      'Volume',
-    );
-    expect(fixture.nativeElement.textContent).toContain('2,000');
+    const summary = fixture.nativeElement.querySelector('.market-summary');
+    expect(summary.textContent).toContain('AAPL');
+    expect(summary.textContent).toContain('Apple Inc.');
+    expect(summary.textContent).not.toContain('MSFT');
+    expect(summary.textContent).not.toContain('Microsoft Corporation');
+    expect(summary.textContent).toContain('1,000');
     const charts = fixture.debugElement.queryAll(By.directive(PriceChartComponent));
     expect(charts).toHaveLength(2);
     expect(charts.every((chart) => chart.componentInstance.candles().length === 1)).toBe(true);

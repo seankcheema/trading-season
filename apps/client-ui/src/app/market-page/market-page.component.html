@@ -69,160 +69,64 @@
         @if (instrument(); as active) {
           <div class="market-grid" [class.tools-collapsed]="toolsCollapsed()">
             <div class="market-main">
-              @if (comparisonInstrument(); as compared) {
-                <section
-                  class="comparison-summary border-border bg-card rounded-xl border px-4 py-1"
-                  aria-label="Stock comparison summary"
-                >
-                  @for (
-                    item of [
-                      {
-                        instrument: active,
-                        stats: marketStats(),
-                        volume: rangeVolume(),
-                      },
-                      {
-                        instrument: compared,
-                        stats: comparisonMarketStats(),
-                        volume: comparisonRangeVolume(),
-                      },
-                    ];
-                    track item.instrument.symbol
-                  ) {
-                    <article class="comparison-summary-item">
-                      <div class="comparison-identity">
-                        <h1 class="min-w-0 truncate text-sm font-bold">
-                          {{ item.instrument.symbol }}
-                          <span class="text-muted-foreground ml-1 font-normal">{{
-                            item.instrument.name
-                          }}</span>
-                        </h1>
-                        <div class="comparison-price">
-                          <strong
-                            class="tick-price tabular-nums"
-                            [class.tick-price-gain]="
-                              tickAnimations().get(item.instrument.symbol)?.direction === 'gain'
-                            "
-                            [class.tick-price-loss]="
-                              tickAnimations().get(item.instrument.symbol)?.direction === 'loss'
-                            "
-                            [class.tick-animation-even]="
-                              (tickAnimations().get(item.instrument.symbol)?.revision ?? 1) % 2 ===
-                              0
-                            "
-                            [style.animation-duration.ms]="
-                              tickAnimations().get(item.instrument.symbol)?.durationMs
-                            "
-                          >
-                            {{ item.instrument.price | currency: 'USD' }}
-                          </strong>
-                          <span
-                            class="text-[11px] font-semibold tabular-nums"
-                            [class]="item.instrument.change >= 0 ? 'text-gain' : 'text-loss'"
-                          >
-                            {{ item.instrument.change >= 0 ? '+' : ''
-                            }}{{ item.instrument.change | currency: 'USD' }}
-                            {{ item.instrument.changePercent | signedPercent }}
-                          </span>
-                        </div>
-                      </div>
-                      <dl class="comparison-metrics">
-                        <div>
-                          <dt>Open</dt>
-                          <dd>{{ item.stats.open | currency: 'USD' }}</dd>
-                        </div>
-                        <div>
-                          <dt>Volume</dt>
-                          <dd>{{ item.volume | number: '1.0-0' }}</dd>
-                        </div>
-                      </dl>
-                    </article>
-                  }
-                  @if (toolsCollapsed() && comparisonInstrument()) {
-                    <button
-                      type="button"
-                      class="tool-icon tools-open-button"
-                      aria-label="Open market tools"
-                      title="Open market tools"
-                      (click)="toolsCollapsed.set(false)"
-                    >
-                      <ng-icon class="chevron-rotate" name="lucideChevronLeft" />
-                    </button>
-                  }
-                </section>
-              } @else {
-                <section class="market-summary border-border bg-card rounded-xl border px-4 py-1">
-                  <div class="market-identity">
-                    <div class="min-w-0">
-                      <h1 class="text-xl font-bold">{{ active.symbol }}</h1>
-                      <p class="text-muted-foreground truncate text-xs">{{ active.name }}</p>
-                    </div>
-                    <span
-                      class="tick-price text-3xl font-bold tabular-nums"
-                      [class.tick-price-gain]="
-                        tickAnimations().get(active.symbol)?.direction === 'gain'
-                      "
-                      [class.tick-price-loss]="
-                        tickAnimations().get(active.symbol)?.direction === 'loss'
-                      "
-                      [class.tick-animation-even]="
-                        (tickAnimations().get(active.symbol)?.revision ?? 1) % 2 === 0
-                      "
-                      [style.animation-duration.ms]="
-                        tickAnimations().get(active.symbol)?.durationMs
-                      "
-                      >{{ active.price | currency: 'USD' }}</span
-                    >
+              <section class="market-summary border-border bg-card rounded-xl border px-4 py-1">
+                <div class="market-identity">
+                  <div class="min-w-0">
+                    <h1 class="text-xl font-bold">{{ active.symbol }}</h1>
+                    <p class="text-muted-foreground truncate text-xs">{{ active.name }}</p>
                   </div>
-                  <dl class="market-metrics">
-                    <div>
-                      <dt>Mkt Cap</dt>
-                      <dd>{{ mockDetails().marketCap }}</dd>
+                  <span class="text-3xl font-bold tabular-nums">
+                    {{ active.price | currency: 'USD' }}
+                  </span>
+                </div>
+                <dl class="market-metrics">
+                  <div>
+                    <dt>Mkt Cap</dt>
+                    <dd>{{ mockDetails().marketCap }}</dd>
+                  </div>
+                  <div>
+                    <dt>Bid</dt>
+                    <dd>{{ marketStats().bid | currency: 'USD' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Ask</dt>
+                    <dd>{{ marketStats().ask | currency: 'USD' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Spread</dt>
+                    <dd>{{ marketStats().spread | currency: 'USD' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Open</dt>
+                    <dd>{{ marketStats().open | currency: 'USD' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Day Range</dt>
+                    <dd>
+                      {{ marketStats().low | currency: 'USD' }}–{{
+                        marketStats().high | currency: 'USD'
+                      }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Range Volume</dt>
+                    <dd>{{ rangeVolume() | number: '1.0-0' }}</dd>
+                  </div>
+                  @if (toolsCollapsed()) {
+                    <div class="market-tools-toggle">
+                      <button
+                        type="button"
+                        class="tool-icon tools-open-button"
+                        aria-label="Open market tools"
+                        title="Open market tools"
+                        (click)="toolsCollapsed.set(false)"
+                      >
+                        <ng-icon class="chevron-rotate" name="lucideChevronLeft" />
+                      </button>
                     </div>
-                    <div>
-                      <dt>Bid</dt>
-                      <dd class="text-gain">{{ marketStats().bid | currency: 'USD' }}</dd>
-                    </div>
-                    <div>
-                      <dt>Ask</dt>
-                      <dd class="text-loss">{{ marketStats().ask | currency: 'USD' }}</dd>
-                    </div>
-                    <div>
-                      <dt>Spread</dt>
-                      <dd>{{ marketStats().spread | currency: 'USD' }}</dd>
-                    </div>
-                    <div>
-                      <dt>Open</dt>
-                      <dd>{{ marketStats().open | currency: 'USD' }}</dd>
-                    </div>
-                    <div>
-                      <dt>Day Range</dt>
-                      <dd>
-                        {{ marketStats().low | currency: 'USD' }}–{{
-                          marketStats().high | currency: 'USD'
-                        }}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Range Volume</dt>
-                      <dd>{{ rangeVolume() | number: '1.0-0' }}</dd>
-                    </div>
-                    @if (toolsCollapsed()) {
-                      <div class="market-tools-toggle">
-                        <button
-                          type="button"
-                          class="tool-icon tools-open-button"
-                          aria-label="Open market tools"
-                          title="Open market tools"
-                          (click)="toolsCollapsed.set(false)"
-                        >
-                          <ng-icon class="chevron-rotate" name="lucideChevronLeft" />
-                        </button>
-                      </div>
-                    }
-                  </dl>
-                </section>
-              }
+                  }
+                </dl>
+              </section>
 
               <section
                 class="chart-panel border-border bg-card rounded-xl border p-3"
@@ -838,7 +742,7 @@
                   (rename)="openRenameAccount($event)"
                 />
                 <dl class="account-value-balances">
-                  <div>
+                  <div class="overview-card account-balance-card account-cash-card">
                     <dt class="text-muted-foreground text-xs">Available cash</dt>
                     <dd class="text-xl font-semibold tabular-nums" data-testid="available-cash">
                       @if (accountStore.status() === 'ready') {
@@ -849,7 +753,7 @@
                     </dd>
                     <p class="text-muted-foreground text-[10px]">Shared across accounts</p>
                   </div>
-                  <div>
+                  <div class="overview-card account-balance-card account-portfolio-card">
                     <dt class="text-muted-foreground text-xs">Portfolio value</dt>
                     <dd
                       class="text-xl font-semibold tabular-nums"
