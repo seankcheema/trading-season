@@ -67,8 +67,6 @@
     <main class="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2.25fr)]">
       <!-- Left column -->
       <div class="flex min-w-0 flex-col gap-3 lg:min-h-0">
-        <app-instrument-search [instruments]="instruments()" (selected)="openOrder($event)" />
-
         <section class="net-worth-card dash-card shrink-0 p-5">
           <h2 class="dash-label">Net Worth</h2>
           <p
@@ -160,48 +158,62 @@
             }
           </ul>
         </section>
+
+        <section aria-label="Watch List" class="dash-card flex min-h-0 flex-1 flex-col p-5">
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="text-sm font-semibold">Watch List</h2>
+            <span class="text-muted-foreground text-xs">Preview</span>
+          </div>
+          <div
+            class="dash-table-head mt-4 grid grid-cols-[minmax(0,1fr)_4.75rem_4.5rem_4.5rem] gap-2 whitespace-nowrap"
+          >
+            <span>Asset</span>
+            <span class="text-right">Price</span>
+            <span class="text-right">Change $</span>
+            <span class="text-right">Change %</span>
+          </div>
+          <div class="dash-scroll dash-fade max-h-80 min-h-0 flex-1 overflow-y-auto lg:max-h-none">
+            @for (instrument of instruments(); track instrument.symbol) {
+              <button
+                type="button"
+                class="border-border/60 hover:bg-muted grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_4.75rem_4.5rem_4.5rem] items-center gap-2 border-b py-2.5 text-left text-sm whitespace-nowrap transition-colors last:border-b-0"
+                (click)="openOrder(instrument)"
+              >
+                <span class="min-w-0">
+                  <span class="block font-medium">{{ instrument.symbol }}</span>
+                  <span class="text-muted-foreground block truncate text-xs">{{
+                    instrument.name
+                  }}</span>
+                </span>
+                <span class="text-right text-xs font-medium tabular-nums">
+                  {{ instrument.price | currency: 'USD' }}
+                </span>
+                <span
+                  class="text-right text-xs tabular-nums"
+                  [class]="instrument.change >= 0 ? 'text-gain' : 'text-loss'"
+                >
+                  {{ instrument.change >= 0 ? '+' : '' }}{{ instrument.change | currency: 'USD' }}
+                </span>
+                <span
+                  class="text-right text-xs tabular-nums"
+                  [class]="instrument.changePercent >= 0 ? 'text-gain' : 'text-loss'"
+                >
+                  {{ instrument.changePercent | signedPercent }}
+                </span>
+              </button>
+            }
+          </div>
+        </section>
       </div>
 
       <!-- Right column -->
       <div class="flex min-w-0 flex-col gap-3 lg:min-h-0">
-        <!--
-          Tickers spread across the full width. Ones that don't fit wrap onto a second line,
-          which the fixed height clips, so the visible ones always fill the row.
-        -->
-        <section
-          aria-label="Market ticker"
-          class="dash-card flex h-11 shrink-0 flex-wrap justify-between gap-y-2 overflow-hidden p-1.5"
-        >
-          @for (instrument of tickerInstruments(); track instrument.symbol) {
-            <button
-              type="button"
-              class="hover:bg-muted flex h-full shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-sm whitespace-nowrap transition-colors duration-200 motion-reduce:transition-none"
-              (click)="openOrder(instrument)"
-            >
-              <span class="text-muted-foreground">{{ instrument.symbol }}</span>
-              <span
-                class="tick-price font-medium tabular-nums"
-                [class.tick-price-gain]="
-                  tickAnimations().get(instrument.symbol)?.direction === 'gain'
-                "
-                [class.tick-price-loss]="
-                  tickAnimations().get(instrument.symbol)?.direction === 'loss'
-                "
-                [class.tick-animation-even]="
-                  (tickAnimations().get(instrument.symbol)?.revision ?? 1) % 2 === 0
-                "
-                [style.animation-duration.ms]="tickAnimations().get(instrument.symbol)?.durationMs"
-                >{{ instrument.price.toFixed(2) }}</span
-              >
-              <span
-                class="text-xs tabular-nums"
-                [class]="instrument.changePercent >= 0 ? 'text-gain' : 'text-loss'"
-              >
-                {{ instrument.changePercent | signedPercent }}
-              </span>
-            </button>
-          }
-        </section>
+        <app-instrument-search
+          class="shrink-0"
+          placeholder="Search for a stock"
+          [instruments]="instruments()"
+          (selected)="openOrder($event)"
+        />
 
         <section class="dash-card flex min-h-64 flex-col p-5 lg:min-h-0 lg:flex-[2]">
           @if (accountStore.status() === 'ready') {
@@ -227,8 +239,8 @@
                       portfolioChangePercent() === null
                         ? 'bg-muted text-muted-foreground'
                         : portfolioChangePercent()! >= 0
-                        ? 'bg-gain/10 text-gain'
-                        : 'bg-loss/10 text-loss'
+                          ? 'bg-gain/10 text-gain'
+                          : 'bg-loss/10 text-loss'
                     "
                   >
                     @if (portfolioChangePercent(); as change) {
@@ -412,8 +424,8 @@
     [sessionId]="marketSessionId()"
     [marketTimestamp]="currentMarketTimestamp()"
     [accountId]="selectedAccountId()?.toString() ?? ''"
-    [cashBalance]="cashBalance()"
-    [positions]="positions()"
+    [cashBalance]="tradingCashBalance()"
+    [positions]="tradingPositions()"
     (closed)="closeOrder()"
     (submitted)="onOrderSubmitted($event)"
   />

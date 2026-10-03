@@ -15,6 +15,7 @@ import {
 import { Timeframe } from '../dashboard/mock-data';
 import { PriceChartComponent } from '../dashboard/shared/price-chart.component';
 import { MarketPageComponent } from './market-page.component';
+import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
 
 const SNAPSHOT: MarketSnapshot = {
   sessionId: 7,
@@ -931,4 +932,33 @@ describe('MarketPageComponent', () => {
     expect(fixture.componentInstance['heldShares']()).toBe(3);
     http.verify();
   });
+
+  it.each(['BUY', 'SELL'] as const)(
+    'keeps trading limits on current balances when replay crosses a future %s',
+    async (side) => {
+      const fixture = await setup('aapl', '', '', [
+        order({
+          orderType: side,
+          quantity: 4,
+          simulatedAt: '2026-01-05T16:00:00Z',
+        }),
+      ]);
+      const component = fixture.componentInstance;
+      const ticket = fixture.debugElement.query(By.directive(TradeTicketComponent))
+        .componentInstance as TradeTicketComponent;
+      for (const time of ['2026-01-05T15:00:00Z', '2026-01-05T17:00:00Z', '2026-01-05T15:00:00Z']) {
+        component['marketTimestamp'].set(time);
+        fixture.detectChanges();
+        expect(ticket.cashBalance()).toBe(10000);
+        expect(ticket.heldShares()).toBe(5);
+        ticket['selectSide']('sell');
+        fixture.detectChanges();
+        expect(ticket['maxShares']()).toBe(5);
+        ticket['selectSide']('buy');
+        fixture.detectChanges();
+        expect(ticket['maxShares']()).toBe(Math.floor(10000 / 225.8));
+      }
+      TestBed.inject(HttpTestingController).expectNone({ method: 'POST', url: '/api/orders' });
+    },
+  );
 });

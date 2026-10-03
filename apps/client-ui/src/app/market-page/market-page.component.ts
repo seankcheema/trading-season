@@ -259,11 +259,11 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       : cashAt(this.accountStore.cashBalance(), this.orders.orders(), this.simulationTime()!),
   );
 
+  // Trading balances include every completed fill, regardless of the replay cursor.
+  protected readonly tradingCashBalance = this.accountStore.cashBalance;
   protected readonly heldShares = computed(
     () =>
-      this.simulationHoldings()
-        .get(this.accountStore.selectedAccountId() ?? -1)
-        ?.find((h) => h.symbol === this.symbol())?.quantity ?? 0,
+      this.accountStore.selectedHoldings().find((h) => h.symbol === this.symbol())?.quantity ?? 0,
   );
 
   protected readonly portfolioValues = computed(
@@ -399,7 +399,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     const price = this.instrument()?.price ?? 0;
 
     const maximum =
-      draft.side === 'buy' ? Math.floor(this.cashBalance() / price) : Math.floor(this.heldShares());
+      draft.side === 'buy'
+        ? Math.floor(this.tradingCashBalance() / price)
+        : Math.floor(this.heldShares());
 
     if (!Number.isFinite(price) || price <= 0 || draft.quantity > maximum) return;
 

@@ -281,12 +281,42 @@ describe('DashboardComponent', () => {
       answerCandles();
       expect(component['positions']()['AAPL'] ?? 0).toBe(shares);
       expect(component['cashBalance']()).toBe(cash);
+      expect(component['tradingPositions']()['AAPL'] ?? 0).toBe(0);
+      expect(component['tradingCashBalance']()).toBe(1040);
       expect(component['portfolioValue']()).toBe(shares * 120);
       expect(component['netWorth']()).toBe(cash + shares * 120);
       expect(component['transactions']().filter((item) => item.kind === 'trade')).toHaveLength(
         rows,
       );
     }
+    http.expectNone({ method: 'POST', url: '/api/orders' });
+  });
+
+  it('passes current balances to the order dialog while the portfolio shows earlier holdings', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+    const component = fixture.componentInstance;
+    const http = flushAccounts(fixture, [ACCOUNTS[0]], {
+      cash: 1040,
+      holdings: { 1: [{ symbol: 'AAPL', quantity: 0, averageCost: 100 }] },
+      orders: [
+        filledOrder({
+          accountId: 1,
+          instrumentId: 7,
+          orderType: 'SELL',
+          quantity: 40,
+          indicativePrice: 100,
+          simulatedAt: '2026-10-02T18:23:08Z',
+        }),
+      ],
+    });
+    component['currentMarketTimestamp'].set('2026-10-02T16:33:03Z');
+    component['openOrder'](MOCK_INSTRUMENTS[0]);
+    fixture.detectChanges();
+    expect(component['positions']()['AAPL']).toBe(40);
+    const dialog = fixture.nativeElement.querySelector('app-order-submission');
+    expect(component['tradingPositions']()['AAPL']).toBe(0);
+    expect(dialog.textContent).toContain('$1,040.00');
     http.expectNone({ method: 'POST', url: '/api/orders' });
   });
 
@@ -1107,16 +1137,20 @@ describe('DashboardComponent', () => {
       fixture.detectChanges();
       const current = component['portfolioValue']();
       const http = TestBed.inject(HttpTestingController);
-      http.expectOne((request) =>
-        request.url.endsWith('/portfolio-history') && request.params.get('timeframe') === '1Y',
-      ).flush([
-        { timestamp: '2025-10-01T18:00:00Z', value: current / 2 },
-        { timestamp: '2026-10-01T18:00:00Z', value: current },
-      ]);
+      http
+        .expectOne(
+          (request) =>
+            request.url.endsWith('/portfolio-history') && request.params.get('timeframe') === '1Y',
+        )
+        .flush([
+          { timestamp: '2025-10-01T18:00:00Z', value: current / 2 },
+          { timestamp: '2026-10-01T18:00:00Z', value: current },
+        ]);
       fixture.detectChanges();
       expect(component['portfolioChangePercent']()).toBeCloseTo(100);
-      expect(text(element(fixture).querySelector('[data-testid="portfolio-change-percent"]')))
-        .toBe('+100.00%');
+      expect(text(element(fixture).querySelector('[data-testid="portfolio-change-percent"]'))).toBe(
+        '+100.00%',
+      );
       component['portfolioHistory'].points.set([
         { time: new Date('2025-10-01T18:00:00Z'), value: 0 },
         { time: new Date('2026-01-01T18:00:00Z'), value: 0 },
@@ -1125,8 +1159,9 @@ describe('DashboardComponent', () => {
       ]);
       fixture.detectChanges();
       expect(component['portfolioChangePercent']()).toBeCloseTo(100);
-      expect(text(element(fixture).querySelector('[data-testid="portfolio-change-percent"]')))
-        .toBe('+100.00%');
+      expect(text(element(fixture).querySelector('[data-testid="portfolio-change-percent"]'))).toBe(
+        '+100.00%',
+      );
       component['portfolioHistory'].points.set([
         { time: new Date('2025-10-01T18:00:00Z'), value: current * 2 },
       ]);
@@ -1146,8 +1181,9 @@ describe('DashboardComponent', () => {
         history.points.set(points);
         fixture.detectChanges();
         expect(component['portfolioChangePercent']()).toBeNull();
-        expect(text(element(fixture).querySelector('[data-testid="portfolio-change-percent"]')))
-          .toBe('—');
+        expect(
+          text(element(fixture).querySelector('[data-testid="portfolio-change-percent"]')),
+        ).toBe('—');
       }
       history.points.set([{ time: new Date(0), value: 100 }]);
       for (const status of ['loading', 'error'] as const) {

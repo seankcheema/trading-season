@@ -195,7 +195,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // First and last initial of the signed-in user; empty until the profile loads.
   protected readonly profileInitials = this.accountStore.initials;
   protected readonly instruments = signal<Instrument[]>([...MOCK_INSTRUMENTS]);
-  protected readonly tickerInstruments = computed(() => this.instruments().slice(0, 6));
   protected readonly tickAnimations = signal(new Map<string, TickAnimation>());
   protected readonly portfolioTimeframe = signal<Timeframe>('1D');
   protected readonly marketSessionId = this.clock.marketSessionId;
@@ -289,6 +288,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   protected readonly positions = computed(() =>
     Object.fromEntries(this.holdings().map((holding) => [holding.symbol, holding.shares])),
+  );
+
+  // Replay changes the portfolio view, while orders spend the persisted balances.
+  protected readonly tradingCashBalance = this.accountStore.cashBalance;
+  protected readonly tradingPositions = computed(() =>
+    Object.fromEntries(
+      this.accountStore.selectedHoldings().map((holding) => [holding.symbol, holding.quantity]),
+    ),
   );
 
   private readonly marketTimeMillis = computed(() => {

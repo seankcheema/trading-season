@@ -902,7 +902,7 @@
                 [symbol]="active.symbol"
                 [price]="active.price"
                 [accountId]="accountStore.selectedAccountId()?.toString() ?? ''"
-                [cashBalance]="cashBalance()"
+                [cashBalance]="tradingCashBalance()"
                 [heldShares]="heldShares()"
                 [ready]="tradeReady()"
                 [busy]="busy()"
