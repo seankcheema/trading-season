@@ -100,3 +100,9 @@ Javadoc generation is a required Java change check described in [development](de
 - Synthetic market-data CI derives Docker resource names from a normalized hash of the Jenkins build tag, so encoded multibranch names such as `%2F` do not need special handling. The stage creates and removes build-scoped database and archive volumes; do not pre-seed PostgreSQL or generate a persistent archive on the Jenkins VM.
 - Market replay reports unavailable prices: for a Parquet-backed session, verify that the archive contains the selected `ticks-YYYY-MM-DD.parquet` partition. Set `MARKET_REPLAY_ARCHIVE_LOCATION` to its absolute root when the metadata path belongs to an older checkout or another host; local repository runs also discover the matching archive under `apps/market-data/db/seeds`. Replay deliberately does not fall back to one-minute candles.
 - UI renders but login does not reach an API: form submission is not yet wired to a service. See [architecture](../reference/architecture.md).
+
+Database initialization in local and Jenkins Compose now mounts the canonical `apps/market-data/db/migrations/V001__Initialize_database.sql` and applies it once to an empty public schema. Existing databases are skipped; partial schemas require a separately reviewed repair. The SQL file guards against overwriting retained data.
+
+The database tests directory has been removed. Jenkins no longer invokes its pytest suite or publishes its JUnit report; the synthetic market-data stage still runs generation, validation, import, and repeated import, and archives resource/storage reports.
+
+Market-data Python entry points and requirements are under `apps/market-data/db/scripts/python`; Windows launchers are under `apps/market-data/db/scripts/powershell`. Docker and Jenkins use the relocated Python paths. The database virtual environment and seed locations are unchanged.

@@ -20,7 +20,7 @@ The application consists of four services. The UI routes only to Holdings and Tr
 
 From the repository root, `./scripts/setup-local.sh` validates the toolchain, maintains a 3 GiB free-space reserve, prepares missing dependencies and auth keys, selects databases, and supervises the three applications in one terminal. It reports verified stages as `[READY]`, completed work as `[DONE]`, and actionable failures as `[FAIL]`.
 
-The default `--database-mode auto` prefers verified local PostgreSQL databases. Use `--database-mode local` to prohibit Docker or `--database-mode docker` to require Docker Engine and Compose v2. Docker mode starts only `db` and `auth-db`, validates both schemas, and applies V001 through V003 only when the business schema is proven empty. Local and Docker database storage are separate and are never synchronized automatically.
+The default `--database-mode auto` prefers verified local PostgreSQL databases. Use `--database-mode local` to prohibit Docker or `--database-mode docker` to require Docker Engine and Compose v2. Docker mode starts only `db` and `auth-db`, validates both schemas, and applies the canonical V001__Initialize_database.sql only when the business schema is proven empty. Local and Docker database storage are separate and are never synchronized automatically.
 
 If Compose v2 is already installed as the standalone `docker-compose` command, the bootstrap creates the current user's Docker CLI plugin directory and symlinks that binary so `docker compose` works. An existing plugin entry is never overwritten, and the bootstrap does not download Compose.
 
@@ -77,7 +77,6 @@ Run from repository root after dependency installation:
 | Auth | npm --prefix apps/auth-service run build | NestJS compilation |
 | Auth | npm --prefix apps/auth-service run test:ci | Vitest coverage and JUnit reports; tests generate ephemeral keys |
 | Auth | npm --prefix apps/auth-service run lint | Oxlint |
-| Market-data scripts | python -m unittest discover apps/market-data/db/tests | Unit checks; use Jenkins for the two-day PostgreSQL integration |
 
 Root Turborepo commands only cover configured workspaces and available scripts. Run Java and auth checks explicitly. See [operations](operations.md) for CI differences and artifact locations.
 

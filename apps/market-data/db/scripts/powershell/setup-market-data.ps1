@@ -13,26 +13,29 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$databaseDirectory = $PSScriptRoot
+$databaseDirectory = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $python = Join-Path $databaseDirectory ".venv\Scripts\python.exe"
-$requirements = Join-Path $databaseDirectory "scripts\requirements.txt"
+$requirements = Join-Path $databaseDirectory "scripts\python\requirements.txt"
 
 if (-not (Test-Path -LiteralPath $python)) {
     Write-Host "[setup] Creating Python virtual environment"
     py -3 -m venv (Join-Path $databaseDirectory ".venv")
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
 Write-Host "[setup] Installing Python dependencies"
 & $python -m pip install --disable-pip-version-check -r $requirements
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 if ($InitializeDisposableDatabase) {
-    Write-Host "[setup] Initializing disposable database (existing business tables will be dropped)"
-    & $python (Join-Path $databaseDirectory "scripts\0001-initialize-database.py") `
-        --database-url $DatabaseUrl --disposable-database
+    Write-Host "[setup] Initializing disposable database (public schema must be empty)"
+    & $python (Join-Path $databaseDirectory "scripts\python\0001-initialize-database.py") `
+        --database-url $DatabaseUrl --empty-database
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
 $workflowArguments = @(
-    (Join-Path $databaseDirectory "scripts\0000-setup-synthetic-market-data.py"),
+    (Join-Path $databaseDirectory "scripts\python\0000-setup-synthetic-market-data.py"),
     "--database-url", $DatabaseUrl
 )
 if ($StartDate) { $workflowArguments += @("--start-date", $StartDate) }

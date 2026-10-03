@@ -13,7 +13,7 @@ MARKET_TIMEZONE = ZoneInfo("America/Chicago")
 SESSION_SECONDS = 390 * 60
 DEFAULT_SESSION_ID = 2026001
 SCRIPTS = Path(__file__).parents[1]
-DB_ROOT = SCRIPTS.parent
+DB_ROOT = SCRIPTS.parents[1]
 DEFAULT_DATASET = DB_ROOT / "seeds" / "synthetic-market-data-2026-v1"
 DEFAULT_CONFIG = SCRIPTS / "config" / "synthetic-market-data-2026-v1.json"
 

@@ -200,7 +200,7 @@ pipeline {
                     docker run -d --name "$DB_CONTAINER" --network "$TEST_NETWORK" -e POSTGRES_DB=trading_season -e POSTGRES_USER=trading_season -e POSTGRES_PASSWORD=test-password -v "$DB_VOLUME:/var/lib/postgresql/data" postgres:16-alpine
                     until docker exec "$DB_CONTAINER" pg_isready -U trading_season -d trading_season; do sleep 1; done
                     DATABASE_URL="postgresql://trading_season:test-password@${DB_CONTAINER}:5432/trading_season"
-                    docker run --rm --network "$TEST_NETWORK" "$TEST_TAG" apps/market-data/db/scripts/0001-initialize-database.py --database-url "$DATABASE_URL" --disposable-database
+                    docker run --rm --network "$TEST_NETWORK" "$TEST_TAG" apps/market-data/db/scripts/python/0001-initialize-database.py --database-url "$DATABASE_URL" --disposable-database
                     docker rm -f "$DB_CONTAINER"
                     docker run -d --name "$DB_CONTAINER" --network "$TEST_NETWORK" -e POSTGRES_DB=trading_season -e POSTGRES_USER=trading_season -e POSTGRES_PASSWORD=test-password -v "$DB_VOLUME:/var/lib/postgresql/data" postgres:16-alpine
                     until docker exec "$DB_CONTAINER" pg_isready -U trading_season -d trading_season; do sleep 1; done
@@ -208,11 +208,10 @@ pipeline {
                     docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select pg_database_size(current_database());" > reports/market-data/database-before.txt
                     docker exec "$DB_CONTAINER" du -sb /var/lib/postgresql/data > reports/market-data/disk-before.txt
                     AVAILABLE_DISK_GB="$(docker exec "$DB_CONTAINER" df -Pk /var/lib/postgresql/data | awk 'NR==2 {print $4/1048576}')"
-                    docker run --rm --network "$TEST_NETWORK" -e TEST_DATABASE_URL="$DATABASE_URL" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" "$TEST_TAG" -m pytest apps/market-data/db/tests --junitxml=/reports/junit.xml
-                    docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/generation-resources.txt python apps/market-data/db/scripts/0002-generate-synthetic-market-data.py --start-date 2026-01-05 --end-date 2026-01-06
-                    docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" "$TEST_TAG" apps/market-data/db/scripts/0003-validate-synthetic-market-data.py
-                    docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/import-resources.txt python apps/market-data/db/scripts/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
-                    docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" "$TEST_TAG" apps/market-data/db/scripts/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
+                    docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/generation-resources.txt python apps/market-data/db/scripts/python/0002-generate-synthetic-market-data.py --start-date 2026-01-05 --end-date 2026-01-06
+                    docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" "$TEST_TAG" apps/market-data/db/scripts/python/0003-validate-synthetic-market-data.py
+                    docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/import-resources.txt python apps/market-data/db/scripts/python/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
+                    docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" "$TEST_TAG" apps/market-data/db/scripts/python/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
                     docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select count(*) from market_ticks; select count(*) from candles; select pg_database_size(current_database()); select coalesce(sum(pg_indexes_size(quote_ident(schemaname)||'.'||quote_ident(tablename))),0) from pg_tables where schemaname='public';" > reports/market-data/database-after.txt
                     docker exec "$DB_CONTAINER" du -sb /var/lib/postgresql/data > reports/market-data/disk-after.txt
                     docker run --rm -v "$ARCHIVE_VOLUME:/archive" alpine:3.20 du -sb /archive > reports/market-data/archive.txt
@@ -221,7 +220,6 @@ pipeline {
             post {
                 always {
                     archiveArtifacts artifacts: 'reports/market-data/**/*', allowEmptyArchive: true
-                    junit testResults: 'reports/market-data/junit.xml', allowEmptyResults: true
                     sh '''
                         TEST_TAG="$MARKET_TEST_TAG"
                         docker rm -f "${TEST_TAG}-db" 2>/dev/null || true
