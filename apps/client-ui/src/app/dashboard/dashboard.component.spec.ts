@@ -1007,7 +1007,7 @@ describe('DashboardComponent', () => {
 
       expect(assetSymbols(fixture)).toEqual(['SPY']);
       expect(fixture.componentInstance['positions']()).toEqual({ SPY: 2 });
-      expect(fixture.componentInstance['portfolioChangePercent']()).toBeCloseTo(8.0333, 3);
+      expect(fixture.componentInstance['portfolioChangePercent']()).toBeNull();
     });
 
     it('hides stocks with a zero total from Assets', () => {
@@ -1097,6 +1097,63 @@ describe('DashboardComponent', () => {
       expect(
         element(fixture).querySelector('[data-testid="portfolio-chart-empty-state"]'),
       ).toBeNull();
+    });
+
+    it('compares the current portfolio against the selected year opening value', () => {
+      const fixture = render();
+      flushAccounts(fixture);
+      const component = fixture.componentInstance;
+      component['portfolioTimeframe'].set('1Y');
+      fixture.detectChanges();
+      const current = component['portfolioValue']();
+      const http = TestBed.inject(HttpTestingController);
+      http.expectOne((request) =>
+        request.url.endsWith('/portfolio-history') && request.params.get('timeframe') === '1Y',
+      ).flush([
+        { timestamp: '2025-10-01T18:00:00Z', value: current / 2 },
+        { timestamp: '2026-10-01T18:00:00Z', value: current },
+      ]);
+      fixture.detectChanges();
+      expect(component['portfolioChangePercent']()).toBeCloseTo(100);
+      expect(text(element(fixture).querySelector('[data-testid="portfolio-change-percent"]')))
+        .toBe('+100.00%');
+      component['portfolioHistory'].points.set([
+        { time: new Date('2025-10-01T18:00:00Z'), value: 0 },
+        { time: new Date('2026-01-01T18:00:00Z'), value: 0 },
+        { time: new Date('2026-02-01T18:00:00Z'), value: current / 2 },
+        { time: new Date('2026-10-01T18:00:00Z'), value: current },
+      ]);
+      fixture.detectChanges();
+      expect(component['portfolioChangePercent']()).toBeCloseTo(100);
+      expect(text(element(fixture).querySelector('[data-testid="portfolio-change-percent"]')))
+        .toBe('+100.00%');
+      component['portfolioHistory'].points.set([
+        { time: new Date('2025-10-01T18:00:00Z'), value: current * 2 },
+      ]);
+      expect(component['portfolioChangePercent']()).toBeCloseTo(-50);
+      component['portfolioHistory'].points.set([
+        { time: new Date('2025-10-01T18:00:00Z'), value: current },
+      ]);
+      expect(component['portfolioChangePercent']()).toBe(0);
+    });
+
+    it('shows an unavailable percentage for zero, missing, loading, or failed history', () => {
+      const fixture = render();
+      flushAccounts(fixture);
+      const component = fixture.componentInstance;
+      const history = component['portfolioHistory'];
+      for (const points of [[], [{ time: new Date(0), value: 0 }]]) {
+        history.points.set(points);
+        fixture.detectChanges();
+        expect(component['portfolioChangePercent']()).toBeNull();
+        expect(text(element(fixture).querySelector('[data-testid="portfolio-change-percent"]')))
+          .toBe('—');
+      }
+      history.points.set([{ time: new Date(0), value: 100 }]);
+      for (const status of ['loading', 'error'] as const) {
+        history.status.set(status);
+        expect(component['portfolioChangePercent']()).toBeNull();
+      }
     });
 
     it('values a holding with no live price at its cost', () => {

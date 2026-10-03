@@ -90,6 +90,47 @@ describe('PriceChartComponent', () => {
     expect(ticks.map((tick) => Math.round(tick.x))).toEqual([10, 50, 90]);
   });
 
+  it('separates rapid trades, preserves values and times, and follows plot resizing', () => {
+    const points: PricePoint[] = [
+      { time: new Date(0), value: 1000 },
+      { time: new Date(49999), value: 1000 },
+      { time: new Date(50000), value: 100, transition: true },
+      { time: new Date(50001), value: 100 },
+      { time: new Date(50002), value: 1200, transition: true },
+    ];
+    const fixture = setup('1D', points);
+    const component = fixture.componentInstance;
+    fixture.componentRef.setInput('timeDomain', { start: 0, end: 100000 });
+    fixture.componentRef.setInput('curveMode', 'monotone');
+    const labels = points.map((_, index) => component['describePoint'](index)?.timeLabel);
+    fixture.componentRef.setInput('minimumTransitionSpacingPx', 8);
+    component['_plotWidth'].set(400);
+    fixture.detectChanges();
+    const coords = component['_coords']();
+    expect(coords.at(-1)?.x).toBeCloseTo(50.002);
+    for (let i = 2; i < coords.length; i++)
+      expect((coords[i].x - coords[i - 1].x) * 4).toBeCloseTo(8);
+    expect(component['linePath']()).toContain('L');
+    const plot = {
+      getBoundingClientRect: () => ({ left: 0, width: 400 }),
+    } as HTMLElement;
+    coords.forEach((coord, index) => {
+      component['onPointerMove']({ clientX: coord.x * 4 } as PointerEvent, plot);
+      expect(component['hoverIndex']()).toBe(index);
+      expect(component['hovered']()?.valueLabel).toBe(component['formatValue'](points[index].value));
+      expect(component['hovered']()?.timeLabel).toBe(labels[index]);
+    });
+    component['_plotWidth'].set(800);
+    fixture.detectChanges();
+    const resized = component['_coords']();
+    expect((resized[2].x - resized[1].x) * 8).toBeCloseTo(8);
+    expect(component['ticks']().at(-1)?.x).toBe(100);
+    fixture.componentRef.setInput('minimumTransitionSpacingPx', 0);
+    fixture.detectChanges();
+    expect(component['_coords']()[2].x).toBe(50);
+    expect(component['visiblePoints']()).toEqual(points);
+  });
+
   it('shows one recorded observation as a marker without inventing a horizontal history', () => {
     const fixture = setup('1D', [{ time: new Date('2026-10-01T18:00:00Z'), value: 100 }]);
     fixture.componentRef.setInput('observationIntervalMs', 60_000);
@@ -213,6 +254,27 @@ describe('PriceChartComponent', () => {
     expect(fixture.componentInstance['yTicks']().every((tick) => tick.label.endsWith('%'))).toBe(
       true,
     );
+  });
+
+  it('compares portfolio hover values with the first invested value after zero baselines', () => {
+    const fixture = setup('1Y', [
+      { time: new Date('2025-01-01'), value: 0 },
+      { time: new Date('2025-02-01'), value: 0 },
+      { time: new Date('2025-03-01'), value: 200 },
+      { time: new Date('2025-04-01'), value: 300 },
+      { time: new Date('2025-05-01'), value: 100 },
+    ]);
+    const component = fixture.componentInstance;
+    expect(component['describePoint'](3)?.changePercent).toBe(0);
+    fixture.componentRef.setInput('changeBaseline', 'first-positive');
+    fixture.detectChanges();
+    for (const [index, expected] of [[2, 0], [3, 50], [4, -50]]) {
+      component['hoverIndex'].set(index);
+      fixture.detectChanges();
+      expect(component['hovered']()?.changePercent).toBe(expected);
+      expect(fixture.nativeElement.querySelector('.price-hover-label').textContent)
+        .toContain(`${expected >= 0 ? '+' : ''}${expected.toFixed(2)}%`);
+    }
   });
 
   it('updates the rendered graph whenever the mode input changes', () => {

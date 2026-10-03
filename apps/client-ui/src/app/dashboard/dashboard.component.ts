@@ -322,8 +322,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly portfolioValue = computed(() => totalValue(this.holdings()));
   protected readonly hasChartablePortfolioValue = computed(() => this.portfolioChart().length > 0);
   protected readonly portfolioChangePercent = computed(() => {
-    const cost = this.holdings().reduce((total, h) => total + h.shares * h.costBasis, 0);
-    return cost ? ((this.portfolioValue() - cost) / cost) * 100 : 0;
+    // The range can begin before the first investment, with a synthetic zero baseline.
+    const baseline = this.portfolioChart().find((point) => point.value > 0)?.value;
+    return baseline && this.portfolioHistory.status() === 'ready'
+      ? ((this.portfolioValue() - baseline) / baseline) * 100
+      : null;
   });
 
   // Every account's portfolio value together.

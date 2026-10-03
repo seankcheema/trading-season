@@ -222,13 +222,22 @@
                   </span>
                   <span
                     class="rounded-full px-2 py-0.5 text-xs font-medium tabular-nums"
+                    data-testid="portfolio-change-percent"
                     [class]="
-                      portfolioChangePercent() >= 0
+                      portfolioChangePercent() === null
+                        ? 'bg-muted text-muted-foreground'
+                        : portfolioChangePercent()! >= 0
                         ? 'bg-gain/10 text-gain'
                         : 'bg-loss/10 text-loss'
                     "
                   >
-                    {{ portfolioChangePercent() | signedPercent }}
+                    @if (portfolioChangePercent(); as change) {
+                      {{ change | signedPercent }}
+                    } @else if (portfolioChangePercent() === 0) {
+                      {{ 0 | signedPercent }}
+                    } @else {
+                      —
+                    }
                   </span>
                 </p>
               </div>
@@ -256,6 +265,8 @@
                 [observationIntervalMs]="portfolioObservationInterval()"
                 [timeDomain]="portfolioHistory.domain()"
                 curveMode="monotone"
+                [minimumTransitionSpacingPx]="8"
+                changeBaseline="first-positive"
                 [points]="portfolioChart()"
                 [timeframe]="portfolioTimeframe()"
                 timezone="America/Chicago"

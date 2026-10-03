@@ -1,4 +1,4 @@
-import { ChartTimeDomain, timePosition, monotonePath } from './portfolio-axis';
+import { ChartTimeDomain, timePosition, monotonePath, spaceTransitions } from './portfolio-axis';
 import {
   DecimalPipe,
   UpperCasePipe,
@@ -757,6 +757,8 @@ export class PriceChartComponent {
   readonly area = input(false, { transform: booleanAttribute });
   // Recorded observations use elapsed time and leave missing intervals disconnected.
   readonly observationIntervalMs = input(0);
+  readonly minimumTransitionSpacingPx = input(0);
+  readonly changeBaseline = input<'first' | 'first-positive'>('first');
   readonly timeDomain = input<ChartTimeDomain | null>(null);
   readonly curveMode = input<'default' | 'monotone'>('default');
 
@@ -913,9 +915,16 @@ export class PriceChartComponent {
     const points = this.visiblePoints();
     const scale = this.yScale();
     const last = Math.max(points.length - 1, 1);
+    const positions = points.map((_, i) =>
+      this.timeDomain() || this.observationIntervalMs() ? this.observationX(i) : (i / last) * 100,
+    );
+    const spaced = spaceTransitions(
+      positions,
+      points.map((point) => !!point.transition),
+      (Math.max(0, this.minimumTransitionSpacingPx()) / (this._plotWidth() || 600)) * 100,
+    );
     return points.map((point, i) => ({
-      x:
-        this.timeDomain() || this.observationIntervalMs() ? this.observationX(i) : (i / last) * 100,
+      x: spaced[i],
       y: this.valueToY(this.mode() === 'volume' ? (point.volume ?? 0) : point.value, scale),
     }));
   });
@@ -1456,6 +1465,10 @@ export class PriceChartComponent {
     if (!point) {
       return null;
     }
+    const baselineIndex = this.changeBaseline() === 'first-positive'
+      ? points.findIndex((observation) => observation.value > 0)
+      : 0;
+    const baseline = points[baselineIndex]?.value;
     return {
       ...this._coords()[index],
       valueLabel: this.formatValue(point.value),
@@ -1465,8 +1478,8 @@ export class PriceChartComponent {
       changePercent:
         this.mode() === 'percent'
           ? point.value
-          : points[0].value
-            ? ((point.value - points[0].value) / points[0].value) * 100
+          : baseline
+            ? ((point.value - baseline) / baseline) * 100
             : 0,
       ohlcLabel: this.describeCandle(index),
     };

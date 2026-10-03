@@ -1,5 +1,33 @@
-import { monotonePath, timePosition } from './portfolio-axis';
+import { monotonePath, timePosition, spaceTransitions } from './portfolio-axis';
 describe('portfolio axis and curves', () => {
+  it('leaves ordinary points and disabled spacing unchanged', () => {
+    expect(spaceTransitions([0, 20, 20.001, 80], [false, false, false, false], 2)).toEqual([
+      0, 20, 20.001, 80,
+    ]);
+    expect(spaceTransitions([0, 20, 20.001], [false, false, true], 0)).toEqual([0, 20, 20.001]);
+  });
+  it('spaces isolated trades and moves neighbours only when necessary', () => {
+    expect(spaceTransitions([0, 20, 20.001, 21, 80], [false, false, true, false, false], 2))
+      .toEqual([0, 20, 22, 24, 80]);
+    expect(spaceTransitions([0, 20, 30, 80], [false, false, true, false], 2)).toEqual([
+      0, 20, 30, 80,
+    ]);
+  });
+  it('shifts crowded buy/sell points left without occupying future time', () => {
+    const positions = spaceTransitions(
+      [0, 49.999, 50, 50.001, 50.002],
+      [false, false, true, false, true],
+      2,
+    );
+    [0, 44.002, 46.002, 48.002, 50.002].forEach((x, i) =>
+      expect(positions[i]).toBeCloseTo(x),
+    );
+  });
+  it('uniformly reduces spacing when transitions fill the elapsed range', () => {
+    const positions = spaceTransitions([0, 0.001, 0.002, 1], [false, true, true, true], 2);
+    positions.forEach((x, i) => expect(x).toBeCloseTo(i / 3));
+    expect(spaceTransitions([0, 0], [false, true], 2)).toEqual([0, 0]);
+  });
   it('keeps equal session widths across weekends and missing seeded days', () => {
     const domain = {
       start: 0,

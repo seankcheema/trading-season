@@ -13,6 +13,28 @@ export interface CurvePoint {
   transition?: boolean;
 }
 
+// Separate execution boundaries in display space without changing observation times.
+export function spaceTransitions(
+  positions: readonly number[],
+  transitions: readonly boolean[],
+  minimumGap: number,
+): number[] {
+  if (positions.length < 2 || minimumGap <= 0) return [...positions];
+  const end = positions.at(-1)!;
+  const gaps = positions.map((_, i) =>
+    i > 0 && (transitions[i] || transitions[i - 1]) ? minimumGap : 0,
+  );
+  const required = gaps.reduce((sum, gap) => sum + gap, 0);
+  const factor = required > end ? end / required : 1;
+  const result = [...positions];
+  for (let i = 1; i < result.length; i++)
+    result[i] = Math.max(result[i], result[i - 1] + gaps[i] * factor);
+  result[result.length - 1] = end;
+  for (let i = result.length - 2; i >= 0; i--)
+    result[i] = Math.min(result[i], result[i + 1] - gaps[i + 1] * factor);
+  return result.map((x) => Math.max(0, x));
+}
+
 export function timePosition(time: number, domain: ChartTimeDomain): number {
   if (domain.sessions?.length) {
     const sessions = domain.sessions;
