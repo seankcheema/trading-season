@@ -171,6 +171,65 @@ describe('MarketPageComponent', () => {
     ).toBe(true);
   });
 
+  it('shows shared cash and the selected portfolio in the account box above execution', async () => {
+    const fixture = await setup();
+    const panel = fixture.nativeElement.querySelector('[data-testid="account-value-panel"]');
+    expect(panel.querySelector('[data-testid="available-cash"]').textContent).toContain(
+      '$10,000.00',
+    );
+    expect(panel.querySelector('[data-testid="account-portfolio-value"]').textContent).toContain(
+      '$1,129.00',
+    );
+    expect(fixture.nativeElement.querySelector('header app-account-control')).toBeNull();
+    expect(panel.querySelector('app-account-control')).not.toBeNull();
+    fixture.componentInstance['selectAccount'](2);
+    fixture.detectChanges();
+    expect(panel.querySelector('[data-testid="account-portfolio-value"]').textContent).toContain(
+      '$841.00',
+    );
+    expect(panel.querySelector('[data-testid="available-cash"]').textContent).toContain(
+      '$10,000.00',
+    );
+    fixture.componentInstance['accountStore'].status.set('loading');
+    fixture.detectChanges();
+    expect(panel.textContent).toContain('Loading account balances');
+    expect(panel.querySelector('[data-testid="available-cash"]').textContent).not.toContain('$');
+    fixture.componentInstance['accountStore'].status.set('error');
+    fixture.detectChanges();
+    expect(panel.textContent).toContain('Retry accounts');
+  });
+
+  it('distinguishes zero balances from an account with no portfolio selection', async () => {
+    const fixture = await setup();
+    const http = TestBed.inject(HttpTestingController);
+    fixture.componentInstance['accountStore'].load();
+    http
+      .expectOne('/api/me/accounts')
+      .flush([{ accountId: 1, name: 'Empty portfolio', openedDate: '2026-01-01' }]);
+    http.expectOne('/api/accounts/1/holdings').flush([]);
+    http
+      .expectOne('/api/users/me')
+      .flush({ firstName: 'Ada', lastName: 'Lovelace', availableFunds: 0 });
+    http.expectOne((r) => r.url === '/api/me/cash-transactions').flush([]);
+    fixture.detectChanges();
+    const panel = fixture.nativeElement.querySelector('[data-testid="account-value-panel"]');
+    expect(panel.querySelector('[data-testid="available-cash"]').textContent).toContain('$0.00');
+    expect(panel.querySelector('[data-testid="account-portfolio-value"]').textContent).toContain(
+      '$0.00',
+    );
+    fixture.componentInstance['accountStore'].load();
+    http.expectOne('/api/me/accounts').flush([]);
+    http
+      .expectOne('/api/users/me')
+      .flush({ firstName: 'Ada', lastName: 'Lovelace', availableFunds: 0 });
+    http.expectOne((r) => r.url === '/api/me/cash-transactions').flush([]);
+    fixture.detectChanges();
+    expect(panel.textContent).toContain('Create an account to trade');
+    expect(
+      panel.querySelector('[data-testid="account-portfolio-value"]').textContent,
+    ).not.toContain('$');
+  });
+
   it('defaults to a line chart and lets the user select another chart mode', async () => {
     const fixture = await setup();
     const chart = fixture.debugElement.query(By.directive(PriceChartComponent)).componentInstance;
@@ -343,10 +402,10 @@ describe('MarketPageComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Popularity');
     expect(fixture.nativeElement.textContent).toContain('Sentiment');
     expect(fixture.nativeElement.textContent).toContain('Bullish');
-    expect(fixture.nativeElement.querySelectorAll('.overview-card')).toHaveLength(6);
-    expect(fixture.nativeElement.querySelectorAll('.overview-card-icon')).toHaveLength(6);
-    expect(fixture.nativeElement.querySelectorAll('[role="progressbar"]')).toHaveLength(6);
-    expect(fixture.nativeElement.querySelectorAll('.overview-progress span')).toHaveLength(30);
+    expect(fixture.nativeElement.querySelectorAll('.overview-card')).toHaveLength(4);
+    expect(fixture.nativeElement.querySelectorAll('.overview-card-icon')).toHaveLength(4);
+    expect(fixture.nativeElement.querySelectorAll('[role="progressbar"]')).toHaveLength(4);
+    expect(fixture.nativeElement.querySelectorAll('.overview-progress span')).toHaveLength(20);
     expect(fixture.nativeElement.querySelector('.overview-summary')?.textContent).toContain(
       'AAPL shows steady strength, elevated activity, and positive sentiment',
     );
@@ -358,11 +417,8 @@ describe('MarketPageComponent', () => {
         .querySelector('[aria-label="Short-term risk level"]')
         ?.getAttribute('aria-valuenow'),
     ).toBe('3');
-    expect(
-      fixture.nativeElement
-        .querySelector('[aria-label="Key level strength"]')
-        ?.getAttribute('aria-valuenow'),
-    ).toBe('4');
+    expect(fixture.nativeElement.querySelector('[aria-label="Key level strength"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[aria-label="Activity level"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('.overview-risk')?.textContent).toContain(
       'Moderate',
     );

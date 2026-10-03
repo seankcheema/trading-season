@@ -15,7 +15,17 @@ import { Account } from '../accounts/account.models';
 @Component({
   selector: 'app-account-control',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'block w-60 min-w-0 max-w-full' },
+  host: {
+    class: 'block w-60 min-w-0 max-w-full',
+    '[class.account-control-expanded]': 'expanded()',
+  },
+  styles: [
+    `
+      :host(.account-control-expanded) {
+        width: 100%;
+      }
+    `,
+  ],
   imports: [CurrencyPipe, NgIcon, DashboardHeaderDropdownComponent],
   providers: [
     provideIcons({
@@ -35,7 +45,12 @@ import { Account } from '../accounts/account.models';
       [open]="open()"
       (openChange)="openChange.emit($event)"
       containerClass="w-full"
-      panelClass="w-full"
+      [panelClass]="expanded() ? 'w-full max-h-[40dvh] overflow-y-auto' : 'w-full'"
+      [triggerClass]="
+        expanded()
+          ? 'border-border bg-card hover:bg-muted h-10 w-full gap-3 rounded-lg border px-3 text-base'
+          : ''
+      "
     >
       <div class="p-1" role="menu" aria-label="Accounts">
         @switch (store().status()) {
@@ -117,6 +132,7 @@ import { Account } from '../accounts/account.models';
 })
 export class AccountControlComponent {
   readonly store = input.required<AccountStore>();
+  readonly expanded = input(false);
   readonly portfolioValues = input<ReadonlyMap<number, number>>(new Map());
   readonly open = input(false);
   readonly openChange = output<boolean>();

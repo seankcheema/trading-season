@@ -53,6 +53,8 @@ test('executes a trade and shows recent orders within the full-screen layout', a
   await page.getByRole('tab', { name: 'Recent Orders', exact: true }).click();
   await expect(page.getByTestId('market-recent-orders')).toContainText('3 shares · Filled');
   await expect(page.locator('app-trade-ticket')).toContainText('$4,322.60');
+  await expect(page.getByTestId('available-cash')).toContainText('$4,322.60');
+  await expect(page.getByTestId('account-portfolio-value')).toContainText('$677.40');
   expect(
     api.requests.filter(
       (request) => request.method === 'POST' && request.url.endsWith('/api/orders'),
@@ -73,6 +75,17 @@ test('executes a trade and shows recent orders within the full-screen layout', a
     const bounds = await panel.boundingBox();
     const tabBounds = await recentTab.boundingBox();
     expect(tabBounds!.x + tabBounds!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width);
+    const accountBounds = await page.getByTestId('account-value-panel').boundingBox();
+    const ticketBounds = await page.locator('app-trade-ticket').boundingBox();
+    expect(accountBounds!.y).toBeGreaterThanOrEqual(bounds!.y + bounds!.height);
+    expect(ticketBounds!.y).toBeGreaterThanOrEqual(accountBounds!.y + accountBounds!.height);
+    expect(ticketBounds!.y + ticketBounds!.height).toBeLessThanOrEqual(viewport.height);
+    const accountPicker = page.getByTestId('account-dropdown');
+    await accountPicker.locator('summary').focus();
+    await page.keyboard.press('Enter');
+    await expect(accountPicker.getByRole('menuitemradio').first()).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(accountPicker.locator('details')).not.toHaveAttribute('open', '');
     await page.screenshot({ path: `reports/playwright/market-orders-${viewport.width}.png` });
   }
 

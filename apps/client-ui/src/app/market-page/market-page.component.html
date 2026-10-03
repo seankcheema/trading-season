@@ -22,16 +22,6 @@
           (openChange)="openHeaderDropdown.set($event ? 'market-clock' : null)"
           (snapshotApplied)="onClockSnapshot($event)"
         />
-        <app-account-control
-          data-testid="account-dropdown"
-          [store]="accountStore"
-          [portfolioValues]="portfolioValues()"
-          [open]="openHeaderDropdown() === 'account'"
-          (openChange)="openHeaderDropdown.set($event ? 'account' : null)"
-          (selected)="selectAccount($event)"
-          (create)="openCreateAccount()"
-          (rename)="openRenameAccount($event)"
-        />
       </div>
     </div>
   </header>
@@ -683,29 +673,6 @@
                         <article class="overview-card">
                           <div class="overview-card-topline">
                             <div class="overview-card-icon" aria-hidden="true">
-                              <ng-icon name="lucideActivity" />
-                            </div>
-                            <div class="overview-card-heading">
-                              <span>Activity</span>
-                              <strong>Elevated</strong>
-                            </div>
-                          </div>
-                          <div
-                            class="overview-progress"
-                            role="progressbar"
-                            aria-label="Activity level"
-                            aria-valuemin="0"
-                            aria-valuemax="5"
-                            aria-valuenow="4"
-                          >
-                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
-                              <span [class.overview-progress-filled]="segment <= 4"></span>
-                            }
-                          </div>
-                        </article>
-                        <article class="overview-card">
-                          <div class="overview-card-topline">
-                            <div class="overview-card-icon" aria-hidden="true">
                               <ng-icon name="lucideShieldCheck" />
                             </div>
                             <div class="overview-card-heading">
@@ -723,29 +690,6 @@
                           >
                             @for (segment of [1, 2, 3, 4, 5]; track segment) {
                               <span [class.overview-progress-filled]="segment <= 3"></span>
-                            }
-                          </div>
-                        </article>
-                        <article class="overview-card">
-                          <div class="overview-card-topline">
-                            <div class="overview-card-icon" aria-hidden="true">
-                              <ng-icon name="lucideCrosshair" />
-                            </div>
-                            <div class="overview-card-heading">
-                              <span>Key level</span>
-                              <strong>{{ marketStats().low | currency: 'USD' }}</strong>
-                            </div>
-                          </div>
-                          <div
-                            class="overview-progress"
-                            role="progressbar"
-                            aria-label="Key level strength"
-                            aria-valuemin="0"
-                            aria-valuemax="5"
-                            aria-valuenow="4"
-                          >
-                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
-                              <span [class.overview-progress-filled]="segment <= 4"></span>
                             }
                           </div>
                         </article>
@@ -876,14 +820,72 @@
                 }
               </section>
 
-              @if (accountStore.status() === 'error') {
-                <p class="text-loss text-xs">
-                  Accounts unavailable.
-                  <button type="button" class="text-primary" (click)="accountStore.load()">
-                    Retry accounts
+              <section
+                class="account-value-panel"
+                aria-label="Trading account"
+                data-testid="account-value-panel"
+              >
+                <app-account-control
+                  data-testid="account-dropdown"
+                  class="account-control-expanded"
+                  [expanded]="true"
+                  [store]="accountStore"
+                  [portfolioValues]="portfolioValues()"
+                  [open]="openHeaderDropdown() === 'account'"
+                  (openChange)="openHeaderDropdown.set($event ? 'account' : null)"
+                  (selected)="selectAccount($event)"
+                  (create)="openCreateAccount()"
+                  (rename)="openRenameAccount($event)"
+                />
+                <dl class="account-value-balances">
+                  <div>
+                    <dt class="text-muted-foreground text-xs">Available cash</dt>
+                    <dd class="text-xl font-semibold tabular-nums" data-testid="available-cash">
+                      @if (accountStore.status() === 'ready') {
+                        {{ cashBalance() | currency: 'USD' }}
+                      } @else {
+                        <span aria-label="Balance unavailable">—</span>
+                      }
+                    </dd>
+                    <p class="text-muted-foreground text-[10px]">Shared across accounts</p>
+                  </div>
+                  <div>
+                    <dt class="text-muted-foreground text-xs">Portfolio value</dt>
+                    <dd
+                      class="text-xl font-semibold tabular-nums"
+                      data-testid="account-portfolio-value"
+                    >
+                      @if (accountStore.status() === 'ready' && accountStore.selectedAccount()) {
+                        {{
+                          portfolioValues().get(accountStore.selectedAccountId()!) ?? 0
+                            | currency: 'USD'
+                        }}
+                      } @else {
+                        <span aria-label="Balance unavailable">—</span>
+                      }
+                    </dd>
+                    <p class="text-muted-foreground text-[10px]">Selected account holdings</p>
+                  </div>
+                </dl>
+                @if (accountStore.status() === 'idle' || accountStore.status() === 'loading') {
+                  <p class="text-muted-foreground text-xs" role="status">
+                    Loading account balances…
+                  </p>
+                }
+                @if (accountStore.status() === 'error') {
+                  <p class="text-loss text-xs" role="alert">
+                    Accounts unavailable.
+                    <button type="button" class="text-primary" (click)="accountStore.load()">
+                      Retry accounts
+                    </button>
+                  </p>
+                }
+                @if (accountStore.status() === 'ready' && !accountStore.selectedAccount()) {
+                  <button type="button" class="text-primary text-xs" (click)="openCreateAccount()">
+                    Create an account to trade
                   </button>
-                </p>
-              }
+                }
+              </section>
               @if (orders.historyStatus() === 'error' || catalogueStatus() === 'error') {
                 <button type="button" class="text-primary text-xs" (click)="loadTradingData()">
                   Retry trading data
@@ -895,11 +897,6 @@
                 orders.historyStatus() === 'loading'
               ) {
                 <p class="text-muted-foreground text-xs">Loading trading data…</p>
-              }
-              @if (accountStore.status() === 'ready' && !accountStore.selectedAccount()) {
-                <button type="button" class="text-primary text-xs" (click)="openCreateAccount()">
-                  Create an account to trade
-                </button>
               }
               <app-trade-ticket
                 [symbol]="active.symbol"
