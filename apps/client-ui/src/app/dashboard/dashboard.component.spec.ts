@@ -1045,7 +1045,7 @@ describe('DashboardComponent', () => {
       const fixture = render();
       flushAccounts(fixture);
 
-      expect(assetSymbols(fixture)).toEqual(['AAPL', 'NVDA', 'MSFT', 'SPY', 'TSLA']);
+      expect(assetSymbols(fixture)).toEqual(['SPY', 'NVDA', 'AAPL', 'MSFT', 'TSLA']);
       expect(text(element(fixture).querySelector('h2.dash-label'))).toBe('Net Worth');
       expect(element(fixture).textContent).toContain(
         'Portfolio Value · Personal Investing Account',

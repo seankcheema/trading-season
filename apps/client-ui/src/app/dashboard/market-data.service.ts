@@ -83,6 +83,9 @@ export class MarketDataService {
   private minute = '';
   private activeSession?: number;
   private tickRevision = 0;
+  private candleEpoch = 0;
+  private clockRequest?: Observable<MarketSnapshot>;
+  private readonly identityChanged = new Subject<void>();
   private latest?: MarketSnapshot;
   private readonly snapshotRequests = new Map<string, Observable<MarketSnapshot>>();
   private readonly invalidated = new Subject<void>();
@@ -92,6 +95,8 @@ export class MarketDataService {
 
   constructor() {
     inject(TokenStorageService).onIdentityChange(() => {
+      this.identityChanged.next();
+      this.clockRequest = undefined;
       this.latest = undefined;
       this.activeSession = undefined;
       this.minute = '';
@@ -100,6 +105,7 @@ export class MarketDataService {
   }
 
   invalidate(cancelSnapshots = true): void {
+    this.candleEpoch++;
     if (cancelSnapshots) {
       this.invalidated.next();
       this.snapshotRequests.clear();
@@ -128,6 +134,9 @@ export class MarketDataService {
   }
 
   snapshot(sessionId?: number): Observable<MarketSnapshot> {
+    if (this.clockRequest) {
+      return this.clockRequest.pipe(switchMap(() => this.snapshot(sessionId)));
+    }
     const params =
       sessionId === undefined ? undefined : new HttpParams().set('sessionId', sessionId);
     const key = sessionId === undefined ? 'latest' : String(sessionId);
@@ -154,6 +163,10 @@ export class MarketDataService {
   }
 
   candles(sessionId: number, symbol: string, timeframe: Timeframe): Observable<CandleSeries> {
+    // Wait for the seek to finish before requesting history for its new cursor.
+    if (this.clockRequest) {
+      return this.clockRequest.pipe(switchMap(() => this.candles(sessionId, symbol, timeframe)));
+    }
     symbol = symbol.trim().toUpperCase();
     const key = `${sessionId}:${symbol}:${timeframe}:${this.minute}`;
     const cached = this.candlesCache.get(key);
@@ -163,14 +176,15 @@ export class MarketDataService {
       .find(([entryKey]) => entryKey.startsWith(prefix))?.[1];
     const existing = this.candleRequests.get(key);
     if (existing) return retained ? concat(of(retained.value), existing) : existing;
-    const revision = this.revision();
+    const epoch = this.candleEpoch;
     const params = new HttpParams()
       .set('sessionId', sessionId)
       .set('symbol', symbol)
       .set('timeframe', timeframe);
     const request = this.http.get<CandleSeries>(`${this.baseUrl}/candles`, { params }).pipe(
       switchMap((series) => {
-        if (revision !== this.revision()) return EMPTY;
+        // Live minute changes do not invalidate a valid history response.
+        if (epoch !== this.candleEpoch) return EMPTY;
         this.candlesCache.delete(key);
         this.candlesCache.set(key, { value: series, expiresAt: Date.now() + 60_000 });
         while (this.candlesCache.size > 64)
@@ -188,14 +202,25 @@ export class MarketDataService {
   }
 
   setClock(sessionId: number, timestamp: string): Observable<MarketSnapshot> {
-    this.invalidate();
     const params = new HttpParams().set('sessionId', sessionId);
-    return this.http.put<MarketSnapshot>(`${this.baseUrl}/clock`, { timestamp }, { params }).pipe(
+    const request = this.http.put<MarketSnapshot>(`${this.baseUrl}/clock`, { timestamp }, { params }).pipe(
+      takeUntil(this.identityChanged),
       tap((snapshot) => {
+        this.clockRequest = undefined;
         this.invalidate();
         this.remember(snapshot);
       }),
+      finalize(() => {
+        if (this.clockRequest === request) {
+          this.clockRequest = undefined;
+          this.revision.update((value) => value + 1);
+        }
+      }),
+      shareReplay({ bufferSize: 1, refCount: false }),
     );
+    this.clockRequest = request;
+    this.invalidate();
+    return request;
   }
 
   private reconcileSnapshot(snapshot: MarketSnapshot): MarketSnapshot {
@@ -224,6 +249,7 @@ export class MarketDataService {
   }
 
   private receiveTick(event: MarketTickEvent, handlers: MarketStreamHandlers): void {
+    if (this.clockRequest) return;
     if (this.latest && event.marketTimestamp.slice(0, 10) !== this.latest.marketTimestamp.slice(0, 10)) {
       // The session-open baseline changes on the next trading day.
       this.invalidate();

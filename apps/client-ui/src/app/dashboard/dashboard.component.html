@@ -358,15 +358,32 @@
         <section class="dash-card flex min-h-0 flex-col p-5 lg:flex-[3]">
           <div class="flex items-center justify-between">
             <h2 class="text-sm font-semibold">Assets</h2>
-            <select
-              aria-label="Sort assets"
-              class="bg-card text-foreground rounded border px-2 py-1 text-xs"
-              [value]="assetSort()"
-              (change)="assetSort.set($any($event.target).value)"
+            <app-dashboard-header-dropdown
+              iconName="lucideBriefcaseBusiness"
+              [label]="assetSortLabel()"
+              ariaLabel="Sort assets"
+              containerClass="w-60"
+              panelClass="w-full"
+              [open]="openHeaderDropdown() === 'asset-sort'"
+              (openChange)="onHeaderDropdownOpenChange('asset-sort', $event)"
             >
-              <option value="value">Highest value first</option>
-              <option value="symbol">Asset symbol</option>
-            </select>
+              <div class="p-1" role="menu" aria-label="Asset sorting">
+                @for (option of assetSortOptions; track option.value) {
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    class="hover:bg-muted flex min-h-9 w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors"
+                    [attr.aria-checked]="assetSort() === option.value"
+                    (click)="selectAssetSort(option.value)"
+                  >
+                    <span class="min-w-0 flex-1 truncate">{{ option.label }}</span>
+                    @if (assetSort() === option.value) {
+                      <ng-icon name="lucideCheck" class="text-primary shrink-0 text-[16px]" />
+                    }
+                  </button>
+                }
+              </div>
+            </app-dashboard-header-dropdown>
           </div>
 
           <div class="dash-scroll mt-4 min-h-0 flex-1 overflow-auto pb-1">

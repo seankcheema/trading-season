@@ -1,7 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { MarketDataService, MarketStreamHandlers } from './market-data.service';
+import { CandleSeries, MarketDataService, MarketStreamHandlers } from './market-data.service';
+import { TokenStorageService } from '../core/auth/token-storage.service';
 
 type Listener = (event: MessageEvent<string>) => void;
 
@@ -196,6 +197,69 @@ describe('MarketDataService', () => {
     http.expectOne((request) => request.url === '/api/market/clock').flush({});
     service.candles(7, 'AAPL', '1D').subscribe();
     http.expectOne((request) => request.url === '/api/market/candles').flush({ points: [] });
+  });
+
+  it.each([
+    ['2026-01-05T14:30:00Z', '2026-01-05T17:30:00Z'],
+    ['2026-01-05T17:30:00Z', '2026-01-05T14:30:00Z'],
+  ])('waits for a clock jump from %s to %s before loading shared chart history', (from, to) => {
+    service.snapshot().subscribe();
+    http.expectOne('/api/market/snapshot').flush({ sessionId: 7, marketTimestamp: from, stocks: [] });
+    service.candles(7, 'AAPL', '1D').subscribe();
+    const old = http.expectOne((request) => request.url === '/api/market/candles');
+    service.setClock(7, to).subscribe();
+    expect(old.cancelled).toBe(true);
+    const received: CandleSeries[] = [];
+    service.candles(7, 'AAPL', '1D').subscribe((series) => received.push(series));
+    service.candles(7, 'AAPL', '1D').subscribe((series) => received.push(series));
+    service.candles(7, 'MSFT', '1D').subscribe();
+    http.expectNone((request) => request.url === '/api/market/candles');
+    http.expectOne((request) => request.url === '/api/market/clock')
+      .flush({ sessionId: 7, marketTimestamp: to, stocks: [] });
+    const points = [
+      { timestamp: to, open: 100, high: 101, low: 99, close: 100, volume: 10 },
+      { timestamp: to, open: 101, high: 102, low: 100, close: 101, volume: 20 },
+    ];
+    http.expectOne((request) => request.url === '/api/market/candles' && request.params.get('symbol') === 'AAPL')
+      .flush({ sessionId: 7, symbol: 'AAPL', timeframe: '1D', marketTimestamp: to, points });
+    http.expectOne((request) => request.url === '/api/market/candles' && request.params.get('symbol') === 'MSFT')
+      .flush({ points });
+    expect(received).toHaveLength(2);
+    expect(received.every((series) => series.points.length === 2)).toBe(true);
+    service.candles(7, 'AAPL', '1D').subscribe((series) => expect(series.points).toHaveLength(2));
+    http.expectNone((request) => request.url === '/api/market/candles');
+  });
+
+  it('does not discard detailed history when a live tick crosses a minute during its request', () => {
+    service.snapshot().subscribe();
+    http.expectOne('/api/market/snapshot').flush({
+      sessionId: 7, marketTimestamp: '2026-01-05T17:30:59Z', stocks: [],
+    });
+    vi.stubGlobal('EventSource', FakeEventSource);
+    const disconnect = service.connect(7, { tick: vi.fn(), status: vi.fn(), resync: vi.fn() });
+    const received: CandleSeries[] = [];
+    service.candles(7, 'AAPL', '1D').subscribe((series) => received.push(series));
+    const request = http.expectOne((request) => request.url === '/api/market/candles');
+    FakeEventSource.last!.listeners.get('market-tick')!({ data: JSON.stringify({
+      eventId: 1, marketTimestamp: '2026-01-05T17:31:00Z',
+      serverTimestamp: '2026-01-05T17:31:00Z', prices: [],
+    }) } as MessageEvent<string>);
+    request.flush({ points: [{ close: 100 }, { close: 101 }] });
+    expect(received[0].points).toHaveLength(2);
+    disconnect();
+  });
+
+  it('allows history retry after a clock request fails and cancels a seek on logout', () => {
+    service.setClock(7, '2026-01-05T17:30:00Z').subscribe({ error: () => undefined });
+    service.candles(7, 'AAPL', '1D').subscribe({ error: () => undefined });
+    http.expectOne((request) => request.url === '/api/market/clock')
+      .flush({}, { status: 500, statusText: 'Error' });
+    service.candles(7, 'AAPL', '1D').subscribe();
+    http.expectOne((request) => request.url === '/api/market/candles').flush({ points: [] });
+    service.setClock(7, '2026-01-05T14:30:00Z').subscribe();
+    const clock = http.expectOne((request) => request.url === '/api/market/clock');
+    TestBed.inject(TokenStorageService).clear();
+    expect(clock.cancelled).toBe(true);
   });
 
   it('does not cache failures and bounds completed entries to 64', () => {
