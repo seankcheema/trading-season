@@ -23,6 +23,9 @@ const STORAGE_KEY = 'ts.auth.session';
 export class TokenStorageService {
   private readonly _isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
   private readonly _session = signal<StoredSession | null>(this.read());
+  // Changes on every token replacement or clear, even for the same user.
+  revision = 0;
+  identityRevision = 0;
 
   private readonly identityListeners = new Set<() => void>();
 
@@ -57,12 +60,14 @@ export class TokenStorageService {
   }
 
   save(tokens: AuthTokens): void {
+    this.revision++;
     const session: StoredSession = {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       expiresAt: Date.now() + tokens.expiresIn * 1000,
     };
     if (this.subject(this.accessToken) !== this.subject(tokens.accessToken)) {
+      this.identityRevision++;
       this.identityListeners.forEach((reset) => reset());
     }
     this._session.set(session);
@@ -77,6 +82,8 @@ export class TokenStorageService {
   }
 
   clear(): void {
+    this.revision++;
+    this.identityRevision++;
     this.identityListeners.forEach((reset) => reset());
     this._session.set(null);
     if (!this._isBrowser) {
