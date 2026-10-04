@@ -179,8 +179,7 @@
                 [class.chart-panel-with-rsi]="rsiEnabled()"
               >
                 <div class="chart-toolbar">
-                  <app-timeframe-toggle [(value)]="timeframe" />
-                  <div class="flex flex-wrap items-center justify-end gap-1.5">
+                  <div class="flex flex-wrap items-center justify-start gap-1.5">
                     <div class="indicator-dropdown relative">
                       <button
                         type="button"
@@ -328,6 +327,7 @@
                       }
                     </div>
                   </div>
+                  <app-timeframe-toggle [(value)]="timeframe" />
                 </div>
                 <div class="chart-stage" [class.chart-stage-comparing]="comparisonInstrument()">
                   @if (comparisonInstrument(); as compared) {
