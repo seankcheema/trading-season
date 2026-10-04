@@ -1012,7 +1012,7 @@
   }
 }
 @media (max-width: 540px) {
-  .market-header-controls > * {
+  .market-header-controls > app-market-clock-control {
     flex: 1;
     min-width: 0;
   }

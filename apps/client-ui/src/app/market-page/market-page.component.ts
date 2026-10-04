@@ -8,6 +8,9 @@ import { OrderService } from '../dashboard/orders/order.service';
 import { OrderResult } from '../dashboard/orders/order.models';
 import { toOrderErrorMessage } from '../dashboard/orders/order-error';
 import { ToastService } from '../notifications/toast.service';
+import { AuthService } from '../core/auth/auth.service';
+import { DashboardHeaderDropdownComponent } from '../dashboard/shared/dashboard-header-dropdown.component';
+import { SettingsDialogComponent } from '../dashboard/settings-dialog/settings-dialog.component';
 import { AccountControlComponent } from '../dashboard/shared/account-control.component';
 import { MarketClockControlComponent } from '../dashboard/shared/market-clock-control.component';
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
@@ -33,6 +36,8 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideActivity,
   lucideBell,
+  lucideSettings,
+  lucideLogOut,
   lucideChevronDown,
   lucideChevronLeft,
   lucideChevronRight,
@@ -118,6 +123,8 @@ interface MarketStats {
   selector: 'app-market-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    DashboardHeaderDropdownComponent,
+    SettingsDialogComponent,
     AccountControlComponent,
 
     AccountDialogComponent,
@@ -145,6 +152,8 @@ interface MarketStats {
     provideIcons({
       lucideActivity,
       lucideBell,
+      lucideSettings,
+      lucideLogOut,
       lucideChevronDown,
       lucideChevronLeft,
       lucideChevronRight,
@@ -176,6 +185,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   private readonly marketData = inject(MarketDataService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly authService = inject(AuthService);
   private readonly zone = inject(NgZone);
   private readonly platformId = inject(PLATFORM_ID);
   private routeSubscription?: Subscription;
@@ -190,7 +200,19 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   private readonly toasts = inject(ToastService);
   private readonly destroyRef = inject(DestroyRef);
 
-  protected readonly openHeaderDropdown = signal<'account' | 'market-clock' | null>(null);
+  protected readonly openHeaderDropdown = signal<'account' | 'market-clock' | 'profile' | 'notifications' | null>(null);
+  protected readonly profileInitials = this.accountStore.initials;
+  protected readonly settingsOpen = signal(false);
+
+  protected onSettings(): void {
+    this.openHeaderDropdown.set(null);
+    this.settingsOpen.set(true);
+  }
+
+  protected onSignOut(): void {
+    this.openHeaderDropdown.set(null);
+    this.authService.logout().subscribe(() => void this.router.navigateByUrl('/login'));
+  }
   protected readonly accountDialog = signal<{ account: Account | null } | null>(null);
 
   private readonly requestedAccountId = signal<number | null>(null);

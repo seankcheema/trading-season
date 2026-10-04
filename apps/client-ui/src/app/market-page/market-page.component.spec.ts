@@ -16,6 +16,7 @@ import { Timeframe } from '../dashboard/mock-data';
 import { PriceChartComponent } from '../dashboard/shared/price-chart.component';
 import { MarketPageComponent } from './market-page.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
+import { AuthService } from '../core/auth/auth.service';
 
 const SNAPSHOT: MarketSnapshot = {
   sessionId: 7,
@@ -170,6 +171,30 @@ describe('MarketPageComponent', () => {
         .query(By.directive(PriceChartComponent))
         .componentInstance.showCurrentPrice(),
     ).toBe(true);
+  });
+
+  it('opens notifications and the dashboard profile actions from the header', async () => {
+    const fixture = await setup();
+    const header = fixture.nativeElement.querySelector('header');
+    const profile = header.querySelector('[data-testid="profile-dropdown"]');
+    expect(profile.querySelector('[data-testid="profile-initials"]').textContent.trim()).toBe(
+      fixture.componentInstance['accountStore'].initials(),
+    );
+    header.querySelector('[data-testid="notifications-dropdown"] summary').click();
+    fixture.detectChanges();
+    expect(header.textContent).toContain('No notifications yet.');
+    profile.querySelector('summary').click();
+    fixture.detectChanges();
+    profile.querySelector('button').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-settings-dialog')).not.toBeNull();
+    expect(fixture.componentInstance['openHeaderDropdown']()).toBeNull();
+
+    const logout = vi.spyOn(TestBed.inject(AuthService), 'logout').mockReturnValue(of(undefined));
+    const navigateToLogin = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+    profile.querySelectorAll('button')[1].click();
+    expect(logout).toHaveBeenCalledOnce();
+    expect(navigateToLogin).toHaveBeenCalledWith('/login');
   });
 
   it('shows shared cash and the selected portfolio in the account box above execution', async () => {
