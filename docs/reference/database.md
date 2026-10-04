@@ -65,7 +65,7 @@ Orders are distinct from fills. The schema allows at most one fill per order. Th
 
 Simulation data is scoped by run and stock. Deleting a simulation session cascades through its generated market data. The unique `instruments.simulated_stock_symbol` connects simulated U.S. equities to instruments. The [market-data importer](../../apps/market-data/db/scripts/python/lib/importing.py) creates these instrument rows idempotently. Schema support for other asset classes does not imply their simulation APIs exist.
 
-Setup requires an empty public schema. Existing databases are preserved and must be upgraded through a separately reviewed change.
+Setup wrappers require an empty public schema. For an existing legacy database missing three application tables, use the direct V001 repair command below; other upgrades require a separately reviewed change.
 
 ### Dummy trader with January–October history
 
@@ -113,13 +113,25 @@ If the role or database already exists, skip the command that created it.
 
 ### Apply the schema
 
-The canonical [V001__Initialize_database.sql](../../apps/market-data/db/migrations/V001__Initialize_database.sql) defines all 19 application tables in their current form. Apply it once to an empty database as the `trading_season` owner. It uses one transaction, refuses an occupied public schema, and never drops existing data.
+The canonical [V001__Initialize_database.sql](../../apps/market-data/db/migrations/V001__Initialize_database.sql) defines all 19 application tables in their current form. Apply it as the `trading_season` owner. It uses one transaction to initialize an empty public schema or repair the legacy missing-table layout described below, and never drops existing data.
 
 ```powershell
 apps/market-data/db/scripts/powershell/setup-database.ps1 -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season
 ```
 
-Alternatively, open `V001__Initialize_database.sql` in pgAdmin connected to `trading_season` and execute the entire file, or use `psql -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initialize_database.sql` with the same connection. The script does not create the database or role, or import market data. Historical numbered migrations and repair files have been consolidated; existing databases require a separately reviewed upgrade rather than rerunning setup.
+Alternatively, open `V001__Initialize_database.sql` in pgAdmin connected to `trading_season` and execute the entire file, or use `psql -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initialize_database.sql` with the same connection. The script does not create the database or role, or import market data. Historical numbered migrations and repair files have been consolidated; existing databases require a separately reviewed upgrade except for the bounded legacy repair below.
+
+### Upgrade a legacy 17-table database
+
+If your table list includes `sessions` but lacks `user_accounts`, `refresh_tokens`, and `portfolio_valuations`, apply [V001__Initialize_database.sql](../../apps/market-data/db/migrations/V001__Initialize_database.sql) once as the database owner:
+
+```powershell
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initialize_database.sql
+```
+
+This transactional upgrade requires `users` and `accounts` to exist and all three added tables to be absent. It creates the missing tables, constraints, indexes, and portfolio valuation sequence using the current baseline definitions. It preserves existing rows and the legacy `sessions` table, so this database will have 20 tables: the 19 current application tables plus `sessions`. Do not drop `sessions` just to match a count.
+
+The added tables start empty; schema setup does not seed credentials or portfolio observations. Existing profiles retain their UUIDs and are not assigned invented passwords. The profile-to-credentials foreign key is added as `NOT VALID`, matching V001, so existing unmatched profiles remain but new profile writes require credentials. Legacy profile columns and session dependencies require a separate upgrade assessment; this repair does not fully convert an older schema. The repair branch refuses databases where any of these three tables already exist, including an already initialized current schema. Setup wrappers still require an empty schema; use the direct psql command above for the legacy repair.
 
 ### Verify the schema
 
@@ -386,7 +398,7 @@ Email is the only login identifier, unique without regard to case through `user_
 
 ## Change rules
 
-Keep `apps/market-data/db/migrations/V001__Initialize_database.sql` as the canonical definition for new databases. Update affected entity mappings and documentation together. Changes to retained databases require a separately reviewed incremental upgrade; setup never upgrades or resets them. Back up retained data and verify upgrades on a disposable copy.
+Keep `apps/market-data/db/migrations/V001__Initialize_database.sql` as the canonical definition for new databases. Update affected entity mappings and documentation together. V001 includes the bounded missing-table repair described above. Other changes to retained databases require a separately reviewed incremental upgrade; setup wrappers never upgrade or reset them. Back up retained data and verify upgrades on a disposable copy.
 
 # Business database ERD
 
@@ -414,6 +426,7 @@ erDiagram
     stocks ||--o{ market_ticks : traded_as
     stocks ||--o{ candles : aggregated_as
 
+    accounts ||--o{ portfolio_valuations : values
     accounts ||--o{ holdings : has
     instruments ||--o{ holdings : held_as
     accounts ||--o{ orders : submits
@@ -427,11 +440,46 @@ erDiagram
     instruments ||--o{ holding_movements : changes
     fills ||--o| holding_movements : creates
 
-    users {
+    user_accounts {
         UUID user_id PK
         TEXT email UK
+        TEXT password_hash
         TEXT user_role
         TEXT account_status
+        INTEGER failed_login_attempts
+        TIMESTAMPTZ locked_until
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+    refresh_tokens {
+        UUID id PK
+        UUID user_id FK
+        TEXT token_hash UK
+        TIMESTAMPTZ issued_at
+        TIMESTAMPTZ expires_at
+        TIMESTAMPTZ revoked_at
+        UUID replaced_by
+    }
+    users {
+        UUID user_id PK, FK
+        TEXT first_name
+        TEXT middle_name
+        TEXT last_name
+        TEXT ssn
+        TEXT address
+        DATE date_of_birth
+        TEXT trader_level
+        NUMERIC available_funds
+        INTEGER session_timeout_minutes
+        NUMERIC execution_buffer_percent
+        TIMESTAMPTZ last_activity_at
+        TIMESTAMPTZ created_at
+    }
+    portfolio_valuations {
+        BIGINT valuation_id PK
+        INTEGER account_id FK
+        TIMESTAMPTZ observed_at
+        NUMERIC portfolio_value
     }
     simulation_sessions {
         BIGINT id PK
@@ -560,6 +608,6 @@ erDiagram
 
 Store SQL files in `apps/market-data/db/migrations` and name them `VNNN__Verb_description.sql`: an uppercase `V`, a three-digit version, two underscores, and a readable description separated by underscores. The single fresh-database baseline is `V001__Initialize_database.sql`. Version numbers describe application order, not author identity; do not include developer names or separate INITDB counters.
 
-For a future incremental change, use the next unused number, for example `V002__Add_order_index.sql`. Coordinate the number in the pull request and check the target branch before merging. If parallel changes select the same number, renumber the unmerged file; never rename or rewrite a migration already applied to a retained database. After version 999, expand all version prefixes consistently rather than mixing widths.
+For a future incremental change, use the next unused number, using `VNNN__Verb_description.sql`. Coordinate the number in the pull request and check the target branch before merging. If parallel changes select the same number, renumber the unmerged file; never rename or rewrite a migration already applied to a retained database. After version 999, expand all version prefixes consistently rather than mixing widths.
 
-The setup command currently applies only V001 to an empty public schema. Adding V002 does not make it run automatically; an incremental migration runner or an explicit upgrade procedure must accompany that change. Jenkins retains the bounded archive generation, validation, import, and repeated-import checks; the removed database tests directory and its pytest/JUnit step are no longer used.
+The setup command currently applies only V001 to an empty public schema. Adding another migration does not make it run automatically; an incremental migration runner or an explicit upgrade procedure must accompany that change. Jenkins retains the bounded archive generation, validation, import, and repeated-import checks; the removed database tests directory and its pytest/JUnit step are no longer used.

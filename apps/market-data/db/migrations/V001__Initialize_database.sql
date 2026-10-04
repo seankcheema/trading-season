@@ -1,13 +1,14 @@
--- Canonical Trading Season schema. Fresh databases only.
--- Apply once as the database owner; existing application data is never dropped.
+-- Canonical Trading Season schema and legacy missing-table repair.
+-- Apply as the database owner. Existing application data is never dropped.
 BEGIN;
 SELECT pg_advisory_xact_lock(2026100301);
 SET LOCAL search_path TO public;
-DO $$ BEGIN
- IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=current_schema() AND c.relkind IN ('r','p','v','m','f','S')) THEN
-  RAISE EXCEPTION 'Setup requires an empty public schema; existing data was not changed';
- END IF;
-END $$;
+DO $schema$
+BEGIN
+ IF NOT EXISTS (
+  SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = current_schema() AND c.relkind IN ('r','p','v','m','f','S')
+ ) THEN
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE SEQUENCE accounts_account_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1 NO CYCLE;
@@ -666,5 +667,81 @@ ALTER SEQUENCE cash_transactions_cash_transaction_id_seq OWNED BY cash_transacti
 ALTER SEQUENCE holding_movements_holding_movement_id_seq OWNED BY holding_movements.holding_movement_id;
 
 ALTER SEQUENCE portfolio_valuations_valuation_id_seq OWNED BY portfolio_valuations.valuation_id;
+ELSE
+IF to_regclass('public.users') IS NULL OR to_regclass('public.accounts') IS NULL THEN
+  RAISE EXCEPTION 'Upgrade requires the existing business schema (users and accounts)';
+ END IF;
+ IF to_regclass('public.user_accounts') IS NOT NULL
+    OR to_regclass('public.refresh_tokens') IS NOT NULL
+    OR to_regclass('public.portfolio_valuations') IS NOT NULL THEN
+  RAISE EXCEPTION 'Upgrade requires all three added tables to be absent; existing data was not changed';
+ END IF;
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE SEQUENCE portfolio_valuations_valuation_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 CACHE 1 NO CYCLE;
+
+CREATE TABLE portfolio_valuations (
+    "valuation_id" bigint DEFAULT nextval('portfolio_valuations_valuation_id_seq'::regclass) NOT NULL,
+    "account_id" integer NOT NULL,
+    "observed_at" timestamp with time zone NOT NULL,
+    "portfolio_value" numeric(38,10) NOT NULL
+);
+
+CREATE TABLE refresh_tokens (
+    "id" uuid DEFAULT gen_random_uuid() NOT NULL,
+    "user_id" uuid NOT NULL,
+    "token_hash" text NOT NULL,
+    "issued_at" timestamp with time zone DEFAULT now() NOT NULL,
+    "expires_at" timestamp with time zone NOT NULL,
+    "revoked_at" timestamp with time zone,
+    "replaced_by" uuid
+);
+
+CREATE TABLE user_accounts (
+    "user_id" uuid DEFAULT gen_random_uuid() NOT NULL,
+    "email" text NOT NULL,
+    "password_hash" text NOT NULL,
+    "user_role" text DEFAULT 'TRADER'::text NOT NULL,
+    "account_status" text DEFAULT 'ACTIVE'::text NOT NULL,
+    "failed_login_attempts" integer DEFAULT 0 NOT NULL,
+    "locked_until" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT now() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE portfolio_valuations ADD CONSTRAINT portfolio_valuations_pkey PRIMARY KEY (valuation_id);
+
+ALTER TABLE portfolio_valuations ADD CONSTRAINT portfolio_valuations_portfolio_value_check CHECK ((portfolio_value >= (0)::numeric));
+
+ALTER TABLE refresh_tokens ADD CONSTRAINT refresh_tokens_pkey PRIMARY KEY (id);
+
+ALTER TABLE refresh_tokens ADD CONSTRAINT refresh_tokens_token_hash_key UNIQUE (token_hash);
+
+ALTER TABLE user_accounts ADD CONSTRAINT user_accounts_account_status_check CHECK ((account_status = ANY (ARRAY['ACTIVE'::text, 'DEACTIVATED'::text])));
+
+ALTER TABLE user_accounts ADD CONSTRAINT user_accounts_pkey PRIMARY KEY (user_id);
+
+ALTER TABLE user_accounts ADD CONSTRAINT user_accounts_user_role_check CHECK ((user_role = ANY (ARRAY['ADMIN'::text, 'TRADER'::text])));
+
+ALTER TABLE portfolio_valuations ADD CONSTRAINT portfolio_valuations_account_id_fkey FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE;
+
+ALTER TABLE refresh_tokens ADD CONSTRAINT refresh_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES user_accounts(user_id) ON DELETE CASCADE;
+
+CREATE UNIQUE INDEX user_accounts_email_lower_key ON public.user_accounts USING btree (lower(email));
+
+CREATE INDEX idx_refresh_tokens_user_id ON public.refresh_tokens USING btree (user_id);
+
+CREATE INDEX idx_refresh_tokens_expires_at ON public.refresh_tokens USING btree (expires_at);
+
+CREATE INDEX portfolio_valuations_account_time ON public.portfolio_valuations USING btree (account_id, observed_at, valuation_id);
+
+ALTER SEQUENCE portfolio_valuations_valuation_id_seq OWNED BY portfolio_valuations.valuation_id;
+
+-- Existing profiles may have no corresponding credentials. Do not invent passwords.
+-- NOT VALID preserves those rows while enforcing the relationship on new writes.
+ALTER TABLE users ADD CONSTRAINT users_account_fkey
+    FOREIGN KEY (user_id) REFERENCES user_accounts(user_id) NOT VALID;
+ END IF;
+END $schema$;
 COMMIT;

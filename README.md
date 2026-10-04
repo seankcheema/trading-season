@@ -58,7 +58,7 @@ CREATE ROLE trading_season WITH LOGIN PASSWORD 'password';
 CREATE DATABASE trading_season OWNER trading_season;
 ```
 
-Then apply the schema. Connect to `trading_season` as the `trading_season` user and run the canonical schema file once on an empty database:
+Then apply the schema. Connect to `trading_season` as the `trading_season` user and run the canonical schema file on an empty database. The same file also repairs a legacy database missing `user_accounts`, `refresh_tokens`, and `portfolio_valuations`; see the [legacy upgrade procedure](docs/reference/database.md#upgrade-a-legacy-17-table-database). It preserves the legacy `sessions` table, so a repaired database has 20 tables while a fresh database has 19:
 
 ```powershell
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initialize_database.sql
@@ -230,12 +230,14 @@ Review the [documentation index](docs/README.md) for all guides and references. 
 
 # Business database ERD
 
-Canonical relationship diagram for the business SQL schema in V001__Initialize_database.sql. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
+Canonical relationship diagram for all 19 current application tables in V001__Initialize_database.sql. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
 
 The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change.
 
 ```mermaid
 erDiagram
+    user_accounts ||--|| users : "credentials for"
+    user_accounts ||--o{ refresh_tokens : issues
     users ||--o{ accounts : owns
 
     stocks o|--o| instruments : "optionally powers"
@@ -252,6 +254,7 @@ erDiagram
     stocks ||--o{ market_ticks : traded_as
     stocks ||--o{ candles : aggregated_as
 
+    accounts ||--o{ portfolio_valuations : values
     accounts ||--o{ holdings : has
     instruments ||--o{ holdings : held_as
     accounts ||--o{ orders : submits
@@ -265,11 +268,46 @@ erDiagram
     instruments ||--o{ holding_movements : changes
     fills ||--o| holding_movements : creates
 
-    users {
+    user_accounts {
         UUID user_id PK
         TEXT email UK
+        TEXT password_hash
         TEXT user_role
         TEXT account_status
+        INTEGER failed_login_attempts
+        TIMESTAMPTZ locked_until
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+    refresh_tokens {
+        UUID id PK
+        UUID user_id FK
+        TEXT token_hash UK
+        TIMESTAMPTZ issued_at
+        TIMESTAMPTZ expires_at
+        TIMESTAMPTZ revoked_at
+        UUID replaced_by
+    }
+    users {
+        UUID user_id PK, FK
+        TEXT first_name
+        TEXT middle_name
+        TEXT last_name
+        TEXT ssn
+        TEXT address
+        DATE date_of_birth
+        TEXT trader_level
+        NUMERIC available_funds
+        INTEGER session_timeout_minutes
+        NUMERIC execution_buffer_percent
+        TIMESTAMPTZ last_activity_at
+        TIMESTAMPTZ created_at
+    }
+    portfolio_valuations {
+        BIGINT valuation_id PK
+        INTEGER account_id FK
+        TIMESTAMPTZ observed_at
+        NUMERIC portfolio_value
     }
     simulation_sessions {
         BIGINT id PK
