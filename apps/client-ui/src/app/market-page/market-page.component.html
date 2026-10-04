@@ -190,9 +190,11 @@
                 class="chart-panel border-border bg-card rounded-xl border p-3"
                 [class.chart-panel-with-rsi]="rsiEnabled()"
               >
-                <div class="chart-toolbar">
+                <div class="chart-toolbar"
+                  [style.--picker-left]="toolbarMenuPosition().left + 'px'"
+                  [style.--picker-top]="toolbarMenuPosition().top + 'px'">
                   <div class="flex flex-wrap items-center justify-start gap-1.5">
-                    <div class="indicator-dropdown relative">
+                    <div class="indicator-dropdown">
                       <button
                         type="button"
                         class="tool-button"
@@ -244,7 +246,7 @@
                         </div>
                       }
                     </div>
-                    <div class="chart-mode-dropdown relative">
+                    <div class="chart-mode-dropdown">
                       <button
                         type="button"
                         class="tool-button"
@@ -285,7 +287,7 @@
                         </div>
                       }
                     </div>
-                    <div class="comparison-dropdown relative">
+                    <div class="comparison-dropdown">
                       <button
                         type="button"
                         class="tool-button comparison-button"

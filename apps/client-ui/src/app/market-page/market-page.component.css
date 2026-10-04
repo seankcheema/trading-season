@@ -205,6 +205,7 @@
 }
 
 .chart-toolbar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -286,11 +287,11 @@
 }
 .comparison-picker {
   position: absolute;
-  top: calc(100% + 0.5rem);
-  right: 0;
+  top: var(--picker-top, calc(100% + 0.5rem));
+  left: min(var(--picker-left, 0px), max(0px, calc(100% - 16rem)));
   z-index: 40;
   display: flex;
-  width: min(16rem, calc(100vw - 2rem));
+  width: min(16rem, 100%);
   align-items: stretch;
   flex-direction: column;
   gap: 0;
@@ -305,10 +306,6 @@
 }
 .comparison-picker app-instrument-search {
   width: 100%;
-}
-
-.comparison-dropdown {
-  position: relative;
 }
 
 .comparison-button {
@@ -903,9 +900,6 @@
     border-bottom: 1px solid var(--border);
     padding-top: 0;
     padding-bottom: 0.65rem;
-  }
-  .comparison-picker {
-    right: -2.25rem;
   }
   .tool-button {
     padding: 0 0.4rem;

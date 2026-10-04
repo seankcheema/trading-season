@@ -22,6 +22,7 @@ import { CurrencyPipe, DecimalPipe, TitleCasePipe, isPlatformBrowser } from '@an
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   HostListener,
   NgZone,
   OnDestroy,
@@ -810,8 +811,28 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     this.openToolbarMenu.set(null);
   }
 
+  private readonly menuHost = inject(ElementRef<HTMLElement>);
+  protected readonly toolbarMenuPosition = signal({ left: 0, top: 0 });
+
+  @HostListener('window:resize')
+  protected positionToolbarMenu(): void {
+    const menu = this.openToolbarMenu();
+    const id = menu === 'indicators' ? 'indicator-picker' :
+      menu === 'chart-mode' ? 'chart-mode-picker' : 'comparison-picker';
+    const toolbar = this.menuHost.nativeElement.querySelector('.chart-toolbar');
+    const trigger = toolbar?.querySelector(`[aria-controls="${id}"]`);
+    if (!menu || !toolbar || !trigger) return;
+    const frame = toolbar.getBoundingClientRect();
+    const button = trigger.getBoundingClientRect();
+    this.toolbarMenuPosition.set({
+      left: Math.max(0, button.left - frame.left),
+      top: button.bottom - frame.top + 8,
+    });
+  }
+
   protected toggleToolbarMenu(menu: ToolbarMenu): void {
     this.openToolbarMenu.update((open) => (open === menu ? null : menu));
+    this.positionToolbarMenu();
   }
 
   protected toggleIndicator(indicator: TechnicalIndicator): void {
