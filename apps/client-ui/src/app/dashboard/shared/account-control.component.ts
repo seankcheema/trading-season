@@ -48,7 +48,7 @@ import { Account } from '../accounts/account.models';
       [panelClass]="expanded() ? 'w-full max-h-[40dvh] overflow-y-auto' : 'w-full'"
       [triggerClass]="
         expanded()
-          ? 'border-border bg-card hover:bg-muted h-10 w-full gap-3 rounded-lg border px-3 text-base'
+          ? 'border-border bg-card hover:bg-muted h-10 w-full gap-3 rounded-lg border px-3 text-sm'
           : ''
       "
     >

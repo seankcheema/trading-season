@@ -746,12 +746,11 @@
                     <dt class="text-muted-foreground text-xs">Available cash</dt>
                     <dd class="text-xl font-semibold tabular-nums" data-testid="available-cash">
                       @if (accountStore.status() === 'ready') {
-                        {{ cashBalance() | currency: 'USD' }}
+                        {{ availableCash() | currency: 'USD' }}
                       } @else {
                         <span aria-label="Balance unavailable">—</span>
                       }
                     </dd>
-                    <p class="text-muted-foreground text-[10px]">Shared across accounts</p>
                   </div>
                   <div class="overview-card account-balance-card account-portfolio-card">
                     <dt class="text-muted-foreground text-xs">Portfolio value</dt>
@@ -768,7 +767,6 @@
                         <span aria-label="Balance unavailable">—</span>
                       }
                     </dd>
-                    <p class="text-muted-foreground text-[10px]">Selected account holdings</p>
                   </div>
                 </dl>
                 @if (accountStore.status() === 'idle' || accountStore.status() === 'loading') {

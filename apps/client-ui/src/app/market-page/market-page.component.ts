@@ -26,6 +26,7 @@ import {
   effect,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
@@ -261,6 +262,13 @@ export class MarketPageComponent implements OnInit, OnDestroy {
 
   // Trading balances include every completed fill, regardless of the replay cursor.
   protected readonly tradingCashBalance = this.accountStore.cashBalance;
+  private readonly tradeTicket = viewChild(TradeTicketComponent);
+  protected readonly availableCash = computed(() => {
+    const draft = this.tradeTicket()?.draft();
+    return draft?.side === 'buy'
+      ? Math.max(0, this.cashBalance() - draft.estimatedValue)
+      : this.cashBalance();
+  });
   protected readonly heldShares = computed(
     () =>
       this.accountStore.selectedHoldings().find((h) => h.symbol === this.symbol())?.quantity ?? 0,

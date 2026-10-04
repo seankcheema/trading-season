@@ -460,11 +460,11 @@
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.4rem;
   border: 1px solid var(--border);
   border-radius: 0.75rem;
   background: var(--card);
-  padding: 0.85rem;
+  padding: 0.625rem;
 }
 .account-value-panel:focus-within {
   z-index: 40;
@@ -478,8 +478,8 @@
 .account-value-balances .account-balance-card {
   grid-template-rows: auto auto auto;
   align-content: start;
-  gap: 0.2rem;
-  padding: 0.65rem 0.75rem;
+  gap: 0.15rem;
+  padding: 0.45rem 0.75rem;
 }
 .account-value-balances dd {
   overflow-wrap: anywhere;

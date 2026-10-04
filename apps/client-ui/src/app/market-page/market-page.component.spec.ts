@@ -200,6 +200,32 @@ describe('MarketPageComponent', () => {
     expect(panel.textContent).toContain('Retry accounts');
   });
 
+  it('previews available cash as the buy slider changes without reducing the buying limit', async () => {
+    const fixture = await setup();
+    const cash = fixture.nativeElement.querySelector('[data-testid="available-cash"]');
+    const slider = fixture.nativeElement.querySelector('input[type="range"]') as HTMLInputElement;
+    const maximum = slider.max;
+    slider.value = '3';
+    slider.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(cash.textContent).toContain('$9,322.60');
+    expect(slider.max).toBe(maximum);
+    expect(fixture.componentInstance['accountStore'].cashBalance()).toBe(10000);
+
+    const ticket = fixture.debugElement.query(By.directive(TradeTicketComponent)).componentInstance;
+    ticket.selectSide('sell');
+    fixture.detectChanges();
+    expect(cash.textContent).toContain('$10,000.00');
+    ticket.selectSide('buy');
+    fixture.detectChanges();
+    expect(cash.textContent).toContain('$9,322.60');
+
+    slider.value = '0';
+    slider.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(cash.textContent).toContain('$10,000.00');
+  });
+
   it('distinguishes zero balances from an account with no portfolio selection', async () => {
     const fixture = await setup();
     const http = TestBed.inject(HttpTestingController);
