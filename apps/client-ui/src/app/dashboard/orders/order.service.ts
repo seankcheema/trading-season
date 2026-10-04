@@ -1,24 +1,51 @@
+import { TokenStorageService } from '../../core/auth/token-storage.service';
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
-import { Observable, map, shareReplay, switchMap, tap, throwError } from 'rxjs';
+import {
+  Observable,
+  Subject,
+  finalize,
+  of,
+  takeUntil,
+  map,
+  shareReplay,
+  switchMap,
+  tap,
+  throwError,
+} from 'rxjs';
 import { BACKEND_API_URL } from '../../core/api.config';
 import { UnknownInstrumentError } from './order-error';
 import { InstrumentRef, OrderResult, OrderSubmission, OrderType } from './order.models';
 
 // Submits orders and reads the caller's order history.
 //
-// Provided by the dashboard rather than the root injector, for the same reason AccountStore is:
-// signing out and back in as someone else must not show the previous user's orders.
-//
-// The backend scopes both endpoints to the token's subject and refuses an account the caller
-// does not own, so nothing here has to be trusted to enforce that.
-@Injectable()
+// Shared across views and cleared synchronously on identity changes.
+@Injectable({ providedIn: 'root' })
 export class OrderService {
   private readonly _http = inject(HttpClient);
   private readonly _apiUrl = inject(BACKEND_API_URL);
 
   // The catalogue does not change while the app is open, so it is fetched once and shared.
   // Loaded when recent activity or a submission needs instrument reference data.
+  private revision = 0;
+  private readonly cancelled = new Subject<void>();
+  private historyRequest?: Observable<OrderResult[]>;
+  readonly refreshing = signal(false);
+  readonly historyError = signal('');
+
+  constructor() {
+    inject(TokenStorageService).onIdentityChange(() => {
+      this.revision++;
+      this.cancelled.next();
+      this.historyRequest = undefined;
+      this._instruments = null;
+      this._orders.set([]);
+      this._catalogue.set([]);
+      this.historyStatus.set('idle');
+      this.historyError.set('');
+    });
+  }
+
   private _instruments: Observable<InstrumentRef[]> | null = null;
 
   private readonly _orders = signal<OrderResult[]>([]);
@@ -33,7 +60,8 @@ export class OrderService {
   instruments(): Observable<InstrumentRef[]> {
     this._instruments ??= this._http.get<InstrumentRef[]>(`${this._apiUrl}/instruments`).pipe(
       tap((instruments) => this._catalogue.set(instruments)),
-      shareReplay({ bufferSize: 1, refCount: false }),
+      takeUntil(this.cancelled),
+      shareReplay({ bufferSize: 1, refCount: true }),
     );
     return this._instruments;
   }
@@ -68,29 +96,51 @@ export class OrderService {
         };
         return this._http.post<OrderResult>(`${this._apiUrl}/orders`, submission);
       }),
+      takeUntil(this.cancelled),
       // A fill moves funds and holdings, so the history the dashboard shows is stale
       // the moment one lands.
-      tap((result) =>
+      tap((result) => {
+        this.revision++;
+        this.historyRequest = undefined;
         this._orders.update((orders) => [
           result,
           ...orders.filter((order) => order.orderId !== result.orderId),
-        ]),
-      ),
+        ]);
+      }),
     );
   }
 
   // Replaces the cached history with the caller's orders as the backend has them.
-  loadOrders(): Observable<OrderResult[]> {
-    this.historyStatus.set('loading');
-    return this._http.get<OrderResult[]>(`${this._apiUrl}/orders`).pipe(
+  loadOrders(refresh = true): Observable<OrderResult[]> {
+    if (this.historyRequest) return this.historyRequest;
+    if (!refresh && this.historyStatus() === 'ready') return of(this._orders());
+    const revision = this.revision;
+    if (this.historyStatus() === 'idle') this.historyStatus.set('loading');
+    this.refreshing.set(true);
+    const request = this._http.get<OrderResult[]>(`${this._apiUrl}/orders`).pipe(
+      switchMap((orders) => (revision === this.revision ? of(orders) : this.loadOrders())),
       tap({
         next: (orders) => {
           this._orders.set(orders);
           this.historyStatus.set('ready');
+          this.historyError.set('');
         },
-        error: () => this.historyStatus.set('error'),
+        error: () => {
+          this.historyError.set('Unable to refresh recent orders.');
+          this.historyStatus.set('error');
+        },
       }),
+      takeUntil(this.cancelled),
+      finalize(() => {
+        if (this.historyRequest === request) {
+          this.historyRequest = undefined;
+          this.refreshing.set(false);
+        }
+      }),
+      shareReplay({ bufferSize: 1, refCount: true }),
     );
+    this.historyRequest = request;
+    return request;
   }
 
   // Resolves a market-data symbol to the instrument behind it, for callers that need the id

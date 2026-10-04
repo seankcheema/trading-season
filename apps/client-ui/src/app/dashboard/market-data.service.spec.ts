@@ -123,6 +123,105 @@ describe('MarketDataService', () => {
 
       disconnect();
       expect(source.closed).toBe(true);
+      source.listeners.get('market-tick')!({ data: JSON.stringify(tick) } as MessageEvent<string>);
+      source.listeners.get('resync')!({} as MessageEvent<string>);
+      expect(h.tick).toHaveBeenCalledTimes(1);
+      expect(h.resync).toHaveBeenCalledTimes(1);
     });
   });
+  it('keeps price and change on the newest tick when snapshot revalidation finishes late', () => {
+    const snapshot = {
+      sessionId: 7, marketTimestamp: '2026-01-05T15:00:00Z',
+      serverTimestamp: '2026-01-05T15:00:00Z',
+      stocks: [{ symbol: 'AAPL', companyName: 'Apple', price: 100, change: 5,
+        changePercent: (5 / 95) * 100, timestamp: '2026-01-05T15:00:00Z' }],
+    };
+    service.snapshot().subscribe();
+    http.expectOne('/api/market/snapshot').flush(snapshot);
+    vi.stubGlobal('EventSource', FakeEventSource);
+    const handlers = { tick: vi.fn(), status: vi.fn(), resync: vi.fn() };
+    const disconnect = service.connect(7, handlers);
+    let quote = snapshot.stocks[0];
+    service.snapshot().subscribe((value) => { quote = value.stocks[0]; });
+    FakeEventSource.last!.listeners.get('market-tick')!({ data: JSON.stringify({
+      eventId: 2, marketTimestamp: '2026-01-05T15:00:02Z',
+      serverTimestamp: '2026-01-05T15:00:02Z',
+      prices: [{ symbol: 'AAPL', price: 102, sequenceNumber: 2 }],
+    }) } as MessageEvent<string>);
+    http.expectOne('/api/market/snapshot').flush(snapshot);
+    expect(quote.price).toBe(102);
+    expect(quote.change).toBe(7);
+    expect(quote.changePercent).toBeCloseTo((7 / 95) * 100);
+    disconnect();
+  });
+
+  it('refreshes the opening baseline when the replay reaches another trading day', () => {
+    service.snapshot().subscribe();
+    http.expectOne('/api/market/snapshot').flush({
+      sessionId: 7, marketTimestamp: '2026-01-05T21:00:00Z', stocks: [],
+    });
+    vi.stubGlobal('EventSource', FakeEventSource);
+    const handlers = { tick: vi.fn(), status: vi.fn(), resync: vi.fn() };
+    const disconnect = service.connect(7, handlers);
+    FakeEventSource.last!.listeners.get('market-tick')!({ data: JSON.stringify({
+      marketTimestamp: '2026-01-06T14:30:00Z', prices: [],
+    }) } as MessageEvent<string>);
+    expect(handlers.resync).toHaveBeenCalledOnce();
+    expect(handlers.tick).not.toHaveBeenCalled();
+    disconnect();
+  });
+  it('shares in-flight candles and reuses successful entries until expiry', () => {
+    const received: unknown[] = [];
+    service.candles(7, ' aapl ', '1D').subscribe((value) => received.push(value));
+    service.candles(7, 'AAPL', '1D').subscribe((value) => received.push(value));
+    const req = http.expectOne((request) => request.url === '/api/market/candles');
+    req.flush({ points: [], symbol: 'AAPL' });
+    service.candles(7, 'AAPL', '1D').subscribe((value) => received.push(value));
+    http.expectNone((request) => request.url === '/api/market/candles');
+    expect(received).toHaveLength(3);
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 60_001);
+    const refreshing: unknown[] = [];
+    service.candles(7, 'AAPL', '1D').subscribe((value) => refreshing.push(value));
+    expect(refreshing).toHaveLength(1);
+    http.expectOne((request) => request.url === '/api/market/candles').flush({ points: [] });
+    expect(refreshing).toHaveLength(2);
+    vi.restoreAllMocks();
+  });
+
+  it('invalidates pending candles on rewind and never publishes their old response', () => {
+    service.candles(7, 'AAPL', '1D').subscribe();
+    const old = http.expectOne((request) => request.url === '/api/market/candles');
+    service.setClock(7, '2026-01-05T15:00:00Z').subscribe();
+    expect(old.cancelled).toBe(true);
+    http.expectOne((request) => request.url === '/api/market/clock').flush({});
+    service.candles(7, 'AAPL', '1D').subscribe();
+    http.expectOne((request) => request.url === '/api/market/candles').flush({ points: [] });
+  });
+
+  it('does not cache failures and bounds completed entries to 64', () => {
+    service.candles(7, 'AAPL', '1D').subscribe({ error: () => undefined });
+    http.expectOne((request) => request.url === '/api/market/candles').flush({}, { status: 503, statusText: 'Unavailable' });
+    for (let index = 0; index < 65; index++) {
+      service.candles(7, `S${index}`, '1D').subscribe();
+      http.expectOne((request) => request.url === '/api/market/candles').flush({ points: [] });
+    }
+    service.candles(7, 'S0', '1D').subscribe();
+    http.expectOne((request) => request.url === '/api/market/candles').flush({ points: [] });
+    service.candles(7, 'AAPL', '1D').subscribe();
+    http.expectOne((request) => request.url === '/api/market/candles').flush({ points: [] });
+  });
+
+  it('delivers a replacement session snapshot while invalidating old-session candles', () => {
+    const snapshot = { sessionId: 7, marketTimestamp: '2026-01-05T16:00:00Z', stocks: [] };
+    service.snapshot().subscribe();
+    http.expectOne('/api/market/snapshot').flush(snapshot);
+    service.candles(7, 'AAPL', '1D').subscribe();
+    const old = http.expectOne((request) => request.url === '/api/market/candles');
+    const seen: number[] = [];
+    service.snapshot().subscribe((value) => seen.push(value.sessionId));
+    http.expectOne('/api/market/snapshot').flush({ ...snapshot, sessionId: 8 });
+    expect(seen).toEqual([7, 8]);
+    expect(old.cancelled).toBe(true);
+  });
+
 });

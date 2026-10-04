@@ -6,7 +6,7 @@
     "changeOrigin": true
   },
   {
-    "context": ["/api/accounts", "/api"],
+    "context": ["/api/me/watchlist", "/api/accounts", "/api"],
     "target": "http://localhost:8082",
     "secure": false,
     "changeOrigin": true

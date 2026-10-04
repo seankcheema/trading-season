@@ -5,12 +5,13 @@ import { PLATFORM_ID } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
-import { of, throwError } from 'rxjs';
+import { of, throwError, Subject } from 'rxjs';
 import { vi } from 'vitest';
 import {
   MarketDataService,
   MarketSnapshot,
   MarketStreamHandlers,
+  CandleSeries,
 } from '../dashboard/market-data.service';
 import { Timeframe } from '../dashboard/mock-data';
 import { PriceChartComponent } from '../dashboard/shared/price-chart.component';
@@ -103,6 +104,7 @@ describe('MarketPageComponent', () => {
     const fixture = TestBed.createComponent(MarketPageComponent);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
+    http.expectOne('/api/me/watchlist').flush([]);
     http.expectOne('/api/me/accounts').flush([
       { accountId: 1, name: 'Investing', openedDate: '2026-01-01' },
       { accountId: 2, name: 'Retirement', openedDate: '2026-01-01' },
@@ -150,6 +152,39 @@ describe('MarketPageComponent', () => {
         }),
     );
     TestBed.resetTestingModule();
+  });
+
+  it('closes every stream when cached and refreshed snapshots arrive before leaving the page', async () => {
+    marketData.snapshot.mockReturnValueOnce(of(SNAPSHOT, { ...SNAPSHOT }));
+    const fixture = await setup();
+    expect(marketData.connect).toHaveBeenCalledTimes(2);
+    expect(disconnect).toHaveBeenCalledTimes(1);
+
+    const handlers = marketData.connect.mock.calls[1][1];
+    handlers.tick({
+      eventId: 2,
+      marketTimestamp: '2026-01-05T15:01:10Z',
+      serverTimestamp: '2026-01-05T15:01:10Z',
+      prices: [{ symbol: 'AAPL', price: 230, sequenceNumber: 2 }],
+    });
+    expect(fixture.componentInstance['instruments']().find((stock) => stock.symbol === 'AAPL')?.price).toBe(230);
+    fixture.destroy();
+    expect(disconnect).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the advanced chart mounted without a visible updating banner during delayed refresh', async () => {
+    const fixture = await setup();
+    const chart = fixture.debugElement.query(By.directive(PriceChartComponent)).componentInstance;
+    const pending = new Subject<CandleSeries>();
+    marketData.candles.mockImplementationOnce(() => pending);
+    fixture.componentInstance['candleRevision'].update((revision) => revision + 1);
+    fixture.detectChanges();
+    expect(fixture.debugElement.query(By.directive(PriceChartComponent)).componentInstance).toBe(chart);
+    const status = [...fixture.nativeElement.querySelectorAll('[role="status"]')]
+      .find((element: HTMLElement) => element.textContent?.includes('Updating chart'));
+    expect(status?.classList.contains('sr-only')).toBe(true);
+    pending.complete();
+    fixture.destroy();
   });
 
   it('loads a direct symbol route with candles and an account-backed trading ticket', async () => {
@@ -254,7 +289,7 @@ describe('MarketPageComponent', () => {
   it('distinguishes zero balances from an account with no portfolio selection', async () => {
     const fixture = await setup();
     const http = TestBed.inject(HttpTestingController);
-    fixture.componentInstance['accountStore'].load();
+    fixture.componentInstance['accountStore'].load(true);
     http
       .expectOne('/api/me/accounts')
       .flush([{ accountId: 1, name: 'Empty portfolio', openedDate: '2026-01-01' }]);
@@ -269,7 +304,7 @@ describe('MarketPageComponent', () => {
     expect(panel.querySelector('[data-testid="account-portfolio-value"]').textContent).toContain(
       '$0.00',
     );
-    fixture.componentInstance['accountStore'].load();
+    fixture.componentInstance['accountStore'].load(true);
     http.expectOne('/api/me/accounts').flush([]);
     http
       .expectOne('/api/users/me')
@@ -454,7 +489,7 @@ describe('MarketPageComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Popularity');
     expect(fixture.nativeElement.textContent).toContain('Sentiment');
     expect(fixture.nativeElement.textContent).toContain('Bullish');
-    expect(fixture.nativeElement.querySelectorAll('.overview-card')).toHaveLength(4);
+    expect(fixture.nativeElement.querySelectorAll('.overview-card')).toHaveLength(6);
     expect(fixture.nativeElement.querySelectorAll('.overview-card-icon')).toHaveLength(4);
     expect(fixture.nativeElement.querySelectorAll('[role="progressbar"]')).toHaveLength(4);
     expect(fixture.nativeElement.querySelectorAll('.overview-progress span')).toHaveLength(20);

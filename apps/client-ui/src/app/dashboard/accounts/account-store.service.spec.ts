@@ -309,4 +309,18 @@ describe('AccountStore', () => {
       expect(store.initials()).toBe('P');
     });
   });
+  it('keeps current balances while refreshing and rejects profile responses predating a fill', () => {
+    load();
+    store['fetchProfile']().subscribe();
+    const old = http.expectOne('/api/users/me');
+    store.refreshAfterTrade(1).subscribe();
+    const current = http.expectOne('/api/users/me');
+    old.flush({ availableFunds: 5000 });
+    expect(store.cashBalance()).toBe(5000);
+    current.flush({ availableFunds: 4700 });
+    http.expectOne(holdingsUrl(1)).flush([{ symbol: 'AAPL', quantity: 5, averageCost: 280 }]);
+    expect(store.cashBalance()).toBe(4700);
+    expect(store.holdingsOf(1)[0].quantity).toBe(5);
+  });
+
 });

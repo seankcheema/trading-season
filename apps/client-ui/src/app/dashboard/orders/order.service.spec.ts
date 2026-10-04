@@ -284,4 +284,23 @@ describe('OrderService', () => {
       expect(service.orders()).toEqual([]);
     });
   });
+  it('shares refreshes and never lets pre-submission history erase a new order', () => {
+    service.instruments().subscribe();
+    http.expectOne('/api/instruments').flush([instrument()]);
+    service.loadOrders().subscribe(); service.loadOrders().subscribe();
+    const old = http.expectOne('/api/orders');
+    service.submitOrder({ accountId: 1, symbol: 'AAPL', orderType: 'BUY', quantity: 1, indicativePrice: 100 }).subscribe();
+    const result = { orderId: 99, status: 'FILLED', orderType: 'BUY', quantity: 1, indicativePrice: 100 };
+    http.expectOne({ method: 'POST', url: '/api/orders' }).flush(result);
+    expect(service.orders()[0].orderId).toBe(99);
+    old.flush([]);
+    http.expectOne({ method: 'GET', url: '/api/orders' }).flush([result]);
+    expect(service.orders()[0].orderId).toBe(99);
+    service.loadOrders().subscribe({ error: () => undefined });
+    expect(service.historyStatus()).toBe('ready');
+    http.expectOne('/api/orders').flush({}, { status: 503, statusText: 'Unavailable' });
+    expect(service.orders()[0].orderId).toBe(99);
+    expect(service.historyError()).toContain('Unable');
+  });
+
 });

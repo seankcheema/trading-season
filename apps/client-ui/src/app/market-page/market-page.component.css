@@ -335,21 +335,6 @@
   opacity: 0.7;
 }
 
-.comparison-picker app-instrument-search ::ng-deep .instrument-search-input {
-  border-bottom: none !important;
-}
-
-.comparison-picker app-instrument-search ::ng-deep input {
-  border-bottom: none !important;
-}
-
-.comparison-picker app-instrument-search ::ng-deep input:hover {
-  border-bottom: none !important;
-}
-
-.comparison-picker app-instrument-search ::ng-deep input:focus {
-  border-bottom: none !important;
-}
 .comparison-charts {
   display: grid;
   height: 100%;
@@ -750,10 +735,6 @@
 .tools-close-button::after {
   display: none;
 }
-.tools-close-button .chevron-rotate {
-  font-size: 1rem;
-  transition: transform 280ms ease;
-}
 .market-grid.tools-collapsed .tools-close-button .chevron-rotate {
   transform: rotate(180deg);
 }
@@ -767,6 +748,7 @@
   align-items: center;
   justify-content: center;
 }
+.tools-close-button .chevron-rotate,
 .tools-open-button .chevron-rotate {
   font-size: 1rem;
   transition: transform 280ms ease;
@@ -1016,4 +998,10 @@
     flex: 1;
     min-width: 0;
   }
+}
+
+.comparison-picker app-instrument-search ::ng-deep input,
+.comparison-picker app-instrument-search ::ng-deep input:hover,
+.comparison-picker app-instrument-search ::ng-deep input:focus {
+  border-bottom: none !important;
 }

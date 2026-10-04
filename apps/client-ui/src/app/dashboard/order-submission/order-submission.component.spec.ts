@@ -373,38 +373,10 @@ describe('OrderSubmissionComponent', () => {
     expect(fixture.componentInstance['fullScreenUrl']()).toEqual(['/dashboard/markets', 'aapl']);
   });
 
-  it('should limit the fallback chart to the elapsed market session', () => {
+  it('does not generate placeholder history before market data arrives', () => {
     const fixture = setup();
-    const component = fixture.componentInstance;
     fixture.componentRef.setInput('marketTimestamp', '2026-01-05T16:00:00Z');
-
-    const points = component['chartPoints']();
-
-    expect(points[0].time.toISOString()).toBe('2026-01-05T15:30:00.000Z');
-    expect(points[points.length - 1].time.toISOString()).toBe('2026-01-05T16:00:00.000Z');
-    expect(
-      points.every((point) => point.time.getTime() <= Date.parse('2026-01-05T16:00:00Z')),
-    ).toBe(true);
-  });
-
-  it('should include the exact cursor between regular chart samples', () => {
-    const fixture = setup();
-    fixture.componentRef.setInput('marketTimestamp', '2026-01-05T16:07:00Z');
-
-    const points = fixture.componentInstance['chartPoints']();
-
-    expect(points[points.length - 1].time.toISOString()).toBe('2026-01-05T16:07:00.000Z');
-  });
-
-  it('should preserve the complete session at market close', () => {
-    const fixture = setup();
-    fixture.componentRef.setInput('marketTimestamp', '2026-01-05T22:00:00Z');
-
-    const points = fixture.componentInstance['chartPoints']();
-
-    expect(points).toHaveLength(27);
-    expect(points[0].time.toISOString()).toBe('2026-01-05T15:30:00.000Z');
-    expect(points[points.length - 1].time.toISOString()).toBe('2026-01-05T22:00:00.000Z');
+    expect(fixture.componentInstance['chartPoints']()).toEqual([]);
   });
 
   describe('rendered dialog', () => {
@@ -667,7 +639,7 @@ describe('OrderSubmissionComponent', () => {
       expect(point.value).toBe(316.59);
     });
 
-    it('should fall back to the generated series when candles fail to load', () => {
+    it('shows an error without fabricated history when candles fail to load', () => {
       const fixture = setup();
       fixture.componentRef.setInput('sessionId', 3);
       fixture.componentRef.setInput('marketTimestamp', '2026-01-05T16:00:00Z');
@@ -678,7 +650,33 @@ describe('OrderSubmissionComponent', () => {
         .flush('down', { status: 503, statusText: 'Service Unavailable' });
 
       const points = fixture.componentInstance['chartPoints']();
-      expect(points[0].time.toISOString()).toBe('2026-01-05T15:30:00.000Z');
+      expect(points).toEqual([]);
+      expect(fixture.componentInstance['chartError']()).toContain('could not refresh');
     });
   });
+  it('retains the previous chart range during delayed timeframe refresh and after failure', () => {
+    const fixture = setup();
+    const component = fixture.componentInstance;
+    const http = TestBed.inject(HttpTestingController);
+    fixture.componentRef.setInput('sessionId', 3);
+    fixture.componentRef.setInput('marketTimestamp', '2026-01-05T16:00:00Z');
+    fixture.detectChanges();
+    http.expectOne((request) => request.url === '/api/market/candles').flush({ points: [
+      { timestamp: '2026-01-05T15:30:00Z', close: 310 }, { timestamp: '2026-01-05T16:00:00Z', close: 316.59 },
+    ] });
+    fixture.detectChanges();
+    const previous = component['chartPoints']();
+    component['timeframe'].set('5D'); fixture.detectChanges();
+    const refresh = http.expectOne((request) => request.url === '/api/market/candles');
+    expect(component['chartPoints']()).toEqual(previous);
+    expect(component['chartTimeframe']()).toBe('1D');
+    expect(fixture.nativeElement.querySelector('app-price-chart')).not.toBeNull();
+    refresh.flush({}, { status: 503, statusText: 'Unavailable' }); fixture.detectChanges();
+    expect(component['chartPoints']()).toEqual(previous);
+    expect(component['chartError']()).toContain('could not refresh');
+    component['retryChart'](); fixture.detectChanges();
+    http.expectOne((request) => request.url === '/api/market/candles').flush({ points: [] });
+    expect(component['chartPoints']()).toEqual([]);
+  });
+
 });

@@ -9,6 +9,7 @@ import { AccountHolding } from './account.models';
 import { InstrumentRef, OrderResult } from '../orders/order.models';
 import { executionTime, effectiveOrders, holdingsAt } from './simulation-account';
 import { PricePoint, Timeframe } from '../mock-data';
+import { TokenStorageService } from '../../core/auth/token-storage.service';
 
 export interface SimulationPortfolio {
   accountId: number;
@@ -26,8 +27,7 @@ interface Valuation {
   value: number;
 }
 
-// Scoped to the dashboard so history cannot survive a change of signed-in user.
-@Injectable()
+@Injectable({ providedIn: 'root' })
 export class PortfolioHistoryService {
   private readonly http = inject(HttpClient);
   private readonly market = inject(MarketDataService);
@@ -38,33 +38,97 @@ export class PortfolioHistoryService {
   private accountId: number | null = null;
   private timeframe: Timeframe = '1D';
   private readonly pendingCaptures = new Set<number>();
+  private readonly cache = new Map<string, {
+    signature: string; points: PricePoint[]; domain: ChartTimeDomain | null; expiresAt: number;
+  }>();
+  private pendingSignature?: string;
   readonly points = signal<PricePoint[]>([]);
   readonly domain = signal<ChartTimeDomain | null>(null);
+  readonly refreshing = signal(false);
+  readonly displayedTimeframe = signal<Timeframe>('1D');
   readonly status = signal<'loading' | 'ready' | 'error'>('ready');
 
+  constructor() {
+    inject(TokenStorageService).onIdentityChange(() => {
+      this.request?.unsubscribe();
+      this.pendingSignature = undefined;
+      this.cache.clear();
+      this.pendingCaptures.clear();
+      this.accountId = null;
+      this.simulation = undefined;
+      this.points.set([]);
+      this.domain.set(null);
+      this.refreshing.set(false);
+      this.status.set('ready');
+    });
+  }
+
+  private cacheKey(): string {
+    return `${this.accountId}:${this.simulation?.sessionId ?? 'account'}:${this.timeframe}`;
+  }
+
+  private signature(): string {
+    const context = this.simulation;
+    return JSON.stringify([this.cacheKey(), context && {
+      ...context, at: Math.floor(context.at / 60_000),
+    }, this.market.revision()]);
+  }
+
+  private remember(): void {
+    this.cache.set(this.cacheKey(), {
+      signature: this.signature(), points: this.points(), domain: this.domain(),
+      expiresAt: Date.now() + 60_000,
+    });
+    if (this.cache.size > 64) this.cache.delete(this.cache.keys().next().value!);
+    this.pendingSignature = undefined;
+  }
+
   select(accountId: number | null, timeframe: Timeframe, simulation?: SimulationPortfolio): void {
+    if (accountId !== this.accountId || simulation?.sessionId !== this.simulation?.sessionId) {
+      this.domain.set(null);
+      this.points.set([]);
+    }
     this.simulation = simulation;
-    this.domain.set(null);
-    this.request?.unsubscribe();
     this.accountId = accountId;
     this.timeframe = timeframe;
-    this.points.set([]);
+    const signature = this.signature();
+    if (this.pendingSignature === signature) return;
+    const cached = this.cache.get(this.cacheKey());
+    if (cached?.signature === signature && !this.pendingCaptures.has(accountId ?? -1)) {
+      this.points.set(cached.points);
+      this.domain.set(cached.domain);
+      this.displayedTimeframe.set(timeframe);
+      this.status.set('ready');
+      if (cached.expiresAt > Date.now()) {
+        this.request?.unsubscribe();
+        this.pendingSignature = undefined;
+        this.refreshing.set(false);
+        return;
+      }
+    }
     this.refresh();
   }
 
   afterTrade(accountId: number): void {
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(`${accountId}:`)) this.cache.delete(key);
+    }
     this.pendingCaptures.add(accountId);
     if (accountId === this.accountId) this.refresh();
   }
 
   refresh(): void {
     this.request?.unsubscribe();
+    this.pendingSignature = undefined;
     const accountId = this.accountId;
     if (accountId === null) {
+      this.refreshing.set(false);
       this.status.set('ready');
       return;
     }
-    this.status.set('loading');
+    this.pendingSignature = this.signature();
+    this.refreshing.set(true);
+    if (!this.points().length && !this.cache.has(this.cacheKey())) this.status.set('loading');
     if (this.simulation) {
       this.loadSimulation(this.simulation);
       return;
@@ -89,9 +153,18 @@ export class PortfolioHistoryService {
         this.points.set(
           values.map((point) => ({ time: new Date(point.timestamp), value: point.value })),
         );
+        this.displayedTimeframe.set(this.timeframe);
+        this.remember();
+        this.refreshing.set(false);
         this.status.set('ready');
       },
-      error: () => this.status.set('error'),
+      error: () => {
+        this.pendingSignature = undefined;
+        const cached = this.cache.get(this.cacheKey());
+        if (cached) cached.expiresAt = 0;
+        this.refreshing.set(false);
+        this.status.set('error');
+      },
     });
   }
   private loadSimulation(context: SimulationPortfolio): void {
@@ -164,10 +237,17 @@ export class PortfolioHistoryService {
       .subscribe({
         next: (points) => {
           this.points.set(points);
+          this.pendingCaptures.delete(context.accountId);
+          this.displayedTimeframe.set(this.timeframe);
+          this.remember();
+          this.refreshing.set(false);
           this.status.set('ready');
         },
         error: () => {
-          this.points.set([]);
+          this.pendingSignature = undefined;
+          const cached = this.cache.get(this.cacheKey());
+          if (cached) cached.expiresAt = 0;
+          this.refreshing.set(false);
           this.status.set('error');
         },
       });

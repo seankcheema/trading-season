@@ -1,3 +1,4 @@
+import { WatchlistStarComponent } from '../watchlist/watchlist-star.component';
 import { ToastService } from '../../notifications/toast.service';
 import { affordableShares, boundedShares, wholeShares } from '../shared/share-limits';
 import { CurrencyPipe } from '@angular/common';
@@ -17,14 +18,7 @@ import {
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideExpand, lucideX } from '@ng-icons/lucide';
 import { RouterLink } from '@angular/router';
-import {
-  Instrument,
-  OrderSide,
-  PricePoint,
-  Timeframe,
-  findInstrument,
-  mockPriceSeries,
-} from '../mock-data';
+import { Instrument, OrderSide, PricePoint, Timeframe, findInstrument } from '../mock-data';
 import { MarketDataService } from '../market-data.service';
 import { toOrderErrorMessage } from '../orders/order-error';
 import { OrderResult } from '../orders/order.models';
@@ -41,6 +35,7 @@ const ORDER_REJECTED = 'The order was rejected.';
   selector: 'app-order-submission',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    WatchlistStarComponent,
     CurrencyPipe,
     NgIcon,
     RouterLink,
@@ -82,10 +77,7 @@ export class OrderSubmissionComponent {
   // Starts as the instrument picked on the dashboard; the in-dialog search can swap symbols.
   protected readonly activeSymbol = linkedSignal(() => this.instrument().symbol);
   protected readonly activeInstrument = computed(
-    () =>
-      findInstrument(this.activeSymbol(), this.instruments()) ??
-      findInstrument(this.activeSymbol()) ??
-      this.instrument(),
+    () => findInstrument(this.activeSymbol(), this.instruments()) ?? this.instrument(),
   );
   protected readonly fullScreenUrl = computed(() => [
     '/dashboard/markets',
@@ -96,24 +88,44 @@ export class OrderSubmissionComponent {
   protected readonly timeframe = signal<Timeframe>('1D');
   private readonly candlePoints = signal<PricePoint[] | null>(null);
 
+  protected readonly chartTimeframe = signal<Timeframe>('1D');
+  protected readonly chartRefreshing = signal(false);
+  protected readonly chartError = signal('');
+  private readonly candleMinute = computed(() =>
+    Math.floor((this.marketTimeMillis() ?? 0) / 60_000),
+  );
+  private readonly chartRetry = signal(0);
+  protected retryChart(): void {
+    this.chartRetry.update((value) => value + 1);
+  }
+  private chartContext = '';
   private readonly candleLoader = effect((onCleanup) => {
     const sessionId = this.sessionId();
     const symbol = this.activeSymbol();
     const timeframe = this.timeframe();
-    this.candlePoints.set(null);
-    if (sessionId === null) {
-      return;
+    this.candleMinute();
+    this.chartRetry();
+    this.marketData.revision?.();
+    const context = `${sessionId}:${symbol}`;
+    if (this.chartContext !== context) {
+      this.candlePoints.set(null);
+      this.chartContext = context;
     }
-
+    if (sessionId === null) return;
+    this.chartRefreshing.set(true);
+    this.chartError.set('');
     const subscription = this.marketData.candles(sessionId, symbol, timeframe).subscribe({
-      next: (series) =>
+      next: (series) => {
         this.candlePoints.set(
-          series.points.map((point) => ({
-            time: new Date(point.timestamp),
-            value: point.close,
-          })),
-        ),
-      error: () => this.candlePoints.set(null),
+          series.points.map((point) => ({ time: new Date(point.timestamp), value: point.close })),
+        );
+        this.chartTimeframe.set(timeframe);
+        this.chartRefreshing.set(false);
+      },
+      error: () => {
+        this.chartRefreshing.set(false);
+        this.chartError.set('Chart data could not refresh.');
+      },
     });
     onCleanup(() => subscription.unsubscribe());
   });
@@ -123,6 +135,8 @@ export class OrderSubmissionComponent {
     const marketTime = this.marketTimeMillis();
     const candles = this.candlePoints();
     if (candles?.length) {
+      if (marketTime !== null && marketTime < candles[candles.length - 1].time.getTime())
+        return candles;
       const points = [...candles];
       points[points.length - 1] = {
         time: new Date(marketTime ?? points[points.length - 1].time.getTime()),
@@ -130,12 +144,7 @@ export class OrderSubmissionComponent {
       };
       return points;
     }
-    return mockPriceSeries(
-      instrument.symbol,
-      this.timeframe(),
-      instrument.price,
-      marketTime ?? undefined,
-    );
+    return [];
   });
 
   protected readonly sharesHeld = computed(

@@ -162,6 +162,7 @@ export function decodeJwtPayload(token: string): Record<string, unknown> {
  */
 export class ApiStub {
   readonly requests: RecordedRequest[] = [];
+  private readonly watchlists = new Map<string, { symbol: string; createdAt: string }[]>();
 
   private readonly accounts = new Map<string, StoredAccount>();
   private readonly refreshTokens = new Map<string, string>();
@@ -239,6 +240,7 @@ export class ApiStub {
     await page.route(AUTH_ORIGIN + '/auth/logout', (route) => this.logout(route));
     await page.route('**/api/auth/register', (route) => this.registerProfile(route));
     await page.route('**/api/auth/account-exists', (route) => this.accountExists(route));
+    await page.route(/\/api\/me\/watchlist(?:\/[^/?]+)?$/, (route) => this.watchlist(route));
     await page.route('**/api/orders', (route) => this.orderRequest(route));
     await page.route('**/api/instruments', async (route) => {
       if (await this.caller(route))
@@ -278,6 +280,24 @@ export class ApiStub {
       (url) => /^\/api\/accounts\/\d+\/portfolio-(history|valuations)$/.test(url.pathname),
       (route) => this.portfolioHistory(route),
     );
+  }
+
+  private async watchlist(route: Route): Promise<void> {
+    const owner = await this.caller(route);
+    if (!owner) return;
+    const entries = this.watchlists.get(owner) ?? [];
+    const symbol = decodeURIComponent(new URL(route.request().url()).pathname.split('/')[4] ?? '').trim().toUpperCase();
+    const method = route.request().method();
+    if (method === 'GET') { await this.json(route, 200, entries); return; }
+    if (method === 'DELETE') {
+      this.watchlists.set(owner, entries.filter((entry) => entry.symbol !== symbol));
+      await route.fulfill({ status: 204 }); return;
+    }
+    if (!['AAPL', 'MSFT'].includes(symbol)) { await this.json(route, 404, { error: 'Unknown stock symbol' }); return; }
+    const entry = entries.find((item) => item.symbol === symbol) ?? { symbol, createdAt: new Date().toISOString() };
+    if (!entries.includes(entry)) entries.push(entry);
+    this.watchlists.set(owner, entries);
+    await this.json(route, 200, entry);
   }
 
   /** Submit at the quoted price; apply only fills to persisted cash and holdings. */

@@ -1,7 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { MarketDataService } from '../market-data.service';
 import { PortfolioHistoryService } from './portfolio-history.service';
+import { TokenStorageService } from '../../core/auth/token-storage.service';
 
 describe('PortfolioHistoryService', () => {
   let service: PortfolioHistoryService;
@@ -64,6 +66,7 @@ describe('PortfolioHistoryService', () => {
     expect(service.points()[0].value).toBe(0);
     expect(service.points().find((point) => point.time.getTime() === purchase - 1)?.value).toBe(0);
     expect(service.points().at(-1)?.value).toBe(220);
+    TestBed.inject(MarketDataService).invalidate();
     service.select(1, '1D', { ...context, at: purchase - 1 });
     http
       .expectOne((request) => request.url === '/api/market/candles')
@@ -99,6 +102,29 @@ describe('PortfolioHistoryService', () => {
     });
     expect(service.points().at(-1)?.time.getTime()).toBe(at);
     expect(service.points().every((point) => point.time.getTime() <= at)).toBe(true);
+  });
+
+  it('restores cached history after navigation and deduplicates matching loads', () => {
+    service.select(1, '1D');
+    service.select(1, '1D');
+    http.expectOne(history()).flush([point]);
+    service.select(null, '1D');
+    service.select(1, '1D');
+    http.expectNone(history());
+    expect(service.points()[0].value).toBe(100.5);
+    expect(service.refreshing()).toBe(false);
+    service.refresh();
+    expect(service.points()[0].value).toBe(100.5);
+    http.expectOne(history()).flush([point]);
+  });
+
+  it('clears cached history on logout', () => {
+    service.select(1, '1D');
+    http.expectOne(history()).flush([point]);
+    TestBed.inject(TokenStorageService).clear();
+    expect(service.points()).toEqual([]);
+    service.select(1, '1D');
+    http.expectOne(history()).flush([]);
   });
 
   it('uses actual observation timestamps without generating earlier values', () => {
@@ -169,4 +195,18 @@ describe('PortfolioHistoryService', () => {
     http.expectOne('/api/accounts/2/portfolio-valuations').flush(point);
     http.expectOne(history(2)).flush([point]);
   });
+  it('retains points and their range during delayed refresh and keeps them after failure', () => {
+    service.select(1, '1D'); http.expectOne(history()).flush([point]);
+    service.select(1, '5D');
+    expect(service.points()[0].value).toBe(100.5);
+    expect(service.displayedTimeframe()).toBe('1D');
+    http.expectOne('/api/accounts/1/portfolio-history?timeframe=5D').flush({}, { status: 503, statusText: 'Unavailable' });
+    expect(service.points()[0].value).toBe(100.5);
+    expect(service.status()).toBe('error');
+    service.refresh();
+    http.expectOne('/api/accounts/1/portfolio-history?timeframe=5D').flush([{ ...point, value: 110 }]);
+    expect(service.displayedTimeframe()).toBe('5D');
+    expect(service.points()[0].value).toBe(110);
+  });
+
 });

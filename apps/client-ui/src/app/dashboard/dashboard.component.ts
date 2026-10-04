@@ -1,3 +1,4 @@
+import { WatchlistStore } from './watchlist/watchlist-store.service';
 import { ActivityItem, ActivityRowComponent } from './shared/activity-row.component';
 import { AccountControlComponent } from './shared/account-control.component';
 import { MarketClockControlComponent } from './shared/market-clock-control.component';
@@ -33,14 +34,7 @@ import { Subscription } from 'rxjs';
 import { Router } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { AuthService } from '../core/auth/auth.service';
-import {
-  Instrument,
-  MOCK_INSTRUMENTS,
-  PricePoint,
-  Timeframe,
-  findInstrument,
-  mockPriceSeries,
-} from './mock-data';
+import { Instrument, PricePoint, Timeframe, findInstrument } from './mock-data';
 import { MarketDataService, MarketSnapshot, MarketTickEvent } from './market-data.service';
 import { AccountStore } from './accounts/account-store.service';
 import { PortfolioHistoryService } from './accounts/portfolio-history.service';
@@ -106,10 +100,7 @@ interface PricedHolding {
     TimeframeToggleComponent,
   ],
   providers: [
-    AccountStore,
     MarketClockService,
-    PortfolioHistoryService,
-    OrderService,
     provideIcons({
       lucideBriefcaseBusiness,
       lucideCalendarClock,
@@ -194,7 +185,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
   });
   // First and last initial of the signed-in user; empty until the profile loads.
   protected readonly profileInitials = this.accountStore.initials;
-  protected readonly instruments = signal<Instrument[]>([...MOCK_INSTRUMENTS]);
+  protected readonly instruments = signal<Instrument[]>([]);
+  protected readonly watchedInstruments = computed(() =>
+    this.watchlist.entries().map((entry) => ({
+      symbol: entry.symbol,
+      instrument: this.instruments().find((instrument) => instrument.symbol === entry.symbol),
+    })),
+  );
+  protected refreshWatchlist(): void {
+    this.watchlist.load(true).subscribe({ error: () => undefined });
+  }
   protected readonly tickAnimations = signal(new Map<string, TickAnimation>());
   protected readonly portfolioTimeframe = signal<Timeframe>('1D');
   protected readonly marketSessionId = this.clock.marketSessionId;
@@ -220,8 +220,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.priceHoldings(this.simulationHoldings().get(this.selectedAccountId() ?? -1) ?? []),
   );
 
+  protected readonly assetSort = signal<'value' | 'symbol'>('value');
   protected readonly visibleAssets = computed(() =>
-    this.holdings().filter((holding) => holding.value !== 0),
+    this.holdings().filter((holding) => holding.value !== 0).sort((a, b) =>
+      this.assetSort() === 'value'
+        ? b.value - a.value || a.symbol.localeCompare(b.symbol)
+        : a.symbol.localeCompare(b.symbol),
+    ),
   );
 
   // Only the symbols, so price ticks don't look like a change of holdings.
@@ -303,6 +308,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return Number.isNaN(time) ? null : time;
   });
 
+  private readonly assetMinute = computed(() =>
+    Math.floor((this.marketTimeMillis() ?? 0) / 60_000),
+  );
   protected readonly assetCharts = computed<Record<string, PricePoint[]>>(() => {
     const candlesBySymbol = this.assetCandlePoints();
     const marketTime = this.marketTimeMillis();
@@ -310,6 +318,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.holdings().map((holding) => {
         const candles = candlesBySymbol.get(holding.symbol);
         if (candles?.length) {
+          if (marketTime !== null && marketTime < candles[candles.length - 1].time.getTime())
+            return [holding.symbol, candles];
           const points = [...candles];
           points[points.length - 1] = {
             time: new Date(marketTime ?? points[points.length - 1].time.getTime()),
@@ -317,10 +327,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           };
           return [holding.symbol, points];
         }
-        return [
-          holding.symbol,
-          mockPriceSeries(holding.symbol, '1D', holding.instrument.price, marketTime ?? undefined),
-        ];
+        return [holding.symbol, []];
       }),
     );
   });
@@ -408,16 +415,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // load daily candles for any newly held symbol once there is a market session.
     effect(() => {
       this.heldSymbols();
+      this.assetMinute();
+      this.marketData.revision?.();
       const sessionId = this.marketSessionId();
       if (sessionId !== null) {
-        untracked(() => this.loadAssetCharts(sessionId, this.marketGeneration));
+        untracked(() => {
+          this.clearAssetChartSubscriptions();
+          this.loadAssetCharts(sessionId, this.marketGeneration);
+        });
       }
     });
   }
 
+  protected readonly watchlist = inject(WatchlistStore);
+
   ngOnInit(): void {
     if (isPlatformBrowser(this.platformId)) {
       this.loadMarketSnapshot();
+      this.watchlist.load(true).subscribe({ error: () => undefined });
       this.accountStore.load();
       this.loadRecentOrders();
       this.historyRefreshTimer = setInterval(() => this.portfolioHistory.refresh(), 60_000);
@@ -454,7 +469,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   protected retryAccounts(): void {
-    this.accountStore.load();
+    this.accountStore.load(true);
   }
 
   protected loadRecentOrders(): void {
@@ -559,14 +574,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   private loadMarketSnapshot(): void {
-    this.marketData.snapshot().subscribe({
-      next: (snapshot) => this.applySnapshot(snapshot),
-      error: () => undefined,
-    });
+    this.recentOrderSubscriptions.add(
+      this.marketData.snapshot().subscribe({
+        next: (snapshot) => this.applySnapshot(snapshot),
+        error: () => undefined,
+      }),
+    );
   }
 
   private applySnapshot(snapshot: MarketSnapshot): void {
     this.disconnectMarket?.();
+    if (this.marketSessionId() !== snapshot.sessionId) this.assetCandlePoints.set(new Map());
     this.clearAssetChartSubscriptions();
     this.clearQueuedUpdates();
     this.marketGeneration++;
@@ -628,7 +646,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private clearAssetChartSubscriptions(): void {
     this.assetChartSubscriptions.forEach((subscription) => subscription.unsubscribe());
     this.assetChartSubscriptions.clear();
-    this.assetCandlePoints.set(new Map());
   }
 
   private queueTickBatch(event: MarketTickEvent): void {

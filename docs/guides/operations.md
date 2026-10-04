@@ -92,7 +92,7 @@ Javadoc generation is a required Java change check described in [development](de
 
 **Token and auth issues:**
 - JWT verification fails: check the signing/public key pair and expiry. The Java backend returns 401 when the JWKS at AUTH_JWK_SET_URI is unreachable, the signature does not match, the token has expired, iss differs from AUTH_JWT_ISSUER, or sub is not a UUID. Java caches the key set for five minutes and refetches early when a token carries an unknown kid; the auth service derives kid from the public key, so a key rotation is picked up on the first token signed with the new key. The auth service's own Passport strategy does not enforce issuer/audience; do not assume it does.
-- Logout appears successful but refresh still works: see the documented [API limitation](../reference/api.md#current-logout-limitation).
+- Logout revokes the supplied refresh token; access JWTs remain valid until expiry. See the [authentication endpoints](../reference/api.md#authentication-endpoints).
 
 **CI and deployment:**
 - Jenkins fails before tests: verify the configured Java/Maven paths and Node version on the actual agent, not just the optional image.
@@ -106,3 +106,7 @@ Database initialization in local and Jenkins Compose now mounts the canonical `a
 The database tests directory has been removed. Jenkins no longer invokes its pytest suite or publishes its JUnit report; the synthetic market-data stage still runs generation, validation, import, and repeated import, and archives resource/storage reports.
 
 Market-data Python entry points and requirements are under `apps/market-data/db/scripts/python`; Windows launchers are under `apps/market-data/db/scripts/powershell`. Docker and Jenkins use the relocated Python paths. The database virtual environment and seed locations are unchanged.
+
+## Watchlist schema upgrade
+
+Deploy the client and Holdings and Trade watchlist changes after applying V002 as the business database owner. Fresh Compose initialization applies V001 and V002; its existing-database branch skips initialization, so retained databases require the explicit [watchlist upgrade](../reference/database.md#watchlist-migration) before deployment. The migration adds one table without modifying existing data.

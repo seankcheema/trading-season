@@ -24,7 +24,8 @@ async function openMarketPage(page: Page, loginPage: LoginPage): Promise<void> {
   await loginPage.signIn(USER.email, USER.password);
   await expect(page).toHaveURL(/\/dashboard$/);
 
-  await page.getByRole('button', { name: /AAPL/ }).first().click();
+  await page.getByPlaceholder('Search for a stock').fill('AAPL');
+  await page.getByRole('option', { name: /AAPL/ }).first().click();
   const dialog = page.getByRole('dialog', { name: 'New Order' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('link', { name: 'Open full screen market chart' })).toBeVisible();
@@ -138,7 +139,8 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   await loginPage.signIn(USER.email, USER.password);
   await page.getByTestId('account-dropdown').locator('summary').click();
   await page.getByRole('menuitemradio', { name: /Retirement/ }).click();
-  await page.getByRole('button', { name: /AAPL/ }).first().click();
+  await page.getByPlaceholder('Search for a stock').fill('AAPL');
+  await page.getByRole('option', { name: /AAPL/ }).first().click();
   await page.getByRole('link', { name: 'Open full screen market chart' }).click();
   await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');
   await page.locator('#future-trade-quantity').fill('2');

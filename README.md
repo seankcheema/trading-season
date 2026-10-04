@@ -58,10 +58,11 @@ CREATE ROLE trading_season WITH LOGIN PASSWORD 'password';
 CREATE DATABASE trading_season OWNER trading_season;
 ```
 
-Then apply the schema. Connect to `trading_season` as the `trading_season` user and run the canonical schema file on an empty database. The same file also repairs a legacy database missing `user_accounts`, `refresh_tokens`, and `portfolio_valuations`; see the [legacy upgrade procedure](docs/reference/database.md#upgrade-a-legacy-17-table-database). It preserves the legacy `sessions` table, so a repaired database has 20 tables while a fresh database has 19:
+Then apply the schema. Connect to `trading_season` as the `trading_season` user and run V001 followed by V002 on an empty database. V001 also repairs a legacy database missing `user_accounts`, `refresh_tokens`, and `portfolio_valuations`; see the [legacy upgrade procedure](docs/reference/database.md#upgrade-a-legacy-17-table-database). It preserves the legacy `sessions` table, so a repaired database has 21 tables while a fresh database has 20:
 
 ```powershell
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initialize_database.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Add_watchlist.sql
 ```
 
 Verify that `trading_season` owns the tables. Connect to the `trading_season` database and run:
@@ -230,15 +231,17 @@ Review the [documentation index](docs/README.md) for all guides and references. 
 
 # Business database ERD
 
-Canonical relationship diagram for all 19 current application tables in V001__Initialize_database.sql. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
+Canonical relationship diagram for all 20 current application tables after V001 and V002. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
 
-The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change.
+The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change. Apply V002 after V001 for the saved watchlist; see the [watchlist migration](docs/reference/database.md#watchlist-migration).
 
 ```mermaid
 erDiagram
     user_accounts ||--|| users : "credentials for"
     user_accounts ||--o{ refresh_tokens : issues
     users ||--o{ accounts : owns
+    users ||--o{ user_watchlist : saves
+    stocks ||--o{ user_watchlist : appears_in
 
     stocks o|--o| instruments : "optionally powers"
 
@@ -278,6 +281,11 @@ erDiagram
         TIMESTAMPTZ locked_until
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
+    }
+    user_watchlist {
+        UUID user_id PK, FK
+        VARCHAR symbol PK, FK
+        TIMESTAMPTZ created_at
     }
     refresh_tokens {
         UUID id PK

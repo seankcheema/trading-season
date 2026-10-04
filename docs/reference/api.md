@@ -431,3 +431,33 @@ Update this reference and relevant tests in the same change as endpoint behavior
 Candle responses include `rangeStart`, `rangeEnd`, and `tradingSessions` (`start`, `end` instants). For 1D the domain covers the selected session from 08:30 to the exclusive 15:00 closing boundary in America/Chicago. For 5D it covers the latest five seeded sessions, or the available sessions near the archive start. Month and year bounds subtract a calendar month or year in the market timezone, clamping month ends and respecting daylight saving time. Returned candle values still end at `marketTimestamp`.
 
 The dashboard portfolio chart uses these explicit domains: daily future time stays blank, five-day sessions occupy equal widths with overnight/weekend gaps omitted, and longer ranges use elapsed calendar time. The Portfolio Value percentage compares the current value with the opening observation in the selected timeframe, including the year opening value for 1Y, rather than holdings purchase cost. When the range begins before the first investment, the percentage uses the first positive portfolio observation in that range, skipping pre-investment zero baselines. Portfolio hover percentages use this same first positive observation as their baseline, comparing the hovered value rather than the current value. History with no positive observations, and loading or failed history, shows an unavailable percentage (—); equal values show +0.00%. Axis labels are independent of sample density and adapt to available width. Portfolio curves use monotone cubic interpolation between observations without overshoot. Execution boundaries remain sharp and zero baselines remain flat. Crowded portfolio execution points use a minimum eight-pixel horizontal display spacing, moving neighbouring points only as needed to preserve order. Clusters at the latest observation shift left to keep future time blank; spacing reduces uniformly when the elapsed range cannot fit all transitions. Positions adapt to plot width, while axis labels, observation timestamps, and values remain unchanged. Hover uses the displayed positions and reports underlying observations; interpolation and spacing change only presentation. Other chart consumers retain their existing rendering defaults.
+
+## Saved watchlist
+
+Holdings and Trade owns the signed-in user's single watchlist across accounts. Every endpoint requires a bearer token and resolves ownership exclusively from its verified subject.
+
+| Method | Path | Success |
+| --- | --- | --- |
+| GET | `/api/me/watchlist` | 200: array of `{ symbol, createdAt }`, sorted by addition time then symbol |
+| PUT | `/api/me/watchlist/{symbol}` | 200: saved entry; repeated adds preserve the original timestamp |
+| DELETE | `/api/me/watchlist/{symbol}` | 204, including when the entry is absent |
+
+Symbols are trimmed and uppercased. Adding an unknown seeded stock or adding without a business profile returns 404. Stars in the stock popup and fullscreen page share membership; the dashboard displays saved stocks using existing market prices. Writes update optimistically and roll back on failure. An unavailable quote is displayed explicitly, without a per-stock price request.
+
+## Client data refresh behavior
+
+Account, order, catalogue, and watchlist stores are shared across dashboard and fullscreen navigation and cleared synchronously on logout or token subject changes. Browser reloads start with empty memory caches. View entry revalidates orders, cash transactions, watchlist membership, and the market snapshot while retaining successful content. Account data is reused for up to one minute. Concurrent identical reads share one request.
+
+Each market view closes its previous live-price stream before replacing a snapshot and closes its active stream when leaving the page. Cached and revalidated snapshot emissions cannot leave additional connections open across navigation.
+
+Portfolio history is shared across dashboard navigation, retaining points and their domain per account, session, and timeframe for one minute. Matching loads are deduplicated; trades invalidate the affected account, context changes revalidate, and logout clears the cache. Ordinary portfolio and chart refreshes keep successful content in place without adding visible updating text that shifts the layout. Initial loads and retryable errors remain explicit. Advanced and popup charts also immediately reuse compatible completed candles while expired history or a new replay minute revalidates.
+
+The dashboard Assets list defaults to descending current market value (shares multiplied by the live price). Its sort control also supports asset symbol order; market ticks update values and their ordering locally.
+
+If live ticks arrive during snapshot revalidation, the response retains the newer live prices and recomputes change and percentage change using the snapshot's opening baseline. Closed streams cannot update cached quotes. Crossing into another trading day refreshes the snapshot to obtain the new session-open baseline before applying further live ticks.
+
+Candle history is cached for 60 seconds, with at most 64 completed entries, keyed by simulation session, normalized stock symbol, timeframe, and replay cursor minute. Popup charts, fullscreen primary/comparison charts, portfolio calculations, and holding sparklines reuse this cache. Stream ticks update prices locally; a new cursor minute requests fresh history. Explicit clock changes, new simulation sessions, and stream resynchronization invalidate market caches. Requests invalidated by a clock change are cancelled; obsolete results cannot restore the previous cursor.
+
+Filled orders are inserted locally and trigger the existing targeted holdings/shared-cash refresh and portfolio refresh. Rejected orders do not refresh unchanged balances. Transfers refresh shared cash and the cash ledger; account creation/rename refresh the account list. Request revisions prevent reads started before a mutation from overwriting its newer state; an obsolete read joins or starts a replacement read. Mutation success remains distinct from refresh failure.
+
+Compatible successful charts and activity rows stay visible during refresh. Timeframe changes retain the previous chart range until replacement data arrives; switching stock, account, or simulation does not show another entity's history. Refresh failures retain successful content, report an error, and allow retry. Live charts no longer substitute generated placeholder history. News, AI content, and demo fullscreen metrics remain demo content.

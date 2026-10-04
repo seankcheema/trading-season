@@ -72,6 +72,7 @@ function flushAccounts(
   } = {},
 ): HttpTestingController {
   const http = TestBed.inject(HttpTestingController);
+  for (const request of http.match('/api/me/watchlist')) request.flush([]);
   http.expectOne('/api/me/accounts').flush(accounts);
   for (const account of accounts) {
     http
@@ -133,6 +134,12 @@ function openDropdown(fixture: ComponentFixture<DashboardComponent>, testId: str
   fixture.detectChanges();
 }
 
+function createDashboard(): ComponentFixture<DashboardComponent> {
+  const fixture = TestBed.createComponent(DashboardComponent);
+  fixture.componentInstance['instruments'].set([...MOCK_INSTRUMENTS]);
+  return fixture;
+}
+
 describe('DashboardComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -142,7 +149,7 @@ describe('DashboardComponent', () => {
   });
 
   it('merges filled executions with cash by execution time and excludes unfilled orders', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.detectChanges();
     flushAccounts(fixture, ACCOUNTS, {
       transactions: [
@@ -184,7 +191,7 @@ describe('DashboardComponent', () => {
   });
 
   it('shows executions at selected replay times and falls back to audit time', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.detectChanges();
     flushAccounts(fixture, ACCOUNTS, {
       orders: [
@@ -211,7 +218,7 @@ describe('DashboardComponent', () => {
   });
 
   it('rewinds the complete account view and restores executions without another submission', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.detectChanges();
     const component = fixture.componentInstance;
     component['applySnapshot']({
@@ -293,7 +300,7 @@ describe('DashboardComponent', () => {
   });
 
   it('passes current balances to the order dialog while the portfolio shows earlier holdings', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.detectChanges();
     const component = fixture.componentInstance;
     const http = flushAccounts(fixture, [ACCOUNTS[0]], {
@@ -321,14 +328,14 @@ describe('DashboardComponent', () => {
   });
 
   it('should create the dashboard component', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     expect(fixture.componentInstance).toBeTruthy();
   });
 
   it.each([100, 100.5, 0])(
     'displays two decimal places for both financial cards at %s',
     (value) => {
-      const fixture = TestBed.createComponent(DashboardComponent);
+      const fixture = createDashboard();
       fixture.detectChanges();
       flushAccounts(fixture, [ACCOUNTS[0]], {
         holdings: { 1: [{ symbol: 'UNQUOTED', quantity: 1, averageCost: value }] },
@@ -343,7 +350,7 @@ describe('DashboardComponent', () => {
   );
 
   it('uses the selected simulation time for the latest displayed value', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.detectChanges();
     flushAccounts(fixture);
     const component = fixture.componentInstance;
@@ -356,13 +363,13 @@ describe('DashboardComponent', () => {
   });
 
   it('should not show the order submission dialog initially', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('app-order-submission')).toBeNull();
   });
 
   it('should open the order submission dialog when an instrument is selected', async () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.componentInstance['openOrder'](MOCK_INSTRUMENTS[0]);
     fixture.detectChanges();
     await fixture.whenStable();
@@ -370,7 +377,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should keep the dialog open after an order so its outcome stays visible', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.detectChanges();
     const http = flushAccounts(fixture);
     const component = fixture.componentInstance;
@@ -393,7 +400,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should reload nothing when an order was rejected', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.detectChanges();
     const http = flushAccounts(fixture);
 
@@ -409,7 +416,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should leave the dashboard on its loaded figures when the post-trade reload fails', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.detectChanges();
     const http = flushAccounts(fixture);
 
@@ -422,7 +429,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should render market time and account dropdowns in the right header controls', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.detectChanges();
 
     const controls = fixture.nativeElement.querySelector(
@@ -436,7 +443,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should offer settings and a red log out behind the profile icon instead of a logout button', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.detectChanges();
 
     const profileDropdown = fixture.nativeElement.querySelector(
@@ -455,7 +462,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should sign out and return to login from the profile menu', async () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
     fixture.detectChanges();
     openDropdown(fixture, 'profile-dropdown');
@@ -471,7 +478,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should open the settings dialog and close the profile menu after choosing settings', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('app-settings-dialog')).toBeNull();
     openDropdown(fixture, 'profile-dropdown');
@@ -488,7 +495,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should close the settings dialog', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.componentInstance['onSettings']();
     fixture.detectChanges();
 
@@ -501,7 +508,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should update the selected account from the custom account dropdown and close it', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     const component = fixture.componentInstance;
     fixture.detectChanges();
     flushAccounts(fixture);
@@ -521,7 +528,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should close the market clock dropdown when the account dropdown opens', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.detectChanges();
 
     openDropdown(fixture, 'market-clock-dropdown');
@@ -533,7 +540,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should close the account dropdown when the market clock dropdown opens', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.detectChanges();
 
     openDropdown(fixture, 'account-dropdown');
@@ -545,7 +552,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should close an open header dropdown when clicking outside it', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.detectChanges();
 
     openDropdown(fixture, 'account-dropdown');
@@ -557,7 +564,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should keep an open header dropdown open when clicking inside it', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.detectChanges();
 
     openDropdown(fixture, 'market-clock-dropdown');
@@ -572,7 +579,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should keep dropdown labels on one line in matching-width trigger markup', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.componentInstance['applySnapshot']({
       sessionId: 2026001,
       status: 'OPEN',
@@ -613,8 +620,20 @@ describe('DashboardComponent', () => {
     expect(marketLabel.className).not.toContain('break-words');
   });
 
+  it('sorts assets by market value by default and allows symbol sorting', () => {
+    const fixture = createDashboard();
+    const component = fixture.componentInstance;
+    vi.spyOn(component as unknown as { holdings: () => ReturnType<typeof component['holdings']> }, 'holdings').mockReturnValue([
+      { symbol: 'AAPL', value: 100 },
+      { symbol: 'MSFT', value: 300 },
+    ] as ReturnType<typeof component['holdings']>);
+    expect(component['visibleAssets']().map((holding) => holding.symbol)).toEqual(['MSFT', 'AAPL']);
+    component['assetSort'].set('symbol');
+    expect(component['visibleAssets']().map((holding) => holding.symbol)).toEqual(['AAPL', 'MSFT']);
+  });
+
   it('should render separate assets table columns for shares, prices, changes, and values', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.detectChanges();
     flushAccounts(fixture);
 
@@ -658,7 +677,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should request one-day candle series for held assets when a market snapshot loads', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     const component = fixture.componentInstance;
     fixture.detectChanges();
     const http = flushAccounts(fixture);
@@ -708,7 +727,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should submit the current typed market time when applying the clock', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     const component = fixture.componentInstance;
     const http = TestBed.inject(HttpTestingController);
     component['marketSessionId'].set(2026001);
@@ -730,7 +749,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should submit September market close minutes in Central time', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     const component = fixture.componentInstance;
     const http = TestBed.inject(HttpTestingController);
     component['marketSessionId'].set(2026001);
@@ -756,7 +775,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should show the backend clock error when the backend rejects the selected time', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     const component = fixture.componentInstance;
     const http = TestBed.inject(HttpTestingController);
     component['marketSessionId'].set(2026001);
@@ -773,7 +792,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should display the current simulated time in the market clock trigger', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.componentInstance['applySnapshot']({
       sessionId: 2026001,
       status: 'OPEN',
@@ -788,7 +807,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should show shortened copy in the market clock dropdown', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.componentInstance['applySnapshot']({
       sessionId: 2026001,
       status: 'OPEN',
@@ -808,7 +827,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should set datetime bounds from the simulation calendar', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     fixture.componentInstance['applySnapshot']({
       sessionId: 2026001,
       status: 'OPEN',
@@ -825,7 +844,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should validate dates outside the simulation range before calling the backend', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     const component = fixture.componentInstance;
     const http = TestBed.inject(HttpTestingController);
     component['marketSessionId'].set(2026001);
@@ -838,7 +857,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should apply the next loaded trading date when the selected day is not seeded', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     const component = fixture.componentInstance;
     const http = TestBed.inject(HttpTestingController);
     const calendarWithGap = {
@@ -866,7 +885,7 @@ describe('DashboardComponent', () => {
   });
 
   it('should still reject dates in months with no loaded trading dates', () => {
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     const component = fixture.componentInstance;
     const http = TestBed.inject(HttpTestingController);
     component['marketSessionId'].set(2026001);
@@ -888,7 +907,7 @@ describe('DashboardComponent', () => {
   it('updates ticker prices immediately and animates the movement for 500 to 1000 ms', () => {
     vi.useFakeTimers();
     vi.spyOn(Math, 'random').mockReturnValue(0);
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     const component = fixture.componentInstance;
     const instrument: Instrument = {
       symbol: 'AAPL',
@@ -921,7 +940,7 @@ describe('DashboardComponent', () => {
 
   it('applies a tick timestamp and prices synchronously without queued price updates', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.999999);
-    const fixture = TestBed.createComponent(DashboardComponent);
+    const fixture = createDashboard();
     const component = fixture.componentInstance;
     component['instruments'].set([{ ...MOCK_INSTRUMENTS[0], price: 100 }]);
 
@@ -942,7 +961,7 @@ describe('DashboardComponent', () => {
 
   describe('accounts, portfolios and cash', () => {
     function render() {
-      const fixture = TestBed.createComponent(DashboardComponent);
+      const fixture = createDashboard();
       fixture.detectChanges();
       return fixture;
     }
@@ -1324,7 +1343,7 @@ describe('DashboardComponent', () => {
           (request) =>
             request.url === '/api/market/candles' && request.params.get('symbol') === 'SPY',
         ),
-      ).toHaveLength(2);
+      ).toHaveLength(1);
     });
 
     it("lists only the user's own cash transactions, newest first", () => {

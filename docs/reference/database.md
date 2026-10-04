@@ -32,24 +32,42 @@ Both Java services share the same `trading_season` database. This table lists wh
 | refresh_tokens | Auth Service | Read/write (issue, rotate, revoke); Java services never read it |
 | users | Holdings and Trade Service | Read/write (profile, funds, settings) |
 | accounts | Holdings and Trade Service | Read/write (account management) |
-| orders | Holdings and Trade Service | Read/write (order lifecycle) |
-| fills | Holdings and Trade Service | Read/write (execution results) |
-| holdings | Holdings and Trade Service | Read/write (position tracking) |
+| orders | Order and Sell Service | Read/write (order lifecycle) |
+| fills | Order and Sell Service | Read/write (execution results) |
+| holdings | Order and Sell Service | Writes positions; Holdings and Trade reads them |
 | portfolio_valuations | Holdings and Trade Service | Append/read (real-time portfolio history) |
-| cash_transactions | Holdings and Trade Service | Read/write (ledger entries) |
-| holding_movements | Holdings and Trade Service | Read/write (position ledger) |
-| audit_trail | Holdings and Trade Service | Read/write (event history) |
+| cash_transactions | Both Java services | Cash transfers in Holdings and Trade; execution ledger in Order and Sell |
+| holding_movements | Order and Sell Service | Read/write (position ledger) |
+| audit_trail | Order and Sell Service | Read/write (event history) |
 | stocks | Holdings and Trade Service | Read/write (reference data) |
-| instruments | Holdings and Trade Service | Read/write (tradable assets) |
+| instruments | Order and Sell Service | Read/write (tradable assets) |
 | simulation_sessions | Holdings and Trade Service | Read/write (simulation metadata) |
 | market_states | Holdings and Trade Service | Read/write |
 | market_behaviors | Holdings and Trade Service | Read/write |
 | market_ticks | Holdings and Trade Service | Read/write |
 | candles | Holdings and Trade Service | Read/write |
 | quotes | Holdings and Trade Service | Read (market snapshots) |
-| Order and Sell Service | Read only (all tables) | Read (does not write) |
+| user_watchlist | Holdings and Trade Service | Read/write (saved stocks per user) |
 
-Both services connect with the same credentials and access all tables. The Order and Sell Service currently has repositories defined but unused.
+Both Java services connect to the same database. Order and Sell implements order validation and execution; Holdings and Trade implements caller-owned profiles, accounts, holdings queries, cash, watchlists, and market data. See the [service boundaries](architecture.md#service-boundaries).
+
+## Watchlist migration
+
+[V002__Add_watchlist.sql](../../apps/market-data/db/migrations/V002__Add_watchlist.sql) adds `user_watchlist` with a composite `(user_id, symbol)` primary key, an addition timestamp, and cascading foreign keys to `users` and `stocks`. Holdings and Trade owns its reads and writes. Watchlists belong to users rather than trading accounts.
+
+Fresh setup through the Python initializer or Compose applies V001 followed by V002. There is no automatic Java migration runner. For an existing database, apply only V002 as the database owner before starting the updated application:
+
+```powershell
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Add_watchlist.sql
+```
+
+V002 preserves existing data and may be reapplied without resetting membership. V001 remains unchanged. Fresh databases now contain 20 application tables; legacy databases retaining `sessions` contain 21. Validate the upgrade against an isolated temporary PostgreSQL cluster with:
+
+```powershell
+python apps/market-data/db/scripts/python/tests/test_watchlist_migration.py
+```
+
+The test requires PostgreSQL binaries on PATH and never connects to an existing database.
 
 ## Business model
 
@@ -119,7 +137,7 @@ The canonical [V001__Initialize_database.sql](../../apps/market-data/db/migratio
 apps/market-data/db/scripts/powershell/setup-database.ps1 -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season
 ```
 
-Alternatively, open `V001__Initialize_database.sql` in pgAdmin connected to `trading_season` and execute the entire file, or use `psql -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initialize_database.sql` with the same connection. The script does not create the database or role, or import market data. Historical numbered migrations and repair files have been consolidated; existing databases require a separately reviewed upgrade except for the bounded legacy repair below.
+Alternatively, open `V001__Initialize_database.sql` in pgAdmin connected to `trading_season` and execute the entire file, or apply V001 with `psql -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initialize_database.sql` using the same connection. Then apply V002 using the [watchlist migration](#watchlist-migration) command. The script does not create the database or role, or import market data. Historical numbered migrations and repair files have been consolidated; existing databases require a separately reviewed upgrade except for the bounded legacy repair below.
 
 ### Upgrade a legacy 17-table database
 
@@ -129,7 +147,7 @@ If your table list includes `sessions` but lacks `user_accounts`, `refresh_token
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initialize_database.sql
 ```
 
-This transactional upgrade requires `users` and `accounts` to exist and all three added tables to be absent. It creates the missing tables, constraints, indexes, and portfolio valuation sequence using the current baseline definitions. It preserves existing rows and the legacy `sessions` table, so this database will have 20 tables: the 19 current application tables plus `sessions`. Do not drop `sessions` just to match a count.
+This transactional upgrade requires `users` and `accounts` to exist and all three added tables to be absent. It creates the missing tables, constraints, indexes, and portfolio valuation sequence using the current baseline definitions. It preserves existing rows and the legacy `sessions` table, so the V001 repair leaves 20 tables: the 19 baseline application tables plus `sessions`. Apply [V002](#watchlist-migration) afterward to bring it to 21 tables. Do not drop `sessions` just to match a count.
 
 The added tables start empty; schema setup does not seed credentials or portfolio observations. Existing profiles retain their UUIDs and are not assigned invented passwords. The profile-to-credentials foreign key is added as `NOT VALID`, matching V001, so existing unmatched profiles remain but new profile writes require credentials. Legacy profile columns and session dependencies require a separate upgrade assessment; this repair does not fully convert an older schema. The repair branch refuses databases where any of these three tables already exist, including an already initialized current schema. Setup wrappers still require an empty schema; use the direct psql command above for the legacy repair.
 

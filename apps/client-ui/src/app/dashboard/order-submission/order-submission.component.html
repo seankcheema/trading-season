@@ -40,7 +40,10 @@
               {{ activeInstrument().symbol.slice(0, 4) }}
             </div>
             <div class="min-w-0">
-              <p class="text-lg leading-tight font-semibold">{{ activeInstrument().symbol }}</p>
+              <p class="flex items-center gap-2 text-lg leading-tight font-semibold">
+                {{ activeInstrument().symbol }}
+                <app-watchlist-star [symbol]="activeInstrument().symbol" />
+              </p>
               <p class="text-muted-foreground truncate text-xs">{{ activeInstrument().name }}</p>
             </div>
           </div>
@@ -75,12 +78,25 @@
           </p>
           <app-timeframe-toggle [(value)]="timeframe" />
         </div>
-        <app-price-chart
-          class="mt-1 h-56"
-          [points]="chartPoints()"
-          [timeframe]="timeframe()"
-          timezone="America/Chicago"
-        />
+        @if (chartRefreshing()) {
+          <p role="status" class="sr-only">Updating chart…</p>
+        }
+        @if (chartError()) {
+          <p role="status" class="text-loss text-xs">
+            {{ chartError() }}
+            <button type="button" class="underline" (click)="retryChart()">Retry</button>
+          </p>
+        }
+        @if (chartPoints().length) {
+          <app-price-chart
+            class="mt-1 h-56"
+            [points]="chartPoints()"
+            [timeframe]="chartTimeframe()"
+            timezone="America/Chicago"
+          />
+        } @else if (!chartRefreshing() && !chartError()) {
+          <p class="h-56 text-muted-foreground">No candle data is available for this range.</p>
+        }
       </div>
 
       <!-- Order ticket -->

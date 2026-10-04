@@ -146,3 +146,7 @@ Update the authoritative guide when its contract changes; do not add implementat
 - Unknown ng test option: use --no-watch, not --run.
 - Database connection or key failures: use the [operations checklist](operations.md) and [auth environment instructions](../../apps/auth-service/README.md).
 - Javadoc tool missing: select a full JDK via JAVA_HOME and verify mvn --version and javadoc --version.
+
+## Watchlist and refresh checks
+
+Fresh business setup applies V001 followed by V002. Existing databases require the explicit [watchlist upgrade](../reference/database.md#watchlist-migration). With PostgreSQL binaries on PATH, run `python apps/market-data/db/scripts/python/tests/test_watchlist_migration.py` to validate the migration against a disposable cluster. UI caches are memory-only; see [client refresh behavior](../reference/api.md#client-data-refresh-behavior).

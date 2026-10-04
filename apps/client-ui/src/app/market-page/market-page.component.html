@@ -113,12 +113,24 @@
       }
       @case ('ready') {
         @if (instrument(); as active) {
+          @if (chartRefreshing()) {
+            <p role="status" class="sr-only">Updating chart…</p>
+          }
+          @if (chartRefreshError()) {
+            <p role="status" class="text-loss text-xs">
+              {{ chartRefreshError() }}
+              <button type="button" class="underline" (click)="retry()">Retry</button>
+            </p>
+          }
           <div class="market-grid" [class.tools-collapsed]="toolsCollapsed()">
             <div class="market-main">
               <section class="market-summary border-border bg-card rounded-xl border px-4 py-1">
                 <div class="market-identity">
                   <div class="min-w-0">
-                    <h1 class="text-xl font-bold">{{ active.symbol }}</h1>
+                    <div class="flex items-center gap-2">
+                      <h1 class="text-xl font-bold">{{ active.symbol }}</h1>
+                      <app-watchlist-star [symbol]="active.symbol" />
+                    </div>
                     <p class="text-muted-foreground truncate text-xs">{{ active.name }}</p>
                   </div>
                   <span class="text-3xl font-bold tabular-nums">
@@ -403,7 +415,7 @@
                               [points]="chartPoints()"
                               [mode]="chartMode()"
                               [enabledIndicators]="enabledIndicators()"
-                              [timeframe]="timeframe()"
+                              [timeframe]="chartTimeframe()"
                               timezone="America/Chicago"
                             />
                           }
@@ -437,7 +449,7 @@
                               [points]="comparisonChartPoints()"
                               [mode]="chartMode()"
                               [enabledIndicators]="enabledIndicators()"
-                              [timeframe]="timeframe()"
+                              [timeframe]="comparisonTimeframe()"
                               timezone="America/Chicago"
                             />
                           }
@@ -469,7 +481,7 @@
                           [points]="chartPoints()"
                           [mode]="chartMode()"
                           [enabledIndicators]="enabledIndicators()"
-                          [timeframe]="timeframe()"
+                          [timeframe]="chartTimeframe()"
                           timezone="America/Chicago"
                         />
                       }

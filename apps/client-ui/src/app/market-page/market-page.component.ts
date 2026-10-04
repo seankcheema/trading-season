@@ -1,3 +1,5 @@
+import { WatchlistStore } from '../dashboard/watchlist/watchlist-store.service';
+import { WatchlistStarComponent } from '../dashboard/watchlist/watchlist-star.component';
 import { DestroyRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AccountStore } from '../dashboard/accounts/account-store.service';
@@ -123,6 +125,7 @@ interface MarketStats {
   selector: 'app-market-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    WatchlistStarComponent,
     DashboardHeaderDropdownComponent,
     SettingsDialogComponent,
     AccountControlComponent,
@@ -145,8 +148,6 @@ interface MarketStats {
     TradeTicketComponent,
   ],
   providers: [
-    AccountStore,
-    OrderService,
     MarketClockService,
 
     provideIcons({
@@ -200,7 +201,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   private readonly toasts = inject(ToastService);
   private readonly destroyRef = inject(DestroyRef);
 
-  protected readonly openHeaderDropdown = signal<'account' | 'market-clock' | 'profile' | 'notifications' | null>(null);
+  protected readonly openHeaderDropdown = signal<
+    'account' | 'market-clock' | 'profile' | 'notifications' | null
+  >(null);
   protected readonly profileInitials = this.accountStore.initials;
   protected readonly settingsOpen = signal(false);
 
@@ -599,6 +602,8 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   private readonly comparisonCandles = signal<MarketCandlePoint[]>([]);
   protected readonly chartCandles = computed(() => {
     const instrument = this.instrument();
+    if ((this.candles().at(-1)?.time.getTime() ?? -Infinity) > Date.parse(this.marketTimestamp()))
+      return this.candles();
     return instrument
       ? applyLiveCandlePrice(this.candles(), instrument.price, this.marketTimestamp())
       : [];
@@ -618,6 +623,11 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   );
   protected readonly comparisonChartCandles = computed(() => {
     const instrument = this.comparisonInstrument();
+    if (
+      (this.comparisonCandles().at(-1)?.time.getTime() ?? -Infinity) >
+      Date.parse(this.marketTimestamp())
+    )
+      return this.comparisonCandles();
     return instrument
       ? applyLiveCandlePrice(this.comparisonCandles(), instrument.price, this.marketTimestamp())
       : [];
@@ -630,23 +640,44 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       marketCap: '$3.42T',
     } as const;
   });
+  protected readonly chartRefreshing = signal(false);
+  protected readonly chartRefreshError = signal('');
+  protected readonly chartTimeframe = signal<Timeframe>('1D');
+  protected readonly comparisonTimeframe = signal<Timeframe>('1D');
+  private chartContext = '';
+  private comparisonContext = '';
+  private readonly candleMinute = computed(() => this.marketTimestamp().slice(0, 16));
   private readonly candleLoader = effect((onCleanup) => {
     const sessionId = this.sessionId();
     const symbol = this.symbol();
     const timeframe = this.timeframe();
     this.candleRevision();
+    this.candleMinute();
+    this.marketData.revision?.();
     if (sessionId === null || !symbol || this.pageStatus() !== 'ready') {
       return;
     }
-    this.chartStatus.set('loading');
-    this.candles.set([]);
+    const context = `${sessionId}:${symbol}`;
+    if (context !== this.chartContext) {
+      this.candles.set([]);
+      this.chartContext = context;
+      this.chartStatus.set('loading');
+    }
+    this.chartRefreshing.set(true);
+    this.chartRefreshError.set('');
     const subscription = this.marketData.candles(sessionId, symbol, timeframe).subscribe({
       next: (series) => {
         const points = marketCandlePoints(series.points);
         this.candles.set(points);
+        this.chartTimeframe.set(timeframe);
+        this.chartRefreshing.set(false);
         this.chartStatus.set(points.length ? 'ready' : 'empty');
       },
-      error: () => this.chartStatus.set('error'),
+      error: () => {
+        this.chartRefreshing.set(false);
+        this.chartRefreshError.set('Chart data could not refresh.');
+        if (!this.candles().length) this.chartStatus.set('error');
+      },
     });
     onCleanup(() => subscription.unsubscribe());
   });
@@ -655,27 +686,40 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     const symbol = this.comparisonSymbol();
     const timeframe = this.timeframe();
     this.candleRevision();
+    this.candleMinute();
+    this.marketData.revision?.();
     if (sessionId === null || !symbol || this.pageStatus() !== 'ready') {
       this.comparisonCandles.set([]);
       this.comparisonChartStatus.set('loading');
       return;
     }
-    this.comparisonChartStatus.set('loading');
-    this.comparisonCandles.set([]);
+    const context = `${sessionId}:${symbol}`;
+    if (context !== this.comparisonContext) {
+      this.comparisonCandles.set([]);
+      this.comparisonContext = context;
+      this.comparisonChartStatus.set('loading');
+    }
     const subscription = this.marketData.candles(sessionId, symbol, timeframe).subscribe({
       next: (series) => {
         const points = marketCandlePoints(series.points);
         this.comparisonCandles.set(points);
+        this.comparisonTimeframe.set(timeframe);
         this.comparisonChartStatus.set(points.length ? 'ready' : 'empty');
       },
-      error: () => this.comparisonChartStatus.set('error'),
+      error: () => {
+        this.chartRefreshError.set('Comparison chart could not refresh.');
+        if (!this.comparisonCandles().length) this.comparisonChartStatus.set('error');
+      },
     });
     onCleanup(() => subscription.unsubscribe());
   });
 
+  protected readonly watchlist = inject(WatchlistStore);
+
   ngOnInit(): void {
     if (!isPlatformBrowser(this.platformId)) return;
 
+    this.watchlist.load(true).subscribe({ error: () => undefined });
     this.accountStore.load();
 
     this.loadTradingData();
@@ -817,14 +861,23 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     this.disconnectMarket?.();
     this.disconnectMarket = undefined;
     this.connected.set(false);
-    this.pageStatus.set('loading');
-    this.marketData.snapshot().subscribe({
-      next: (snapshot) => this.applySnapshot(snapshot),
-      error: () => this.pageStatus.set('error'),
-    });
+    if (!findInstrument(this.symbol(), this.instruments())) this.pageStatus.set('loading');
+    this.marketData
+      .snapshot()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (snapshot) => this.applySnapshot(snapshot),
+        error: () => {
+          if (this.pageStatus() !== 'ready') this.pageStatus.set('error');
+          else this.chartRefreshError.set('Market snapshot could not refresh.');
+        },
+      });
   }
 
   private applySnapshot(snapshot: MarketSnapshot): void {
+    // Cached snapshots and their revalidation each emit; retire the previous stream.
+    this.disconnectMarket?.();
+    this.disconnectMarket = undefined;
     const instruments = snapshot.stocks.map((stock) => ({
       symbol: stock.symbol,
       name: stock.companyName,
