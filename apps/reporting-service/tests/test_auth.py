@@ -4,7 +4,7 @@ Tests for authentication and JWT token handling
 
 import pytest
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import uuid
 from app import verify_token, JWKSCache
 
@@ -33,7 +33,7 @@ class TestTokenVerification:
         payload = {
             'sub': str(uuid.uuid4()),
             'iss': 'http://localhost:3001',
-            'exp': datetime.utcnow() - timedelta(minutes=1)  # Expired 1 min ago
+            'exp': datetime.now(UTC) - timedelta(minutes=1)  # Expired 1 min ago
         }
         token = jwt.encode(payload, 'secret', algorithm='HS256')
         

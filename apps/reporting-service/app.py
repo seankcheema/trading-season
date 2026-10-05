@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 from flask import Flask, jsonify, request, g, send_from_directory
 from flask_cors import CORS
-from datetime import datetime
+from datetime import datetime, UTC
 import jwt
 import requests
 from functools import wraps
@@ -176,7 +176,7 @@ def health():
         return jsonify({
             'status': 'healthy',
             'service': 'reporting-service',
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(UTC).isoformat(),
             'version': '0.1.0'
         }), 200
     
@@ -186,7 +186,7 @@ def health():
             'status': 'unhealthy',
             'service': 'reporting-service',
             'error': str(e),
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(UTC).isoformat()
         }), 503
 
 

@@ -5,7 +5,7 @@ Pytest fixtures and configuration for reporting service tests
 import pytest
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import uuid
 import jwt
 from decimal import Decimal
@@ -137,8 +137,8 @@ def test_order(db_session, test_account, test_instrument):
         indicative_price=Decimal('150.00'),
         status='FILLED',
         client_reference=uuid.uuid4(),
-        submitted_at=datetime.utcnow(),
-        resolved_at=datetime.utcnow()
+        submitted_at=datetime.now(UTC),
+        resolved_at=datetime.now(UTC)
     )
     db_session.add(order)
     db_session.commit()
@@ -155,7 +155,7 @@ def test_fill(db_session, test_order):
         filled_quantity=Decimal('100.00'),
         filled_price=Decimal('150.00'),
         commission=Decimal('10.00'),
-        fill_timestamp=datetime.utcnow()
+        fill_timestamp=datetime.now(UTC)
     )
     db_session.add(fill)
     db_session.commit()
@@ -188,7 +188,7 @@ def test_cash_transaction(db_session, test_account, test_user):
         user_id=test_user.user_id,
         amount=Decimal('1000.00'),
         transaction_type='DEPOSIT',
-        timestamp=datetime.utcnow()
+        timestamp=datetime.now(UTC)
     )
     db_session.add(transaction)
     db_session.commit()
@@ -202,8 +202,8 @@ def valid_token(test_user):
         'sub': str(test_user.user_id),
         'iss': 'http://localhost:3001',
         'aud': 'trading-season-api',
-        'exp': datetime.utcnow() + timedelta(minutes=15),
-        'iat': datetime.utcnow()
+        'exp': datetime.now(UTC) + timedelta(minutes=15),
+        'iat': datetime.now(UTC)
     }
     # Create a mock token - note: in real tests, you'd use RS256 with actual keys
     token = jwt.encode(payload, 'secret', algorithm='HS256')
