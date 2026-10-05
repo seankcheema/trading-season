@@ -82,14 +82,15 @@ pipeline {
                 // This prevents "Operation not permitted" errors during workspace cleanup
                 sh '''
                     set +e
-                    if [ -d apps/reporting-service/reports ] || [ -d apps/reporting-service/coverage ] || [ -d apps/reporting-service/tests/__pycache__ ] || [ -d apps/reporting-service/__pycache__ ]; then
+                    if [ -d apps/reporting-service/reports ] || [ -d apps/reporting-service/coverage ] || [ -d apps/reporting-service/tests/__pycache__ ] || [ -d apps/reporting-service/__pycache__ ] || [ -d apps/reporting-service/.pytest_cache ]; then
                         echo "Repairing permissions on Docker-generated reporting-service artifacts..."
                         docker run --rm -v "$(pwd)":/ws -w /ws alpine:latest \
                             sh -c 'for path in \
                                 /ws/apps/reporting-service/reports \
                                 /ws/apps/reporting-service/coverage \
                                 /ws/apps/reporting-service/tests/__pycache__ \
-                                /ws/apps/reporting-service/__pycache__; do \
+                                /ws/apps/reporting-service/__pycache__ \
+                                /ws/apps/reporting-service/.pytest_cache; do \
                                 [ -e "$path" ] && chmod -R 777 "$path"; \
                             done' 2>/dev/null || true
                     fi
@@ -326,7 +327,7 @@ pipeline {
                                         mkdir -p reports/junit coverage
                                         python -m pip install --upgrade pip setuptools wheel
                                         python -m pip install -q -r requirements.txt
-                                        python -m pytest tests/ -v \
+                                                                                python -m pytest -p no:cacheprovider tests/ -v \
                                           --junit-xml=reports/junit/results.xml \
                                           --cov=. \
                                           --cov-report=xml:coverage/coverage.xml \
