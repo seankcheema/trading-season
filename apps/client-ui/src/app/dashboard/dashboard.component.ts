@@ -190,6 +190,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
       instrument: this.instruments().find((instrument) => instrument.symbol === entry.symbol),
     })),
   );
+  protected readonly portfolioTabs = [
+    { id: 'assets', label: 'Assets' },
+    { id: 'watchlist', label: 'Watch List' },
+  ] as const;
+  protected readonly assetsTab = signal<'assets' | 'watchlist'>('assets');
   protected refreshWatchlist(): void {
     this.watchlist.load(true).subscribe({ error: () => undefined });
   }
@@ -224,11 +229,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
       .sort((a, b) => a.symbol.localeCompare(b.symbol)),
   );
 
-  // Only the symbols, so price ticks don't look like a change of holdings.
-  private readonly heldSymbols = computed(() =>
-    this.accountStore
-      .selectedHoldings()
-      .map((holding) => holding.symbol)
+  // Only the symbols, so price ticks don't look like a change of holdings. Watched symbols
+  // are included because the watch list shows the same daily chart as Assets.
+  private readonly chartedSymbols = computed(() =>
+    [
+      ...new Set([
+        ...this.accountStore.selectedHoldings().map((holding) => holding.symbol),
+        ...this.watchlist.entries().map((entry) => entry.symbol),
+      ]),
+    ]
+      .sort()
       .join(','),
   );
 
@@ -309,20 +319,25 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly assetCharts = computed<Record<string, PricePoint[]>>(() => {
     const candlesBySymbol = this.assetCandlePoints();
     const marketTime = this.marketTimeMillis();
+    const prices = new Map<string, number>();
+    for (const entry of this.watchedInstruments()) {
+      if (entry.instrument) prices.set(entry.symbol, entry.instrument.price);
+    }
+    for (const holding of this.holdings()) prices.set(holding.symbol, holding.instrument.price);
     return Object.fromEntries(
-      this.holdings().map((holding) => {
-        const candles = candlesBySymbol.get(holding.symbol);
+      [...prices].map(([symbol, price]) => {
+        const candles = candlesBySymbol.get(symbol);
         if (candles?.length) {
           if (marketTime !== null && marketTime < candles[candles.length - 1].time.getTime())
-            return [holding.symbol, candles];
+            return [symbol, candles];
           const points = [...candles];
           points[points.length - 1] = {
             time: new Date(marketTime ?? points[points.length - 1].time.getTime()),
-            value: holding.instrument.price,
+            value: price,
           };
-          return [holding.symbol, points];
+          return [symbol, points];
         }
-        return [holding.symbol, []];
+        return [symbol, []];
       }),
     );
   });
@@ -409,7 +424,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // Holdings arrive after the market snapshot and change with the selected account, so
     // load daily candles for any newly held symbol once there is a market session.
     effect(() => {
-      this.heldSymbols();
+      this.chartedSymbols();
       this.assetMinute();
       this.marketData.revision?.();
       const sessionId = this.marketSessionId();
@@ -607,8 +622,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   private loadAssetCharts(sessionId: number, generation: number): void {
-    for (const holding of this.holdings()) {
-      const symbol = holding.symbol;
+    const symbols = new Set([
+      ...this.holdings().map((holding) => holding.symbol),
+      ...this.watchlist.entries().map((entry) => entry.symbol),
+    ]);
+    for (const symbol of symbols) {
       if (this.assetChartSubscriptions.has(symbol)) {
         continue;
       }

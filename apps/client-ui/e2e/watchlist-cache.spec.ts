@@ -23,7 +23,8 @@ test('saves stars across popup, fullscreen, navigation, and reload without dupli
   await loginPage.goto();
   await loginPage.signIn(USER.email, USER.password);
   await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByRole('region', { name: 'Watch List' })).toContainText('click its star');
+  await page.getByRole('tab', { name: 'Watch List' }).click();
+  await expect(page.getByTestId('watchlist-table')).toContainText('click its star');
   await page.getByRole('combobox', { name: 'Search instruments' }).fill('AAPL');
   await page.getByRole('option', { name: /AAPL/ }).click();
   const dialog = page.getByRole('dialog', { name: 'New Order' });
@@ -48,7 +49,8 @@ test('saves stars across popup, fullscreen, navigation, and reload without dupli
   await page.getByRole('button', { name: 'Remove AAPL from watchlist' }).click();
   await expect(page.getByRole('button', { name: 'Add AAPL to watchlist' })).toBeEnabled();
   await page.goto('/dashboard');
-  await expect(page.getByRole('region', { name: 'Watch List' })).toContainText('click its star');
+  await page.getByRole('tab', { name: 'Watch List' }).click();
+  await expect(page.getByTestId('watchlist-table')).toContainText('click its star');
 });
 
 test('keeps popup and fullscreen charts visible while an uncached timeframe loads', async ({

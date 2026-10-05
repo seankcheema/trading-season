@@ -1,6 +1,8 @@
 import { Injectable, OnDestroy, signal } from '@angular/core';
 import { HlmToastMessage } from '@shared/ui-components/toast';
 
+const TOAST_DURATION_MS = 4000;
+
 @Injectable({ providedIn: 'root' })
 export class ToastService implements OnDestroy {
   private readonly state = signal<readonly HlmToastMessage[]>([]);
@@ -12,10 +14,10 @@ export class ToastService implements OnDestroy {
     this.timers.forEach((timer) => clearTimeout(timer));
     this.timers.clear();
     const id = ++this.nextId;
-    this.state.set([{ id, message, variant, closing: false }]);
+    this.state.set([{ id, message, variant, closing: false, duration: TOAST_DURATION_MS }]);
     this.timers.set(
       id,
-      setTimeout(() => this.dismiss(id), 2000),
+      setTimeout(() => this.dismiss(id), TOAST_DURATION_MS),
     );
   }
 

@@ -620,13 +620,64 @@ describe('DashboardComponent', () => {
     expect(marketLabel.className).not.toContain('break-words');
   });
 
+  it('toggles one card between assets and the watch list', () => {
+    const fixture = createDashboard();
+    fixture.detectChanges();
+    flushAccounts(fixture);
+    const root = fixture.nativeElement as HTMLElement;
+    const tab = (id: string) =>
+      root.querySelector(`[data-testid="assets-tab-${id}"]`) as HTMLElement;
+
+    expect(tab('assets').getAttribute('aria-selected')).toBe('true');
+    expect(root.querySelector('[data-testid="assets-table"]')).not.toBeNull();
+    expect(root.querySelector('[data-testid="watchlist-table"]')).toBeNull();
+
+    tab('watchlist').click();
+    fixture.detectChanges();
+
+    expect(tab('watchlist').getAttribute('aria-selected')).toBe('true');
+    expect(root.querySelector('[data-testid="assets-table"]')).toBeNull();
+    expect(root.querySelector('[data-testid="watchlist-table"]')).not.toBeNull();
+
+    tab('assets').click();
+    fixture.detectChanges();
+
+    expect(root.querySelector('[data-testid="assets-table"]')).not.toBeNull();
+  });
+
+  it('shows a daily chart for each watched stock', () => {
+    const fixture = createDashboard();
+    fixture.detectChanges();
+    flushAccounts(fixture);
+    const component = fixture.componentInstance as unknown as {
+      instruments: { set(value: unknown[]): void };
+      watchlist: { entries: { set(value: unknown[]): void } };
+      assetsTab: { set(value: string): void };
+    };
+    component.instruments.set([
+      { symbol: 'NVDA', name: 'NVIDIA', price: 120, change: 2, changePercent: 1.7 },
+    ]);
+    component.watchlist.entries.set([{ symbol: 'NVDA', createdAt: '2026-01-05T00:00:00Z' }]);
+    component.assetsTab.set('watchlist');
+    fixture.detectChanges();
+
+    const row = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="watchlist-row-NVDA"]',
+    ) as HTMLElement;
+    expect(row.querySelector('app-daily-sparkline')).not.toBeNull();
+    expect(row.children).toHaveLength(5);
+  });
+
   it('sorts assets by ticker', () => {
     const fixture = createDashboard();
     const component = fixture.componentInstance;
-    vi.spyOn(component as unknown as { holdings: () => ReturnType<typeof component['holdings']> }, 'holdings').mockReturnValue([
+    vi.spyOn(
+      component as unknown as { holdings: () => ReturnType<(typeof component)['holdings']> },
+      'holdings',
+    ).mockReturnValue([
       { symbol: 'MSFT', value: 300 },
       { symbol: 'AAPL', value: 100 },
-    ] as ReturnType<typeof component['holdings']>);
+    ] as ReturnType<(typeof component)['holdings']>);
     expect(component['visibleAssets']().map((holding) => holding.symbol)).toEqual(['AAPL', 'MSFT']);
   });
 
