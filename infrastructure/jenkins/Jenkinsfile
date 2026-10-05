@@ -71,11 +71,18 @@ pipeline {
                     set +e
                     echo "Performing early disk cleanup to free space for build..."
                     
-                    # Stop and remove trading-season containers
-                    echo "Stopping trading-season-local containers..."
-                    docker compose -f infrastructure/docker-compose/docker-compose.local.yml down 2>/dev/null || true
-                    
-                    # Clean old Maven cache if present (older than 30 days)
+                    # Stop and remove any stale local-stack containers left by
+                    # earlier builds. These publish fixed host ports, so even
+                    # one leaked container can make the next stack build fail.
+                    echo "Stopping stale trading-season-local containers..."
+                    docker ps -a --filter "label=com.docker.compose.project" \
+                        --format '{{.ID}} {{.Label "com.docker.compose.project"}}' \
+                        | awk '$2 ~ /^trading-season-local(-|$)/ {print $1}' \
+                        | while read -r container_id; do
+                            docker stop "$container_id" 2>/dev/null || true
+                            docker rm "$container_id" 2>/dev/null || true
+                        done
+
                     echo "Removing old Maven cache..."
                     if [ -d ~/.m2/repository ]; then
                         find ~/.m2/repository -type d -mtime +30 -exec rm -rf {} + 2>/dev/null || true
@@ -496,6 +503,10 @@ pipeline {
             }
             steps {
                 script {
+                    env.LOCAL_STACK_PROJECT = 'trading-season-local-' + sh(
+                        script: 'printf %s "$BUILD_TAG" | sha256sum | cut -c1-12',
+                        returnStdout: true
+                    ).trim()
                     // Lets final cleanup tell a failed stack build apart from
                     // a failed test, which must leave the previous stack alone.
                     env.LOCAL_STACK_STARTED = 'true'
@@ -503,7 +514,7 @@ pipeline {
                 sh '''
                     set -eu
                     COMPOSE_FILE="infrastructure/docker-compose/docker-compose.local.yml"
-                    PROJECT_NAME="trading-season-local"
+                    PROJECT_NAME="$LOCAL_STACK_PROJECT"
                     # The local stack requires JWT_PRIVATE_KEY and JWT_PUBLIC_KEY
                     # with no default, and the .env that normally holds them is
                     # gitignored, so a fresh checkout has nothing to interpolate
@@ -672,14 +683,6 @@ pipeline {
                     set +e
                     echo "Cleaning up Docker containers from this build..."
                     
-                    # Stop and remove trading-season containers from this build
-                    docker ps -a --filter "label=com.docker.compose.project=trading-season-local" --format "{{.ID}}" | while read -r container_id; do
-                        echo "Stopping container: $container_id"
-                        docker stop "$container_id" 2>/dev/null || true
-                        echo "Removing container: $container_id"
-                        docker rm "$container_id" 2>/dev/null || true
-                    done
-                    
                     # Remove any dangling containers from market-data tests
                     docker ps -a --filter "label=trading-season-market" --format "{{.ID}}" | while read -r container_id; do
                         echo "Stopping test container: $container_id"
@@ -702,16 +705,16 @@ pipeline {
                 }
             }
             script {
-                if (currentBuild.currentResult == 'SUCCESS') {
-                    echo 'Preserving the trading-season-local application stack after the successful build.'
-                } else {
+                if (env.LOCAL_STACK_STARTED == 'true' && env.LOCAL_STACK_PROJECT?.trim()) {
                     def composeCleanupStatus = sh(
-                        script: 'docker compose -f infrastructure/docker-compose/docker-compose.local.yml down',
+                        script: "docker compose --project-name '${env.LOCAL_STACK_PROJECT}' -f infrastructure/docker-compose/docker-compose.local.yml down --remove-orphans",
                         returnStatus: true
                     )
                     if (composeCleanupStatus != 0) {
                         echo "Local application stack cleanup failed with status ${composeCleanupStatus}; preserving the original build result."
                     }
+                } else {
+                    echo 'Local application stack was not started; skipping compose cleanup.'
                 }
             }
             // Keep the Maven and npm caches, the Playwright image, and up to
