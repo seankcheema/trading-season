@@ -8,11 +8,13 @@ import app.instrument.InstrumentNotFoundException;
 import app.instrument.InstrumentRepository;
 import app.order.audit.AuditTrailService;
 import app.order.dto.OrderRequest;
+import app.order.event.OrderResolvedEvent;
 import app.order.execution.OrderExecutionService;
 import app.order.validation.OrderValidationPipeline;
 import app.order.validation.ValidationResult;
 import app.user.User;
 import app.user.UserRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,13 @@ import java.util.Optional;
  * (KAN-93). This is the "Order controller" + "Trading rule pipeline"
  * handoff from the KAN-95 walkthrough, minus the HTTP concerns, which stay
  * in {@link OrderController}.
+ *
+ * <p>Every order that reaches a final status raises an
+ * {@link OrderResolvedEvent}. It is raised inside the transaction and
+ * delivered to Kafka only after the commit, by
+ * {@link app.order.event.TradeEventPublisher}, so the database never
+ * trails the stream and a publishing failure cannot undo a fill. A
+ * resubmission that returns an existing order raises nothing.
  */
 @Service
 public class OrderService {
@@ -42,6 +51,7 @@ public class OrderService {
     private final OrderValidationPipeline validationPipeline;
     private final OrderExecutionService orderExecutionService;
     private final AuditTrailService auditTrailService;
+    private final ApplicationEventPublisher events;
 
     public OrderService(OrderRepository orderRepository,
                          AccountRepository accountRepository,
@@ -49,7 +59,8 @@ public class OrderService {
                          UserRepository userRepository,
                          OrderValidationPipeline validationPipeline,
                          OrderExecutionService orderExecutionService,
-                         AuditTrailService auditTrailService) {
+                         AuditTrailService auditTrailService,
+                         ApplicationEventPublisher events) {
         this.orderRepository = orderRepository;
         this.accountRepository = accountRepository;
         this.instrumentRepository = instrumentRepository;
@@ -57,16 +68,19 @@ public class OrderService {
         this.validationPipeline = validationPipeline;
         this.orderExecutionService = orderExecutionService;
         this.auditTrailService = auditTrailService;
+        this.events = events;
     }
 
     /**
      * Submits an order. The order is created {@code PENDING}; it returns as
      * {@code REJECTED} when a trading rule fails, or {@code FILLED} once the
      * fill is written and the owning user's available funds and the account's
-     * holdings have moved. Never throws for a trade that fails a trading
-     * rule — that's a normal outcome, reflected in the returned order's
-     * status, not an HTTP-level error. It throws only when the request
-     * refers to something that doesn't exist.
+     * holdings have moved. Either final status raises an
+     * {@link OrderResolvedEvent} that is published to the trade-events topic
+     * after this transaction commits. Never throws for a trade that fails a
+     * trading rule — that's a normal outcome, reflected in the returned
+     * order's status, not an HTTP-level error. It throws only when the
+     * request refers to something that doesn't exist.
      *
      * @param request the validated submission
      * @return the persisted order in its final status
@@ -123,6 +137,7 @@ public class OrderService {
             order.setResolvedAt(OffsetDateTime.now());
             order = orderRepository.save(order);
             auditTrailService.record(order.getOrderId(), Order.STATUS_REJECTED, result.reason());
+            events.publishEvent(OrderResolvedEvent.from(order, instrument));
             return order;
         }
 
@@ -131,7 +146,9 @@ public class OrderService {
         order.setAcceptedAt(OffsetDateTime.now());
         order = orderRepository.save(order);
 
-        return orderExecutionService.execute(order, instrument);
+        Order resolved = orderExecutionService.execute(order, instrument);
+        events.publishEvent(OrderResolvedEvent.from(resolved, instrument));
+        return resolved;
     }
 
     /**
