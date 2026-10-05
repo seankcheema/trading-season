@@ -124,10 +124,10 @@ pipeline {
                     # missing or unsupported, and both lockfiles are committed:
                     # a missing one is a broken checkout, not a reason to resolve
                     # fresh versions that no other stage would be testing.
-                    echo "Installing root workspace dependencies..."
+                    echo "Installing UI and auth dependencies..."
                     npm ci
                     npm --prefix apps/auth-service ci
-                    echo "✓ Root workspace dependencies installed"
+                    echo "✓ UI and auth dependencies installed"
                 '''
                 // Maven dependencies are not pre-resolved here. Each service's
                 // `mvn clean test` resolves exactly what it needs; a separate

@@ -23,10 +23,10 @@ Install Node.js 24.8.0+ (24.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL 
 
 ### Quick start with the startup script (requires local databases)
 
-1. Install the root workspace dependencies and the separate auth-service dependencies:
+1. Install the client UI and auth-service dependencies:
 
    ```powershell
-   npm ci
+   npm --prefix apps/client-ui ci
    npm --prefix apps/auth-service ci
    ```
 
@@ -128,11 +128,11 @@ cd ../..
 Use the startup script as above, or start each application in its own terminal:
 
 ```powershell
-npm ci
+npm --prefix apps/client-ui ci
 npm --prefix apps/auth-service ci
 
 # Terminal 1: UI
-npm --workspace client-ui start
+npm --prefix apps/client-ui start
 
 # Terminal 2: Holdings and Trade Service
 cd apps/holdings-and-trade-service
