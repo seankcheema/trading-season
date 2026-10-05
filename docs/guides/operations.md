@@ -28,7 +28,7 @@ docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compos
 docker compose --env-file apps/auth-service/.env -f infrastructure/docker-compose/docker-compose.local.yml logs --tail 100 db auth-db
 ```
 
-The local Compose file contains outdated Java backend configuration with build context and port mappings. Run both Java services through Maven: Order and Sell Service on port 8081 (called by UI) and Holdings and Trade Service on port 8082 (runs independently). The UI has no active Compose service. No production Compose file or Kubernetes deployment is supplied.
+The local Compose file contains outdated Java backend configuration with build context and port mappings. Run both Java services through Maven: Order and Sell Service on port 8081 and Holdings and Trade Service on port 8082. The UI calls both, split by path, so the dashboard needs both running. The UI has no active Compose service. No production Compose file or Kubernetes deployment is supplied.
 
 Both Java services must use the same database connection (localhost:5432/trading_season by default) and verify database compatibility before startup. If your deployment splits services across machines or containers, ensure network connectivity to the shared database and identical schema versions on both services.
 For databases created by `scripts/setup-local.sh`, add `--project-name trading-season-local` to these inspection commands. Stop them without removing data with:
@@ -48,44 +48,38 @@ Because the seed container cannot inspect free space inside the separate Postgre
 
 ## CI and artifacts
 
-The Jenkins pipeline expects a native agent with Docker, the Maven tool named Maven, and Java 21 at its configured JAVA_HOME. It requires at least 5 GiB of free workspace storage before checkout. This is an early guard rather than a guarantee that the complete Compose and Angular image builds will fit; keep additional headroom when possible. The pipeline runs Java, auth, Angular, end-to-end, script, and build-scoped two-day PostgreSQL integration checks. Full-year generation remains on demand.
+Jenkins requires a Linux agent with Docker and Compose, Java 21 at its configured JAVA_HOME, the Maven tool named Maven, and the NodeJS tool named NodeJS running Node 24.x at 24.8.0 or later. A preflight requires at least 5 GiB free workspace storage; image builds need additional headroom.
 
-The Holdings and Trade Java, Order and Sell Java, synthetic market-data integration, Auth, and UI suites run concurrently as parallel branches of a single `Test Suites` stage: they read and write only their own app and report directories, so none of them depends on another's output. Each branch still publishes its own archived artifacts and JUnit results from its own `post` block, so one branch failing does not skip publication for the others.
+The pipeline checks out the branch tip, installs root workspace and auth dependencies once, and runs five suites in parallel: both Java services, auth, frontend, and synthetic market data. Each Java branch uses its own workspace-local Maven repository under `.m2/<service>`; it does not delete or warm a shared Maven cache. Java tests enforce package coverage floors (85 percent Holdings and Trade, 70 percent Order and Sell); UI and auth retain their configured whole-suite floors.
 
-End-to-end was tried as a sixth parallel branch of that same stage. Playwright enforces its own per-test timeouts, and the added CPU contention from its Docker image build/run on top of the other five tripped those timeouts and failed the suite outright. End-to-End Tests runs as its own sequential stage after `Test Suites` instead, getting the agent's full CPU budget to itself.
-
-Setup Dependencies also installs the UI and auth service's npm dependencies concurrently, since each is an independent npm project with its own lockfile and node_modules. The Maven dependency warm-up for both Java services stays sequential: it writes into the shared `~/.m2/repository` local repository, and Maven does not guarantee safe concurrent writes into one local repository.
+The parallel test group stops its other branches on the first failure. Failures propagate without `catchError`, and unstable results skip later stages; Jenkins does not proceed to documentation, E2E, or Docker deployment after a failed test gate. Each started suite publishes reports from its own `post` block, including after failure. Missing required JUnit reports fail the build. Java tests include buy/sell fills and ledger consistency, missing credentials, rejected trades, and transaction rollback. The market-data suite initializes a disposable PostgreSQL database, checks persistence across restart, generates and imports two days of data, repeats the import, and records resource and storage reports. Its Docker resource names derive from a normalized build-tag hash and are removed after the stage.
 
 | Suite | Outputs |
 | --- | --- |
-| Holdings and Trade Java | apps/holdings-and-trade-service/target/surefire-reports and target/site/jacoco |
-| Order and Sell Java | apps/order-and-sell-service/target/surefire-reports and target/site/jacoco |
+| Holdings and Trade | apps/holdings-and-trade-service/target/surefire-reports and target/site/jacoco |
+| Order and Sell | apps/order-and-sell-service/target/surefire-reports and target/site/jacoco |
 | Auth | apps/auth-service/coverage and reports/junit |
-| UI | apps/client-ui/coverage |
+| Frontend | apps/client-ui/coverage and reports/junit |
+| Market data | reports/market-data |
 | End-to-end | apps/client-ui/reports/playwright |
+| Java API documentation | Each Java service's target/reports/apidocs |
 
-Both Java services must pass their respective test suites. Schema changes or shared dependency upgrades require testing both services together to verify compatibility. Auth CI runs npm ci then npm run test:ci. Frontend CI currently uses npm install --legacy-peer-deps followed by npm test -- --no-watch --coverage. This differs from the preferred root npm ci developer installation. Do not silently treat an absent test tool or empty required report as success.
+After successful tests, Jenkins generates and archives both services' Javadocs using maven-javadoc-plugin 3.11.2 and the same isolated repositories. Source changes still require local review and refresh of the checked-in docs/JAVA_DOCS directories; Jenkins archives do not update Git.
 
-Every tier fails its own stage below 70% coverage; the mechanisms are listed under [coverage floors](development.md#coverage-floors). A stage that passes has already cleared the floor, so the archived reports are for inspection, not for a manual check.
+E2E runs sequentially after the parallel suites to reduce browser CPU contention. It builds a Chromium-only Playwright image matched to the installed test package, mounts the workspace and Jenkins Node runtime, and drives the production Angular SSR server. Login, registration, and trading journeys use the existing API stand-in: they verify UI integration, while Java integration tests verify actual ledger persistence. No business database or live auth service is required for these browser journeys.
 
-The end-to-end stage installs the Playwright Chromium build with `npx playwright install chromium`, deliberately without `--with-deps`, which shells out to sudo apt-get that the jenkins user cannot run. If the agent lacks the shared libraries headless Chromium needs, Playwright fails and names them. Playwright then builds the UI and serves it on port 4200 through the Angular SSR server, and stubs the API tier at the network boundary, so the stage needs no database, no auth service, and no Java backend. Because it builds, the stage is the only one that also proves the production build works; expect it to take longer than the unit stages.
+CI uses two Playwright workers and allows two retries to collect diagnostics. A test that passes only on retry still fails the E2E stage through `failOnFlakyTests` in [the Playwright configuration](../../apps/client-ui/playwright.config.ts). Access-token expiry alone renews the session; sign-out occurs on explicit logout, the configured inactivity deadline, or missing or rejected refresh credentials. Network and refresh-service failures preserve credentials for retry. These cases are covered by the login, inactivity, and authentication unit tests.
 
-Within that stage, Playwright itself runs the suite's spec files across 2 workers in CI (see [end-to-end tests](development.md#end-to-end-tests)), since every spec creates its own accounts and nothing is shared between workers. That worker count is internal to the end-to-end stage; the stage itself now runs sequentially, after `Test Suites` and the disk cleanup described below, rather than as one of its parallel branches.
+Pre-E2E cleanup deletes disposable Java target output and frontend coverage only after stage publication. It does not prune shared Docker or dependency caches. Stack startup runs only when validation is successful and retains the existing local Compose behavior: build-scoped JWT keys, service checks, and a successful stack left running for inspection. Final `post cleanup` runs after other post conditions on success, failure, or abort. It removes the named, build-scoped E2E container and synthetic-market test resources, tears down a failed stack only if this build started it, and applies the existing Docker cache policy. Resource and cache cleanup errors are isolated so workspace deletion is still attempted; reports are published before deletion. Workspace deletion removes isolated Maven repositories. An unavailable Jenkins agent or Docker daemon can prevent teardown and is reported in the cleanup log.
 
-The optional [Jenkins image](../../infrastructure/docker/Dockerfile.jenkins) installs Node 20, which does not meet the current Angular engine requirement. The Jenkins Compose example also mounts the host Docker socket and contains development credentials. Review toolchains, credentials, and access before deployment; it is not a production-ready configuration.
-
-The pipeline prints `docker ps` during its initial Docker check, after application-stack startup, and in its final diagnostics. The initial check fails early when Jenkins cannot reach the daemon or neither Compose command is available because later stages require Docker. The pipeline prefers the Compose v2 `docker compose` plugin and falls back to the legacy `docker-compose` command. After its test stages pass, on every branch, Jenkins builds and starts `docker-compose.local.yml` under the `trading-season-local` project name. That Compose file requires `JWT_PRIVATE_KEY` and `JWT_PUBLIC_KEY` and defines no default for either, and the `.env` holding them locally is not tracked, so the stage generates a keypair for that build alone into `infrastructure/docker-compose/.env` and passes it with `--env-file`; the file leaves with the workspace. No JWT key is committed or injected as a Jenkins credential. It verifies seven long-running services and performs HTTP smoke checks against the client UI and both reporting placeholders, then prints every running container so the application services appear separately from Jenkins. A successful build leaves the stack available on host ports 3001, 4200, 4300, 5432, 8081, 8082, and 8083 for local inspection.
-
-Start the Jenkins controller separately; do not ask the running pipeline to manage its own container. From the repository root, start only the Jenkins service from its Compose file:
+The optional Jenkins container is not the native agent configuration. Start only its Jenkins service to avoid competing application stacks:
 
 ```sh
 docker compose --project-name trading-season-jenkins \
   -f infrastructure/docker-compose/docker-compose.jenkins.yml up -d jenkins
 ```
 
-Using the explicit `jenkins` service avoids starting the duplicate application services that remain in the optional Jenkins Compose example and would otherwise compete for the same host ports. To fit the shared 30 GB agent, Jenkins performs a depth-1 checkout and treats every run as a cold build. An unsuccessful or aborted build stops the local application stack before workspace deletion; a successful build preserves it. After stage-level report publication, final cleanup removes the build's Playwright image, all unused builder cache, Maven and npm caches, and the complete workspace. Named Docker volumes remain intact. Inspection and cleanup failures are protected so they do not replace the build's original result.
-
-Javadoc generation is a required Java change check described in [development](development.md#javadocs); the Jenkinsfile does not run or publish it automatically. Generate and review both service outputs, then refresh the checked-in docs/JAVA_DOCS copy after successful verification.
+See [Development](development.md#checks) for local commands and [Javadocs](../JAVA_DOCS/README.md) for generated documentation refresh.
 
 ## Troubleshooting
 
@@ -103,7 +97,7 @@ Javadoc generation is a required Java change check described in [development](de
 
 **Token and auth issues:**
 - JWT verification fails: check the signing/public key pair and expiry. The Java backend returns 401 when the JWKS at AUTH_JWK_SET_URI is unreachable, the signature does not match, the token has expired, iss differs from AUTH_JWT_ISSUER, or sub is not a UUID. Java caches the key set for five minutes and refetches early when a token carries an unknown kid; the auth service derives kid from the public key, so a key rotation is picked up on the first token signed with the new key. The auth service's own Passport strategy does not enforce issuer/audience; do not assume it does.
-- Logout appears successful but refresh still works: see the documented [API limitation](../reference/api.md#current-logout-limitation).
+- Logout revokes the supplied refresh token; access JWTs remain valid until expiry. See the [authentication endpoints](../reference/api.md#authentication-endpoints).
 
 **CI and deployment:**
 - Jenkins fails before tests: verify the configured Java/Maven paths and Node version on the actual agent, not just the optional image.
@@ -111,3 +105,13 @@ Javadoc generation is a required Java change check described in [development](de
 - Synthetic market-data CI derives Docker resource names from a normalized hash of the Jenkins build tag, so encoded multibranch names such as `%2F` do not need special handling. The stage creates and removes build-scoped database and archive volumes; do not pre-seed PostgreSQL or generate a persistent archive on the Jenkins VM.
 - Market replay reports unavailable prices: for a Parquet-backed session, verify that the archive contains the selected `ticks-YYYY-MM-DD.parquet` partition. Set `MARKET_REPLAY_ARCHIVE_LOCATION` to its absolute root when the metadata path belongs to an older checkout or another host; local repository runs also discover the matching archive under `apps/market-data/db/seeds`. Replay deliberately does not fall back to one-minute candles.
 - UI renders but login does not reach an API: form submission is not yet wired to a service. See [architecture](../reference/architecture.md).
+
+Database initialization in local and Jenkins Compose now mounts the canonical `apps/market-data/db/migrations/V001__Initialize_database.sql` and applies it once to an empty public schema. Existing databases are skipped; partial schemas require a separately reviewed repair. The SQL file guards against overwriting retained data.
+
+The database tests directory has been removed. Jenkins no longer invokes its pytest suite or publishes its JUnit report; the synthetic market-data stage still runs generation, validation, import, and repeated import, and archives resource/storage reports.
+
+Market-data Python entry points and requirements are under `apps/market-data/db/scripts/python`; Windows launchers are under `apps/market-data/db/scripts/powershell`. Docker and Jenkins use the relocated Python paths. The database virtual environment and seed locations are unchanged.
+
+## Watchlist schema upgrade
+
+Deploy the client and Holdings and Trade watchlist changes after applying V002 as the business database owner. Fresh Compose initialization applies V001 and V002; its existing-database branch skips initialization, so retained databases require the explicit [watchlist upgrade](../reference/database.md#watchlist-migration) before deployment. The migration adds one table without modifying existing data.

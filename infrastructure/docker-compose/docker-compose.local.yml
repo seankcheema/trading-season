@@ -90,23 +90,17 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ../../apps/market-data/db/migrations:/migrations:ro
+      - ../../apps/market-data/db/migrations/V001__Initialize_database.sql:/V001__Initialize_database.sql:ro
+      - ../../apps/market-data/db/migrations/V002__Add_watchlist.sql:/V002__Add_watchlist.sql:ro
     environment:
       PGPASSWORD: ${DB_PASSWORD:-changeme}
     command: >
-      sh -c 'if [ "$$(psql -h db -U trading_season -d trading_season -t -c 
-      "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='"'"'public'"'"';" 2>/dev/null || echo 0)" = "0" ]; then 
-      echo "[DB-INIT] Applying migrations..."; 
-      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 
-      -f /migrations/V001__Initial_schema.sql
-      -f /migrations/V002__Synthetic_market_data_replay_metadata.sql
-      -f /migrations/V003__Token_authentication.sql
-      -f /migrations/V004__Order_status_lifecycle.sql
-      -f /migrations/V005__User_accounts_and_refresh_tokens.sql
-      -f /migrations/V006__Drop_duplicated_account_columns.sql
-      -f /migrations/V007__Add_account_name.sql
-      -f /migrations/V008__Drop_account_status.sql
-      && echo "[DB-INIT] Migrations complete"; 
+      sh -c 'if [ "$$(psql -h db -U trading_season -d trading_season -t -c
+      "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='"'"'public'"'"';" 2>/dev/null || echo 0)" = "0" ]; then
+      echo "[DB-INIT] Applying migrations...";
+      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 -f /V001__Initialize_database.sql &&
+      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 -f /V002__Add_watchlist.sql
+      && echo "[DB-INIT] Migrations complete";
       else echo "[DB-INIT] Database already initialized, skipping migrations"; fi'
 
   # Event broker for the trade-events topic. Nothing publishes or consumes
@@ -214,7 +208,7 @@ services:
         condition: service_healthy
     volumes:
       - market_data_archive:/workspace/apps/market-data/db/seeds
-    command: ["apps/market-data/db/scripts/0001-initialize-database.py", "--database-url", "postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season", "--disposable-database"]
+    command: ["apps/market-data/db/scripts/python/0001-initialize-database.py", "--database-url", "postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season", "--disposable-database"]
 
   market-data-seed:
     profiles: ["seed"]
@@ -231,7 +225,7 @@ services:
       # the separate PostgreSQL volume. Set this to free server storage in GiB.
       MARKET_DATA_AVAILABLE_DISK_GB: ${MARKET_DATA_AVAILABLE_DISK_GB:-}
     entrypoint: ["/bin/sh", "-ec"]
-    command: ["python apps/market-data/db/scripts/0002-generate-synthetic-market-data.py && python apps/market-data/db/scripts/0003-validate-synthetic-market-data.py && python apps/market-data/db/scripts/0004-import-synthetic-market-data.py --tick-storage parquet --database-url postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season"]
+    command: ["python apps/market-data/db/scripts/python/0002-generate-synthetic-market-data.py && python apps/market-data/db/scripts/python/0003-validate-synthetic-market-data.py && python apps/market-data/db/scripts/python/0004-import-synthetic-market-data.py --tick-storage parquet --database-url postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season"]
 
   auth-service:
     # Authentication and authorization service (KAN-79). Owns credentials and

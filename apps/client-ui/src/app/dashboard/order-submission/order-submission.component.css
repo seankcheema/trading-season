@@ -87,3 +87,19 @@ input[type='number'] {
     0 0 0 1px var(--slider-color),
     0 0 0 5px color-mix(in oklab, var(--ring) 40%, transparent);
 }
+
+.order-spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.5rem;
+  vertical-align: -0.15rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: order-spin 700ms linear infinite;
+}
+@keyframes order-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .order-spinner { animation: none; }
+}

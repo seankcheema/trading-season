@@ -231,11 +231,40 @@ class MarketReplayServiceTest {
     }
 
     @Test
+    void chartMetadataKeepsTheUnelapsedSessionAndCalendarYearBoundaries() {
+        var daily = service.candles(null, "AAPL", "1D");
+        assertEquals(open, daily.rangeStart());
+        assertEquals(Instant.parse("2026-01-05T21:00:00Z"), daily.rangeEnd());
+        assertEquals(1, daily.tradingSessions().size());
+        assertEquals(daily.rangeEnd(), daily.tradingSessions().getFirst().end());
+        var yearly = service.candles(null, "AAPL", "1Y");
+        assertEquals(Instant.parse("2025-01-05T14:30:00Z"), yearly.rangeStart());
+        assertEquals(open, yearly.rangeEnd());
+    }
+
+    @Test
+    void calendarRangesClampMonthEndsAndRespectMarketDaylightSavingTime() {
+        for (String[] scenario : List.of(
+                new String[]{"2026-03-31T13:30:00Z", "1M", "2026-02-28T14:30:00Z"},
+                new String[]{"2024-02-29T14:30:00Z", "1Y", "2023-02-28T14:30:00Z"})) {
+            Instant cursor = Instant.parse(scenario[0]);
+            LocalDate day = cursor.atZone(java.time.ZoneId.of("America/Chicago")).toLocalDate();
+            when(repository.tradingDays(session.id())).thenReturn(List.of(day));
+            when(repository.ticksForDay(session, day)).thenReturn(List.of(new MarketModels.Frame(cursor,
+                    List.of(new MarketModels.Tick("AAPL", cursor, BigDecimal.TEN, 1)))));
+            service = new MarketReplayService(repository, Clock.fixed(cursor, ZoneOffset.UTC), "", 3, 200);
+            var result = service.candles(null, "AAPL", scenario[1]);
+            assertEquals(Instant.parse(scenario[2]), result.rangeStart());
+            assertEquals(cursor, result.rangeEnd());
+        }
+    }
+
+    @Test
     void longerTimeframesLookBackFromTheCursor() {
         service.candles(null, "AAPL", "1M");
         service.candles(null, "AAPL", "1W");
 
-        verify(repository).candles(2026001L, "AAPL", open.minus(Duration.ofDays(31)), open);
+        verify(repository).candles(2026001L, "AAPL", open.atZone(java.time.ZoneId.of("America/Chicago")).minusMonths(1).toInstant(), open);
         verify(repository).candles(2026001L, "AAPL", open.minus(Duration.ofDays(7)), open);
     }
 

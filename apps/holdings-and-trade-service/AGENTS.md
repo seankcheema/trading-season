@@ -51,6 +51,7 @@ All endpoints require an RS256 access token issued by the auth service, except `
 - `POST /api/auth/account-exists` - Whether an email is registered (public)
 - `POST /api/auth/register` - Create the caller's profile and default account
 - `GET /api/users/me` - The caller's profile, without the SSN
+- `GET/PUT/DELETE /api/me/watchlist` - The caller's saved stocks (PUT/DELETE take `/{symbol}`)
 - `GET /api/me/accounts` - The caller's accounts
 - `POST /api/me/accounts` - Open a new, empty account
 - `PUT /api/me/accounts/{accountId}` - Rename an owned account

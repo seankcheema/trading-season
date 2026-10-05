@@ -1,7 +1,12 @@
 <main class="market-page bg-[#0e0e0e] text-[#eefaff]">
   <header class="market-nav bg-[#0e0e0e]/95 px-4 backdrop-blur-xl md:px-6">
-    <div class="mx-auto flex h-full max-w-[1600px] items-center gap-3">
-      <a routerLink="/dashboard" class="nav-back" aria-label="Back to dashboard">
+    <div class="market-nav-inner mx-auto flex h-full max-w-[1600px] items-center gap-3">
+      <a
+        routerLink="/dashboard"
+        [queryParams]="{ accountId: accountStore.selectedAccountId() }"
+        class="nav-back"
+        aria-label="Back to dashboard"
+      >
         <ng-icon name="lucideChevronLeft" />
       </a>
       <div class="mr-auto min-w-48 max-w-2xl flex-1">
@@ -10,22 +15,60 @@
           (selected)="selectInstrument($event)"
         />
       </div>
-      <button
-        type="button"
-        class="text-muted-foreground relative flex size-9 items-center justify-center"
-        disabled
-        aria-label="Notifications, not available yet"
-      >
-        <ng-icon name="lucideBell" />
-      </button>
-      <button
-        type="button"
-        class="border-border bg-card text-muted-foreground flex size-9 items-center justify-center rounded-full border"
-        disabled
-        aria-label="Profile, not available yet"
-      >
-        <ng-icon name="lucideUserRound" />
-      </button>
+      <div class="market-header-controls flex flex-wrap items-center justify-end gap-2">
+        <app-market-clock-control
+          data-testid="market-clock-dropdown"
+          [open]="openHeaderDropdown() === 'market-clock'"
+          (openChange)="openHeaderDropdown.set($event ? 'market-clock' : null)"
+          (snapshotApplied)="onClockSnapshot($event)"
+        />
+        <app-dashboard-header-dropdown
+          data-testid="notifications-dropdown"
+          ariaLabel="Open notifications"
+          [open]="openHeaderDropdown() === 'notifications'"
+          (openChange)="openHeaderDropdown.set($event ? 'notifications' : null)"
+          containerClass="shrink-0"
+          triggerClass="text-muted-foreground hover:bg-muted hover:text-foreground size-9 justify-center rounded-full"
+          panelClass="w-64 p-3"
+        >
+          <ng-icon dropdownTrigger name="lucideBell" class="text-lg" />
+          <div aria-label="Notifications">
+            <strong class="text-sm">Notifications</strong>
+            <p class="text-muted-foreground mt-2 text-xs">No notifications yet.</p>
+          </div>
+        </app-dashboard-header-dropdown>
+        <app-dashboard-header-dropdown
+          data-testid="profile-dropdown"
+          ariaLabel="Open profile menu"
+          [open]="openHeaderDropdown() === 'profile'"
+          (openChange)="openHeaderDropdown.set($event ? 'profile' : null)"
+          containerClass="shrink-0"
+          triggerClass="bg-primary/15 text-primary hover:bg-primary/25 size-9 justify-center rounded-full text-xs font-semibold"
+          panelClass="w-48 p-1"
+        >
+          <span dropdownTrigger data-testid="profile-initials">{{ profileInitials() }}</span>
+          <div role="menu" aria-label="Profile">
+            <button
+              type="button"
+              role="menuitem"
+              class="hover:bg-muted flex h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-sm transition-colors"
+              (click)="onSettings()"
+            >
+              <ng-icon name="lucideSettings" class="shrink-0 text-[16px]" />
+              <span>Settings</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              class="text-loss hover:bg-loss/10 flex h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-sm transition-colors"
+              (click)="onSignOut()"
+            >
+              <ng-icon name="lucideLogOut" class="shrink-0 text-[16px]" />
+              <span>Log out</span>
+            </button>
+          </div>
+        </app-dashboard-header-dropdown>
+      </div>
     </div>
   </header>
 
@@ -70,171 +113,88 @@
       }
       @case ('ready') {
         @if (instrument(); as active) {
+          @if (chartRefreshing()) {
+            <p role="status" class="sr-only">Updating chart…</p>
+          }
+          @if (chartRefreshError()) {
+            <p role="status" class="text-loss text-xs">
+              {{ chartRefreshError() }}
+              <button type="button" class="underline" (click)="retry()">Retry</button>
+            </p>
+          }
           <div class="market-grid" [class.tools-collapsed]="toolsCollapsed()">
             <div class="market-main">
-              @if (comparisonInstrument(); as compared) {
-                <section
-                  class="comparison-summary border-border bg-card rounded-xl border px-4 py-1"
-                  aria-label="Stock comparison summary"
-                >
-                  @for (
-                    item of [
-                      {
-                        instrument: active,
-                        stats: marketStats(),
-                        volume: rangeVolume(),
-                      },
-                      {
-                        instrument: compared,
-                        stats: comparisonMarketStats(),
-                        volume: comparisonRangeVolume(),
-                      },
-                    ];
-                    track item.instrument.symbol
-                  ) {
-                    <article class="comparison-summary-item">
-                      <div class="comparison-identity">
-                        <h1 class="min-w-0 truncate text-sm font-bold">
-                          {{ item.instrument.symbol }}
-                          <span class="text-muted-foreground ml-1 font-normal">{{
-                            item.instrument.name
-                          }}</span>
-                        </h1>
-                        <div class="comparison-price">
-                          <strong
-                            class="tick-price tabular-nums"
-                            [class.tick-price-gain]="
-                              tickAnimations().get(item.instrument.symbol)?.direction === 'gain'
-                            "
-                            [class.tick-price-loss]="
-                              tickAnimations().get(item.instrument.symbol)?.direction === 'loss'
-                            "
-                            [class.tick-animation-even]="
-                              (tickAnimations().get(item.instrument.symbol)?.revision ?? 1) % 2 ===
-                              0
-                            "
-                            [style.animation-duration.ms]="
-                              tickAnimations().get(item.instrument.symbol)?.durationMs
-                            "
-                          >
-                            {{ item.instrument.price | currency: 'USD' }}
-                          </strong>
-                          <span
-                            class="text-[11px] font-semibold tabular-nums"
-                            [class]="item.instrument.change >= 0 ? 'text-gain' : 'text-loss'"
-                          >
-                            {{ item.instrument.change >= 0 ? '+' : ''
-                            }}{{ item.instrument.change | currency: 'USD' }}
-                            {{ item.instrument.changePercent | signedPercent }}
-                          </span>
-                        </div>
-                      </div>
-                      <dl class="comparison-metrics">
-                        <div>
-                          <dt>Open</dt>
-                          <dd>{{ item.stats.open | currency: 'USD' }}</dd>
-                        </div>
-                        <div>
-                          <dt>Volume</dt>
-                          <dd>{{ item.volume | number: '1.0-0' }}</dd>
-                        </div>
-                      </dl>
-                    </article>
-                  }
-                  @if (toolsCollapsed() && comparisonInstrument()) {
-                    <button
-                      type="button"
-                      class="tool-icon tools-open-button"
-                      aria-label="Open market tools"
-                      title="Open market tools"
-                      (click)="toolsCollapsed.set(false)"
-                    >
-                      <ng-icon class="chevron-rotate" name="lucideChevronLeft" />
-                    </button>
-                  }
-                </section>
-              } @else {
-                <section class="market-summary border-border bg-card rounded-xl border px-4 py-1">
-                  <div class="market-identity">
-                    <div class="min-w-0">
+              <section class="market-summary border-border bg-card rounded-xl border px-4 py-1">
+                <div class="market-identity">
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2">
                       <h1 class="text-xl font-bold">{{ active.symbol }}</h1>
-                      <p class="text-muted-foreground truncate text-xs">{{ active.name }}</p>
+                      <app-watchlist-star [symbol]="active.symbol" />
                     </div>
-                    <span
-                      class="tick-price text-3xl font-bold tabular-nums"
-                      [class.tick-price-gain]="
-                        tickAnimations().get(active.symbol)?.direction === 'gain'
-                      "
-                      [class.tick-price-loss]="
-                        tickAnimations().get(active.symbol)?.direction === 'loss'
-                      "
-                      [class.tick-animation-even]="
-                        (tickAnimations().get(active.symbol)?.revision ?? 1) % 2 === 0
-                      "
-                      [style.animation-duration.ms]="
-                        tickAnimations().get(active.symbol)?.durationMs
-                      "
-                      >{{ active.price | currency: 'USD' }}</span
-                    >
+                    <p class="text-muted-foreground truncate text-xs">{{ active.name }}</p>
                   </div>
-                  <dl class="market-metrics">
-                    <div>
-                      <dt>Mkt Cap</dt>
-                      <dd>{{ mockDetails().marketCap }}</dd>
+                  <span class="text-3xl font-bold tabular-nums">
+                    {{ active.price | currency: 'USD' }}
+                  </span>
+                </div>
+                <dl class="market-metrics">
+                  <div>
+                    <dt>Mkt Cap</dt>
+                    <dd>{{ mockDetails().marketCap }}</dd>
+                  </div>
+                  <div>
+                    <dt>Bid</dt>
+                    <dd>{{ marketStats().bid | currency: 'USD' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Ask</dt>
+                    <dd>{{ marketStats().ask | currency: 'USD' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Spread</dt>
+                    <dd>{{ marketStats().spread | currency: 'USD' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Open</dt>
+                    <dd>{{ marketStats().open | currency: 'USD' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Day Range</dt>
+                    <dd>
+                      {{ marketStats().low | currency: 'USD' }}–{{
+                        marketStats().high | currency: 'USD'
+                      }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Range Volume</dt>
+                    <dd>{{ rangeVolume() | number: '1.0-0' }}</dd>
+                  </div>
+                  @if (toolsCollapsed()) {
+                    <div class="market-tools-toggle">
+                      <button
+                        type="button"
+                        class="tool-icon tools-open-button"
+                        aria-label="Open market tools"
+                        title="Open market tools"
+                        (click)="toolsCollapsed.set(false)"
+                      >
+                        <ng-icon class="chevron-rotate" name="lucideChevronLeft" />
+                      </button>
                     </div>
-                    <div>
-                      <dt>Bid</dt>
-                      <dd class="text-gain">{{ marketStats().bid | currency: 'USD' }}</dd>
-                    </div>
-                    <div>
-                      <dt>Ask</dt>
-                      <dd class="text-loss">{{ marketStats().ask | currency: 'USD' }}</dd>
-                    </div>
-                    <div>
-                      <dt>Spread</dt>
-                      <dd>{{ marketStats().spread | currency: 'USD' }}</dd>
-                    </div>
-                    <div>
-                      <dt>Open</dt>
-                      <dd>{{ marketStats().open | currency: 'USD' }}</dd>
-                    </div>
-                    <div>
-                      <dt>Day Range</dt>
-                      <dd>
-                        {{ marketStats().low | currency: 'USD' }}–{{
-                          marketStats().high | currency: 'USD'
-                        }}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Range Volume</dt>
-                      <dd>{{ rangeVolume() | number: '1.0-0' }}</dd>
-                    </div>
-                    @if (toolsCollapsed()) {
-                      <div class="market-tools-toggle">
-                        <button
-                          type="button"
-                          class="tool-icon tools-open-button"
-                          aria-label="Open market tools"
-                          title="Open market tools"
-                          (click)="toolsCollapsed.set(false)"
-                        >
-                          <ng-icon class="chevron-rotate" name="lucideChevronLeft" />
-                        </button>
-                      </div>
-                    }
-                  </dl>
-                </section>
-              }
+                  }
+                </dl>
+              </section>
 
               <section
                 class="chart-panel border-border bg-card rounded-xl border p-3"
                 [class.chart-panel-with-rsi]="rsiEnabled()"
               >
-                <div class="chart-toolbar">
-                  <app-timeframe-toggle [(value)]="timeframe" />
-                  <div class="flex flex-wrap items-center justify-end gap-1.5">
-                    <div class="indicator-dropdown relative">
+                <div class="chart-toolbar"
+                  [style.--picker-left]="toolbarMenuPosition().left + 'px'"
+                  [style.--picker-top]="toolbarMenuPosition().top + 'px'">
+                  <div class="flex flex-wrap items-center justify-start gap-1.5">
+                    <div class="indicator-dropdown">
                       <button
                         type="button"
                         class="tool-button"
@@ -286,7 +246,7 @@
                         </div>
                       }
                     </div>
-                    <div class="chart-mode-dropdown relative">
+                    <div class="chart-mode-dropdown">
                       <button
                         type="button"
                         class="tool-button"
@@ -327,7 +287,7 @@
                         </div>
                       }
                     </div>
-                    <div class="comparison-dropdown relative">
+                    <div class="comparison-dropdown">
                       <button
                         type="button"
                         class="tool-button comparison-button"
@@ -381,6 +341,7 @@
                       }
                     </div>
                   </div>
+                  <app-timeframe-toggle [(value)]="timeframe" />
                 </div>
                 <div class="chart-stage" [class.chart-stage-comparing]="comparisonInstrument()">
                   @if (comparisonInstrument(); as compared) {
@@ -456,7 +417,7 @@
                               [points]="chartPoints()"
                               [mode]="chartMode()"
                               [enabledIndicators]="enabledIndicators()"
-                              [timeframe]="timeframe()"
+                              [timeframe]="chartTimeframe()"
                               timezone="America/Chicago"
                             />
                           }
@@ -490,7 +451,7 @@
                               [points]="comparisonChartPoints()"
                               [mode]="chartMode()"
                               [enabledIndicators]="enabledIndicators()"
-                              [timeframe]="timeframe()"
+                              [timeframe]="comparisonTimeframe()"
                               timezone="America/Chicago"
                             />
                           }
@@ -522,7 +483,7 @@
                           [points]="chartPoints()"
                           [mode]="chartMode()"
                           [enabledIndicators]="enabledIndicators()"
-                          [timeframe]="timeframe()"
+                          [timeframe]="chartTimeframe()"
                           timezone="America/Chicago"
                         />
                       }
@@ -561,7 +522,7 @@
                       role="tablist"
                       aria-label="Instrument tools"
                     >
-                      @for (tab of ['overview', 'news', 'ai']; track tab) {
+                      @for (tab of ['overview', 'news', 'ai', 'recent-orders']; track tab) {
                         <button
                           type="button"
                           role="tab"
@@ -574,13 +535,56 @@
                           [attr.aria-selected]="insightTab() === tab"
                           (click)="insightTab.set($any(tab))"
                         >
-                          {{ tab === 'ai' ? 'AI' : (tab | titlecase) }}
+                          {{
+                            tab === 'ai'
+                              ? 'AI'
+                              : tab === 'recent-orders'
+                                ? 'Recent Orders'
+                                : (tab | titlecase)
+                          }}
                         </button>
                       }
                     </div>
                   </div>
                 </div>
                 @switch (insightTab()) {
+                  @case ('recent-orders') {
+                    <div
+                      class="insight-content insight-feed"
+                      role="tabpanel"
+                      aria-label="Recent Orders"
+                      data-testid="market-recent-orders"
+                    >
+                      <p class="text-muted-foreground mb-2 text-xs">
+                        {{ accountStore.selectedAccount()?.name ?? 'No account selected' }} · All
+                        stocks
+                      </p>
+                      @if (orders.historyStatus() === 'error' || catalogueStatus() === 'error') {
+                        <p class="text-loss text-xs" role="alert">Recent orders unavailable.</p>
+                        <button
+                          type="button"
+                          class="text-primary mt-2 text-xs"
+                          (click)="loadTradingData()"
+                        >
+                          Retry orders
+                        </button>
+                      }
+                      <ul>
+                        @for (order of recentOrders(); track order.key) {
+                          <li app-activity-row [transaction]="order"></li>
+                        } @empty {
+                          <li class="text-muted-foreground py-6 text-center text-sm">
+                            {{
+                              orders.historyStatus() === 'loading' ||
+                              accountStore.status() === 'loading'
+                                ? 'Loading orders…'
+                                : 'No orders at this simulated time.'
+                            }}
+                          </li>
+                        }
+                      </ul>
+                    </div>
+                  }
                   @case ('overview') {
                     <div class="insight-content insight-feed overview-feed">
                       <div class="overview-card-list">
@@ -633,29 +637,6 @@
                         <article class="overview-card">
                           <div class="overview-card-topline">
                             <div class="overview-card-icon" aria-hidden="true">
-                              <ng-icon name="lucideActivity" />
-                            </div>
-                            <div class="overview-card-heading">
-                              <span>Activity</span>
-                              <strong>Elevated</strong>
-                            </div>
-                          </div>
-                          <div
-                            class="overview-progress"
-                            role="progressbar"
-                            aria-label="Activity level"
-                            aria-valuemin="0"
-                            aria-valuemax="5"
-                            aria-valuenow="4"
-                          >
-                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
-                              <span [class.overview-progress-filled]="segment <= 4"></span>
-                            }
-                          </div>
-                        </article>
-                        <article class="overview-card">
-                          <div class="overview-card-topline">
-                            <div class="overview-card-icon" aria-hidden="true">
                               <ng-icon name="lucideShieldCheck" />
                             </div>
                             <div class="overview-card-heading">
@@ -673,29 +654,6 @@
                           >
                             @for (segment of [1, 2, 3, 4, 5]; track segment) {
                               <span [class.overview-progress-filled]="segment <= 3"></span>
-                            }
-                          </div>
-                        </article>
-                        <article class="overview-card">
-                          <div class="overview-card-topline">
-                            <div class="overview-card-icon" aria-hidden="true">
-                              <ng-icon name="lucideCrosshair" />
-                            </div>
-                            <div class="overview-card-heading">
-                              <span>Key level</span>
-                              <strong>{{ marketStats().low | currency: 'USD' }}</strong>
-                            </div>
-                          </div>
-                          <div
-                            class="overview-progress"
-                            role="progressbar"
-                            aria-label="Key level strength"
-                            aria-valuemin="0"
-                            aria-valuemax="5"
-                            aria-valuenow="4"
-                          >
-                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
-                              <span [class.overview-progress-filled]="segment <= 4"></span>
                             }
                           </div>
                         </article>
@@ -826,9 +784,95 @@
                 }
               </section>
 
+              <section
+                class="account-value-panel"
+                aria-label="Trading account"
+                data-testid="account-value-panel"
+              >
+                <app-account-control
+                  data-testid="account-dropdown"
+                  class="account-control-expanded"
+                  [expanded]="true"
+                  [store]="accountStore"
+                  [portfolioValues]="portfolioValues()"
+                  [open]="openHeaderDropdown() === 'account'"
+                  (openChange)="openHeaderDropdown.set($event ? 'account' : null)"
+                  (selected)="selectAccount($event)"
+                  (create)="openCreateAccount()"
+                  (rename)="openRenameAccount($event)"
+                />
+                <dl class="account-value-balances">
+                  <div class="overview-card account-balance-card account-cash-card">
+                    <dt class="text-muted-foreground text-xs">Available cash</dt>
+                    <dd class="text-xl font-semibold tabular-nums" data-testid="available-cash">
+                      @if (accountStore.status() === 'ready') {
+                        {{ availableCash() | currency: 'USD' }}
+                      } @else {
+                        <span aria-label="Balance unavailable">—</span>
+                      }
+                    </dd>
+                  </div>
+                  <div class="overview-card account-balance-card account-portfolio-card">
+                    <dt class="text-muted-foreground text-xs">Portfolio value</dt>
+                    <dd
+                      class="text-xl font-semibold tabular-nums"
+                      data-testid="account-portfolio-value"
+                    >
+                      @if (accountStore.status() === 'ready' && accountStore.selectedAccount()) {
+                        {{
+                          portfolioValues().get(accountStore.selectedAccountId()!) ?? 0
+                            | currency: 'USD'
+                        }}
+                      } @else {
+                        <span aria-label="Balance unavailable">—</span>
+                      }
+                    </dd>
+                  </div>
+                </dl>
+                @if (accountStore.status() === 'idle' || accountStore.status() === 'loading') {
+                  <p class="text-muted-foreground text-xs" role="status">
+                    Loading account balances…
+                  </p>
+                }
+                @if (accountStore.status() === 'error') {
+                  <p class="text-loss text-xs" role="alert">
+                    Accounts unavailable.
+                    <button type="button" class="text-primary" (click)="accountStore.load()">
+                      Retry accounts
+                    </button>
+                  </p>
+                }
+                @if (accountStore.status() === 'ready' && !accountStore.selectedAccount()) {
+                  <button type="button" class="text-primary text-xs" (click)="openCreateAccount()">
+                    Create an account to trade
+                  </button>
+                }
+              </section>
+              @if (orders.historyStatus() === 'error' || catalogueStatus() === 'error') {
+                <button type="button" class="text-primary text-xs" (click)="loadTradingData()">
+                  Retry trading data
+                </button>
+              }
+              @if (
+                accountStore.status() === 'loading' ||
+                catalogueStatus() === 'loading' ||
+                orders.historyStatus() === 'loading'
+              ) {
+                <p class="text-muted-foreground text-xs">Loading trading data…</p>
+              }
               <app-trade-ticket
                 [symbol]="active.symbol"
                 [price]="active.price"
+                [accountId]="accountStore.selectedAccountId()?.toString() ?? ''"
+                [cashBalance]="tradingCashBalance()"
+                [heldShares]="heldShares()"
+                [ready]="tradeReady()"
+                [busy]="busy()"
+                [message]="orderMessage()"
+                [error]="orderError()"
+                [refreshFailed]="refreshAccountId() !== null"
+                (submitted)="submitOrder($event)"
+                (refresh)="retryBalances()"
                 [sessionId]="sessionId()"
                 [marketTimestamp]="marketTimestamp()"
               />
@@ -839,3 +883,15 @@
     }
   </div>
 </main>
+
+@if (settingsOpen()) {
+  <app-settings-dialog (closed)="settingsOpen.set(false)" />
+}
+
+@if (accountDialog(); as dialog) {
+  <app-account-dialog
+    [account]="dialog.account"
+    (closed)="accountDialog.set(null)"
+    (saved)="onAccountSaved($event)"
+  />
+}

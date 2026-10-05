@@ -48,23 +48,17 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ../../apps/market-data/db/migrations:/migrations:ro
+      - ../../apps/market-data/db/migrations/V001__Initialize_database.sql:/V001__Initialize_database.sql:ro
+      - ../../apps/market-data/db/migrations/V002__Add_watchlist.sql:/V002__Add_watchlist.sql:ro
     environment:
       PGPASSWORD: ${DB_PASSWORD:-changeme}
     command: >
-      sh -c 'if [ "$$(psql -h db -U trading_season -d trading_season -t -c 
-      "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='"'"'public'"'"';" 2>/dev/null || echo 0)" = "0" ]; then 
-      echo "[DB-INIT] Applying migrations..."; 
-      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 
-      -f /migrations/V001__Initial_schema.sql
-      -f /migrations/V002__Synthetic_market_data_replay_metadata.sql
-      -f /migrations/V003__Token_authentication.sql
-      -f /migrations/V004__Order_status_lifecycle.sql
-      -f /migrations/V005__User_accounts_and_refresh_tokens.sql
-      -f /migrations/V006__Drop_duplicated_account_columns.sql
-      -f /migrations/V007__Add_account_name.sql
-      -f /migrations/V008__Drop_account_status.sql
-      && echo "[DB-INIT] Migrations complete"; 
+      sh -c 'if [ "$$(psql -h db -U trading_season -d trading_season -t -c
+      "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='"'"'public'"'"';" 2>/dev/null || echo 0)" = "0" ]; then
+      echo "[DB-INIT] Applying migrations...";
+      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 -f /V001__Initialize_database.sql &&
+      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 -f /V002__Add_watchlist.sql
+      && echo "[DB-INIT] Migrations complete";
       else echo "[DB-INIT] Database already initialized, skipping migrations"; fi'
     networks:
       - ci-network
