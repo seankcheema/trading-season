@@ -4,7 +4,7 @@ This document lists all available Swagger UI endpoints for the API services in t
 
 ## Overview
 
-All services use SpringDoc OpenAPI (Swagger) for automated API documentation. Interactive Swagger UI is available at the endpoints below, and machine-readable OpenAPI specs are also provided.
+The Java services expose SpringDoc OpenAPI directly, the NestJS auth service exposes Swagger from decorators, and the reporting service serves a checked-in OpenAPI document with Swagger UI. Interactive documentation is available at the endpoints below, and machine-readable specs are also provided.
 
 ## Service URLs
 
@@ -63,12 +63,37 @@ All services use SpringDoc OpenAPI (Swagger) for automated API documentation. In
   - `PUT /api/market/clock` - Set market clock
   - `GET /api/market/stream` - Subscribe to market data stream (Server-Sent Events)
 
+### Reporting Service (Flask)
+
+- **Server Port**: 8083
+- **Swagger UI**: http://localhost:8083/docs
+- **OpenAPI Spec (YAML)**: http://localhost:8083/openapi.yaml
+
+**API Tags/Endpoints**:
+- **Service**
+  - `GET /` - Service metadata and documentation links
+  - `GET /health` - Liveness and database connectivity check
+- **Portfolio**
+  - `GET /api/reporting/portfolio` - Caller portfolio summary across accounts
+  - `GET /api/reporting/portfolio/{accountId}` - Single-account portfolio view
+  - `GET /api/reporting/portfolio/{accountId}/performance` - Single-account performance metrics
+  - `GET /api/reporting/portfolio/performance` - Aggregate portfolio performance
+- **Trades**
+  - `GET /api/reporting/trades` - Trade history with filtering and pagination
+  - `GET /api/reporting/trades/{orderId}` - Trade or order detail
+  - `GET /api/reporting/trades/statistics` - Aggregate trade statistics
+  - `GET /api/reporting/trades/drill-down` - Grouped trade analytics
+- **Profile**
+  - `GET /api/reporting/profile` - Caller profile summary
+- **Scheduler**
+  - `GET /api/reporting/scheduler/status` - Refresh scheduler status
+
 ## Configuration
 
-All services are configured with:
-- **API Documentation Path**: `/v3/api-docs` (machine-readable)
-- **Swagger UI Path**: `/swagger-ui.html` (interactive)
-- **Bearer Authentication**: All services document JWT bearer token requirements
+- **Auth Service**: Swagger UI at `/api/docs`, spec at `/api-json`
+- **Java Services**: OpenAPI at `/v3/api-docs` and Swagger UI at `/swagger-ui.html`
+- **Reporting Service**: OpenAPI at `/openapi.yaml` and Swagger UI at `/docs`
+- **Bearer Authentication**: All protected services document JWT bearer token requirements
 
 ## Security
 
@@ -87,7 +112,8 @@ To update Swagger documentation:
 
 1. **For NestJS (Auth Service)**: Update `@ApiOperation`, `@ApiResponse` decorators in controllers
 2. **For Java services**: Update `@Operation`, `@ApiResponse` annotations in controllers and add `@Schema` to DTOs
-3. **Controller Documentation**: Use `@Tag` on controller classes to group endpoints
-4. **Endpoint Documentation**: Use `@Operation` on controller methods with descriptions
+3. **For Reporting Service**: Update `apps/reporting-service/openapi.yaml` and keep `apps/reporting-service/app.py` docs routes (`/docs`, `/openapi.yaml`) intact
+4. **Controller Documentation**: Use `@Tag` on controller classes to group endpoints
+5. **Endpoint Documentation**: Use `@Operation` on controller methods with descriptions
 
-Documentation is regenerated automatically when services start - no separate build step required.
+Java and NestJS documentation is regenerated automatically when those services start. Reporting Service documentation is served from the checked-in OpenAPI file.

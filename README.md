@@ -1,6 +1,6 @@
 # Trading Season
 
-Trading simulation monorepo with an Angular interface, two Spring Boot microservices, and a NestJS authentication service. Reporting applications are placeholders.
+Trading simulation monorepo with an Angular interface, two Spring Boot microservices, a NestJS authentication service, and a Flask reporting service.
 
 The backend consists of two independent Java microservices and one NestJS authentication service:
 - **Order and Sell Service** (`apps/order-and-sell-service/`) – Order submission, validation, execution, and instrument reference data
@@ -18,6 +18,7 @@ All services provide interactive Swagger UI documentation:
 | Auth Service | http://localhost:3001/api/docs | http://localhost:3001/api-json |
 | Holdings and Trade Service | http://localhost:8082/swagger-ui.html | http://localhost:8082/v3/api-docs |
 | Order and Sell Service | http://localhost:8081/swagger-ui.html | http://localhost:8081/v3/api-docs |
+| Reporting Service | http://localhost:8083/docs | http://localhost:8083/openapi.yaml |
 
 **Quick Start**: Use the default test credentials `admin@example.com` / `admin123` to login and test all endpoints. See [TEST_CREDENTIALS.md](docs/TEST_CREDENTIALS.md) for details.
 

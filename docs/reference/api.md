@@ -223,6 +223,58 @@ Standard format: `{"error": "..."}` with HTTP status. Mismatched bearer token an
 
 ---
 
+## Reporting Service (Flask) - port 8083
+
+This service reads from the shared `trading_season` database and returns portfolio, trade-history, performance, profile, and scheduler-status views for the signed-in caller.
+
+### Service endpoints
+
+| Method | Path | Request | Success response |
+| --- | --- | --- | --- |
+| GET | / | — (public) | 200: service metadata, docs links, endpoint summary |
+| GET | /health | — (public) | 200: `healthy` plus service metadata when the database is reachable; 503 otherwise |
+| GET | /openapi.yaml | — (public) | 200: OpenAPI YAML |
+| GET | /docs | — (public) | 200: Swagger UI |
+
+### Portfolio and reporting endpoints
+
+All `/api/reporting/*` routes use the auth service bearer token. The service validates RS256 JWTs against the auth JWKS and resolves the caller from the token's `sub`.
+
+| Method | Path | Request | Success response |
+| --- | --- | --- | --- |
+| GET | /api/reporting/portfolio | Bearer token | 200: all caller accounts, holdings, balances, and total portfolio summary |
+| GET | /api/reporting/portfolio/{accountId} | Bearer token; owned account | 200: one account's holdings, balance, and portfolio value |
+| GET | /api/reporting/portfolio/{accountId}/performance | Bearer token; owned account; optional `start_date`, `end_date` | 200: account performance metrics and current position |
+| GET | /api/reporting/portfolio/performance | Bearer token; optional `start_date`, `end_date` | 200: aggregate performance across all caller accounts |
+| GET | /api/reporting/trades | Bearer token; optional `account_id`, `symbol`, `order_type`, `status`, `start_date`, `end_date`, `min_profit`, `max_profit`, `limit`, `offset` | 200: filtered trade list, statistics, pagination, filters |
+| GET | /api/reporting/trades/{orderId} | Bearer token; owned order | 200: order/trade detail with fill when present |
+| GET | /api/reporting/trades/statistics | Bearer token; optional `account_id`, `start_date`, `end_date` | 200: aggregate trade statistics |
+| GET | /api/reporting/trades/drill-down | Bearer token; optional `account_id`, `start_date`, `end_date` | 200: grouped trade analytics by symbol and order type, plus best/worst trades |
+| GET | /api/reporting/profile | Bearer token | 200: caller profile summary |
+| GET | /api/reporting/scheduler/status | — (public) | 200: scheduler refresh status |
+
+### Reporting service authentication and scope
+
+Protected reporting endpoints require:
+- RS256 access token from the auth service
+- valid `iss` matching `AUTH_JWT_ISSUER`
+- valid UUID `sub`, which becomes the reporting caller id
+
+Account-scoped endpoints verify ownership through the account's `user_id`. A caller cannot read another user's portfolios, performance, or trades by guessing ids.
+
+### Reporting service errors
+
+Errors use `{"error": "..."}`.
+
+| Status | Cause |
+| --- | --- |
+| 400 | Invalid date or query-parameter format |
+| 401 | Missing, malformed, expired, or unverifiable bearer token |
+| 404 | Requested account, order, or profile data is missing or inaccessible to the caller |
+| 500 | Unexpected reporting, database, or scheduler failure |
+
+---
+
 ## Client UI integration flow
 
 The Angular UI (port 4200) orchestrates these services:
