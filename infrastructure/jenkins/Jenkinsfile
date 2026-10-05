@@ -23,6 +23,7 @@ pipeline {
         skipDefaultCheckout(true)
         timeout(time: 1, unit: 'HOURS')
         timestamps()
+        skipStagesAfterUnstable()
     }
     
     stages {
@@ -126,6 +127,7 @@ pipeline {
         // Each suite runs once. Java branches use separate Maven repositories.
         // E2E follows the parallel group to avoid browser CPU contention.
         stage('Test Suites') {
+            failFast true
             parallel {
                 stage('Holdings and Trade Service Tests') {
                     steps {
@@ -251,63 +253,50 @@ pipeline {
                         CI = 'true'
                     }
                     steps {
-                        // catchError marks this stage and the build as failed but lets
-                        // other parallel branches finish, so one red suite cannot hide
-                        // another.
-                        catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                            // No JWT credentials needed: the specs generate an ephemeral
-                            // RSA keypair per run. A committed or injected test key would
-                            // eventually be copied into a deployment config.
-                            dir('apps/auth-service') {
-                                sh '''
-                                    set -eu
-                                    echo "Running Auth Service Tests (Vitest)..."
-                                    npm run test:ci
-                                    test -s coverage/lcov.info
-                                    npm run build
-                                    npm run lint
-                                    echo "✓ Auth service tests completed"
-                                '''
-                            }
+                        // No JWT credentials needed: the specs generate an ephemeral
+                        // RSA keypair per run. A committed or injected test key would
+                        // eventually be copied into a deployment config.
+                        dir('apps/auth-service') {
+                            sh '''
+                                set -eu
+                                echo "Running Auth Service Tests (Vitest)..."
+                                npm run test:ci
+                                test -s coverage/lcov.info
+                                npm run build
+                                npm run lint
+                                echo "✓ Auth service tests completed"
+                            '''
                         }
                     }
                     post {
                         always {
                             archiveArtifacts artifacts: 'apps/auth-service/coverage/**/*, apps/auth-service/reports/**/*',
                                               allowEmptyArchive: true
-                            // allowEmptyResults: false is what makes "tests never ran"
-                            // a failure rather than a silent pass. It throws to do so,
-                            // and an uncaught throw in `post` would otherwise abort the
-                            // whole run; catchError keeps the build red without taking
-                            // the other parallel branches down with it.
-                            catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                                junit testResults: 'apps/auth-service/reports/junit/*.xml',
-                                      allowEmptyResults: false,
-                                      healthScaleFactor: 1.0
-                            }
+                            // Missing required reports fail the stage.
+                            junit testResults: 'apps/auth-service/reports/junit/*.xml',
+                                  allowEmptyResults: false,
+                                  healthScaleFactor: 1.0
                         }
                     }
                 }
 
                 stage('Frontend Tests') {
                     steps {
-                        catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                            dir('apps/client-ui') {
-                                sh '''
-                                    set -eu
-                                    echo " Running Frontend Tests (Angular + Vitest)..."
-                                    # --no-watch and --coverage are options of the
-                                    # @angular/build:unit-test builder. Vitest's own
-                                    # --run is not: `ng test --run` fails with
-                                    # "Unknown argument: run" before any test executes.
-                                    # coverageThresholds in angular.json fails the run
-                                    # below the agreed floor.
-                                    mkdir -p reports/junit
-                                    npm test -- --no-watch --coverage --reporters=junit --reporters=default --output-file=reports/junit/ui.xml --coverage-reporters=text --coverage-reporters=html --coverage-reporters=lcovonly --coverage-reporters=cobertura
-                                    test -s coverage/client-ui/lcov.info
-                                    echo "✓ Frontend tests completed"
-                                '''
-                            }
+                        dir('apps/client-ui') {
+                            sh '''
+                                set -eu
+                                echo " Running Frontend Tests (Angular + Vitest)..."
+                                # --no-watch and --coverage are options of the
+                                # @angular/build:unit-test builder. Vitest's own
+                                # --run is not: `ng test --run` fails with
+                                # "Unknown argument: run" before any test executes.
+                                # coverageThresholds in angular.json fails the run
+                                # below the agreed floor.
+                                mkdir -p reports/junit
+                                npm test -- --no-watch --coverage --reporters=junit --reporters=default --output-file=reports/junit/ui.xml --coverage-reporters=text --coverage-reporters=html --coverage-reporters=lcovonly --coverage-reporters=cobertura
+                                test -s coverage/client-ui/lcov.info
+                                echo "✓ Frontend tests completed"
+                            '''
                         }
                     }
                     post {
@@ -355,63 +344,61 @@ pipeline {
                 CI = 'true'
             }
             steps {
-                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                    dir('apps/client-ui') {
-                        sh '''
-                            set -eu
-                            echo " Running Frontend E2E Tests (Playwright)..."
-                            # Headless Chromium needs GTK/ATK shared libraries this agent
-                            # does not carry (libatk-1.0.so.0 and friends), and installing
-                            # them needs root: `playwright install --with-deps` shells out
-                            # to sudo apt-get, which the jenkins user cannot run. So the
-                            # suite runs inside a container that carries those libraries.
-                            # The official Playwright image also ships Firefox and WebKit,
-                            # which this Chromium-only suite never uses, so the pipeline
-                            # builds a slim image holding only chromium-headless-shell and
-                            # ffmpeg. The tag is read from the installed @playwright/test
-                            # so it cannot drift out of step with it -- browser builds are
-                            # only guaranteed to match the Playwright version that
-                            # installed them. The image is built once per version and
-                            # reused while the agent has room for it.
-                            PW_VERSION="$(node -p "require('@playwright/test/package.json').version")"
-                            PW_IMAGE="trading-season-playwright:${PW_VERSION}"
-                            if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
-                                echo "Building $PW_IMAGE..."
-                                docker build --build-arg PLAYWRIGHT_VERSION="$PW_VERSION" \
-                                    -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
-                            fi
-                            docker image ls "$PW_IMAGE" --format 'Playwright image {{.Repository}}:{{.Tag}} is {{.Size}}'
-                            # The whole workspace is mounted rather than just this app so
-                            # client-ui's node_modules, installed on this Linux agent in
-                            # Setup Dependencies, is reused as is.
-                            # The Jenkins NodeJS tool is mounted in and put first on PATH,
-                            # so the container builds with the same Node that Verify
-                            # Toolchain checked rather than whatever the image carries.
-                            NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
-                            # --user keeps dist/ and reports/ owned by jenkins rather than
-                            # root, which would break the next build's checkout and the
-                            # archiveArtifacts step below. HOME gives npm a writable cache.
-                            # --ipc=host avoids the Chromium crashes that the default
-                            # 64MB /dev/shm causes under Docker.
-                            # Playwright starts its own server on 4200 and waits for it;
-                            # the API tier is stubbed at the network boundary, so no
-                            # database or backend service is required.
-                            # Includes order-toasts, market-chart, and account rewind journeys.
-                            docker run --rm \
-                                --user "$(id -u):$(id -g)" \
-                                --ipc=host \
-                                -v "$WORKSPACE:/workspace" \
-                                -v "$NODE_HOME:/opt/node:ro" \
-                                -e HOME=/tmp \
-                                -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-                                -e CI=true \
-                                -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
-                                -w /workspace/apps/client-ui \
-                                "$PW_IMAGE" \
-                                npm run e2e
-                            echo "✓ End-to-end tests completed"
-                        '''
-                    }
+                dir('apps/client-ui') {
+                    sh '''
+                        set -eu
+                        echo " Running Frontend E2E Tests (Playwright)..."
+                        # Headless Chromium needs GTK/ATK shared libraries this agent
+                        # does not carry (libatk-1.0.so.0 and friends), and installing
+                        # them needs root: `playwright install --with-deps` shells out
+                        # to sudo apt-get, which the jenkins user cannot run. So the
+                        # suite runs inside a container that carries those libraries.
+                        # The official Playwright image also ships Firefox and WebKit,
+                        # which this Chromium-only suite never uses, so the pipeline
+                        # builds a slim image holding only chromium-headless-shell and
+                        # ffmpeg. The tag is read from the installed @playwright/test
+                        # so it cannot drift out of step with it -- browser builds are
+                        # only guaranteed to match the Playwright version that
+                        # installed them. The image is built once per version and
+                        # reused while the agent has room for it.
+                        PW_VERSION="$(node -p "require('@playwright/test/package.json').version")"
+                        PW_IMAGE="trading-season-playwright:${PW_VERSION}"
+                        if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
+                            echo "Building $PW_IMAGE..."
+                            docker build --build-arg PLAYWRIGHT_VERSION="$PW_VERSION" \
+                                -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
+                        fi
+                        docker image ls "$PW_IMAGE" --format 'Playwright image {{.Repository}}:{{.Tag}} is {{.Size}}'
+                        # The whole workspace is mounted rather than just this app so
+                        # client-ui's node_modules, installed on this Linux agent in
+                        # Setup Dependencies, is reused as is.
+                        # The Jenkins NodeJS tool is mounted in and put first on PATH,
+                        # so the container builds with the same Node that Verify
+                        # Toolchain checked rather than whatever the image carries.
+                        NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
+                        # --user keeps dist/ and reports/ owned by jenkins rather than
+                        # root, which would break the next build's checkout and the
+                        # archiveArtifacts step below. HOME gives npm a writable cache.
+                        # --ipc=host avoids the Chromium crashes that the default
+                        # 64MB /dev/shm causes under Docker.
+                        # Playwright starts its own server on 4200 and waits for it;
+                        # the API tier is stubbed at the network boundary, so no
+                        # database or backend service is required.
+                        # Includes order-toasts, market-chart, and account rewind journeys.
+                        docker run --rm \
+                            --user "$(id -u):$(id -g)" \
+                            --ipc=host \
+                            -v "$WORKSPACE:/workspace" \
+                            -v "$NODE_HOME:/opt/node:ro" \
+                            -e HOME=/tmp \
+                            -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+                            -e CI=true \
+                            -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
+                            -w /workspace/apps/client-ui \
+                            "$PW_IMAGE" \
+                            npm run e2e
+                        echo "✓ End-to-end tests completed"
+                    '''
                 }
             }
             post {
@@ -420,11 +407,9 @@ pipeline {
                                       allowEmptyArchive: true
                     // allowEmptyResults: false for the same reason as the auth stage:
                     // a missing report means the suite never ran, which is a failure.
-                    catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                        junit testResults: 'apps/client-ui/reports/playwright/junit.xml',
-                              allowEmptyResults: false,
-                              healthScaleFactor: 1.0
-                    }
+                    junit testResults: 'apps/client-ui/reports/playwright/junit.xml',
+                          allowEmptyResults: false,
+                          healthScaleFactor: 1.0
                 }
             }
         }

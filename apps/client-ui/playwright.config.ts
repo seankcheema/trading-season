@@ -16,6 +16,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 2 : 0,
+  failOnFlakyTests: !!process.env['CI'],
   // A conservative, explicit worker count rather than CI's single-core
   // default or local auto-detection: enough to parallelize the spec
   // files without assuming the Jenkins agent has local-machine-level cores.

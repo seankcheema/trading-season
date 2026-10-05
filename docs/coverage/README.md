@@ -40,7 +40,7 @@ Run from the repository root. Each command writes to its service's own build out
 
 | Service | Command | Source of the copied report |
 | --- | --- | --- |
-| Client UI | 492 in 37 files | 92.05 percent (5274/5729) | 88.99 percent (2516/2827) | 88.25 percent (1014/1149) | 93.66 percent (4314/4606) |
+| Client UI | `npm --prefix apps/client-ui test -- --no-watch --coverage` | `apps/client-ui/coverage/client-ui` |
 | Holdings and Trade | `mvn -B -f apps/holdings-and-trade-service/pom.xml clean test` | `apps/holdings-and-trade-service/target/site/jacoco` |
 | Order and Sell | `mvn -B -f apps/order-and-sell-service/pom.xml clean test` | `apps/order-and-sell-service/target/site/jacoco` |
 | Auth service | `npm --prefix apps/auth-service run test:cov` | `apps/auth-service/coverage` |

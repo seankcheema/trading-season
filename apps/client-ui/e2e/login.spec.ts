@@ -191,8 +191,6 @@ test.describe('an expired access token', () => {
   test.use({
     stubOptions: {
       accounts: [{ email: REGISTERED.email, password: REGISTERED.password, hasProfile: true }],
-      // Expired the moment it is issued, so the next guarded navigation has to refresh.
-      accessTokenTtlSeconds: 0,
     },
   });
 
@@ -201,12 +199,38 @@ test.describe('an expired access token', () => {
     await loginPage.signIn(REGISTERED.email, REGISTERED.password);
     await expect(page).toHaveURL(/\/dashboard$/);
 
+    const previous = await readStoredSession(page);
+    await page.evaluate(() => {
+      const session = JSON.parse(localStorage.getItem('ts.auth.session')!);
+      session.expiresAt = Date.now() - 1;
+      localStorage.setItem('ts.auth.session', JSON.stringify(session));
+    });
     await page.reload();
 
     await expect(page).toHaveURL(/\/dashboard$/);
     await expect(page.getByTestId('dashboard-header-controls')).toBeVisible();
-    expect(
-      api.requests.filter((request) => request.url.endsWith('/auth/refresh')).length,
-    ).toBeGreaterThan(0);
+    expect(api.requests.filter((request) => request.url.endsWith('/auth/refresh'))).toHaveLength(1);
+    const renewed = await readStoredSession(page);
+    expect(renewed?.refreshToken).not.toBe(previous?.refreshToken);
+    expect(renewed?.expiresAt).toBeGreaterThan(Date.now());
   });
+
+  for (const refreshToken of ['', 'expired-or-revoked-refresh-token']) {
+    test(`signs out when the refresh credential is ${refreshToken ? 'rejected' : 'missing'}`, async ({ page, loginPage, api }) => {
+      await loginPage.goto();
+      await loginPage.signIn(REGISTERED.email, REGISTERED.password);
+      await expect(page).toHaveURL(/\/dashboard$/);
+      await page.evaluate((token) => {
+        const session = JSON.parse(localStorage.getItem('ts.auth.session')!);
+        session.expiresAt = Date.now() - 1;
+        session.refreshToken = token;
+        localStorage.setItem('ts.auth.session', JSON.stringify(session));
+      }, refreshToken);
+      await page.reload();
+      await expect(page).toHaveURL(/\/login$/);
+      expect(await readStoredSession(page)).toBeNull();
+      expect(api.requests.filter((request) => request.url.endsWith('/auth/refresh')))
+        .toHaveLength(refreshToken ? 1 : 0);
+    });
+  }
 });
