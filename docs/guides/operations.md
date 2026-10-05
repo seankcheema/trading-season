@@ -50,7 +50,7 @@ Because the seed container cannot inspect free space inside the separate Postgre
 
 Jenkins requires a Linux agent with Docker and Compose, Java 21 at its configured JAVA_HOME, the Maven tool named Maven, and the NodeJS tool named NodeJS running Node 24.x at 24.8.0 or later. A preflight requires at least 5 GiB free workspace storage; image builds need additional headroom.
 
-The pipeline checks out the branch tip, installs root workspace and auth dependencies once, and runs five suites in parallel: both Java services, auth, frontend, and synthetic market data. Each Java branch uses its own workspace-local Maven repository under `.m2/<service>`; it does not delete or warm a shared Maven cache. Java tests enforce package coverage floors (85 percent Holdings and Trade, 70 percent Order and Sell); UI and auth retain their configured whole-suite floors.
+The pipeline checks out the branch tip, installs client UI and auth dependencies once, and runs five suites in parallel: both Java services, auth, frontend, and synthetic market data. Each Java branch uses its own workspace-local Maven repository under `.m2/<service>`; it does not delete or warm a shared Maven cache. Java tests enforce package coverage floors (85 percent Holdings and Trade, 70 percent Order and Sell); UI and auth retain their configured whole-suite floors.
 
 The parallel test group stops its other branches on the first failure. Failures propagate without `catchError`, and unstable results skip later stages; Jenkins does not proceed to documentation, E2E, or Docker deployment after a failed test gate. Each started suite publishes reports from its own `post` block, including after failure. Missing required JUnit reports fail the build. Java tests include buy/sell fills and ledger consistency, missing credentials, rejected trades, and transaction rollback. The market-data suite initializes a disposable PostgreSQL database, checks persistence across restart, generates and imports two days of data, repeats the import, and records resource and storage reports. Its Docker resource names derive from a normalized build-tag hash and are removed after the stage.
 
@@ -59,14 +59,16 @@ The parallel test group stops its other branches on the first failure. Failures 
 | Holdings and Trade | apps/holdings-and-trade-service/target/surefire-reports and target/site/jacoco |
 | Order and Sell | apps/order-and-sell-service/target/surefire-reports and target/site/jacoco |
 | Auth | apps/auth-service/coverage and reports/junit |
-| Frontend | apps/client-ui/coverage and reports/junit |
-| Market data | reports/market-data |
+| Reporting service | apps/reporting-service/coverage and reports/junit |
+| UI | apps/client-ui/coverage |
 | End-to-end | apps/client-ui/reports/playwright |
 | Java API documentation | Each Java service's target/reports/apidocs |
 
 After successful tests, Jenkins generates and archives both services' Javadocs using maven-javadoc-plugin 3.11.2 and the same isolated repositories. Source changes still require local review and refresh of the checked-in docs/JAVA_DOCS directories; Jenkins archives do not update Git.
 
-E2E runs sequentially after the parallel suites to reduce browser CPU contention. It builds a Chromium-only Playwright image matched to the installed test package, mounts the workspace and Jenkins Node runtime, and drives the production Angular SSR server. Login, registration, and trading journeys use the existing API stand-in: they verify UI integration, while Java integration tests verify actual ledger persistence. No business database or live auth service is required for these browser journeys.
+Reporting-service CI runs inside the upstream `python:3.14-slim` container rather than a Jenkins-managed Python tool. The slim tag avoids pulling the full image's `buildpack-deps` base, which carries a large set of `-dev` libraries for compiling native extensions that this stage's pure-Python/precompiled-wheel dependencies do not need; pulling the full image here while the Synthetic Market Data Integration branch builds its own image in parallel has exhausted the Jenkins agent's disk. The stage installs `requirements.txt`, runs `pytest`, archives `apps/reporting-service/coverage` and `apps/reporting-service/reports`, and repairs permissions on those artifact directories before checkout and after the test run so stale Docker-owned files do not block the next workspace cleanup.
+
+Every tier fails its own stage below 70% coverage; the mechanisms are listed under [coverage floors](development.md#coverage-floors). A stage that passes has already cleared the floor, so the archived reports are for inspection, not for a manual check.
 
 CI uses two Playwright workers and allows two retries to collect diagnostics. A test that passes only on retry still fails the E2E stage through `failOnFlakyTests` in [the Playwright configuration](../../apps/client-ui/playwright.config.ts). Access-token expiry alone renews the session; sign-out occurs on explicit logout, the configured inactivity deadline, or missing or rejected refresh credentials. Network and refresh-service failures preserve credentials for retry. These cases are covered by the login, inactivity, and authentication unit tests.
 
@@ -102,6 +104,7 @@ See [Development](development.md#checks) for local commands and [Javadocs](../JA
 **CI and deployment:**
 - Jenkins fails before tests: verify the configured Java/Maven paths and Node version on the actual agent, not just the optional image.
 - Jenkins fails before tests: verify the configured Java/Maven paths and Node version (24.x at 24.8.0 or later, compatible with Angular 21.2.x) on the actual agent, not just the optional image.
+- Jenkins checkout fails with `Operation not permitted` under `apps/reporting-service/reports` or `apps/reporting-service/coverage`: run the latest pipeline definition. The reporting-service stage now repairs permissions on those Docker-generated artifact directories before checkout and again after pytest finishes.
 - Synthetic market-data CI derives Docker resource names from a normalized hash of the Jenkins build tag, so encoded multibranch names such as `%2F` do not need special handling. The stage creates and removes build-scoped database and archive volumes; do not pre-seed PostgreSQL or generate a persistent archive on the Jenkins VM.
 - Market replay reports unavailable prices: for a Parquet-backed session, verify that the archive contains the selected `ticks-YYYY-MM-DD.parquet` partition. Set `MARKET_REPLAY_ARCHIVE_LOCATION` to its absolute root when the metadata path belongs to an older checkout or another host; local repository runs also discover the matching archive under `apps/market-data/db/seeds`. Replay deliberately does not fall back to one-minute candles.
 - UI renders but login does not reach an API: form submission is not yet wired to a service. See [architecture](../reference/architecture.md).

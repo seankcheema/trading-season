@@ -2,16 +2,14 @@
 
 ## Toolchain and installation
 
-Use Node.js 24.x (24.8.0 or later), npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. The Angular framework packages, CLI, build tooling, and SSR are all pinned to 21.2.24, and Angular CDK is pinned to its independently published 21.2.14 release. Angular 21.2.x supports Node ^24.0.0; this repository requires Node ^24.8.0 and TypeScript >=5.9.0 <6.0.0. Check exact dependency requirements in the [UI manifest](../../apps/client-ui/package.json), the [auth manifest](../../apps/auth-service/package.json), and the Java service POMs for [Holdings and Trade](../../apps/holdings-and-trade-service/pom.xml) and [Order and Sell](../../apps/order-and-sell-service/pom.xml).
+Use Node.js 24.x (24.8.0 or later), npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. The Angular framework packages, CLI, build tooling, and SSR are all pinned to 21.2.25, and Angular CDK is pinned to its independently published 21.2.14 release. Angular 21.2.x supports Node ^24.0.0; this repository requires Node ^24.8.0 and TypeScript >=5.9.0 <6.0.0. Check exact dependency requirements in the [UI manifest](../../apps/client-ui/package.json), the [auth manifest](../../apps/auth-service/package.json), and the Java service POMs for [Holdings and Trade](../../apps/holdings-and-trade-service/pom.xml) and [Order and Sell](../../apps/order-and-sell-service/pom.xml).
 
-The root npm workspace contains the UI and shared packages; the auth service has its own dependency tree and lockfile. Install both from repository root:
+The client UI and the auth service are separate npm projects, each with its own manifest and lockfile. Install both from repository root:
 
 ```sh
-npm ci
+npm --prefix apps/client-ui ci
 npm --prefix apps/auth-service ci
 ```
-
-Root workspace tooling pins Angular framework packages to the UI version so shared components and third-party peers use one signal type identity. Regenerate the root lockfile whenever that version changes.
 
 Reporting has no runnable application yet.
 
@@ -67,7 +65,7 @@ Compose validates JWT variables even when selecting database services, so provid
 
 | Working directory | Command | Port | Purpose |
 | --- | --- | --- | --- |
-| Repository root | npm --workspace client-ui start | 4200 | Angular frontend |
+| apps/client-ui | npm --prefix apps/client-ui start | 4200 | Angular frontend |
 | apps/order-and-sell-service | mvn spring-boot:run | 8081 | Order processing, order validation, order execution, instrument reference data (called by UI) |
 | apps/holdings-and-trade-service | mvn spring-boot:run | 8082 | User profiles, accounts, holdings, cash movements, market data (called by UI) |
 | apps/auth-service | npm run start:dev | 3001 | Authentication, token issuance |

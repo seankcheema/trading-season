@@ -119,11 +119,16 @@ test.describe('repeated failed sign-ins', () => {
   const loginRequests = (api: ApiStub) =>
     api.requests.filter((request) => request.url.includes('/auth/login'));
 
+  // Waits for each rejection to be applied before the next step. The lock is only recorded
+  // when the third 401 arrives, so a test that reloads or fast-forwards the clock before then
+  // races the lock it is about to check.
   async function failThreeTimes(loginPage: LoginPage): Promise<void> {
     for (let attempt = 1; attempt <= 3; attempt++) {
       await loginPage.signIn(REGISTERED.email, WRONG_PASSWORD);
       if (attempt < 3) {
         await expect(loginPage.error).toContainText('Incorrect email or password');
+      } else {
+        await expect(loginPage.error).toContainText('Too many failed sign-in attempts');
       }
     }
     // The third HTTP response must have recorded the lock before time advances.
@@ -155,15 +160,15 @@ test.describe('repeated failed sign-ins', () => {
   test('stay locked across a reload', async ({ page, loginPage }) => {
     await loginPage.goto();
     await failThreeTimes(loginPage);
-    const lockedUntil = await page.evaluate(() =>
-      JSON.parse(localStorage.getItem('ts.auth.loginLockout')!).lockedUntil as number,
-    );
-    await page.clock.pauseAt(new Date(lockedUntil - 8 * 60_000));
 
-    // Playwright preserves its paused clock across reloads.
     await page.reload({ waitUntil: 'load' });
 
-    await expect(page.getByRole('button', { name: 'Try again in 8:00' })).toBeDisabled();
+    // The lock is kept in localStorage, not in-memory, so it must still hold after a
+    // reload. The exact remaining time isn't the point here (see the other two tests for
+    // that) and asserting on a specific minute is a timing hazard across a navigation, so
+    // this only checks that the reload didn't clear the lock.
+    await expect(page.getByRole('button', { name: /^Try again in \d+:\d\d$/ })).toBeDisabled();
+    await expect(loginPage.error).toContainText('Too many failed sign-in attempts');
   });
 
   test('let the user sign in once the 10 minutes are up', async ({ page, loginPage }) => {

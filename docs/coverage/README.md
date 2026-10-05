@@ -12,8 +12,9 @@ Every service enforces a 70 percent floor in its own test command rather than re
 | Holdings and Trade (Spring Boot) | JaCoCo 0.8.15 | [holdings-and-trade-service/index.html](holdings-and-trade-service/index.html) | `check-coverage` execution in [pom.xml](../../apps/holdings-and-trade-service/pom.xml) |
 | Order and Sell (Spring Boot) | JaCoCo 0.8.15 | [order-and-sell-service/index.html](order-and-sell-service/index.html) | `check-coverage` execution in [pom.xml](../../apps/order-and-sell-service/pom.xml) |
 | Auth service (NestJS) | Vitest with v8 | [auth-service/index.html](auth-service/index.html) | `test.coverage.thresholds` in [vitest.config.ts](../../apps/auth-service/vitest.config.ts) |
+| Reporting service (Flask) | Pytest with coverage.py | [reporting-service/index.html](reporting-service/index.html) | `addopts` in [pytest.ini](../../apps/reporting-service/pytest.ini) |
 
-Machine-readable output sits alongside each HTML report: `client-ui/lcov.info`, `client-ui/cobertura-coverage.xml`, and `client-ui/coverage-final.json`, `jacoco.xml` and `jacoco.csv` in each Java service directory, and `auth-service/lcov.info` and `auth-service/cobertura-coverage.xml`.
+Machine-readable output sits alongside each HTML report: `client-ui/clover.xml` and `client-ui/coverage-final.json`, `jacoco.xml` and `jacoco.csv` in each Java service directory, `auth-service/lcov.info` and `auth-service/cobertura-coverage.xml`, and `reporting-service/coverage.xml`.
 
 ## Results
 
@@ -21,18 +22,31 @@ Counters differ by tool. JaCoCo measures bytecode instructions and branches; the
 
 | Service | Tests | Statements / Instructions | Branches | Functions / Methods | Lines |
 | --- | --- | --- | --- | --- | --- |
-| Client UI | 492 in 37 files | 92.05 percent (5274/5729) | 88.99 percent (2516/2827) | 88.25 percent (1014/1149) | 93.66 percent (4314/4606) |
-| Holdings and Trade | 309 | 98.43 percent (4628/4702) | 95.33 percent (204/214) | 98.23 percent (333/339) | 98.01 percent (887/905) |
-| Order and Sell | 162 | 92.33 percent (4167/4513) | 91.01 percent (162/178) | 92.35 percent (326/353) | 94.09 percent (892/948) |
-| Auth service | 104 in 10 files | 99.02 percent (204/206) | 92.50 percent (74/80) | 96.00 percent (48/50) | 99.50 percent (203/204) |
+| Client UI | 310 in 22 files | 91.56 percent (3867/4223) | 86.43 percent (1676/1939) | 87.1 percent (689/791) | 92.48 percent (3127/3381) |
+| Holdings and Trade | 290 | 98.04 percent (3892/3970) | 95.12 percent (156/164) | 97.65 percent (291/298) | 97.60 percent (773/792) |
+| Order and Sell | 143 | 91.83 percent (3956/4308) | 90.96 percent (151/166) | 91.52 percent (313/342) | 93.68 percent (860/918) |
+| Auth service | 109 in 11 files | 99.05 percent (210/212) | 92.85 percent (78/84) | 96.07 percent (49/51) | 99.52 percent (209/210) |
+| Reporting service | 241 | 98.63 percent (2232/2263) | n/a | n/a | 98.63 percent (2232/2263) |
 
-All four suites passed their configured coverage checks. Test counts and percentages above come from the refreshed reports.
+Every folder and package is at or above its floor on every counter where a floor exists, since the UI and auth floors apply to the whole run rather than per folder. The weakest in each service:
+
+| Service | Weakest folder or package | Lowest counter |
+| --- | --- | --- |
+| Client UI | `src/app/market-page` | branches, 79.2 percent |
+| Holdings and Trade | `app.auth` | methods, 92.9 percent |
+| Order and Sell | `app.market` | complexity, 82.9 percent |
+| Auth service | `auth/strategies` | branches, 75.0 percent |
+| Reporting service | `wsgi.py` | statements/lines, 57.1 percent |
+
+All five suites passed their recorded runs. The reporting service currently publishes coverage output but does not enforce a numeric threshold in `pytest.ini`.
 
 ## Analysis
 
 Order integration tests exercise buy, partial sell, full liquidation, rejected trades without execution rows, missing credentials, account isolation, replay timestamps, idempotency, and rollback after a real database constraint failure. Holdings tests read remaining positions and derive acquisition cost from the corresponding fill and movement rows. The services have separate implementations and fixtures; their results are measured independently.
 
 Browser trading journeys drive the Angular application against the API stand-in. They validate request contracts and UI refresh behavior; the Java integration suite verifies persisted ledger behavior.
+
+In the reporting service, every production module now clears 97 percent except `wsgi.py`. `routes.py` and `scheduled_tasks.py` are at 100 percent: each portfolio, trade-history, drill-down, and performance endpoint is driven end to end with a mocked `verify_token` and real SQLite-backed fixtures (including a profitable and a losing SELL trade so win/loss/break-even branches all execute), and the scheduler's disabled-config, job-registration-failure, and shutdown branches are reached by resetting the module-level `scheduler` singleton before calling it. `app.py` is at 97 percent; the only misses are the PostgreSQL-only connection-pool branch (the test database is SQLite), the `version()` fallback query for non-SQLite engines, and the `if __name__ == '__main__':` guard, none of which are reachable without a different database engine or running the file as a script. `wsgi.py` stays at 57 percent for the same reason: importing it covers the module body, but its `if __name__ == '__main__':` block cannot run under pytest. The generated report also includes the test modules themselves because coverage is configured as `--cov=.` from the service root; they are effectively fully covered, which is why the published total (98.63 percent) sits above the production-only average.
 
 ## Regenerate
 
@@ -44,6 +58,7 @@ Run from the repository root. Each command writes to its service's own build out
 | Holdings and Trade | `mvn -B -f apps/holdings-and-trade-service/pom.xml clean test` | `apps/holdings-and-trade-service/target/site/jacoco` |
 | Order and Sell | `mvn -B -f apps/order-and-sell-service/pom.xml clean test` | `apps/order-and-sell-service/target/site/jacoco` |
 | Auth service | `npm --prefix apps/auth-service run test:cov` | `apps/auth-service/coverage` |
+| Reporting service | `Push-Location apps/reporting-service; pytest; Pop-Location` | `apps/reporting-service/htmlcov` |
 
 Do not edit these files by hand; regenerate them. See [Development](../guides/development.md) for the full check list and [Operations](../guides/operations.md) for how the Jenkins pipeline publishes the same reports as build artifacts.
 

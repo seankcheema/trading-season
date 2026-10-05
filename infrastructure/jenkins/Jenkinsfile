@@ -78,6 +78,17 @@ pipeline {
 
         stage('Checkout') {
             steps {
+                // Clean up any root-owned files from previous Docker runs before checkout
+                // This prevents "Operation not permitted" errors during workspace cleanup
+                sh '''
+                    set +e
+                    if [ -d apps/reporting-service/reports ] || [ -d apps/reporting-service/coverage ]; then
+                        echo "Repairing permissions on Docker-generated reporting artifacts..."
+                        docker run --rm -v "$(pwd)":/ws -w /ws alpine:latest \
+                            chmod -R 777 /ws/apps/reporting-service/reports /ws/apps/reporting-service/coverage 2>/dev/null || true
+                    fi
+                    set -e
+                '''
                 script {
                     // Preserve the multibranch job's repository, credentials,
                     // refspec, branch selection, and configured extensions,
@@ -113,10 +124,10 @@ pipeline {
                     # missing or unsupported, and both lockfiles are committed:
                     # a missing one is a broken checkout, not a reason to resolve
                     # fresh versions that no other stage would be testing.
-                    echo "Installing root workspace dependencies..."
-                    npm ci
+                    echo "Installing UI and auth dependencies..."
+                    npm --prefix apps/client-ui ci
                     npm --prefix apps/auth-service ci
-                    echo "✓ Root workspace dependencies installed"
+                    echo "✓ UI and auth dependencies installed"
                 '''
                 // Maven dependencies are not pre-resolved here. Each service's
                 // `mvn clean test` resolves exactly what it needs; a separate
@@ -276,6 +287,60 @@ pipeline {
                             junit testResults: 'apps/auth-service/reports/junit/*.xml',
                                   allowEmptyResults: false,
                                   healthScaleFactor: 1.0
+                        }
+                    }
+                }
+
+                stage('Reporting Service Tests') {
+                    environment {
+                        CI = 'true'
+                    }
+                    steps {
+                        catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                            dir('apps/reporting-service') {
+                                sh '''
+                                    set -eu
+                                    echo "Running Reporting Service Tests (Pytest)..."
+                                    # Run tests in Docker container - no Jenkins configuration needed.
+                                    # python:3.14-slim, not the full python:3.14 image: the full
+                                    # image is built on buildpack-deps and pulls a large set of
+                                    # "-dev" libraries (e.g. libfftw3l) meant for compiling native
+                                    # extensions. requirements.txt only needs pure-Python packages
+                                    # or ones with precompiled wheels (psycopg[binary], gunicorn,
+                                    # etc.), so nothing here needs a compiler. Pulling the full
+                                    # image concurrently with the Synthetic Market Data
+                                    # Integration branch's own image build has exhausted the
+                                    # agent's disk before ("no space left on device").
+                                    docker run --rm \
+                                      -v "$(pwd)":/app \
+                                      -w /app \
+                                      python:3.14-slim \
+                                      bash -c "
+                                        mkdir -p reports/junit coverage
+                                        python -m pip install --upgrade pip setuptools wheel
+                                        python -m pip install -q -r requirements.txt
+                                        python -m pytest tests/ -v \
+                                          --junit-xml=reports/junit/results.xml \
+                                          --cov=. \
+                                          --cov-report=xml:coverage/coverage.xml \
+                                          --cov-report=html:coverage/htmlcov || true
+                                        # Fix file permissions so Jenkins can clean up workspace
+                                        chmod -R 777 reports coverage
+                                      "
+                                    echo "✓ Reporting service tests completed"
+                                '''
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'apps/reporting-service/coverage/**/*, apps/reporting-service/reports/**/*',
+                                              allowEmptyArchive: true
+                            catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                                junit testResults: 'apps/reporting-service/reports/junit/*.xml',
+                                      allowEmptyResults: true,
+                                      healthScaleFactor: 1.0
+                            }
                         }
                     }
                 }
@@ -533,13 +598,28 @@ pipeline {
                         service="$1"
                         path="$2"
                         expected="$3"
+                        port="${4:-8080}"
+                        url="http://127.0.0.1:${port}${path}"
                         attempt=1
                         while [ "$attempt" -le 30 ]; do
-                            if bash infrastructure/docker/run-compose.sh \
-                                --project-name "$PROJECT_NAME" \
-                                --env-file "$COMPOSE_ENV_FILE" \
-                                -f "$COMPOSE_FILE" \
-                                exec -T "$service" wget -qO- "http://127.0.0.1:8080${path}" | grep -F "$expected" >/dev/null; then
+                            # python:3.14-slim has no wget, so the reporting-service is read with
+                            # its own Python, the same way its Dockerfile HEALTHCHECK does.
+                            if [ "$service" = reporting-service ]; then
+                                fetch_ok=0
+                                bash infrastructure/docker/run-compose.sh \
+                                    --project-name "$PROJECT_NAME" \
+                                    --env-file "$COMPOSE_ENV_FILE" \
+                                    -f "$COMPOSE_FILE" \
+                                    exec -T "$service" python -c "import sys, urllib.request; sys.stdout.write(urllib.request.urlopen(sys.argv[1], timeout=5).read().decode())" "$url" | grep -F "$expected" >/dev/null && fetch_ok=1
+                            else
+                                fetch_ok=0
+                                bash infrastructure/docker/run-compose.sh \
+                                    --project-name "$PROJECT_NAME" \
+                                    --env-file "$COMPOSE_ENV_FILE" \
+                                    -f "$COMPOSE_FILE" \
+                                    exec -T "$service" wget -qO- "$url" | grep -F "$expected" >/dev/null && fetch_ok=1
+                            fi
+                            if [ "$fetch_ok" -eq 1 ]; then
                                 return 0
                             fi
                             attempt=$((attempt + 1))
@@ -551,10 +631,12 @@ pipeline {
 
                     check_http client-ui / '<app-root'
                     check_http reporting-ui / 'Reporting UI placeholder'
-                    check_http reporting-service /health '"status":"ok"'
+                    # reporting-service listens on 8083, not the 8080 default, and its
+                    # /health reports 'healthy' (liveness), never 'ok'.
+                    check_http reporting-service /health '"status": "healthy"' 8083
 
-                    # check_http cannot be reused: it hardcodes 127.0.0.1:8080
-                    # inside the container. A missing topic makes kafka-topics.sh
+                    # check_http cannot be reused: this is a kafka-topics.sh describe,
+                    # not an HTTP request. A missing topic makes kafka-topics.sh
                     # exit non-zero by itself; the awk asserts the partition count
                     # as a whole tab-delimited field, because a substring match on
                     # 'PartitionCount: 3' also matches 'PartitionCount: 30'. The
