@@ -75,6 +75,8 @@ psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STO
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V004__Order_status_lifecycle.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V005__User_accounts_and_refresh_tokens.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V006__Drop_duplicated_account_columns.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V007__Add_account_name.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V008__Drop_account_status.sql
 ```
 
 Verify that `trading_season` owns the tables. Connect to the `trading_season` database and run:
@@ -178,7 +180,7 @@ After startup, verify that the auth tables exist in `trading_season`. Connect pg
 
 ```sql
 -- Verify user_accounts table exists and check registered users
-SELECT user_id, email, user_role, account_status, created_at
+SELECT user_id, email, user_role, created_at
 FROM user_accounts
 ORDER BY created_at DESC;
 ```
@@ -242,12 +244,13 @@ Review the [documentation index](docs/README.md) for all guides and references. 
 
 # Business database ERD
 
-Canonical relationship diagram for the business SQL schema after V001, V002 and V003. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
+Canonical relationship diagram for the business SQL schema after V001 through V008. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
 
 The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change.
 
 ```mermaid
 erDiagram
+    user_accounts ||--|| users : "credentials for"
     users ||--o{ accounts : owns
 
     stocks o|--o| instruments : "optionally powers"
@@ -277,11 +280,10 @@ erDiagram
     instruments ||--o{ holding_movements : changes
     fills ||--o| holding_movements : creates
 
-    users {
+    user_accounts {
         UUID user_id PK
         TEXT email UK
         TEXT user_role
-        TEXT account_status
     }
     simulation_sessions {
         BIGINT id PK

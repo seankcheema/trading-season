@@ -32,7 +32,7 @@ Every folder and package is at or above its floor on every counter where a floor
 
 | Service | Weakest folder or package | Lowest counter |
 | --- | --- | --- |
-| Client UI | `shared-ui-components/src/lib/separator/src/lib` | functions, 0 percent |
+| Client UI | `src/app/market-page` | branches, 79.2 percent |
 | Holdings and Trade | `app.auth` | methods, 92.9 percent |
 | Order and Sell | `app.market` | complexity, 82.9 percent |
 | Auth service | `auth/strategies` | branches, 75.0 percent |
@@ -44,7 +44,7 @@ All five suites passed their recorded runs. The reporting service currently publ
 
 The Java services share their `account`, `holding`, `auth`, `user`, and `market` packages file for file, and the tests for those packages are shared in the same way. In Holdings and Trade, `MarketDataRepository` runs its SQL against H2 in PostgreSQL mode and its Parquet path against a partition written by DuckDB during the test, leaving `app.auth` as the weakest package on methods even though every package clears the 85 percent floor. In Order and Sell, the same `MarketDataRepository` class is exercised far less, which makes the shared `app.market` package the weakest on every counter; the rest of the package, including `MarketReplayService`, keeps it above the 70 percent floor. The Order and Sell order path is covered end to end: unit tests reach every execution-time recheck in `OrderExecutionService`, and endpoint tests submit a buy and a sell through `POST /api/orders` and check the fills, cash transactions, holding movements, and audit trail left behind, then read the caller's own orders back through `GET /api/orders`. The remaining misses are unused entity accessors, `MarketModels.Day`, a record nothing constructs, and the `IllegalStateException` suppliers guarding states the validated order path cannot reach.
 
-In the client UI, the weakest spots are now in `shared-ui-components`, the library extracted from `apps/client-ui` components still carrying untested peripheral pieces such as the separator and field primitives (0 percent functions, 20-38 percent branches/lines). The application code itself is well covered: login, registration, and order submission tests drive template event handlers through the rendered DOM. The remaining branch gaps outside the shared library sit mostly in `token-storage.service.ts`, where browser storage is unavailable, and in the dashboard and market-page components.
+In the client UI, `shared-ui-components` is now fully exercised (100 percent functions, 98.1 percent statements, 93.2 percent branches), so the weakest spots have moved back into the application itself. `src/app/market-page` is lowest on branches at 79.2 percent, followed by `src/app/core/auth` at 83.2 percent, where `token-storage.service.ts` carries paths for a browser storage that is unavailable. Login, registration, and order submission tests drive template event handlers through the rendered DOM, so the application paths a client actually takes are covered.
 
 In the auth service, the key service, local Passport strategy, and every controller route are tested. What remains is almost entirely the metadata branches TypeScript emits for decorated constructor parameters and entity column types, which no test can reach.
 

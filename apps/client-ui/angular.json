@@ -79,6 +79,7 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "runnerConfig": true,
             "include": [
               "src/**/*.spec.ts"
             ],
