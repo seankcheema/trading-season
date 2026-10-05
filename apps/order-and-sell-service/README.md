@@ -10,6 +10,7 @@ Spring Boot microservice responsible for managing all trading operations, order 
 - Execute buy and sell transactions
 - Update and maintain current holdings
 - Maintain complete order audit trail and history
+- Publish one `trade-events` message per resolved order after commit, and run the `reporting-ingester` and `order-status-pusher` consumer groups (log only)
 
 **Port:** 8081 (default, configurable via `server.port`)
 
@@ -27,6 +28,7 @@ Spring Boot microservice responsible for managing all trading operations, order 
 - Maven 3.9+
 - PostgreSQL (shared with Order and Sell Service)
 - NestJS auth service running on port 3001
+- Kafka broker with the `trade-events` topic, from Local Compose (`up -d kafka-init`). The service starts without it, but every order then waits up to five seconds for the broker before responding.
 
 ### Setup
 
@@ -76,6 +78,9 @@ Environment variables override defaults in [application.properties](src/main/res
 | `AUTH_JWT_ISSUER` | `https://auth.dualeapa.local` | Required JWT issuer claim |
 | `CORS_ORIGINS` | `http://localhost:4200` | Allowed browser origins (comma-separated) |
 | `MARKET_REPLAY_ARCHIVE_LOCATION` | empty | Optional absolute Parquet archive root override |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:29092` | Event broker for `trade-events`; Compose sets `kafka:9092` |
+
+The property `app.events.enabled` (default `true`) registers the trade-event publisher and both consumers; the test profile sets it to `false` so contexts without a broker never contact one.
 
 Parquet-backed simulation sessions first use `MARKET_REPLAY_ARCHIVE_LOCATION`, then the archive location recorded during import, and finally discover the matching archive under the repository's `apps/market-data/db/seeds` directory. This discovery keeps an existing database usable after the repository moves. Missing raw tick partitions return an unavailable market-data error rather than falling back to one-minute candles.
 
@@ -114,7 +119,8 @@ app/
 ├── order/           # Order management core
 │   ├── validation/  # Validation pipeline
 │   ├── execution/   # Order execution and settlement
-│   └── audit/       # Order event audit
+│   ├── audit/       # Order event audit
+│   └── event/       # trade-events publisher and the two log-only consumers
 ├── account/         # Trading account entities
 ├── holding/         # Current position data
 ├── instrument/      # Tradable asset definitions

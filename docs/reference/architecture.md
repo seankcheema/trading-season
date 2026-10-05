@@ -21,7 +21,7 @@ graph TB
     HT["Holdings and Trade Service<br/>Spring Boot | Port 8082<br/><br/>User profile queries<br/>Account management<br/>Holdings queries<br/>Not called by UI"]
     
     BizDB["trading_season<br/>PostgreSQL<br/>Port 5432<br/><br/>user_accounts, refresh_tokens (auth)<br/>users, accounts, orders<br/>market data"]
-    Kafka["Kafka<br/>KRaft | Port 29092<br/><br/>topic trade-events<br/>3 partitions, keyed by account<br/>no producer or consumer yet"]
+    Kafka["Kafka<br/>KRaft | Port 29092<br/><br/>topic trade-events<br/>3 partitions, keyed by account<br/>one message per resolved order"]
     
     UI -->|POST /login/refresh| Auth
     UI -->|/api/* (proxy)| OS
@@ -33,7 +33,8 @@ graph TB
     Auth --> BizDB
     OS --> BizDB
     HT --> BizDB
-    OS -.->|proposed: publish trade-events| Kafka
+    OS -->|publish after commit| Kafka
+    Kafka -->|groups reporting-ingester, order-status-pusher: log only| OS
     
     style OS fill:#90EE90
     style HT fill:#FFB6C6
@@ -55,7 +56,7 @@ graph TB
 | **Reporting UI** | Angular | 4300 | Proposed | Portfolio performance, trade history, risk summaries |
 | **Reporting Service** | TBD | 8083 | Proposed | Portfolio aggregation, analytics, report generation |
 | **Market Data** | Infrastructure | — | Implemented | Database migrations, synthetic data generation |
-| **Kafka** | Apache Kafka (KRaft) | 29092 | Implemented | Event broker hosting trade-events; producing and consuming are proposed |
+| **Kafka** | Apache Kafka (KRaft) | 29092 | Implemented | Event broker hosting trade-events. Order and Sell publishes one message per resolved order after the transaction commits, keyed by account id, and runs two log-only consumer groups, `reporting-ingester` and `order-status-pusher`, as the seams for the reporting store and the browser status push. See [TradeEventPublisher](../../apps/order-and-sell-service/src/main/java/app/order/event/TradeEventPublisher.java) |
 
 ## Service naming correction
 
@@ -131,7 +132,7 @@ Reporting UI and Reporting Service are proposed but not yet implemented. When bu
 - **Reporting UI** (port 4300) – Display portfolio performance, trade history, drawdown, returns, and risk summaries. Provide administrative operational and audit views. Use shared Angular components.
 - **Reporting Service** (port 8083) – Read-only access to authorized business data from Order and Sell Service; compute aggregates such as Sharpe/Sortino ratios, win rate, and profit factor. Must not write operational records.
 
-Both services will authenticate via the Auth Service and may read from the `trading_season` database. Reporting store decisions (technology, refresh frequency, retention, timezone) remain unresolved. See [Reporting proposal](reporting.md) for intended capability and first implementation slice.
+Both services will authenticate via the Auth Service and may read from the `trading_season` database. The intended feed for a reporting store is the `trade-events` topic: Order and Sell already publishes every resolved order to it, and the `reporting-ingester` consumer group that only logs today is where the reporting service takes over, so its queries never run against the trading tables (BR-16). Reporting store decisions (technology, refresh frequency, retention, timezone) remain unresolved. See [Reporting proposal](reporting.md) for intended capability and first implementation slice.
 
 ## Change boundaries
 

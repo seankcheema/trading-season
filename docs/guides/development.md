@@ -39,14 +39,28 @@ docker compose --project-name trading-season-local \
 
 The client UI is available on port 4200, the reporting UI placeholder on 4300, and the reporting service placeholder on 8083. `GET http://localhost:8083/health` verifies only that the placeholder container is running; it is not a reporting API.
 
-The stack also starts a Kafka broker, reachable as `kafka:9092` from other containers and `localhost:29092` from the host. A one-shot `kafka-init` container creates the `trade-events` topic with three partitions; broker-side auto-creation is disabled, so a topic that has not been created explicitly fails rather than appearing with one partition. No service publishes or consumes yet. Inspect the topic with the broker's own tools:
+The stack also starts a Kafka broker, reachable as `kafka:9092` from other containers and `localhost:29092` from the host. A one-shot `kafka-init` container creates the `trade-events` topic with three partitions; broker-side auto-creation is disabled, so a topic that has not been created explicitly fails rather than appearing with one partition. Order and Sell waits for `kafka-init`, publishes one JSON message per resolved order (`FILLED` or `REJECTED`) after the database transaction commits, keyed by account id so one account's events share a partition in submission order, and runs two consumer groups, `reporting-ingester` and `order-status-pusher`, that only log what they receive. Inspect the topic, the messages and the groups' committed offsets with the broker's own tools:
 
 ```sh
 docker compose --project-name trading-season-local \
   -f infrastructure/docker-compose/docker-compose.local.yml \
   exec -T kafka /opt/kafka/bin/kafka-topics.sh \
     --bootstrap-server localhost:9092 --describe --topic trade-events
+
+docker compose --project-name trading-season-local \
+  -f infrastructure/docker-compose/docker-compose.local.yml \
+  exec -T kafka /opt/kafka/bin/kafka-console-consumer.sh \
+    --bootstrap-server localhost:9092 --topic trade-events --from-beginning \
+    --property print.key=true --property print.partition=true \
+    --property print.offset=true --timeout-ms 5000
+
+docker compose --project-name trading-season-local \
+  -f infrastructure/docker-compose/docker-compose.local.yml \
+  exec -T kafka /opt/kafka/bin/kafka-consumer-groups.sh \
+    --bootstrap-server localhost:9092 --describe --all-groups
 ```
+
+The service's own log shows each publish with its partition and offset and each group's receipt. After `restart order-and-sell-service`, the groups resume from their committed offsets: new orders are logged once and earlier ones are not replayed.
 
 ### Manual and Windows setup
 
@@ -66,9 +80,11 @@ Compose validates JWT variables even when selecting database services, so provid
 | Working directory | Command | Port | Purpose |
 | --- | --- | --- | --- |
 | Repository root | npm --prefix apps/client-ui start | 4200 | Angular frontend |
-| apps/order-and-sell-service | mvn spring-boot:run | 8081 | Order processing, order validation, order execution (not called by UI yet) |
+| apps/order-and-sell-service | mvn spring-boot:run | 8081 | Order processing, order validation, order execution, trade-events publishing (not called by UI yet) |
 | apps/holdings-and-trade-service | mvn spring-boot:run | 8082 | User profiles, accounts, holdings, cash movements, market data (called by UI) |
 | apps/auth-service | npm run start:dev | 3001 | Authentication, token issuance |
+
+Order and Sell publishes to the Kafka broker at KAFKA_BOOTSTRAP_SERVERS, default `localhost:29092`. Start it and its topic with `up -d kafka-init` from the same Compose file; without it the service still starts and every order still commits, but each submission waits up to five seconds for the broker before responding and logs the failed publish.
 
 The UI calls the auth service directly on port 3001, which allows the dev server origin through CORS_ORIGINS. Java calls use the relative /api path, which the dev server forwards to the Holdings and Trade Service on port 8082 through [proxy.conf.json](../../apps/client-ui/proxy.conf.json). Registration completes only once the Java register contract accepts the profile the UI sends; see the [API reference](../reference/api.md#ui-integration).
 

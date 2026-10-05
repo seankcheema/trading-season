@@ -14,6 +14,7 @@ This service provides read-only access to user profiles, order history, and hold
 - `user/` - User profile and account information
 - `holding/` - Current holdings and position data queries
 - `order/` - Order history and audit queries
+- `order/event/` - Publishes one Kafka `trade-events` message per resolved order after commit; hosts the `reporting-ingester` and `order-status-pusher` consumer groups, which only log. Gated by `app.events.enabled`.
 - `instrument/` - Tradable asset definitions
 - `auth/` - Authentication and authorization
 - `market/` - Shared market data services

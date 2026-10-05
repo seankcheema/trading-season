@@ -8,7 +8,7 @@ Provide traders with portfolio performance, drawdown, returns, trade history, an
 
 ## Proposed boundaries
 
-- Reporting service reads authorized business data and computes aggregates. It must not become another writer of order/accounting records.
+- Reporting service reads authorized business data and computes aggregates. It must not become another writer of order/accounting records. Its intended input is the `trade-events` Kafka topic, to which Order and Sell already publishes every resolved order; the `reporting-ingester` consumer group inside Order and Sell is a log-only placeholder for the ingestion the reporting service will own, so reporting load never reaches the trading tables (BR-16).
 - Reporting UI presents summaries, time-range filters, charts, and drill-down tables using the shared Angular components.
 - Any reporting store is derived data with a documented rebuild process. Operational ledgers remain authoritative.
 - User identity and access control depend on resolving the existing authentication integration described in [architecture](architecture.md).
