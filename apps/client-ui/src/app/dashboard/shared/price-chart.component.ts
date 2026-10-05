@@ -146,7 +146,7 @@ interface TooltipPosition {
     >
       @if (interactive()) {
         <div
-          class="border-border bg-card/90 absolute top-0 left-0 z-30 flex items-center gap-0.5 rounded-lg border p-0.5 backdrop-blur-sm"
+          class="chart-control-bar absolute top-0 left-0 z-30 flex items-center gap-0.5 rounded-lg border p-0.5 backdrop-blur-sm"
           (pointerdown)="$event.stopPropagation()"
         >
           <button
@@ -194,7 +194,7 @@ interface TooltipPosition {
           >
             Reset
           </button>
-          <span class="text-muted-foreground px-1 text-[10px] tabular-nums"
+          <span class="px-1 text-[10px] font-semibold tabular-nums text-[#eefaff]/70"
             >{{ visiblePoints().length }} bars</span
           >
         </div>
@@ -539,21 +539,25 @@ interface TooltipPosition {
     }
   `,
   styles: `
+    .chart-control-bar {
+      border-color: rgba(238, 250, 255, 0.28);
+      background: #242424;
+    }
     .chart-control {
       min-width: 1.5rem;
       height: 1.5rem;
       border-radius: 0.375rem;
-      color: var(--muted-foreground);
-      font-size: 0.6875rem;
+      color: rgba(238, 250, 255, 0.9);
+      font-size: 0.8125rem;
+      font-weight: 600;
       line-height: 1;
       cursor: pointer;
     }
     .chart-control:hover:not(:disabled) {
-      background: var(--muted);
-      color: var(--primary);
+      background: rgba(238, 250, 255, 0.1);
     }
     .chart-control:disabled {
-      opacity: 0.35;
+      opacity: 0.4;
       cursor: not-allowed;
     }
     .chart-indicator-key {
