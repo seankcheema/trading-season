@@ -158,6 +158,6 @@ describe('InstrumentSearchComponent', () => {
     fixture.componentRef.setInput('size', 'lg');
     fixture.detectChanges();
 
-    expect(input.className).toContain('text-2xl');
+    expect(input.className).toContain('text-base');
   });
 });

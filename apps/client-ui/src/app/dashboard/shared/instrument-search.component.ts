@@ -27,7 +27,7 @@ let nextId = 0;
       <ng-icon
         name="lucideSearch"
         class="text-muted-foreground pointer-events-none absolute top-1/2 left-4 -translate-y-1/2"
-        [class]="size() === 'lg' ? 'text-[24px]' : 'text-[16px]'"
+        [class]="size() === 'lg' ? 'text-[18px]' : 'text-[16px]'"
       />
       <input
         [id]="inputId"
@@ -104,7 +104,7 @@ export class InstrumentSearchComponent {
   });
   protected readonly open = computed(() => this.focused() && this.query().trim().length > 0);
   protected readonly inputClasses = computed(() => {
-    const size = this.size() === 'lg' ? 'h-[70px] pr-4 pl-14 text-2xl' : 'h-11 pr-4 pl-11 text-sm';
+    const size = this.size() === 'lg' ? 'h-12 pr-4 pl-12 text-base' : 'h-11 pr-4 pl-11 text-sm';
     const base =
       'border-border placeholder:text-muted-foreground focus-visible:border-ring w-full border transition-colors outline-none';
     return this.embedded()

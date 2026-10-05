@@ -469,7 +469,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
           if (result.status === 'FILLED') {
             const message = `Filled ${result.quantity} ${draft.symbol} at ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(result.indicativePrice)}.`;
 
-            this.orderMessage.set(message);
             this.toasts.show(message, 'success');
             this.refreshBalances(accountId);
           } else if (result.status === 'REJECTED') {
@@ -532,7 +531,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly chartStatus = signal<ChartStatus>('loading');
   protected readonly comparisonChartStatus = signal<ChartStatus>('loading');
   protected readonly timeframe = signal<Timeframe>('1D');
-  protected readonly chartMode = signal<ChartMode>('line');
+  protected readonly chartMode = signal<ChartMode>('area');
   protected readonly chartModes = [
     { value: 'line', label: 'Line', icon: 'lucideChartLine' },
     { value: 'area', label: 'Area', icon: 'lucideChartArea' },
