@@ -480,6 +480,17 @@
   </div>
 </div>
 
+@if (termsDialogOpen()) {
+  <app-terms-and-conditions-dialog
+    [signatureName]="termsSignatureName()"
+    [signature]="termsSignature"
+    [submitting]="termsSubmitting()"
+    [errorMessage]="termsError()"
+    (accepted)="acceptTerms()"
+    (declined)="onSignOut()"
+  />
+}
+
 @if (orderInstrument(); as instrument) {
   <app-order-submission
     [instrument]="instrument"

@@ -2,16 +2,17 @@
 
 ## One database, two owners
 
-The Java business backend and NestJS auth service have separate PostgreSQL databases and user models. The only value shared between them is the user's UUID: auth_db users.id equals trading_season users.user_id, and it reaches the Java backend as the access token's sub claim. Credentials, lockout and refresh sessions exist only in auth_db.
+The Java business backend and NestJS auth service now share the same PostgreSQL database, `trading_season`, while still owning different tables and user-model concerns. The join key between the auth account and the Java profile is the user's UUID: `user_accounts.user_id` equals `users.user_id`, and that value reaches the Java backend as the access token's `sub` claim. Credentials, lockout state, and refresh sessions exist only in auth-owned tables.
 
 An account and its profile are separate rows joined by the same UUID, which is also the access token's `sub` claim: `user_accounts.user_id` equals `users.user_id`, and a foreign key from `users` prevents a profile existing without credentials behind it.
+
+The `users` table also stores `terms_accepted_at`, which records the first time a registered user accepted the current platform terms in the authenticated UI.
 
 The auth service previously used a database of its own, `auth_db`. V005 moved its tables here and V006 dropped the copies of `email`, `user_role` and `account_status` that `users` had been carrying.
 
 | Table group | Schema source | Application behavior |
 | --- | --- | --- |
 | Business: trading_season | [V001 bootstrap SQL](../../apps/market-data/db/migrations/V001__Initial_schema.sql) plus incremental SQL such as [V002 synthetic market data replay metadata](../../apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql) and [V003 token authentication](../../apps/market-data/db/migrations/V003__Token_authentication.sql) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
-| Auth: auth_db | [TypeORM migrations](../../apps/auth-service/src/database/migrations/) | Migrations run on startup; synchronize=false |
 | Business tables | [Market Data migrations](services/market-data.md) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
 | user_accounts, refresh_tokens | the same migrations, from V005 | TypeORM with synchronize=false and no migration runner; the auth service reads and writes tables it never creates |
 
@@ -59,7 +60,7 @@ Orders are distinct from fills. The schema allows at most one fill per order. Th
 
 Simulation data is scoped by run and stock. Deleting a simulation session cascades through its generated market data. The optional unique instruments.simulated_stock_symbol connects U.S. equity instruments to simulator stocks. V002 adds replay metadata and uniqueness needed by synthetic market data imports; it does not add trading APIs. Trading schema support for other asset classes does not imply their simulation or APIs are implemented.
 
-Use this setup for a local development database whose contents can be discarded. `V001__Initial_schema.sql` drops and recreates tables, so it is not a safe upgrade path for retained data. `V002__Synthetic_market_data_replay_metadata.sql` is applied after V001, then `V003__Token_authentication.sql`. V003 removes the sessions table, the username column, and the users credential columns (password hash, lockout, reset token, last login), drops the user_id default because the application sets it from the token, and adds a case-insensitive unique index on email. Any stored password hashes and sessions are discarded. `V004__Order_status_lifecycle.sql` is applied after V003. It replaces the order status set with PENDING, FILLED and REJECTED, maps existing order rows onto it, and widens the audit_trail event types so historical rows are kept.
+Use this setup for a local development database whose contents can be discarded. `V001__Initial_schema.sql` drops and recreates tables, so it is not a safe upgrade path for retained data. `V002__Synthetic_market_data_replay_metadata.sql` is applied after V001, then `V003__Token_authentication.sql`. V003 removes the sessions table, the username column, and the users credential columns (password hash, lockout, reset token, last login), drops the user_id default because the application sets it from the token, and adds a case-insensitive unique index on email. Any stored password hashes and sessions are discarded. `V004__Order_status_lifecycle.sql` is applied after V003. It replaces the order status set with PENDING, FILLED and REJECTED, maps existing order rows onto it, and widens the audit_trail event types so historical rows are kept. `V005__User_accounts_and_refresh_tokens.sql` moves auth persistence into the shared business database, `V006__Drop_duplicated_account_columns.sql` removes stale duplicated account data from `users`, `V007__Add_account_name.sql` backfills explicit account naming, and `V008__Add_terms_acceptance_to_users.sql` adds the timestamp used to suppress repeated terms prompts after acceptance.
 
 ### Connection values
 
@@ -95,6 +96,10 @@ All migrations are managed centrally in the [Market Data folder](services/market
 2. `apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql`
 3. `apps/market-data/db/migrations/V003__Token_authentication.sql`
 4. `apps/market-data/db/migrations/V004__Order_status_lifecycle.sql`
+5. `apps/market-data/db/migrations/V005__User_accounts_and_refresh_tokens.sql`
+6. `apps/market-data/db/migrations/V006__Drop_duplicated_account_columns.sql`
+7. `apps/market-data/db/migrations/V007__Add_account_name.sql`
+8. `apps/market-data/db/migrations/V008__Add_terms_acceptance_to_users.sql`
 
 With `psql`, the equivalent commands from the repository root are:
 
@@ -103,9 +108,13 @@ psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STO
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V003__Token_authentication.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V004__Order_status_lifecycle.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V005__User_accounts_and_refresh_tokens.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V006__Drop_duplicated_account_columns.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V007__Add_account_name.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V008__Add_terms_acceptance_to_users.sql
 ```
 
-A database already initialized with V001 through V003 only needs V004 applied.
+A database already initialized with V001 through V007 only needs V008 applied.
 
 **Important:** Both Java services (Holdings and Trade Service and Order and Sell Service) must connect with the same schema version. Never edit an applied migration; add a new one instead. See [Market Data documentation](services/market-data.md) for detailed migration rules.
 
@@ -189,7 +198,7 @@ apps/market-data/db/.venv/Scripts/python.exe -m pip install -r apps/market-data/
 
 #### Step 2: Initialize a disposable database
 
-Run this step only when setting up the business database for the first time. It applies V001 through V004, and V001 drops existing tables.
+Run this step only when setting up the business database for the first time. It applies V001 through V008, and V001 drops existing tables.
 
 ```powershell
 apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0001-initialize-database.py `

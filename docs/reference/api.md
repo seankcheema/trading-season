@@ -41,6 +41,7 @@ This service is the primary backend for Client UI. It implements order operation
 | POST | /api/auth/account-exists | Public JSON: `email` | 200: `exists` boolean | Check before register; rate-limit at edge |
 | POST | /api/auth/register | Bearer token + JSON profile | 201: `userId`, `email` | Email must match token's `email` claim |
 | GET | /api/users/me | Bearer token | 200: user profile | Returns caller only; excludes SSN |
+| PUT | /api/users/me/terms-acceptance | Bearer token | 200: updated user profile | Records first acceptance of platform terms |
 
 **Registration profile fields:** (all required unless marked optional)
 - `email` (must match token; ≤100 chars)
@@ -50,6 +51,10 @@ This service is the primary backend for Client UI. It implements order operation
 - `dateOfBirth` (must be in past)
 - `traderLevel` (BEGINNER, INTERMEDIATE, or ADVANCED)
 - `availableFunds` (≥5000.00; max 2 decimal places)
+
+**Profile response fields:** `GET /api/users/me` and `PUT /api/users/me/terms-acceptance` return the caller's profile with `userId`, `email`, `firstName`, `middleName`, `lastName`, `address`, `dateOfBirth`, `traderLevel`, `availableFunds`, `userRole`, `accountStatus`, `termsAccepted`, `termsAcceptedAt`, and `createdAt`.
+
+**Terms acceptance:** `PUT /api/users/me/terms-acceptance` stores the first acceptance timestamp on the caller's profile and returns the updated profile. Once `termsAccepted` is `true`, the current backend keeps that stored acceptance and the UI should not prompt again unless the product later versions the terms.
 
 **Token verification:** Each service caches the auth service's public JWKS independently. Tokens must:
 - Use RS256 signature
@@ -128,6 +133,7 @@ This service provides user registration, profile queries, account and holdings q
 | POST | /api/auth/account-exists | Public JSON: `email` | 200: `exists` boolean | Check before register; rate-limit at edge |
 | POST | /api/auth/register | Bearer token + JSON profile | 201: `userId`, `email` | Email must match token's `email` claim |
 | GET | /api/users/me | Bearer token | 200: user profile | Returns caller only; excludes SSN |
+| PUT | /api/users/me/terms-acceptance | Bearer token | 200: updated user profile | Records first acceptance of platform terms |
 
 **Registration profile fields:** (all required unless marked optional)
 - `email` (must match token; ≤100 chars)
@@ -137,6 +143,10 @@ This service provides user registration, profile queries, account and holdings q
 - `dateOfBirth` (must be in past)
 - `traderLevel` (BEGINNER, INTERMEDIATE, or ADVANCED)
 - `availableFunds` (≥5000.00; max 2 decimal places)
+
+**Profile response fields:** `GET /api/users/me` and `PUT /api/users/me/terms-acceptance` return the caller's profile with `userId`, `email`, `firstName`, `middleName`, `lastName`, `address`, `dateOfBirth`, `traderLevel`, `availableFunds`, `userRole`, `accountStatus`, `termsAccepted`, `termsAcceptedAt`, and `createdAt`.
+
+**Terms acceptance:** Holdings and Trade Service persists the acceptance timestamp on the caller's `users` row. Order and Sell Service reports the same fields read-only from the shared schema.
 
 **Token verification:** Each service caches the auth service's public JWKS independently. Tokens must:
 - Use RS256 signature
@@ -216,6 +226,7 @@ The Angular UI (port 4200) orchestrates these services:
    - Bearer token from Auth Service is sent in `Authorization: Bearer` header
    - POST /api/auth/register (submit profile after auth registration)
    - GET /api/users/me (profile: the shared cash balance and the name the header initials come from)
+  - PUT /api/users/me/terms-acceptance (record first acceptance of platform terms)
    - GET /api/me/accounts, POST /api/me/accounts, PUT /api/me/accounts/{accountId}
    - GET /api/accounts/{accountId}/holdings (per-account portfolio)
    - GET /api/me/cash-transactions, POST /api/me/cash-transactions (deposits and withdrawals)
@@ -228,6 +239,8 @@ The Angular UI (port 4200) orchestrates these services:
    - Order submission is not wired yet; the dashboard logs the request instead of sending it
 
 Market prices and instrument names are shared simulation data. Everything else the dashboard shows is the signed-in user's own: accounts, each account's holdings, the shared cash balance and the funding history all come from the endpoints above, scoped to the token's `sub`.
+
+The dashboard gates trading actions on the `termsAccepted` flag returned by `GET /api/users/me`. The acceptance modal appears after sign-in and profile load, writes to `PUT /api/users/me/terms-acceptance`, and stays suppressed on later sessions once the backend reports `termsAccepted: true`.
 
 Session management, inactivity timeout, and token refresh are handled by [SessionTimeoutService](../../apps/client-ui/src/app/core/auth/session-timeout.service.ts) and [AuthService](../../apps/client-ui/src/app/core/auth/auth.service.ts). Inactivity timeout (5–60 minutes, default 10) is UI-only; neither backend service implements it.
 

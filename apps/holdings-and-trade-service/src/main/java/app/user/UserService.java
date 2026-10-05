@@ -3,6 +3,7 @@ package app.user;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
@@ -54,5 +55,25 @@ public class UserService {
     public UserAccount getUserAccount(UUID userId) {
         return userAccountRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("Account is not registered"));
+    }
+
+    /**
+     * Records that the caller accepted the current platform terms.
+     *
+     * <p>The timestamp is written once and then left alone so later checks can
+     * tell whether acceptance exists without rewriting the profile on every
+     * sign-in.
+     *
+     * @param userId the caller's user id from the token's sub claim
+     * @return the updated account
+     * @throws UserNotFoundException if the caller has not registered a business account
+     */
+    @Transactional
+    public User acceptTerms(UUID userId) {
+        User user = getOwnAccount(userId);
+        if (user.getTermsAcceptedAt() == null) {
+            user.setTermsAcceptedAt(OffsetDateTime.now());
+        }
+        return userRepository.save(user);
     }
 }

@@ -22,6 +22,7 @@ class UserProfileResponseTest {
     @Test
     void userProfileResponseFromEntity() {
         User user = new User();
+        OffsetDateTime acceptedAt = OffsetDateTime.parse("2026-10-05T20:00:00Z");
         user.setUserId(USER_ID);
         user.setFirstName("John");
         user.setMiddleName("Q");
@@ -31,6 +32,7 @@ class UserProfileResponseTest {
         user.setDateOfBirth(LocalDate.of(1990, 1, 1));
         user.setTraderLevel("ADVANCED");
         user.setAvailableFunds(new BigDecimal("50000.00"));
+        user.setTermsAcceptedAt(acceptedAt);
         
         UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER", "ACTIVE");
 
@@ -47,6 +49,27 @@ class UserProfileResponseTest {
         assertEquals(new BigDecimal("50000.00"), response.availableFunds());
         assertEquals("TRADER", response.userRole());
         assertEquals("ACTIVE", response.accountStatus());
+        assertTrue(response.termsAccepted());
+        assertEquals(acceptedAt, response.termsAcceptedAt());
+    }
+
+    @Test
+    void userProfileResponseMarksTermsUnacceptedWhenNoTimestampExists() {
+        User user = new User();
+        user.setUserId(USER_ID);
+        user.setFirstName("John");
+        user.setLastName("Doe");
+        user.setAddress("123 Main St");
+        user.setDateOfBirth(LocalDate.of(1990, 1, 1));
+        user.setTraderLevel("ADVANCED");
+        user.setAvailableFunds(new BigDecimal("50000.00"));
+
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER", "ACTIVE");
+
+        UserProfileResponse response = UserProfileResponse.from(user, account);
+
+        assertFalse(response.termsAccepted());
+        assertNull(response.termsAcceptedAt());
     }
 
     @Test

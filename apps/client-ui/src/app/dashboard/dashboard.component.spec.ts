@@ -35,7 +35,12 @@ const HOLDINGS: Record<number, unknown[]> = {
 const CASH = 10_000;
 
 // The signed-in user, as GET /api/users/me reports them.
-const PROFILE = { firstName: 'Ada', lastName: 'Lovelace' };
+const PROFILE = {
+  firstName: 'Ada',
+  lastName: 'Lovelace',
+  termsAccepted: true,
+  termsAcceptedAt: '2026-10-05T20:00:00Z',
+};
 
 // Answers the account, holdings and profile loads the dashboard starts with in the browser.
 function flushAccounts(
@@ -50,7 +55,12 @@ function flushAccounts(
     holdings?: Record<number, unknown[]>;
     cash?: number;
     transactions?: unknown[];
-    profile?: { firstName: string; lastName: string };
+    profile?: {
+      firstName: string;
+      lastName: string;
+      termsAccepted?: boolean;
+      termsAcceptedAt?: string | null;
+    };
   } = {},
 ): HttpTestingController {
   const http = TestBed.inject(HttpTestingController);
@@ -60,7 +70,12 @@ function flushAccounts(
       .expectOne(`/api/accounts/${account.accountId}/holdings`)
       .flush(holdings[account.accountId] ?? []);
   }
-  http.expectOne('/api/users/me').flush({ ...profile, availableFunds: cash });
+  http.expectOne('/api/users/me').flush({
+    ...profile,
+    availableFunds: cash,
+    termsAccepted: profile.termsAccepted ?? true,
+    termsAcceptedAt: profile.termsAcceptedAt ?? '2026-10-05T20:00:00Z',
+  });
   http.expectOne((request) => request.url === '/api/me/cash-transactions').flush(transactions);
   fixture.detectChanges();
   return http;
@@ -112,6 +127,57 @@ describe('DashboardComponent', () => {
     const fixture = TestBed.createComponent(DashboardComponent);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('app-order-submission')).toBeNull();
+  });
+
+  it('should block the dashboard behind terms acceptance until the user signs', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+    flushAccounts(fixture, ACCOUNTS, {
+      profile: { firstName: 'Ada', lastName: 'Lovelace', termsAccepted: false, termsAcceptedAt: null },
+    });
+
+    const dialog = fixture.nativeElement.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialog?.textContent).toContain('Terms and Conditions');
+    expect(dialog?.textContent).toContain('Ada Lovelace');
+  });
+
+  it('should keep trade actions closed while terms are still pending', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+    flushAccounts(fixture, ACCOUNTS, {
+      profile: { firstName: 'Ada', lastName: 'Lovelace', termsAccepted: false, termsAcceptedAt: null },
+    });
+
+    fixture.componentInstance['openOrder'](MOCK_INSTRUMENTS[0]);
+    fixture.componentInstance['onDeposit']();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-order-submission')).toBeNull();
+    expect(fixture.componentInstance['accountDialog']()).toBeNull();
+  });
+
+  it('should save terms acceptance once the typed signature matches', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+    const http = flushAccounts(fixture, ACCOUNTS, {
+      profile: { firstName: 'Ada', lastName: 'Lovelace', termsAccepted: false, termsAcceptedAt: null },
+    });
+
+    fixture.componentInstance['termsSignature'].set('Ada Lovelace');
+    fixture.componentInstance['acceptTerms']();
+
+    const request = http.expectOne('/api/users/me/terms-acceptance');
+    expect(request.request.method).toBe('PUT');
+    request.flush({
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      availableFunds: CASH,
+      termsAccepted: true,
+      termsAcceptedAt: '2026-10-05T20:00:00Z',
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-terms-and-conditions-dialog')).toBeNull();
   });
 
   it('should open the order submission dialog when an instrument is selected', async () => {

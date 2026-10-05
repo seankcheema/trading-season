@@ -19,6 +19,8 @@ import java.util.UUID;
  * @param availableFunds cash available for trading
  * @param userRole       ADMIN or TRADER
  * @param accountStatus  ACTIVE or DEACTIVATED
+ * @param termsAccepted  whether the caller has accepted the platform terms
+ * @param termsAcceptedAt when the caller accepted the platform terms, or {@code null}
  * @param createdAt      when the account was registered
  */
 public record UserProfileResponse(
@@ -33,6 +35,8 @@ public record UserProfileResponse(
         BigDecimal availableFunds,
         String userRole,
         String accountStatus,
+        boolean termsAccepted,
+        OffsetDateTime termsAcceptedAt,
         OffsetDateTime createdAt
 ) {
 
@@ -54,6 +58,7 @@ public record UserProfileResponse(
         return new UserProfileResponse(user.getUserId(), account.getEmail(),
                 user.getFirstName(), user.getMiddleName(), user.getLastName(), user.getAddress(),
                 user.getDateOfBirth(), user.getTraderLevel(), user.getAvailableFunds(),
-                account.getUserRole(), account.getAccountStatus(), user.getCreatedAt());
+                account.getUserRole(), account.getAccountStatus(), user.getTermsAcceptedAt() != null,
+                user.getTermsAcceptedAt(), user.getCreatedAt());
     }
 }

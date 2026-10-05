@@ -72,6 +72,8 @@ Compose validates JWT variables even when selecting database services, so provid
 
 The UI calls the auth service directly on port 3001, which allows the dev server origin through CORS_ORIGINS. Java calls use the relative /api path, which the dev server forwards to the Holdings and Trade Service on port 8082 through [proxy.conf.json](../../apps/client-ui/proxy.conf.json). Registration completes only once the Java register contract accepts the profile the UI sends; see the [API reference](../reference/api.md#ui-integration).
 
+After successful sign-in or registration, the dashboard loads `GET /api/users/me` and blocks trading actions until the user accepts the current platform terms. Acceptance is recorded with `PUT /api/users/me/terms-acceptance` and the prompt is suppressed on later sessions once the backend returns `termsAccepted: true`.
+
 ## Checks
 
 Run from repository root after dependency installation:

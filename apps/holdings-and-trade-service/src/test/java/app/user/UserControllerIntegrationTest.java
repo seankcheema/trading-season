@@ -16,6 +16,7 @@ import org.springframework.web.context.WebApplicationContext;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -23,6 +24,7 @@ import java.util.UUID;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -95,6 +97,7 @@ class UserControllerIntegrationTest {
             .andExpect(jsonPath("$.userId").value(aliceId.toString()))
             .andExpect(jsonPath("$.firstName").value("alice"))
             .andExpect(jsonPath("$.traderLevel").value("ADVANCED"))
+            .andExpect(jsonPath("$.termsAccepted").value(false))
             .andExpect(jsonPath("$.ssn").doesNotExist());
 
         mockMvc.perform(get("/api/users/me").with(tokenFor(bobId, "bob@example.com")))
@@ -115,5 +118,23 @@ class UserControllerIntegrationTest {
         mockMvc.perform(get("/api/users/me"))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void acceptTermsPersistsAcceptanceTimestamp() throws Exception {
+        UUID userId = UUID.randomUUID();
+        registerUser(userId, "alice", "alice@example.com");
+
+        mockMvc.perform(put("/api/users/me/terms-acceptance").with(tokenFor(userId, "alice@example.com")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.termsAccepted").value(true))
+            .andExpect(jsonPath("$.termsAcceptedAt").isNotEmpty());
+
+        OffsetDateTime acceptedAt = jdbcTemplate.queryForObject(
+                "SELECT terms_accepted_at FROM users WHERE user_id = ?",
+                (rs, rowNum) -> rs.getObject(1, OffsetDateTime.class),
+                userId);
+
+        org.junit.jupiter.api.Assertions.assertNotNull(acceptedAt);
     }
 }

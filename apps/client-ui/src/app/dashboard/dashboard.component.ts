@@ -53,6 +53,7 @@ import {
 } from './accounts/cash-transaction-dialog.component';
 import { OrderSubmissionComponent } from './order-submission/order-submission.component';
 import { SettingsDialogComponent } from './settings-dialog/settings-dialog.component';
+import { TermsAndConditionsDialogComponent } from './terms-and-conditions-dialog.component';
 import { DashboardHeaderDropdownComponent } from './shared/dashboard-header-dropdown.component';
 import { DailySparklineComponent } from './shared/daily-sparkline.component';
 import { InstrumentSearchComponent } from './shared/instrument-search.component';
@@ -115,6 +116,7 @@ interface ActivityItem {
     OrderSubmissionComponent,
     PriceChartComponent,
     SettingsDialogComponent,
+    TermsAndConditionsDialogComponent,
     SignedPercentPipe,
     TimeframeToggleComponent,
   ],
@@ -229,6 +231,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
   });
 
   protected readonly settingsOpen = signal(false);
+  protected readonly termsSignature = signal('');
+  protected readonly termsSubmitting = signal(false);
+  protected readonly termsError = signal<string | null>(null);
+  protected readonly termsDialogOpen = computed(
+    () => this.accountStore.status() === 'ready' && !this.accountStore.termsAccepted(),
+  );
+  protected readonly termsSignatureName = computed(() => {
+    const profile = this.accountStore.profile();
+    return [profile?.firstName ?? '', profile?.lastName ?? ''].join(' ').trim();
+  });
 
   // Symbol currently open in the order submission dialog, if any.
   private readonly orderSymbol = signal<string | null>(null);
@@ -387,11 +399,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   protected openCreateAccount(): void {
+    if (this.termsDialogOpen()) {
+      return;
+    }
     this.openHeaderDropdown.set(null);
     this.accountDialog.set({ kind: 'account', account: null });
   }
 
   protected openRenameAccount(account: Account): void {
+    if (this.termsDialogOpen()) {
+      return;
+    }
     // Only accounts the store lists for the caller can be renamed.
     if (!this.accountStore.isOwnedAccount(account.accountId)) {
       return;
@@ -405,6 +423,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   protected openOrder(instrument: Instrument): void {
+    if (this.termsDialogOpen()) {
+      return;
+    }
     this.orderSymbol.set(instrument.symbol);
   }
 
@@ -419,10 +440,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   protected onDeposit(): void {
+    if (this.termsDialogOpen()) {
+      return;
+    }
     this.openCashDialog('deposit');
   }
 
   protected onWithdraw(): void {
+    if (this.termsDialogOpen()) {
+      return;
+    }
     this.openCashDialog('withdraw');
   }
 
@@ -720,6 +747,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   protected onSettings(): void {
+    if (this.termsDialogOpen()) {
+      return;
+    }
     this.openHeaderDropdown.set(null);
     this.settingsOpen.set(true);
   }
@@ -731,6 +761,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected onSignOut(): void {
     this.openHeaderDropdown.set(null);
     this._authService.logout().subscribe(() => void this._router.navigateByUrl('/login'));
+  }
+
+  protected acceptTerms(): void {
+    if (this.termsSubmitting()) {
+      return;
+    }
+    this.termsSubmitting.set(true);
+    this.termsError.set(null);
+    this.accountStore.acceptTerms().subscribe({
+      next: () => {
+        this.termsSubmitting.set(false);
+        this.termsSignature.set('');
+      },
+      error: () => {
+        this.termsSubmitting.set(false);
+        this.termsError.set('We could not save your acceptance. Please try again.');
+      },
+    });
   }
 }
 
