@@ -13,6 +13,8 @@ import pytest
 
 from models import User, Order, Fill
 
+TEST_HS256_KEY = 'reporting-service-test-secret-key-32b'
+
 
 # ============================================================================
 # Shared fixtures
@@ -504,7 +506,7 @@ class TestVerifyTokenBranches:
 
     @staticmethod
     def _make_token(kid='test-kid'):
-        return jwt.encode({'sub': 'abc'}, 'secret', algorithm='HS256', headers={'kid': kid})
+        return jwt.encode({'sub': 'abc'}, TEST_HS256_KEY, algorithm='HS256', headers={'kid': kid})
 
     @staticmethod
     def _patch_rsa_algorithm(mocker):

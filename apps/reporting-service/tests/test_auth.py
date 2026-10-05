@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, UTC
 import uuid
 from app import verify_token, JWKSCache
 
+TEST_HS256_KEY = 'reporting-service-test-secret-key-32b'
+
 
 class TestJWKSCache:
     """Test JWKS cache functionality"""
@@ -35,7 +37,7 @@ class TestTokenVerification:
             'iss': 'http://localhost:3001',
             'exp': datetime.now(UTC) - timedelta(minutes=1)  # Expired 1 min ago
         }
-        token = jwt.encode(payload, 'secret', algorithm='HS256')
+        token = jwt.encode(payload, TEST_HS256_KEY, algorithm='HS256')
         
         # Would fail with proper key verification
         try:
@@ -62,8 +64,8 @@ class TestTokenClaims:
             'sub': str(uuid.uuid4()),
             'iss': 'http://localhost:3001'
         }
-        token = jwt.encode(payload, 'secret', algorithm='HS256')
-        decoded = jwt.decode(token, 'secret', algorithms=['HS256'])
+        token = jwt.encode(payload, TEST_HS256_KEY, algorithm='HS256')
+        decoded = jwt.decode(token, TEST_HS256_KEY, algorithms=['HS256'])
         assert 'sub' in decoded
     
     def test_token_has_issuer_claim(self):
@@ -72,8 +74,8 @@ class TestTokenClaims:
             'sub': str(uuid.uuid4()),
             'iss': 'http://localhost:3001'
         }
-        token = jwt.encode(payload, 'secret', algorithm='HS256')
-        decoded = jwt.decode(token, 'secret', algorithms=['HS256'])
+        token = jwt.encode(payload, TEST_HS256_KEY, algorithm='HS256')
+        decoded = jwt.decode(token, TEST_HS256_KEY, algorithms=['HS256'])
         assert decoded['iss'] == 'http://localhost:3001'
 
 
@@ -103,8 +105,8 @@ class TestUserIsolation:
             'sub': str(test_user.user_id),
             'iss': 'http://localhost:3001'
         }
-        token = jwt.encode(payload, 'secret', algorithm='HS256')
-        decoded = jwt.decode(token, 'secret', algorithms=['HS256'])
+        token = jwt.encode(payload, TEST_HS256_KEY, algorithm='HS256')
+        decoded = jwt.decode(token, TEST_HS256_KEY, algorithms=['HS256'])
         assert decoded['sub'] == str(test_user.user_id)
 
 

@@ -10,6 +10,8 @@ import uuid
 import jwt
 from decimal import Decimal
 
+TEST_HS256_KEY = 'reporting-service-test-secret-key-32b'
+
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -206,7 +208,7 @@ def valid_token(test_user):
         'iat': datetime.now(UTC)
     }
     # Create a mock token - note: in real tests, you'd use RS256 with actual keys
-    token = jwt.encode(payload, 'secret', algorithm='HS256')
+    token = jwt.encode(payload, TEST_HS256_KEY, algorithm='HS256')
     return token
 
 
