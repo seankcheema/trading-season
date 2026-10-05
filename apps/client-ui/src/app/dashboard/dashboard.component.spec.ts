@@ -5,6 +5,7 @@ import { Router, provideRouter } from '@angular/router';
 import { DashboardComponent } from './dashboard.component';
 import { Instrument, MOCK_INSTRUMENTS } from './mock-data';
 import { OrderResult } from './orders/order.models';
+import { OrderService } from './orders/order.service';
 import { vi } from 'vitest';
 
 const CALENDAR = {
@@ -148,12 +149,18 @@ describe('DashboardComponent', () => {
     }).compileComponents();
   });
 
-  it('merges filled executions with cash by execution time and excludes unfilled orders', () => {
+  it('merges orders of every status with cash, newest first, tagging and coloring each', () => {
     const fixture = createDashboard();
     fixture.detectChanges();
     flushAccounts(fixture, ACCOUNTS, {
       transactions: [
         { cashTransactionId: 8, amount: 500, reason: 'DEPOSIT', createdAt: '2026-01-05T16:30:00Z' },
+        {
+          cashTransactionId: 9,
+          amount: 50,
+          reason: 'WITHDRAWAL',
+          createdAt: '2026-01-05T16:20:00Z',
+        },
       ],
       orders: [
         filledOrder({
@@ -171,8 +178,18 @@ describe('DashboardComponent', () => {
           indicativePrice: 120,
           resolvedAt: '2026-01-05T10:00:00-06:00',
         }),
-        filledOrder({ orderId: 3, status: 'PENDING', resolvedAt: null }),
-        filledOrder({ orderId: 4, status: 'REJECTED' }),
+        filledOrder({
+          orderId: 3,
+          status: 'PENDING',
+          resolvedAt: null,
+          submittedAt: '2026-01-05T15:50:00Z',
+        }),
+        filledOrder({
+          orderId: 4,
+          status: 'REJECTED',
+          rejectionReason: 'Insufficient funds',
+          resolvedAt: '2026-01-05T15:40:00Z',
+        }),
       ],
     });
     const rows = [
@@ -180,14 +197,61 @@ describe('DashboardComponent', () => {
         '[data-testid="recent-transactions"] li[data-kind]',
       ),
     ] as HTMLElement[];
-    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => row.dataset['tag'])).toEqual([
+      'FILLED',
+      'DEPOSIT',
+      'WITHDRAWAL',
+      'FILLED',
+      'PENDING',
+      'REJECTED',
+    ]);
     expect(rows[0].textContent).toContain('AAPL');
-    expect(rows[0].textContent).toContain('BUY');
     expect(rows[0].textContent).toContain('-$200.00');
-    expect(rows[0].textContent).toContain('2 shares');
-    expect(rows[1].dataset['kind']).toBe('cash');
-    expect(rows[2].textContent).toContain('SELL');
-    expect(rows[2].textContent).toContain('+$120.00');
+    expect(rows[0].textContent).toContain('2 @ $100.00 · Buy');
+    expect(rows[3].textContent).toContain('+$120.00');
+    expect(rows[3].textContent).toContain('1 @ $120.00 · Sell');
+    expect(rows[5].textContent).toContain('Insufficient funds');
+
+    const tagClass = (row: HTMLElement) =>
+      row.querySelector('[data-testid="activity-tag"]')!.className;
+    expect(tagClass(rows[0])).toContain('text-gain');
+    expect(tagClass(rows[1])).toContain('text-primary');
+    expect(tagClass(rows[2])).toContain('text-primary');
+    expect(tagClass(rows[4])).toContain('text-amber-400');
+    expect(tagClass(rows[5])).toContain('text-loss');
+
+    // The amount is green when money comes in and red when it goes out.
+    const valueClass = (row: HTMLElement) =>
+      row.querySelector('[data-testid="activity-value"]')!.className;
+    expect(valueClass(rows[0])).toContain('text-loss');
+    expect(valueClass(rows[1])).toContain('text-gain');
+    expect(valueClass(rows[2])).toContain('text-loss');
+    expect(valueClass(rows[3])).toContain('text-gain');
+  });
+
+  it('opens the transactions and order history dialogs from the panel', () => {
+    const fixture = createDashboard();
+    fixture.detectChanges();
+    const http = flushAccounts(fixture, ACCOUNTS, { orders: [filledOrder({ instrumentId: 7 })] });
+    const click = (testId: string) => {
+      fixture.nativeElement.querySelector(`[data-testid="${testId}"]`).click();
+      fixture.detectChanges();
+    };
+
+    click('open-transactions');
+    http.expectOne((request) => request.url === '/api/me/cash-transactions').flush([]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="transactions-table"]')).not.toBeNull();
+    fixture.componentInstance['closeHistory']();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="dialog"]')).toBeNull();
+
+    click('open-order-history');
+    for (const request of http.match('/api/orders')) request.flush([filledOrder({ instrumentId: 7 })]);
+    fixture.detectChanges();
+    const rows = fixture.nativeElement.querySelectorAll('[data-testid="order-history-row"]');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain('AAPL');
   });
 
   it('shows executions at selected replay times and falls back to audit time', () => {
@@ -397,6 +461,18 @@ describe('DashboardComponent', () => {
       .flush([{ timestamp: '2026-10-01T18:00:00Z', value: 6500 }]);
     expect(component['cashBalance']()).toBe(9_683.41);
     expect(component['portfolioChart']()[0].value).toBe(6500);
+  });
+
+  it('reloads cash and holdings when a pending order fills on its own', () => {
+    const fixture = createDashboard();
+    fixture.detectChanges();
+    const http = flushAccounts(fixture);
+
+    TestBed.inject(OrderService).pendingFilled.next(filledOrder({ accountId: 2 }));
+
+    http.expectOne('/api/users/me').flush({ ...PROFILE, availableFunds: 9_000 });
+    http.expectOne('/api/accounts/2/holdings').flush(HOLDINGS[2]);
+    expect(fixture.componentInstance['cashBalance']()).toBe(9_000);
   });
 
   it('should reload nothing when an order was rejected', () => {

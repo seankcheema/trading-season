@@ -1,0 +1,42 @@
+/* Shared by the transactions and order history dialogs. The dashboard's own table styles are
+   scoped to that component, so the dialogs carry their copies. */
+.dash-table-head {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dash-scroll {
+  scrollbar-width: none;
+}
+
+.dash-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.history-grid {
+  grid-template-columns:
+    minmax(0, 1.4fr)
+    minmax(0, 0.8fr)
+    minmax(0, 0.95fr)
+    minmax(0, 0.6fr)
+    minmax(0, 0.75fr)
+    minmax(0, 0.85fr)
+    minmax(0, 1fr);
+}
+
+.order-grid {
+  grid-template-columns:
+    minmax(0, 1.4fr)
+    minmax(0, 1.1fr)
+    minmax(0, 0.8fr)
+    minmax(0, 0.95fr)
+    minmax(0, 0.55fr)
+    minmax(0, 0.75fr)
+    minmax(0, 0.85fr)
+    minmax(0, 1fr);
+}

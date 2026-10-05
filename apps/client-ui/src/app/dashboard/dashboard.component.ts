@@ -1,9 +1,12 @@
 import { WatchlistStore } from './watchlist/watchlist-store.service';
 import { ActivityItem, ActivityRowComponent } from './shared/activity-row.component';
+import { cashActivity, orderActivity, orderDate } from './shared/activity';
+import { OrderHistoryDialogComponent } from './history/order-history-dialog.component';
+import { TransactionsDialogComponent } from './history/transactions-dialog.component';
 import { AccountControlComponent } from './shared/account-control.component';
 import { MarketClockControlComponent } from './shared/market-clock-control.component';
 import { MarketClockService } from './shared/market-clock.service';
-import { cashAt, executionTime, holdingsAt } from './accounts/simulation-account';
+import { cashAt, holdingsAt } from './accounts/simulation-account';
 import { CurrencyPipe, DOCUMENT, isPlatformBrowser } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -29,6 +32,7 @@ import {
   lucidePlus,
   lucideSettings,
 } from '@ng-icons/lucide';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription } from 'rxjs';
 import { Router } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
@@ -77,7 +81,7 @@ interface PricedHolding {
   gainLoss: number;
 }
 
-// User-wide cash movements and successful executions across the caller's owned accounts.
+// User-wide cash movements and orders across the caller's owned accounts.
 @Component({
   selector: 'app-dashboard',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -88,6 +92,8 @@ interface PricedHolding {
     MarketClockControlComponent,
     CashTransactionDialogComponent,
     CurrencyPipe,
+    OrderHistoryDialogComponent,
+    TransactionsDialogComponent,
     DashboardHeaderDropdownComponent,
     DailySparklineComponent,
     InstrumentSearchComponent,
@@ -210,6 +216,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly clockUpdating = this.clock.clockUpdating;
   protected readonly marketClockLabel = this.clock.marketClockLabel;
   protected readonly settingsOpen = signal(false);
+  protected readonly historyDialog = signal<'transactions' | 'orders' | null>(null);
 
   // Symbol currently open in the order submission dialog, if any.
   private readonly orderSymbol = signal<string | null>(null);
@@ -251,46 +258,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return values;
   });
 
+  // The latest 20 cash transfers and orders of any status, newest first. Orders after the
+  // simulated clock are hidden, as they have not happened yet in the replay.
   protected readonly transactions = computed<ActivityItem[]>(() => {
-    const cash: ActivityItem[] = this.accountStore.cashTransactions().map((transaction) => ({
-      kind: 'cash' as const,
-      key: `cash-${transaction.cashTransactionId}`,
-      date: transaction.createdAt,
-      reason: transaction.reason,
-      value: transaction.amount,
-      label: 'Cash',
-      detail: 'Cash transfer',
-      positive: transaction.reason === 'DEPOSIT',
-    }));
-    const catalogue = new Map(
-      this.orderService.catalogue().map((instrument) => [instrument.instrumentId, instrument]),
-    );
-    const trades: ActivityItem[] = this.orderService
+    const cursor = this.marketTimeMillis();
+    const catalogue = this.orderService.catalogue();
+    const trades = this.orderService
       .orders()
-      .filter(
-        (order) =>
-          order.status === 'FILLED' &&
-          order.resolvedAt !== null &&
-          (this.marketTimeMillis() === null || executionTime(order) <= this.marketTimeMillis()!),
-      )
-      .map((order) => {
-        const instrument =
-          order.instrumentId === undefined ? undefined : catalogue.get(order.instrumentId);
-        return {
-          kind: 'trade',
-          key: `order-${order.orderId}`,
-          date:
-            order.simulatedAt && Number.isFinite(Date.parse(order.simulatedAt))
-              ? order.simulatedAt
-              : order.resolvedAt!,
-          reason: order.orderType,
-          value: order.quantity * order.indicativePrice,
-          label:
-            instrument?.simulatedStockSymbol ?? instrument?.ticker ?? `Order #${order.orderId}`,
-          detail: `${order.quantity} ${order.quantity === 1 ? 'share' : 'shares'} · Filled`,
-          positive: order.orderType === 'SELL',
-        };
-      });
+      .filter((order) => {
+        const at = Date.parse(orderDate(order));
+        return Number.isFinite(at) && (cursor === null || at <= cursor);
+      })
+      .map((order) => orderActivity(order, catalogue));
+    const cash = this.accountStore.cashTransactions().map(cashActivity);
     return [...cash, ...trades]
       .sort((a, b) => Date.parse(b.date) - Date.parse(a.date) || b.key.localeCompare(a.key))
       .slice(0, 20);
@@ -308,7 +288,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     ),
   );
 
-  private readonly marketTimeMillis = computed(() => {
+  protected readonly marketTimeMillis = computed(() => {
     const time = Date.parse(this.currentMarketTimestamp());
     return Number.isNaN(time) ? null : time;
   });
@@ -393,6 +373,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private historyRefreshTimer?: ReturnType<typeof setInterval>;
 
   constructor() {
+    // A pending order that fills moves cash and holdings on the backend without the user doing
+    // anything, so reload them as a trade the user just made would.
+    this.orderService.pendingFilled
+      .pipe(takeUntilDestroyed())
+      .subscribe((order) => this.refreshAfterFill(order.accountId ?? this.selectedAccountId()));
     effect(() => {
       const accountId = this.selectedAccountId();
       const timeframe = this.portfolioTimeframe();
@@ -505,6 +490,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.accountDialog.set({ kind: 'account', account });
   }
 
+  protected openHistory(dialog: 'transactions' | 'orders'): void {
+    this.historyDialog.set(dialog);
+  }
+
+  protected closeHistory(): void {
+    this.historyDialog.set(null);
+  }
+
+  // A row in a history table opens the order ticket for its stock, if the market lists it.
+  protected openOrderForSymbol(symbol: string): void {
+    const instrument = findInstrument(symbol, this.instruments());
+    if (!instrument) return;
+    this.closeHistory();
+    this.openOrder(instrument);
+  }
+
   protected closeAccountDialog(): void {
     this.accountDialog.set(null);
   }
@@ -523,7 +524,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (order.status !== 'FILLED') {
       return;
     }
-    const accountId = this.accountStore.selectedAccountId();
+    this.refreshAfterFill(this.accountStore.selectedAccountId());
+  }
+
+  private refreshAfterFill(accountId: number | null): void {
     if (accountId === null) {
       return;
     }

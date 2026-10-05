@@ -841,7 +841,7 @@ describe('MarketPageComponent', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance['heldShares']()).toBe(2);
     expect(fixture.componentInstance['cashBalance']()).toBe(9548.4);
-    expect(fixture.componentInstance['recentOrders']()[0].detail).toContain('Filled');
+    expect(fixture.componentInstance['recentOrders']()[0].tag).toBe('FILLED');
     expect(fixture.componentInstance['orderMessage']()).toBe('');
     expect(fixture.nativeElement.querySelector('app-trade-ticket [role="status"]')).toBeNull();
     expect(TestBed.inject(ToastService).messages()[0].message).toContain('Filled 2 AAPL');
@@ -876,7 +876,7 @@ describe('MarketPageComponent', () => {
     fixture.detectChanges();
     expect(
       fixture.nativeElement.querySelector('[data-testid="market-recent-orders"]').textContent,
-    ).toContain('Rejected');
+    ).toContain('rejected');
     expect(fixture.componentInstance['cashBalance']()).toBe(10000);
     http.verify();
   });
