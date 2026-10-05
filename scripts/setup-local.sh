@@ -412,7 +412,7 @@ select_databases() {
     export DB_NAME=trading_season
     # The broker is published on the host as localhost:29092; inside Compose it
     # is kafka:9092. These applications run on the VM, so they take the former.
-    # Nothing reads this yet -- no service publishes or consumes.
+    # Order and Sell reads it to publish trade-events and run its consumers.
     export KAFKA_BOOTSTRAP_SERVERS=localhost:29092
 }
 
