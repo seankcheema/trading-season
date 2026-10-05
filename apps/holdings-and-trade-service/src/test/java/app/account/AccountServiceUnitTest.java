@@ -367,7 +367,7 @@ class AccountServiceUnitTest {
         when(accountRepository.save(any(Account.class)))
                 .thenReturn(account);
 
-        Account result = accountService.updateAccountName(1, USER_ID, "");
+        accountService.updateAccountName(1, USER_ID, "");
 
         ArgumentCaptor<Account> captor = ArgumentCaptor.forClass(Account.class);
         verify(accountRepository).save(captor.capture());
@@ -385,7 +385,7 @@ class AccountServiceUnitTest {
         when(accountRepository.save(any(Account.class)))
                 .thenReturn(account);
 
-        Account result = accountService.updateAccountName(1, USER_ID, longName);
+        accountService.updateAccountName(1, USER_ID, longName);
 
         ArgumentCaptor<Account> captor = ArgumentCaptor.forClass(Account.class);
         verify(accountRepository).save(captor.capture());

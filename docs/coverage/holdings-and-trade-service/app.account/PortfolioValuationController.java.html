@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioValuationController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.account</a> &gt; <span class="el_source">PortfolioValuationController.java</span></div><h1>PortfolioValuationController.java</h1><pre class="source lang-java linenums">package app.account;
+
+import app.auth.AuthenticatedUser;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.*;
+import java.util.List;
+
+/** Ownership-scoped portfolio history and server-calculated capture endpoints. */
+@RestController
+@RequestMapping(&quot;/api/accounts/{accountId}&quot;)
+public class PortfolioValuationController {
+    private final PortfolioValuationService service;
+    /** Creates the controller.
+     * @param service valuation capture and history logic */
+<span class="fc" id="L16">    public PortfolioValuationController(PortfolioValuationService service) { this.service = service; }</span>
+
+    /**
+     * Reads recorded history for an owned account.
+     * @param accountId owned account
+     * @param timeframe chart range; defaults to 1D
+     * @param jwt verified caller
+     * @return chronological observations
+     */
+    @GetMapping(&quot;/portfolio-history&quot;)
+    public List&lt;PortfolioValuationService.Point&gt; history(@PathVariable Integer accountId,
+            @RequestParam(defaultValue = &quot;1D&quot;) String timeframe, @AuthenticationPrincipal Jwt jwt) {
+<span class="fc" id="L28">        return service.history(accountId, AuthenticatedUser.from(jwt).userId(), timeframe);</span>
+    }
+
+    /**
+     * Captures current holdings using prices resolved on the server.
+     * @param accountId owned account
+     * @param jwt verified caller
+     * @return fresh observation, or null before any acquisition
+     */
+    @PostMapping(&quot;/portfolio-valuations&quot;)
+    public PortfolioValuationService.Point capture(@PathVariable Integer accountId,
+            @AuthenticationPrincipal Jwt jwt) {
+<span class="fc" id="L40">        return service.capture(accountId, AuthenticatedUser.from(jwt).userId(), false);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -32,6 +32,9 @@ class HoldingMovementRepositoryTest {
     @Autowired
     private FillRepository fillRepository;
 
+    @Autowired
+    private HoldingRepository holdingRepository;
+
     @Test
     void averageCostIsWeightedByQuantityAcrossEveryAcquisition() {
         // 1 share at 100 and 3 at 200 averages 175, not 150.
@@ -49,6 +52,23 @@ class HoldingMovementRepositoryTest {
         move(1, 100, new BigDecimal("500.00"), new BigDecimal("-2"));
 
         assertEquals(new BigDecimal("100.00"), costOf(1).get(100));
+    }
+
+    @Test
+    void filledBuyAndPartialSellExposeRemainingQuantityAtAcquisitionCost() {
+        acquire(808, 100, new BigDecimal("20.00"), new BigDecimal("10"));
+        move(808, 100, new BigDecimal("25.00"), new BigDecimal("-4"));
+        Holding position = new Holding();
+        position.setAccountId(808);
+        position.setInstrumentId(100);
+        position.setQuantity(new BigDecimal("6"));
+        position.setUpdatedAt(java.time.OffsetDateTime.now());
+        holdingRepository.saveAndFlush(position);
+
+        Holding read = holdingRepository.findByAccountIdAndInstrumentId(808, 100).orElseThrow();
+        assertEquals(0, new BigDecimal("6").compareTo(read.getQuantity()));
+        assertEquals(new BigDecimal("20.00"), costOf(808).get(100));
+        assertTrue(costOf(809).isEmpty());
     }
 
     @Test

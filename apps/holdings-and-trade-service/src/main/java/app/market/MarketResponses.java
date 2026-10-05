@@ -65,9 +65,17 @@ public final class MarketResponses {
      * @param timeframe requested timeframe
      * @param marketTimestamp replay cursor time
      * @param points chronological aggregated points
+     * @param rangeStart inclusive chart boundary
+     * @param rangeEnd chart boundary, including the unelapsed session remainder
+     * @param tradingSessions chronological session intervals for compressed trading axes
      */
     public record CandleSeries(long sessionId, String symbol, String timeframe,
-                        Instant marketTimestamp, List<CandlePoint> points) { }
+                        Instant marketTimestamp, List<CandlePoint> points, Instant rangeStart,
+                        Instant rangeEnd, List<TradingSession> tradingSessions) { }
+    /** Market interval used to lay out trading sessions without overnight gaps.
+     * @param start session opening instant
+     * @param end exclusive session closing boundary */
+    public record TradingSession(Instant start, Instant end) { }
     /**
      * One stock price inside a synchronized live batch.
      * @param symbol stock symbol

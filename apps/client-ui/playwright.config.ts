@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * End-to-end configuration for the login and registration journeys.
+ * UI integration configuration for authentication, account, and trading journeys.
  *
  * The suite drives the real Angular application — router, guards, reactive
  * forms, HTTP interceptor and browser storage — against a contract-accurate
@@ -16,8 +16,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 2 : 0,
+  failOnFlakyTests: !!process.env['CI'],
   // A conservative, explicit worker count rather than CI's single-core
-  // default or local auto-detection: enough to parallelize the six spec
+  // default or local auto-detection: enough to parallelize the spec
   // files without assuming the Jenkins agent has local-machine-level cores.
   workers: process.env['CI'] ? 2 : undefined,
   reporter: [

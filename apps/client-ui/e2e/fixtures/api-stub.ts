@@ -1,3 +1,4 @@
+import type { OrderResult } from '../../src/app/dashboard/orders/order.models';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import type { Page, Route } from '@playwright/test';
 
@@ -50,6 +51,8 @@ export interface SeedAccount {
   availableFunds?: number;
   /** Trading accounts the business backend holds for this user. */
   tradingAccounts?: SeedTradingAccount[];
+  /** Executed orders for the first seeded trading account. */
+  orders?: Omit<OrderResult, 'accountId'>[];
 }
 
 /** Trading account as GET /api/me/accounts returns it. */
@@ -159,6 +162,7 @@ export function decodeJwtPayload(token: string): Record<string, unknown> {
  */
 export class ApiStub {
   readonly requests: RecordedRequest[] = [];
+  private readonly watchlists = new Map<string, { symbol: string; createdAt: string }[]>();
 
   private readonly accounts = new Map<string, StoredAccount>();
   private readonly refreshTokens = new Map<string, string>();
@@ -172,7 +176,11 @@ export class ApiStub {
   // as availableFunds and is shared by all of that user's accounts.
   private readonly tradingAccounts: OwnedTradingAccount[] = [];
   private readonly cashTransactions = new Map<string, StoredCashTransaction[]>();
+  private readonly portfolioValuations = new Map<number, { timestamp: string; value: number }[]>();
   private nextId = 1;
+  private readonly orderReferences = new Map<string, OrderResult>();
+  private readonly orders = new Map<string, OrderResult[]>();
+  private marketTimestamp = '2026-01-05T15:00:00Z';
 
   constructor(options: StubOptions = {}) {
     this.accessTokenTtl = options.accessTokenTtlSeconds ?? ACCESS_TOKEN_TTL;
@@ -193,6 +201,11 @@ export class ApiStub {
           ...(trading.holdings ?? []),
         );
       }
+      const owned = this.tradingAccounts.find((trading) => trading.ownerId === account.id);
+      this.orders.set(
+        account.id,
+        (seed.orders ?? []).map((order) => ({ ...order, accountId: owned?.accountId })),
+      );
     }
   }
 
@@ -227,6 +240,33 @@ export class ApiStub {
     await page.route(AUTH_ORIGIN + '/auth/logout', (route) => this.logout(route));
     await page.route('**/api/auth/register', (route) => this.registerProfile(route));
     await page.route('**/api/auth/account-exists', (route) => this.accountExists(route));
+    await page.route(/\/api\/me\/watchlist(?:\/[^/?]+)?$/, (route) => this.watchlist(route));
+    await page.route('**/api/orders', (route) => this.orderRequest(route));
+    await page.route('**/api/instruments', async (route) => {
+      if (await this.caller(route))
+        await this.json(route, 200, [
+          {
+            instrumentId: 7,
+            ticker: 'AAPL',
+            simulatedStockSymbol: 'AAPL',
+            name: 'Apple',
+            assetClass: 'Equity',
+            market: 'US',
+            currency: 'USD',
+            tradable: true,
+          },
+          {
+            instrumentId: 8,
+            ticker: 'MSFT',
+            simulatedStockSymbol: 'MSFT',
+            name: 'Microsoft',
+            assetClass: 'Equity',
+            market: 'US',
+            currency: 'USD',
+            tradable: true,
+          },
+        ]);
+    });
     await page.route('**/api/users/me', (route) => this.ownProfile(route));
     await page.route('**/api/market/**', (route) => this.market(route));
     await page.route('**/api/me/accounts', (route) => this.meAccounts(route));
@@ -236,6 +276,111 @@ export class ApiStub {
       (route) => this.accountHoldings(route),
     );
     await page.route('**/api/me/cash-transactions**', (route) => this.meCashTransactions(route));
+    await page.route(
+      (url) => /^\/api\/accounts\/\d+\/portfolio-(history|valuations)$/.test(url.pathname),
+      (route) => this.portfolioHistory(route),
+    );
+  }
+
+  private async watchlist(route: Route): Promise<void> {
+    const owner = await this.caller(route);
+    if (!owner) return;
+    const entries = this.watchlists.get(owner) ?? [];
+    const symbol = decodeURIComponent(new URL(route.request().url()).pathname.split('/')[4] ?? '').trim().toUpperCase();
+    const method = route.request().method();
+    if (method === 'GET') { await this.json(route, 200, entries); return; }
+    if (method === 'DELETE') {
+      this.watchlists.set(owner, entries.filter((entry) => entry.symbol !== symbol));
+      await route.fulfill({ status: 204 }); return;
+    }
+    if (!['AAPL', 'MSFT'].includes(symbol)) { await this.json(route, 404, { error: 'Unknown stock symbol' }); return; }
+    const entry = entries.find((item) => item.symbol === symbol) ?? { symbol, createdAt: new Date().toISOString() };
+    if (!entries.includes(entry)) entries.push(entry);
+    this.watchlists.set(owner, entries);
+    await this.json(route, 200, entry);
+  }
+
+  /** Submit at the quoted price; apply only fills to persisted cash and holdings. */
+  private async orderRequest(route: Route): Promise<void> {
+    const owner = await this.caller(route);
+    if (!owner) return;
+    if (route.request().method() === 'GET') {
+      await this.json(route, 200, this.orders.get(owner) ?? []);
+      return;
+    }
+    const body = this.body(route);
+    const accountId = Number(body['accountId']);
+    const account = this.ownedAccounts(owner).find((a) => a.accountId === accountId);
+    if (!account) {
+      await this.json(route, 404, { error: 'Account not found' });
+      return;
+    }
+    const key = `${owner}:${body['clientReference']}`;
+    const existing = this.orderReferences.get(key);
+    if (existing) {
+      await this.json(route, 201, existing);
+      return;
+    }
+    const quantity = Number(body['quantity']),
+      price = Number(body['indicativePrice']);
+    const side = body['orderType'];
+    const symbol =
+      Number(body['instrumentId']) === 7
+        ? 'AAPL'
+        : Number(body['instrumentId']) === 8
+          ? 'MSFT'
+          : '';
+    if (
+      !symbol ||
+      !Number.isInteger(quantity) ||
+      quantity <= 0 ||
+      !Number.isFinite(price) ||
+      price <= 0 ||
+      (side !== 'BUY' && side !== 'SELL')
+    ) {
+      await this.json(route, 400, { error: 'Invalid order' });
+      return;
+    }
+    const profile = [...this.accounts.values()].find((a) => a.id === owner)!.profile!;
+    const funds = Number(profile['availableFunds']);
+    const held = account.holdings.find((h) => h.symbol === symbol);
+    const reason =
+      side === 'BUY' && funds < quantity * price
+        ? 'Insufficient funds'
+        : side === 'SELL' && (held?.quantity ?? 0) < quantity
+          ? 'Insufficient holdings'
+          : null;
+    const now = new Date().toISOString();
+    const result: OrderResult = {
+      orderId: Math.max(0, ...[...this.orders.values()].flat().map((o) => o.orderId)) + 1,
+      accountId,
+      instrumentId: Number(body['instrumentId']),
+      orderType: side,
+      quantity,
+      indicativePrice: price,
+      status: reason ? 'REJECTED' : 'FILLED',
+      rejectionReason: reason,
+      submittedAt: now,
+      resolvedAt: now,
+      simulatedAt:
+        typeof body['simulatedAt'] === 'string' ? body['simulatedAt'] : this.marketTimestamp,
+    };
+    if (!reason) {
+      profile['availableFunds'] = funds + (side === 'BUY' ? -1 : 1) * quantity * price;
+      if (side === 'BUY') {
+        if (held) {
+          held.averageCost =
+            (held.quantity * held.averageCost + quantity * price) / (held.quantity + quantity);
+          held.quantity += quantity;
+        } else account.holdings.push({ symbol, quantity, averageCost: price });
+      } else if (held) {
+        held.quantity -= quantity;
+        account.holdings = account.holdings.filter((h) => h.quantity > 0);
+      }
+    }
+    this.orders.set(owner, [result, ...(this.orders.get(owner) ?? [])]);
+    this.orderReferences.set(key, result);
+    await this.json(route, 201, result);
   }
 
   /** Trading accounts the business backend holds for a user, oldest first. */
@@ -410,6 +555,9 @@ export class ApiStub {
    * of them, so this only needs to keep it from erroring on load.
    */
   private async market(route: Route): Promise<void> {
+    if (route.request().method() === 'PUT') {
+      this.marketTimestamp = String(this.body(route)['timestamp']);
+    }
     const url = new URL(route.request().url());
 
     if (url.pathname.endsWith('/market/stream')) {
@@ -419,11 +567,21 @@ export class ApiStub {
       return;
     }
     if (url.pathname.endsWith('/market/candles')) {
+      const timeframe = url.searchParams.get('timeframe') ?? '1D';
+      const cursor = new Date(this.marketTimestamp);
+      const from = new Date(cursor);
+      const open = this.marketTimestamp.slice(0, 10) + 'T14:30:00Z';
+      const close = this.marketTimestamp.slice(0, 10) + 'T21:00:00Z';
+      if (timeframe === '1M') from.setUTCMonth(from.getUTCMonth() - 1);
+      if (timeframe === '1Y') from.setUTCFullYear(from.getUTCFullYear() - 1);
       await this.json(route, 200, {
         sessionId: 1,
         symbol: url.searchParams.get('symbol') ?? 'AAPL',
-        timeframe: url.searchParams.get('timeframe') ?? '1D',
-        marketTimestamp: '2026-01-05T15:00:00Z',
+        timeframe,
+        rangeStart: timeframe === '1D' || timeframe === '5D' ? open : from.toISOString(),
+        rangeEnd: timeframe === '1D' || timeframe === '5D' ? close : this.marketTimestamp,
+        tradingSessions: [{ start: open, end: close }],
+        marketTimestamp: this.marketTimestamp,
         points: [
           {
             timestamp: '2026-01-05T15:00:00Z',
@@ -440,7 +598,7 @@ export class ApiStub {
     await this.json(route, 200, {
       sessionId: 1,
       status: 'OPEN',
-      marketTimestamp: '2026-01-05T15:00:00Z',
+      marketTimestamp: this.marketTimestamp,
       serverTimestamp: new Date().toISOString(),
       calendar: {
         timezone: 'America/Chicago',
@@ -532,6 +690,38 @@ export class ApiStub {
     }
     account.name = name;
     await this.json(route, 200, publicAccount(account));
+  }
+
+  /** Portfolio observations for the caller's owned account. */
+  private async portfolioHistory(route: Route): Promise<void> {
+    const ownerId = await this.caller(route);
+    if (!ownerId) return;
+    const accountId = Number(new URL(route.request().url()).pathname.split('/')[3]);
+    const account = this.ownedAccounts(ownerId).find(
+      (candidate) => candidate.accountId === accountId,
+    );
+    if (!account) {
+      await this.json(route, 404, { error: 'Account not found' });
+      return;
+    }
+    let points = this.portfolioValuations.get(accountId) ?? [];
+    // Seeded holdings represent an existing portfolio's first observed baseline.
+    if (route.request().method() === 'POST' || (!points.length && account.holdings.length)) {
+      const point = {
+        timestamp: new Date().toISOString(),
+        value: account.holdings.reduce(
+          (sum, holding) => sum + holding.quantity * holding.averageCost,
+          0,
+        ),
+      };
+      points = [...points, point];
+      this.portfolioValuations.set(accountId, points);
+    }
+    await this.json(
+      route,
+      200,
+      route.request().method() === 'POST' ? (points.at(-1) ?? null) : points,
+    );
   }
 
   /** GET lists an owned account's holdings: its portfolio. */

@@ -23,6 +23,26 @@ const STORAGE_KEY = 'ts.auth.session';
 export class TokenStorageService {
   private readonly _isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
   private readonly _session = signal<StoredSession | null>(this.read());
+  // Changes on every token replacement or clear, even for the same user.
+  revision = 0;
+  identityRevision = 0;
+
+  private readonly identityListeners = new Set<() => void>();
+
+  // Reset in-memory user data synchronously, including when registration/refresh clears tokens.
+  onIdentityChange(reset: () => void): void {
+    this.identityListeners.add(reset);
+  }
+
+  private subject(token: string | null): string | null {
+    try {
+      return token
+        ? (JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub ?? null)
+        : null;
+    } catch {
+      return null;
+    }
+  }
 
   readonly hasSession = computed(() => this._session() !== null);
 
@@ -40,11 +60,16 @@ export class TokenStorageService {
   }
 
   save(tokens: AuthTokens): void {
+    this.revision++;
     const session: StoredSession = {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       expiresAt: Date.now() + tokens.expiresIn * 1000,
     };
+    if (this.subject(this.accessToken) !== this.subject(tokens.accessToken)) {
+      this.identityRevision++;
+      this.identityListeners.forEach((reset) => reset());
+    }
     this._session.set(session);
     if (!this._isBrowser) {
       return;
@@ -57,6 +82,9 @@ export class TokenStorageService {
   }
 
   clear(): void {
+    this.revision++;
+    this.identityRevision++;
+    this.identityListeners.forEach((reset) => reset());
     this._session.set(null);
     if (!this._isBrowser) {
       return;

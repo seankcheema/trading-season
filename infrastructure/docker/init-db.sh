@@ -18,13 +18,8 @@ TABLE_COUNT=$(psql "$DATABASE_URL" -t -c "SELECT COUNT(*) FROM information_schem
 
 if [ "$TABLE_COUNT" = "0" ]; then
     echo "[DB-INIT] Database is empty, applying migrations..."
-    
-    # Apply migrations in order
-    psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
-        -f "$REPO_ROOT/apps/market-data/db/migrations/V001__Initial_schema.sql" \
-        -f "$REPO_ROOT/apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql" \
-        -f "$REPO_ROOT/apps/market-data/db/migrations/V003__Token_authentication.sql"
-    
+
+    psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$REPO_ROOT/apps/market-data/db/migrations/V001__Initialize_database.sql"
     echo "[DB-INIT] Migrations applied successfully"
 else
     echo "[DB-INIT] Database already initialized with $TABLE_COUNT tables, skipping migrations"

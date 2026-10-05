@@ -2,22 +2,27 @@
 
 ## One database, two owners
 
-The Java business backend and NestJS auth service have separate PostgreSQL databases and user models. The only value shared between them is the user's UUID: auth_db users.id equals trading_season users.user_id, and it reaches the Java backend as the access token's sub claim. Credentials, lockout and refresh sessions exist only in auth_db.
+The Java services and NestJS auth service share `trading_season`. Credentials are stored in `user_accounts`; customer profiles are stored separately in `users` with the same UUID.
 
 An account and its profile are separate rows joined by the same UUID, which is also the access token's `sub` claim: `user_accounts.user_id` equals `users.user_id`, and a foreign key from `users` prevents a profile existing without credentials behind it.
 
-The auth service previously used a database of its own, `auth_db`. V005 moved its tables here and V006 dropped the copies of `email`, `user_role` and `account_status` that `users` had been carrying.
+The auth service previously used a database of its own, `auth_db`. the former auth consolidation moved its tables here and the former profile cleanup dropped the copies of `email`, `user_role` and `account_status` that `users` had been carrying.
 
 | Table group | Schema source | Application behavior |
 | --- | --- | --- |
-| Business: trading_season | [V001 bootstrap SQL](../../apps/market-data/db/migrations/V001__Initial_schema.sql) plus incremental SQL such as [V002 synthetic market data replay metadata](../../apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql) and [V003 token authentication](../../apps/market-data/db/migrations/V003__Token_authentication.sql) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
-| Auth: auth_db | [TypeORM migrations](../../apps/auth-service/src/database/migrations/) | Migrations run on startup; synchronize=false |
-| Business tables | [Market Data migrations](services/market-data.md) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
-| user_accounts, refresh_tokens | the same migrations, from V005 | TypeORM with synchronize=false and no migration runner; the auth service reads and writes tables it never creates |
+| Business: trading_season | [Canonical schema](../../apps/market-data/db/migrations/V001__Initialize_database.sql) | Hibernate ddl-auto=none; explicit first-time setup |
+| Business tables | [Market Data schema](../../apps/market-data/README.md) | Hibernate ddl-auto=none; no Flyway dependency or automatic migration runner |
+| user_accounts, refresh_tokens | the canonical schema | TypeORM with synchronize=false and no migration runner; the auth service reads and writes tables it never creates |
 
 The business bootstrap defines more of the trading model than the currently implemented Java auth API. The ERD below is the canonical diagram; SQL remains authoritative for exact columns and constraints.
 
 ## Service ownership in trading_season
+
+Portfolio history is defined in [V001__Initialize_database.sql](../../apps/market-data/db/migrations/V001__Initialize_database.sql): `portfolio_valuations` stores account observations, with an account/time index and a cascading account foreign key.
+
+```powershell
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initialize_database.sql
+```
 
 Both Java services share the same `trading_season` database. This table lists which service has primary responsibility for each table:
 
@@ -27,23 +32,42 @@ Both Java services share the same `trading_season` database. This table lists wh
 | refresh_tokens | Auth Service | Read/write (issue, rotate, revoke); Java services never read it |
 | users | Holdings and Trade Service | Read/write (profile, funds, settings) |
 | accounts | Holdings and Trade Service | Read/write (account management) |
-| orders | Holdings and Trade Service | Read/write (order lifecycle) |
-| fills | Holdings and Trade Service | Read/write (execution results) |
-| holdings | Holdings and Trade Service | Read/write (position tracking) |
-| cash_transactions | Holdings and Trade Service | Read/write (ledger entries) |
-| holding_movements | Holdings and Trade Service | Read/write (position ledger) |
-| audit_trail | Holdings and Trade Service | Read/write (event history) |
+| orders | Order and Sell Service | Read/write (order lifecycle) |
+| fills | Order and Sell Service | Read/write (execution results) |
+| holdings | Order and Sell Service | Writes positions; Holdings and Trade reads them |
+| portfolio_valuations | Holdings and Trade Service | Append/read (real-time portfolio history) |
+| cash_transactions | Both Java services | Cash transfers in Holdings and Trade; execution ledger in Order and Sell |
+| holding_movements | Order and Sell Service | Read/write (position ledger) |
+| audit_trail | Order and Sell Service | Read/write (event history) |
 | stocks | Holdings and Trade Service | Read/write (reference data) |
-| instruments | Holdings and Trade Service | Read/write (tradable assets) |
+| instruments | Order and Sell Service | Read/write (tradable assets) |
 | simulation_sessions | Holdings and Trade Service | Read/write (simulation metadata) |
 | market_states | Holdings and Trade Service | Read/write |
 | market_behaviors | Holdings and Trade Service | Read/write |
 | market_ticks | Holdings and Trade Service | Read/write |
 | candles | Holdings and Trade Service | Read/write |
 | quotes | Holdings and Trade Service | Read (market snapshots) |
-| Order and Sell Service | Read only (all tables) | Read (does not write) |
+| user_watchlist | Holdings and Trade Service | Read/write (saved stocks per user) |
 
-Both services connect with the same credentials and access all tables. The Order and Sell Service currently has repositories defined but unused.
+Both Java services connect to the same database. Order and Sell implements order validation and execution; Holdings and Trade implements caller-owned profiles, accounts, holdings queries, cash, watchlists, and market data. See the [service boundaries](architecture.md#service-boundaries).
+
+## Watchlist migration
+
+[V002__Add_watchlist.sql](../../apps/market-data/db/migrations/V002__Add_watchlist.sql) adds `user_watchlist` with a composite `(user_id, symbol)` primary key, an addition timestamp, and cascading foreign keys to `users` and `stocks`. Holdings and Trade owns its reads and writes. Watchlists belong to users rather than trading accounts.
+
+Fresh setup through the Python initializer or Compose applies V001 followed by V002. There is no automatic Java migration runner. For an existing database, apply only V002 as the database owner before starting the updated application:
+
+```powershell
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Add_watchlist.sql
+```
+
+V002 preserves existing data and may be reapplied without resetting membership. V001 remains unchanged. Fresh databases now contain 20 application tables; legacy databases retaining `sessions` contain 21. Validate the upgrade against an isolated temporary PostgreSQL cluster with:
+
+```powershell
+python apps/market-data/db/scripts/python/tests/test_watchlist_migration.py
+```
+
+The test requires PostgreSQL binaries on PATH and never connects to an existing database.
 
 ## Business model
 
@@ -55,11 +79,29 @@ Both services connect with the same credentials and access all tables. The Order
 | Accounts/execution | accounts, holdings, orders, fills: balances, positions, instructions and executions |
 | Ledgers/audit | cash_transactions, holding_movements, audit_trail: accounting and event history |
 
-Orders are distinct from fills. The schema allows at most one fill per order. The account/client_reference pair supplies order idempotency. An order's status is PENDING, FILLED or REJECTED (V004). Buy and sell orders move users.available_funds; accounts.cash_balance is not moved by order execution. Cash balances and holdings are caches reconciled against append-only ledgers. Application grants should limit ledger/audit access to the appropriate insert/read operations; table definitions alone do not enforce every operational policy.
+Orders are distinct from fills. The schema allows at most one fill per order. The account/client_reference pair supplies order idempotency. An order's status is PENDING, FILLED or REJECTED . Buy and sell orders move users.available_funds; accounts.cash_balance is not moved by order execution. Cash balances and holdings are caches reconciled against append-only ledgers. Application grants should limit ledger/audit access to the appropriate insert/read operations; table definitions alone do not enforce every operational policy.
 
-Simulation data is scoped by run and stock. Deleting a simulation session cascades through its generated market data. The optional unique instruments.simulated_stock_symbol connects U.S. equity instruments to simulator stocks. V002 adds replay metadata and uniqueness needed by synthetic market data imports; it does not add trading APIs. Trading schema support for other asset classes does not imply their simulation or APIs are implemented.
+Simulation data is scoped by run and stock. Deleting a simulation session cascades through its generated market data. The unique `instruments.simulated_stock_symbol` connects simulated U.S. equities to instruments. The [market-data importer](../../apps/market-data/db/scripts/python/lib/importing.py) creates these instrument rows idempotently. Schema support for other asset classes does not imply their simulation APIs exist.
 
-Use this setup for a local development database whose contents can be discarded. `V001__Initial_schema.sql` drops and recreates tables, so it is not a safe upgrade path for retained data. `V002__Synthetic_market_data_replay_metadata.sql` is applied after V001, then `V003__Token_authentication.sql`. V003 removes the sessions table, the username column, and the users credential columns (password hash, lockout, reset token, last login), drops the user_id default because the application sets it from the token, and adds a case-insensitive unique index on email. Any stored password hashes and sessions are discarded. `V004__Order_status_lifecycle.sql` is applied after V003. It replaces the order status set with PENDING, FILLED and REJECTED, maps existing order rows onto it, and widens the audit_trail event types so historical rows are kept.
+Setup wrappers require an empty public schema. For an existing legacy database missing three application tables, use the direct V001 repair command below; other upgrades require a separately reviewed change.
+
+### Dummy trader with January–October history
+
+`orders.simulated_at` records the replay time selected at submission independently of real audit and fill timestamps.
+
+In pgAdmin, open Query Tool for your local `trading_season` database, open the seed file, and execute the entire file. If a previous attempt left the connection in an aborted transaction, run `ROLLBACK;` first. The seed is plain SQL and also runs from repository root with:
+
+```powershell
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/seeds/seed-demo-trader-2026.sql
+```
+
+The seed uses session `2026001` by default; edit `session_id` in the file's `demo_seed_options` statement to select another imported session with the same 2026 coverage. Sign in with the email above and the development password supplied for this seed. Only its bcrypt hash is stored in the SQL file, using the auth service's cost factor of 10. Both credentials satisfy the signup email and password-length rules. To use a different password on first insertion, edit the empty `password` SQL literal in `demo_seed_options` (8–72 UTF-8 bytes); keep local password overrides out of version control.
+
+The account starts with $50,000 and makes 51 whole-share executions from January 5 through October 1, 2026. AAPL, MSFT, NVDA, JPM, XOM, and TSLA form a diversified starting portfolio, followed by monthly buying, trimming, liquidation, and re-entry. This is 2026 year-to-date history, not a trailing twelve months. Prices come from the existing synthetic simulation archive, not historical exchange prices. Each order fills at an available one-minute candle close, with `simulated_at` set to the completed minute; weekend requests move to the next available archive bucket within seven days. Missing instruments/prices, insufficient cash, or insufficient shares abort the entire transaction.
+
+The seed writes matching orders, fills, holdings, cash transactions, holding movements, and audit events. Opening funding is the shared starting budget, and `users.available_funds` matches the signed cash ledger. Real audit timestamps record the import time; only `orders.simulated_at` carries the historical replay date. Historical portfolio charts reconstruct positions from these orders and archived prices, so the seed does not manufacture historical valuation observations. Use the dashboard or market page's time dropdown to review October 1 or rewind the history.
+
+A repeat run leaves the existing demo's password, funds, holdings, and any later trades unchanged. Conflicting identities fail rather than overwrite another login. The seed prints the account ID, cash balance, order count, and first/last simulated execution times after completion.
 
 ### Connection values
 
@@ -89,25 +131,25 @@ If the role or database already exists, skip the command that created it.
 
 ### Apply the schema
 
-All migrations are managed centrally in the [Market Data folder](services/market-data.md). Connect pgAdmin Query Tool to the `trading_season` database as the `trading_season` user, then run these files in order from `apps/market-data/db/migrations/`. Tables belong to the user that creates them, so running the files as your admin user leaves `trading_season` without table access even though it owns the database.
+The canonical [V001__Initialize_database.sql](../../apps/market-data/db/migrations/V001__Initialize_database.sql) defines all 19 application tables in their current form. Apply it as the `trading_season` owner. It uses one transaction to initialize an empty public schema or repair the legacy missing-table layout described below, and never drops existing data.
 
-1. `apps/market-data/db/migrations/V001__Initial_schema.sql`
-2. `apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql`
-3. `apps/market-data/db/migrations/V003__Token_authentication.sql`
-4. `apps/market-data/db/migrations/V004__Order_status_lifecycle.sql`
-
-With `psql`, the equivalent commands from the repository root are:
-
-```sh
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initial_schema.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V003__Token_authentication.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V004__Order_status_lifecycle.sql
+```powershell
+apps/market-data/db/scripts/powershell/setup-database.ps1 -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season
 ```
 
-A database already initialized with V001 through V003 only needs V004 applied.
+Alternatively, open `V001__Initialize_database.sql` in pgAdmin connected to `trading_season` and execute the entire file, or apply V001 with `psql -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initialize_database.sql` using the same connection. Then apply V002 using the [watchlist migration](#watchlist-migration) command. The script does not create the database or role, or import market data. Historical numbered migrations and repair files have been consolidated; existing databases require a separately reviewed upgrade except for the bounded legacy repair below.
 
-**Important:** Both Java services (Holdings and Trade Service and Order and Sell Service) must connect with the same schema version. Never edit an applied migration; add a new one instead. See [Market Data documentation](services/market-data.md) for detailed migration rules.
+### Upgrade a legacy 17-table database
+
+If your table list includes `sessions` but lacks `user_accounts`, `refresh_tokens`, and `portfolio_valuations`, apply [V001__Initialize_database.sql](../../apps/market-data/db/migrations/V001__Initialize_database.sql) once as the database owner:
+
+```powershell
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initialize_database.sql
+```
+
+This transactional upgrade requires `users` and `accounts` to exist and all three added tables to be absent. It creates the missing tables, constraints, indexes, and portfolio valuation sequence using the current baseline definitions. It preserves existing rows and the legacy `sessions` table, so the V001 repair leaves 20 tables: the 19 baseline application tables plus `sessions`. Apply [V002](#watchlist-migration) afterward to bring it to 21 tables. Do not drop `sessions` just to match a count.
+
+The added tables start empty; schema setup does not seed credentials or portfolio observations. Existing profiles retain their UUIDs and are not assigned invented passwords. The profile-to-credentials foreign key is added as `NOT VALID`, matching V001, so existing unmatched profiles remain but new profile writes require credentials. Legacy profile columns and session dependencies require a separate upgrade assessment; this repair does not fully convert an older schema. The repair branch refuses databases where any of these three tables already exist, including an already initialized current schema. Setup wrappers still require an empty schema; use the direct psql command above for the legacy repair.
 
 ### Verify the schema
 
@@ -152,8 +194,8 @@ On Linux, check the actual free space on the filesystem containing PostgreSQL da
 ```sh
 free_disk_gb="$(df -Pk / | awk 'NR == 2 { print $4 / 1048576 }')"
 python3 -m venv apps/market-data/db/.venv
-apps/market-data/db/.venv/bin/python -m pip install -r apps/market-data/db/scripts/requirements.txt
-apps/market-data/db/.venv/bin/python apps/market-data/db/scripts/0004-import-synthetic-market-data.py \
+apps/market-data/db/.venv/bin/python -m pip install -r apps/market-data/db/scripts/python/requirements.txt
+apps/market-data/db/.venv/bin/python apps/market-data/db/scripts/python/0004-import-synthetic-market-data.py \
   --tick-storage parquet \
   --available-disk-gb "$free_disk_gb" \
   --database-url postgresql://trading_season:password@localhost:5432/trading_season
@@ -168,7 +210,7 @@ Run the complete routine workflow from the repository root with one command. It 
 ```powershell
 $freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
 
-apps/market-data/db/setup-market-data.ps1 `
+apps/market-data/db/scripts/powershell/setup-market-data.ps1 `
   -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
   -AvailableDiskGb $freeDiskGb
 ```
@@ -184,15 +226,15 @@ Create the virtual environment and install its dependencies once:
 ```powershell
 py -3 -m venv apps/market-data/db/.venv
 apps/market-data/db/.venv/Scripts/python.exe -m pip install --upgrade pip
-apps/market-data/db/.venv/Scripts/python.exe -m pip install -r apps/market-data/db/scripts/requirements.txt
+apps/market-data/db/.venv/Scripts/python.exe -m pip install -r apps/market-data/db/scripts/python/requirements.txt
 ```
 
 #### Step 2: Initialize a disposable database
 
-Run this step only when setting up the business database for the first time. It applies V001 through V004, and V001 drops existing tables.
+The initializer requires an empty schema and does not drop existing tables.
 
 ```powershell
-apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0001-initialize-database.py `
+apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/python/0001-initialize-database.py `
   --database-url postgresql://trading_season:password@localhost:5432/trading_season `
   --disposable-database
 ```
@@ -204,13 +246,13 @@ Do not run step 2 during ordinary seeding.
 Generation does not access PostgreSQL:
 
 ```powershell
-apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0002-generate-synthetic-market-data.py
+apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/python/0002-generate-synthetic-market-data.py
 ```
 
 For a smaller test archive, add a date range:
 
 ```powershell
-apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0002-generate-synthetic-market-data.py `
+apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/python/0002-generate-synthetic-market-data.py `
   --start-date 2026-01-05 `
   --end-date 2026-01-06
 ```
@@ -222,7 +264,7 @@ If an older candle-only or otherwise incompatible archive exists, add `--regener
 Validation does not access PostgreSQL:
 
 ```powershell
-apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0003-validate-synthetic-market-data.py
+apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/python/0003-validate-synthetic-market-data.py
 ```
 
 #### Step 5: Import the archive
@@ -230,7 +272,7 @@ apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0003-va
 The importer validates the archive again and commits one calendar month at a time. By default, raw ticks remain in Parquet and only candles are copied into PostgreSQL:
 
 ```powershell
-apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/0004-import-synthetic-market-data.py `
+apps/market-data/db/.venv/Scripts/python.exe apps/market-data/db/scripts/python/0004-import-synthetic-market-data.py `
   --tick-storage parquet `
   --database-url postgresql://trading_season:password@localhost:5432/trading_season
 ```
@@ -362,23 +404,23 @@ Regular vacuum does not necessarily return allocated files to the operating syst
 
 For later routine seeding, run steps 3 through 6 only. The import adds stocks, simulation metadata, market behaviors, market states, ticks, and candles. It does not add users, accounts, orders, holdings, auth-service data, or quotes.
 
-There is no Flyway runner in the Java backend; these files are applied manually.
+There is no Flyway runner in the Java backend; schema setup is explicit.
 
 ## Auth tables
 
-`user_accounts` and `refresh_tokens` are created by Flyway in [V005](../../apps/market-data/db/migrations/V005__User_accounts_and_refresh_tokens.sql), with the rest of the business schema. [Runtime configuration](../../apps/auth-service/src/config/database.config.ts) holds only the entity list: the auth service registers no migrations and runs none at startup, because pointing a second migration tool at a Flyway-owned schema is how half a schema gets dropped.
+`user_accounts` and `refresh_tokens` are defined in the canonical schema. The auth service registers no migrations and assumes the schema has already been initialized.
 
-The service therefore assumes Flyway has already been applied. If it has not, its queries fail against missing columns, which is louder than quietly building a second schema alongside the first.
+The service therefore assumes V001__Initialize_database.sql has already been applied. If it has not, its queries fail against missing columns, which is louder than quietly building a second schema alongside the first.
 
 Email is the only login identifier, unique without regard to case through `user_accounts_email_lower_key`. Refresh tokens are stored as SHA-256 hashes with expiry, revocation and rotation metadata; the raw value is returned to the client once and never persisted. See the [auth README](../../apps/auth-service/README.md) for connection and key setup.
 
 ## Change rules
 
-Add incremental migrations rather than editing already applied files. For business changes, explicitly document the application procedure because no migration runner is installed. Review SQL, affected entity mappings, and the ERD together. Use test fixtures instead of production identities or secrets. Back up retained data and verify migrations on a disposable copy before deployment.
+Keep `apps/market-data/db/migrations/V001__Initialize_database.sql` as the canonical definition for new databases. Update affected entity mappings and documentation together. V001 includes the bounded missing-table repair described above. Other changes to retained databases require a separately reviewed incremental upgrade; setup wrappers never upgrade or reset them. Back up retained data and verify upgrades on a disposable copy.
 
 # Business database ERD
 
-Canonical relationship diagram for the SQL schema after V001 through V008. SQL defines exact columns and constraints. See this database reference for ownership, initialization, and change rules.
+Canonical relationship diagram for the SQL schema in V001__Initialize_database.sql. SQL defines exact columns and constraints. See this database reference for ownership, initialization, and change rules.
 
 The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change.
 
@@ -402,6 +444,7 @@ erDiagram
     stocks ||--o{ market_ticks : traded_as
     stocks ||--o{ candles : aggregated_as
 
+    accounts ||--o{ portfolio_valuations : values
     accounts ||--o{ holdings : has
     instruments ||--o{ holdings : held_as
     accounts ||--o{ orders : submits
@@ -418,7 +461,43 @@ erDiagram
     user_accounts {
         UUID user_id PK
         TEXT email UK
+        TEXT password_hash
         TEXT user_role
+        TEXT account_status
+        INTEGER failed_login_attempts
+        TIMESTAMPTZ locked_until
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+    refresh_tokens {
+        UUID id PK
+        UUID user_id FK
+        TEXT token_hash UK
+        TIMESTAMPTZ issued_at
+        TIMESTAMPTZ expires_at
+        TIMESTAMPTZ revoked_at
+        UUID replaced_by
+    }
+    users {
+        UUID user_id PK, FK
+        TEXT first_name
+        TEXT middle_name
+        TEXT last_name
+        TEXT ssn
+        TEXT address
+        DATE date_of_birth
+        TEXT trader_level
+        NUMERIC available_funds
+        INTEGER session_timeout_minutes
+        NUMERIC execution_buffer_percent
+        TIMESTAMPTZ last_activity_at
+        TIMESTAMPTZ created_at
+    }
+    portfolio_valuations {
+        BIGINT valuation_id PK
+        INTEGER account_id FK
+        TIMESTAMPTZ observed_at
+        NUMERIC portfolio_value
     }
     simulation_sessions {
         BIGINT id PK
@@ -540,3 +619,13 @@ erDiagram
         TIMESTAMPTZ recorded_at
     }
 ```
+
+`orders.simulated_at` records the replay time selected at submission independently of real audit and fill timestamps.
+
+## SQL file naming convention
+
+Store SQL files in `apps/market-data/db/migrations` and name them `VNNN__Verb_description.sql`: an uppercase `V`, a three-digit version, two underscores, and a readable description separated by underscores. The single fresh-database baseline is `V001__Initialize_database.sql`. Version numbers describe application order, not author identity; do not include developer names or separate INITDB counters.
+
+For a future incremental change, use the next unused number, using `VNNN__Verb_description.sql`. Coordinate the number in the pull request and check the target branch before merging. If parallel changes select the same number, renumber the unmerged file; never rename or rewrite a migration already applied to a retained database. After version 999, expand all version prefixes consistently rather than mixing widths.
+
+The setup command currently applies only V001 to an empty public schema. Adding another migration does not make it run automatically; an incremental migration runner or an explicit upgrade procedure must accompany that change. Jenkins retains the bounded archive generation, validation, import, and repeated-import checks; the removed database tests directory and its pytest/JUnit step are no longer used.
