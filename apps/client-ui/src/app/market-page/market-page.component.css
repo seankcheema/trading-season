@@ -191,6 +191,10 @@
   opacity: 0;
   transform: translateX(1rem);
   pointer-events: none;
+  transition:
+    opacity 150ms ease 0s,
+    transform 150ms ease 0s,
+    visibility 0s linear 150ms;
 }
 .market-main {
   display: flex;
@@ -252,28 +256,19 @@
   position: relative;
 }
 
-.comparison-price-label-left {
-  position: absolute;
-  top: 0.75rem;
-  right: calc(50% + 0.75rem);
-  z-index: 20;
-  display: flex;
-  flex-direction: row;
-  gap: 0.5rem;
-  align-items: center;
-  pointer-events: none;
-}
-
+.comparison-price-label-left,
 .comparison-price-label-right {
   position: absolute;
   top: 0.75rem;
   right: 0.75rem;
   z-index: 20;
   display: flex;
-  flex-direction: row;
   gap: 0.5rem;
   align-items: center;
   pointer-events: none;
+}
+.comparison-price-label-left {
+  right: calc(50% + 0.75rem);
 }
 
 .chart-stage ::ng-deep .chart-controls {
@@ -440,12 +435,6 @@
     opacity 240ms ease 100ms,
     transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
     visibility 0s linear 0s;
-}
-.market-grid.tools-collapsed .tools-column {
-  transition:
-    opacity 150ms ease 0s,
-    transform 150ms ease 0s,
-    visibility 0s linear 150ms;
 }
 .insight-panel {
   display: flex;
@@ -627,9 +616,6 @@
   line-height: 1.15;
   overflow-wrap: anywhere;
 }
-.overview-card-heading > strong.overview-risk {
-  color: rgba(255, 255, 255, 0.9);
-}
 .overview-progress {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -735,8 +721,8 @@
   flex: 0 0 auto;
   overflow: visible;
 }
-.tools-close-button {
-  position: relative;
+.tools-close-button,
+.tools-open-button {
   height: 1.875rem;
   width: 1.875rem;
   flex: 0 0 auto;
@@ -745,22 +731,15 @@
   justify-content: center;
   color: rgba(238, 250, 255, 0.8);
   border-color: rgba(238, 250, 255, 0.2);
+}
+.tools-close-button {
+  position: relative;
 }
 .tools-close-button::after {
   display: none;
 }
 .market-grid.tools-collapsed .tools-close-button .chevron-rotate {
   transform: rotate(180deg);
-}
-.tools-open-button {
-  height: 1.875rem;
-  width: 1.875rem;
-  flex: 0 0 auto;
-  color: rgba(238, 250, 255, 0.8);
-  border-color: rgba(238, 250, 255, 0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 .tools-close-button .chevron-rotate,
 .tools-open-button .chevron-rotate {
@@ -899,7 +878,6 @@
     min-height: 55rem;
   }
   .market-metrics {
-    display: grid;
     grid-template-columns: repeat(3, 1fr);
   }
   .comparison-metrics {
