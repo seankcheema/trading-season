@@ -669,19 +669,21 @@ pipeline {
                             # python:3.14-slim has no wget, so the reporting-service is read with
                             # its own Python, the same way its Dockerfile HEALTHCHECK does.
                             if [ "$service" = reporting-service ]; then
-                                body="$(bash infrastructure/docker/run-compose.sh \
+                                fetch_ok=0
+                                bash infrastructure/docker/run-compose.sh \
                                     --project-name "$PROJECT_NAME" \
                                     --env-file "$COMPOSE_ENV_FILE" \
                                     -f "$COMPOSE_FILE" \
-                                    exec -T "$service" python -c "import sys, urllib.request; sys.stdout.write(urllib.request.urlopen(sys.argv[1], timeout=5).read().decode())" "$url")" || body=""
+                                    exec -T "$service" python -c "import sys, urllib.request; sys.stdout.write(urllib.request.urlopen(sys.argv[1], timeout=5).read().decode())" "$url" | grep -F "$expected" >/dev/null && fetch_ok=1
                             else
-                                body="$(bash infrastructure/docker/run-compose.sh \
+                                fetch_ok=0
+                                bash infrastructure/docker/run-compose.sh \
                                     --project-name "$PROJECT_NAME" \
                                     --env-file "$COMPOSE_ENV_FILE" \
                                     -f "$COMPOSE_FILE" \
-                                    exec -T "$service" wget -qO- "$url")" || body=""
+                                    exec -T "$service" wget -qO- "$url" | grep -F "$expected" >/dev/null && fetch_ok=1
                             fi
-                            if printf '%s' "$body" | grep -F "$expected" >/dev/null; then
+                            if [ "$fetch_ok" -eq 1 ]; then
                                 return 0
                             fi
                             attempt=$((attempt + 1))
@@ -695,7 +697,7 @@ pipeline {
                     check_http reporting-ui / 'Reporting UI placeholder'
                     # reporting-service listens on 8083, not the 8080 default, and its
                     # /health reports 'healthy' (liveness), never 'ok'.
-                    check_http reporting-service /health '"status":"healthy"' 8083
+                    check_http reporting-service /health '"status": "healthy"' 8083
 
                     # check_http cannot be reused: this is a kafka-topics.sh describe,
                     # not an HTTP request. A missing topic makes kafka-topics.sh
