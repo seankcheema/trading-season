@@ -26,7 +26,6 @@ import java.util.UUID;
 import java.util.Optional;
 
 /**
-<<<<<<< HEAD
  * Orchestrates one order submission: idempotency check, loading the
  * entities the rule pipeline needs, persisting the order as
  * {@code PENDING}, running the pipeline, and — only if it passes — handing
@@ -42,16 +41,6 @@ import java.util.Optional;
  * {@link app.order.event.TradeEventPublisher}, so the database never
  * trails the stream and a publishing failure cannot undo a fill. A
  * resubmission that returns an existing order raises nothing.
-=======
- * Orchestrates one order submission: resolving and ownership-checking the
- * account, the idempotency check, loading the entities the rule pipeline
- * needs, persisting the order as {@code PENDING}, running the pipeline, and
- * — only if it passes — handing off to {@link OrderExecutionService}. A
- * failed rule leaves the order {@code REJECTED}; a successful execution
- * leaves it {@code FILLED} (KAN-93). This is the "Order controller" +
- * "Trading rule pipeline" handoff from the KAN-95 walkthrough, minus the
- * HTTP concerns, which stay in {@link OrderController}.
->>>>>>> f7a027e57cd77f536be1d2170e1a2e778cc01f3d
  */
 @Service
 public class OrderService {
