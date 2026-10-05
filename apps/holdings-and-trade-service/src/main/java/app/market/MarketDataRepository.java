@@ -7,7 +7,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 
-import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -111,8 +110,8 @@ public class MarketDataRepository implements MarketDataSource {
     private MarketModels.Session parseSession(long id, String configText) {
         try {
             JsonNode storage = objectMapper.readTree(configText).path("tick_storage");
-            String mode = storage.path("mode").asText("parquet");
-            String archive = storage.path("archive_location").asText("");
+            String mode = storage.path("mode").asString("parquet");
+            String archive = storage.path("archive_location").asString("");
             return new MarketModels.Session(id, mode, archive);
         } catch (Exception ex) {
             throw new IllegalStateException("Simulation storage metadata is invalid", ex);

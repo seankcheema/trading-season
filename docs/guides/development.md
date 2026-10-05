@@ -4,18 +4,20 @@
 
 Use Node.js 24.x (24.8.0 or later), npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. The Angular framework packages, CLI, build tooling, and SSR are all pinned to 21.2.24, and Angular CDK is pinned to its independently published 21.2.14 release. Angular 21.2.x supports Node ^24.0.0; this repository requires Node ^24.8.0 and TypeScript >=5.9.0 <6.0.0. Check exact dependency requirements in the [UI manifest](../../apps/client-ui/package.json), the [auth manifest](../../apps/auth-service/package.json), and the Java service POMs for [Holdings and Trade](../../apps/holdings-and-trade-service/pom.xml) and [Order and Sell](../../apps/order-and-sell-service/pom.xml).
 
-There is no root npm project. The UI and auth service are independent npm projects, each with its own lockfile; install each from repository root:
+The root npm workspace contains the UI and shared packages; the auth service has its own dependency tree and lockfile. Install both from repository root:
 
 ```sh
-npm --prefix apps/client-ui ci
+npm ci
 npm --prefix apps/auth-service ci
 ```
+
+Root workspace tooling pins Angular framework packages to the UI version so shared components and third-party peers use one signal type identity. Regenerate the root lockfile whenever that version changes.
 
 Reporting has no runnable application yet.
 
 ## Run locally
 
-The application consists of four services. The UI routes only to Holdings and Trade Service; Order and Sell Service runs independently.
+The application consists of four services. The UI routes orders and instruments to Order and Sell on 8081, and other business API paths to Holdings and Trade on 8082. Auth runs separately on 3001.
 ### Automated Linux VM setup
 
 From the repository root, `./scripts/setup-local.sh` validates the toolchain, maintains a 3 GiB free-space reserve, prepares missing dependencies and auth keys, selects databases, and supervises the three applications in one terminal. It reports verified stages as `[READY]`, completed work as `[DONE]`, and actionable failures as `[FAIL]`.
@@ -65,7 +67,7 @@ Compose validates JWT variables even when selecting database services, so provid
 
 | Working directory | Command | Port | Purpose |
 | --- | --- | --- | --- |
-| Repository root | npm --workspace business-logic-ui start | 4200 | Angular frontend |
+| Repository root | npm --workspace client-ui start | 4200 | Angular frontend |
 | apps/order-and-sell-service | mvn spring-boot:run | 8081 | Order processing, order validation, order execution, instrument reference data (called by UI) |
 | apps/holdings-and-trade-service | mvn spring-boot:run | 8082 | User profiles, accounts, holdings, cash movements, market data (called by UI) |
 | apps/auth-service | npm run start:dev | 3001 | Authentication, token issuance |
@@ -80,7 +82,7 @@ Run from repository root after dependency installation:
 | --- | --- | --- |
 | UI | npm --prefix apps/client-ui run build | Angular production build |
 | UI | npm --prefix apps/client-ui test -- --no-watch --coverage | Angular unit-test builder; do not pass Vitest's --run |
-| UI end-to-end | npm --prefix apps/client-ui run e2e | Playwright login and registration journeys |
+| UI end-to-end | npm --prefix apps/client-ui run e2e | Playwright authentication, account, and trading journeys |
 | Holdings and Trade Service | mvn -B -f apps/holdings-and-trade-service/pom.xml test | Unit/integration tests use H2 test configuration |
 | Order and Sell Service | mvn -B -f apps/order-and-sell-service/pom.xml test | Unit/integration tests use H2 test configuration |
 | Auth | npm --prefix apps/auth-service run build | NestJS compilation |
@@ -101,7 +103,7 @@ Both services must pass independently and share schema compatibility.
 
 ## End-to-end tests
 
-The Playwright suite in [apps/client-ui/e2e](../../apps/client-ui/e2e) covers the login and registration journeys through the running application. Install the browser once, then run the suite:
+The Playwright suite in [apps/client-ui/e2e](../../apps/client-ui/e2e) covers authentication, account management, watchlists, and buy/sell journeys through the running application against the API stand-in. Backend ledger correctness is verified by the Java integration tests. Install the browser once, then run the suite:
 
 ```sh
 npx --prefix apps/client-ui playwright install chromium
@@ -153,7 +155,7 @@ Update the authoritative guide when its contract changes; do not add implementat
 ## Troubleshooting
 
 - Node engine errors: check `node --version` is 24.x at 24.8.0 or later; Angular 21.2.x supports Node 24.x.
-- Missing `@shared/ui-components` imports: run npm --prefix apps/client-ui ci and check shared package exports.
+- Missing `@shared/ui-components/*` or `@spartan-ng/helm/*` imports: check the path mappings in [tsconfig.json](../../apps/client-ui/tsconfig.json). They must point to `./shared-ui-components` inside client-ui. After merging a component move, keep its source and aliases together; reinstalling dependencies cannot repair stale source paths.
 - Unknown ng test option: use --no-watch, not --run.
 - Database connection or key failures: use the [operations checklist](operations.md) and [auth environment instructions](../../apps/auth-service/README.md).
 - Javadoc tool missing: select a full JDK via JAVA_HOME and verify mvn --version and javadoc --version.

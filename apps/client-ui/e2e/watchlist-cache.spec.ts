@@ -24,13 +24,15 @@ test('saves stars across popup, fullscreen, navigation, and reload without dupli
   await loginPage.signIn(USER.email, USER.password);
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole('region', { name: 'Watch List' })).toContainText('click its star');
-  await page.getByPlaceholder('Search for a stock').fill('AAPL');
+  await page.getByRole('combobox', { name: 'Search instruments' }).fill('AAPL');
   await page.getByRole('option', { name: /AAPL/ }).click();
   const dialog = page.getByRole('dialog', { name: 'New Order' });
   await expect(dialog.locator('app-price-chart svg').first()).toBeVisible();
   await dialog.getByRole('button', { name: 'Add AAPL to watchlist' }).click();
   await expect(dialog.getByRole('button', { name: 'Remove AAPL from watchlist' })).toBeEnabled();
   await dialog.getByRole('link', { name: 'Open full screen market chart' }).click();
+  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl/);
+  await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Remove AAPL from watchlist' })).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -55,7 +57,7 @@ test('keeps popup and fullscreen charts visible while an uncached timeframe load
 }) => {
   await loginPage.goto();
   await loginPage.signIn(USER.email, USER.password);
-  await page.getByPlaceholder('Search for a stock').fill('AAPL');
+  await page.getByRole('combobox', { name: 'Search instruments' }).fill('AAPL');
   await page.getByRole('option', { name: /AAPL/ }).click();
   const dialog = page.getByRole('dialog', { name: 'New Order' });
   await expect(dialog.locator('app-price-chart svg').first()).toBeVisible();
@@ -75,6 +77,8 @@ test('keeps popup and fullscreen charts visible while an uncached timeframe load
   release();
   await expect(dialog.getByText('Updating chart…')).toHaveCount(0);
   await dialog.getByRole('link', { name: 'Open full screen market chart' }).click();
+  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl/);
+  await expect(dialog).toHaveCount(0);
   await expect(page.locator('app-price-chart svg').first()).toBeVisible();
   pending = new Promise<void>((resolve) => (release = resolve));
   received = new Promise<void>((resolve) => (started = resolve));

@@ -100,7 +100,7 @@ import java.util.stream.Collectors;
      */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleIllegalArgument(IllegalArgumentException ex) {
-<span class="nc" id="L103">        return error(HttpStatus.BAD_REQUEST, ex.getMessage());</span>
+<span class="fc" id="L103">        return error(HttpStatus.BAD_REQUEST, ex.getMessage());</span>
     }
 
     /**

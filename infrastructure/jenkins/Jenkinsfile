@@ -65,28 +65,12 @@ pipeline {
             }
         }
 
-        stage('Early Disk Cleanup') {
+        stage('Disk Preflight') {
             steps {
                 sh '''
-                    set +e
-                    echo "Performing early disk cleanup to free space for build..."
-                    
-                    # Stop and remove trading-season containers
-                    echo "Stopping trading-season-local containers..."
-                    docker compose -f infrastructure/docker-compose/docker-compose.local.yml down 2>/dev/null || true
-                    
-                    # Clean old Maven cache if present (older than 30 days)
-                    echo "Removing old Maven cache..."
-                    if [ -d ~/.m2/repository ]; then
-                        find ~/.m2/repository -type d -mtime +30 -exec rm -rf {} + 2>/dev/null || true
-                    fi
-                    
-                    # Clean old npm cache if present
-                    echo "Removing old npm cache..."
-                    npm cache clean --force 2>/dev/null || true
-                    
-                    echo "✓ Early disk cleanup complete"
-                    set -e
+                    set -eu
+                    AVAILABLE_KB="$(df -Pk "$WORKSPACE" | awk 'NR == 2 {print $4}')"
+                    [ "$AVAILABLE_KB" -ge 5242880 ] || { echo "At least 5 GiB free workspace storage is required" >&2; exit 1; }
                 '''
             }
         }
@@ -139,158 +123,8 @@ pipeline {
             }
         }
 
-        // Each test suite below gets its own stage, and each publishes its own
-        // results from `post`. An earlier layout ran every suite inside one
-        // stage, so the first failure skipped Archive and Publish and threw
-        // away results from suites that had already passed.
-        stage('Holdings and Trade Service Tests') {
-            steps {
-                dir('apps/holdings-and-trade-service') {
-                    sh '''
-                        set -eu
-                        echo " Running Holdings and Trade Service Tests..."
-                        mvn -B clean test
-                        test -s target/site/jacoco/jacoco.xml
-                        echo "✓ Holdings and Trade Service tests completed"
-                    '''
-                }
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'apps/holdings-and-trade-service/target/surefire-reports/**/*, apps/holdings-and-trade-service/target/site/jacoco/**/*',
-                                      allowEmptyArchive: true
-                    junit testResults: 'apps/holdings-and-trade-service/target/surefire-reports/**/*.xml',
-                          allowEmptyResults: false,
-                          healthScaleFactor: 1.0
-                    echo "✓ Holdings and Trade Service test results published"
-                }
-            }
-        }
-
-        stage('Order and Sell Service Tests') {
-            steps {
-                dir('apps/order-and-sell-service') {
-                    sh '''
-                        set -eu
-                        # Includes controller/service buy-sell integration and ledger assertions.
-                        # JaCoCo reporting and the coverage floor are bound to Maven test.
-                        echo " Running Order and Sell Service Tests..."
-                        mvn -B clean test
-                        test -s target/site/jacoco/jacoco.xml
-                        echo "✓ Order and Sell Service tests completed"
-                    '''
-                }
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'apps/order-and-sell-service/target/surefire-reports/**/*, apps/order-and-sell-service/target/site/jacoco/**/*',
-                                      allowEmptyArchive: true
-                    junit testResults: 'apps/order-and-sell-service/target/surefire-reports/**/*.xml',
-                          allowEmptyResults: false,
-                          healthScaleFactor: 1.0
-                    echo "✓ Order and Sell Service test results published"
-                }
-            }
-        }
-
-        stage('Synthetic Market Data Integration') {
-            steps {
-                script {
-                    if (sh(script: 'command -v node > /dev/null 2>&1', returnStatus: true) == 0) {
-                        sh '''
-                            set -eu
-                            echo " Installing application dependencies..."
-                            node --version
-                            npm --version
-                        '''
-                        // Use npm ci for reproducible, locked installations. The UI
-                        // and auth service are independent npm projects, each with
-                        // its own lockfile and its own node_modules, so the two
-                        // installs cannot race each other.
-                        parallel(
-                            'client-ui': {
-                                sh '''
-                                    set -eu
-                                    npm --prefix apps/client-ui ci --prefer-offline --fund=false
-                                '''
-                            },
-                            'auth-service': {
-                                sh '''
-                                    set -eu
-                                    npm --prefix apps/auth-service ci --prefer-offline --fund=false
-                                '''
-                            }
-                        )
-                        echo "✓ Application dependencies installed"
-                    } else {
-                        echo "  Node.js not available, skipping npm setup"
-                    }
-                }
-                // apps/market-data holds only Python and SQL since the
-                // microservice split. The Java code lives in the two Spring Boot
-                // services below, so the cache is warmed from their poms.
-                sh '''
-                    set -eu
-                    TEST_TAG="$MARKET_TEST_TAG"
-                    DB_CONTAINER="${TEST_TAG}-db"
-                    TEST_NETWORK="${TEST_TAG}-network"
-                    DB_VOLUME="${TEST_TAG}-db-data"
-                    ARCHIVE_VOLUME="${TEST_TAG}-archive"
-                    mkdir -p reports/market-data
-                    docker network create "$TEST_NETWORK"
-                    docker volume create "$DB_VOLUME"
-                    docker volume create "$ARCHIVE_VOLUME"
-                    docker build -f infrastructure/docker/Dockerfile.market-data -t "$TEST_TAG" .
-                    docker run -d --name "$DB_CONTAINER" --network "$TEST_NETWORK" -e POSTGRES_DB=trading_season -e POSTGRES_USER=trading_season -e POSTGRES_PASSWORD=test-password -v "$DB_VOLUME:/var/lib/postgresql/data" postgres:16-alpine
-                    until docker exec "$DB_CONTAINER" pg_isready -U trading_season -d trading_season; do sleep 1; done
-                    DATABASE_URL="postgresql://trading_season:test-password@${DB_CONTAINER}:5432/trading_season"
-                    docker run --rm --network "$TEST_NETWORK" "$TEST_TAG" apps/market-data/db/scripts/python/0001-initialize-database.py --database-url "$DATABASE_URL" --disposable-database
-                    docker rm -f "$DB_CONTAINER"
-                    docker run -d --name "$DB_CONTAINER" --network "$TEST_NETWORK" -e POSTGRES_DB=trading_season -e POSTGRES_USER=trading_season -e POSTGRES_PASSWORD=test-password -v "$DB_VOLUME:/var/lib/postgresql/data" postgres:16-alpine
-                    until docker exec "$DB_CONTAINER" pg_isready -U trading_season -d trading_season; do sleep 1; done
-                    docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select count(*) from information_schema.tables where table_schema='public';" | grep -Eq '^[1-9][0-9]*$'
-                    docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select pg_database_size(current_database());" > reports/market-data/database-before.txt
-                    docker exec "$DB_CONTAINER" du -sb /var/lib/postgresql/data > reports/market-data/disk-before.txt
-                    AVAILABLE_DISK_GB="$(docker exec "$DB_CONTAINER" df -Pk /var/lib/postgresql/data | awk 'NR==2 {print $4/1048576}')"
-                    docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/generation-resources.txt python apps/market-data/db/scripts/python/0002-generate-synthetic-market-data.py --start-date 2026-01-05 --end-date 2026-01-06
-                    docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" "$TEST_TAG" apps/market-data/db/scripts/python/0003-validate-synthetic-market-data.py
-                    docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/import-resources.txt python apps/market-data/db/scripts/python/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
-                    docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" "$TEST_TAG" apps/market-data/db/scripts/python/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
-                    docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select count(*) from market_ticks; select count(*) from candles; select pg_database_size(current_database()); select coalesce(sum(pg_indexes_size(quote_ident(schemaname)||'.'||quote_ident(tablename))),0) from pg_tables where schemaname='public';" > reports/market-data/database-after.txt
-                    docker exec "$DB_CONTAINER" du -sb /var/lib/postgresql/data > reports/market-data/disk-after.txt
-                    docker run --rm -v "$ARCHIVE_VOLUME:/archive" alpine:3.20 du -sb /archive > reports/market-data/archive.txt
-                '''
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'reports/market-data/**/*', allowEmptyArchive: true
-                    sh '''
-                        TEST_TAG="$MARKET_TEST_TAG"
-                        docker rm -f "${TEST_TAG}-db" 2>/dev/null || true
-                        docker volume rm "${TEST_TAG}-db-data" "${TEST_TAG}-archive" 2>/dev/null || true
-                        docker network rm "${TEST_TAG}-network" 2>/dev/null || true
-                        docker image rm "$TEST_TAG" 2>/dev/null || true
-                    '''
-                }
-            }
-        }
-
-        // The five suites below are mutually independent: each reads and
-        // writes only its own app/report directories, and Synthetic Market
-        // Data Integration derives build-scoped Docker resource names so it
-        // never collides with another branch. Running them inside `parallel`
-        // cuts wall-clock time; each nested stage still publishes its own
-        // results from `post`, so one branch's failure cannot skip Archive
-        // and Publish for the others. Setup Dependencies already warmed the
-        // shared Maven local repository for both Java services, so the
-        // concurrent `mvn clean test` runs below should only need cache
-        // reads rather than racing on new downloads.
-        //
-        // End-to-End Tests was tried as a sixth branch here. Playwright
-        // enforces its own per-test timeouts, and under the added CPU
-        // contention from its own Docker image build/run on top of these
-        // five, those timeouts tripped and failed the suite outright. It
-        // runs as its own sequential stage after this one instead.
+        // Each suite runs once. Java branches use separate Maven repositories.
+        // E2E follows the parallel group to avoid browser CPU contention.
         stage('Test Suites') {
             parallel {
                 stage('Holdings and Trade Service Tests') {
@@ -298,7 +132,9 @@ pipeline {
                         dir('apps/holdings-and-trade-service') {
                             sh '''
                                 echo " Running Holdings and Trade Service Tests..."
-                                mvn -B clean test
+                                set -eu
+                                mvn -B -Dmaven.repo.local="$WORKSPACE/.m2/holdings-and-trade-service" clean test
+                                test -s target/site/jacoco/jacoco.xml
                                 echo "✓ Holdings and Trade Service tests completed"
                             '''
                         }
@@ -308,7 +144,7 @@ pipeline {
                             archiveArtifacts artifacts: 'apps/holdings-and-trade-service/target/surefire-reports/**/*, apps/holdings-and-trade-service/target/site/jacoco/**/*',
                                               allowEmptyArchive: true
                             junit testResults: 'apps/holdings-and-trade-service/target/surefire-reports/**/*.xml',
-                                  allowEmptyResults: true,
+                                  allowEmptyResults: false,
                                   healthScaleFactor: 1.0
                             echo "✓ Holdings and Trade Service test results published"
                         }
@@ -320,7 +156,9 @@ pipeline {
                         dir('apps/order-and-sell-service') {
                             sh '''
                                 echo " Running Order and Sell Service Tests..."
-                                mvn -B clean test
+                                set -eu
+                                mvn -B -Dmaven.repo.local="$WORKSPACE/.m2/order-and-sell-service" clean test
+                                test -s target/site/jacoco/jacoco.xml
                                 echo "✓ Order and Sell Service tests completed"
                             '''
                         }
@@ -330,7 +168,7 @@ pipeline {
                             archiveArtifacts artifacts: 'apps/order-and-sell-service/target/surefire-reports/**/*, apps/order-and-sell-service/target/site/jacoco/**/*',
                                               allowEmptyArchive: true
                             junit testResults: 'apps/order-and-sell-service/target/surefire-reports/**/*.xml',
-                                  allowEmptyResults: true,
+                                  allowEmptyResults: false,
                                   healthScaleFactor: 1.0
                             echo "✓ Order and Sell Service test results published"
                         }
@@ -368,7 +206,7 @@ pipeline {
                             docker run -d --name "$DB_CONTAINER" --network "$TEST_NETWORK" -e POSTGRES_DB=trading_season -e POSTGRES_USER=trading_season -e POSTGRES_PASSWORD=test-password -v "$DB_VOLUME:/var/lib/postgresql/data" postgres:16-alpine
                             until docker exec "$DB_CONTAINER" pg_isready -U trading_season -d trading_season; do sleep 1; done
                             DATABASE_URL="postgresql://trading_season:test-password@${DB_CONTAINER}:5432/trading_season"
-                            docker run --rm --network "$TEST_NETWORK" "$TEST_TAG" apps/market-data/db/scripts/0001-initialize-database.py --database-url "$DATABASE_URL" --disposable-database
+                            docker run --rm --network "$TEST_NETWORK" "$TEST_TAG" apps/market-data/db/scripts/python/0001-initialize-database.py --database-url "$DATABASE_URL" --disposable-database
                             docker rm -f "$DB_CONTAINER"
                             docker run -d --name "$DB_CONTAINER" --network "$TEST_NETWORK" -e POSTGRES_DB=trading_season -e POSTGRES_USER=trading_season -e POSTGRES_PASSWORD=test-password -v "$DB_VOLUME:/var/lib/postgresql/data" postgres:16-alpine
                             until docker exec "$DB_CONTAINER" pg_isready -U trading_season -d trading_season; do sleep 1; done
@@ -376,20 +214,23 @@ pipeline {
                             docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select pg_database_size(current_database());" > reports/market-data/database-before.txt
                             docker exec "$DB_CONTAINER" du -sb /var/lib/postgresql/data > reports/market-data/disk-before.txt
                             AVAILABLE_DISK_GB="$(docker exec "$DB_CONTAINER" df -Pk /var/lib/postgresql/data | awk 'NR==2 {print $4/1048576}')"
-                            docker run --rm --network "$TEST_NETWORK" -e TEST_DATABASE_URL="$DATABASE_URL" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" "$TEST_TAG" -m pytest apps/market-data/db/tests --junitxml=/reports/junit.xml
-                            docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/generation-resources.txt python apps/market-data/db/scripts/0002-generate-synthetic-market-data.py --start-date 2026-01-05 --end-date 2026-01-06
-                            docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" "$TEST_TAG" apps/market-data/db/scripts/0003-validate-synthetic-market-data.py
-                            docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/import-resources.txt python apps/market-data/db/scripts/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
-                            docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" "$TEST_TAG" apps/market-data/db/scripts/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
+                            docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/generation-resources.txt python apps/market-data/db/scripts/python/0002-generate-synthetic-market-data.py --start-date 2026-01-05 --end-date 2026-01-06
+                            docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" "$TEST_TAG" apps/market-data/db/scripts/python/0003-validate-synthetic-market-data.py
+                            docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/import-resources.txt python apps/market-data/db/scripts/python/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
+                            docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" "$TEST_TAG" apps/market-data/db/scripts/python/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
                             docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select count(*) from market_ticks; select count(*) from candles; select pg_database_size(current_database()); select coalesce(sum(pg_indexes_size(quote_ident(schemaname)||'.'||quote_ident(tablename))),0) from pg_tables where schemaname='public';" > reports/market-data/database-after.txt
                             docker exec "$DB_CONTAINER" du -sb /var/lib/postgresql/data > reports/market-data/disk-after.txt
                             docker run --rm -v "$ARCHIVE_VOLUME:/archive" alpine:3.20 du -sb /archive > reports/market-data/archive.txt
+                            test -s reports/market-data/generation-resources.txt
+                            test -s reports/market-data/import-resources.txt
+                            test -s reports/market-data/database-after.txt
                         '''
                     }
                     post {
                         always {
                             archiveArtifacts artifacts: 'reports/market-data/**/*', allowEmptyArchive: true
-                            junit testResults: 'reports/market-data/junit.xml', allowEmptyResults: true
+                        }
+                        cleanup {
                             sh '''
                                 TEST_TAG="$MARKET_TEST_TAG"
                                 docker rm -f "${TEST_TAG}-db" 2>/dev/null || true
@@ -422,6 +263,9 @@ pipeline {
                                     set -eu
                                     echo "Running Auth Service Tests (Vitest)..."
                                     npm run test:ci
+                                    test -s coverage/lcov.info
+                                    npm run build
+                                    npm run lint
                                     echo "✓ Auth service tests completed"
                                 '''
                             }
@@ -458,7 +302,9 @@ pipeline {
                                     # "Unknown argument: run" before any test executes.
                                     # coverageThresholds in angular.json fails the run
                                     # below the agreed floor.
-                                    npm test -- --no-watch --coverage
+                                    mkdir -p reports/junit
+                                    npm test -- --no-watch --coverage --reporters=junit --reporters=default --output-file=reports/junit/ui.xml --coverage-reporters=text --coverage-reporters=html --coverage-reporters=lcovonly --coverage-reporters=cobertura
+                                    test -s coverage/client-ui/lcov.info
                                     echo "✓ Frontend tests completed"
                                 '''
                             }
@@ -466,10 +312,29 @@ pipeline {
                     }
                     post {
                         always {
-                            archiveArtifacts artifacts: 'apps/client-ui/coverage/**/*',
+                            archiveArtifacts artifacts: 'apps/client-ui/coverage/**/*, apps/client-ui/reports/junit/*.xml',
                                               allowEmptyArchive: true
+                            junit testResults: 'apps/client-ui/reports/junit/ui.xml', allowEmptyResults: false
                         }
                     }
+                }
+            }
+        }
+
+        stage('Java API Documentation') {
+            when { expression { currentBuild.currentResult == 'SUCCESS' } }
+            steps {
+                sh '''
+                    set -eu
+                    for service in holdings-and-trade-service order-and-sell-service; do
+                        mvn -B -Dmaven.repo.local="$WORKSPACE/.m2/$service" -f "apps/$service/pom.xml" org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc
+                        test -s "apps/$service/target/reports/apidocs/index.html"
+                    done
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'apps/*/target/reports/apidocs/**/*', allowEmptyArchive: false
                 }
             }
         }
@@ -477,32 +342,10 @@ pipeline {
         stage('Pre-E2E Disk Cleanup') {
             steps {
                 sh '''
-                    set +e
-                    echo "Aggressive disk cleanup before E2E tests (large Playwright image pull)..."
-
-                    # Remove test artifacts from prior stages that consumed disk
-                    rm -rf apps/holdings-and-trade-service/target
-                    rm -rf apps/order-and-sell-service/target
-                    rm -rf apps/client-ui/coverage
-
-                    # Report current disk state
-                    BEFORE_KB="$(df -Pk "$WORKSPACE" | awk 'NR == 2 {print $4}')"
-                    echo "Available disk before cleanup: $((BEFORE_KB / 1024 / 1024)) GiB"
-
-                    # Remove unused Docker images, dangling layers, and build cache
-                    docker image prune -af >/dev/null 2>&1
-                    docker builder prune -af >/dev/null 2>&1
-
-                    # Clean npm and Maven caches
-                    npm cache clean --force >/dev/null 2>&1
-                    find ~/.m2/repository -type f -name "*.jar" -o -name "*.pom" | xargs rm -f 2>/dev/null || true
-
-                    # Report freed space
-                    AFTER_KB="$(df -Pk "$WORKSPACE" | awk 'NR == 2 {print $4}')"
-                    FREED_MB=$(( (AFTER_KB - BEFORE_KB) / 1024 ))
-                    echo "✓ Available disk after cleanup: $((AFTER_KB / 1024 / 1024)) GiB (freed ~$((FREED_MB > 0 ? FREED_MB : 0)) MB)"
-
-                    set -e
+                    set -eu
+                    # Reports have been archived by their owning stages.
+                    rm -rf apps/holdings-and-trade-service/target apps/order-and-sell-service/target apps/client-ui/coverage
+                    df -Pk "$WORKSPACE"
                 '''
             }
         }
@@ -855,7 +698,7 @@ pipeline {
                         docker image rm "trading-season-playwright:$PW_VERSION" >/dev/null 2>&1
                     fi
                     docker builder prune -af 2>/dev/null
-                    rm -rf ~/.m2/repository ~/.npm
+                    # Workspace-local Maven repositories leave with deleteDir().
                     exit 0
                 ''', returnStatus: true)
                 if (cacheCleanupStatus != 0) {

@@ -188,7 +188,7 @@ class AuthControllerIntegrationTest {
             "Dave",
             null,
             "Davis",
-            "123456789",  // not XXX-XX-XXXX
+            "123456789",  // not NNN-NN-NNNN
             "1 Main St",
             LocalDate.now().plusDays(1),  // not in the past
             "EXPERT",  // not a trader level

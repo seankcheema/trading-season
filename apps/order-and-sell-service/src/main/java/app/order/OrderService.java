@@ -81,6 +81,8 @@ public class OrderService {
      * @throws AccountNotFoundException    if {@code accountId} does not exist
      * @throws ForbiddenException          if {@code accountId} belongs to another user
      * @throws InstrumentNotFoundException if {@code instrumentId} does not exist
+     * @throws org.springframework.dao.DataAccessException if persistence fails; the order and all
+     *         execution ledger writes are rolled back together
      * @throws IllegalStateException       if the account has no owning user
      */
     @Transactional

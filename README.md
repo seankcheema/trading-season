@@ -23,10 +23,10 @@ Install Node.js 24.8.0+ (24.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL 
 
 ### Quick start with the startup script (requires local databases)
 
-1. Install dependencies. The UI and auth service are independent npm projects, each with its own lockfile:
+1. Install the root workspace dependencies and the separate auth-service dependencies:
 
    ```powershell
-   npm --prefix apps/client-ui ci
+   npm ci
    npm --prefix apps/auth-service ci
    ```
 
@@ -128,11 +128,11 @@ cd ../..
 Use the startup script as above, or start each application in its own terminal:
 
 ```powershell
-npm --prefix apps/client-ui ci
+npm ci
 npm --prefix apps/auth-service ci
 
 # Terminal 1: UI
-npm --prefix apps/client-ui start
+npm --workspace client-ui start
 
 # Terminal 2: Holdings and Trade Service
 cd apps/holdings-and-trade-service
@@ -217,7 +217,7 @@ See the [development guide](docs/guides/development.md) for additional commands,
 | Order and Sell Service | `apps/order-and-sell-service` | 8081 | Order submission, validation and execution; order history; instrument reference data |
 | Holdings and Trade Service | `apps/holdings-and-trade-service` | 8082 | User profiles, accounts, holdings, cash movements, market data |
 | Market Data | `apps/market-data` | — | Canonical database schema and synthetic market data tooling |
-| Shared UI Components | `packages/shared-ui-components` | — | Reusable Angular components library |
+| Shared UI Components | `apps/client-ui/shared-ui-components` | — | Local Angular components compiled into Client UI |
 | Reporting | `docs/reference/reporting.md` | — | Proposed analytics and portfolio performance reporting |
 
 ## Documentation

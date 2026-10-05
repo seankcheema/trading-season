@@ -126,17 +126,16 @@ class OrderControllerIntegrationTest {
     }
 
     @Test
-<<<<<<< HEAD
-    void rejectsAnOrderFromAnAccountDeactivatedAfterItsTokenWasIssued() throws Exception {
-        // The whole reason status is read from user_accounts rather than taken
-        // from the token: the token here is still perfectly valid, and the
-        // order must be refused anyway.
-        UserAccountFixture.deactivate(jdbcTemplate, userId);
+    void rejectsAnOrderWhenCredentialsDisappearAfterItsTokenWasIssued() throws Exception {
+        jdbcTemplate.update("delete from user_accounts where user_id = ?", userId);
 
         submit("BUY", "10", "20.00")
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("REJECTED"))
-                .andExpect(jsonPath("$.rejectionReason").value("Account is not active"));
+                .andExpect(jsonPath("$.rejectionReason").value("Credential account does not exist"));
+        assertEquals(0, fillRepository.count());
+        assertEquals(0, cashTransactionRepository.count());
+        assertEquals(0, holdingMovementRepository.count());
     }
 
     @Test
@@ -156,8 +155,6 @@ class OrderControllerIntegrationTest {
     }
 
     @Test
-=======
->>>>>>> main
     void buyThenSellFillsAndLeavesAConsistentLedger() throws Exception {
         submit("BUY", "10", "20.00")
                 .andExpect(status().isCreated())
@@ -203,6 +200,53 @@ class OrderControllerIntegrationTest {
                 .sorted(Comparator.comparing(AuditTrail::getAuditId))
                 .map(AuditTrail::getEventType).toList();
         assertEquals(List.of("PENDING", "FILLED", "PENDING", "FILLED"), events);
+    }
+
+    @Test
+    void sellingTheRemainingPositionClosesItWithoutLosingLedgerHistory() throws Exception {
+        submit("BUY", "10", "20.00").andExpect(jsonPath("$.status").value("FILLED"));
+        submit("SELL", "4", "25.00").andExpect(jsonPath("$.status").value("FILLED"));
+        submit("SELL", "6", "30.00").andExpect(jsonPath("$.status").value("FILLED"));
+        assertEquals(0, new BigDecimal("1080.00").compareTo(
+                userRepository.findById(userId).orElseThrow().getAvailableFunds()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(holdingRepository
+                .findByAccountIdAndInstrumentId(account.getAccountId(), instrument.getInstrumentId())
+                .orElseThrow().getQuantity()));
+        assertEquals(3, fillRepository.count());
+        assertEquals(3, cashTransactionRepository.count());
+        assertEquals(3, holdingMovementRepository.count());
+        assertEquals(6, auditTrailRepository.count());
+    }
+
+    @Test
+    void insufficientFundsAndHoldingsDoNotWriteExecutionRows() throws Exception {
+        submit("BUY", "100", "20.00").andExpect(jsonPath("$.status").value("REJECTED"));
+        submit("SELL", "1", "20.00").andExpect(jsonPath("$.status").value("REJECTED"));
+        assertEquals(0, fillRepository.count());
+        assertEquals(0, cashTransactionRepository.count());
+        assertEquals(0, holdingMovementRepository.count());
+        assertEquals(0, holdingRepository.count());
+        assertEquals(0, new BigDecimal("1000.00").compareTo(
+                userRepository.findById(userId).orElseThrow().getAvailableFunds()));
+    }
+
+    @Test
+    void persistenceFailureRollsBackTheWholeOrderAndItsLedger() throws Exception {
+        // Fail after fill and cash writes, exercising the real transaction boundary.
+        jdbcTemplate.execute("ALTER TABLE holding_movements ADD CONSTRAINT test_reject_movement CHECK (quantity_delta = 0)");
+        try {
+            submit("BUY", "1", "20.00").andExpect(status().isConflict());
+        } finally {
+            jdbcTemplate.execute("ALTER TABLE holding_movements DROP CONSTRAINT test_reject_movement");
+        }
+        assertEquals(0, orderRepository.count());
+        assertEquals(0, fillRepository.count());
+        assertEquals(0, cashTransactionRepository.count());
+        assertEquals(0, holdingMovementRepository.count());
+        assertEquals(0, auditTrailRepository.count());
+        assertEquals(0, holdingRepository.count());
+        assertEquals(0, new BigDecimal("1000.00").compareTo(
+                userRepository.findById(userId).orElseThrow().getAvailableFunds()));
     }
 
     @Test

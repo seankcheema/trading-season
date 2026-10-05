@@ -142,6 +142,19 @@ describe('OrderService', () => {
       expect(results).toEqual([order()]);
     });
 
+    it('posts a sell with the selected replay time and preserves the response', () => {
+      const simulatedAt = '2026-01-05T16:30:00Z';
+      const results: OrderResult[] = [];
+      service.submitOrder({ ...BUY, orderType: 'SELL', simulatedAt }).subscribe(value => results.push(value));
+      http.expectOne('/api/instruments').flush([instrument()]);
+      const posted = http.expectOne({ method: 'POST', url: '/api/orders' });
+      expect(posted.request.body).toMatchObject({ accountId: 42, instrumentId: 7,
+        orderType: 'SELL', quantity: 2, indicativePrice: 100, simulatedAt });
+      const response = order({ orderType: 'SELL', simulatedAt });
+      posted.flush(response);
+      expect(results).toEqual([response]);
+    });
+
     it('should send a distinct v4 idempotency key per submission', () => {
       const keys: string[] = [];
       for (const _ of [0, 1]) {

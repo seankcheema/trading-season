@@ -42,7 +42,7 @@ import java.util.stream.Collectors;
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleDataIntegrity(DataIntegrityViolationException ex) {
-<span class="nc" id="L45">        return error(HttpStatus.CONFLICT, &quot;Account or email is already registered&quot;);</span>
+<span class="fc" id="L45">        return error(HttpStatus.CONFLICT, &quot;Account or email is already registered&quot;);</span>
     }
 
     /**

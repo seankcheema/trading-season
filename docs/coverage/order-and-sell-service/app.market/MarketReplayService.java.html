@@ -91,7 +91,7 @@ public class MarketReplayService {
      * @param requestedSessionId optional completed simulation identifier
      * @param symbol seeded stock symbol
      * @param timeframeValue supported public timeframe value
-     * @return at most 500 aggregated points
+     * @return at most 500 aggregated points with explicit chart boundaries and session intervals
      */
     public CandleSeries candles(Long requestedSessionId, String symbol, String timeframeValue) {
 <span class="fc" id="L97">        ReplayState state = state(requestedSessionId);</span>
@@ -102,14 +102,22 @@ public class MarketReplayService {
         }
         Instant cursor;
         Instant from;
-<span class="fc" id="L105">        synchronized (state) {</span>
-<span class="fc" id="L106">            cursor = state.currentFrame().timestamp();</span>
-<span class="fc" id="L107">            from = rangeStart(state, timeframe, cursor);</span>
-<span class="fc" id="L108">        }</span>
-<span class="fc" id="L109">        List&lt;MarketModels.Candle&gt; raw = repository.candles(state.session.id(), normalizedSymbol, from, cursor);</span>
-<span class="fc" id="L110">        List&lt;CandlePoint&gt; points = aggregate(raw, timeframe);</span>
-<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (points.size() &gt; MAX_POINTS) points = points.subList(points.size() - MAX_POINTS, points.size());</span>
-<span class="fc" id="L112">        return new CandleSeries(state.session.id(), normalizedSymbol, timeframeValue, cursor, points);</span>
+        List&lt;TradingSession&gt; sessions;
+        Instant end;
+<span class="fc" id="L107">        synchronized (state) {</span>
+<span class="fc" id="L108">            cursor = state.currentFrame().timestamp();</span>
+<span class="fc" id="L109">            from = rangeStart(state, timeframe, cursor);</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">            sessions = state.days.stream().filter(day -&gt; !day.isAfter(cursor.atZone(MARKET_ZONE).toLocalDate()))</span>
+<span class="fc" id="L111">                    .map(day -&gt; new TradingSession(day.atTime(MARKET_OPEN).atZone(MARKET_ZONE).toInstant(),</span>
+<span class="fc" id="L112">                            day.atTime(MARKET_CLOSE).plusSeconds(1).atZone(MARKET_ZONE).toInstant()))</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                    .filter(day -&gt; !day.end().isBefore(from)).toList();</span>
+<span class="fc bfc" id="L114" title="All 4 branches covered.">            end = timeframe == MarketTimeframe.ONE_DAY || timeframe == MarketTimeframe.FIVE_DAYS</span>
+<span class="fc" id="L115">                    ? sessions.getLast().end() : cursor;</span>
+<span class="fc" id="L116">        }</span>
+<span class="fc" id="L117">        List&lt;MarketModels.Candle&gt; raw = repository.candles(state.session.id(), normalizedSymbol, from, cursor);</span>
+<span class="fc" id="L118">        List&lt;CandlePoint&gt; points = aggregate(raw, timeframe);</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        if (points.size() &gt; MAX_POINTS) points = points.subList(points.size() - MAX_POINTS, points.size());</span>
+<span class="fc" id="L120">        return new CandleSeries(state.session.id(), normalizedSymbol, timeframeValue, cursor, points, from, end, sessions);</span>
     }
 
     /**
@@ -122,31 +130,31 @@ public class MarketReplayService {
      * @throws MarketRequestException when the month has no seeded trading data
      */
     public Snapshot setClock(Long requestedSessionId, Instant timestamp) {
-<span class="fc" id="L125">        ReplayState state = state(requestedSessionId);</span>
-<span class="fc" id="L126">        ZonedDateTime requestedMarketTime = timestamp.atZone(MARKET_ZONE);</span>
-<span class="fc" id="L127">        LocalDate requestedDay = requestedMarketTime.toLocalDate();</span>
-<span class="fc" id="L128">        synchronized (state) {</span>
-<span class="fc" id="L129">            LocalDate day = resolveReplayDay(state.days, requestedDay);</span>
-<span class="fc" id="L130">            int dayIndex = state.days.indexOf(day);</span>
-<span class="fc bfc" id="L131" title="All 2 branches covered.">            if (dayIndex &lt; 0) {</span>
-<span class="fc" id="L132">                throw new MarketRequestException(&quot;Selected date has no seeded trading data&quot;);</span>
+<span class="fc" id="L133">        ReplayState state = state(requestedSessionId);</span>
+<span class="fc" id="L134">        ZonedDateTime requestedMarketTime = timestamp.atZone(MARKET_ZONE);</span>
+<span class="fc" id="L135">        LocalDate requestedDay = requestedMarketTime.toLocalDate();</span>
+<span class="fc" id="L136">        synchronized (state) {</span>
+<span class="fc" id="L137">            LocalDate day = resolveReplayDay(state.days, requestedDay);</span>
+<span class="fc" id="L138">            int dayIndex = state.days.indexOf(day);</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if (dayIndex &lt; 0) {</span>
+<span class="fc" id="L140">                throw new MarketRequestException(&quot;Selected date has no seeded trading data&quot;);</span>
             }
-<span class="fc" id="L134">            Instant replayTimestamp = day.atTime(requestedMarketTime.toLocalTime())</span>
-<span class="fc" id="L135">                    .atZone(MARKET_ZONE)</span>
-<span class="fc" id="L136">                    .toInstant();</span>
-<span class="fc" id="L137">            List&lt;MarketModels.Frame&gt; frames = requireFrames(state.session, day);</span>
-<span class="fc" id="L138">            int frameIndex = 0;</span>
-<span class="fc bfc" id="L139" title="All 2 branches covered.">            for (int i = 0; i &lt; frames.size(); i++) {</span>
-<span class="fc bfc" id="L140" title="All 2 branches covered.">                if (!frames.get(i).timestamp().isAfter(replayTimestamp)) frameIndex = i;</span>
+<span class="fc" id="L142">            Instant replayTimestamp = day.atTime(requestedMarketTime.toLocalTime())</span>
+<span class="fc" id="L143">                    .atZone(MARKET_ZONE)</span>
+<span class="fc" id="L144">                    .toInstant();</span>
+<span class="fc" id="L145">            List&lt;MarketModels.Frame&gt; frames = requireFrames(state.session, day);</span>
+<span class="fc" id="L146">            int frameIndex = 0;</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">            for (int i = 0; i &lt; frames.size(); i++) {</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">                if (!frames.get(i).timestamp().isAfter(replayTimestamp)) frameIndex = i;</span>
                 else break;
             }
-<span class="fc" id="L143">            state.dayIndex = dayIndex;</span>
-<span class="fc" id="L144">            state.frames = frames;</span>
-<span class="fc" id="L145">            state.frameIndex = frameIndex;</span>
-<span class="fc" id="L146">            state.opening = null;</span>
-<span class="fc" id="L147">            state.history.clear();</span>
-<span class="fc" id="L148">        }</span>
-<span class="fc" id="L149">        return snapshot(state.session.id());</span>
+<span class="fc" id="L151">            state.dayIndex = dayIndex;</span>
+<span class="fc" id="L152">            state.frames = frames;</span>
+<span class="fc" id="L153">            state.frameIndex = frameIndex;</span>
+<span class="fc" id="L154">            state.opening = null;</span>
+<span class="fc" id="L155">            state.history.clear();</span>
+<span class="fc" id="L156">        }</span>
+<span class="fc" id="L157">        return snapshot(state.session.id());</span>
     }
 
     /**
@@ -157,198 +165,200 @@ public class MarketReplayService {
      * @return the registered emitter
      */
     public SseEmitter subscribe(Long requestedSessionId, String clientId, Long lastEventId) {
-<span class="fc" id="L160">        ReplayState state = state(requestedSessionId);</span>
-<span class="fc" id="L161">        SseEmitter emitter = new SseEmitter(0L);</span>
-<span class="fc" id="L162">        synchronized (clientStreams) {</span>
-<span class="fc" id="L163">            int global = clientStreams.values().stream().mapToInt(Integer::intValue).sum();</span>
-<span class="fc" id="L164">            int current = clientStreams.getOrDefault(clientId, 0);</span>
-<span class="fc bfc" id="L165" title="All 4 branches covered.">            if (global &gt;= maxStreamsGlobal || current &gt;= maxStreamsPerClient) {</span>
-<span class="fc" id="L166">                throw new MarketLimitException(&quot;Market stream connection limit reached&quot;);</span>
+<span class="fc" id="L168">        ReplayState state = state(requestedSessionId);</span>
+<span class="fc" id="L169">        SseEmitter emitter = new SseEmitter(0L);</span>
+<span class="fc" id="L170">        synchronized (clientStreams) {</span>
+<span class="fc" id="L171">            int global = clientStreams.values().stream().mapToInt(Integer::intValue).sum();</span>
+<span class="fc" id="L172">            int current = clientStreams.getOrDefault(clientId, 0);</span>
+<span class="fc bfc" id="L173" title="All 4 branches covered.">            if (global &gt;= maxStreamsGlobal || current &gt;= maxStreamsPerClient) {</span>
+<span class="fc" id="L174">                throw new MarketLimitException(&quot;Market stream connection limit reached&quot;);</span>
             }
-<span class="fc" id="L168">            clientStreams.put(clientId, current + 1);</span>
-<span class="fc" id="L169">        }</span>
-<span class="fc" id="L170">        Subscriber subscriber = new Subscriber(clientId, emitter);</span>
-<span class="fc" id="L171">        Runnable cleanup = () -&gt; remove(state, subscriber);</span>
-<span class="fc" id="L172">        emitter.onCompletion(cleanup);</span>
-<span class="fc" id="L173">        emitter.onTimeout(cleanup);</span>
-<span class="pc" id="L174">        emitter.onError(ignored -&gt; cleanup.run());</span>
-<span class="fc" id="L175">        synchronized (state) {</span>
+<span class="fc" id="L176">            clientStreams.put(clientId, current + 1);</span>
+<span class="fc" id="L177">        }</span>
+<span class="fc" id="L178">        Subscriber subscriber = new Subscriber(clientId, emitter);</span>
+<span class="fc" id="L179">        Runnable cleanup = () -&gt; remove(state, subscriber);</span>
+<span class="fc" id="L180">        emitter.onCompletion(cleanup);</span>
+<span class="fc" id="L181">        emitter.onTimeout(cleanup);</span>
+<span class="pc" id="L182">        emitter.onError(ignored -&gt; cleanup.run());</span>
+<span class="fc" id="L183">        synchronized (state) {</span>
             try {
-<span class="fc bfc" id="L177" title="All 2 branches covered.">                if (lastEventId != null) replayMissed(state, emitter, lastEventId);</span>
-<span class="fc" id="L178">                send(emitter, &quot;snapshot&quot;, null, snapshot(state.session.id()));</span>
-<span class="fc" id="L179">                state.subscribers.add(subscriber);</span>
-<span class="nc" id="L180">            } catch (IOException ex) {</span>
-<span class="nc" id="L181">                releaseClient(clientId);</span>
-<span class="nc" id="L182">                emitter.completeWithError(ex);</span>
-<span class="fc" id="L183">            } catch (RuntimeException ex) {</span>
-<span class="fc" id="L184">                releaseClient(clientId);</span>
-<span class="fc" id="L185">                throw ex;</span>
-<span class="pc" id="L186">            }</span>
-<span class="fc" id="L187">        }</span>
-<span class="fc" id="L188">        return emitter;</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">                if (lastEventId != null) replayMissed(state, emitter, lastEventId);</span>
+<span class="fc" id="L186">                send(emitter, &quot;snapshot&quot;, null, snapshot(state.session.id()));</span>
+<span class="fc" id="L187">                state.subscribers.add(subscriber);</span>
+<span class="nc" id="L188">            } catch (IOException ex) {</span>
+<span class="nc" id="L189">                releaseClient(clientId);</span>
+<span class="nc" id="L190">                emitter.completeWithError(ex);</span>
+<span class="fc" id="L191">            } catch (RuntimeException ex) {</span>
+<span class="fc" id="L192">                releaseClient(clientId);</span>
+<span class="fc" id="L193">                throw ex;</span>
+<span class="pc" id="L194">            }</span>
+<span class="fc" id="L195">        }</span>
+<span class="fc" id="L196">        return emitter;</span>
     }
 
     /** Advances every active simulation cursor and publishes the next synchronized batch. */
     @Scheduled(fixedRateString = &quot;${market.replay.tick-millis:1000}&quot;)
     public void advance() {
-<span class="fc" id="L194">        states.values().forEach(this::advanceState);</span>
-<span class="fc" id="L195">    }</span>
+<span class="fc" id="L202">        states.values().forEach(this::advanceState);</span>
+<span class="fc" id="L203">    }</span>
 
     private ReplayState state(Long requestedId) {
-<span class="fc" id="L198">        MarketModels.Session session = repository.resolveSession(requestedId);</span>
-<span class="fc" id="L199">        return states.computeIfAbsent(session.id(), ignored -&gt; initialize(session));</span>
+<span class="fc" id="L206">        MarketModels.Session session = repository.resolveSession(requestedId);</span>
+<span class="fc" id="L207">        return states.computeIfAbsent(session.id(), ignored -&gt; initialize(session));</span>
     }
 
     private ReplayState initialize(MarketModels.Session session) {
-<span class="fc" id="L203">        List&lt;LocalDate&gt; days = repository.tradingDays(session.id());</span>
-<span class="fc bfc" id="L204" title="All 2 branches covered.">        if (days.isEmpty()) throw new MarketRequestException(&quot;Simulation has no candle data&quot;);</span>
-<span class="fc bfc" id="L205" title="All 2 branches covered.">        Instant desired = configuredStart == null ? clock.instant() : configuredStart;</span>
-<span class="fc" id="L206">        LocalDate desiredDay = desired.atZone(MARKET_ZONE).toLocalDate();</span>
-<span class="fc bfc" id="L207" title="All 2 branches covered.">        LocalDate day = days.stream().filter(value -&gt; !value.isAfter(desiredDay)).max(Comparator.naturalOrder())</span>
-<span class="fc" id="L208">                .orElse(days.getLast());</span>
-<span class="fc" id="L209">        List&lt;MarketModels.Frame&gt; frames = requireFrames(session, day);</span>
-<span class="fc" id="L210">        int index = 0;</span>
-<span class="fc bfc" id="L211" title="All 2 branches covered.">        if (day.equals(desiredDay)) {</span>
-<span class="fc bfc" id="L212" title="All 2 branches covered.">            for (int i = 0; i &lt; frames.size(); i++) {</span>
-<span class="fc bfc" id="L213" title="All 2 branches covered.">                if (!frames.get(i).timestamp().isAfter(desired)) index = i;</span>
+<span class="fc" id="L211">        List&lt;LocalDate&gt; days = repository.tradingDays(session.id());</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        if (days.isEmpty()) throw new MarketRequestException(&quot;Simulation has no candle data&quot;);</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        Instant desired = configuredStart == null ? clock.instant() : configuredStart;</span>
+<span class="fc" id="L214">        LocalDate desiredDay = desired.atZone(MARKET_ZONE).toLocalDate();</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">        LocalDate day = days.stream().filter(value -&gt; !value.isAfter(desiredDay)).max(Comparator.naturalOrder())</span>
+<span class="fc" id="L216">                .orElse(days.getLast());</span>
+<span class="fc" id="L217">        List&lt;MarketModels.Frame&gt; frames = requireFrames(session, day);</span>
+<span class="fc" id="L218">        int index = 0;</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        if (day.equals(desiredDay)) {</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">            for (int i = 0; i &lt; frames.size(); i++) {</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">                if (!frames.get(i).timestamp().isAfter(desired)) index = i;</span>
                 else break;
             }
         }
-<span class="fc" id="L217">        return new ReplayState(session, days, days.indexOf(day), frames, index);</span>
+<span class="fc" id="L225">        return new ReplayState(session, days, days.indexOf(day), frames, index);</span>
     }
 
     private void advanceState(ReplayState state) {
         TickEvent event;
-<span class="fc" id="L222">        synchronized (state) {</span>
-<span class="fc bfc" id="L223" title="All 2 branches covered.">            if (++state.frameIndex &gt;= state.frames.size()) {</span>
-<span class="fc" id="L224">                state.dayIndex = (state.dayIndex + 1) % state.days.size();</span>
-<span class="fc" id="L225">                state.frames = requireFrames(state.session, state.days.get(state.dayIndex));</span>
-<span class="fc" id="L226">                state.frameIndex = 0;</span>
-<span class="fc" id="L227">                state.opening = null;</span>
+<span class="fc" id="L230">        synchronized (state) {</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">            if (++state.frameIndex &gt;= state.frames.size()) {</span>
+<span class="fc" id="L232">                state.dayIndex = (state.dayIndex + 1) % state.days.size();</span>
+<span class="fc" id="L233">                state.frames = requireFrames(state.session, state.days.get(state.dayIndex));</span>
+<span class="fc" id="L234">                state.frameIndex = 0;</span>
+<span class="fc" id="L235">                state.opening = null;</span>
             }
-<span class="fc" id="L229">            MarketModels.Frame frame = state.currentFrame();</span>
-<span class="fc" id="L230">            long id = ++state.nextEventId;</span>
-<span class="fc" id="L231">            event = new TickEvent(id, frame.timestamp(), clock.instant(), frame.prices().stream()</span>
-<span class="fc" id="L232">                    .map(t -&gt; new TickPrice(t.symbol(), t.price(), t.sequenceNumber())).toList());</span>
-<span class="fc" id="L233">            state.history.addLast(event);</span>
-<span class="fc bfc" id="L234" title="All 2 branches covered.">            while (state.history.size() &gt; EVENT_HISTORY) state.history.removeFirst();</span>
-<span class="fc" id="L235">        }</span>
-<span class="fc bfc" id="L236" title="All 2 branches covered.">        for (Subscriber subscriber : List.copyOf(state.subscribers)) {</span>
-            try {
-<span class="fc" id="L238">                send(subscriber.emitter, &quot;market-tick&quot;, event.eventId(), event);</span>
-<span class="nc" id="L239">            } catch (IOException ex) {</span>
-<span class="nc" id="L240">                remove(state, subscriber);</span>
-<span class="nc" id="L241">                subscriber.emitter.completeWithError(ex);</span>
-<span class="fc" id="L242">            }</span>
+<span class="fc" id="L237">            MarketModels.Frame frame = state.currentFrame();</span>
+<span class="fc" id="L238">            long id = ++state.nextEventId;</span>
+<span class="fc" id="L239">            event = new TickEvent(id, frame.timestamp(), clock.instant(), frame.prices().stream()</span>
+<span class="fc" id="L240">                    .map(t -&gt; new TickPrice(t.symbol(), t.price(), t.sequenceNumber())).toList());</span>
+<span class="fc" id="L241">            state.history.addLast(event);</span>
+<span class="fc bfc" id="L242" title="All 2 branches covered.">            while (state.history.size() &gt; EVENT_HISTORY) state.history.removeFirst();</span>
 <span class="fc" id="L243">        }</span>
-<span class="fc bfc" id="L244" title="All 2 branches covered.">        if (event.eventId() % 15 == 0) {</span>
-<span class="fc bfc" id="L245" title="All 2 branches covered.">            for (Subscriber subscriber : List.copyOf(state.subscribers)) {</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        for (Subscriber subscriber : List.copyOf(state.subscribers)) {</span>
+            try {
+<span class="fc" id="L246">                send(subscriber.emitter, &quot;market-tick&quot;, event.eventId(), event);</span>
+<span class="nc" id="L247">            } catch (IOException ex) {</span>
+<span class="nc" id="L248">                remove(state, subscriber);</span>
+<span class="nc" id="L249">                subscriber.emitter.completeWithError(ex);</span>
+<span class="fc" id="L250">            }</span>
+<span class="fc" id="L251">        }</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">        if (event.eventId() % 15 == 0) {</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">            for (Subscriber subscriber : List.copyOf(state.subscribers)) {</span>
                 try {
-<span class="fc" id="L247">                    send(subscriber.emitter, &quot;heartbeat&quot;, null, Map.of(&quot;serverTimestamp&quot;, clock.instant()));</span>
-<span class="nc" id="L248">                } catch (IOException ex) {</span>
-<span class="nc" id="L249">                    remove(state, subscriber);</span>
-<span class="fc" id="L250">                }</span>
-<span class="fc" id="L251">            }</span>
+<span class="fc" id="L255">                    send(subscriber.emitter, &quot;heartbeat&quot;, null, Map.of(&quot;serverTimestamp&quot;, clock.instant()));</span>
+<span class="nc" id="L256">                } catch (IOException ex) {</span>
+<span class="nc" id="L257">                    remove(state, subscriber);</span>
+<span class="fc" id="L258">                }</span>
+<span class="fc" id="L259">            }</span>
         }
-<span class="fc" id="L253">    }</span>
+<span class="fc" id="L261">    }</span>
 
     private List&lt;MarketModels.Frame&gt; requireFrames(MarketModels.Session session, LocalDate day) {
         List&lt;MarketModels.Frame&gt; frames;
         try {
-<span class="fc" id="L258">            frames = repository.ticksForDay(session, day);</span>
-<span class="fc" id="L259">        } catch (RuntimeException | LinkageError ex) {</span>
-<span class="fc" id="L260">            throw new MarketRequestException(&quot;Selected date has no replay prices available&quot;);</span>
-<span class="fc" id="L261">        }</span>
-<span class="fc bfc" id="L262" title="All 2 branches covered.">        if (frames.isEmpty()) throw new MarketRequestException(&quot;Selected date has no replay prices available&quot;);</span>
-<span class="fc" id="L263">        return frames;</span>
+<span class="fc" id="L266">            frames = repository.ticksForDay(session, day);</span>
+<span class="fc" id="L267">        } catch (RuntimeException | LinkageError ex) {</span>
+<span class="fc" id="L268">            throw new MarketRequestException(&quot;Selected date has no replay prices available&quot;);</span>
+<span class="fc" id="L269">        }</span>
+<span class="fc bfc" id="L270" title="All 2 branches covered.">        if (frames.isEmpty()) throw new MarketRequestException(&quot;Selected date has no replay prices available&quot;);</span>
+<span class="fc" id="L271">        return frames;</span>
     }
 
     private LocalDate resolveReplayDay(List&lt;LocalDate&gt; days, LocalDate requestedDay) {
-<span class="fc bfc" id="L267" title="All 2 branches covered.">        if (days.contains(requestedDay)) return requestedDay;</span>
-<span class="fc" id="L268">        YearMonth requestedMonth = YearMonth.from(requestedDay);</span>
-<span class="fc" id="L269">        return days.stream()</span>
-<span class="fc" id="L270">                .filter(day -&gt; YearMonth.from(day).equals(requestedMonth))</span>
-<span class="fc bfc" id="L271" title="All 2 branches covered.">                .filter(day -&gt; !day.isBefore(requestedDay))</span>
-<span class="fc" id="L272">                .findFirst()</span>
-<span class="fc" id="L273">                .or(() -&gt; days.stream()</span>
-<span class="fc" id="L274">                        .filter(day -&gt; YearMonth.from(day).equals(requestedMonth))</span>
-<span class="pc bpc" id="L275" title="1 of 2 branches missed.">                        .filter(day -&gt; !day.isAfter(requestedDay))</span>
-<span class="pc" id="L276">                        .reduce((first, second) -&gt; second))</span>
-<span class="fc" id="L277">                .orElse(requestedDay);</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        if (days.contains(requestedDay)) return requestedDay;</span>
+<span class="fc" id="L276">        YearMonth requestedMonth = YearMonth.from(requestedDay);</span>
+<span class="fc" id="L277">        return days.stream()</span>
+<span class="fc" id="L278">                .filter(day -&gt; YearMonth.from(day).equals(requestedMonth))</span>
+<span class="fc bfc" id="L279" title="All 2 branches covered.">                .filter(day -&gt; !day.isBefore(requestedDay))</span>
+<span class="fc" id="L280">                .findFirst()</span>
+<span class="fc" id="L281">                .or(() -&gt; days.stream()</span>
+<span class="fc" id="L282">                        .filter(day -&gt; YearMonth.from(day).equals(requestedMonth))</span>
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">                        .filter(day -&gt; !day.isAfter(requestedDay))</span>
+<span class="pc" id="L284">                        .reduce((first, second) -&gt; second))</span>
+<span class="fc" id="L285">                .orElse(requestedDay);</span>
     }
 
     private Instant rangeStart(ReplayState state, MarketTimeframe timeframe, Instant cursor) {
-<span class="fc bfc" id="L281" title="All 2 branches covered.">        if (timeframe == MarketTimeframe.ONE_DAY) {</span>
-<span class="fc" id="L282">            return cursor.atZone(MARKET_ZONE).toLocalDate().atTime(MARKET_OPEN).atZone(MARKET_ZONE).toInstant();</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">        if (timeframe == MarketTimeframe.ONE_DAY) {</span>
+<span class="fc" id="L290">            return cursor.atZone(MARKET_ZONE).toLocalDate().atTime(MARKET_OPEN).atZone(MARKET_ZONE).toInstant();</span>
         }
-<span class="fc bfc" id="L284" title="All 2 branches covered.">        if (timeframe == MarketTimeframe.FIVE_DAYS) {</span>
-<span class="fc" id="L285">            LocalDate current = cursor.atZone(MARKET_ZONE).toLocalDate();</span>
-<span class="pc bpc" id="L286" title="1 of 2 branches missed.">            List&lt;LocalDate&gt; eligible = state.days.stream().filter(day -&gt; !day.isAfter(current)).toList();</span>
-<span class="fc" id="L287">            LocalDate first = eligible.get(Math.max(0, eligible.size() - 5));</span>
-<span class="fc" id="L288">            return first.atTime(MARKET_OPEN).atZone(MARKET_ZONE).toInstant();</span>
+<span class="fc bfc" id="L292" title="All 2 branches covered.">        if (timeframe == MarketTimeframe.FIVE_DAYS) {</span>
+<span class="fc" id="L293">            LocalDate current = cursor.atZone(MARKET_ZONE).toLocalDate();</span>
+<span class="pc bpc" id="L294" title="1 of 2 branches missed.">            List&lt;LocalDate&gt; eligible = state.days.stream().filter(day -&gt; !day.isAfter(current)).toList();</span>
+<span class="fc" id="L295">            LocalDate first = eligible.get(Math.max(0, eligible.size() - 5));</span>
+<span class="fc" id="L296">            return first.atTime(MARKET_OPEN).atZone(MARKET_ZONE).toInstant();</span>
         }
-<span class="fc" id="L290">        return cursor.minus(timeframe.lookback());</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">        if (timeframe == MarketTimeframe.ONE_MONTH) return cursor.atZone(MARKET_ZONE).minusMonths(1).toInstant();</span>
+<span class="fc bfc" id="L299" title="All 2 branches covered.">        if (timeframe == MarketTimeframe.ONE_YEAR) return cursor.atZone(MARKET_ZONE).minusYears(1).toInstant();</span>
+<span class="fc" id="L300">        return cursor.minus(timeframe.lookback());</span>
     }
 
     private CalendarAvailability availability(ReplayState state) {
-<span class="fc" id="L294">        LocalDate first = state.days.getFirst();</span>
-<span class="fc" id="L295">        LocalDate last = state.days.getLast();</span>
-<span class="fc" id="L296">        return new CalendarAvailability(MARKET_ZONE.getId(),</span>
-<span class="fc" id="L297">                first.atTime(MARKET_OPEN).atZone(MARKET_ZONE).toInstant(),</span>
-<span class="fc" id="L298">                last.atTime(MARKET_CLOSE).atZone(MARKET_ZONE).toInstant(),</span>
+<span class="fc" id="L304">        LocalDate first = state.days.getFirst();</span>
+<span class="fc" id="L305">        LocalDate last = state.days.getLast();</span>
+<span class="fc" id="L306">        return new CalendarAvailability(MARKET_ZONE.getId(),</span>
+<span class="fc" id="L307">                first.atTime(MARKET_OPEN).atZone(MARKET_ZONE).toInstant(),</span>
+<span class="fc" id="L308">                last.atTime(MARKET_CLOSE).atZone(MARKET_ZONE).toInstant(),</span>
                 state.days);
     }
 
     private List&lt;CandlePoint&gt; aggregate(List&lt;MarketModels.Candle&gt; raw, MarketTimeframe timeframe) {
-<span class="fc" id="L303">        Map&lt;Instant, MutableCandle&gt; buckets = new java.util.LinkedHashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L304" title="All 2 branches covered.">        for (MarketModels.Candle candle : raw) {</span>
-<span class="fc" id="L305">            Instant key = bucketStart(candle.timestamp(), timeframe);</span>
-<span class="fc" id="L306">            buckets.computeIfAbsent(key, ignored -&gt; new MutableCandle(candle)).add(candle);</span>
-<span class="fc" id="L307">        }</span>
-<span class="fc" id="L308">        return buckets.entrySet().stream().map(entry -&gt; entry.getValue().toPoint(entry.getKey())).toList();</span>
+<span class="fc" id="L313">        Map&lt;Instant, MutableCandle&gt; buckets = new java.util.LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L314" title="All 2 branches covered.">        for (MarketModels.Candle candle : raw) {</span>
+<span class="fc" id="L315">            Instant key = bucketStart(candle.timestamp(), timeframe);</span>
+<span class="fc" id="L316">            buckets.computeIfAbsent(key, ignored -&gt; new MutableCandle(candle)).add(candle);</span>
+<span class="fc" id="L317">        }</span>
+<span class="fc" id="L318">        return buckets.entrySet().stream().map(entry -&gt; entry.getValue().toPoint(entry.getKey())).toList();</span>
     }
 
     private Instant bucketStart(Instant instant, MarketTimeframe timeframe) {
-<span class="fc bfc" id="L312" title="All 2 branches covered.">        if (timeframe == MarketTimeframe.ONE_YEAR) {</span>
-<span class="fc" id="L313">            return instant.atZone(MARKET_ZONE).toLocalDate().atStartOfDay(MARKET_ZONE).toInstant();</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">        if (timeframe == MarketTimeframe.ONE_YEAR) {</span>
+<span class="fc" id="L323">            return instant.atZone(MARKET_ZONE).toLocalDate().atStartOfDay(MARKET_ZONE).toInstant();</span>
         }
-<span class="fc" id="L315">        long seconds = timeframe.bucket().toSeconds();</span>
-<span class="fc" id="L316">        return Instant.ofEpochSecond(Math.floorDiv(instant.getEpochSecond(), seconds) * seconds);</span>
+<span class="fc" id="L325">        long seconds = timeframe.bucket().toSeconds();</span>
+<span class="fc" id="L326">        return Instant.ofEpochSecond(Math.floorDiv(instant.getEpochSecond(), seconds) * seconds);</span>
     }
 
     private void replayMissed(ReplayState state, SseEmitter emitter, long lastId) throws IOException {
-<span class="fc bfc" id="L320" title="All 4 branches covered.">        if (!state.history.isEmpty() &amp;&amp; lastId &lt; state.history.getFirst().eventId()) {</span>
-<span class="fc" id="L321">            send(emitter, &quot;resync&quot;, null, Map.of(&quot;reason&quot;, &quot;event-history-expired&quot;));</span>
-<span class="fc" id="L322">            return;</span>
+<span class="fc bfc" id="L330" title="All 4 branches covered.">        if (!state.history.isEmpty() &amp;&amp; lastId &lt; state.history.getFirst().eventId()) {</span>
+<span class="fc" id="L331">            send(emitter, &quot;resync&quot;, null, Map.of(&quot;reason&quot;, &quot;event-history-expired&quot;));</span>
+<span class="fc" id="L332">            return;</span>
         }
-<span class="fc bfc" id="L324" title="All 2 branches covered.">        for (TickEvent event : state.history) {</span>
-<span class="fc bfc" id="L325" title="All 2 branches covered.">            if (event.eventId() &gt; lastId) send(emitter, &quot;market-tick&quot;, event.eventId(), event);</span>
-<span class="fc" id="L326">        }</span>
-<span class="fc" id="L327">    }</span>
+<span class="fc bfc" id="L334" title="All 2 branches covered.">        for (TickEvent event : state.history) {</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">            if (event.eventId() &gt; lastId) send(emitter, &quot;market-tick&quot;, event.eventId(), event);</span>
+<span class="fc" id="L336">        }</span>
+<span class="fc" id="L337">    }</span>
 
     private void send(SseEmitter emitter, String name, Long id, Object data) throws IOException {
-<span class="fc" id="L330">        SseEmitter.SseEventBuilder event = SseEmitter.event().name(name).data(data);</span>
-<span class="fc bfc" id="L331" title="All 2 branches covered.">        if (id != null) event.id(Long.toString(id));</span>
-<span class="fc" id="L332">        emitter.send(event);</span>
-<span class="fc" id="L333">    }</span>
+<span class="fc" id="L340">        SseEmitter.SseEventBuilder event = SseEmitter.event().name(name).data(data);</span>
+<span class="fc bfc" id="L341" title="All 2 branches covered.">        if (id != null) event.id(Long.toString(id));</span>
+<span class="fc" id="L342">        emitter.send(event);</span>
+<span class="fc" id="L343">    }</span>
 
     private void remove(ReplayState state, Subscriber subscriber) {
-<span class="pc bpc" id="L336" title="1 of 2 branches missed.">        if (!state.subscribers.remove(subscriber)) return;</span>
-<span class="fc" id="L337">        releaseClient(subscriber.clientId);</span>
-<span class="fc" id="L338">    }</span>
+<span class="pc bpc" id="L346" title="1 of 2 branches missed.">        if (!state.subscribers.remove(subscriber)) return;</span>
+<span class="fc" id="L347">        releaseClient(subscriber.clientId);</span>
+<span class="fc" id="L348">    }</span>
 
     private void releaseClient(String clientId) {
-<span class="fc" id="L341">        synchronized (clientStreams) {</span>
-<span class="fc" id="L342">            int next = clientStreams.getOrDefault(clientId, 1) - 1;</span>
-<span class="pc bpc" id="L343" title="1 of 2 branches missed.">            if (next &lt;= 0) clientStreams.remove(clientId); else clientStreams.put(clientId, next);</span>
-<span class="fc" id="L344">        }</span>
-<span class="fc" id="L345">    }</span>
+<span class="fc" id="L351">        synchronized (clientStreams) {</span>
+<span class="fc" id="L352">            int next = clientStreams.getOrDefault(clientId, 1) - 1;</span>
+<span class="pc bpc" id="L353" title="1 of 2 branches missed.">            if (next &lt;= 0) clientStreams.remove(clientId); else clientStreams.put(clientId, next);</span>
+<span class="fc" id="L354">        }</span>
+<span class="fc" id="L355">    }</span>
 
     private static final class ReplayState {
         final MarketModels.Session session;
         final List&lt;LocalDate&gt; days;
-<span class="fc" id="L350">        final List&lt;Subscriber&gt; subscribers = new CopyOnWriteArrayList&lt;&gt;();</span>
-<span class="fc" id="L351">        final ArrayDeque&lt;TickEvent&gt; history = new ArrayDeque&lt;&gt;();</span>
+<span class="fc" id="L360">        final List&lt;Subscriber&gt; subscribers = new CopyOnWriteArrayList&lt;&gt;();</span>
+<span class="fc" id="L361">        final ArrayDeque&lt;TickEvent&gt; history = new ArrayDeque&lt;&gt;();</span>
         int dayIndex;
         List&lt;MarketModels.Frame&gt; frames;
         int frameIndex;
@@ -356,23 +366,23 @@ public class MarketReplayService {
         long nextEventId;
 
         ReplayState(MarketModels.Session session, List&lt;LocalDate&gt; days, int dayIndex,
-<span class="fc" id="L359">                    List&lt;MarketModels.Frame&gt; frames, int frameIndex) {</span>
-<span class="fc" id="L360">            this.session = session; this.days = days; this.dayIndex = dayIndex;</span>
-<span class="fc" id="L361">            this.frames = frames; this.frameIndex = frameIndex;</span>
-<span class="fc" id="L362">        }</span>
+<span class="fc" id="L369">                    List&lt;MarketModels.Frame&gt; frames, int frameIndex) {</span>
+<span class="fc" id="L370">            this.session = session; this.days = days; this.dayIndex = dayIndex;</span>
+<span class="fc" id="L371">            this.frames = frames; this.frameIndex = frameIndex;</span>
+<span class="fc" id="L372">        }</span>
 
-<span class="fc" id="L364">        MarketModels.Frame currentFrame() { return frames.get(frameIndex); }</span>
+<span class="fc" id="L374">        MarketModels.Frame currentFrame() { return frames.get(frameIndex); }</span>
 
         Map&lt;String, BigDecimal&gt; openingPrices() {
-<span class="fc bfc" id="L367" title="All 2 branches covered.">            if (opening == null) {</span>
-<span class="fc" id="L368">                opening = new HashMap&lt;&gt;();</span>
-<span class="fc" id="L369">                frames.getFirst().prices().forEach(tick -&gt; opening.put(tick.symbol(), tick.price()));</span>
+<span class="fc bfc" id="L377" title="All 2 branches covered.">            if (opening == null) {</span>
+<span class="fc" id="L378">                opening = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L379">                frames.getFirst().prices().forEach(tick -&gt; opening.put(tick.symbol(), tick.price()));</span>
             }
-<span class="fc" id="L371">            return opening;</span>
+<span class="fc" id="L381">            return opening;</span>
         }
     }
 
-<span class="fc" id="L375">    private record Subscriber(String clientId, SseEmitter emitter) { }</span>
+<span class="fc" id="L385">    private record Subscriber(String clientId, SseEmitter emitter) { }</span>
 
     private static final class MutableCandle {
         final BigDecimal open;
@@ -380,20 +390,20 @@ public class MarketReplayService {
         BigDecimal low;
         BigDecimal close;
         long volume;
-<span class="fc" id="L383">        boolean first = true;</span>
+<span class="fc" id="L393">        boolean first = true;</span>
 
-<span class="fc" id="L385">        MutableCandle(MarketModels.Candle candle) {</span>
-<span class="fc" id="L386">            open = candle.open(); high = candle.high(); low = candle.low(); close = candle.close();</span>
-<span class="fc" id="L387">        }</span>
+<span class="fc" id="L395">        MutableCandle(MarketModels.Candle candle) {</span>
+<span class="fc" id="L396">            open = candle.open(); high = candle.high(); low = candle.low(); close = candle.close();</span>
+<span class="fc" id="L397">        }</span>
 
         void add(MarketModels.Candle candle) {
-<span class="fc bfc" id="L390" title="All 2 branches covered.">            if (!first) {</span>
-<span class="fc" id="L391">                high = high.max(candle.high()); low = low.min(candle.low()); close = candle.close();</span>
+<span class="fc bfc" id="L400" title="All 2 branches covered.">            if (!first) {</span>
+<span class="fc" id="L401">                high = high.max(candle.high()); low = low.min(candle.low()); close = candle.close();</span>
             }
-<span class="fc" id="L393">            volume += candle.volume(); first = false;</span>
-<span class="fc" id="L394">        }</span>
+<span class="fc" id="L403">            volume += candle.volume(); first = false;</span>
+<span class="fc" id="L404">        }</span>
 
-<span class="fc" id="L396">        CandlePoint toPoint(Instant timestamp) { return new CandlePoint(timestamp, open, high, low, close, volume); }</span>
+<span class="fc" id="L406">        CandlePoint toPoint(Instant timestamp) { return new CandlePoint(timestamp, open, high, low, close, volume); }</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

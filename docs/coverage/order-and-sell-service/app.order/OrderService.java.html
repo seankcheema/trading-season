@@ -81,66 +81,69 @@ public class OrderService {
      * @throws AccountNotFoundException    if {@code accountId} does not exist
      * @throws ForbiddenException          if {@code accountId} belongs to another user
      * @throws InstrumentNotFoundException if {@code instrumentId} does not exist
+     * @throws org.springframework.dao.DataAccessException if persistence fails; the order and all
+     *         execution ledger writes are rolled back together
      * @throws IllegalStateException       if the account has no owning user
      */
     @Transactional
     public Order submitOrder(OrderRequest request, UUID callerId) {
-<span class="fc" id="L88">        Account account = accountRepository.findById(request.accountId())</span>
-<span class="fc" id="L89">                .orElseThrow(() -&gt; new AccountNotFoundException(&quot;No account &quot; + request.accountId()));</span>
-<span class="fc bfc" id="L90" title="All 2 branches covered.">        if (!account.getUserId().equals(callerId)) {</span>
-<span class="fc" id="L91">            throw new ForbiddenException(&quot;You do not have access to this account&quot;);</span>
+<span class="fc" id="L90">        Account account = accountRepository.findById(request.accountId())</span>
+<span class="fc" id="L91">                .orElseThrow(() -&gt; new AccountNotFoundException(&quot;No account &quot; + request.accountId()));</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (!account.getUserId().equals(callerId)) {</span>
+<span class="fc" id="L93">            throw new ForbiddenException(&quot;You do not have access to this account&quot;);</span>
         }
 
-<span class="fc" id="L94">        Optional&lt;Order&gt; existing = orderRepository</span>
-<span class="fc" id="L95">                .findByAccountIdAndClientReference(request.accountId(), request.clientReference());</span>
-<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (existing.isPresent()) {</span>
+<span class="fc" id="L96">        Optional&lt;Order&gt; existing = orderRepository</span>
+<span class="fc" id="L97">                .findByAccountIdAndClientReference(request.accountId(), request.clientReference());</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        if (existing.isPresent()) {</span>
             // Same idempotency key already processed (or in flight) for this account —
             // return its outcome rather than validating or executing a second time.
             // Note: a genuinely concurrent duplicate can still race past this check;
             // the DB's UNIQUE (account_id, client_reference) constraint is the backstop.
-<span class="fc" id="L101">            return existing.get();</span>
+<span class="fc" id="L103">            return existing.get();</span>
         }
 
-<span class="fc" id="L104">        User user = userRepository.findById(account.getUserId())</span>
-<span class="pc" id="L105">                .orElseThrow(() -&gt; new IllegalStateException(</span>
-<span class="nc" id="L106">                        &quot;Account &quot; + account.getAccountId() + &quot; has no owning user&quot;));</span>
-<span class="fc" id="L107">        Instrument instrument = instrumentRepository.findById(request.instrumentId())</span>
-<span class="fc" id="L108">                .orElseThrow(() -&gt; new InstrumentNotFoundException(&quot;No instrument &quot; + request.instrumentId()));</span>
+<span class="fc" id="L106">        User user = userRepository.findById(account.getUserId())</span>
+<span class="pc" id="L107">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+<span class="nc" id="L108">                        &quot;Account &quot; + account.getAccountId() + &quot; has no owning user&quot;));</span>
+<span class="fc" id="L109">        Instrument instrument = instrumentRepository.findById(request.instrumentId())</span>
+<span class="fc" id="L110">                .orElseThrow(() -&gt; new InstrumentNotFoundException(&quot;No instrument &quot; + request.instrumentId()));</span>
 
-<span class="fc bfc" id="L110" title="All 2 branches covered.">        BigDecimal bufferPercent = request.bufferPercent() != null</span>
-<span class="fc" id="L111">                ? request.bufferPercent()</span>
-<span class="fc" id="L112">                : user.getExecutionBufferPercent();</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        BigDecimal bufferPercent = request.bufferPercent() != null</span>
+<span class="fc" id="L113">                ? request.bufferPercent()</span>
+<span class="fc" id="L114">                : user.getExecutionBufferPercent();</span>
 
-<span class="fc" id="L114">        OffsetDateTime now = OffsetDateTime.now();</span>
-<span class="fc" id="L115">        Order order = new Order();</span>
-<span class="fc" id="L116">        order.setAccountId(account.getAccountId());</span>
-<span class="fc" id="L117">        order.setInstrumentId(instrument.getInstrumentId());</span>
-<span class="fc" id="L118">        order.setClientReference(request.clientReference());</span>
-<span class="fc" id="L119">        order.setOrderType(request.orderType());</span>
-<span class="fc" id="L120">        order.setQuantity(request.quantity());</span>
-<span class="fc" id="L121">        order.setIndicativePrice(request.indicativePrice());</span>
-<span class="fc" id="L122">        order.setBufferPercent(bufferPercent);</span>
-<span class="fc" id="L123">        order.setStatus(Order.STATUS_PENDING);</span>
-<span class="fc" id="L124">        order.setSubmittedAt(now);</span>
-<span class="fc" id="L125">        order = orderRepository.save(order);</span>
-<span class="fc" id="L126">        auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, null);</span>
+<span class="fc" id="L116">        OffsetDateTime now = OffsetDateTime.now();</span>
+<span class="fc" id="L117">        Order order = new Order();</span>
+<span class="fc" id="L118">        order.setAccountId(account.getAccountId());</span>
+<span class="fc" id="L119">        order.setInstrumentId(instrument.getInstrumentId());</span>
+<span class="fc" id="L120">        order.setClientReference(request.clientReference());</span>
+<span class="fc" id="L121">        order.setOrderType(request.orderType());</span>
+<span class="fc" id="L122">        order.setQuantity(request.quantity());</span>
+<span class="fc" id="L123">        order.setIndicativePrice(request.indicativePrice());</span>
+<span class="fc" id="L124">        order.setBufferPercent(bufferPercent);</span>
+<span class="fc" id="L125">        order.setStatus(Order.STATUS_PENDING);</span>
+<span class="fc" id="L126">        order.setSubmittedAt(now);</span>
+<span class="fc" id="L127">        order.setSimulatedAt(request.simulatedAt());</span>
+<span class="fc" id="L128">        order = orderRepository.save(order);</span>
+<span class="fc" id="L129">        auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, null);</span>
 
-<span class="fc" id="L128">        ValidationResult result = validationPipeline.run(request, user, account, instrument);</span>
-<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (!result.passed()) {</span>
-<span class="fc" id="L130">            order.setStatus(Order.STATUS_REJECTED);</span>
-<span class="fc" id="L131">            order.setRejectionReason(result.reason());</span>
-<span class="fc" id="L132">            order.setResolvedAt(OffsetDateTime.now());</span>
-<span class="fc" id="L133">            order = orderRepository.save(order);</span>
-<span class="fc" id="L134">            auditTrailService.record(order.getOrderId(), Order.STATUS_REJECTED, result.reason());</span>
-<span class="fc" id="L135">            return order;</span>
+<span class="fc" id="L131">        ValidationResult result = validationPipeline.run(request, user, account, instrument);</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        if (!result.passed()) {</span>
+<span class="fc" id="L133">            order.setStatus(Order.STATUS_REJECTED);</span>
+<span class="fc" id="L134">            order.setRejectionReason(result.reason());</span>
+<span class="fc" id="L135">            order.setResolvedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L136">            order = orderRepository.save(order);</span>
+<span class="fc" id="L137">            auditTrailService.record(order.getOrderId(), Order.STATUS_REJECTED, result.reason());</span>
+<span class="fc" id="L138">            return order;</span>
         }
 
         // The rules passed (BR-05); the order stays PENDING until execution
         // moves it to FILLED, or rejects it under the row lock.
-<span class="fc" id="L140">        order.setAcceptedAt(OffsetDateTime.now());</span>
-<span class="fc" id="L141">        order = orderRepository.save(order);</span>
+<span class="fc" id="L143">        order.setAcceptedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L144">        order = orderRepository.save(order);</span>
 
-<span class="fc" id="L143">        return orderExecutionService.execute(order, instrument);</span>
+<span class="fc" id="L146">        return orderExecutionService.execute(order, instrument);</span>
     }
 
     /**
@@ -154,7 +157,7 @@ public class OrderService {
      */
     @Transactional(readOnly = true)
     public List&lt;Order&gt; getOwnOrders(UUID userId) {
-<span class="fc" id="L157">        return orderRepository.findAllByOwningUserId(userId);</span>
+<span class="fc" id="L160">        return orderRepository.findAllByOwningUserId(userId);</span>
     }
 }
 

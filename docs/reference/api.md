@@ -4,7 +4,7 @@ This reference documents the HTTP contracts for each implemented microservice. E
 
 **Critical:** See [Architecture](architecture.md) for service responsibilities after the KAN-47/KAN-139 restructuring fix. Order and Sell Service (port 8081) handles order operations and is called by Client UI. Holdings and Trade Service (port 8082) provides user profile and account queries.
 
-## Auth Service (NestJS) — port 3001
+## Auth Service (NestJS) - port 3001
 
 Complete implementation. No `/api` prefix.
 
@@ -46,7 +46,7 @@ This service is the primary backend for Client UI. It implements order operation
 - `email` (must match token; ≤100 chars)
 - `firstName`, `lastName`, `address` (nonblank)
 - `middleName` (optional)
-- `ssn` (XXX-XX-XXXX format)
+- `ssn` (NNN-NN-NNNN format)
 - `dateOfBirth` (must be in past)
 - `traderLevel` (BEGINNER, INTERMEDIATE, or ADVANCED)
 - `availableFunds` (≥5000.00; max 2 decimal places)
@@ -82,7 +82,7 @@ This service is the primary backend for Client UI. It implements order operation
 | GET | /api/orders | Bearer token | 200: array of the caller's orders, newest first, each in the same shape as the POST response |
 | GET | /api/instruments | Bearer token | 200: array of every instrument by ticker, each with `instrumentId`, `ticker`, `name`, `assetClass`, `market`, `currency`, `tradable`, `simulatedStockSymbol` |
 
-**Order lifecycle (KAN-93):** an order is created `PENDING`, then the trading rules run: a buy is affordable, a sell is covered by holdings, and the instrument is tradable. A failed rule leaves the order `REJECTED` with a `rejectionReason`. Otherwise the fill is written and the order moves to `FILLED`, its final state. Every transition is recorded in `audit_trail`. A rejection is still a 201 response: it describes a failed trade, not a failed request.
+**Order lifecycle (KAN-93):** an order is created `PENDING`, then the trading rules run: the caller still has a credential record, a buy is affordable, a sell is covered by holdings, and the instrument is tradable. A failed rule leaves the order `REJECTED` with a `rejectionReason`. Otherwise the fill is written and the order moves to `FILLED`, its final state. Every transition is recorded in `audit_trail`. A rejection is still a 201 response: it describes a failed trade, not a failed request. A missing credential record rejects the trade without fill, cash-transaction, or holding-movement rows. Account activation status remains removed. Persistence failures roll back the submission and its ledger writes together; integrity conflicts return 409.
 
 Orders record optional `simulatedAt` from the ticket's current selected replay time. Moving the simulation backward is supported. Real `submittedAt`, `resolvedAt`, and `fills.filled_at` remain server-generated audit times. Old clients and historical orders may omit simulated time; recent activity then uses real execution time. Idempotent retries preserve the original timestamp. The [canonical schema](../../apps/market-data/db/migrations/V001__Initialize_database.sql) includes this column. Persisted portfolio observations continue to use real audit dates. When a simulation clock is available, the dashboard projects holdings, shared cash, net worth, and portfolio history at that selected clock instead. Future filled trades are hidden and their effects are reversed from the displayed balances; rewinding never executes an order again. Current funding is the starting budget, so deposits and withdrawals do not rewind. History combines effective share quantities with replay candles, with acquisition cost as the fallback where no earlier quote exists. Positions without dated orders are starting positions. The server still owns the actual balances and validates new submissions against them; navigation changes only the view.
 
@@ -140,7 +140,7 @@ This service provides user registration, profile queries, account and holdings q
 - `email` (must match token; ≤100 chars)
 - `firstName`, `lastName`, `address` (nonblank)
 - `middleName` (optional)
-- `ssn` (XXX-XX-XXXX format)
+- `ssn` (NNN-NN-NNNN format)
 - `dateOfBirth` (must be in past)
 - `traderLevel` (BEGINNER, INTERMEDIATE, or ADVANCED)
 - `availableFunds` (≥5000.00; max 2 decimal places)
@@ -285,7 +285,7 @@ The Java backend has no login and never receives a password. Sign-up and sign-in
 | POST /api/auth/register | Bearer access token. JSON: email, firstName, optional middleName, lastName, ssn, address, dateOfBirth, traderLevel, availableFunds | 201: userId, email |
 | GET /api/users/me | Bearer access token | 200: caller's profile without ssn |
 
-Registration takes no username and no password; the caller is identified by the bearer token. It requires a valid email up to 100 characters, nonblank firstName, lastName and address, an ssn in XXX-XX-XXXX form, a past dateOfBirth, a traderLevel of BEGINNER, INTERMEDIATE or ADVANCED, and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/holdings-and-trade-service/src/main/java/app/auth/RegisterRequest.java).
+Registration takes no username and no password; the caller is identified by the bearer token. It requires a valid email up to 100 characters, nonblank firstName, lastName and address, an ssn in NNN-NN-NNNN form, a past dateOfBirth, a traderLevel of BEGINNER, INTERMEDIATE or ADVANCED, and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/holdings-and-trade-service/src/main/java/app/auth/RegisterRequest.java).
 
 Errors use an error string: 400 for request validation, 409 for a duplicate account or email, 403 when the request email differs from the token's email claim, and 401 for a missing or untrusted token. See [exception mapping](../../apps/holdings-and-trade-service/src/main/java/app/auth/GlobalExceptionHandler.java).
 
@@ -301,7 +301,7 @@ The token's sub is the only identifier shared with the auth service. It becomes 
 2. Create credentials with POST /auth/register on the auth service and keep the returned accessToken.
 3. Call POST /api/auth/register on the Java backend with that token and the profile fields. The password and confirmation stay with step 2.
 
-Registration requires an email up to 100 characters that equals the token's email claim, ignoring case; nonblank names and address; ssn in XXX-XX-XXXX form; a past dateOfBirth; traderLevel BEGINNER, INTERMEDIATE or ADVANCED; and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/holdings-and-trade-service/src/main/java/app/auth/RegisterRequest.java).
+Registration requires an email up to 100 characters that equals the token's email claim, ignoring case; nonblank names and address; ssn in NNN-NN-NNNN form; a past dateOfBirth; traderLevel BEGINNER, INTERMEDIATE or ADVANCED; and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/holdings-and-trade-service/src/main/java/app/auth/RegisterRequest.java).
 
 ### Errors
 
@@ -405,7 +405,7 @@ The dashboard stock search sits above Portfolio Value and uses the placeholder "
 
 Order results from the dashboard buy/sell dialog and full-screen market ticket appear as bottom-center toasts that dismiss automatically: fills use success styling, while rejections and request failures use error styling. Only the newest notification is shown: a new result replaces the previous toast, replays a 240 ms upward slide and fade-in, and resets its timer, so notifications never stack. Reduced-motion preferences disable the entrance animation. Notifications remain visible for two seconds, then fade over 400 ms; they survive closing the dialog and respect reduced-motion preferences. The dashboard Buy/Sell button shows a loading circle and Buying/Selling label; the market ticket shows Submitting. Both stay disabled for at least one second after a click, or longer while the request is pending. It becomes available again afterward when the bounded quantity is positive. Reduced-motion preferences disable spinner rotation. Each subsequent click places a new order with a fresh idempotency key; the ticket stays open and refreshes available cash and holdings.
 
-Both the dashboard order dialog and the full-screen market ticket normalize quantity input immediately to whole shares between zero and the current maximum. Buys are capped by the current persisted available cash divided by a valid positive price; sells are capped by the current persisted whole shares held in the selected account. Both tickets use current balances, including every completed trade regardless of the replay cursor. Moving the clock backward or forward changes portfolio and history views, but never restores cash or shares for another trade. Invalid limits become zero, and changing prices, cash, holdings, symbols, or sides preserves valid quantities while clamping excessive ones. Zero cannot be executed. Both tickets capture the selected account, price, quantity, side, and simulated timestamp at submission; backend validation remains authoritative. The market ticket resets quantity when the account or symbol changes. It disables submission until account, history, catalogue, and market data are ready, prevents concurrent submissions, and retains a one-second cooldown. Filled orders refresh cash and holdings for the submitted account; a failed balance refresh retains the fill outcome, blocks further trading until balances recover, and offers a refresh retry without another order POST.
+Both the dashboard order dialog and the full-screen market ticket normalize quantity input immediately to whole shares between zero and the current maximum. Buys are capped by the current persisted available cash divided by a valid positive price; sells are capped by the current persisted whole shares held in the selected account. Both tickets use current balances, including every completed trade regardless of the replay cursor. Moving the clock backward or forward changes portfolio and history views, but never restores cash or shares for another trade. Invalid limits become zero, and changing prices, cash, holdings, symbols, or sides preserves valid quantities while clamping excessive ones. Zero cannot be executed. Shared header dropdowns close on Escape and return focus to their trigger. Both tickets capture the selected account, price, quantity, side, and simulated timestamp at submission; backend validation remains authoritative. The market ticket resets quantity when the account or symbol changes. It disables submission until account, history, catalogue, and market data are ready, prevents concurrent submissions, and retains a one-second cooldown. Filled orders refresh cash and holdings for the submitted account; a failed balance refresh retains the fill outcome, blocks further trading until balances recover, and offers a refresh retry without another order POST.
 
 The Angular UI authenticates only against the NestJS auth service. See [AuthService](../../apps/client-ui/src/app/core/auth/auth.service.ts).
 

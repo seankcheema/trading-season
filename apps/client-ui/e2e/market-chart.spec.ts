@@ -24,7 +24,7 @@ async function openMarketPage(page: Page, loginPage: LoginPage): Promise<void> {
   await loginPage.signIn(USER.email, USER.password);
   await expect(page).toHaveURL(/\/dashboard$/);
 
-  await page.getByPlaceholder('Search for a stock').fill('AAPL');
+  await page.getByRole('combobox', { name: 'Search instruments' }).fill('AAPL');
   await page.getByRole('option', { name: /AAPL/ }).first().click();
   const dialog = page.getByRole('dialog', { name: 'New Order' });
   await expect(dialog).toBeVisible();
@@ -54,7 +54,9 @@ test('executes a trade and shows recent orders within the full-screen layout', a
   await page.getByRole('tab', { name: 'Recent Orders', exact: true }).click();
   await expect(page.getByTestId('market-recent-orders')).toContainText('3 shares · Filled');
   await expect(page.locator('app-trade-ticket')).toContainText('$4,322.60');
-  await expect(page.getByTestId('available-cash')).toContainText('$4,322.60');
+  // Available cash previews another current draft; the ticket shows persisted cash.
+  await expect(page.getByTestId('available-cash')).toContainText('$3,645.20');
+  expect(api.fundsOf(USER.email)).toBeCloseTo(4322.6);
   await expect(page.getByTestId('account-portfolio-value')).toContainText('$677.40');
   expect(
     api.requests.filter(
@@ -139,7 +141,7 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   await loginPage.signIn(USER.email, USER.password);
   await page.getByTestId('account-dropdown').locator('summary').click();
   await page.getByRole('menuitemradio', { name: /Retirement/ }).click();
-  await page.getByPlaceholder('Search for a stock').fill('AAPL');
+  await page.getByRole('combobox', { name: 'Search instruments' }).fill('AAPL');
   await page.getByRole('option', { name: /AAPL/ }).first().click();
   await page.getByRole('link', { name: 'Open full screen market chart' }).click();
   await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');
@@ -154,7 +156,10 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   await clock.locator('input').fill('2026-01-05T08:30');
   await clock.getByRole('button', { name: 'Apply time' }).click();
   await expect(history).toContainText('No orders at this simulated time.');
-  await expect(page.locator('app-trade-ticket')).toContainText('$5,000.00');
+  // Rewinding changes history and portfolio views, while trading limits use persisted balances.
+  await expect(page.locator('app-trade-ticket')).toContainText('$4,548.40');
+  await expect(page.getByTestId('account-portfolio-value')).toContainText('$0.00');
+  expect(api.fundsOf(USER.email)).toBeCloseTo(4548.4);
   await clock.locator('summary').click();
   await clock.locator('input').fill('2026-01-05T09:00');
   await clock.getByRole('button', { name: 'Apply time' }).click();
