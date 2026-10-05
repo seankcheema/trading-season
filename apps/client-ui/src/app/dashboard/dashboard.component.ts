@@ -20,7 +20,6 @@ import {
   untracked,
 } from '@angular/core';
 import {
-  lucideBriefcaseBusiness,
   lucideCalendarClock,
   lucideCheck,
   lucideChevronDown,
@@ -55,7 +54,7 @@ import { PriceChartComponent } from './shared/price-chart.component';
 import { SignedPercentPipe } from './shared/signed-percent.pipe';
 import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
 
-type HeaderDropdown = 'account' | 'market-clock' | 'profile' | 'asset-sort';
+type HeaderDropdown = 'account' | 'market-clock' | 'profile';
 type TickAnimation = {
   direction: 'gain' | 'loss';
   durationMs: number;
@@ -102,7 +101,6 @@ interface PricedHolding {
   providers: [
     MarketClockService,
     provideIcons({
-      lucideBriefcaseBusiness,
       lucideCalendarClock,
       lucideCheck,
       lucideChevronDown,
@@ -220,24 +218,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.priceHoldings(this.simulationHoldings().get(this.selectedAccountId() ?? -1) ?? []),
   );
 
-  protected readonly assetSort = signal<'value' | 'symbol'>('value');
-  protected readonly assetSortOptions = [
-    { value: 'value', label: 'Highest value first' },
-    { value: 'symbol', label: 'Asset symbol' },
-  ] as const;
-  protected readonly assetSortLabel = computed(() =>
-    this.assetSortOptions.find((option) => option.value === this.assetSort())!.label,
-  );
-  protected selectAssetSort(value: 'value' | 'symbol'): void {
-    this.assetSort.set(value);
-    this.openHeaderDropdown.set(null);
-  }
   protected readonly visibleAssets = computed(() =>
-    this.holdings().filter((holding) => holding.value !== 0).sort((a, b) =>
-      this.assetSort() === 'value'
-        ? b.value - a.value || a.symbol.localeCompare(b.symbol)
-        : a.symbol.localeCompare(b.symbol),
-    ),
+    this.holdings()
+      .filter((holding) => holding.value !== 0)
+      .sort((a, b) => a.symbol.localeCompare(b.symbol)),
   );
 
   // Only the symbols, so price ticks don't look like a change of holdings.

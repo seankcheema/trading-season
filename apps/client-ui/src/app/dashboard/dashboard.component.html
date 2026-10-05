@@ -70,7 +70,7 @@
       </div>
     </header>
 
-    <main class="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2.25fr)]">
+    <main class="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2.25fr)] lg:grid-rows-[minmax(0,1fr)_auto]">
       <!-- Left column -->
       <div class="flex min-w-0 flex-col gap-3 lg:min-h-0">
         <section class="net-worth-card dash-card shrink-0 p-5">
@@ -164,78 +164,13 @@
             }
           </ul>
         </section>
-
-        <section aria-label="Watch List" class="dash-card flex min-h-0 flex-1 flex-col p-5">
-          <div class="flex items-center justify-between gap-2">
-            <h2 class="text-sm font-semibold">Watch List</h2>
-          </div>
-          <div
-            class="dash-table-head mt-4 grid grid-cols-[minmax(0,1fr)_4.75rem_4.5rem_4.5rem] gap-2 whitespace-nowrap"
-          >
-            <span>Asset</span>
-            <span class="text-right">Price</span>
-            <span class="text-right">Change $</span>
-            <span class="text-right">Change %</span>
-          </div>
-          <div class="dash-scroll dash-fade max-h-80 min-h-0 flex-1 overflow-y-auto lg:max-h-none">
-            @if (watchlist.error()) {
-              <p role="status" class="text-loss text-xs">
-                {{ watchlist.error() }}
-                <button type="button" class="underline" (click)="refreshWatchlist()">Retry</button>
-              </p>
-            }
-            @if (watchlist.status() === 'loading') {
-              <p role="status">Loading watchlist…</p>
-            }
-            @for (watched of watchedInstruments(); track watched.symbol) {
-              @if (watched.instrument; as instrument) {
-                <button
-                  type="button"
-                  class="border-border/60 hover:bg-muted grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_4.75rem_4.5rem_4.5rem] items-center gap-2 border-b py-2.5 text-left text-sm whitespace-nowrap transition-colors last:border-b-0"
-                  (click)="openOrder(instrument)"
-                >
-                  <span class="min-w-0">
-                    <span class="block font-medium">{{ instrument.symbol }}</span>
-                    <span class="text-muted-foreground block truncate text-xs">{{
-                      instrument.name
-                    }}</span>
-                  </span>
-                  <span class="text-right text-xs font-medium tabular-nums">
-                    {{ instrument.price | currency: 'USD' }}
-                  </span>
-                  <span
-                    class="text-right text-xs tabular-nums"
-                    [class]="instrument.change >= 0 ? 'text-gain' : 'text-loss'"
-                  >
-                    {{ instrument.change >= 0 ? '+' : '' }}{{ instrument.change | currency: 'USD' }}
-                  </span>
-                  <span
-                    class="text-right text-xs tabular-nums"
-                    [class]="instrument.changePercent >= 0 ? 'text-gain' : 'text-loss'"
-                  >
-                    {{ instrument.changePercent | signedPercent }}
-                  </span>
-                </button>
-              } @else {
-                <p class="py-2 text-sm">
-                  {{ watched.symbol }} <span class="text-muted-foreground">Price unavailable</span>
-                </p>
-              }
-            } @empty {
-              @if (watchlist.status() === 'ready') {
-                <p class="py-4 text-sm text-muted-foreground">
-                  Search for a stock and click its star to add it to your watchlist.
-                </p>
-              }
-            }
-          </div>
-        </section>
       </div>
 
       <!-- Right column -->
       <div class="flex min-w-0 flex-col gap-3 lg:min-h-0">
         <app-instrument-search
           class="shrink-0"
+          size="lg"
           placeholder="Search for a stock"
           [instruments]="instruments()"
           (selected)="openOrder($event)"
@@ -358,36 +293,12 @@
         <section class="dash-card flex min-h-0 flex-col p-5 lg:flex-[3]">
           <div class="flex items-center justify-between">
             <h2 class="text-sm font-semibold">Assets</h2>
-            <app-dashboard-header-dropdown
-              iconName="lucideBriefcaseBusiness"
-              [label]="assetSortLabel()"
-              ariaLabel="Sort assets"
-              containerClass="w-60"
-              panelClass="w-full"
-              [open]="openHeaderDropdown() === 'asset-sort'"
-              (openChange)="onHeaderDropdownOpenChange('asset-sort', $event)"
-            >
-              <div class="p-1" role="menu" aria-label="Asset sorting">
-                @for (option of assetSortOptions; track option.value) {
-                  <button
-                    type="button"
-                    role="menuitemradio"
-                    class="hover:bg-muted flex min-h-9 w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors"
-                    [attr.aria-checked]="assetSort() === option.value"
-                    (click)="selectAssetSort(option.value)"
-                  >
-                    <span class="min-w-0 flex-1 truncate">{{ option.label }}</span>
-                    @if (assetSort() === option.value) {
-                      <ng-icon name="lucideCheck" class="text-primary shrink-0 text-[16px]" />
-                    }
-                  </button>
-                }
-              </div>
-            </app-dashboard-header-dropdown>
+            <!-- TODO: link to full holdings page -->
+            <button type="button" class="dash-link">View all</button>
           </div>
 
           <div class="dash-scroll mt-4 min-h-0 flex-1 overflow-auto pb-1">
-            <div class="min-w-[59rem] pr-4" data-testid="assets-table">
+            <div class="min-w-[59rem]" data-testid="assets-table">
               <div
                 class="assets-table-grid dash-table-head bg-card sticky top-0 grid gap-1.5 px-2 whitespace-nowrap"
               >
@@ -463,6 +374,51 @@
           </div>
         </section>
       </div>
+
+      <!-- Compact ticker-style strip; entries that don't fit wrap onto a second line and are clipped. -->
+      <section
+        aria-label="Watch List"
+        class="dash-card flex h-14 flex-wrap items-center gap-x-1.5 gap-y-3 overflow-hidden p-2 lg:col-span-2"
+      >
+        @if (watchlist.error()) {
+          <p role="status" class="text-loss px-2.5 text-xs">
+            {{ watchlist.error() }}
+            <button type="button" class="underline" (click)="refreshWatchlist()">Retry</button>
+          </p>
+        }
+        @if (watchlist.status() === 'loading') {
+          <p role="status" class="text-muted-foreground px-2.5 text-xs">Loading watchlist…</p>
+        }
+        @for (watched of watchedInstruments(); track watched.symbol) {
+          @if (watched.instrument; as instrument) {
+            <button
+              type="button"
+              class="hover:bg-muted flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-lg px-3 text-sm whitespace-nowrap transition-colors"
+              [attr.aria-label]="'Watch list: ' + instrument.name"
+              (click)="openOrder(instrument)"
+            >
+              <span class="text-muted-foreground">{{ instrument.symbol }}</span>
+              <span class="font-medium tabular-nums">{{ instrument.price | currency: 'USD' }}</span>
+              <span
+                class="tabular-nums"
+                [class]="instrument.changePercent >= 0 ? 'text-gain' : 'text-loss'"
+              >
+                {{ instrument.changePercent | signedPercent }}
+              </span>
+            </button>
+          } @else {
+            <span class="text-muted-foreground px-2.5 text-xs">
+              {{ watched.symbol }} unavailable
+            </span>
+          }
+        } @empty {
+          @if (watchlist.status() === 'ready') {
+            <p class="text-muted-foreground px-2.5 text-xs">
+              Search for a stock and click its star to add it to your watchlist.
+            </p>
+          }
+        }
+      </section>
     </main>
   </div>
 </div>

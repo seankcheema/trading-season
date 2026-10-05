@@ -620,15 +620,13 @@ describe('DashboardComponent', () => {
     expect(marketLabel.className).not.toContain('break-words');
   });
 
-  it('sorts assets by market value by default and allows symbol sorting', () => {
+  it('sorts assets by ticker', () => {
     const fixture = createDashboard();
     const component = fixture.componentInstance;
     vi.spyOn(component as unknown as { holdings: () => ReturnType<typeof component['holdings']> }, 'holdings').mockReturnValue([
-      { symbol: 'AAPL', value: 100 },
       { symbol: 'MSFT', value: 300 },
+      { symbol: 'AAPL', value: 100 },
     ] as ReturnType<typeof component['holdings']>);
-    expect(component['visibleAssets']().map((holding) => holding.symbol)).toEqual(['MSFT', 'AAPL']);
-    component['assetSort'].set('symbol');
     expect(component['visibleAssets']().map((holding) => holding.symbol)).toEqual(['AAPL', 'MSFT']);
   });
 
@@ -1045,7 +1043,7 @@ describe('DashboardComponent', () => {
       const fixture = render();
       flushAccounts(fixture);
 
-      expect(assetSymbols(fixture)).toEqual(['SPY', 'NVDA', 'AAPL', 'MSFT', 'TSLA']);
+      expect(assetSymbols(fixture)).toEqual(['AAPL', 'MSFT', 'NVDA', 'SPY', 'TSLA']);
       expect(text(element(fixture).querySelector('h2.dash-label'))).toBe('Net Worth');
       expect(element(fixture).textContent).toContain(
         'Portfolio Value · Personal Investing Account',
