@@ -24,7 +24,7 @@ import java.time.LocalDate;
  * @param firstName      the registrant's first name
  * @param middleName     the registrant's middle name, optional
  * @param lastName       the registrant's last name
- * @param ssn            social security number in {@code XXX-XX-XXXX} form
+ * @param ssn            social security number in {@code NNN-NN-NNNN} form
  * @param address        the registrant's mailing address
  * @param dateOfBirth    date of birth, must be in the past
  * @param traderLevel    self-assessed experience: BEGINNER, INTERMEDIATE or ADVANCED
@@ -35,7 +35,7 @@ import java.time.LocalDate;
         @NotBlank String firstName,
         String middleName,
         @NotBlank String lastName,
-        @NotBlank @Pattern(regexp = &quot;^\\d{3}-\\d{2}-\\d{4}$&quot;, message = &quot;must be in XXX-XX-XXXX format&quot;) String ssn,
+        @NotBlank @Pattern(regexp = &quot;^\\d{3}-\\d{2}-\\d{4}$&quot;, message = &quot;must be in NNN-NN-NNNN format&quot;) String ssn,
         @NotBlank String address,
         @NotNull @Past LocalDate dateOfBirth,
         @NotNull @Pattern(regexp = &quot;^(BEGINNER|INTERMEDIATE|ADVANCED)$&quot;,

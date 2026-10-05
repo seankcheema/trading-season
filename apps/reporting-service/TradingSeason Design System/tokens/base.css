@@ -1,0 +1,15 @@
+*, *::before, *::after { box-sizing: border-box; border-color: var(--border); }
+html, body { margin: 0; background: var(--background); color: var(--foreground); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+button, input, select { font: inherit; color: inherit; }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.tabular-nums { font-variant-numeric: tabular-nums; }
+.ts-scroll { scrollbar-width: none; }
+.ts-scroll::-webkit-scrollbar { display: none; }
+input[type='number']::-webkit-inner-spin-button, input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type='number'] { -moz-appearance: textfield; }
+@keyframes ts-fade-in { from { opacity: 0; } }
+@keyframes ts-pop-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+@keyframes ts-reveal { from { clip-path: inset(-20% 100% -20% 0); } to { clip-path: inset(-20% 0 -20% 0); } }
+@keyframes ts-dot-in { from { opacity: 0; scale: 0.4; } to { opacity: 1; scale: 1; } }
+@keyframes ts-pulse { from { transform: scale(1); opacity: 0.6; } to { transform: scale(3.5); opacity: 0; } }

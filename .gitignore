@@ -6,6 +6,7 @@ node_modules/
 
 # Generated build output
 /build_output.txt
+/.synthetic-market-data-2026-v1
 
 # Logs
 *.log

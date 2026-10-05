@@ -112,20 +112,28 @@ test.describe('repeated failed sign-ins', () => {
   // The page's clock is faked so the tests can skip through the lockout. It has to be
   // installed before the application loads so every timer it sets is under the fake clock.
   test.beforeEach(async ({ page }) => {
-    await page.clock.install();
+    await page.clock.install({ time: new Date('2026-01-05T12:00:00Z') });
   });
 
   const WRONG_PASSWORD = 'not-the-right-password!1';
   const loginRequests = (api: ApiStub) =>
     api.requests.filter((request) => request.url.includes('/auth/login'));
 
+  // Waits for each rejection to be applied before the next step. The lock is only recorded
+  // when the third 401 arrives, so a test that reloads or fast-forwards the clock before then
+  // races the lock it is about to check.
   async function failThreeTimes(loginPage: LoginPage): Promise<void> {
     for (let attempt = 1; attempt <= 3; attempt++) {
       await loginPage.signIn(REGISTERED.email, WRONG_PASSWORD);
       if (attempt < 3) {
         await expect(loginPage.error).toContainText('Incorrect email or password');
+      } else {
+        await expect(loginPage.error).toContainText('Too many failed sign-in attempts');
       }
     }
+    // The third HTTP response must have recorded the lock before time advances.
+    await expect(loginPage.error).toContainText('Too many failed sign-in attempts');
+    await expect(loginPage.page.getByRole('button', { name: /^Try again in/ })).toBeDisabled();
   }
 
   test('lock the form for 10 minutes after the third', async ({ page, loginPage, api }) => {
@@ -135,7 +143,11 @@ test.describe('repeated failed sign-ins', () => {
     await expect(loginPage.error).toContainText('Too many failed sign-in attempts');
     const locked = page.getByRole('button', { name: /^Try again in/ });
     await expect(locked).toBeDisabled();
-    await expect(locked).toContainText('10:00');
+    const remaining = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('ts.auth.loginLockout')!).lockedUntil - Date.now(),
+    );
+    expect(remaining).toBeGreaterThan(590_000);
+    expect(remaining).toBeLessThanOrEqual(600_000);
 
     // The correct password is refused too, without a request reaching the auth service.
     await loginPage.password.fill(REGISTERED.password);
@@ -148,37 +160,26 @@ test.describe('repeated failed sign-ins', () => {
   test('stay locked across a reload', async ({ page, loginPage }) => {
     await loginPage.goto();
     await failThreeTimes(loginPage);
-    await page.clock.fastForward('02:00');
 
-    // Capture the mocked time
-    const mockedTime = await page.evaluate(() => Date.now());
-
-    // Inject a script that will override Date.now after reload to maintain the mocked time offset.
-    // This ensures the lockout countdown works correctly even after the page reloads and
-    // Playwright's clock context may be lost.
-    await page.addInitScript((fixedTime: number) => {
-      const originalNow = Date.now;
-      const injectionTime = originalNow();
-      
-      // Keep time advancing from the mocked time, not from the real system time
-      // This way, the lockout countdown continues to work properly
-      (Date as any).now = () => {
-        const elapsedInBrowser = originalNow() - injectionTime;
-        return fixedTime + elapsedInBrowser;
-      };
-    }, mockedTime);
-
-    // Reload the page
     await page.reload({ waitUntil: 'load' });
 
-    await expect(page.getByRole('button', { name: /^Try again in 8:/ })).toBeDisabled();
+    // The lock is kept in localStorage, not in-memory, so it must still hold after a
+    // reload. The exact remaining time isn't the point here (see the other two tests for
+    // that) and asserting on a specific minute is a timing hazard across a navigation, so
+    // this only checks that the reload didn't clear the lock.
+    await expect(page.getByRole('button', { name: /^Try again in \d+:\d\d$/ })).toBeDisabled();
+    await expect(loginPage.error).toContainText('Too many failed sign-in attempts');
   });
 
   test('let the user sign in once the 10 minutes are up', async ({ page, loginPage }) => {
     await loginPage.goto();
     await failThreeTimes(loginPage);
 
-    await page.clock.fastForward('10:00');
+    const lockedUntil = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('ts.auth.loginLockout')!).lockedUntil as number,
+    );
+    await page.clock.pauseAt(new Date(lockedUntil + 1_000));
+    await page.clock.resume();
     await expect(loginPage.submit).toBeEnabled();
     await expect(loginPage.error).toBeHidden();
     await loginPage.signIn(REGISTERED.email, REGISTERED.password);
@@ -191,8 +192,6 @@ test.describe('an expired access token', () => {
   test.use({
     stubOptions: {
       accounts: [{ email: REGISTERED.email, password: REGISTERED.password, hasProfile: true }],
-      // Expired the moment it is issued, so the next guarded navigation has to refresh.
-      accessTokenTtlSeconds: 0,
     },
   });
 
@@ -201,12 +200,38 @@ test.describe('an expired access token', () => {
     await loginPage.signIn(REGISTERED.email, REGISTERED.password);
     await expect(page).toHaveURL(/\/dashboard$/);
 
+    const previous = await readStoredSession(page);
+    await page.evaluate(() => {
+      const session = JSON.parse(localStorage.getItem('ts.auth.session')!);
+      session.expiresAt = Date.now() - 1;
+      localStorage.setItem('ts.auth.session', JSON.stringify(session));
+    });
     await page.reload();
 
     await expect(page).toHaveURL(/\/dashboard$/);
     await expect(page.getByTestId('dashboard-header-controls')).toBeVisible();
-    expect(
-      api.requests.filter((request) => request.url.endsWith('/auth/refresh')).length,
-    ).toBeGreaterThan(0);
+    expect(api.requests.filter((request) => request.url.endsWith('/auth/refresh'))).toHaveLength(1);
+    const renewed = await readStoredSession(page);
+    expect(renewed?.refreshToken).not.toBe(previous?.refreshToken);
+    expect(renewed?.expiresAt).toBeGreaterThan(Date.now());
   });
+
+  for (const refreshToken of ['', 'expired-or-revoked-refresh-token']) {
+    test(`signs out when the refresh credential is ${refreshToken ? 'rejected' : 'missing'}`, async ({ page, loginPage, api }) => {
+      await loginPage.goto();
+      await loginPage.signIn(REGISTERED.email, REGISTERED.password);
+      await expect(page).toHaveURL(/\/dashboard$/);
+      await page.evaluate((token) => {
+        const session = JSON.parse(localStorage.getItem('ts.auth.session')!);
+        session.expiresAt = Date.now() - 1;
+        session.refreshToken = token;
+        localStorage.setItem('ts.auth.session', JSON.stringify(session));
+      }, refreshToken);
+      await page.reload();
+      await expect(page).toHaveURL(/\/login$/);
+      expect(await readStoredSession(page)).toBeNull();
+      expect(api.requests.filter((request) => request.url.endsWith('/auth/refresh')))
+        .toHaveLength(refreshToken ? 1 : 0);
+    });
+  }
 });

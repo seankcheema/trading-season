@@ -205,6 +205,7 @@
 }
 
 .chart-toolbar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -286,11 +287,11 @@
 }
 .comparison-picker {
   position: absolute;
-  top: calc(100% + 0.5rem);
-  right: 0;
+  top: var(--picker-top, calc(100% + 0.5rem));
+  left: min(var(--picker-left, 0px), max(0px, calc(100% - 16rem)));
   z-index: 40;
   display: flex;
-  width: min(16rem, calc(100vw - 2rem));
+  width: min(16rem, 100%);
   align-items: stretch;
   flex-direction: column;
   gap: 0;
@@ -305,10 +306,6 @@
 }
 .comparison-picker app-instrument-search {
   width: 100%;
-}
-
-.comparison-dropdown {
-  position: relative;
 }
 
 .comparison-button {
@@ -335,21 +332,6 @@
   opacity: 0.7;
 }
 
-.comparison-picker app-instrument-search ::ng-deep .instrument-search-input {
-  border-bottom: none !important;
-}
-
-.comparison-picker app-instrument-search ::ng-deep input {
-  border-bottom: none !important;
-}
-
-.comparison-picker app-instrument-search ::ng-deep input:hover {
-  border-bottom: none !important;
-}
-
-.comparison-picker app-instrument-search ::ng-deep input:focus {
-  border-bottom: none !important;
-}
 .comparison-charts {
   display: grid;
   height: 100%;
@@ -455,6 +437,49 @@
   flex-direction: column;
   overflow: hidden;
 }
+.account-value-panel {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--card);
+  padding: 0.625rem;
+}
+.account-value-panel:focus-within {
+  z-index: 40;
+}
+.account-value-balances {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0.4rem;
+}
+.account-value-balances .account-balance-card {
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  gap: 0.15rem;
+  padding: 0.45rem 0.75rem;
+}
+.account-value-balances dd {
+  overflow-wrap: anywhere;
+}
+.account-value-balances .account-cash-card {
+  border-color: color-mix(in srgb, #c5a77b 14%, var(--border));
+  background: color-mix(in srgb, #c5a77b 2%, transparent);
+}
+.account-cash-card dd {
+  color: color-mix(in srgb, #c5a77b 18%, var(--foreground));
+}
+.account-value-balances .account-portfolio-card {
+  border-color: color-mix(in srgb, var(--primary) 14%, var(--border));
+  background: color-mix(in srgb, var(--primary) 2%, transparent);
+}
+.account-portfolio-card dd {
+  color: color-mix(in srgb, var(--primary) 18%, var(--foreground));
+}
 .insight-panel > div:first-child {
   min-height: 3rem;
   display: flex;
@@ -529,7 +554,7 @@
   min-height: 0;
   flex: 0 0 auto;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(3, 4.35rem);
+  grid-template-rows: repeat(2, 4.35rem);
   gap: 0.4rem;
 }
 .overview-card {
@@ -707,10 +732,6 @@
 .tools-close-button::after {
   display: none;
 }
-.tools-close-button .chevron-rotate {
-  font-size: 1rem;
-  transition: transform 280ms ease;
-}
 .market-grid.tools-collapsed .tools-close-button .chevron-rotate {
   transform: rotate(180deg);
 }
@@ -724,6 +745,7 @@
   align-items: center;
   justify-content: center;
 }
+.tools-close-button .chevron-rotate,
 .tools-open-button .chevron-rotate {
   font-size: 1rem;
   transition: transform 280ms ease;
@@ -735,7 +757,7 @@
     overflow: hidden;
   }
   .market-content {
-    height: calc(100dvh - 4rem);
+    height: calc(100dvh - 4.5rem);
     min-height: 0;
   }
   .market-grid {
@@ -797,6 +819,11 @@
   }
   .tools-column {
     order: 1;
+  }
+  .insight-panel {
+    flex: 0 0 auto;
+    height: min(28rem, 60dvh);
+    min-height: 18rem;
   }
   .chart-panel-with-rsi .chart-stage {
     min-height: 33rem;
@@ -874,9 +901,6 @@
     padding-top: 0;
     padding-bottom: 0.65rem;
   }
-  .comparison-picker {
-    right: -2.25rem;
-  }
   .tool-button {
     padding: 0 0.4rem;
   }
@@ -946,4 +970,32 @@
   .tick-price-loss {
     animation: none;
   }
+}
+
+/* Shared dashboard controls wrap above the chart on smaller screens. */
+@media (max-width: 1100px) {
+  .market-nav {
+    height: auto;
+    min-height: 4.5rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+  .market-nav-inner {
+    flex-wrap: wrap;
+  }
+  .market-header-controls {
+    width: 100%;
+  }
+}
+@media (max-width: 540px) {
+  .market-header-controls > app-market-clock-control {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.comparison-picker app-instrument-search ::ng-deep input,
+.comparison-picker app-instrument-search ::ng-deep input:hover,
+.comparison-picker app-instrument-search ::ng-deep input:focus {
+  border-bottom: none !important;
 }

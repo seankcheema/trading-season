@@ -6,3 +6,4 @@ app.holding
 app.instrument
 app.market
 app.user
+app.watchlist

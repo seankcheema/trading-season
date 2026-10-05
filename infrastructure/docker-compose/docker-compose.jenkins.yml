@@ -48,23 +48,17 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ../../apps/market-data/db/migrations:/migrations:ro
+      - ../../apps/market-data/db/migrations/V001__Initialize_database.sql:/V001__Initialize_database.sql:ro
+      - ../../apps/market-data/db/migrations/V002__Add_watchlist.sql:/V002__Add_watchlist.sql:ro
     environment:
       PGPASSWORD: ${DB_PASSWORD:-changeme}
     command: >
-      sh -c 'if [ "$$(psql -h db -U trading_season -d trading_season -t -c 
-      "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='"'"'public'"'"';" 2>/dev/null || echo 0)" = "0" ]; then 
-      echo "[DB-INIT] Applying migrations..."; 
-      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 
-      -f /migrations/V001__Initial_schema.sql
-      -f /migrations/V002__Synthetic_market_data_replay_metadata.sql
-      -f /migrations/V003__Token_authentication.sql
-      -f /migrations/V004__Order_status_lifecycle.sql
-      -f /migrations/V005__User_accounts_and_refresh_tokens.sql
-      -f /migrations/V006__Drop_duplicated_account_columns.sql
-      -f /migrations/V007__Add_account_name.sql
-      -f /migrations/V008__Drop_account_status.sql
-      && echo "[DB-INIT] Migrations complete"; 
+      sh -c 'if [ "$$(psql -h db -U trading_season -d trading_season -t -c
+      "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='"'"'public'"'"';" 2>/dev/null || echo 0)" = "0" ]; then
+      echo "[DB-INIT] Applying migrations...";
+      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 -f /V001__Initialize_database.sql &&
+      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 -f /V002__Add_watchlist.sql
+      && echo "[DB-INIT] Migrations complete";
       else echo "[DB-INIT] Database already initialized, skipping migrations"; fi'
     networks:
       - ci-network
@@ -234,6 +228,32 @@ services:
       AUTH_JWK_SET_URI: http://auth-service:3001/.well-known/jwks.json
       AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
+    networks:
+      - ci-network
+
+  # Reporting Service: portfolio analytics, trade history, performance metrics
+  reporting-service:
+    build:
+      context: ../../apps/reporting-service
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8083"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      auth-service:
+        condition: service_started
+    environment:
+      FLASK_ENV: production
+      FLASK_DEBUG: "false"
+      DATABASE_URL: postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season
+      AUTH_SERVICE_URL: http://auth-service:3001
+      AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200,http://localhost:4300}
+      REPORTING_SERVICE_PORT: 8083
+      REPORTING_SERVICE_HOST: 0.0.0.0
+      SCHEDULER_ENABLED: "true"
+      SCHEDULER_INTERVAL_MINUTES: 15
     networks:
       - ci-network
 

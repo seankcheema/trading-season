@@ -7,7 +7,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 
-import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -23,7 +22,7 @@ import java.util.Map;
 /** Reads completed synthetic market sessions, candles, and replay ticks. */
 @Repository
 public class MarketDataRepository implements MarketDataSource {
-<span class="fc" id="L26">    private static final ZoneId MARKET_ZONE = ZoneId.of(&quot;America/Chicago&quot;);</span>
+<span class="fc" id="L25">    private static final ZoneId MARKET_ZONE = ZoneId.of(&quot;America/Chicago&quot;);</span>
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final String configuredArchiveLocation;
@@ -36,15 +35,15 @@ public class MarketDataRepository implements MarketDataSource {
      */
     @Autowired
     public MarketDataRepository(JdbcTemplate jdbc, ObjectMapper objectMapper,
-<span class="fc" id="L39">            @Value(&quot;${market.replay.archive-location:}&quot;) String configuredArchiveLocation) {</span>
-<span class="fc" id="L40">        this.jdbc = jdbc;</span>
-<span class="fc" id="L41">        this.objectMapper = objectMapper;</span>
-<span class="fc" id="L42">        this.configuredArchiveLocation = configuredArchiveLocation;</span>
-<span class="fc" id="L43">    }</span>
+<span class="fc" id="L38">            @Value(&quot;${market.replay.archive-location:}&quot;) String configuredArchiveLocation) {</span>
+<span class="fc" id="L39">        this.jdbc = jdbc;</span>
+<span class="fc" id="L40">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L41">        this.configuredArchiveLocation = configuredArchiveLocation;</span>
+<span class="fc" id="L42">    }</span>
 
     MarketDataRepository(JdbcTemplate jdbc, ObjectMapper objectMapper) {
-<span class="fc" id="L46">        this(jdbc, objectMapper, &quot;&quot;);</span>
-<span class="fc" id="L47">    }</span>
+<span class="fc" id="L45">        this(jdbc, objectMapper, &quot;&quot;);</span>
+<span class="fc" id="L46">    }</span>
 
     /**
      * Resolves a requested completed session, or the newest completed session when absent.
@@ -53,20 +52,20 @@ public class MarketDataRepository implements MarketDataSource {
      * @throws MarketRequestException when no matching completed session exists
      */
     public MarketModels.Session resolveSession(Long requestedId) {
-<span class="fc bfc" id="L56" title="All 2 branches covered.">        String where = requestedId == null ? &quot;&quot; : &quot; AND id = ?&quot;;</span>
-<span class="fc" id="L57">        String sql = &quot;SELECT id, config FROM simulation_sessions WHERE status = 'COMPLETED'&quot; + where</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        String where = requestedId == null ? &quot;&quot; : &quot; AND id = ?&quot;;</span>
+<span class="fc" id="L56">        String sql = &quot;SELECT id, config FROM simulation_sessions WHERE status = 'COMPLETED'&quot; + where</span>
                 + &quot; ORDER BY created_at DESC, id DESC LIMIT 1&quot;;
-<span class="fc" id="L59">        List&lt;MarketModels.Session&gt; rows = jdbc.query(sql, ps -&gt; {</span>
-<span class="fc bfc" id="L60" title="All 2 branches covered.">            if (requestedId != null) ps.setLong(1, requestedId);</span>
-<span class="fc" id="L61">        }, (rs, row) -&gt; parseSession(rs.getLong(&quot;id&quot;), String.valueOf(rs.getObject(&quot;config&quot;))));</span>
-<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (rows.isEmpty()) throw new MarketRequestException(&quot;Completed simulation session not found&quot;);</span>
-<span class="fc" id="L63">        return rows.getFirst();</span>
+<span class="fc" id="L58">        List&lt;MarketModels.Session&gt; rows = jdbc.query(sql, ps -&gt; {</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            if (requestedId != null) ps.setLong(1, requestedId);</span>
+<span class="fc" id="L60">        }, (rs, row) -&gt; parseSession(rs.getLong(&quot;id&quot;), String.valueOf(rs.getObject(&quot;config&quot;))));</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (rows.isEmpty()) throw new MarketRequestException(&quot;Completed simulation session not found&quot;);</span>
+<span class="fc" id="L62">        return rows.getFirst();</span>
     }
 
     /** @return all simulator stocks in stable symbol order */
     public List&lt;MarketModels.Stock&gt; stocks() {
-<span class="fc" id="L68">        return jdbc.query(&quot;SELECT symbol, company_name FROM stocks ORDER BY symbol&quot;,</span>
-<span class="fc" id="L69">                (rs, row) -&gt; new MarketModels.Stock(rs.getString(1), rs.getString(2)));</span>
+<span class="fc" id="L67">        return jdbc.query(&quot;SELECT symbol, company_name FROM stocks ORDER BY symbol&quot;,</span>
+<span class="fc" id="L68">                (rs, row) -&gt; new MarketModels.Stock(rs.getString(1), rs.getString(2)));</span>
     }
 
     /**
@@ -75,9 +74,9 @@ public class MarketDataRepository implements MarketDataSource {
      * @return chronological trading dates
      */
     public List&lt;LocalDate&gt; tradingDays(long sessionId) {
-<span class="fc" id="L78">        return jdbc.query(&quot;SELECT DISTINCT CAST(\&quot;timestamp\&quot; AT TIME ZONE 'America/Chicago' AS date) AS trading_day &quot;</span>
+<span class="fc" id="L77">        return jdbc.query(&quot;SELECT DISTINCT CAST(\&quot;timestamp\&quot; AT TIME ZONE 'America/Chicago' AS date) AS trading_day &quot;</span>
                         + &quot;FROM candles WHERE session_id = ? ORDER BY trading_day&quot;,
-<span class="fc" id="L80">                (rs, row) -&gt; rs.getObject(1, LocalDate.class), sessionId);</span>
+<span class="fc" id="L79">                (rs, row) -&gt; rs.getObject(1, LocalDate.class), sessionId);</span>
     }
 
     /**
@@ -87,8 +86,8 @@ public class MarketDataRepository implements MarketDataSource {
      * @return chronological synchronized frames
      */
     public List&lt;MarketModels.Frame&gt; ticksForDay(MarketModels.Session session, LocalDate day) {
-<span class="fc bfc" id="L90" title="All 2 branches covered.">        return &quot;postgres&quot;.equals(session.storageMode())</span>
-<span class="fc" id="L91">                ? postgresTicks(session.id(), day) : parquetTicks(session, day);</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        return &quot;postgres&quot;.equals(session.storageMode())</span>
+<span class="fc" id="L90">                ? postgresTicks(session.id(), day) : parquetTicks(session, day);</span>
     }
 
     /**
@@ -100,90 +99,90 @@ public class MarketDataRepository implements MarketDataSource {
      * @return chronological one-minute candles
      */
     public List&lt;MarketModels.Candle&gt; candles(long sessionId, String symbol, Instant from, Instant to) {
-<span class="fc" id="L103">        return jdbc.query(&quot;SELECT \&quot;timestamp\&quot;, open, high, low, close, volume FROM candles &quot;</span>
+<span class="fc" id="L102">        return jdbc.query(&quot;SELECT \&quot;timestamp\&quot;, open, high, low, close, volume FROM candles &quot;</span>
                         + &quot;WHERE session_id = ? AND symbol = ? AND \&quot;interval\&quot; = '1m' &quot;
                         + &quot;AND \&quot;timestamp\&quot; &gt;= ? AND \&quot;timestamp\&quot; &lt;= ? ORDER BY \&quot;timestamp\&quot;&quot;,
-<span class="fc" id="L106">                (rs, row) -&gt; new MarketModels.Candle(rs.getTimestamp(1).toInstant(), rs.getBigDecimal(2),</span>
-<span class="fc" id="L107">                        rs.getBigDecimal(3), rs.getBigDecimal(4), rs.getBigDecimal(5), rs.getLong(6)),</span>
-<span class="fc" id="L108">                sessionId, symbol, java.sql.Timestamp.from(from), java.sql.Timestamp.from(to));</span>
+<span class="fc" id="L105">                (rs, row) -&gt; new MarketModels.Candle(rs.getTimestamp(1).toInstant(), rs.getBigDecimal(2),</span>
+<span class="fc" id="L106">                        rs.getBigDecimal(3), rs.getBigDecimal(4), rs.getBigDecimal(5), rs.getLong(6)),</span>
+<span class="fc" id="L107">                sessionId, symbol, java.sql.Timestamp.from(from), java.sql.Timestamp.from(to));</span>
     }
 
     private MarketModels.Session parseSession(long id, String configText) {
         try {
-<span class="fc" id="L113">            JsonNode storage = objectMapper.readTree(configText).path(&quot;tick_storage&quot;);</span>
-<span class="fc" id="L114">            String mode = storage.path(&quot;mode&quot;).asText(&quot;parquet&quot;);</span>
-<span class="fc" id="L115">            String archive = storage.path(&quot;archive_location&quot;).asText(&quot;&quot;);</span>
-<span class="fc" id="L116">            return new MarketModels.Session(id, mode, archive);</span>
-<span class="fc" id="L117">        } catch (Exception ex) {</span>
-<span class="fc" id="L118">            throw new IllegalStateException(&quot;Simulation storage metadata is invalid&quot;, ex);</span>
+<span class="fc" id="L112">            JsonNode storage = objectMapper.readTree(configText).path(&quot;tick_storage&quot;);</span>
+<span class="fc" id="L113">            String mode = storage.path(&quot;mode&quot;).asString(&quot;parquet&quot;);</span>
+<span class="fc" id="L114">            String archive = storage.path(&quot;archive_location&quot;).asString(&quot;&quot;);</span>
+<span class="fc" id="L115">            return new MarketModels.Session(id, mode, archive);</span>
+<span class="fc" id="L116">        } catch (Exception ex) {</span>
+<span class="fc" id="L117">            throw new IllegalStateException(&quot;Simulation storage metadata is invalid&quot;, ex);</span>
         }
     }
 
     private List&lt;MarketModels.Frame&gt; postgresTicks(long sessionId, LocalDate day) {
-<span class="fc" id="L123">        Instant from = day.atTime(8, 30).atZone(MARKET_ZONE).toInstant();</span>
-<span class="fc" id="L124">        Instant to = day.plusDays(1).atStartOfDay(MARKET_ZONE).toInstant();</span>
-<span class="fc" id="L125">        List&lt;MarketModels.Tick&gt; ticks = jdbc.query(&quot;SELECT symbol, \&quot;timestamp\&quot;, price, sequence_number &quot;</span>
+<span class="fc" id="L122">        Instant from = day.atTime(8, 30).atZone(MARKET_ZONE).toInstant();</span>
+<span class="fc" id="L123">        Instant to = day.plusDays(1).atStartOfDay(MARKET_ZONE).toInstant();</span>
+<span class="fc" id="L124">        List&lt;MarketModels.Tick&gt; ticks = jdbc.query(&quot;SELECT symbol, \&quot;timestamp\&quot;, price, sequence_number &quot;</span>
                         + &quot;FROM market_ticks WHERE session_id = ? AND \&quot;timestamp\&quot; &gt;= ? AND \&quot;timestamp\&quot; &lt; ? &quot;
                         + &quot;ORDER BY \&quot;timestamp\&quot;, symbol&quot;,
-<span class="fc" id="L128">                (rs, row) -&gt; new MarketModels.Tick(rs.getString(1), rs.getTimestamp(2).toInstant(),</span>
-<span class="fc" id="L129">                        rs.getBigDecimal(3), rs.getLong(4)), sessionId,</span>
-<span class="fc" id="L130">                java.sql.Timestamp.from(from), java.sql.Timestamp.from(to));</span>
-<span class="fc" id="L131">        return frames(ticks);</span>
+<span class="fc" id="L127">                (rs, row) -&gt; new MarketModels.Tick(rs.getString(1), rs.getTimestamp(2).toInstant(),</span>
+<span class="fc" id="L128">                        rs.getBigDecimal(3), rs.getLong(4)), sessionId,</span>
+<span class="fc" id="L129">                java.sql.Timestamp.from(from), java.sql.Timestamp.from(to));</span>
+<span class="fc" id="L130">        return frames(ticks);</span>
     }
 
     private List&lt;MarketModels.Frame&gt; parquetTicks(MarketModels.Session session, LocalDate day) {
-<span class="fc" id="L135">        Path root = resolveArchiveRoot(session);</span>
-<span class="fc" id="L136">        Path file = root.resolve(&quot;ticks-&quot; + day + &quot;.parquet&quot;).normalize();</span>
-<span class="pc bpc" id="L137" title="1 of 4 branches missed.">        if (!file.startsWith(root) || !Files.isRegularFile(file)) {</span>
-<span class="fc" id="L138">            throw new IllegalStateException(&quot;Simulation tick partition is unavailable&quot;);</span>
+<span class="fc" id="L134">        Path root = resolveArchiveRoot(session);</span>
+<span class="fc" id="L135">        Path file = root.resolve(&quot;ticks-&quot; + day + &quot;.parquet&quot;).normalize();</span>
+<span class="pc bpc" id="L136" title="1 of 4 branches missed.">        if (!file.startsWith(root) || !Files.isRegularFile(file)) {</span>
+<span class="fc" id="L137">            throw new IllegalStateException(&quot;Simulation tick partition is unavailable&quot;);</span>
         }
-<span class="fc" id="L140">        List&lt;MarketModels.Tick&gt; ticks = new ArrayList&lt;&gt;(234_000);</span>
-<span class="fc" id="L141">        try (var connection = DriverManager.getConnection(&quot;jdbc:duckdb:&quot;);</span>
-<span class="fc" id="L142">             var statement = connection.prepareStatement(</span>
+<span class="fc" id="L139">        List&lt;MarketModels.Tick&gt; ticks = new ArrayList&lt;&gt;(234_000);</span>
+<span class="fc" id="L140">        try (var connection = DriverManager.getConnection(&quot;jdbc:duckdb:&quot;);</span>
+<span class="fc" id="L141">             var statement = connection.prepareStatement(</span>
                      &quot;SELECT symbol, t, price, sequence_number FROM read_parquet(?) ORDER BY t, symbol&quot;)) {
-<span class="fc" id="L144">            statement.setString(1, file.toString());</span>
-<span class="fc" id="L145">            try (var rs = statement.executeQuery()) {</span>
-<span class="fc bfc" id="L146" title="All 2 branches covered.">                while (rs.next()) {</span>
-<span class="fc" id="L147">                    ticks.add(new MarketModels.Tick(rs.getString(1), Instant.ofEpochSecond(rs.getLong(2)),</span>
-<span class="fc" id="L148">                            rs.getBigDecimal(3), rs.getLong(4)));</span>
+<span class="fc" id="L143">            statement.setString(1, file.toString());</span>
+<span class="fc" id="L144">            try (var rs = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">                while (rs.next()) {</span>
+<span class="fc" id="L146">                    ticks.add(new MarketModels.Tick(rs.getString(1), Instant.ofEpochSecond(rs.getLong(2)),</span>
+<span class="fc" id="L147">                            rs.getBigDecimal(3), rs.getLong(4)));</span>
                 }
             }
-<span class="nc" id="L151">        } catch (Throwable ex) {</span>
-<span class="nc" id="L152">            throw new IllegalStateException(&quot;Unable to load the simulation tick partition&quot;, ex);</span>
-<span class="fc" id="L153">        }</span>
-<span class="fc" id="L154">        return frames(ticks);</span>
+<span class="nc" id="L150">        } catch (Throwable ex) {</span>
+<span class="nc" id="L151">            throw new IllegalStateException(&quot;Unable to load the simulation tick partition&quot;, ex);</span>
+<span class="fc" id="L152">        }</span>
+<span class="fc" id="L153">        return frames(ticks);</span>
     }
 
     private Path resolveArchiveRoot(MarketModels.Session session) {
-<span class="fc" id="L158">        List&lt;Path&gt; candidates = new ArrayList&lt;&gt;();</span>
-<span class="fc" id="L159">        addPathCandidate(candidates, configuredArchiveLocation);</span>
-<span class="fc" id="L160">        addPathCandidate(candidates, session.archiveLocation());</span>
-<span class="fc" id="L161">        String normalizedArchive = session.archiveLocation().replace('\\', '/');</span>
-<span class="fc" id="L162">        int separator = normalizedArchive.lastIndexOf('/');</span>
-<span class="pc bpc" id="L163" title="1 of 2 branches missed.">        String archiveName = normalizedArchive.isBlank() ? &quot;synthetic-market-data-2026-v1&quot;</span>
-<span class="fc" id="L164">                : normalizedArchive.substring(separator + 1);</span>
-<span class="fc" id="L165">        candidates.add(Path.of(&quot;apps&quot;, &quot;market-data&quot;, &quot;db&quot;, &quot;seeds&quot;, archiveName));</span>
-<span class="fc" id="L166">        candidates.add(Path.of(&quot;..&quot;, &quot;market-data&quot;, &quot;db&quot;, &quot;seeds&quot;, archiveName));</span>
-<span class="fc" id="L167">        return candidates.stream().map(path -&gt; path.toAbsolutePath().normalize())</span>
-<span class="fc" id="L168">                .filter(Files::isDirectory).findFirst()</span>
-<span class="fc" id="L169">                .orElseThrow(() -&gt; new IllegalStateException(&quot;Simulation archive location is unavailable&quot;));</span>
+<span class="fc" id="L157">        List&lt;Path&gt; candidates = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L158">        addPathCandidate(candidates, configuredArchiveLocation);</span>
+<span class="fc" id="L159">        addPathCandidate(candidates, session.archiveLocation());</span>
+<span class="fc" id="L160">        String normalizedArchive = session.archiveLocation().replace('\\', '/');</span>
+<span class="fc" id="L161">        int separator = normalizedArchive.lastIndexOf('/');</span>
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">        String archiveName = normalizedArchive.isBlank() ? &quot;synthetic-market-data-2026-v1&quot;</span>
+<span class="fc" id="L163">                : normalizedArchive.substring(separator + 1);</span>
+<span class="fc" id="L164">        candidates.add(Path.of(&quot;apps&quot;, &quot;market-data&quot;, &quot;db&quot;, &quot;seeds&quot;, archiveName));</span>
+<span class="fc" id="L165">        candidates.add(Path.of(&quot;..&quot;, &quot;market-data&quot;, &quot;db&quot;, &quot;seeds&quot;, archiveName));</span>
+<span class="fc" id="L166">        return candidates.stream().map(path -&gt; path.toAbsolutePath().normalize())</span>
+<span class="fc" id="L167">                .filter(Files::isDirectory).findFirst()</span>
+<span class="fc" id="L168">                .orElseThrow(() -&gt; new IllegalStateException(&quot;Simulation archive location is unavailable&quot;));</span>
     }
 
     private void addPathCandidate(List&lt;Path&gt; candidates, String location) {
-<span class="fc bfc" id="L173" title="All 2 branches covered.">        if (location.isBlank()) return;</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        if (location.isBlank()) return;</span>
         try {
-<span class="fc" id="L175">            candidates.add(Path.of(location));</span>
-<span class="nc" id="L176">        } catch (InvalidPathException ignored) {</span>
+<span class="fc" id="L174">            candidates.add(Path.of(location));</span>
+<span class="nc" id="L175">        } catch (InvalidPathException ignored) {</span>
             // A metadata path from another host cannot be used locally; discovery candidates follow.
-<span class="fc" id="L178">        }</span>
-<span class="fc" id="L179">    }</span>
+<span class="fc" id="L177">        }</span>
+<span class="fc" id="L178">    }</span>
 
     private List&lt;MarketModels.Frame&gt; frames(List&lt;MarketModels.Tick&gt; ticks) {
-<span class="fc" id="L182">        Map&lt;Instant, List&lt;MarketModels.Tick&gt;&gt; grouped = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L183" title="All 2 branches covered.">        for (MarketModels.Tick tick : ticks) {</span>
-<span class="fc" id="L184">            grouped.computeIfAbsent(tick.timestamp(), ignored -&gt; new ArrayList&lt;&gt;()).add(tick);</span>
-<span class="fc" id="L185">        }</span>
-<span class="fc" id="L186">        return grouped.entrySet().stream().map(entry -&gt; new MarketModels.Frame(entry.getKey(), entry.getValue())).toList();</span>
+<span class="fc" id="L181">        Map&lt;Instant, List&lt;MarketModels.Tick&gt;&gt; grouped = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        for (MarketModels.Tick tick : ticks) {</span>
+<span class="fc" id="L183">            grouped.computeIfAbsent(tick.timestamp(), ignored -&gt; new ArrayList&lt;&gt;()).add(tick);</span>
+<span class="fc" id="L184">        }</span>
+<span class="fc" id="L185">        return grouped.entrySet().stream().map(entry -&gt; new MarketModels.Frame(entry.getKey(), entry.getValue())).toList();</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

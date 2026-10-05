@@ -8,14 +8,15 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 /**
- * The execution of an order, read here only for the price it filled at.
+ * The execution of an order, read here for its execution price and real execution time.
  *
  * <p>The order service owns writing fills. This service reads them to derive
  * what a position cost, which is not stored anywhere: {@code holdings} caches
- * quantity only. Only the price is mapped, because the signed quantity of the
- * movement is what the average is weighted by.
+ * quantity only. The signed quantity of the movement weights the average price; the
+ * execution timestamp identifies when a portfolio first became invested.
  */
 @Entity
 @Table(name = "fills")
@@ -29,6 +30,17 @@ public class Fill {
     /** BR-08: the quote the order executed against. */
     @Column(name = "quote_price", nullable = false)
     private BigDecimal quotePrice;
+
+    @Column(name = "filled_at")
+    private Instant filledAt;
+
+    /** Returns the real execution time.
+     * @return execution timestamp, or null for legacy test fixtures */
+    public Instant getFilledAt() { return filledAt; }
+
+    /** Sets the real execution time.
+     * @param filledAt execution timestamp */
+    public void setFilledAt(Instant filledAt) { this.filledAt = filledAt; }
 
     /** Creates an empty fill for the persistence provider to populate. */
     public Fill() {

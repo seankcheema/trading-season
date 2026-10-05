@@ -1,6 +1,8 @@
 package app.auth;
 
 
+import app.account.AccountNotFoundException;
+import app.instrument.InstrumentNotFoundException;
 import app.user.UserNotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -63,6 +65,30 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(UserNotFoundException.class)
     public ResponseEntity<Map<String, String>> handleNotFound(UserNotFoundException ex) {
         return error(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    /**
+     * Handles an order naming an account id that does not exist.
+     *
+     * @param ex the lookup failure
+     * @return 404 with the failure message
+     */
+    @ExceptionHandler(AccountNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleAccountNotFound(AccountNotFoundException ex) {
+        return error(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    /**
+     * Handles an order naming an instrument id that does not exist. This is a
+     * malformed request rather than a trading-rule rejection, which is why it
+     * is a 400 and not a 201 carrying a REJECTED order.
+     *
+     * @param ex the lookup failure
+     * @return 400 with the failure message
+     */
+    @ExceptionHandler(InstrumentNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleInstrumentNotFound(InstrumentNotFoundException ex) {
+        return error(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
     /**

@@ -3,6 +3,7 @@
 import app.account.Account;
 import app.account.AccountNotFoundException;
 import app.account.AccountRepository;
+import app.auth.ForbiddenException;
 import app.instrument.Instrument;
 import app.instrument.InstrumentNotFoundException;
 import app.instrument.InstrumentRepository;
@@ -23,14 +24,14 @@ import java.util.UUID;
 import java.util.Optional;
 
 /**
- * Orchestrates one order submission: idempotency check, loading the
- * entities the rule pipeline needs, persisting the order as
- * {@code PENDING}, running the pipeline, and — only if it passes — handing
- * off to {@link OrderExecutionService}. A failed rule leaves the order
- * {@code REJECTED}; a successful execution leaves it {@code FILLED}
- * (KAN-93). This is the &quot;Order controller&quot; + &quot;Trading rule pipeline&quot;
- * handoff from the KAN-95 walkthrough, minus the HTTP concerns, which stay
- * in {@link OrderController}.
+ * Orchestrates one order submission: resolving and ownership-checking the
+ * account, the idempotency check, loading the entities the rule pipeline
+ * needs, persisting the order as {@code PENDING}, running the pipeline, and
+ * — only if it passes — handing off to {@link OrderExecutionService}. A
+ * failed rule leaves the order {@code REJECTED}; a successful execution
+ * leaves it {@code FILLED} (KAN-93). This is the &quot;Order controller&quot; +
+ * &quot;Trading rule pipeline&quot; handoff from the KAN-95 walkthrough, minus the
+ * HTTP concerns, which stay in {@link OrderController}.
  */
 @Service
 public class OrderService {
@@ -49,89 +50,100 @@ public class OrderService {
                          UserRepository userRepository,
                          OrderValidationPipeline validationPipeline,
                          OrderExecutionService orderExecutionService,
-<span class="fc" id="L52">                         AuditTrailService auditTrailService) {</span>
-<span class="fc" id="L53">        this.orderRepository = orderRepository;</span>
-<span class="fc" id="L54">        this.accountRepository = accountRepository;</span>
-<span class="fc" id="L55">        this.instrumentRepository = instrumentRepository;</span>
-<span class="fc" id="L56">        this.userRepository = userRepository;</span>
-<span class="fc" id="L57">        this.validationPipeline = validationPipeline;</span>
-<span class="fc" id="L58">        this.orderExecutionService = orderExecutionService;</span>
-<span class="fc" id="L59">        this.auditTrailService = auditTrailService;</span>
-<span class="fc" id="L60">    }</span>
+<span class="fc" id="L53">                         AuditTrailService auditTrailService) {</span>
+<span class="fc" id="L54">        this.orderRepository = orderRepository;</span>
+<span class="fc" id="L55">        this.accountRepository = accountRepository;</span>
+<span class="fc" id="L56">        this.instrumentRepository = instrumentRepository;</span>
+<span class="fc" id="L57">        this.userRepository = userRepository;</span>
+<span class="fc" id="L58">        this.validationPipeline = validationPipeline;</span>
+<span class="fc" id="L59">        this.orderExecutionService = orderExecutionService;</span>
+<span class="fc" id="L60">        this.auditTrailService = auditTrailService;</span>
+<span class="fc" id="L61">    }</span>
 
     /**
-     * Submits an order. The order is created {@code PENDING}; it returns as
-     * {@code REJECTED} when a trading rule fails, or {@code FILLED} once the
-     * fill is written and the owning user's available funds and the account's
-     * holdings have moved. Never throws for a trade that fails a trading
-     * rule — that's a normal outcome, reflected in the returned order's
-     * status, not an HTTP-level error. It throws only when the request
-     * refers to something that doesn't exist.
+     * Submits an order on an account the caller owns. The order is created
+     * {@code PENDING}; it returns as {@code REJECTED} when a trading rule
+     * fails, or {@code FILLED} once the fill is written and the owning user's
+     * available funds and the account's holdings have moved. Never throws for
+     * a trade that fails a trading rule — that's a normal outcome, reflected
+     * in the returned order's status, not an HTTP-level error. It throws only
+     * when the request names something that doesn't exist or isn't the
+     * caller's.
+     *
+     * &lt;p&gt;Ownership is settled before anything else, including the idempotency
+     * lookup: an idempotency key is scoped to an account, so answering one
+     * before checking the account would hand a caller the outcome of an order
+     * on an account they don't own.
      *
      * @param request the validated submission
+     * @param callerId the caller's user id, from the token's {@code sub} claim
      * @return the persisted order in its final status
      * @throws AccountNotFoundException    if {@code accountId} does not exist
+     * @throws ForbiddenException          if {@code accountId} belongs to another user
      * @throws InstrumentNotFoundException if {@code instrumentId} does not exist
+     * @throws org.springframework.dao.DataAccessException if persistence fails; the order and all
+     *         execution ledger writes are rolled back together
      * @throws IllegalStateException       if the account has no owning user
      */
     @Transactional
-    public Order submitOrder(OrderRequest request) {
-<span class="fc" id="L79">        Optional&lt;Order&gt; existing = orderRepository</span>
-<span class="fc" id="L80">                .findByAccountIdAndClientReference(request.accountId(), request.clientReference());</span>
-<span class="fc bfc" id="L81" title="All 2 branches covered.">        if (existing.isPresent()) {</span>
+    public Order submitOrder(OrderRequest request, UUID callerId) {
+<span class="fc" id="L90">        Account account = accountRepository.findById(request.accountId())</span>
+<span class="fc" id="L91">                .orElseThrow(() -&gt; new AccountNotFoundException(&quot;No account &quot; + request.accountId()));</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (!account.getUserId().equals(callerId)) {</span>
+<span class="fc" id="L93">            throw new ForbiddenException(&quot;You do not have access to this account&quot;);</span>
+        }
+
+<span class="fc" id="L96">        Optional&lt;Order&gt; existing = orderRepository</span>
+<span class="fc" id="L97">                .findByAccountIdAndClientReference(request.accountId(), request.clientReference());</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        if (existing.isPresent()) {</span>
             // Same idempotency key already processed (or in flight) for this account —
             // return its outcome rather than validating or executing a second time.
             // Note: a genuinely concurrent duplicate can still race past this check;
             // the DB's UNIQUE (account_id, client_reference) constraint is the backstop.
-<span class="fc" id="L86">            return existing.get();</span>
+<span class="fc" id="L103">            return existing.get();</span>
         }
 
-<span class="fc" id="L89">        Account account = accountRepository.findById(request.accountId())</span>
-<span class="fc" id="L90">                .orElseThrow(() -&gt; new AccountNotFoundException(&quot;No account &quot; + request.accountId()));</span>
-<span class="fc" id="L91">        User user = userRepository.findById(account.getUserId())</span>
-<span class="pc" id="L92">                .orElseThrow(() -&gt; new IllegalStateException(</span>
-<span class="nc" id="L93">                        &quot;Account &quot; + account.getAccountId() + &quot; has no owning user&quot;));</span>
-<span class="fc" id="L94">        Instrument instrument = instrumentRepository.findById(request.instrumentId())</span>
-<span class="fc" id="L95">                .orElseThrow(() -&gt; new InstrumentNotFoundException(&quot;No instrument &quot; + request.instrumentId()));</span>
+<span class="fc" id="L106">        User user = userRepository.findById(account.getUserId())</span>
+<span class="pc" id="L107">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+<span class="nc" id="L108">                        &quot;Account &quot; + account.getAccountId() + &quot; has no owning user&quot;));</span>
+<span class="fc" id="L109">        Instrument instrument = instrumentRepository.findById(request.instrumentId())</span>
+<span class="fc" id="L110">                .orElseThrow(() -&gt; new InstrumentNotFoundException(&quot;No instrument &quot; + request.instrumentId()));</span>
 
-        // KAN-95 follow-up: once identity resolution is wired up (see
-        // OrderController), verify account.getUserId() equals the authenticated
-        // caller's id here — today anyone can submit against any accountId.
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        BigDecimal bufferPercent = request.bufferPercent() != null</span>
+<span class="fc" id="L113">                ? request.bufferPercent()</span>
+<span class="fc" id="L114">                : user.getExecutionBufferPercent();</span>
 
-<span class="fc bfc" id="L101" title="All 2 branches covered.">        BigDecimal bufferPercent = request.bufferPercent() != null</span>
-<span class="fc" id="L102">                ? request.bufferPercent()</span>
-<span class="fc" id="L103">                : user.getExecutionBufferPercent();</span>
+<span class="fc" id="L116">        OffsetDateTime now = OffsetDateTime.now();</span>
+<span class="fc" id="L117">        Order order = new Order();</span>
+<span class="fc" id="L118">        order.setAccountId(account.getAccountId());</span>
+<span class="fc" id="L119">        order.setInstrumentId(instrument.getInstrumentId());</span>
+<span class="fc" id="L120">        order.setClientReference(request.clientReference());</span>
+<span class="fc" id="L121">        order.setOrderType(request.orderType());</span>
+<span class="fc" id="L122">        order.setQuantity(request.quantity());</span>
+<span class="fc" id="L123">        order.setIndicativePrice(request.indicativePrice());</span>
+<span class="fc" id="L124">        order.setBufferPercent(bufferPercent);</span>
+<span class="fc" id="L125">        order.setStatus(Order.STATUS_PENDING);</span>
+<span class="fc" id="L126">        order.setSubmittedAt(now);</span>
+<span class="fc" id="L127">        order.setSimulatedAt(request.simulatedAt());</span>
+<span class="fc" id="L128">        order = orderRepository.save(order);</span>
+<span class="fc" id="L129">        auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, null);</span>
 
-<span class="fc" id="L105">        OffsetDateTime now = OffsetDateTime.now();</span>
-<span class="fc" id="L106">        Order order = new Order();</span>
-<span class="fc" id="L107">        order.setAccountId(account.getAccountId());</span>
-<span class="fc" id="L108">        order.setInstrumentId(instrument.getInstrumentId());</span>
-<span class="fc" id="L109">        order.setClientReference(request.clientReference());</span>
-<span class="fc" id="L110">        order.setOrderType(request.orderType());</span>
-<span class="fc" id="L111">        order.setQuantity(request.quantity());</span>
-<span class="fc" id="L112">        order.setIndicativePrice(request.indicativePrice());</span>
-<span class="fc" id="L113">        order.setBufferPercent(bufferPercent);</span>
-<span class="fc" id="L114">        order.setStatus(Order.STATUS_PENDING);</span>
-<span class="fc" id="L115">        order.setSubmittedAt(now);</span>
-<span class="fc" id="L116">        order = orderRepository.save(order);</span>
-<span class="fc" id="L117">        auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, null);</span>
-
-<span class="fc" id="L119">        ValidationResult result = validationPipeline.run(request, user, account, instrument);</span>
-<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (!result.passed()) {</span>
-<span class="fc" id="L121">            order.setStatus(Order.STATUS_REJECTED);</span>
-<span class="fc" id="L122">            order.setRejectionReason(result.reason());</span>
-<span class="fc" id="L123">            order.setResolvedAt(OffsetDateTime.now());</span>
-<span class="fc" id="L124">            order = orderRepository.save(order);</span>
-<span class="fc" id="L125">            auditTrailService.record(order.getOrderId(), Order.STATUS_REJECTED, result.reason());</span>
-<span class="fc" id="L126">            return order;</span>
+<span class="fc" id="L131">        ValidationResult result = validationPipeline.run(request, user, account, instrument);</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        if (!result.passed()) {</span>
+<span class="fc" id="L133">            order.setStatus(Order.STATUS_REJECTED);</span>
+<span class="fc" id="L134">            order.setRejectionReason(result.reason());</span>
+<span class="fc" id="L135">            order.setResolvedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L136">            order = orderRepository.save(order);</span>
+<span class="fc" id="L137">            auditTrailService.record(order.getOrderId(), Order.STATUS_REJECTED, result.reason());</span>
+<span class="fc" id="L138">            return order;</span>
         }
 
         // The rules passed (BR-05); the order stays PENDING until execution
         // moves it to FILLED, or rejects it under the row lock.
-<span class="fc" id="L131">        order.setAcceptedAt(OffsetDateTime.now());</span>
-<span class="fc" id="L132">        order = orderRepository.save(order);</span>
+<span class="fc" id="L143">        order.setAcceptedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L144">        order = orderRepository.save(order);</span>
 
-<span class="fc" id="L134">        return orderExecutionService.execute(order, instrument);</span>
+<span class="fc" id="L146">        return orderExecutionService.execute(order, instrument);</span>
     }
 
     /**
@@ -145,7 +157,7 @@ public class OrderService {
      */
     @Transactional(readOnly = true)
     public List&lt;Order&gt; getOwnOrders(UUID userId) {
-<span class="fc" id="L148">        return orderRepository.findAllByOwningUserId(userId);</span>
+<span class="fc" id="L160">        return orderRepository.findAllByOwningUserId(userId);</span>
     }
 }
 
