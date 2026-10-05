@@ -7,14 +7,14 @@ For the normal end-to-end workflow on Windows, use the single PowerShell entrypo
 ```powershell
 $freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
 
-apps/market-data/db/setup-market-data.ps1 `
+apps/market-data/db/scripts/powershell/setup-market-data.ps1 `
   -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
   -AvailableDiskGb $freeDiskGb
 ```
 
-Add `-InitializeDisposableDatabase` only for a first-time disposable setup; it runs the destructive V001 bootstrap. `-Regenerate`, `-Replace`, `-StartDate`, `-EndDate`, `-AvailableDiskGb`, and `-TickStorage` map to the corresponding workflow options. `-TickStorage parquet` is the default and keeps raw ticks in the validated archive instead of PostgreSQL.
+Add `-InitializeDisposableDatabase` only for a first-time disposable setup; it applies V001__Initialize_database.sql followed by V002__Add_watchlist.sql to an empty schema. `-Regenerate`, `-Replace`, `-StartDate`, `-EndDate`, `-AvailableDiskGb`, and `-TickStorage` map to the corresponding workflow options. `-TickStorage parquet` is the default and keeps raw ticks in the validated archive instead of PostgreSQL.
 
-1. `0001-initialize-database.py --database-url URL --disposable-database` applies V001 then V002. This is destructive first-time setup only. Never use it for ordinary seeding.
+1. `0001-initialize-database.py --database-url URL --disposable-database` applies V001__Initialize_database.sql followed by V002__Add_watchlist.sql. This is non-destructive first-time setup only. Never use it for ordinary seeding.
 2. `0002-generate-synthetic-market-data.py [--start-date YYYY-MM-DD --end-date YYYY-MM-DD]` creates ticks and derived candles without database access. An old candle-only or different archive requires `--regenerate`; replacement is validated in staging before publication.
 3. `0003-validate-synthetic-market-data.py` verifies checksums, exact one-second coverage, sequence uniqueness, spreads, and candle agreement without database access.
 4. `0004-import-synthetic-market-data.py --database-url URL [--tick-storage parquet|postgres] [--replace] [--available-disk-gb N]` validates again and imports one calendar month per transaction with bounded PostgreSQL COPY batches. Parquet mode imports candles and records archived tick metadata; PostgreSQL mode also imports raw ticks. It displays a separate 0–100% progress bar for every month. Completed month checkpoints are verified and skipped on restart. The session remains `RUNNING` until every requested month is verified, then becomes `COMPLETED`.
@@ -38,3 +38,11 @@ Measured on 2026-09-15 on a Windows development host using Python 3.13, DuckDB 1
 | Full year estimate from weekly rate | 61,074,000 | 1,017,900 | about 6.4 min | about 1.51 GiB |
 
 Docker/PostgreSQL were unavailable on that host and its process launcher did not expose trustworthy peak memory, so those values are not fabricated. The Jenkins two-day integration publishes GNU `time -v` generation/import measurements, compressed archive bytes, and `pg_database_size`. Use a completed native-agent one-day and one-week run to report database/index size, disk growth, and full-year projections.
+
+
+## Folder layout
+
+- `python/`: numbered Python entry points, shared `lib/`, generation `config/`, and dependency requirements.
+- `powershell/`: `setup-database.ps1` and `setup-market-data.ps1` launchers.
+
+Run launchers from the repository root. Both resolve the database directory from their own location; the virtual environment remains at `apps/market-data/db/.venv`, schema SQL remains in `db/migrations`, and generated data remains in `db/seeds`.

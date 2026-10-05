@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InstrumentResponse.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.instrument</a> &gt; <span class="el_source">InstrumentResponse.java</span></div><h1>InstrumentResponse.java</h1><pre class="source lang-java linenums">package app.instrument;
+
+/**
+ * One tradable asset as the order form needs it (DUA-63).
+ *
+ * &lt;p&gt;A client picks a symbol, but an order is placed against an
+ * {@code instrumentId}, so this is the lookup that turns the one into the
+ * other. Both symbols an instrument can be known by are included:
+ * {@code ticker} is its own identifier, and {@code simulatedStockSymbol} is
+ * the market-data symbol whose prices stand in for it, which is what
+ * {@code GET /api/market/snapshot} reports. They usually match, but only the
+ * latter joins an instrument to a live price, so a client mapping a quote to
+ * an instrument should prefer it and fall back to the ticker.
+ *
+ * @param instrumentId          the id an order references
+ * @param ticker                the instrument's own symbol
+ * @param name                  display name
+ * @param assetClass            Equity, FX, or Crypto
+ * @param market                UK, US, or IN for equities; null otherwise
+ * @param currency              the currency it trades in
+ * @param tradable              BR-05: false means an order against it is rejected
+ * @param simulatedStockSymbol  the market-data symbol quoting it, or null when unsimulated
+ */
+<span class="fc" id="L24">public record InstrumentResponse(</span>
+        Integer instrumentId,
+        String ticker,
+        String name,
+        String assetClass,
+        String market,
+        String currency,
+        boolean tradable,
+        String simulatedStockSymbol
+) {
+    /**
+     * Builds a response from a persisted instrument.
+     *
+     * @param instrument the instrument row
+     * @return the client-facing view of it
+     */
+    public static InstrumentResponse from(Instrument instrument) {
+<span class="fc" id="L41">        return new InstrumentResponse(</span>
+<span class="fc" id="L42">                instrument.getInstrumentId(),</span>
+<span class="fc" id="L43">                instrument.getTicker(),</span>
+<span class="fc" id="L44">                instrument.getName(),</span>
+<span class="fc" id="L45">                instrument.getAssetClass(),</span>
+<span class="fc" id="L46">                instrument.getMarket(),</span>
+<span class="fc" id="L47">                instrument.getCurrency(),</span>
+<span class="fc" id="L48">                Boolean.TRUE.equals(instrument.isTradable()),</span>
+<span class="fc" id="L49">                instrument.getSimulatedStockSymbol()</span>
+        );
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

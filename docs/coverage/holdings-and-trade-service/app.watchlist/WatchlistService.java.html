@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WatchlistService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.watchlist</a> &gt; <span class="el_source">WatchlistService.java</span></div><h1>WatchlistService.java</h1><pre class="source lang-java linenums">package app.watchlist;
+
+import app.user.UserNotFoundException;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
+
+/** Manages the caller's single watchlist across all trading accounts. */
+@Service
+public class WatchlistService {
+    private final WatchlistRepository repository;
+
+    /**
+     * @param repository caller-scoped saved stock persistence
+     */
+<span class="fc" id="L20">    public WatchlistService(WatchlistRepository repository) { this.repository = repository; }</span>
+
+    /**
+     * @param owner verified caller UUID
+     * @return stocks ordered by addition time
+     */
+<span class="fc" id="L26">    public List&lt;WatchlistRepository.Entry&gt; list(UUID owner) { return repository.list(owner); }</span>
+
+    /**
+     * Saves a stock once, preserving the original addition time on retries.
+     * @param owner verified caller UUID
+     * @param symbol stock symbol
+     * @return saved stock
+     * @throws UserNotFoundException if the caller has no business profile
+     * @throws ResponseStatusException with 404 if the stock is unknown
+     */
+    @Transactional
+    public WatchlistRepository.Entry add(UUID owner, String symbol) {
+<span class="fc" id="L38">        String normalized = symbol.trim().toUpperCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        if (!repository.stockExists(normalized)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, &quot;Unknown stock symbol&quot;);</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (!repository.lockOwner(owner)) throw new UserNotFoundException(&quot;Business profile not found&quot;);</span>
+<span class="fc" id="L41">        repository.add(owner, normalized);</span>
+<span class="fc" id="L42">        return repository.list(owner).stream().filter(entry -&gt; entry.symbol().equals(normalized)).findFirst().orElseThrow();</span>
+    }
+
+    /**
+     * @param owner verified caller UUID
+     * @param symbol stock symbol; removal is idempotent
+     */
+    @Transactional
+    public void remove(UUID owner, String symbol) {
+<span class="fc" id="L51">        repository.lockOwner(owner);</span>
+<span class="fc" id="L52">        repository.remove(owner, symbol.trim().toUpperCase(Locale.ROOT));</span>
+<span class="fc" id="L53">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

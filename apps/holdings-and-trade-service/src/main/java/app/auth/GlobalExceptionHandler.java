@@ -88,7 +88,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(InsufficientFundsException.class)
     public ResponseEntity<Map<String, String>> handleInsufficientFunds(InsufficientFundsException ex) {
-        return error(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
+        return error(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage());
     }
 
     /**

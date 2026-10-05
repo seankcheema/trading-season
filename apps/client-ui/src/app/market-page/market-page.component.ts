@@ -1,7 +1,28 @@
+import { WatchlistStore } from '../dashboard/watchlist/watchlist-store.service';
+import { WatchlistStarComponent } from '../dashboard/watchlist/watchlist-star.component';
+import { DestroyRef } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AccountStore } from '../dashboard/accounts/account-store.service';
+import { Account } from '../dashboard/accounts/account.models';
+import { AccountDialogComponent } from '../dashboard/accounts/account-dialog.component';
+import { cashAt, holdingsAt, executionTime } from '../dashboard/accounts/simulation-account';
+import { OrderService } from '../dashboard/orders/order.service';
+import { OrderResult } from '../dashboard/orders/order.models';
+import { toOrderErrorMessage } from '../dashboard/orders/order-error';
+import { ToastService } from '../notifications/toast.service';
+import { AuthService } from '../core/auth/auth.service';
+import { DashboardHeaderDropdownComponent } from '../dashboard/shared/dashboard-header-dropdown.component';
+import { SettingsDialogComponent } from '../dashboard/settings-dialog/settings-dialog.component';
+import { AccountControlComponent } from '../dashboard/shared/account-control.component';
+import { MarketClockControlComponent } from '../dashboard/shared/market-clock-control.component';
+import { MarketClockService } from '../dashboard/shared/market-clock.service';
+import { ActivityItem, ActivityRowComponent } from '../dashboard/shared/activity-row.component';
+import { TradeTicketDraft } from '../dashboard/shared/trade-ticket.component';
 import { CurrencyPipe, DecimalPipe, TitleCasePipe, isPlatformBrowser } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   HostListener,
   NgZone,
   OnDestroy,
@@ -11,12 +32,15 @@ import {
   effect,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideActivity,
   lucideBell,
+  lucideSettings,
+  lucideLogOut,
   lucideChevronDown,
   lucideChevronLeft,
   lucideChevronRight,
@@ -66,7 +90,9 @@ import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component
 
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
-type InsightTab = 'overview' | 'news' | 'ai';
+
+type InsightTab = 'overview' | 'news' | 'ai' | 'recent-orders';
+
 type ToolbarMenu = 'indicators' | 'chart-mode' | 'comparison';
 type TickAnimation = {
   direction: 'gain' | 'loss';
@@ -100,6 +126,17 @@ interface MarketStats {
   selector: 'app-market-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    WatchlistStarComponent,
+    DashboardHeaderDropdownComponent,
+    SettingsDialogComponent,
+    AccountControlComponent,
+
+    AccountDialogComponent,
+
+    MarketClockControlComponent,
+
+    ActivityRowComponent,
+
     CurrencyPipe,
     DecimalPipe,
     InstrumentSearchComponent,
@@ -112,9 +149,13 @@ interface MarketStats {
     TradeTicketComponent,
   ],
   providers: [
+    MarketClockService,
+
     provideIcons({
       lucideActivity,
       lucideBell,
+      lucideSettings,
+      lucideLogOut,
       lucideChevronDown,
       lucideChevronLeft,
       lucideChevronRight,
@@ -146,12 +187,330 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   private readonly marketData = inject(MarketDataService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly authService = inject(AuthService);
   private readonly zone = inject(NgZone);
   private readonly platformId = inject(PLATFORM_ID);
   private routeSubscription?: Subscription;
   private disconnectMarket?: () => void;
   private readonly openingPrices = new Map<string, number>();
   private readonly tickAnimationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  protected readonly accountStore = inject(AccountStore);
+
+  protected readonly orders = inject(OrderService);
+  protected readonly clock = inject(MarketClockService);
+
+  private readonly toasts = inject(ToastService);
+  private readonly destroyRef = inject(DestroyRef);
+
+  protected readonly openHeaderDropdown = signal<
+    'account' | 'market-clock' | 'profile' | 'notifications' | null
+  >(null);
+  protected readonly profileInitials = this.accountStore.initials;
+  protected readonly settingsOpen = signal(false);
+
+  protected onSettings(): void {
+    this.openHeaderDropdown.set(null);
+    this.settingsOpen.set(true);
+  }
+
+  protected onSignOut(): void {
+    this.openHeaderDropdown.set(null);
+    this.authService.logout().subscribe(() => void this.router.navigateByUrl('/login'));
+  }
+  protected readonly accountDialog = signal<{ account: Account | null } | null>(null);
+
+  private readonly requestedAccountId = signal<number | null>(null);
+  private appliedAccountId: number | null = null;
+  private readonly selectRequestedAccount = effect(() => {
+    const id = this.requestedAccountId();
+
+    if (this.accountStore.status() === 'ready' && id !== null && id !== this.appliedAccountId) {
+      this.appliedAccountId = id;
+      this.accountStore.selectAccount(id);
+    }
+  });
+
+  protected readonly submitting = signal(false);
+  protected readonly refreshing = signal(false);
+
+  private readonly coolingDown = signal(false);
+  private cooldownTimer?: ReturnType<typeof setTimeout>;
+
+  protected readonly orderMessage = signal('');
+  protected readonly orderError = signal('');
+
+  protected readonly refreshAccountId = signal<number | null>(null);
+  protected readonly catalogueStatus = signal<'loading' | 'ready' | 'error'>('loading');
+
+  protected readonly busy = computed(
+    () => this.submitting() || this.coolingDown() || this.refreshing(),
+  );
+
+  protected readonly tradeReady = computed(
+    () =>
+      this.accountStore.status() === 'ready' &&
+      this.accountStore.selectedAccountId() !== null &&
+      this.orders.historyStatus() === 'ready' &&
+      this.catalogueStatus() === 'ready' &&
+      this.pageStatus() === 'ready' &&
+      !this.clock.clockUpdating() &&
+      this.refreshAccountId() === null,
+  );
+
+  private readonly simulationTime = computed(() => {
+    const at = Date.parse(this.marketTimestamp());
+    return Number.isFinite(at) ? at : null;
+  });
+
+  private readonly simulationHoldings = computed(
+    () =>
+      new Map(
+        [...this.accountStore.holdingsByAccount()].map(([id, current]) => [
+          id,
+          this.simulationTime() === null
+            ? current
+            : holdingsAt(
+                current,
+                this.orders.orders(),
+                this.orders.catalogue(),
+                id,
+                this.simulationTime()!,
+              ),
+        ]),
+      ),
+  );
+
+  protected readonly cashBalance = computed(() =>
+    this.simulationTime() === null
+      ? this.accountStore.cashBalance()
+      : cashAt(this.accountStore.cashBalance(), this.orders.orders(), this.simulationTime()!),
+  );
+
+  // Trading balances include every completed fill, regardless of the replay cursor.
+  protected readonly tradingCashBalance = this.accountStore.cashBalance;
+  private readonly tradeTicket = viewChild(TradeTicketComponent);
+  protected readonly availableCash = computed(() => {
+    const draft = this.tradeTicket()?.draft();
+    return draft?.side === 'buy'
+      ? Math.max(0, this.cashBalance() - draft.estimatedValue)
+      : this.cashBalance();
+  });
+  protected readonly heldShares = computed(
+    () =>
+      this.accountStore.selectedHoldings().find((h) => h.symbol === this.symbol())?.quantity ?? 0,
+  );
+
+  protected readonly portfolioValues = computed(
+    () =>
+      new Map(
+        [...this.simulationHoldings()].map(([id, holdings]) => [
+          id,
+          holdings.reduce(
+            (sum, h) =>
+              sum +
+              h.quantity * (findInstrument(h.symbol, this.instruments())?.price ?? h.averageCost),
+            0,
+          ),
+        ]),
+      ),
+  );
+
+  protected readonly recentOrders = computed<ActivityItem[]>(() =>
+    this.orders
+      .orders()
+
+      .filter((order) => order.accountId === this.accountStore.selectedAccountId())
+
+      .map((order) => ({
+        order,
+        at: Number.isFinite(executionTime(order))
+          ? executionTime(order)
+          : Date.parse(order.submittedAt),
+      }))
+
+      .filter(
+        ({ at }) =>
+          Number.isFinite(at) && (this.simulationTime() === null || at <= this.simulationTime()!),
+      )
+
+      .sort((a, b) => b.at - a.at || b.order.orderId - a.order.orderId)
+      .slice(0, 20)
+
+      .map(({ order, at }) => {
+        const ref = this.orders.catalogue().find((ref) => ref.instrumentId === order.instrumentId);
+        return {
+          kind: 'trade',
+          key: `order-${order.orderId}`,
+          date: new Date(at).toISOString(),
+          reason: order.orderType,
+
+          value: order.quantity * order.indicativePrice,
+          label: ref?.simulatedStockSymbol ?? ref?.ticker ?? `Order #${order.orderId}`,
+
+          detail: `${order.quantity} ${order.quantity === 1 ? 'share' : 'shares'} · ${order.status === 'FILLED' ? 'Filled' : order.status === 'REJECTED' ? 'Rejected' : 'Pending'}`,
+
+          positive: order.orderType === 'SELL',
+          status: order.status,
+          rejectionReason: order.rejectionReason,
+        };
+      }),
+  );
+
+  private readonly resetOutcome = effect(() => {
+    this.symbol();
+    this.accountStore.selectedAccountId();
+    this.orderMessage.set('');
+    this.orderError.set('');
+  });
+
+  protected loadTradingData(): void {
+    this.orders
+      .loadOrders()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({ error: () => undefined });
+
+    this.catalogueStatus.set('loading');
+
+    this.orders
+      .instruments()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => this.catalogueStatus.set('ready'),
+        error: () => this.catalogueStatus.set('error'),
+      });
+  }
+
+  protected selectAccount(id: number): void {
+    if (!this.accountStore.selectAccount(id)) return;
+
+    this.requestedAccountId.set(id);
+
+    this.openHeaderDropdown.set(null);
+
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { accountId: id },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
+
+  protected openCreateAccount(): void {
+    this.openHeaderDropdown.set(null);
+    this.accountDialog.set({ account: null });
+  }
+
+  protected openRenameAccount(account: Account): void {
+    if (this.accountStore.isOwnedAccount(account.accountId)) {
+      this.openHeaderDropdown.set(null);
+      this.accountDialog.set({ account });
+    }
+  }
+
+  protected onAccountSaved(account: Account): void {
+    this.accountDialog.set(null);
+    this.selectAccount(this.accountStore.selectedAccountId() ?? account.accountId);
+  }
+  protected onClockSnapshot(snapshot: MarketSnapshot): void {
+    this.disconnectMarket?.();
+    this.clearTickAnimations();
+    this.applySnapshot(snapshot);
+  }
+
+  protected submitOrder(draft: TradeTicketDraft): void {
+    const accountId = Number(draft.accountId);
+
+    if (
+      !this.tradeReady() ||
+      this.busy() ||
+      !this.accountStore.isOwnedAccount(accountId) ||
+      !Number.isInteger(draft.quantity) ||
+      draft.quantity <= 0 ||
+      draft.symbol !== this.symbol()
+    )
+      return;
+
+    const price = this.instrument()?.price ?? 0;
+
+    const maximum =
+      draft.side === 'buy'
+        ? Math.floor(this.tradingCashBalance() / price)
+        : Math.floor(this.heldShares());
+
+    if (!Number.isFinite(price) || price <= 0 || draft.quantity > maximum) return;
+
+    const simulated = this.marketTimestamp();
+
+    this.submitting.set(true);
+    this.coolingDown.set(true);
+
+    this.cooldownTimer = setTimeout(() => this.coolingDown.set(false), 1000);
+
+    this.orderMessage.set('');
+    this.orderError.set('');
+
+    this.orders
+      .submitOrder({
+        accountId,
+        symbol: draft.symbol,
+        orderType: draft.side === 'buy' ? 'BUY' : 'SELL',
+        quantity: draft.quantity,
+        indicativePrice: price,
+        simulatedAt: Number.isFinite(Date.parse(simulated))
+          ? new Date(simulated).toISOString()
+          : undefined,
+      })
+
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (result: OrderResult) => {
+          this.submitting.set(false);
+
+          if (result.status === 'FILLED') {
+            const message = `Filled ${result.quantity} ${draft.symbol} at ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(result.indicativePrice)}.`;
+
+            this.orderMessage.set(message);
+            this.toasts.show(message, 'success');
+            this.refreshBalances(accountId);
+          } else if (result.status === 'REJECTED') {
+            const message = `Rejected: ${result.rejectionReason ?? 'The order was rejected.'}`;
+            this.orderError.set(message);
+            this.toasts.show(message, 'error');
+          } else this.orderMessage.set('Order pending.');
+        },
+        error: (error: unknown) => {
+          this.submitting.set(false);
+          const message = toOrderErrorMessage(error);
+          this.orderError.set(message);
+          this.toasts.show(message, 'error');
+        },
+      });
+  }
+
+  protected retryBalances(): void {
+    const id = this.refreshAccountId();
+    if (id !== null) this.refreshBalances(id);
+  }
+
+  private refreshBalances(id: number): void {
+    this.refreshing.set(true);
+
+    this.accountStore
+      .refreshAfterTrade(id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.refreshing.set(false);
+          this.refreshAccountId.set(null);
+          this.orderError.set('');
+        },
+        error: () => {
+          this.refreshing.set(false);
+          this.refreshAccountId.set(id);
+          this.orderError.set('Order filled, but balances could not be refreshed.');
+        },
+      });
+  }
 
   protected readonly symbol = signal('');
   protected readonly tickAnimations = signal(new Map<string, TickAnimation>());
@@ -244,6 +603,8 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   private readonly comparisonCandles = signal<MarketCandlePoint[]>([]);
   protected readonly chartCandles = computed(() => {
     const instrument = this.instrument();
+    if ((this.candles().at(-1)?.time.getTime() ?? -Infinity) > Date.parse(this.marketTimestamp()))
+      return this.candles();
     return instrument
       ? applyLiveCandlePrice(this.candles(), instrument.price, this.marketTimestamp())
       : [];
@@ -263,6 +624,11 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   );
   protected readonly comparisonChartCandles = computed(() => {
     const instrument = this.comparisonInstrument();
+    if (
+      (this.comparisonCandles().at(-1)?.time.getTime() ?? -Infinity) >
+      Date.parse(this.marketTimestamp())
+    )
+      return this.comparisonCandles();
     return instrument
       ? applyLiveCandlePrice(this.comparisonCandles(), instrument.price, this.marketTimestamp())
       : [];
@@ -275,23 +641,44 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       marketCap: '$3.42T',
     } as const;
   });
+  protected readonly chartRefreshing = signal(false);
+  protected readonly chartRefreshError = signal('');
+  protected readonly chartTimeframe = signal<Timeframe>('1D');
+  protected readonly comparisonTimeframe = signal<Timeframe>('1D');
+  private chartContext = '';
+  private comparisonContext = '';
+  private readonly candleMinute = computed(() => this.marketTimestamp().slice(0, 16));
   private readonly candleLoader = effect((onCleanup) => {
     const sessionId = this.sessionId();
     const symbol = this.symbol();
     const timeframe = this.timeframe();
     this.candleRevision();
+    this.candleMinute();
+    this.marketData.revision?.();
     if (sessionId === null || !symbol || this.pageStatus() !== 'ready') {
       return;
     }
-    this.chartStatus.set('loading');
-    this.candles.set([]);
+    const context = `${sessionId}:${symbol}`;
+    if (context !== this.chartContext) {
+      this.candles.set([]);
+      this.chartContext = context;
+      this.chartStatus.set('loading');
+    }
+    this.chartRefreshing.set(true);
+    this.chartRefreshError.set('');
     const subscription = this.marketData.candles(sessionId, symbol, timeframe).subscribe({
       next: (series) => {
         const points = marketCandlePoints(series.points);
         this.candles.set(points);
+        this.chartTimeframe.set(timeframe);
+        this.chartRefreshing.set(false);
         this.chartStatus.set(points.length ? 'ready' : 'empty');
       },
-      error: () => this.chartStatus.set('error'),
+      error: () => {
+        this.chartRefreshing.set(false);
+        this.chartRefreshError.set('Chart data could not refresh.');
+        if (!this.candles().length) this.chartStatus.set('error');
+      },
     });
     onCleanup(() => subscription.unsubscribe());
   });
@@ -300,26 +687,44 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     const symbol = this.comparisonSymbol();
     const timeframe = this.timeframe();
     this.candleRevision();
+    this.candleMinute();
+    this.marketData.revision?.();
     if (sessionId === null || !symbol || this.pageStatus() !== 'ready') {
       this.comparisonCandles.set([]);
       this.comparisonChartStatus.set('loading');
       return;
     }
-    this.comparisonChartStatus.set('loading');
-    this.comparisonCandles.set([]);
+    const context = `${sessionId}:${symbol}`;
+    if (context !== this.comparisonContext) {
+      this.comparisonCandles.set([]);
+      this.comparisonContext = context;
+      this.comparisonChartStatus.set('loading');
+    }
     const subscription = this.marketData.candles(sessionId, symbol, timeframe).subscribe({
       next: (series) => {
         const points = marketCandlePoints(series.points);
         this.comparisonCandles.set(points);
+        this.comparisonTimeframe.set(timeframe);
         this.comparisonChartStatus.set(points.length ? 'ready' : 'empty');
       },
-      error: () => this.comparisonChartStatus.set('error'),
+      error: () => {
+        this.chartRefreshError.set('Comparison chart could not refresh.');
+        if (!this.comparisonCandles().length) this.comparisonChartStatus.set('error');
+      },
     });
     onCleanup(() => subscription.unsubscribe());
   });
 
+  protected readonly watchlist = inject(WatchlistStore);
+
   ngOnInit(): void {
     if (!isPlatformBrowser(this.platformId)) return;
+
+    this.watchlist.load(true).subscribe({ error: () => undefined });
+    this.accountStore.load();
+
+    this.loadTradingData();
+
     this.routeSubscription = new Subscription();
     this.routeSubscription.add(
       this.route.paramMap.subscribe((params) => {
@@ -340,6 +745,12 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     );
     this.routeSubscription.add(
       this.route.queryParamMap.subscribe((params) => {
+        const accountId = Number(params.get('accountId'));
+
+        this.requestedAccountId.set(
+          Number.isInteger(accountId) && accountId > 0 ? accountId : null,
+        );
+
         const rawSymbol = params.get('compare') ?? '';
         const symbol = normalizeMarketSymbol(rawSymbol);
         this.comparisonSymbol.set(symbol);
@@ -356,6 +767,8 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    clearTimeout(this.cooldownTimer);
+
     this.routeSubscription?.unsubscribe();
     this.disconnectMarket?.();
     this.clearTickAnimations();
@@ -368,8 +781,12 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected selectInstrument(instrument: Instrument): void {
     const compare = this.comparisonSymbol();
     void this.router.navigate(['/dashboard/markets', marketSymbolSlug(instrument.symbol)], {
-      queryParams:
-        compare && compare !== instrument.symbol ? { compare: marketSymbolSlug(compare) } : {},
+      queryParams: {
+        compare: compare && compare !== instrument.symbol ? marketSymbolSlug(compare) : null,
+        accountId: this.accountStore.selectedAccountId(),
+      },
+
+      queryParamsHandling: 'merge',
     });
   }
 
@@ -394,8 +811,28 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     this.openToolbarMenu.set(null);
   }
 
+  private readonly menuHost = inject(ElementRef<HTMLElement>);
+  protected readonly toolbarMenuPosition = signal({ left: 0, top: 0 });
+
+  @HostListener('window:resize')
+  protected positionToolbarMenu(): void {
+    const menu = this.openToolbarMenu();
+    const id = menu === 'indicators' ? 'indicator-picker' :
+      menu === 'chart-mode' ? 'chart-mode-picker' : 'comparison-picker';
+    const toolbar = this.menuHost.nativeElement.querySelector('.chart-toolbar');
+    const trigger = toolbar?.querySelector(`[aria-controls="${id}"]`);
+    if (!menu || !toolbar || !trigger) return;
+    const frame = toolbar.getBoundingClientRect();
+    const button = trigger.getBoundingClientRect();
+    this.toolbarMenuPosition.set({
+      left: Math.max(0, button.left - frame.left),
+      top: button.bottom - frame.top + 8,
+    });
+  }
+
   protected toggleToolbarMenu(menu: ToolbarMenu): void {
     this.openToolbarMenu.update((open) => (open === menu ? null : menu));
+    this.positionToolbarMenu();
   }
 
   protected toggleIndicator(indicator: TechnicalIndicator): void {
@@ -433,20 +870,35 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       return;
     }
     this.openToolbarMenu.set(null);
+
+    if (!(
+      target instanceof Element &&
+      target.closest('app-dashboard-header-dropdown, app-market-clock-control, app-account-control')
+    ))
+      this.openHeaderDropdown.set(null);
   }
 
   private loadSnapshot(): void {
     this.disconnectMarket?.();
     this.disconnectMarket = undefined;
     this.connected.set(false);
-    this.pageStatus.set('loading');
-    this.marketData.snapshot().subscribe({
-      next: (snapshot) => this.applySnapshot(snapshot),
-      error: () => this.pageStatus.set('error'),
-    });
+    if (!findInstrument(this.symbol(), this.instruments())) this.pageStatus.set('loading');
+    this.marketData
+      .snapshot()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (snapshot) => this.applySnapshot(snapshot),
+        error: () => {
+          if (this.pageStatus() !== 'ready') this.pageStatus.set('error');
+          else this.chartRefreshError.set('Market snapshot could not refresh.');
+        },
+      });
   }
 
   private applySnapshot(snapshot: MarketSnapshot): void {
+    // Cached snapshots and their revalidation each emit; retire the previous stream.
+    this.disconnectMarket?.();
+    this.disconnectMarket = undefined;
     const instruments = snapshot.stocks.map((stock) => ({
       symbol: stock.symbol,
       name: stock.companyName,
@@ -466,6 +918,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     }
     this.sessionId.set(snapshot.sessionId);
     this.marketTimestamp.set(snapshot.marketTimestamp);
+
+    this.clock.sync(snapshot);
+
     this.candleRevision.update((revision) => revision + 1);
     this.pageStatus.set('ready');
     this.validateComparison();
@@ -480,6 +935,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     const prices = new Map(event.prices.map((price) => [price.symbol, price.price]));
     this.zone.run(() => {
       this.marketTimestamp.set(event.marketTimestamp);
+
+      this.clock.currentMarketTimestamp.set(event.marketTimestamp);
+
       const previousPrices = new Map(
         this.instruments().map((instrument) => [instrument.symbol, instrument.price]),
       );

@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GlobalExceptionHandler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.auth</a> &gt; <span class="el_source">GlobalExceptionHandler.java</span></div><h1>GlobalExceptionHandler.java</h1><pre class="source lang-java linenums">package app.auth;
 
 
+import app.account.AccountNotFoundException;
+import app.instrument.InstrumentNotFoundException;
 import app.user.UserNotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -18,7 +20,7 @@ import java.util.stream.Collectors;
  * earlier, by {@link SecurityErrorHandler}.
  */
 @RestControllerAdvice
-<span class="fc" id="L21">public class GlobalExceptionHandler {</span>
+<span class="fc" id="L23">public class GlobalExceptionHandler {</span>
 
     /**
      * Handles duplicate account or email registration attempts.
@@ -28,7 +30,7 @@ import java.util.stream.Collectors;
      */
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleConflict(ConflictException ex) {
-<span class="fc" id="L31">        return error(HttpStatus.CONFLICT, ex.getMessage());</span>
+<span class="fc" id="L33">        return error(HttpStatus.CONFLICT, ex.getMessage());</span>
     }
 
     /**
@@ -40,7 +42,7 @@ import java.util.stream.Collectors;
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleDataIntegrity(DataIntegrityViolationException ex) {
-<span class="nc" id="L43">        return error(HttpStatus.CONFLICT, &quot;Account or email is already registered&quot;);</span>
+<span class="fc" id="L45">        return error(HttpStatus.CONFLICT, &quot;Account or email is already registered&quot;);</span>
     }
 
     /**
@@ -51,7 +53,7 @@ import java.util.stream.Collectors;
      */
     @ExceptionHandler(ForbiddenException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleForbidden(ForbiddenException ex) {
-<span class="fc" id="L54">        return error(HttpStatus.FORBIDDEN, ex.getMessage());</span>
+<span class="fc" id="L56">        return error(HttpStatus.FORBIDDEN, ex.getMessage());</span>
     }
 
     /**
@@ -62,7 +64,31 @@ import java.util.stream.Collectors;
      */
     @ExceptionHandler(UserNotFoundException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleNotFound(UserNotFoundException ex) {
-<span class="fc" id="L65">        return error(HttpStatus.NOT_FOUND, ex.getMessage());</span>
+<span class="fc" id="L67">        return error(HttpStatus.NOT_FOUND, ex.getMessage());</span>
+    }
+
+    /**
+     * Handles an order naming an account id that does not exist.
+     *
+     * @param ex the lookup failure
+     * @return 404 with the failure message
+     */
+    @ExceptionHandler(AccountNotFoundException.class)
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleAccountNotFound(AccountNotFoundException ex) {
+<span class="fc" id="L78">        return error(HttpStatus.NOT_FOUND, ex.getMessage());</span>
+    }
+
+    /**
+     * Handles an order naming an instrument id that does not exist. This is a
+     * malformed request rather than a trading-rule rejection, which is why it
+     * is a 400 and not a 201 carrying a REJECTED order.
+     *
+     * @param ex the lookup failure
+     * @return 400 with the failure message
+     */
+    @ExceptionHandler(InstrumentNotFoundException.class)
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleInstrumentNotFound(InstrumentNotFoundException ex) {
+<span class="fc" id="L91">        return error(HttpStatus.BAD_REQUEST, ex.getMessage());</span>
     }
 
     /**
@@ -73,14 +99,14 @@ import java.util.stream.Collectors;
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleValidation(MethodArgumentNotValidException ex) {
-<span class="fc" id="L76">        String message = ex.getBindingResult().getFieldErrors().stream()</span>
-<span class="fc" id="L77">                .map(fieldError -&gt; fieldError.getField() + &quot;: &quot; + fieldError.getDefaultMessage())</span>
-<span class="fc" id="L78">                .collect(Collectors.joining(&quot;; &quot;));</span>
-<span class="fc" id="L79">        return error(HttpStatus.BAD_REQUEST, message);</span>
+<span class="fc" id="L102">        String message = ex.getBindingResult().getFieldErrors().stream()</span>
+<span class="fc" id="L103">                .map(fieldError -&gt; fieldError.getField() + &quot;: &quot; + fieldError.getDefaultMessage())</span>
+<span class="fc" id="L104">                .collect(Collectors.joining(&quot;; &quot;));</span>
+<span class="fc" id="L105">        return error(HttpStatus.BAD_REQUEST, message);</span>
     }
 
     private static ResponseEntity&lt;Map&lt;String, String&gt;&gt; error(HttpStatus status, String message) {
-<span class="fc" id="L83">        return ResponseEntity.status(status).body(Map.of(&quot;error&quot;, message));</span>
+<span class="fc" id="L109">        return ResponseEntity.status(status).body(Map.of(&quot;error&quot;, message));</span>
     }
 }
 

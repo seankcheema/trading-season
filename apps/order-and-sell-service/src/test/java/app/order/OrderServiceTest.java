@@ -3,6 +3,7 @@ package app.order;
 import app.account.Account;
 import app.account.AccountNotFoundException;
 import app.account.AccountRepository;
+import app.auth.ForbiddenException;
 import app.holding.Holding;
 import app.holding.HoldingRepository;
 import app.instrument.Instrument;
@@ -160,7 +161,7 @@ class OrderServiceTest {
 
     @Test
     void buyOrderIsCreatedPendingAndEndsFilled() {
-        Order order = orderService.submitOrder(order("BUY", "100", "50.00"));
+        Order order = orderService.submitOrder(order("BUY", "100", "50.00"), user.getUserId());
 
         assertEquals(Order.STATUS_FILLED, order.getStatus());
         assertNull(order.getRejectionReason());
@@ -171,7 +172,7 @@ class OrderServiceTest {
 
     @Test
     void buyOrderDecreasesUsersAvailableFunds() {
-        orderService.submitOrder(order("BUY", "100", "50.00"));
+        orderService.submitOrder(order("BUY", "100", "50.00"), user.getUserId());
 
         assertEquals(0, new BigDecimal("95000.00").compareTo(availableFunds()));
         assertEquals(1, fillRepository.count());
@@ -183,7 +184,7 @@ class OrderServiceTest {
 
     @Test
     void buyOrderAddsToHoldings() {
-        orderService.submitOrder(order("BUY", "100", "50.00"));
+        orderService.submitOrder(order("BUY", "100", "50.00"), user.getUserId());
 
         Holding holding = holdingRepository
                 .findByAccountIdAndInstrumentId(account.getAccountId(), instrument.getInstrumentId())
@@ -196,7 +197,7 @@ class OrderServiceTest {
         user.setAvailableFunds(new BigDecimal("1000.00"));
         userRepository.save(user);
 
-        Order order = orderService.submitOrder(order("BUY", "100", "50.00"));
+        Order order = orderService.submitOrder(order("BUY", "100", "50.00"), user.getUserId());
 
         assertEquals(Order.STATUS_REJECTED, order.getStatus());
         assertTrue(order.getRejectionReason().contains("BR-09"));
@@ -211,7 +212,7 @@ class OrderServiceTest {
         user.setAvailableFunds(new BigDecimal("5000.00"));
         userRepository.save(user);
 
-        Order order = orderService.submitOrder(order("BUY", "100", "50.00"));
+        Order order = orderService.submitOrder(order("BUY", "100", "50.00"), user.getUserId());
 
         assertEquals(Order.STATUS_FILLED, order.getStatus());
         assertEquals(0, BigDecimal.ZERO.compareTo(availableFunds()));
@@ -221,7 +222,7 @@ class OrderServiceTest {
     void sellOrderAddsFundsBackToUser() {
         holdingOf("50");
 
-        Order order = orderService.submitOrder(order("SELL", "50", "100.00"));
+        Order order = orderService.submitOrder(order("SELL", "50", "100.00"), user.getUserId());
 
         assertEquals(Order.STATUS_FILLED, order.getStatus());
         assertEquals(0, new BigDecimal("105000.00").compareTo(availableFunds()));
@@ -236,7 +237,7 @@ class OrderServiceTest {
     void sellOrderWithoutEnoughHoldingsIsRejected() {
         holdingOf("10");
 
-        Order order = orderService.submitOrder(order("SELL", "50", "100.00"));
+        Order order = orderService.submitOrder(order("SELL", "50", "100.00"), user.getUserId());
 
         assertEquals(Order.STATUS_REJECTED, order.getStatus());
         assertNotNull(order.getRejectionReason());
@@ -256,7 +257,7 @@ class OrderServiceTest {
                 UUID.randomUUID()
         );
 
-        Order order = orderService.submitOrder(request);
+        Order order = orderService.submitOrder(request, user.getUserId());
 
         assertNotNull(order);
         assertNotNull(order.getOrderId());
@@ -281,7 +282,7 @@ class OrderServiceTest {
                 UUID.randomUUID()
         );
 
-        Order order = orderService.submitOrder(request);
+        Order order = orderService.submitOrder(request, user.getUserId());
 
         assertNotNull(order);
         assertEquals(0, user.getExecutionBufferPercent().compareTo(order.getBufferPercent()));
@@ -300,7 +301,7 @@ class OrderServiceTest {
                 clientRef
         );
 
-        Order firstOrder = orderService.submitOrder(request1);
+        Order firstOrder = orderService.submitOrder(request1, user.getUserId());
         Integer firstOrderId = firstOrder.getOrderId();
 
         // Submit with same client reference
@@ -314,7 +315,7 @@ class OrderServiceTest {
                 clientRef
         );
 
-        Order secondOrder = orderService.submitOrder(request2);
+        Order secondOrder = orderService.submitOrder(request2, user.getUserId());
         assertEquals(firstOrderId, secondOrder.getOrderId());
     }
 
@@ -330,7 +331,7 @@ class OrderServiceTest {
                 UUID.randomUUID()
         );
 
-        assertThrows(AccountNotFoundException.class, () -> orderService.submitOrder(request));
+        assertThrows(AccountNotFoundException.class, () -> orderService.submitOrder(request, user.getUserId()));
     }
 
     @Test
@@ -345,7 +346,7 @@ class OrderServiceTest {
                 UUID.randomUUID()
         );
 
-        assertThrows(InstrumentNotFoundException.class, () -> orderService.submitOrder(request));
+        assertThrows(InstrumentNotFoundException.class, () -> orderService.submitOrder(request, user.getUserId()));
     }
 
     @Test
@@ -360,7 +361,7 @@ class OrderServiceTest {
                 UUID.randomUUID()
         );
 
-        Order order = orderService.submitOrder(request);
+        Order order = orderService.submitOrder(request, user.getUserId());
 
         Optional<Order> retrieved = orderRepository.findById(order.getOrderId());
         assertTrue(retrieved.isPresent());
@@ -381,11 +382,58 @@ class OrderServiceTest {
         );
 
         OffsetDateTime beforeSubmit = OffsetDateTime.now();
-        Order order = orderService.submitOrder(request);
+        Order order = orderService.submitOrder(request, user.getUserId());
         OffsetDateTime afterSubmit = OffsetDateTime.now();
 
         assertNotNull(order.getSubmittedAt());
         assertFalse(order.getSubmittedAt().isBefore(beforeSubmit));
         assertFalse(order.getSubmittedAt().isAfter(afterSubmit));
+    }
+
+    @Test
+    void submitOrderRefusesAnAccountTheCallerDoesNotOwn() {
+        OrderRequest request = order("BUY", "1", "10.00");
+
+        assertThrows(ForbiddenException.class,
+                () -> orderService.submitOrder(request, UUID.randomUUID()));
+        // Refused before anything is written: no order row, so no PENDING to explain later.
+        assertTrue(orderRepository.findAll().isEmpty());
+    }
+
+    @Test
+    void submitOrderRefusesAnotherUsersIdempotencyKeyBeforeAnsweringIt() {
+        // The key belongs to this account, and its outcome is this owner's to read.
+        Order placed = orderService.submitOrder(order("BUY", "10", "20.00"), user.getUserId());
+        OrderRequest replay = new OrderRequest(
+                account.getAccountId(),
+                instrument.getInstrumentId(),
+                "BUY",
+                new BigDecimal("10"),
+                new BigDecimal("20.00"),
+                new BigDecimal("2.0"),
+                placed.getClientReference()
+        );
+
+        assertThrows(ForbiddenException.class,
+                () -> orderService.submitOrder(replay, UUID.randomUUID()));
+    }
+
+    @Test
+    void submitOrderAnswersTheOwnersOwnReplayWithTheOriginalOutcome() {
+        Order placed = orderService.submitOrder(order("BUY", "10", "20.00"), user.getUserId());
+        OrderRequest replay = new OrderRequest(
+                account.getAccountId(),
+                instrument.getInstrumentId(),
+                "BUY",
+                new BigDecimal("10"),
+                new BigDecimal("20.00"),
+                new BigDecimal("2.0"),
+                placed.getClientReference()
+        );
+
+        Order replayed = orderService.submitOrder(replay, user.getUserId());
+
+        assertEquals(placed.getOrderId(), replayed.getOrderId());
+        assertEquals(1, orderRepository.findAll().size());
     }
 }
