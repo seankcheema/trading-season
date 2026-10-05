@@ -125,7 +125,7 @@ pipeline {
                     # a missing one is a broken checkout, not a reason to resolve
                     # fresh versions that no other stage would be testing.
                     echo "Installing UI and auth dependencies..."
-                    npm ci
+                    npm --prefix apps/client-ui ci
                     npm --prefix apps/auth-service ci
                     echo "✓ UI and auth dependencies installed"
                 '''
