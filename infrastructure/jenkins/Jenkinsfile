@@ -662,13 +662,14 @@ pipeline {
                         service="$1"
                         path="$2"
                         expected="$3"
+                        port="${4:-8080}"
                         attempt=1
                         while [ "$attempt" -le 30 ]; do
                             if bash infrastructure/docker/run-compose.sh \
                                 --project-name "$PROJECT_NAME" \
                                 --env-file "$COMPOSE_ENV_FILE" \
                                 -f "$COMPOSE_FILE" \
-                                exec -T "$service" wget -qO- "http://127.0.0.1:8080${path}" | grep -F "$expected" >/dev/null; then
+                                exec -T "$service" wget -qO- "http://127.0.0.1:${port}${path}" | grep -F "$expected" >/dev/null; then
                                 return 0
                             fi
                             attempt=$((attempt + 1))
@@ -680,10 +681,12 @@ pipeline {
 
                     check_http client-ui / '<app-root'
                     check_http reporting-ui / 'Reporting UI placeholder'
-                    check_http reporting-service /health '"status":"ok"'
+                    # reporting-service listens on 8083, not the 8080 default, and its
+                    # /health reports 'healthy' (liveness), never 'ok'.
+                    check_http reporting-service /health '"status":"healthy"' 8083
 
-                    # check_http cannot be reused: it hardcodes 127.0.0.1:8080
-                    # inside the container. A missing topic makes kafka-topics.sh
+                    # check_http cannot be reused: this is a kafka-topics.sh describe,
+                    # not an HTTP request. A missing topic makes kafka-topics.sh
                     # exit non-zero by itself; the awk asserts the partition count
                     # as a whole tab-delimited field, because a substring match on
                     # 'PartitionCount: 3' also matches 'PartitionCount: 30'. The
