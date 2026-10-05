@@ -544,7 +544,6 @@ export class ApiStub {
     await this.json(route, 200, {
       userId: account.id,
       userRole: 'TRADER',
-      accountStatus: 'ACTIVE',
       createdAt: new Date().toISOString(),
       ...withoutSsn,
     });

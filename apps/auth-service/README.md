@@ -492,7 +492,7 @@ AuthInterceptor
 ## Core Dependencies
 
 ```
-business-logic-ui
+client-ui
 ├── @angular/core (22.1.0)      - DI, Component, Signal
 ├── @angular/forms (22.1.0)     - ReactiveFormsModule, FormBuilder, Validators
 ├── @angular/router (22.1.0)    - Router, Routes, canActivate guards
@@ -513,7 +513,7 @@ business-logic-ui
 ## Repository Structure
 
 ```
-apps/business-logic-ui/src/
+apps/client-ui/src/
 ├── app/
 │   ├── login/
 │   │   ├── login.component.ts           ← LoginComponent class

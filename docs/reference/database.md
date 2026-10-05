@@ -28,7 +28,7 @@ Both Java services share the same `trading_season` database. This table lists wh
 
 | Table | Owned by | Access |
 | --- | --- | --- |
-| user_accounts | Auth Service | Read/write (credentials, role, status, lockout); Java services read only |
+| user_accounts | Auth Service | Read/write (credentials, role, lockout); Java services read only |
 | refresh_tokens | Auth Service | Read/write (issue, rotate, revoke); Java services never read it |
 | users | Holdings and Trade Service | Read/write (profile, funds, settings) |
 | accounts | Holdings and Trade Service | Read/write (account management) |

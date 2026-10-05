@@ -1,10 +1,8 @@
 .git
 .github
 .pytest_cache
-.turbo
 **/__pycache__
 **/.pytest_cache
-**/.turbo
 **/.venv
 **/coverage
 **/dist

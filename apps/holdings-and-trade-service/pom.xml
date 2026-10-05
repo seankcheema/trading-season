@@ -18,7 +18,7 @@
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <test.tags></test.tags>
-        <jacoco.version>0.8.13</jacoco.version>
+        <jacoco.version>0.8.15</jacoco.version>
         <!-- Minimum coverage for every JaCoCo counter in every package -->
         <coverage.minimum>0.85</coverage.minimum>
     </properties>

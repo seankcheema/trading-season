@@ -9,7 +9,7 @@ Trading Season is a monorepo containing:
 - **Frontend** – Angular-based Client UI with reusable component library
 - **Authentication** – NestJS service with email/password authentication and RS256 tokens
 - **Backend** – Two independent Spring Boot microservices sharing a single PostgreSQL database
-- **Shared Infrastructure** – Database migrations, synthetic market data tooling, Docker Compose configuration
+- **Shared Infrastructure** – Database migrations, synthetic market data tooling, Kafka broker, Docker Compose configuration
 
 ## Service topology
 
@@ -21,6 +21,7 @@ graph TB
     HT["Holdings and Trade Service<br/>Spring Boot | Port 8082<br/><br/>User profile queries<br/>Account management<br/>Holdings queries<br/>Called by UI"]
     
     BizDB["trading_season<br/>PostgreSQL<br/>Port 5432<br/><br/>user_accounts, refresh_tokens (auth)<br/>users, accounts, orders<br/>market data"]
+    Kafka["Kafka<br/>KRaft | Port 29092<br/><br/>topic trade-events<br/>3 partitions, keyed by account<br/>no producer or consumer yet"]
     
     UI -->|POST /login/refresh| Auth
     UI -->|/api/* (proxy)| OS
@@ -32,6 +33,7 @@ graph TB
     Auth --> BizDB
     OS --> BizDB
     HT --> BizDB
+    OS -.->|proposed: publish trade-events| Kafka
     
     style OS fill:#90EE90
     style HT fill:#FFB6C6
@@ -39,6 +41,7 @@ graph TB
     style UI fill:#FFD700
     style AuthDB fill:#E6E6FA
     style BizDB fill:#E6E6FA
+    style Kafka fill:#F5DEB3
 ```
 
 ## Service boundaries
@@ -52,6 +55,7 @@ graph TB
 | **Reporting UI** | Angular | 4300 | Proposed | Portfolio performance, trade history, risk summaries |
 | **Reporting Service** | TBD | 8083 | Proposed | Portfolio aggregation, analytics, report generation |
 | **Market Data** | Infrastructure | — | Implemented | Database migrations, synthetic data generation |
+| **Kafka** | Apache Kafka (KRaft) | 29092 | Implemented | Event broker hosting trade-events; producing and consuming are proposed |
 
 ## Service naming correction
 
@@ -71,7 +75,7 @@ Two separate PostgreSQL databases:
 | Angular UI | Login and registration against the NestJS auth service, profile submission to the Java backend, dashboard route protection, failed sign-in lockout, inactivity sign-out, shared components | [Routes](../../apps/client-ui/src/app/app.routes.ts) |
 | Spring Boot backend | Token-authenticated profile registration and user APIs, plus public simulated market reads | [Java auth controller](../../apps/holdings-and-trade-service/src/main/java/app/auth/AuthController.java) |
 | NestJS auth service | Email/password login, RS256 access tokens, opaque refresh tokens, JWKS, liveness | [Auth controller](../../apps/auth-service/src/auth/auth.controller.ts) |
-| Shared UI | Angular components consumed through @shared/ui-components subpath exports | [Package manifest](../../packages/shared-ui-components/package.json) |
+| Shared UI | Angular components consumed through @shared/ui-components subpath exports | [Shared components](../../apps/client-ui/shared-ui-components/README.md) |
 | Reporting | Runnable HTTP placeholders only; no reporting behavior | [Reporting proposal](reporting.md) |
 
 All three services share the `trading_season` database, and each table has one writer. The auth service owns `user_accounts` and `refresh_tokens`; the Java services own the profile and trading tables. The value joining an account to its profile is the user UUID (`user_accounts.user_id` ↔ `users.user_id`), which is also the access token's `sub` claim.

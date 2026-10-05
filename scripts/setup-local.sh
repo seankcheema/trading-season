@@ -61,6 +61,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$repo_root"
 
 auth_dir="$repo_root/apps/auth-service"
+ui_dir="$repo_root/apps/client-ui"
 env_file="$auth_dir/.env"
 compose_file="$repo_root/infrastructure/docker-compose/docker-compose.local.yml"
 archive_path="$repo_root/$EXPECTED_ARCHIVE"
@@ -186,7 +187,7 @@ configure_auth() {
 }
 
 install_dependencies() {
-    local directory="$1" lockfile="$2" label="$3" command_prefix="$4"
+    local directory="$1" lockfile="$2" label="$3"
     local stamp="$directory/node_modules/.trading-season-lock.sha256" expected current=''
     expected="$(sha256sum "$lockfile" | awk '{print $1}')"
     [[ -f "$stamp" ]] && current="$(cat "$stamp")"
@@ -194,11 +195,7 @@ install_dependencies() {
         ready "$label — lockfile is unchanged; skipping npm ci."
         return
     fi
-    if [[ -n "$command_prefix" ]]; then
-        npm --prefix "$command_prefix" ci || fail "$label installation failed. Review npm output above."
-    else
-        npm ci || fail "$label installation failed. Review npm output above."
-    fi
+    npm --prefix "$directory" ci || fail "$label installation failed. Review npm output above."
     mkdir -p "$(dirname "$stamp")"
     printf '%s\n' "$expected" > "$stamp"
     done_stage "$label — dependencies installed."
@@ -375,13 +372,23 @@ select_databases() {
         fail 'Port 5432 is already in use by a non-Compose service. The Docker database was not started.'
     fi
 
+    local existing_broker
+    existing_broker="$(docker_compose ps -q kafka 2>/dev/null || true)"
+    if [[ -z "$existing_broker" ]] && port_in_use 29092; then
+        fail 'Port 29092 is already in use by a non-Compose service. The Docker broker was not started.'
+    fi
+
     export DB_PASSWORD="${SPRING_DATASOURCE_PASSWORD:-changeme}"
-    docker_compose up -d db || fail 'Docker database startup failed. Review the Compose output above.'
+    docker_compose up -d db kafka || fail 'Docker database or broker startup failed. Review the Compose output above.'
     wait_for_compose_health db || fail 'Docker database did not become healthy within two minutes.'
-    if [[ "$had_database" == true ]]; then
-        ready 'Docker database — the existing container is healthy; skipping startup.'
+    wait_for_compose_health kafka || fail 'Docker Kafka broker did not become healthy within two minutes.'
+    # Separate from the broker starting: auto-creation is disabled, so
+    # trade-events exists only once this one-shot container has run.
+    docker_compose up -d kafka-init || fail 'Creating the trade-events topic failed. Review the Compose output above.'
+    if [[ "$had_database" == true && -n "$existing_broker" ]]; then
+        ready 'Docker database and broker — the existing containers are healthy; skipping startup.'
     else
-        done_stage 'Docker database — the PostgreSQL container is healthy.'
+        done_stage 'Docker database and broker — the PostgreSQL and Kafka containers are healthy.'
     fi
     validate_or_initialize_docker_business
     check_docker_database_storage
@@ -395,6 +402,10 @@ select_databases() {
     export DB_PORT=5432
     export DB_USER=trading_season
     export DB_NAME=trading_season
+    # The broker is published on the host as localhost:29092; inside Compose it
+    # is kafka:9092. These applications run on the VM, so they take the former.
+    # Nothing reads this yet -- no service publishes or consumes.
+    export KAFKA_BOOTSTRAP_SERVERS=localhost:29092
 }
 
 start_service() {
@@ -416,7 +427,7 @@ start_applications() {
     start_service auth "$auth_dir" npm run start:dev
     start_service holdings-and-trade "$repo_root/apps/holdings-and-trade-service" mvn spring-boot:run
     start_service order-and-sell "$repo_root/apps/order-and-sell-service" mvn spring-boot:run
-    start_service ui "$repo_root" npm --workspace business-logic-ui start
+    start_service ui "$ui_dir" npm start
     done_stage 'Applications — starting UI :4200, auth :3001, holdings-and-trade :8081, and order-and-sell :8082. Press Ctrl+C to stop them.'
 
     set +e
@@ -429,8 +440,8 @@ start_applications() {
 check_toolchain
 check_storage 'Repository storage' "$repo_root"
 configure_auth
-install_dependencies "$repo_root" "$repo_root/package-lock.json" 'Root dependencies' ''
-install_dependencies "$auth_dir" "$auth_dir/package-lock.json" 'Auth dependencies' "$auth_dir"
+install_dependencies "$ui_dir" "$ui_dir/package-lock.json" 'UI dependencies'
+install_dependencies "$auth_dir" "$auth_dir/package-lock.json" 'Auth dependencies'
 prepare_archive
 select_databases
 start_applications

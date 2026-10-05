@@ -9,16 +9,24 @@ The backend consists of two independent Java microservices and one NestJS authen
 
 All services share a single PostgreSQL database (`trading_season`).
 
+## Team
+
+- **Soli** – Team Lead
+- **Chris** – Scrum Master
+- **Sean** – Meeting Scribe (documentation of team matters) + Front End Developer
+- **Prisca** – Full Stack Developer
+- **Mohammed** – Full Stack Developer
+
 ## Start locally on Windows
 
 Install Node.js 24.8.0+ (24.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL (or Docker Compose).
 
 ### Quick start with the startup script (requires local databases)
 
-1. Install dependencies from the repository root:
+1. Install dependencies. The UI and auth service are independent npm projects, each with its own lockfile:
 
    ```powershell
-   npm ci
+   npm --prefix apps/client-ui ci
    npm --prefix apps/auth-service ci
    ```
 
@@ -120,11 +128,11 @@ cd ../..
 Use the startup script as above, or start each application in its own terminal:
 
 ```powershell
-npm ci
+npm --prefix apps/client-ui ci
 npm --prefix apps/auth-service ci
 
-# Terminal 1: UI from repository root
-npm --workspace business-logic-ui start
+# Terminal 1: UI
+npm --prefix apps/client-ui start
 
 # Terminal 2: Holdings and Trade Service
 cd apps/holdings-and-trade-service
@@ -166,7 +174,7 @@ After startup, verify that the auth tables exist in `trading_season`. Connect pg
 
 ```sql
 -- Verify user_accounts table exists and check registered users
-SELECT user_id, email, user_role, account_status, created_at
+SELECT user_id, email, user_role, created_at
 FROM user_accounts
 ORDER BY created_at DESC;
 ```

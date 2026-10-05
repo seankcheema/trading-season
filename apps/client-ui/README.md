@@ -4,19 +4,19 @@ Angular login, registration, and dashboard screens using reactive forms, standal
 
 The dashboard also creates and renames accounts, shows each account's holdings as its portfolio, and deposits and withdraws the cash all of a user's accounts share, through the implemented endpoints in the [API reference](../../docs/reference/api.md#accounts-and-holdings). The simulation clock controls trade visibility, displayed holdings, shared cash, net worth, and portfolio history. Current funding is the starting budget; only trades rewind. The chart combines share quantities effective at each simulated time with replay prices and shows zero before the first investment. Without a simulation clock, portfolio history uses persisted observations on actual dates; see [the history contract](../../docs/reference/api.md#portfolio-valuation-history). Both financial cards show two decimal places. Net worth is that cash plus every account's portfolio. The full-screen market page places a full-width account dropdown between the insight tabs and Execution, with always-visible available cash (shared across accounts) and the selected account's portfolio value. Both values follow the simulation cursor; portfolio prices use the existing average-cost fallback when market prices are unavailable. The page reuses the dashboard's account and simulated-time dropdowns and executes Buy/Sell orders through the same OrderService. Its ticket uses actual cash and holdings projected at the simulation cursor; a fill refreshes both, while a failed refresh offers a balance-only retry. The selected account round-trips through the `accountId` query parameter. The Recent Orders tab shows that account's latest 20 orders across all stocks at or before the cursor, including pending and rejected outcomes. Metrics, overview signals, news, and AI responses remain browser-only demo data. Signed-in users are signed out after a configurable period of inactivity, 10 minutes by default; see the [API reference](../../docs/reference/api.md#ui-integration).
 
-From repository root:
+client-ui is a standalone npm project with its own lockfile, independent of the repository root:
 
 ```sh
-npm ci
-npm --workspace business-logic-ui start
-npm --workspace business-logic-ui run build
-npm --workspace business-logic-ui test -- --no-watch
-npm --workspace business-logic-ui run e2e
+npm --prefix apps/client-ui ci
+npm --prefix apps/client-ui start
+npm --prefix apps/client-ui run build
+npm --prefix apps/client-ui test -- --no-watch
+npm --prefix apps/client-ui run e2e
 ```
 
-Development runs on port 4200 and proxies `/api` to the Java backend on port 8081. See [routes](src/app/app.routes.ts), [shared components](../../packages/shared-ui-components/README.md), and [development prerequisites](../../docs/guides/development.md). Angular tests take --no-watch rather than Vitest's --run option.
+Development runs on port 4200 and proxies `/api` to the Java backend on port 8081. See [routes](src/app/app.routes.ts), [shared components](shared-ui-components/README.md), and [development prerequisites](../../docs/guides/development.md). Angular tests take --no-watch rather than Vitest's --run option.
 
-The production container builds this root npm workspace and serves the browser output through unprivileged Nginx on host port 4200. Its Nginx configuration provides SPA fallback and proxies `/api` to the Compose `holdings-and-trade-service`. Build and run it as part of [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml).
+The production container installs and builds this project on its own and serves the browser output through unprivileged Nginx on host port 4200. Its Nginx configuration provides SPA fallback and proxies `/api` to the Compose `holdings-and-trade-service`. Build and run it as part of [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml).
 
 ## Tests
 

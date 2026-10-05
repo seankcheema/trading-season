@@ -78,11 +78,10 @@ export class AuthService {
    * Validate credentials, returning null on any failure.
    *
    * Every rejection path is indistinguishable to the caller: unknown account,
-   * wrong password, deactivated and locked all produce the same generic 401.
-   * Reporting "account is deactivated" or "temporarily locked" is only
-   * reachable once the email exists, which makes each one a precise
-   * account-enumeration oracle. The reason is logged instead, where operators
-   * can see it and callers cannot.
+   * wrong password and locked all produce the same generic 401. Reporting
+   * "temporarily locked" is only reachable once the email exists, which makes
+   * it a precise account-enumeration oracle. The reason is logged instead,
+   * where operators can see it and callers cannot.
    */
   async validateUser(email: string, password: string): Promise<User | null> {
     const user = await this.usersService.findByEmail(email);
@@ -93,12 +92,6 @@ export class AuthService {
       // and that timing difference undoes the generic message above.
       await this.usersService.validatePassword(password, DUMMY_BCRYPT_HASH);
       this.logger.debug(`Login failed: no account for ${email}`);
-      return null;
-    }
-
-    if (!user.isActive) {
-      await this.usersService.validatePassword(password, DUMMY_BCRYPT_HASH);
-      this.logger.debug(`Login failed: account ${user.id} is deactivated`);
       return null;
     }
 
@@ -144,7 +137,7 @@ export class AuthService {
     }
 
     const user = await this.usersService.findById(row.userId).catch(() => null);
-    if (!user || !user.isActive) {
+    if (!user) {
       await this.refreshTokens.revoke(row);
       throw new UnauthorizedException('Invalid refresh token');
     }

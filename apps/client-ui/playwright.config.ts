@@ -16,7 +16,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 2 : 0,
-  workers: process.env['CI'] ? 1 : undefined,
+  // A conservative, explicit worker count rather than CI's single-core
+  // default or local auto-detection: enough to parallelize the six spec
+  // files without assuming the Jenkins agent has local-machine-level cores.
+  workers: process.env['CI'] ? 2 : undefined,
   reporter: [
     ['list'],
     ['html', { outputFolder: 'reports/playwright/html', open: 'never' }],
@@ -36,7 +39,7 @@ export default defineConfig({
     // remaining tests down with a connection error, and a production build is
     // the closer match to what these journeys run against anyway. /api needs no
     // proxy here because every API call is answered by the stub.
-    command: 'npm run build && node dist/business-logic-ui/server/server.mjs',
+    command: 'npm run build && node dist/client-ui/server/server.mjs',
     // NG_ALLOWED_HOSTS supplies the host allowlist at runtime. The build's
     // security.allowedHosts is empty on purpose, and a deployment is expected
     // to name its own hosts; this names the one the suite serves on rather

@@ -119,7 +119,6 @@ describe('AuthService', () => {
         id: '123',
         email: 'test@example.com',
         password: 'hashedpassword',
-        isActive: true,
         failedAttempts: 0,
         lockedUntil: null,
       };
@@ -152,7 +151,6 @@ describe('AuthService', () => {
         id: '123',
         email: 'test@example.com',
         password: 'hashedpassword',
-        isActive: true,
         failedAttempts: 0,
         lockedUntil: null,
       };
@@ -173,7 +171,6 @@ describe('AuthService', () => {
         id: '123',
         email: 'test@example.com',
         password: 'hashedpassword',
-        isActive: true,
         failedAttempts: 0,
         lockedUntil: null,
       };
@@ -194,7 +191,6 @@ describe('AuthService', () => {
         id: '123',
         email: 'test@example.com',
         password: 'hashedpassword',
-        isActive: true,
         failedAttempts: 4, // 5th attempt will fail
         lockedUntil: null,
       };
@@ -215,7 +211,6 @@ describe('AuthService', () => {
         id: '123',
         email: 'test@example.com',
         password: 'hashedpassword',
-        isActive: true,
         failedAttempts: 5,
         lockedUntil: new Date(Date.now() + 15 * 60 * 1000),
       };
@@ -227,26 +222,6 @@ describe('AuthService', () => {
       // Returns null rather than throwing "Account is temporarily locked".
       // That message is only reachable once the email exists, so it confirms
       // the account to anyone probing.
-      await expect(
-        service.validateUser('test@example.com', 'password123'),
-      ).resolves.toBeNull();
-    });
-
-    it('should reject login when account is deactivated (KAN-86)', async () => {
-      const mockUser = {
-        id: '123',
-        email: 'test@example.com',
-        password: 'hashedpassword',
-        isActive: false, // DEACTIVATED
-        failedAttempts: 0,
-        lockedUntil: null,
-      };
-
-      mockUsersService.findByEmail.mockResolvedValue(mockUser);
-      mockUsersService.validatePassword.mockResolvedValue(false);
-
-      // Same reasoning as the locked case: indistinguishable from any other
-      // failure to the caller, logged for operators.
       await expect(
         service.validateUser('test@example.com', 'password123'),
       ).resolves.toBeNull();
@@ -273,7 +248,6 @@ describe('AuthService', () => {
       const mockUser = {
         id: '123',
         email: 'test@example.com',
-        isActive: true,
         role: 'TRADER',
       };
 
@@ -308,21 +282,6 @@ describe('AuthService', () => {
         service.refreshToken('already-rotated'),
       ).rejects.toThrow(UnauthorizedException);
       expect(mockRefreshTokens.revokeAllForUser).toHaveBeenCalledWith('123');
-    });
-
-    it('should reject refresh token for deactivated user (KAN-86)', async () => {
-      mockRefreshTokens.findByToken.mockResolvedValue(storedRow);
-      mockRefreshTokens.isUsable.mockReturnValue(true);
-      mockUsersService.findById.mockResolvedValue({
-        id: '123',
-        email: 'test@example.com',
-        isActive: false,
-      });
-
-      await expect(
-        service.refreshToken('valid.but.user.deactivated'),
-      ).rejects.toThrow(UnauthorizedException);
-      expect(mockRefreshTokens.revoke).toHaveBeenCalledWith(storedRow);
     });
 
     it('should reject refresh token for deleted user', async () => {
@@ -424,7 +383,6 @@ describe('AuthService', () => {
         id: '123',
         email: 'correct@example.com',
         password: 'hashedpassword',
-        isActive: true,
         failedAttempts: 0,
         lockedUntil: null,
         role: 'TRADER',
@@ -455,7 +413,6 @@ describe('AuthService', () => {
         id: 'user-uuid-123',
         email: 'test@example.com',
         password: 'hashedpassword',
-        isActive: true,
         failedAttempts: 0,
         lockedUntil: null,
         role: 'ADMIN',
@@ -488,7 +445,6 @@ describe('AuthService', () => {
         id: '123',
         email: 'test@example.com',
         password: 'hashedpassword',
-        isActive: true,
         failedAttempts: 0,
         lockedUntil: null,
         role: 'TRADER',
@@ -523,7 +479,6 @@ describe('AuthService', () => {
         id: '123',
         email: 'test@example.com',
         password: 'hashedpassword',
-        isActive: true,
         failedAttempts: 0,
         lockedUntil: null,
         role: 'TRADER',

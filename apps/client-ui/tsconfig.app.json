@@ -5,7 +5,7 @@
   },
   "include": [
     "src/**/*.ts",
-    "../../packages/shared-ui-components/src/lib/**/src/**/*.ts"
+    "shared-ui-components/src/lib/**/src/**/*.ts"
   ],
   "exclude": ["src/**/*.spec.ts"]
 }

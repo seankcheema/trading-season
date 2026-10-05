@@ -12,17 +12,10 @@ import java.util.UUID;
  * A read-only view of the credential record the auth service owns.
  *
  * <p>Authentication state lives in {@code user_accounts}, written only by the
- * NestJS auth service. This service reads it because two of its values must be
- * current at the moment they are used rather than as of whenever the caller's
- * token was signed:
- *
- * <ul>
- *   <li>{@code accountStatus} gates order placement. A token stays valid for
- *       fifteen minutes, so a deactivated trader would keep trading for that
- *       long if the check read a claim instead of this table.</li>
- *   <li>{@code userRole} is reported on the caller's profile, where it should
- *       reflect the account as it stands.</li>
- * </ul>
+ * NestJS auth service. This service reads it because {@code email} and
+ * {@code userRole} are reported on the caller's profile, where they should
+ * reflect the account as it stands at the moment it is read rather than as of
+ * whenever the caller's token was signed.
  *
  * <p>Marked {@link Immutable} so Hibernate silently discards any attempt to
  * update it: the auth service is the only writer, and that is enforced here
@@ -49,10 +42,6 @@ public class UserAccount {
     @Column(name = "user_role", nullable = false)
     private String userRole;
 
-    /** ACTIVE or DEACTIVATED. */
-    @Column(name = "account_status", nullable = false)
-    private String accountStatus;
-
     /**
      * Required by Hibernate.
      */
@@ -65,16 +54,14 @@ public class UserAccount {
      * <p>There is no repository method that writes this table, so constructing
      * one here cannot persist it through this service.
      *
-     * @param userId        the account id
-     * @param email         the login email
-     * @param userRole      ADMIN or TRADER
-     * @param accountStatus ACTIVE or DEACTIVATED
+     * @param userId   the account id
+     * @param email    the login email
+     * @param userRole ADMIN or TRADER
      */
-    public UserAccount(UUID userId, String email, String userRole, String accountStatus) {
+    public UserAccount(UUID userId, String email, String userRole) {
         this.userId = userId;
         this.email = email;
         this.userRole = userRole;
-        this.accountStatus = accountStatus;
     }
 
     /**
@@ -102,23 +89,5 @@ public class UserAccount {
      */
     public String getUserRole() {
         return userRole;
-    }
-
-    /**
-     * Returns the current account status.
-     *
-     * @return ACTIVE or DEACTIVATED
-     */
-    public String getAccountStatus() {
-        return accountStatus;
-    }
-
-    /**
-     * Whether the account is active right now.
-     *
-     * @return {@code true} if the status is ACTIVE
-     */
-    public boolean isActive() {
-        return "ACTIVE".equals(accountStatus);
     }
 }

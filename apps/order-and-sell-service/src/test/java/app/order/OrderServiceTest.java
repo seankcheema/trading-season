@@ -92,8 +92,7 @@ class OrderServiceTest {
 
         UserAccountFixture.deleteAll(jdbcTemplate);
 
-        // The auth service creates the account before it issues a token, and
-        // AccountStatusValidator reads that row on every order.
+        // The auth service creates the account before it issues a token.
         UUID userId = UUID.randomUUID();
         UserAccountFixture.createActiveAccount(jdbcTemplate, userId, "trader@example.com");
 
