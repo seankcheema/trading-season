@@ -82,10 +82,16 @@ pipeline {
                 // This prevents "Operation not permitted" errors during workspace cleanup
                 sh '''
                     set +e
-                    if [ -d apps/reporting-service/reports ] || [ -d apps/reporting-service/coverage ]; then
-                        echo "Repairing permissions on Docker-generated reporting artifacts..."
+                    if [ -d apps/reporting-service/reports ] || [ -d apps/reporting-service/coverage ] || [ -d apps/reporting-service/tests/__pycache__ ] || [ -d apps/reporting-service/__pycache__ ]; then
+                        echo "Repairing permissions on Docker-generated reporting-service artifacts..."
                         docker run --rm -v "$(pwd)":/ws -w /ws alpine:latest \
-                            chmod -R 777 /ws/apps/reporting-service/reports /ws/apps/reporting-service/coverage 2>/dev/null || true
+                            sh -c 'for path in \
+                                /ws/apps/reporting-service/reports \
+                                /ws/apps/reporting-service/coverage \
+                                /ws/apps/reporting-service/tests/__pycache__ \
+                                /ws/apps/reporting-service/__pycache__; do \
+                                [ -e "$path" ] && chmod -R 777 "$path"; \
+                            done' 2>/dev/null || true
                     fi
                     set -e
                 '''
@@ -312,6 +318,7 @@ pipeline {
                                     # Integration branch's own image build has exhausted the
                                     # agent's disk before ("no space left on device").
                                     docker run --rm \
+                                                                            -e PYTHONDONTWRITEBYTECODE=1 \
                                       -v "$(pwd)":/app \
                                       -w /app \
                                       python:3.14-slim \
