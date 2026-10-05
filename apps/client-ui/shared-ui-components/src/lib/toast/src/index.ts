@@ -5,6 +5,8 @@ export interface HlmToastMessage {
   message: string;
   variant: "success" | "error";
   closing: boolean;
+  /** Milliseconds before the toast starts closing; drives the countdown bar. */
+  duration: number;
 }
 
 @Component({
@@ -15,11 +17,22 @@ export interface HlmToastMessage {
     <div class="toast-stack">
       @for (toast of messages(); track toast.id) {
         <div
-          class="toast bg-card text-card-foreground border-border rounded-xl border p-4 shadow-lg"
+          class="toast text-card-foreground"
           [class.toast-error]="toast.variant === 'error'"
           [class.toast-closing]="toast.closing"
           [attr.data-toast-id]="toast.id"
         >
+          <span class="toast-icon" aria-hidden="true">
+            @if (toast.variant === 'error') {
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10 5.5v5.5M10 14.25v.01" />
+              </svg>
+            } @else {
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m5.5 10.5 3 3 6-7" />
+              </svg>
+            }
+          </span>
           <p
             class="text-base font-medium"
             [attr.role]="toast.variant === 'error' ? 'alert' : 'status'"
@@ -27,7 +40,7 @@ export interface HlmToastMessage {
           >
             {{ toast.message }}
           </p>
-
+          <span class="toast-bar" aria-hidden="true" [style.animation-duration.ms]="toast.duration"></span>
         </div>
       }
     </div>
@@ -47,27 +60,72 @@ export interface HlmToastMessage {
       pointer-events: none;
     }
     .toast {
+      --toast-accent: var(--color-gain);
       position: relative;
-      padding: 1.125rem 1.5rem;
-      text-align: center;
-      pointer-events: auto;
-      background: color-mix(in srgb, var(--color-gain) 12%, var(--card));
-      border-color: color-mix(in srgb, var(--color-gain) 25%, var(--border));
+      display: flex;
+      align-items: center;
+      gap: 0.875rem;
+      min-width: min(18rem, calc(100vw - 2rem));
+      padding: 1rem 1.25rem 1.125rem;
+      border: 1px solid color-mix(in srgb, var(--toast-accent) 30%, var(--border));
+      border-radius: 1rem;
+      background: color-mix(in srgb, var(--toast-accent) 10%, var(--card));
+      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px);
+      overflow: hidden;
       overflow-wrap: anywhere;
+      pointer-events: auto;
       opacity: 1;
-      transition: opacity 400ms ease;
-      animation: toast-rise 240ms cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    @keyframes toast-rise {
-      from { opacity: 0; transform: translateY(16px); }
-      to { opacity: 1; transform: translateY(0); }
+      transform: translateY(0);
+      transition:
+        opacity 400ms ease,
+        transform 400ms cubic-bezier(0.7, 0, 0.84, 0);
+      animation: toast-rise 420ms cubic-bezier(0.16, 1, 0.3, 1);
     }
     .toast-error {
-      background: color-mix(in srgb, var(--destructive) 12%, var(--card));
-      border-color: color-mix(in srgb, var(--destructive) 25%, var(--border));
+      --toast-accent: var(--destructive);
+    }
+    .toast-icon {
+      flex: none;
+      display: grid;
+      place-items: center;
+      width: 1.75rem;
+      height: 1.75rem;
+      border-radius: 9999px;
+      color: var(--toast-accent);
+      background: color-mix(in srgb, var(--toast-accent) 18%, transparent);
+    }
+    .toast-icon svg {
+      width: 1rem;
+      height: 1rem;
+    }
+    .toast p {
+      margin: 0;
+      min-width: 0;
+      text-align: left;
+    }
+    .toast-bar {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 3px;
+      background: var(--toast-accent);
+      opacity: 0.4;
+      transform-origin: left center;
+      animation: toast-countdown linear forwards;
+    }
+    @keyframes toast-rise {
+      from { opacity: 0; transform: translateY(calc(100% + 3rem)); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes toast-countdown {
+      from { transform: scaleX(1); }
+      to { transform: scaleX(0); }
     }
     .toast-closing {
       opacity: 0;
+      transform: translateY(calc(100% + 3rem));
       pointer-events: none;
     }
     @media (prefers-reduced-motion: reduce) {

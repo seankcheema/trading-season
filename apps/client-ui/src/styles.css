@@ -15,8 +15,8 @@
 
 /* Market up/down colors, e.g. `text-gain`, `stroke-loss`, `bg-loss/15`. */
 @theme {
-  --color-gain: #33ff00;
-  --color-loss: #ff0037;
+  --color-gain: #25eb69;
+  --color-loss: #ff3d5a;
 }
 
 /* You can add global styles to this file, and also import other style files.
@@ -108,7 +108,7 @@
   --muted-foreground: rgba(238, 250, 255, 0.5);
   --accent: #1a1a1a;
   --accent-foreground: #eefaff;
-  --destructive: #ff0037;
+  --destructive: #ff3d5a;
   --border: rgba(238, 250, 255, 0.15);
   --input: rgba(238, 250, 255, 0.15);
   --ring: #00bbff;

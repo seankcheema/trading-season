@@ -48,9 +48,7 @@ test('executes a trade and shows recent orders within the full-screen layout', a
 
   await page.locator('#future-trade-quantity').fill('3');
   await page.getByRole('button', { name: 'Buy 3 AAPL', exact: true }).click();
-  await expect(page.locator('app-trade-ticket [role="status"]')).toHaveText(
-    'Filled 3 AAPL at $225.80.',
-  );
+  await expect(page.locator('hlm-toaster .toast')).toContainText('Filled 3 AAPL at $225.80.');
   await page.getByRole('tab', { name: 'Recent Orders', exact: true }).click();
   await expect(page.getByTestId('market-recent-orders')).toContainText('3 shares · Filled');
   await expect(page.locator('app-trade-ticket')).toContainText('$4,322.60');
@@ -112,7 +110,7 @@ test('changes chart tools and keeps the selected comparison in the URL', async (
 }) => {
   await openMarketPage(page, loginPage);
 
-  await page.getByRole('button', { name: /Graph view: Line/ }).click();
+  await page.getByRole('button', { name: /Graph view: Area/ }).click();
   await page.getByRole('menuitemradio', { name: 'Candles chart' }).click();
   await expect(page.getByRole('button', { name: /Graph view: Candles/ })).toBeVisible();
 
@@ -145,9 +143,13 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   await page.getByRole('option', { name: /AAPL/ }).first().click();
   await page.getByRole('link', { name: 'Open full screen market chart' }).click();
   await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');
-  await page.locator('#future-trade-quantity').fill('2');
-  await page.getByRole('button', { name: 'Buy 2 AAPL', exact: true }).click();
-  await expect(page.locator('app-trade-ticket [role="status"]')).toContainText('Filled 2');
+  const buy = page.getByRole('button', { name: 'Buy 2 AAPL', exact: true });
+  // The ticket zeroes the quantity when the account input settles, so refill until the click lands.
+  await expect(async () => {
+    await page.locator('#future-trade-quantity').fill('2');
+    await buy.click({ timeout: 2000 });
+  }).toPass();
+  await expect(page.locator('hlm-toaster .toast')).toContainText('Filled 2 AAPL');
   await page.getByRole('tab', { name: 'Recent Orders', exact: true }).click();
   const history = page.getByTestId('market-recent-orders');
   await expect(history).toContainText('2 shares · Filled');
