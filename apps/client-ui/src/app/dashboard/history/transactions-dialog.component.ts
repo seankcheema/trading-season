@@ -22,7 +22,7 @@ import {
   orderHistoryRow,
   sortHistoryRows,
 } from '../shared/activity';
-import { ACTIVITY_TAG_CLASSES } from '../shared/activity-row.component';
+import { ACTIVITY_STATUS_CLASSES } from '../shared/activity-row.component';
 import { DashboardDialogComponent } from '../shared/dashboard-dialog.component';
 import { SortHeaderComponent } from '../shared/sort-header.component';
 
@@ -109,7 +109,7 @@ const KIND_FILTERS: readonly { id: KindFilter; label: string }[] = [
           </div>
           <ul class="dash-scroll h-[min(60vh,32.5rem)] overflow-y-auto pb-4">
             @for (row of rows(); track row.key) {
-              <li data-testid="transactions-row" [attr.data-tag]="row.tag">
+              <li data-testid="transactions-row" [attr.data-status]="row.status">
                 <button
                   type="button"
                   class="history-grid hover:bg-muted grid w-full items-center gap-2 rounded-lg px-2 py-2.5 text-left text-sm transition-colors enabled:cursor-pointer disabled:cursor-default disabled:hover:bg-transparent"
@@ -121,15 +121,15 @@ const KIND_FILTERS: readonly { id: KindFilter; label: string }[] = [
                     {{ row.date | date: 'MMM d, y, h:mm a' : '' : 'en-US' }}
                   </span>
                   <span class="truncate font-medium">{{ row.label }}</span>
+                  <span class="truncate">{{ row.side }}</span>
                   <span>
                     <span
                       class="rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
                       [class]="tagClass(row)"
                     >
-                      {{ row.tag.toLowerCase() }}
+                      {{ row.status.toLowerCase() }}
                     </span>
                   </span>
-                  <span class="truncate">{{ row.side ?? '—' }}</span>
                   <span class="truncate text-right tabular-nums">{{ row.shares ?? '—' }}</span>
                   <span class="truncate text-right tabular-nums">
                     @if (row.price !== null) {
@@ -177,8 +177,8 @@ export class TransactionsDialogComponent implements OnInit {
   }[] = [
     { key: 'date', label: 'Date', align: 'left' },
     { key: 'label', label: 'Asset', align: 'left' },
-    { key: 'tag', label: 'Type', align: 'left' },
-    { key: 'side', label: 'Side', align: 'left' },
+    { key: 'side', label: 'Type', align: 'left' },
+    { key: 'status', label: 'Status', align: 'left' },
     { key: 'shares', label: 'Shares', align: 'right' },
     { key: 'price', label: 'Price', align: 'right' },
     { key: 'value', label: 'Value', align: 'right' },
@@ -257,6 +257,6 @@ export class TransactionsDialogComponent implements OnInit {
   }
 
   protected tagClass(row: HistoryRow): string {
-    return ACTIVITY_TAG_CLASSES[row.tag];
+    return ACTIVITY_STATUS_CLASSES[row.status];
   }
 }

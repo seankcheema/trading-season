@@ -229,13 +229,15 @@ describe('DashboardComponent', () => {
       'buy',
     ]);
     expect(rows.map((row) => text(row, 'activity-status'))).toEqual([
-      'filled',
-      'completed',
-      'completed',
-      'filled',
-      'pending',
-      'rejected',
+      'Filled',
+      'Cash Transaction',
+      'Cash Transaction',
+      'Filled',
+      'Pending',
+      'Rejected',
     ]);
+    expect(text(rows[0], 'activity-detail')).toBe('2 @ $100.00');
+    expect(rows[1].querySelector('[data-testid="activity-detail"]')).toBeNull();
 
     // Only cash transfers carry a +/- sign, and no amount is colored.
     expect(rows.map((row) => text(row, 'activity-value'))).toEqual([

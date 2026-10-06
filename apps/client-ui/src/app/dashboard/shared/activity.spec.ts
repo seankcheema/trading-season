@@ -126,8 +126,8 @@ describe('activity helpers', () => {
 
     it('sorts text columns and does not mutate its input', () => {
       const before = rows.map((row) => row.key);
-      expect(sortHistoryRows(rows, 'tag', 'asc').map((row) => row.tag)).toEqual([
-        'DEPOSIT',
+      expect(sortHistoryRows(rows, 'status', 'asc').map((row) => row.status)).toEqual([
+        'COMPLETED',
         'FILLED',
         'REJECTED',
       ]);

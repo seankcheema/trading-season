@@ -876,7 +876,7 @@ describe('MarketPageComponent', () => {
     fixture.detectChanges();
     expect(
       fixture.nativeElement.querySelector('[data-testid="market-recent-orders"]').textContent,
-    ).toContain('rejected');
+    ).toContain('Rejected');
     expect(fixture.componentInstance['cashBalance']()).toBe(10000);
     http.verify();
   });

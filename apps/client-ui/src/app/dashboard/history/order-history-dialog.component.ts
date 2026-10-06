@@ -20,7 +20,7 @@ import {
   orderHistoryRow,
   sortHistoryRows,
 } from '../shared/activity';
-import { ACTIVITY_TAG_CLASSES } from '../shared/activity-row.component';
+import { ACTIVITY_STATUS_CLASSES } from '../shared/activity-row.component';
 import { DashboardDialogComponent } from '../shared/dashboard-dialog.component';
 import { SortHeaderComponent } from '../shared/sort-header.component';
 
@@ -105,7 +105,7 @@ const STATUS_FILTERS: readonly { id: StatusFilter; label: string }[] = [
           </div>
           <ul class="dash-scroll max-h-[min(60vh,32.5rem)] overflow-y-auto pb-4">
             @for (row of rows(); track row.key) {
-              <li data-testid="order-history-row" [attr.data-tag]="row.tag">
+              <li data-testid="order-history-row" [attr.data-status]="row.status">
                 <div class="order-grid grid w-full items-center gap-2 px-2 py-2.5 text-sm">
                   <span class="text-muted-foreground truncate tabular-nums">
                     {{ row.date | date: 'MMM d, y, h:mm a' : '' : 'en-US' }}
@@ -118,7 +118,7 @@ const STATUS_FILTERS: readonly { id: StatusFilter; label: string }[] = [
                       data-testid="order-history-status"
                       [class]="tagClass(row)"
                     >
-                      {{ row.tag.toLowerCase() }}
+                      {{ row.status.toLowerCase() }}
                     </span>
                   </span>
                   <span class="truncate">{{ row.side }}</span>
@@ -171,7 +171,7 @@ export class OrderHistoryDialogComponent implements OnInit {
     { key: 'date', label: 'Date', align: 'left' },
     { key: 'account', label: 'Account', align: 'left' },
     { key: 'label', label: 'Asset', align: 'left' },
-    { key: 'tag', label: 'Status', align: 'left' },
+    { key: 'status', label: 'Status', align: 'left' },
     { key: 'side', label: 'Side', align: 'left' },
     { key: 'shares', label: 'Shares', align: 'right' },
     { key: 'price', label: 'Price', align: 'right' },
@@ -201,7 +201,7 @@ export class OrderHistoryDialogComponent implements OnInit {
     return sortHistoryRows(
       this.allRows().filter(
         (row) =>
-          (status === 'all' || row.tag === status) &&
+          (status === 'all' || row.status === status) &&
           (!query || row.label.toLowerCase().includes(query)),
       ),
       this.sortKey(),
@@ -240,6 +240,6 @@ export class OrderHistoryDialogComponent implements OnInit {
   }
 
   protected tagClass(row: HistoryRow): string {
-    return ACTIVITY_TAG_CLASSES[row.tag];
+    return ACTIVITY_STATUS_CLASSES[row.status];
   }
 }

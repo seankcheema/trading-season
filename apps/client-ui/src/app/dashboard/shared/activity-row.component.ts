@@ -1,9 +1,6 @@
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
-// What a row is tagged with: an order's status, or the direction of a cash transfer.
-export type ActivityTag = 'FILLED' | 'REJECTED' | 'PENDING' | 'DEPOSIT' | 'WITHDRAWAL';
-
 // What a row is: the side of a trade or the direction of a cash transfer.
 export type ActivityType = 'BUY' | 'SELL' | 'DEPOSIT' | 'WITHDRAWAL';
 
@@ -26,13 +23,20 @@ export interface ActivityItem {
   rejectionReason?: string | null;
 }
 
-// Classes for each tag: green filled, red rejected, yellow pending, cyan for cash transfers.
-export const ACTIVITY_TAG_CLASSES: Record<ActivityTag, string> = {
+// How each status reads in a row. Cash transfers have no lifecycle, so they name what they are.
+export const ACTIVITY_STATUS_LABELS: Record<ActivityStatus, string> = {
+  FILLED: 'Filled',
+  REJECTED: 'Rejected',
+  PENDING: 'Pending',
+  COMPLETED: 'Cash Transaction',
+};
+
+// Classes for each status: green filled, red rejected, yellow pending, cyan completed cash.
+export const ACTIVITY_STATUS_CLASSES: Record<ActivityStatus, string> = {
   FILLED: 'bg-gain/15 text-gain',
   REJECTED: 'bg-loss/15 text-loss',
   PENDING: 'bg-amber-400/15 text-amber-400',
-  DEPOSIT: 'bg-primary/15 text-primary',
-  WITHDRAWAL: 'bg-primary/15 text-primary',
+  COMPLETED: 'bg-primary/15 text-primary',
 };
 
 // Classes for each type label: green buy, red sell, cyan deposit, amber withdrawal.
@@ -65,17 +69,17 @@ export const ACTIVITY_TYPE_CLASSES: Record<ActivityType, string> = {
       </span>
       <span class="text-muted-foreground block text-xs">
         {{ transaction().date | date: 'MMM d, y, h:mm a' : '' : 'en-US' }}
-        @if (transaction().detail) {
-          · {{ transaction().detail }}
-        }
       </span>
     </span>
     <span class="shrink-0 text-right tabular-nums">
       <span class="block" data-testid="activity-value">
         {{ sign() }}{{ transaction().value | currency: 'USD' }}
       </span>
-      <span class="text-muted-foreground block text-xs" data-testid="activity-status">
-        {{ transaction().status.toLowerCase() }}
+      <span class="text-muted-foreground block text-xs">
+        @if (transaction().detail) {
+          <span data-testid="activity-detail">{{ transaction().detail }}</span> ·
+        }
+        <span data-testid="activity-status">{{ statusLabel() }}</span>
       </span>
     </span>
     @if (transaction().rejectionReason) {
@@ -101,5 +105,8 @@ export class ActivityRowComponent {
     if (item.kind !== 'cash') return '';
     return item.positive ? '+' : '-';
   });
+  protected readonly statusLabel = computed(
+    () => ACTIVITY_STATUS_LABELS[this.transaction().status],
+  );
   protected readonly tagClass = computed(() => ACTIVITY_TYPE_CLASSES[this.transaction().type]);
 }

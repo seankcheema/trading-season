@@ -93,10 +93,10 @@ test('recent transactions label every row by type, show its status, and sign onl
   await expect(tag(3)).toHaveCSS('color', LOSS);
   await expect(tag(4)).toHaveCSS('color', GAIN);
 
-  await expect(status(0)).toHaveText('completed');
-  await expect(status(2)).toHaveText('pending');
-  await expect(status(3)).toHaveText('rejected');
-  await expect(status(4)).toHaveText('filled');
+  await expect(status(0)).toHaveText('Cash Transaction');
+  await expect(status(2)).toHaveText('Pending');
+  await expect(status(3)).toHaveText('Rejected');
+  await expect(status(4)).toHaveText('Filled');
 
   // Only cash carries a +/- sign, and no amount is colored.
   await expect(value(0)).toHaveText('-$25.00');
@@ -149,7 +149,7 @@ test('view all opens every transaction, including cash, and filters by type', as
   const dialog = page.getByRole('dialog', { name: 'Recent Transactions' });
   const rows = dialog.getByTestId('transactions-row');
   await expect(rows).toHaveCount(4);
-  await expect(rows.first()).toHaveAttribute('data-tag', 'DEPOSIT');
+  await expect(rows.first()).toHaveAttribute('data-status', 'COMPLETED');
 
   await dialog.getByTestId('transactions-filter-cash').click();
   await expect(rows).toHaveCount(1);

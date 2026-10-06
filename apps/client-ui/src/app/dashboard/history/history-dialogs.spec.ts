@@ -86,7 +86,7 @@ describe('history dialogs', () => {
     it('lists every order whatever its status, newest first, with rejection reasons', () => {
       const fixture = open();
       const list = rows(fixture, 'order-history-row');
-      expect(list.map((row) => row.dataset['tag'])).toEqual(['REJECTED', 'PENDING', 'FILLED']);
+      expect(list.map((row) => row.dataset['status'])).toEqual(['REJECTED', 'PENDING', 'FILLED']);
       expect(list[0].textContent).toContain('Insufficient holdings');
       expect(list[0].textContent).toContain('Sell');
       expect(
@@ -185,22 +185,22 @@ describe('history dialogs', () => {
     it('combines cash transfers and orders of every status', () => {
       seedOrders();
       const fixture = open();
-      expect(rows(fixture, 'transactions-row').map((row) => row.dataset['tag'])).toEqual([
-        'WITHDRAWAL',
+      expect(rows(fixture, 'transactions-row').map((row) => row.dataset['status'])).toEqual([
+        'COMPLETED',
         'REJECTED',
         'PENDING',
         'FILLED',
-        'DEPOSIT',
+        'COMPLETED',
       ]);
     });
 
     it('hides orders after the simulated clock but keeps cash', () => {
       seedOrders();
       const fixture = open(Date.parse('2026-01-05T16:30:00Z'));
-      expect(rows(fixture, 'transactions-row').map((row) => row.dataset['tag'])).toEqual([
-        'WITHDRAWAL',
+      expect(rows(fixture, 'transactions-row').map((row) => row.dataset['status'])).toEqual([
+        'COMPLETED',
         'FILLED',
-        'DEPOSIT',
+        'COMPLETED',
       ]);
     });
 

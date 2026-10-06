@@ -1,6 +1,6 @@
 import { CashTransaction } from '../accounts/account.models';
 import { InstrumentRef, OrderResult } from '../orders/order.models';
-import { ActivityItem, ActivityTag } from './activity-row.component';
+import { ActivityItem, ActivityStatus } from './activity-row.component';
 
 const USD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
@@ -65,8 +65,9 @@ export interface HistoryRow {
   symbol: string | null;
   label: string;
   account: string;
-  tag: ActivityTag;
-  side: 'Buy' | 'Sell' | null;
+  status: ActivityStatus;
+  // Buy or sell for an order, deposit or withdrawal for cash.
+  side: 'Buy' | 'Sell' | 'Deposit' | 'Withdrawal';
   shares: number | null;
   price: number | null;
   value: number;
@@ -75,7 +76,7 @@ export interface HistoryRow {
 }
 
 export type HistorySortKey =
-  'date' | 'account' | 'label' | 'tag' | 'side' | 'shares' | 'price' | 'value';
+  'date' | 'account' | 'label' | 'status' | 'side' | 'shares' | 'price' | 'value';
 export type SortDirection = 'asc' | 'desc';
 
 export function orderHistoryRow(
@@ -93,7 +94,7 @@ export function orderHistoryRow(
     symbol: instrument ? (instrument.simulatedStockSymbol ?? instrument.ticker) : null,
     label: item.label,
     account: accountName,
-    tag: order.status,
+    status: order.status,
     side: order.orderType === 'BUY' ? 'Buy' : 'Sell',
     shares: order.quantity,
     price: order.indicativePrice,
@@ -113,8 +114,8 @@ export function cashHistoryRow(transaction: CashTransaction): HistoryRow {
     symbol: null,
     label: item.label,
     account: 'All accounts',
-    tag: transaction.reason,
-    side: null,
+    status: item.status,
+    side: transaction.reason === 'DEPOSIT' ? 'Deposit' : 'Withdrawal',
     shares: null,
     price: null,
     value: item.value,
