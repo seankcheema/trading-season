@@ -82,17 +82,10 @@ pipeline {
                 // This prevents "Operation not permitted" errors during workspace cleanup
                 sh '''
                     set +e
-                    if [ -d apps/reporting-service/reports ] || [ -d apps/reporting-service/coverage ] || [ -d apps/reporting-service/tests/__pycache__ ] || [ -d apps/reporting-service/__pycache__ ] || [ -d apps/reporting-service/.pytest_cache ]; then
-                        echo "Repairing permissions on Docker-generated reporting-service artifacts..."
+                    if [ -d apps/reporting-service ] || [ -d apps/reporting-service/tests/__pycache__ ] || [ -d apps/reporting-service/__pycache__ ] || [ -d apps/reporting-service/.pytest_cache ]; then
+                        echo "Repairing permissions on Docker-generated reporting-service files..."
                         docker run --rm -v "$(pwd)":/ws -w /ws alpine:latest \
-                            sh -c 'for path in \
-                                /ws/apps/reporting-service/reports \
-                                /ws/apps/reporting-service/coverage \
-                                /ws/apps/reporting-service/tests/__pycache__ \
-                                /ws/apps/reporting-service/__pycache__ \
-                                /ws/apps/reporting-service/.pytest_cache; do \
-                                [ -e "$path" ] && chmod -R 777 "$path"; \
-                            done' 2>/dev/null || true
+                            chmod -R a+rwX /ws/apps/reporting-service 2>/dev/null || true
                     fi
                     set -e
                 '''
@@ -324,6 +317,15 @@ pipeline {
                                       -w /app \
                                       python:3.14-slim \
                                       bash -c "
+                                        # Runs as root, so pytest/coverage leave root-owned
+                                        # directories (.pytest_cache, __pycache__, reports,
+                                        # coverage) that the jenkins user cannot delete.
+                                        # Repair the whole app directory on every exit path,
+                                        # not just after a clean pytest run.
+                                        trap 'chmod -R a+rwX /app' EXIT
+                                        # Any failing step (dependency install or pytest) must
+                                        # fail the stage; the EXIT trap preserves the exit code.
+                                        set -eu
                                         mkdir -p reports/junit coverage
                                         python -m pip install --upgrade pip setuptools wheel
                                         python -m pip install -q -r requirements.txt
@@ -331,9 +333,7 @@ pipeline {
                                           --junit-xml=reports/junit/results.xml \
                                           --cov=. \
                                           --cov-report=xml:coverage/coverage.xml \
-                                          --cov-report=html:coverage/htmlcov || true
-                                        # Fix file permissions so Jenkins can clean up workspace
-                                        chmod -R 777 reports coverage
+                                          --cov-report=html:coverage/htmlcov
                                       "
                                     echo "✓ Reporting service tests completed"
                                 '''
@@ -345,8 +345,9 @@ pipeline {
                             archiveArtifacts artifacts: 'apps/reporting-service/coverage/**/*, apps/reporting-service/reports/**/*',
                                               allowEmptyArchive: true
                             catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                                // Missing required reports fail the stage.
                                 junit testResults: 'apps/reporting-service/reports/junit/*.xml',
-                                      allowEmptyResults: true,
+                                      allowEmptyResults: false,
                                       healthScaleFactor: 1.0
                             }
                         }

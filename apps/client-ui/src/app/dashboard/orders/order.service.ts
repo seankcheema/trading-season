@@ -1,6 +1,6 @@
 import { TokenStorageService } from '../../core/auth/token-storage.service';
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import {
   Observable,
   Subject,
@@ -17,7 +17,11 @@ import { BACKEND_API_URL } from '../../core/api.config';
 import { UnknownInstrumentError } from './order-error';
 import { InstrumentRef, OrderResult, OrderSubmission, OrderType } from './order.models';
 
-// Submits orders and reads the caller's order history.
+// How often to re-read the history while an order is still pending.
+export const PENDING_ORDER_POLL_MS = 5_000;
+
+// Submits orders and reads the caller's order history. While any order is pending it re-reads
+// the history on a timer, so statuses update without the user doing anything.
 //
 // Shared across views and cleared synchronously on identity changes.
 @Injectable({ providedIn: 'root' })
@@ -32,6 +36,10 @@ export class OrderService {
   private historyRequest?: Observable<OrderResult[]>;
   readonly refreshing = signal(false);
   readonly historyError = signal('');
+  // Emits an order the moment a poll finds it filled after it had been pending, so views can
+  // reload the cash and holdings it moved.
+  readonly pendingFilled = new Subject<OrderResult>();
+  private pollTimer?: ReturnType<typeof setInterval>;
 
   constructor() {
     inject(TokenStorageService).onIdentityChange(() => {
@@ -44,6 +52,11 @@ export class OrderService {
       this.historyStatus.set('idle');
       this.historyError.set('');
     });
+    effect(() => {
+      const pending = this.hasPendingOrders();
+      untracked(() => (pending ? this.startPolling() : this.stopPolling()));
+    });
+    inject(DestroyRef).onDestroy(() => this.stopPolling());
   }
 
   private _instruments: Observable<InstrumentRef[]> | null = null;
@@ -55,6 +68,9 @@ export class OrderService {
 
   // The caller's orders, newest first. Empty until loadOrders() succeeds.
   readonly orders = this._orders.asReadonly();
+  private readonly hasPendingOrders = computed(() =>
+    this._orders().some((order) => order.status === 'PENDING'),
+  );
 
   // Every instrument, ordered by ticker. Repeated calls share one request.
   instruments(): Observable<InstrumentRef[]> {
@@ -141,6 +157,34 @@ export class OrderService {
     );
     this.historyRequest = request;
     return request;
+  }
+
+  private startPolling(): void {
+    this.pollTimer ??= setInterval(() => this.pollPending(), PENDING_ORDER_POLL_MS);
+  }
+
+  private stopPolling(): void {
+    clearInterval(this.pollTimer);
+    this.pollTimer = undefined;
+  }
+
+  // A hidden tab skips the read; the next tick after it is shown catches up.
+  private pollPending(): void {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    const pending = new Set(
+      this._orders()
+        .filter((order) => order.status === 'PENDING')
+        .map((order) => order.orderId),
+    );
+    this.loadOrders().subscribe({
+      next: (orders) => {
+        for (const order of orders) {
+          if (order.status === 'FILLED' && pending.has(order.orderId))
+            this.pendingFilled.next(order);
+        }
+      },
+      error: () => undefined,
+    });
   }
 
   // Resolves a market-data symbol to the instrument behind it, for callers that need the id
