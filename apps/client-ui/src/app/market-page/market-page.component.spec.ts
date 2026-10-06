@@ -841,7 +841,7 @@ describe('MarketPageComponent', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance['heldShares']()).toBe(2);
     expect(fixture.componentInstance['cashBalance']()).toBe(9548.4);
-    expect(fixture.componentInstance['recentOrders']()[0].tag).toBe('FILLED');
+    expect(fixture.componentInstance['recentOrders']()[0].status).toBe('FILLED');
     expect(fixture.componentInstance['orderMessage']()).toBe('');
     expect(fixture.nativeElement.querySelector('app-trade-ticket [role="status"]')).toBeNull();
     expect(TestBed.inject(ToastService).messages()[0].message).toContain('Filled 2 AAPL');
@@ -861,7 +861,7 @@ describe('MarketPageComponent', () => {
     http.expectOne('/api/users/me').flush({ availableFunds: 11129 });
     fixture.detectChanges();
     expect(fixture.componentInstance['heldShares']()).toBe(0);
-    expect(fixture.componentInstance['recentOrders']()[0].positive).toBe(true);
+    expect(fixture.componentInstance['recentOrders']()[0].type).toBe('SELL');
     http.verify();
   });
   it('shows a rejected order and reason without refreshing balances', async () => {

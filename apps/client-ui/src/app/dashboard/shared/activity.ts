@@ -32,8 +32,9 @@ export function orderActivity(
     date: orderDate(order),
     value: order.quantity * order.indicativePrice,
     label: orderSymbol(order, catalogue),
-    detail: `${order.quantity} @ ${USD.format(order.indicativePrice)} · ${order.orderType === 'BUY' ? 'Buy' : 'Sell'}`,
-    tag: order.status,
+    detail: `${order.quantity} @ ${USD.format(order.indicativePrice)}`,
+    type: order.orderType,
+    status: order.status,
     positive: order.orderType === 'SELL',
     rejectionReason: order.rejectionReason,
   };
@@ -46,8 +47,9 @@ export function cashActivity(transaction: CashTransaction): ActivityItem {
     date: transaction.createdAt,
     value: transaction.amount,
     label: 'Cash',
-    detail: 'Cash transfer',
-    tag: transaction.reason,
+    detail: '',
+    type: transaction.reason,
+    status: 'COMPLETED',
     positive: transaction.reason === 'DEPOSIT',
   };
 }

@@ -66,7 +66,7 @@ test.beforeEach(async ({ page, loginPage }) => {
   await expect(page).toHaveURL(/\/dashboard$/);
 });
 
-test('recent transactions tag every row and color its amount by direction', async ({
+test('recent transactions label every row by type, show its status, and sign only cash', async ({
   dashboardPage,
 }) => {
   await expect(dashboardPage.accountMenu).not.toContainText('Loading accounts');
@@ -76,31 +76,38 @@ test('recent transactions tag every row and color its amount by direction', asyn
   const rows = dashboardPage.recentTransactions.locator('li[data-kind]');
   await expect(rows).toHaveCount(5);
   await expect
-    .poll(() => rows.evaluateAll((items) => items.map((item) => item.getAttribute('data-tag'))))
-    .toEqual(['WITHDRAWAL', 'DEPOSIT', 'PENDING', 'REJECTED', 'FILLED']);
+    .poll(() => rows.evaluateAll((items) => items.map((item) => item.getAttribute('data-status'))))
+    .toEqual(['COMPLETED', 'COMPLETED', 'PENDING', 'REJECTED', 'FILLED']);
 
   const tag = (row: number) => rows.nth(row).getByTestId('activity-tag');
+  const status = (row: number) => rows.nth(row).getByTestId('activity-status');
   const value = (row: number) => rows.nth(row).getByTestId('activity-value');
   await expect(tag(0)).toHaveText('withdrawal');
   await expect(tag(1)).toHaveText('deposit');
-  await expect(tag(2)).toHaveText('pending');
-  await expect(tag(3)).toHaveText('rejected');
-  await expect(tag(4)).toHaveText('filled');
-  await expect(tag(0)).toHaveClass(/text-primary/);
+  await expect(tag(2)).toHaveText('buy');
+  await expect(tag(3)).toHaveText('sell');
+  await expect(tag(4)).toHaveText('buy');
+  await expect(tag(0)).toHaveClass(/text-amber-400/);
   await expect(tag(1)).toHaveClass(/text-primary/);
-  await expect(tag(2)).toHaveClass(/text-amber-400/);
+  await expect(tag(2)).toHaveCSS('color', GAIN);
   await expect(tag(3)).toHaveCSS('color', LOSS);
   await expect(tag(4)).toHaveCSS('color', GAIN);
 
-  // Money out is red: a withdrawal and a buy. Money in is green: a deposit and a sell.
-  await expect(value(0)).toHaveCSS('color', LOSS);
+  await expect(status(0)).toHaveText('completed');
+  await expect(status(2)).toHaveText('pending');
+  await expect(status(3)).toHaveText('rejected');
+  await expect(status(4)).toHaveText('filled');
+
+  // Only cash carries a +/- sign, and no amount is colored.
   await expect(value(0)).toHaveText('-$25.00');
-  await expect(value(1)).toHaveCSS('color', GAIN);
   await expect(value(1)).toHaveText('+$100.00');
-  await expect(value(2)).toHaveCSS('color', LOSS);
-  await expect(value(3)).toHaveCSS('color', GAIN);
-  await expect(value(4)).toHaveCSS('color', LOSS);
-  await expect(value(4)).toHaveText('-$400.00');
+  await expect(value(2)).toHaveText('$400.00');
+  await expect(value(3)).toHaveText('$10,000.00');
+  await expect(value(4)).toHaveText('$400.00');
+  for (let row = 0; row < 5; row++) {
+    await expect(value(row)).not.toHaveCSS('color', GAIN);
+    await expect(value(row)).not.toHaveCSS('color', LOSS);
+  }
 });
 
 test('order history lists every past order and filters by status', async ({ page }) => {
@@ -164,7 +171,7 @@ test('a pending order updates to filled by itself, with the balances it moved', 
   dashboardPage,
   api,
 }) => {
-  const pendingRow = dashboardPage.recentTransactions.locator('li[data-tag="PENDING"]');
+  const pendingRow = dashboardPage.recentTransactions.locator('li[data-status="PENDING"]');
   await expect(pendingRow).toContainText('MSFT');
   await expect(dashboardPage.cash).toHaveText('Cash $5,000.00');
 
@@ -179,8 +186,8 @@ test('a pending order updates to filled by itself, with the balances it moved', 
     timeout: POLL_TIMEOUT,
   });
   await page.keyboard.press('Escape');
-  await expect(dashboardPage.recentTransactions.locator('li[data-tag="PENDING"]')).toHaveCount(0);
-  await expect(dashboardPage.recentTransactions.locator('li[data-tag="FILLED"]')).toHaveCount(2);
+  await expect(dashboardPage.recentTransactions.locator('li[data-status="PENDING"]')).toHaveCount(0);
+  await expect(dashboardPage.recentTransactions.locator('li[data-status="FILLED"]')).toHaveCount(2);
   // The fill moved cash and added the position without a reload.
   await expect(dashboardPage.cash).toHaveText('Cash $4,600.00');
   await expect(dashboardPage.assets.getByTestId('asset-row-MSFT')).toBeVisible();
@@ -198,10 +205,10 @@ test('a pending order that is rejected shows its reason without a reload', async
   dashboardPage,
   api,
 }) => {
-  await expect(dashboardPage.recentTransactions.locator('li[data-tag="PENDING"]')).toBeVisible();
+  await expect(dashboardPage.recentTransactions.locator('li[data-status="PENDING"]')).toBeVisible();
   api.resolveOrder(USER.email, 2, { status: 'REJECTED', rejectionReason: 'Insufficient funds' });
 
-  const rejected = dashboardPage.recentTransactions.locator('li[data-tag="REJECTED"]');
+  const rejected = dashboardPage.recentTransactions.locator('li[data-status="REJECTED"]');
   await expect(rejected).toHaveCount(2, { timeout: POLL_TIMEOUT });
   await expect(dashboardPage.recentTransactions).toContainText('Insufficient funds');
   await expect(dashboardPage.cash).toHaveText('Cash $5,000.00');

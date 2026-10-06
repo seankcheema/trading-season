@@ -45,29 +45,35 @@ describe('activity helpers', () => {
     expect(orderDate(order({ status: 'PENDING', resolvedAt: null }))).toBe('2026-01-05T16:00:00Z');
   });
 
-  it('tags orders by status and colors the amount by cash direction', () => {
+  it('types orders by side and reports their status', () => {
     const buy = orderActivity(order(), CATALOGUE);
     expect(buy).toMatchObject({
       label: 'AAPL',
-      tag: 'FILLED',
+      type: 'BUY',
+      status: 'FILLED',
       value: 30,
       positive: false,
-      detail: '3 @ $10.00 · Buy',
+      detail: '3 @ $10.00',
     });
-    expect(orderActivity(order({ orderType: 'SELL' }), CATALOGUE).positive).toBe(true);
-    expect(orderActivity(order({ status: 'PENDING' }), CATALOGUE).tag).toBe('PENDING');
-    expect(orderActivity(order({ status: 'REJECTED' }), CATALOGUE).tag).toBe('REJECTED');
+    expect(orderActivity(order({ orderType: 'SELL' }), CATALOGUE)).toMatchObject({
+      type: 'SELL',
+      positive: true,
+    });
+    expect(orderActivity(order({ status: 'PENDING' }), CATALOGUE).status).toBe('PENDING');
+    expect(orderActivity(order({ status: 'REJECTED' }), CATALOGUE).status).toBe('REJECTED');
     expect(orderActivity(order({ instrumentId: 99 }), []).label).toBe('Order #1');
   });
 
-  it('tags cash transfers by direction', () => {
+  it('types cash transfers by direction and marks them completed', () => {
     const base = { cashTransactionId: 4, amount: 25, createdAt: '2026-01-05T16:00:00Z' };
     expect(cashActivity({ ...base, reason: 'DEPOSIT' })).toMatchObject({
-      tag: 'DEPOSIT',
+      type: 'DEPOSIT',
+      status: 'COMPLETED',
       positive: true,
     });
     expect(cashActivity({ ...base, reason: 'WITHDRAWAL' })).toMatchObject({
-      tag: 'WITHDRAWAL',
+      type: 'WITHDRAWAL',
+      status: 'COMPLETED',
       positive: false,
     });
   });

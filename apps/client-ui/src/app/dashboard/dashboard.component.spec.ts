@@ -197,36 +197,66 @@ describe('DashboardComponent', () => {
         '[data-testid="recent-transactions"] li[data-kind]',
       ),
     ] as HTMLElement[];
-    expect(rows.map((row) => row.dataset['tag'])).toEqual([
-      'FILLED',
+    expect(rows.map((row) => row.dataset['type'])).toEqual([
+      'BUY',
       'DEPOSIT',
       'WITHDRAWAL',
+      'SELL',
+      'BUY',
+      'BUY',
+    ]);
+    expect(rows.map((row) => row.dataset['status'])).toEqual([
+      'FILLED',
+      'COMPLETED',
+      'COMPLETED',
       'FILLED',
       'PENDING',
       'REJECTED',
     ]);
     expect(rows[0].textContent).toContain('AAPL');
-    expect(rows[0].textContent).toContain('-$200.00');
-    expect(rows[0].textContent).toContain('2 @ $100.00 · Buy');
-    expect(rows[3].textContent).toContain('+$120.00');
-    expect(rows[3].textContent).toContain('1 @ $120.00 · Sell');
+    expect(rows[0].textContent).toContain('2 @ $100.00');
     expect(rows[5].textContent).toContain('Insufficient funds');
+
+    const text = (row: HTMLElement, testId: string) =>
+      row.querySelector(`[data-testid="${testId}"]`)!.textContent!.trim();
+    // The label names the type and the bottom right names the status.
+    expect(rows.map((row) => text(row, 'activity-tag'))).toEqual([
+      'buy',
+      'deposit',
+      'withdrawal',
+      'sell',
+      'buy',
+      'buy',
+    ]);
+    expect(rows.map((row) => text(row, 'activity-status'))).toEqual([
+      'filled',
+      'completed',
+      'completed',
+      'filled',
+      'pending',
+      'rejected',
+    ]);
+
+    // Only cash transfers carry a +/- sign, and no amount is colored.
+    expect(rows.map((row) => text(row, 'activity-value'))).toEqual([
+      '$200.00',
+      '+$500.00',
+      '-$50.00',
+      '$120.00',
+      expect.any(String),
+      expect.any(String),
+    ]);
+    for (const row of rows) {
+      const valueClass = row.querySelector('[data-testid="activity-value"]')!.className;
+      expect(valueClass).not.toMatch(/text-(gain|loss)/);
+    }
 
     const tagClass = (row: HTMLElement) =>
       row.querySelector('[data-testid="activity-tag"]')!.className;
     expect(tagClass(rows[0])).toContain('text-gain');
     expect(tagClass(rows[1])).toContain('text-primary');
-    expect(tagClass(rows[2])).toContain('text-primary');
-    expect(tagClass(rows[4])).toContain('text-amber-400');
-    expect(tagClass(rows[5])).toContain('text-loss');
-
-    // The amount is green when money comes in and red when it goes out.
-    const valueClass = (row: HTMLElement) =>
-      row.querySelector('[data-testid="activity-value"]')!.className;
-    expect(valueClass(rows[0])).toContain('text-loss');
-    expect(valueClass(rows[1])).toContain('text-gain');
-    expect(valueClass(rows[2])).toContain('text-loss');
-    expect(valueClass(rows[3])).toContain('text-gain');
+    expect(tagClass(rows[2])).toContain('text-amber-400');
+    expect(tagClass(rows[3])).toContain('text-loss');
   });
 
   it('opens the transactions and order history dialogs from the panel', () => {
