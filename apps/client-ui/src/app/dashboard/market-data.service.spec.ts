@@ -189,6 +189,16 @@ describe('MarketDataService', () => {
     vi.restoreAllMocks();
   });
 
+  it('keeps an in-flight candle request when its only subscriber leaves and returns', () => {
+    const received: unknown[] = [];
+    service.candles(7, 'AAPL', '1D').subscribe().unsubscribe();
+    service.candles(7, 'AAPL', '1D').subscribe((value) => received.push(value));
+    const req = http.expectOne((request) => request.url === '/api/market/candles');
+    expect(req.cancelled).toBe(false);
+    req.flush({ points: [], symbol: 'AAPL' });
+    expect(received).toHaveLength(1);
+  });
+
   it('invalidates pending candles on rewind and never publishes their old response', () => {
     service.candles(7, 'AAPL', '1D').subscribe();
     const old = http.expectOne((request) => request.url === '/api/market/candles');
