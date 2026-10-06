@@ -209,7 +209,21 @@
           }
           {{ submitLabel() }}
         </button>
+        <p class="text-muted-foreground mt-2 text-center text-[11px] leading-4" data-testid="order-disclaimer">
+          {{ disclaimer }}
+        </p>
       </div>
     </div>
   </section>
 </div>
+
+@if (reviewOpen()) {
+  <app-order-review-dialog
+    [side]="side()"
+    [symbol]="activeInstrument().symbol"
+    [quantity]="shares()"
+    [price]="activeInstrument().price"
+    (confirmed)="confirmOrder()"
+    (cancelled)="reviewOpen.set(false)"
+  />
+}

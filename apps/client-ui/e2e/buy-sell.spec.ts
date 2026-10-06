@@ -1,3 +1,4 @@
+import { confirmOrderReview } from './fixtures/pages';
 import { expect, test } from './fixtures/test';
 
 const credentials = { email: 'ledger-trader@example.com', password: 'Trader-password1!' };
@@ -15,6 +16,7 @@ test('buy and sell submit replay time and refresh the account', async ({ page, l
   await dialog.locator('#order-shares').fill('2');
   const buyResponse = page.waitForResponse(r => r.url().endsWith('/api/orders') && r.request().method() === 'POST');
   await dialog.getByRole('button', { name: 'Buy 2 AAPL', exact: true }).click();
+  await confirmOrderReview(page);
   const buy = await (await buyResponse).json();
   const cashBefore = dialog.locator('dt').filter({ hasText: /^Cash before$/ }).locator('..').locator('dd');
   expect(buy.status).toBe('FILLED');
@@ -26,6 +28,7 @@ test('buy and sell submit replay time and refresh the account', async ({ page, l
   await dialog.locator('#order-shares').fill('2');
   const sellResponse = page.waitForResponse(r => r.url().endsWith('/api/orders') && r.request().method() === 'POST');
   await dialog.getByRole('button', { name: 'Sell 2 AAPL', exact: true }).click();
+  await confirmOrderReview(page);
   const sell = await (await sellResponse).json();
   expect(sell.status).toBe('FILLED');
   const submitted = api.requestsContaining('/api/orders').filter(r => r.method === 'POST');

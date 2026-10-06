@@ -3,6 +3,7 @@ import { ToastService } from '../../notifications/toast.service';
 import { TestBed } from '@angular/core/testing';
 import { OrderSubmissionComponent } from './order-submission.component';
 import { Instrument } from '../mock-data';
+import { ORDER_DISCLAIMER_SUBTEXT, ORDER_REVIEW_DISCLAIMER } from '../orders/order-disclaimer';
 import { InstrumentRef, OrderResult } from '../orders/order.models';
 import { OrderService } from '../orders/order.service';
 import { provideHttpClient } from '@angular/common/http';
@@ -57,6 +58,12 @@ function filledOrder(overrides: Partial<OrderResult> = {}): OrderResult {
   };
 }
 
+// Every order goes through the review popup; confirming it is what sends the request.
+function placeOrder(component: OrderSubmissionComponent) {
+  component['submit']();
+  component['confirmOrder']();
+}
+
 describe('OrderSubmissionComponent', () => {
   function setup(positions: Record<string, number> = {}) {
     const fixture = TestBed.createComponent(OrderSubmissionComponent);
@@ -101,7 +108,7 @@ describe('OrderSubmissionComponent', () => {
       const fixture = setup();
       fixture.componentRef.setInput('marketTimestamp', timestamp);
       fixture.detectChanges();
-      fixture.componentInstance['submit']();
+      placeOrder(fixture.componentInstance);
       const http = TestBed.inject(HttpTestingController);
       http.expectOne('/api/instruments').flush(CATALOGUE);
       const posted = http.expectOne({ method: 'POST', url: '/api/orders' });
@@ -120,7 +127,7 @@ describe('OrderSubmissionComponent', () => {
     component.submitted.subscribe((order) => emitted.push(order));
     component['shares'].set(2);
 
-    component['submit']();
+    placeOrder(component);
     expect(component['submitting']()).toBe(true);
 
     // The symbol has to be resolved to an instrument id before the order can be placed.
@@ -150,7 +157,7 @@ describe('OrderSubmissionComponent', () => {
     const fixture = setup();
     const component = fixture.componentInstance;
     component['shares'].set(2);
-    component['submit']();
+    placeOrder(component);
     http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
     const posted = http.expectOne({ method: 'POST', url: '/api/orders' });
     component['activeSymbol'].set('NVDA');
@@ -171,8 +178,8 @@ describe('OrderSubmissionComponent', () => {
       component['shares'].set(2);
       const emitted: OrderResult[] = [];
       component.submitted.subscribe((result) => emitted.push(result));
-      component['submit']();
-      component['submit']();
+      placeOrder(component);
+      placeOrder(component);
       http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
       const first = http.expectOne({ method: 'POST', url: '/api/orders' });
       const reference = first.request.body.clientReference;
@@ -185,7 +192,7 @@ describe('OrderSubmissionComponent', () => {
       vi.advanceTimersByTime(1);
       expect(component['canSubmit']()).toBe(true);
       expect(component['submitLabel']()).toBe(`${side === 'buy' ? 'Buy' : 'Sell'} 2 AAPL`);
-      component['submit']();
+      placeOrder(component);
       const second = http.expectOne({ method: 'POST', url: '/api/orders' });
       expect(second.request.body.clientReference).not.toBe(reference);
       second.flush(filledOrder({ orderId: 2, orderType: side === 'buy' ? 'BUY' : 'SELL' }));
@@ -201,7 +208,7 @@ describe('OrderSubmissionComponent', () => {
       fixture.detectChanges();
       expect(component['shares']()).toBe(0);
       expect(component['canSubmit']()).toBe(false);
-      component['submit']();
+      placeOrder(component);
       http.expectNone({ method: 'POST', url: '/api/orders' });
       http.verify();
     });
@@ -210,13 +217,13 @@ describe('OrderSubmissionComponent', () => {
   it('keeps the spinner and lock active when the request takes longer than one second', () => {
     const http = TestBed.inject(HttpTestingController);
     const component = setup().componentInstance;
-    component['submit']();
+    placeOrder(component);
     http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
     const request = http.expectOne({ method: 'POST', url: '/api/orders' });
     vi.advanceTimersByTime(1500);
     expect(component['busy']()).toBe(true);
     expect(component['canSubmit']()).toBe(false);
-    component['submit']();
+    placeOrder(component);
     http.expectNone({ method: 'POST', url: '/api/orders' });
     request.flush(filledOrder());
     expect(component['busy']()).toBe(false);
@@ -230,7 +237,7 @@ describe('OrderSubmissionComponent', () => {
     component['side'].set('sell');
     component['shares'].set(3);
 
-    component['submit']();
+    placeOrder(component);
     http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
     const posted = http.expectOne({ method: 'POST', url: '/api/orders' });
 
@@ -248,7 +255,7 @@ describe('OrderSubmissionComponent', () => {
     component.submitted.subscribe((order) => emitted.push(order));
     component['shares'].set(2);
 
-    component['submit']();
+    placeOrder(component);
     http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
     http.expectOne({ method: 'POST', url: '/api/orders' }).flush(
       filledOrder({
@@ -272,7 +279,7 @@ describe('OrderSubmissionComponent', () => {
     const component = setup().componentInstance;
     component['shares'].set(2);
 
-    component['submit']();
+    placeOrder(component);
     http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
     http
       .expectOne({ method: 'POST', url: '/api/orders' })
@@ -287,7 +294,7 @@ describe('OrderSubmissionComponent', () => {
     const component = setup().componentInstance;
     component['shares'].set(2);
 
-    component['submit']();
+    placeOrder(component);
     http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
     http
       .expectOne({ method: 'POST', url: '/api/orders' })
@@ -306,7 +313,7 @@ describe('OrderSubmissionComponent', () => {
     const component = fixture.componentInstance;
     component['shares'].set(2);
 
-    component['submit']();
+    placeOrder(component);
 
     expect(component['errorMessage']()).toBe('Select an account before placing an order.');
     http.expectNone({ method: 'POST', url: '/api/orders' });
@@ -317,7 +324,7 @@ describe('OrderSubmissionComponent', () => {
     const component = setup().componentInstance;
     component['shares'].set(2);
 
-    component['submit']();
+    placeOrder(component);
     http.expectOne({ method: 'GET', url: '/api/instruments' }).flush([]);
 
     expect(component['errorMessage']()).toBe(
@@ -332,7 +339,7 @@ describe('OrderSubmissionComponent', () => {
     const component = fixture.componentInstance;
     component['shares'].set(2);
 
-    component['submit']();
+    placeOrder(component);
     http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
     http.expectOne({ method: 'POST', url: '/api/orders' }).flush(filledOrder());
     expect(component['filled']()).toBe(true);
@@ -356,7 +363,7 @@ describe('OrderSubmissionComponent', () => {
     component['shares'].set(2);
 
     const http = TestBed.inject(HttpTestingController);
-    component['submit']();
+    placeOrder(component);
     http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
 
     expect(component['orderValue']()).toBe(800);
@@ -394,7 +401,15 @@ describe('OrderSubmissionComponent', () => {
         Array.from(el.querySelectorAll<HTMLButtonElement>('button')).find((b) =>
           /^(Buy|Sell) \d+ /.test(b.textContent?.trim() ?? ''),
         )!;
-      return { fixture, el, sideButton, sharesInput, slider, submitButton };
+      const confirmButton = () =>
+        el.querySelector<HTMLButtonElement>('[data-testid="order-review-confirm"]');
+      // Clicking Buy/Sell opens the review popup; confirming it sends the order.
+      const submitAndConfirm = () => {
+        submitButton().click();
+        fixture.detectChanges();
+        confirmButton()!.click();
+      };
+      return { fixture, el, sideButton, sharesInput, slider, submitButton, confirmButton, submitAndConfirm };
     }
 
     function setShares(input: HTMLInputElement, value: string) {
@@ -418,6 +433,63 @@ describe('OrderSubmissionComponent', () => {
 
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
       expect(closes).toBe(3);
+    });
+
+    it('should show the disclaimer subtext under the submit button', () => {
+      const { el } = render();
+
+      expect(el.querySelector('[data-testid="order-disclaimer"]')!.textContent!.trim()).toBe(
+        ORDER_DISCLAIMER_SUBTEXT,
+      );
+    });
+
+    it('should send nothing until the order review is confirmed', () => {
+      const http = TestBed.inject(HttpTestingController);
+      const { fixture, sharesInput, submitButton, confirmButton, el } = render();
+
+      setShares(sharesInput, '3');
+      fixture.detectChanges();
+      submitButton().click();
+      fixture.detectChanges();
+
+      http.expectNone({ method: 'POST', url: '/api/orders' });
+      expect(el.querySelector('[data-testid="order-review-summary"]')!.textContent).toContain(
+        'Buy 3 AAPL',
+      );
+      const disclaimer = el.querySelector('[data-testid="order-review-disclaimer"]')!.textContent!;
+      for (const paragraph of ORDER_REVIEW_DISCLAIMER) expect(disclaimer).toContain(paragraph);
+
+      confirmButton()!.click();
+      fixture.detectChanges();
+      http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
+      http.expectOne({ method: 'POST', url: '/api/orders' }).flush(filledOrder({ quantity: 3 }));
+      expect(confirmButton()).toBeNull();
+    });
+
+    it('should cancel the review from its button or Escape without sending or closing the ticket', () => {
+      const http = TestBed.inject(HttpTestingController);
+      const { fixture, sharesInput, submitButton, confirmButton, el } = render();
+      let closes = 0;
+      fixture.componentInstance.closed.subscribe(() => closes++);
+      setShares(sharesInput, '2');
+      fixture.detectChanges();
+
+      submitButton().click();
+      fixture.detectChanges();
+      Array.from(el.querySelectorAll<HTMLButtonElement>('button'))
+        .find((button) => button.textContent?.trim() === 'Cancel')!
+        .click();
+      fixture.detectChanges();
+      expect(confirmButton()).toBeNull();
+
+      submitButton().click();
+      fixture.detectChanges();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
+      expect(confirmButton()).toBeNull();
+
+      expect(closes).toBe(0);
+      http.expectNone({ method: 'POST', url: '/api/orders' });
     });
 
     it('should switch to selling and label the ticket accordingly', () => {
@@ -507,13 +579,13 @@ describe('OrderSubmissionComponent', () => {
 
     it('should submit from the button and do nothing when there is nothing to trade', () => {
       const http = TestBed.inject(HttpTestingController);
-      const { fixture, sharesInput, submitButton, el } = render();
+      const { fixture, sharesInput, submitButton, submitAndConfirm, el } = render();
       const emitted: OrderResult[] = [];
       fixture.componentInstance.submitted.subscribe((order) => emitted.push(order));
 
       setShares(sharesInput, '3');
       fixture.detectChanges();
-      submitButton().click();
+      submitAndConfirm();
       http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
       http.expectOne({ method: 'POST', url: '/api/orders' }).flush(filledOrder({ quantity: 3 }));
       vi.advanceTimersByTime(1000);
@@ -525,18 +597,18 @@ describe('OrderSubmissionComponent', () => {
       expect(submitButton().disabled).toBe(false);
 
       setShares(sharesInput, '0');
-      fixture.componentInstance['submit']();
+      placeOrder(fixture.componentInstance);
       expect(emitted).toHaveLength(1);
       http.verify();
     });
 
     it('should notify a rejection and a failure outside the ticket', () => {
       const http = TestBed.inject(HttpTestingController);
-      const { fixture, sharesInput, submitButton, el } = render();
+      const { fixture, sharesInput, submitButton, submitAndConfirm, el } = render();
 
       setShares(sharesInput, '3');
       fixture.detectChanges();
-      submitButton().click();
+      submitAndConfirm();
       http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
       http
         .expectOne({ method: 'POST', url: '/api/orders' })
@@ -549,7 +621,7 @@ describe('OrderSubmissionComponent', () => {
       );
       expect(el.querySelector('[data-testid="order-rejected"]')).toBeNull();
 
-      submitButton().click();
+      submitAndConfirm();
       http
         .expectOne({ method: 'POST', url: '/api/orders' })
         .flush(null, { status: 500, statusText: 'Server Error' });
