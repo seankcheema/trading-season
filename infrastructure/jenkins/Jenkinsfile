@@ -540,14 +540,35 @@ pipeline {
                     fi
                     echo "[INFO] JWT keys exported successfully"
 
-                        echo "Building and starting the long-running local application stack..."
+                    # This stack is disposable CI state. A named volume left by an
+                    # earlier build can hold a partial schema that the migrations
+                    # refuse to upgrade, so every build starts from an empty database.
+                    echo "Removing any stack and database volume left by an earlier build..."
                     env JWT_PRIVATE_KEY="$JWT_PRIVATE_KEY" JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY" JWT_ISSUER="${JWT_ISSUER:-https://auth.dualeapa.local}" \
                     bash infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
                         --env-file "$COMPOSE_ENV_FILE" \
                         -f "$COMPOSE_FILE" \
+                        down -v --remove-orphans
+
+                        echo "Building and starting the long-running local application stack..."
+                    if ! env JWT_PRIVATE_KEY="$JWT_PRIVATE_KEY" JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY" JWT_ISSUER="${JWT_ISSUER:-https://auth.dualeapa.local}" \
+                    bash infrastructure/docker/run-compose.sh \
+                        --project-name "$PROJECT_NAME" \
+                        --env-file "$COMPOSE_ENV_FILE" \
+                        -f "$COMPOSE_FILE" \
                             up -d --build \
-                            auth-service client-ui db db-init holdings-and-trade-service kafka order-and-sell-service reporting-service reporting-ui
+                            auth-service client-ui db db-init holdings-and-trade-service kafka order-and-sell-service reporting-service reporting-ui; then
+                        # A db-init that exits non-zero fails `up` before any
+                        # later diagnostics run, so show why here.
+                        echo "===== db-init logs =====" >&2
+                        bash infrastructure/docker/run-compose.sh \
+                            --project-name "$PROJECT_NAME" \
+                            --env-file "$COMPOSE_ENV_FILE" \
+                            -f "$COMPOSE_FILE" \
+                            logs --no-color db-init >&2 || true
+                        exit 1
+                    fi
 
                         echo "Starting kafka-init separately so Compose does not race a short-lived init container during detached startup..."
                         env JWT_PRIVATE_KEY="$JWT_PRIVATE_KEY" JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY" JWT_ISSUER="${JWT_ISSUER:-https://auth.dualeapa.local}" \
@@ -760,7 +781,7 @@ pipeline {
                     }
                     if (currentBuild.currentResult != 'SUCCESS' && env.LOCAL_STACK_STARTED == 'true') {
                         def composeCleanupStatus = sh(
-                            script: 'bash infrastructure/docker/run-compose.sh --project-name trading-season-local --env-file infrastructure/docker-compose/.env -f infrastructure/docker-compose/docker-compose.local.yml down',
+                            script: 'bash infrastructure/docker/run-compose.sh --project-name trading-season-local --env-file infrastructure/docker-compose/.env -f infrastructure/docker-compose/docker-compose.local.yml down -v --remove-orphans',
                             returnStatus: true
                         )
                         if (composeCleanupStatus != 0) {
