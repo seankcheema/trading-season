@@ -1,462 +1,186 @@
 # Trading Season
 
-Trading simulation monorepo with an Angular interface, two Spring Boot microservices, a NestJS authentication service, and a Flask reporting service.
+A trading simulation platform: an Angular client, two Spring Boot services for trading and holdings, a NestJS authentication service, and a Flask reporting service, all sharing one PostgreSQL database.
 
-The backend consists of two independent Java microservices and one NestJS authentication service:
-- **Order and Sell Service** (`apps/order-and-sell-service/`) – Order submission, validation, execution, and instrument reference data
-- **Holdings and Trade Service** (`apps/holdings-and-trade-service/`) – User profiles, accounts, holdings, cash movements, and market data
-- **Auth Service** (`apps/auth-service/`) – Email/password authentication, RS256 token issuance, refresh token rotation
+## Services
 
-All services share a single PostgreSQL database (`trading_season`).
+| Service | Folder | Port | Responsibility |
+| --- | --- | --- | --- |
+| Client UI | [apps/client-ui](apps/client-ui/README.md) | 4200 | Landing, login, registration, trading dashboard |
+| Auth Service | [apps/auth-service](apps/auth-service/README.md) | 3001 | Credentials, RS256 access tokens, refresh token rotation |
+| Order and Sell Service | [apps/order-and-sell-service](apps/order-and-sell-service/README.md) | 8081 | Order submission, validation, execution, instruments |
+| Holdings and Trade Service | [apps/holdings-and-trade-service](apps/holdings-and-trade-service/README.md) | 8082 | Profiles, accounts, holdings, cash, watchlist, market data |
+| Reporting Service | [apps/reporting-service](apps/reporting-service/README.md) | 8083 | Portfolio and trade reporting (in development) |
+| Reporting UI | [apps/reporting-ui](apps/reporting-ui/README.md) | 4300 | Placeholder page |
+| Market Data | [apps/market-data](apps/market-data/README.md) | - | Synthetic market data generation and import |
+| Database | [db](db/README.md) | 5432 | Migrations and schema for the shared `trading_season` database |
 
-## API Documentation
+## Architecture
 
-All services provide interactive Swagger UI documentation:
+```mermaid
+flowchart LR
+    Trader([Trader]) --> UI["Client UI<br/>Angular :4200"]
+    UI -- "login, register, refresh" --> Auth["Auth Service<br/>NestJS :3001"]
+    UI -- "/api/orders, /api/instruments" --> OS["Order and Sell Service<br/>Spring Boot :8081"]
+    UI -- "all other /api/*" --> HT["Holdings and Trade Service<br/>Spring Boot :8082"]
 
-| Service | Swagger UI | OpenAPI Spec |
-| --- | --- | --- |
-| Auth Service | http://localhost:3001/api/docs | http://localhost:3001/api-json |
-| Holdings and Trade Service | http://localhost:8082/swagger-ui.html | http://localhost:8082/v3/api-docs |
-| Order and Sell Service | http://localhost:8081/swagger-ui.html | http://localhost:8081/v3/api-docs |
-| Reporting Service | http://localhost:8083/docs | http://localhost:8083/openapi.yaml |
+    OS -. "cached JWKS" .-> Auth
+    HT -. "cached JWKS" .-> Auth
+    RS["Reporting Service<br/>Flask :8083"] -. "cached JWKS" .-> Auth
 
-**Quick Start**: Use the default test credentials `admin@example.com` / `admin123` to login and test all endpoints. See [TEST_CREDENTIALS.md](docs/TEST_CREDENTIALS.md) for details.
+    Auth --> DB[("PostgreSQL<br/>trading_season :5432")]
+    OS --> DB
+    HT --> DB
+    RS --> DB
 
-For more information, see [SWAGGER_DOCS.md](docs/SWAGGER_DOCS.md).
-
-## Team
-
-- **Soli** – Team Lead
-- **Chris** – Scrum Master
-- **Sean** – Meeting Scribe (documentation of team matters) + Front End Developer
-- **Prisca** – Full Stack Developer
-- **Mohammed** – Full Stack Developer
-
-## Start locally on Windows
-
-Install Node.js 24.8.0+ (24.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL (or Docker Compose).
-
-### Quick start with the startup script (requires local databases)
-
-1. Install the client UI and auth-service dependencies:
-
-   ```powershell
-   npm --prefix apps/client-ui ci
-   npm --prefix apps/auth-service ci
-   ```
-
-2. Configure authentication:
-
-   ```powershell
-   Copy-Item apps/auth-service/.env.example apps/auth-service/.env
-   cd apps/auth-service
-   node scripts/generate-dev-keys.mjs | Add-Content .env
-   cd ../..
-   ```
-
-3. Ensure the database is running (`trading_season` on port 5432).
-
-4. Start all services with the startup script:
-
-   ```powershell
-   $env:SPRING_DATASOURCE_PASSWORD = 'password'
-   .\scripts\start-local.ps1
-   ```
-
-   The launcher consolidates all logs in one terminal and stops all services if any one exits. Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001`, Order and Sell Service on `http://localhost:8081`, and Holdings and Trade Service on `http://localhost:8082`. Each service's port comes from its own `application.properties`. See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
-
-### Manual setup with local PostgreSQL
-
-If you prefer to run PostgreSQL locally:
-
-#### 1. Create business database
-
-Connect to the default `postgres` database as your PostgreSQL admin user. In pgAdmin Query Tool or psql, run:
-
-```sql
-CREATE ROLE trading_season WITH LOGIN PASSWORD 'password';
+    Kafka[["Kafka :29092<br/>trade-events topic<br/>no producers or consumers yet"]]
 ```
 
-```sql
-CREATE DATABASE trading_season OWNER trading_season;
+The UI reaches both Java services through one relative `/api` prefix that the dev proxy and the Nginx image split by path. The Java services never call the Auth Service per request: they verify tokens locally against its cached public keys.
+
+## Authentication and request flow
+
+```mermaid
+sequenceDiagram
+    actor Trader
+    participant UI as Client UI
+    participant Auth as Auth Service
+    participant API as Java service
+
+    Trader->>UI: Email and password
+    UI->>Auth: POST /auth/login
+    Auth-->>UI: Access token (RS256, 15 min) and refresh token (7 days)
+    UI->>API: Request with Bearer access token
+    API->>Auth: GET /.well-known/jwks.json (first use, then cached)
+    API->>API: Verify signature, expiry, issuer, subject
+    API-->>UI: Response scoped to the token subject
+    UI->>Auth: POST /auth/refresh (access token expired)
+    Auth-->>UI: New access token and rotated refresh token
 ```
 
-Then apply the schema. Connect to `trading_season` as the `trading_season` user and run V001 followed by V002 on an empty database. V001 also repairs a legacy database missing `user_accounts`, `refresh_tokens`, and `portfolio_valuations`; see the [legacy upgrade procedure](docs/reference/database.md#upgrade-a-legacy-17-table-database). It preserves the legacy `sessions` table, so a repaired database has 21 tables while a fresh database has 20:
+## Order flow
+
+```mermaid
+sequenceDiagram
+    participant UI as Client UI
+    participant OS as Order and Sell Service
+    participant DB as PostgreSQL
+
+    UI->>OS: POST /api/orders
+    OS->>DB: Insert order as PENDING
+    OS->>OS: Run validation rules
+    alt A rule fails
+        OS->>DB: Mark REJECTED and write audit entry
+    else All rules pass
+        OS->>DB: One transaction: fill, cash, holding movement, holding, audit
+        OS->>DB: Mark FILLED
+    end
+    OS-->>UI: 201 with the order outcome
+```
+
+## Data ownership
+
+Every service writes only its own tables. The schema is defined once, in [db/migrations](db/migrations), and no service runs migrations itself.
+
+```mermaid
+flowchart TB
+    subgraph Auth["Auth Service"]
+        A1["user_accounts<br/>refresh_tokens"]
+    end
+    subgraph HT["Holdings and Trade Service"]
+        H1["users<br/>accounts<br/>user_watchlist<br/>portfolio_valuations<br/>cash_transactions (deposits and withdrawals)"]
+    end
+    subgraph OS["Order and Sell Service"]
+        O1["orders<br/>fills<br/>audit_trail<br/>holdings<br/>holding_movements<br/>cash_transactions (order fills)"]
+    end
+    subgraph MD["Market data scripts"]
+        M1["simulation_sessions<br/>market_states<br/>market_behaviors<br/>quotes<br/>market_ticks<br/>candles"]
+    end
+    DB[("trading_season")]
+    A1 --> DB
+    H1 --> DB
+    O1 --> DB
+    M1 --> DB
+```
+
+## CI pipeline
+
+[infrastructure/jenkins/Jenkinsfile](infrastructure/jenkins/Jenkinsfile) runs on every branch. A failure in the parallel test group stops the pipeline.
+
+```mermaid
+flowchart LR
+    Pre["Toolchain and<br/>disk checks"] --> Checkout --> Deps["npm ci"]
+    Deps --> Tests
+    subgraph Tests["Parallel test suites"]
+        T1["Holdings and Trade"]
+        T2["Order and Sell"]
+        T3["Auth"]
+        T4["Reporting"]
+        T5["Frontend"]
+        T6["Market data"]
+    end
+    Tests --> Docs["Javadocs"] --> E2E["Playwright E2E"] --> Stack["Build local<br/>Docker stack"]
+```
+
+## Getting started
+
+Requirements: Node.js 24.8+ (24.x), npm 11.16, JDK 21, Maven 3.9+, and Docker (or a local PostgreSQL 16).
+
+### Docker stack
 
 ```powershell
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initialize_database.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Add_watchlist.sql
+node apps/auth-service/scripts/generate-dev-keys.mjs | Add-Content infrastructure/docker-compose/.env
+docker compose --project-name trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml up -d --build
 ```
 
-Verify that `trading_season` owns the tables. Connect to the `trading_season` database and run:
+The UI is at http://localhost:4200. The database is created and migrated automatically.
 
-```sql
-SELECT tablename, tableowner
-FROM pg_tables
-WHERE schemaname = 'public'
-ORDER BY tablename;
-```
-
-If another user (such as `postgres`) owns the tables, connect to the `trading_season` database as the admin user and reassign ownership and permissions:
-
-```sql
--- Reassign all table ownership to trading_season user
-DO $$
-DECLARE r record;
-BEGIN
-  FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
-    EXECUTE format('ALTER TABLE public.%I OWNER TO trading_season', r.tablename);
-  END LOOP;
-END $$;
-
--- Grant permissions to trading_season user
-GRANT USAGE ON SCHEMA public TO trading_season;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO trading_season;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO trading_season;
-
--- Ensure future tables get the same permissions
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO trading_season;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO trading_season;
-
--- Verify: all tables should now be owned by trading_season
-SELECT tablename, tableowner FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;
-```
-
-#### 2. Configure auth service
-
-Copy and configure the auth `.env`:
-
-```powershell
-Copy-Item apps/auth-service/.env.example apps/auth-service/.env
-```
-
-Set `DB_PORT=5432` (since auth is on the same PostgreSQL instance), then generate the JWT keys:
-
-```powershell
-cd apps/auth-service
-node scripts/generate-dev-keys.mjs | Add-Content .env
-cd ../..
-```
-
-#### 3. Start applications
-
-Use the startup script as above, or start each application in its own terminal:
+### Local processes (Windows)
 
 ```powershell
 npm --prefix apps/client-ui ci
 npm --prefix apps/auth-service ci
-
-# Terminal 1: UI
-npm --prefix apps/client-ui start
-
-# Terminal 2: Holdings and Trade Service
-cd apps/holdings-and-trade-service
-mvn spring-boot:run
-
-# Terminal 3: Order and Sell Service
-cd apps/order-and-sell-service
-mvn spring-boot:run
-
-# Terminal 4: Auth service (schema must already exist)
-cd apps/auth-service
-npm run start:dev
+Copy-Item apps/auth-service/.env.example apps/auth-service/.env
+node apps/auth-service/scripts/generate-dev-keys.mjs | Add-Content apps/auth-service/.env
+$env:SPRING_DATASOURCE_PASSWORD = 'password'
+.\scripts\start-local.ps1
 ```
 
-### Docker Compose setup (alternative)
+This needs a running `trading_season` database; see [db/README.md](db/README.md) to create and migrate one, and [apps/market-data](apps/market-data/README.md) to load synthetic market data. On Linux, `scripts/setup-local.sh` does the equivalent setup.
 
-If you prefer to use Docker Compose for databases:
+### Development login
 
-1. Install dependencies and configure authentication (steps 1-2 above).
+In development the auth service seeds `admin@example.com` / `admin123`. Production never seeds it.
 
-2. Start the database:
+## Checks
 
-   ```powershell
-   docker compose -f infrastructure/docker-compose/docker-compose.local.yml up -d db
-   ```
+Run from the repository root. There is no root npm project.
 
-   This creates the `trading_season` database on `localhost:5432` with the canonical schema applied.
-
-3. Start all services with the startup script:
-
-   ```powershell
-   $env:SPRING_DATASOURCE_PASSWORD = 'password'
-   .\scripts\start-local.ps1
-   ```
-
-### Verify database setup
-
-After startup, verify that the auth tables exist in `trading_season`. Connect pgAdmin's Query Tool (or psql) to `trading_season` and run:
-
-```sql
--- Verify user_accounts table exists and check registered users
-SELECT user_id, email, user_role, created_at
-FROM user_accounts
-ORDER BY created_at DESC;
-```
-
-You should see registered users listed here (if any).
-
-### Generate and seed synthetic market data
-
-Synthetic market data is required for the trading simulation. Run the complete routine from the repository root to generate and load mock data:
-
-```powershell
-$freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
-
-apps/market-data/db/scripts/powershell/setup-market-data.ps1 `
-  -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
-  -AvailableDiskGb $freeDiskGb
-```
-
-For a smaller test archive (e.g., 2 days of data), add `-StartDate 2026-01-05 -EndDate 2026-01-06`.
-
-For a fresh database, run `setup-database.ps1` first on an empty public schema. Add `-Regenerate` to replace an incompatible archive.
-
-**On first run**, this script will:
-1. Create a Python virtual environment at `apps/market-data/db/.venv`
-2. Install dependencies from `apps/market-data/db/scripts/python/requirements.txt`
-3. Generate synthetic market data for the year 2026
-4. Validate the generated archive
-5. Import into PostgreSQL (raw ticks stay in Parquet; candles load to the database)
-
-If needed, you can run individual steps for troubleshooting. See the [database guide](docs/reference/database.md#optional-synthetic-market-data-generation-and-import) for step-by-step commands.
-
-See the [development guide](docs/guides/development.md) for additional commands, tests, and troubleshooting.
-
-## Service map
-
-| Service | Folder | Port | Responsibility |
-| --- | --- | --- | --- |
-| Client UI | `apps/client-ui` | 4200 | Login, registration, dashboard with live market data |
-| Auth Service | `apps/auth-service` | 3001 | Email/password authentication, RS256 token issuance, refresh token rotation |
-| Order and Sell Service | `apps/order-and-sell-service` | 8081 | Order submission, validation and execution; order history; instrument reference data |
-| Holdings and Trade Service | `apps/holdings-and-trade-service` | 8082 | User profiles, accounts, holdings, cash movements, market data |
-| Market Data | `apps/market-data` | — | Canonical database schema and synthetic market data tooling |
-| Shared UI Components | `apps/client-ui/shared-ui-components` | — | Local Angular components compiled into Client UI |
-| Reporting | `docs/reference/reporting.md` | — | Proposed analytics and portfolio performance reporting |
-
-## Documentation
-
-Review the [documentation index](docs/README.md) for all guides and references. Key resources:
-
-| When you need to… | Read |
+| Check | Command |
 | --- | --- |
-| Install, run, test, or debug locally | [Development Guide](docs/guides/development.md) |
-| Understand service architecture and boundaries | [Architecture Reference](docs/reference/architecture.md) |
-| Review implemented API endpoints | [API Reference](docs/reference/api.md) |
-| Understand database schema and ownership | [Database Reference](docs/reference/database.md) |
-| Configure services and CI/CD | [Operations Guide](docs/guides/operations.md) |
-| Plan analytics and reporting work | [Reporting Proposal](docs/reference/reporting.md) |
-| Browse Java API documentation | [Javadocs](docs/JAVA_DOCS/index.html) |
-| Review code coverage | [Coverage Reports](docs/coverage/README.md) |
+| UI build | `npm --prefix apps/client-ui run build` |
+| UI tests | `npm --prefix apps/client-ui test -- --no-watch` |
+| UI end-to-end | `npm --prefix apps/client-ui run e2e` |
+| Holdings and Trade tests | `mvn -B -f apps/holdings-and-trade-service/pom.xml test` |
+| Order and Sell tests | `mvn -B -f apps/order-and-sell-service/pom.xml test` |
+| Auth tests and lint | `npm --prefix apps/auth-service test` and `npm --prefix apps/auth-service run lint` |
+| Reporting tests | `python -m pytest` in `apps/reporting-service` |
 
-[Javadocs](docs/JAVA_DOCS/index.html) are maintained in the repository and regenerated from Java source. See the [development guide](docs/guides/development.md) for regeneration procedures.
+## API documentation
 
-# Business database ERD
+| Service | Swagger UI |
+| --- | --- |
+| Auth Service | http://localhost:3001/api/docs |
+| Order and Sell Service | http://localhost:8081/swagger-ui.html |
+| Holdings and Trade Service | http://localhost:8082/swagger-ui.html |
+| Reporting Service | http://localhost:8083/docs |
 
-Canonical relationship diagram for all 20 current application tables after V001 and V002. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
+Generated Java documentation is checked in under [docs/JAVA_DOCS](docs/JAVA_DOCS/index.html); see [AGENTS.md](AGENTS.md) for how to regenerate it.
 
-The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change. Apply V002 after V001 for the saved watchlist; see the [watchlist migration](docs/reference/database.md#watchlist-migration).
+## Team
 
-```mermaid
-erDiagram
-    user_accounts ||--|| users : "credentials for"
-    user_accounts ||--o{ refresh_tokens : issues
-    users ||--o{ accounts : owns
-    users ||--o{ user_watchlist : saves
-    stocks ||--o{ user_watchlist : appears_in
-
-    stocks o|--o| instruments : "optionally powers"
-
-    simulation_sessions ||--o{ market_states : contains
-    simulation_sessions ||--o{ market_behaviors : contains
-    simulation_sessions ||--o{ quotes : contains
-    simulation_sessions ||--o{ market_ticks : contains
-    simulation_sessions ||--o{ candles : contains
-
-    stocks ||--o{ market_states : describes
-    stocks ||--o{ market_behaviors : receives
-    stocks ||--o{ quotes : quoted_as
-    stocks ||--o{ market_ticks : traded_as
-    stocks ||--o{ candles : aggregated_as
-
-    accounts ||--o{ portfolio_valuations : values
-    accounts ||--o{ holdings : has
-    instruments ||--o{ holdings : held_as
-    accounts ||--o{ orders : submits
-    instruments ||--o{ orders : targets
-
-    orders ||--o| fills : executes_as
-    orders ||--o{ audit_trail : records
-    accounts ||--o{ cash_transactions : posts
-    fills o|--o| cash_transactions : creates
-    accounts ||--o{ holding_movements : posts
-    instruments ||--o{ holding_movements : changes
-    fills ||--o| holding_movements : creates
-
-    user_accounts {
-        UUID user_id PK
-        TEXT email UK
-        TEXT password_hash
-        TEXT user_role
-        TEXT account_status
-        INTEGER failed_login_attempts
-        TIMESTAMPTZ locked_until
-        TIMESTAMPTZ created_at
-        TIMESTAMPTZ updated_at
-    }
-    user_watchlist {
-        UUID user_id PK, FK
-        VARCHAR symbol PK, FK
-        TIMESTAMPTZ created_at
-    }
-    refresh_tokens {
-        UUID id PK
-        UUID user_id FK
-        TEXT token_hash UK
-        TIMESTAMPTZ issued_at
-        TIMESTAMPTZ expires_at
-        TIMESTAMPTZ revoked_at
-        UUID replaced_by
-    }
-    users {
-        UUID user_id PK, FK
-        TEXT first_name
-        TEXT middle_name
-        TEXT last_name
-        TEXT ssn
-        TEXT address
-        DATE date_of_birth
-        TEXT trader_level
-        NUMERIC available_funds
-        INTEGER session_timeout_minutes
-        NUMERIC execution_buffer_percent
-        TIMESTAMPTZ last_activity_at
-        TIMESTAMPTZ created_at
-    }
-    portfolio_valuations {
-        BIGINT valuation_id PK
-        INTEGER account_id FK
-        TIMESTAMPTZ observed_at
-        NUMERIC portfolio_value
-    }
-    simulation_sessions {
-        BIGINT id PK
-        INTEGER seed
-        DOUBLE drift
-        JSONB config
-        INTEGER config_version
-        TEXT status
-        TEXT failure_code
-        TEXT failure_detail
-        TIMESTAMPTZ started_at
-        TIMESTAMPTZ ended_at
-    }
-    stocks {
-        VARCHAR symbol PK
-        TEXT company_name
-        NUMERIC starting_price
-        BIGINT average_volume
-        NUMERIC base_volatility
-    }
-    instruments {
-        INTEGER instrument_id PK
-        TEXT ticker UK
-        TEXT asset_class
-        TEXT market
-        VARCHAR simulated_stock_symbol FK
-    }
-    accounts {
-        INTEGER account_id PK
-        UUID user_id FK
-        NUMERIC cash_balance
-        TEXT currency
-    }
-    market_states {
-        BIGINT id PK
-        BIGINT session_id FK
-        VARCHAR symbol FK
-        TEXT trend
-        NUMERIC volatility
-        NUMERIC liquidity
-        NUMERIC momentum
-    }
-    market_behaviors {
-        BIGINT id PK
-        BIGINT session_id FK
-        VARCHAR symbol FK
-        TEXT behavior_type
-        TIMESTAMPTZ start_time
-        NUMERIC duration_seconds
-        NUMERIC strength
-    }
-    quotes {
-        BIGINT id PK
-        BIGINT session_id FK
-        VARCHAR symbol FK
-        TIMESTAMPTZ timestamp
-        NUMERIC bid
-        NUMERIC ask
-    }
-    market_ticks {
-        BIGINT id PK
-        BIGINT session_id FK
-        VARCHAR symbol FK
-        TIMESTAMPTZ timestamp
-        NUMERIC price
-        BIGINT sequence_number
-    }
-    candles {
-        BIGINT id PK
-        BIGINT session_id FK
-        VARCHAR symbol FK
-        TEXT interval
-        TIMESTAMPTZ timestamp
-        NUMERIC open
-        NUMERIC high
-        NUMERIC low
-        NUMERIC close
-        BIGINT volume
-    }
-    holdings {
-        INTEGER holding_id PK
-        INTEGER account_id FK
-        INTEGER instrument_id FK
-        NUMERIC quantity
-    }
-    orders {
-        INTEGER order_id PK
-        INTEGER account_id FK
-        INTEGER instrument_id FK
-        UUID client_reference UK
-        TEXT order_type
-        TEXT status
-        NUMERIC quantity
-    }
-    fills {
-        INTEGER fill_id PK
-        INTEGER order_id FK
-        NUMERIC quote_price
-        NUMERIC quantity
-    }
-    cash_transactions {
-        INTEGER cash_transaction_id PK
-        INTEGER account_id FK
-        INTEGER fill_id FK
-        NUMERIC amount
-        TEXT reason
-    }
-    holding_movements {
-        INTEGER holding_movement_id PK
-        INTEGER account_id FK
-        INTEGER instrument_id FK
-        INTEGER fill_id FK
-        NUMERIC quantity_delta
-    }
-    audit_trail {
-        INTEGER audit_id PK
-        INTEGER order_id FK
-        TEXT event_type
-        TIMESTAMPTZ recorded_at
-    }
-```
+- **Soli** - Team Lead
+- **Chris** - Scrum Master
+- **Sean** - Meeting Scribe and Front End Developer
+- **Prisca** - Full Stack Developer
+- **Mohammed** - Full Stack Developer

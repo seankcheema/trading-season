@@ -12,18 +12,23 @@ public class WatchlistRepository {
     private final JdbcTemplate jdbc;
 
     /**
+     * Creates the repository.
+     *
      * @param jdbc database query helper
      */
     public WatchlistRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
     /**
      * A saved stock, without mutable market prices.
+     *
      * @param symbol seeded stock symbol
      * @param createdAt time the stock was first saved
      */
     public record Entry(String symbol, Instant createdAt) { }
 
     /**
+     * Lists the owner's saved stocks.
+     *
      * @param owner verified caller UUID
      * @return saved stocks in addition order
      */
@@ -33,6 +38,8 @@ public class WatchlistRepository {
     }
 
     /**
+     * Checks whether a seeded stock exists.
+     *
      * @param symbol normalized symbol
      * @return whether a seeded stock exists
      */
@@ -42,6 +49,7 @@ public class WatchlistRepository {
 
     /**
      * Locks the owner's profile to serialize concurrent additions.
+     *
      * @param owner verified caller UUID
      * @return whether the business profile exists
      */
@@ -50,6 +58,8 @@ public class WatchlistRepository {
     }
 
     /**
+     * Saves a stock for the owner unless it is already saved.
+     *
      * @param owner verified caller UUID
      * @param symbol normalized existing stock symbol
      */
@@ -59,6 +69,8 @@ public class WatchlistRepository {
     }
 
     /**
+     * Removes a saved stock for the owner.
+     *
      * @param owner verified caller UUID
      * @param symbol normalized symbol; absent entries are ignored
      */

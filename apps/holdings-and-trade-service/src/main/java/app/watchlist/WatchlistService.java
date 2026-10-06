@@ -15,11 +15,15 @@ public class WatchlistService {
     private final WatchlistRepository repository;
 
     /**
+     * Creates the service.
+     *
      * @param repository caller-scoped saved stock persistence
      */
     public WatchlistService(WatchlistRepository repository) { this.repository = repository; }
 
     /**
+     * Lists the owner's saved stocks.
+     *
      * @param owner verified caller UUID
      * @return stocks ordered by addition time
      */
@@ -27,6 +31,7 @@ public class WatchlistService {
 
     /**
      * Saves a stock once, preserving the original addition time on retries.
+     *
      * @param owner verified caller UUID
      * @param symbol stock symbol
      * @return saved stock
@@ -43,6 +48,8 @@ public class WatchlistService {
     }
 
     /**
+     * Removes a saved stock; removal is idempotent.
+     *
      * @param owner verified caller UUID
      * @param symbol stock symbol; removal is idempotent
      */

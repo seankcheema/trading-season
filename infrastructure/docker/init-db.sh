@@ -5,7 +5,7 @@ set -eu
 
 DATABASE_URL="${1:-postgresql://trading_season:changeme@db:5432/trading_season}"
 REPO_ROOT="${2:-/workspace}"
-MIGRATIONS_DIR="$REPO_ROOT/apps/market-data/db/migrations"
+MIGRATIONS_DIR="$REPO_ROOT/db/migrations"
 
 echo "[DB-INIT] Waiting for database to be ready..."
 attempt=1

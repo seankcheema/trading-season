@@ -35,7 +35,7 @@ Every user-specific endpoint resolves the owner from the verified token's `sub` 
 
 ## Development
 
-Follow [database setup](../../docs/reference/database.md#step-2-initialize-a-disposable-database) before running.
+Set up a migrated database ([db/README.md](../../db/README.md)) before running.
 
 ```sh
 mvn spring-boot:run
@@ -62,7 +62,7 @@ All endpoints require an RS256 access token issued by the auth service, except `
 - `GET /api/market/*` - Public market data endpoints (snapshots, candles, stream)
 - `PUT /api/market/clock` - Move the shared replay cursor
 
-See [API reference](../../docs/reference/api.md) for full contract details.
+See the [README](README.md) for endpoint details.
 
 ## Code Coverage
 

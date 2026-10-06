@@ -19,6 +19,10 @@ import java.time.OffsetDateTime;
 @Table(name = "fills")
 public class Fill {
 
+    /** Creates an instance of this class. */
+    public Fill() {
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "fill_id", updatable = false, nullable = false)
@@ -37,42 +41,92 @@ public class Fill {
     @Column(name = "filled_at", nullable = false, updatable = false)
     private OffsetDateTime filledAt;
 
+    /**
+     * Returns the fill ID.
+     *
+     * @return the fill ID
+     */
     public Integer getFillId() {
         return fillId;
     }
 
+    /**
+     * Sets the fill ID.
+     *
+     * @param fillId the fill ID
+     */
     public void setFillId(Integer fillId) {
         this.fillId = fillId;
     }
 
+    /**
+     * Returns the order ID.
+     *
+     * @return the order ID
+     */
     public Integer getOrderId() {
         return orderId;
     }
 
+    /**
+     * Sets the order ID.
+     *
+     * @param orderId the order ID
+     */
     public void setOrderId(Integer orderId) {
         this.orderId = orderId;
     }
 
+    /**
+     * Returns the quote price.
+     *
+     * @return the quote price
+     */
     public BigDecimal getQuotePrice() {
         return quotePrice;
     }
 
+    /**
+     * Sets the quote price.
+     *
+     * @param quotePrice the quote price
+     */
     public void setQuotePrice(BigDecimal quotePrice) {
         this.quotePrice = quotePrice;
     }
 
+    /**
+     * Returns the quantity.
+     *
+     * @return the quantity
+     */
     public BigDecimal getQuantity() {
         return quantity;
     }
 
+    /**
+     * Sets the quantity.
+     *
+     * @param quantity the quantity
+     */
     public void setQuantity(BigDecimal quantity) {
         this.quantity = quantity;
     }
 
+    /**
+     * Returns the filled at.
+     *
+     * @return the filled at
+     */
     public OffsetDateTime getFilledAt() {
         return filledAt;
     }
 
+    /**
+     * Sets the filled at.
+     *
+     * @param filledAt the filled at
+     */
     public void setFilledAt(OffsetDateTime filledAt) {
         this.filledAt = filledAt;
     }

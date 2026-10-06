@@ -2,19 +2,18 @@
 
 ## Find the right context
 
-Read [README.md](README.md) for the service map, then only the references needed for the task:
+Read [README.md](README.md) for the service map and system diagrams, then only the references needed for the task:
 
 | Task | Reference |
 | --- | --- |
-| Setup, build, test, review | [Development](docs/guides/development.md) |
-| Service boundaries and integration | [Architecture](docs/reference/architecture.md) |
-| HTTP contract changes | [API reference](docs/reference/api.md) |
-| Schema changes | [Database](docs/reference/database.md) |
-| Deployment and CI | [Operations](docs/guides/operations.md) |
-| Reporting work | [Proposal](docs/reference/reporting.md) |
+| Setup, build, test | [README.md](README.md) and the service's own README |
+| Service boundaries and integration | [README.md](README.md) |
+| HTTP contract changes | The owning service README and its Swagger UI |
+| Schema changes | [Database](db/README.md) |
+| Deployment and CI | [Infrastructure](infrastructure/README.md) |
 | Documentation-only work | [Documentation instructions](docs/AGENTS.md) |
 
-Follow nested AGENTS.md instructions for the area being changed. Reporting is proposed; do not treat its examples as existing functionality.
+Follow nested AGENTS.md instructions for the area being changed. The reporting service is in development; its README lists what is implemented.
 
 ## Working rules
 
@@ -23,7 +22,7 @@ Follow nested AGENTS.md instructions for the area being changed. Reporting is pr
 - The Java session API and NestJS token API are separate implementations. Do not assume they share users or credentials.
 - Preserve unrelated working changes. Use git mv for tracked file moves.
 - Do not commit secrets, dependencies, temporary build output, or test reports.
-- Do not edit applied database migrations; add a new migration. The Java bootstrap SQL is destructive and requires an explicitly disposable database.
+- Do not edit applied database migrations in db/migrations; add a new migration. The Java bootstrap SQL is destructive and requires an explicitly disposable database.
 - Keep one canonical document per topic. Link to source instead of copying implementation code. Use no emojis in Markdown.
 
 ## Commands
@@ -49,7 +48,7 @@ There is no root npm project. client-ui and auth-service are independent npm pro
 
 - Run relevant checks and report failures or unavailable prerequisites accurately.
 - Update canonical documentation in the same change when behavior, interfaces, commands, configuration, or boundaries change.
-- When Java code changes, update affected Javadoc comments in the same change: behavior, parameters, return values, and exceptions. Regenerate Javadocs and review changed class pages before completion. Fix generation errors and any warnings introduced by the change.
+- When Java code changes, update affected Javadoc comments in the same change: behavior, parameters, return values, and exceptions. Regenerate Javadocs and review changed class pages before completion. Generation must finish with no errors and no warnings.
 - Keep the checked-in Javadocs in docs/JAVA_DOCS. After a Java change, successfully regenerate both services:
   - `mvn -B -f apps/holdings-and-trade-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc`
   - `mvn -B -f apps/order-and-sell-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc`
