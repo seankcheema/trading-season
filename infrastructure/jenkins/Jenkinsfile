@@ -539,13 +539,22 @@ pipeline {
                     fi
                     echo "[INFO] JWT keys exported successfully"
 
-                    echo "Building and starting the local application stack..."
+                        echo "Building and starting the long-running local application stack..."
                     env JWT_PRIVATE_KEY="$JWT_PRIVATE_KEY" JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY" JWT_ISSUER="${JWT_ISSUER:-https://auth.dualeapa.local}" \
                     bash infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
                         --env-file "$COMPOSE_ENV_FILE" \
                         -f "$COMPOSE_FILE" \
-                        up -d --build
+                            up -d --build \
+                            auth-service client-ui db db-init holdings-and-trade-service kafka order-and-sell-service reporting-service reporting-ui
+
+                        echo "Starting kafka-init separately so Compose does not race a short-lived init container during detached startup..."
+                        env JWT_PRIVATE_KEY="$JWT_PRIVATE_KEY" JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY" JWT_ISSUER="${JWT_ISSUER:-https://auth.dualeapa.local}" \
+                        bash infrastructure/docker/run-compose.sh \
+                            --project-name "$PROJECT_NAME" \
+                            --env-file "$COMPOSE_ENV_FILE" \
+                            -f "$COMPOSE_FILE" \
+                            up -d kafka-init
 
                     echo "Local application services after startup:"
                     bash infrastructure/docker/run-compose.sh \
