@@ -10,7 +10,8 @@ Spring Boot microservice responsible for managing all trading operations, order 
 - Execute buy and sell transactions
 - Update and maintain current holdings
 - Maintain complete order audit trail and history
-- Publish one `trade-events` message per resolved order after commit, and run the `reporting-ingester` and `order-status-pusher` consumer groups (log only)
+- Publish one `trade-events` message per resolved order after commit
+- Run the `order-status-pusher` consumer group, which forwards each resolved order to the owner's open `GET /api/orders/stream` connections (the reporting service owns the `reporting-ingester` group)
 
 **Port:** 8081 (default, configurable via `server.port`)
 
@@ -102,6 +103,7 @@ All endpoints require valid RS256 access token except public market GET endpoint
 **Orders:**
 - `POST /api/orders` - Submit a buy or sell order; created PENDING and returned FILLED or REJECTED (requires auth)
 - `GET /api/orders/{id}` - Get order details (requires auth)
+- `GET /api/orders/stream` - Server-sent events: `order-status` with each resolved order's JSON body, `heartbeat` every 15 seconds (requires auth; the client must send the bearer header, which native `EventSource` cannot)
 
 **Market Data (Public):**
 - `GET /api/market/snapshot` - Current market snapshot
@@ -120,7 +122,7 @@ app/
 │   ├── validation/  # Validation pipeline
 │   ├── execution/   # Order execution and settlement
 │   ├── audit/       # Order event audit
-│   └── event/       # trade-events publisher and the two log-only consumers
+│   └── event/       # trade-events publisher, order-status-pusher consumer, order status stream
 ├── account/         # Trading account entities
 ├── holding/         # Current position data
 ├── instrument/      # Tradable asset definitions

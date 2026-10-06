@@ -103,7 +103,10 @@ class TradeEventFlowIntegrationTest {
     private KafkaListenerEndpointRegistry listeners;
     @Autowired
     private ObjectMapper objectMapper;
+    @Autowired
+    private OrderStatusStreamRegistry streams;
 
+    private User user;
     private Account account;
     private Instrument instrument;
 
@@ -123,7 +126,7 @@ class TradeEventFlowIntegrationTest {
         UUID userId = UUID.randomUUID();
         UserAccountFixture.createActiveAccount(jdbcTemplate, userId, "trader@example.com");
 
-        User user = new User();
+        user = new User();
         user.setUserId(userId);
         user.setFirstName("Test");
         user.setLastName("User");
@@ -164,9 +167,13 @@ class TradeEventFlowIntegrationTest {
     @Test
     void eachResolvedOrderIsPublishedOnceInOrderOnTheAccountsPartitionAndSeenByBothGroups(
             CapturedOutput output) {
-        Order filled = orderService.submitOrder(order("BUY", "100", "50.00"));
+        // The owner has the dashboard open: the pusher must deliver both outcomes here.
+        RecordingSseEmitter browser = new RecordingSseEmitter();
+        streams.register(user.getUserId(), browser);
+
+        Order filled = orderService.submitOrder(order("BUY", "100", "50.00"), user.getUserId());
         // Sells more than the 100 just bought, so the rule pipeline rejects it.
-        Order rejected = orderService.submitOrder(order("SELL", "500", "50.00"));
+        Order rejected = orderService.submitOrder(order("SELL", "500", "50.00"), user.getUserId());
         assertEquals(Order.STATUS_FILLED, filled.getStatus());
         assertEquals(Order.STATUS_REJECTED, rejected.getStatus());
 
@@ -203,13 +210,16 @@ class TradeEventFlowIntegrationTest {
             }
             assertTrue(log.contains("partition=" + first.partition() + " offset=" + first.offset()));
             assertTrue(log.contains("partition=" + second.partition() + " offset=" + second.offset()));
-            for (String group : List.of(ReportingIngesterListener.GROUP_ID, OrderStatusPusherListener.GROUP_ID)) {
-                for (ConsumerRecord<String, String> record : records) {
-                    String received = "Consumer group " + group + " received key=" + key
-                            + " partition=" + record.partition() + " offset=" + record.offset();
-                    assertTrue(log.contains(received), received);
-                }
+            for (ConsumerRecord<String, String> record : records) {
+                String received = "Consumer group " + OrderStatusPusherListener.GROUP_ID + " received key=" + key
+                        + " partition=" + record.partition() + " offset=" + record.offset();
+                assertTrue(log.contains(received), received);
             }
+
+            List<String> pushed = browser.framesNamed(OrderStatusStreamRegistry.EVENT_NAME);
+            assertEquals(2, pushed.size(), "one order-status event per resolved order");
+            assertTrue(pushed.get(0).contains("\"orderId\":" + filled.getOrderId()), pushed.get(0));
+            assertTrue(pushed.get(1).contains("\"orderId\":" + rejected.getOrderId()), pushed.get(1));
         });
     }
 

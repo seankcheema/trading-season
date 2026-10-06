@@ -21,7 +21,7 @@ This service owns order submission, validation, execution, instrument reference 
 - `user/` - User profile and account information
 - `holding/` - Current holdings and position data queries
 - `order/` - Order history and audit queries
-- `order/event/` - Publishes one Kafka `trade-events` message per resolved order after commit; hosts the `reporting-ingester` and `order-status-pusher` consumer groups, which only log. Gated by `app.events.enabled`.
+- `order/event/` - Publishes one Kafka `trade-events` message per resolved order after commit; the `order-status-pusher` consumer group forwards each one to the owner's open `GET /api/orders/stream` connections. Publisher and consumer are gated by `app.events.enabled`; the stream endpoint is always present. The `reporting-ingester` group lives in the reporting service.
 - `instrument/` - Tradable asset definitions
 - `auth/` - Authentication and authorization
 - `market/` - Shared market data services
@@ -52,6 +52,7 @@ All endpoints require an RS256 access token issued by the auth service (except p
 - `GET /api/accounts/{accountId}` - Get account details
 - `GET /api/accounts/{accountId}/holdings` - Get current holdings
 - `GET /api/orders` - List order history for authenticated user
+- `GET /api/orders/stream` - Server-sent events of the caller's order outcomes
 - `GET /api/market/*` - Public market data endpoints (snapshots, ticks, candles)
 
 See [API reference](../../docs/reference/api.md) for full contract details.
