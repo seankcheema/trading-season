@@ -14,6 +14,10 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class OpenApiConfig {
 
+    /** Creates an instance of this class. */
+    public OpenApiConfig() {
+    }
+
     /**
      * Configures the OpenAPI documentation with service metadata and security schemes.
      * @return OpenAPI configuration

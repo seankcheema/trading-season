@@ -2,12 +2,8 @@ pipeline {
     agent any
 
     tools {
-        // Must match a Maven installation configured in Jenkins under
-        // Manage Jenkins > Tools.
+        // Names must match the installations under Manage Jenkins > Tools.
         maven 'Maven'
-        // This Jenkins tool must be configured with Node 24.x at 24.8.0 or
-        // later. Angular 21.2.x supports Node 24.x. Reconfigure the Jenkins
-        // NodeJS tool if version mismatches occur.
         nodejs 'NodeJS'
     }
 
@@ -18,8 +14,7 @@ pipeline {
 
     options {
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        // Avoid Declarative Pipeline's implicit full-history checkout. The
-        // explicit Checkout stage below keeps only the current branch tip.
+        // The Checkout stage does a depth-1 clone instead.
         skipDefaultCheckout(true)
         timeout(time: 1, unit: 'HOURS')
         timestamps()
@@ -32,44 +27,18 @@ pipeline {
                 sh '''
                     set -eu
                     node --version
-                    npm --version
                     node -e 'const [major, minor] = process.versions.node.split(".").map(Number);
-                    const supported = major === 24 && minor >= 8;
-                    if (!supported) { console.error(`Node ${process.versions.node} is unsupported. This project requires Node 24.x at 24.8.0 or later, which is compatible with Angular 21.2.x. Reconfigure the Jenkins NodeJS tool named "NodeJS" to use a supported Node 24 release.`); process.exit(1); }'
+                    if (major !== 24 || minor < 8) { console.error(`Node ${process.versions.node} is unsupported; Node 24.8.0 or later (24.x) is required.`); process.exit(1); }'
                 '''
             }
         }
 
-        stage('Docker Services') {
+        stage('Preflight') {
             steps {
                 sh '''
                     set -eu
-                    echo "Running Docker services on the Jenkins VM:"
-                    if ! command -v docker >/dev/null 2>&1; then
-                        echo "Docker CLI is unavailable; later market-data and Playwright stages require it." >&2
-                        exit 1
-                    fi
-                    if ! docker info >/dev/null 2>&1; then
-                        echo "Jenkins cannot access the Docker daemon; check the daemon and socket permissions." >&2
-                        exit 1
-                    fi
-                    if docker compose version >/dev/null 2>&1; then
-                        docker compose version
-                    elif command -v docker-compose >/dev/null 2>&1; then
-                        docker-compose version
-                    else
-                        echo "Docker Compose is unavailable; rebuild the Jenkins image or install the docker-compose command." >&2
-                        exit 1
-                    fi
-                    docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}'
-                '''
-            }
-        }
-
-        stage('Disk Preflight') {
-            steps {
-                sh '''
-                    set -eu
+                    docker info >/dev/null 2>&1 || { echo "Jenkins cannot reach the Docker daemon." >&2; exit 1; }
+                    docker compose version >/dev/null 2>&1 || docker-compose version >/dev/null 2>&1 || { echo "Docker Compose is unavailable." >&2; exit 1; }
                     AVAILABLE_KB="$(df -Pk "$WORKSPACE" | awk 'NR == 2 {print $4}')"
                     [ "$AVAILABLE_KB" -ge 5242880 ] || { echo "At least 5 GiB free workspace storage is required" >&2; exit 1; }
                 '''
@@ -78,21 +47,15 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                // Clean up any root-owned files from previous Docker runs before checkout
-                // This prevents "Operation not permitted" errors during workspace cleanup
+                // The reporting tests run as root in Docker; make their output
+                // deletable before the checkout cleans the workspace.
                 sh '''
-                    set +e
-                    if [ -d apps/reporting-service ] || [ -d apps/reporting-service/tests/__pycache__ ] || [ -d apps/reporting-service/__pycache__ ] || [ -d apps/reporting-service/.pytest_cache ]; then
-                        echo "Repairing permissions on Docker-generated reporting-service files..."
-                        docker run --rm -v "$(pwd)":/ws -w /ws alpine:latest \
-                            chmod -R a+rwX /ws/apps/reporting-service 2>/dev/null || true
+                    if [ -d apps/reporting-service ]; then
+                        docker run --rm -v "$(pwd)":/ws -w /ws alpine:latest chmod -R a+rwX /ws/apps/reporting-service || true
                     fi
-                    set -e
                 '''
                 script {
-                    // Preserve the multibranch job's repository, credentials,
-                    // refspec, branch selection, and configured extensions,
-                    // then add a depth-1 clone behavior for this checkout.
+                    // Keep the multibranch job's SCM settings and add a depth-1 clone.
                     def shallowExtensions = scm.extensions + [[
                         $class: 'CloneOption',
                         depth: 1,
@@ -111,7 +74,6 @@ pipeline {
                         userRemoteConfigs: scm.userRemoteConfigs
                     ])
                 }
-                echo "✓ Repository checked out"
             }
         }
 
@@ -119,19 +81,9 @@ pipeline {
             steps {
                 sh '''
                     set -eu
-                    # No toolchain guard and no npm install fallback. Verify
-                    # Toolchain has already failed the build if Node or npm is
-                    # missing or unsupported, and both lockfiles are committed:
-                    # a missing one is a broken checkout, not a reason to resolve
-                    # fresh versions that no other stage would be testing.
-                    echo "Installing UI and auth dependencies..."
                     npm --prefix apps/client-ui ci
                     npm --prefix apps/auth-service ci
-                    echo "✓ UI and auth dependencies installed"
                 '''
-                // Maven dependencies are not pre-resolved here. Each service's
-                // `mvn clean test` resolves exactly what it needs; a separate
-                // resolve pass also downloaded unused site and report plugins.
             }
         }
         stage('SonarQube Analysis') {
@@ -182,11 +134,9 @@ stage('Quality Gate') {
                     steps {
                         dir('apps/holdings-and-trade-service') {
                             sh '''
-                                echo " Running Holdings and Trade Service Tests..."
                                 set -eu
                                 mvn -B -Dmaven.repo.local="$WORKSPACE/.m2/holdings-and-trade-service" clean test
                                 test -s target/site/jacoco/jacoco.xml
-                                echo "✓ Holdings and Trade Service tests completed"
                             '''
                         }
                     }
@@ -197,7 +147,6 @@ stage('Quality Gate') {
                             junit testResults: 'apps/holdings-and-trade-service/target/surefire-reports/**/*.xml',
                                   allowEmptyResults: false,
                                   healthScaleFactor: 1.0
-                            echo "✓ Holdings and Trade Service test results published"
                         }
                     }
                 }
@@ -206,11 +155,9 @@ stage('Quality Gate') {
                     steps {
                         dir('apps/order-and-sell-service') {
                             sh '''
-                                echo " Running Order and Sell Service Tests..."
                                 set -eu
                                 mvn -B -Dmaven.repo.local="$WORKSPACE/.m2/order-and-sell-service" clean test
                                 test -s target/site/jacoco/jacoco.xml
-                                echo "✓ Order and Sell Service tests completed"
                             '''
                         }
                     }
@@ -221,7 +168,6 @@ stage('Quality Gate') {
                             junit testResults: 'apps/order-and-sell-service/target/surefire-reports/**/*.xml',
                                   allowEmptyResults: false,
                                   healthScaleFactor: 1.0
-                            echo "✓ Order and Sell Service test results published"
                         }
                     }
                 }
@@ -229,14 +175,9 @@ stage('Quality Gate') {
                 stage('Synthetic Market Data Integration') {
                     steps {
                         script {
-                            // Multibranch BUILD_TAG values can contain encoded branch
-                            // separators such as %2F, which Docker rejects in named
-                            // volumes. Hash the complete tag to retain build isolation
-                            // while keeping every Docker resource name portable.
-                            // Derived once and reused by the cleanup in `post`: two
-                            // copies of this expression can drift apart, and cleanup
-                            // that computes a different name silently leaks the
-                            // containers, volumes, and network it was meant to remove.
+                            // BUILD_TAG can contain %2F, which Docker rejects in
+                            // volume names, so derive a portable tag. The same
+                            // value is used by the cleanup below.
                             env.MARKET_TEST_TAG = 'trading-season-market-' + sh(
                                 script: 'printf %s "$BUILD_TAG" | sha256sum | cut -c1-16',
                                 returnStdout: true
@@ -249,26 +190,37 @@ stage('Quality Gate') {
                             TEST_NETWORK="${TEST_TAG}-network"
                             DB_VOLUME="${TEST_TAG}-db-data"
                             ARCHIVE_VOLUME="${TEST_TAG}-archive"
+                            DATABASE_URL="postgresql://trading_season:test-password@${DB_CONTAINER}:5432/trading_season"
+                            SCRIPTS=apps/market-data/db/scripts/python
+                            SEEDS=/workspace/apps/market-data/db/seeds
+
+                            start_db() {
+                                docker run -d --name "$DB_CONTAINER" --network "$TEST_NETWORK" -e POSTGRES_DB=trading_season -e POSTGRES_USER=trading_season -e POSTGRES_PASSWORD=test-password -v "$DB_VOLUME:/var/lib/postgresql/data" postgres:16-alpine
+                                until docker exec "$DB_CONTAINER" pg_isready -U trading_season -d trading_season; do sleep 1; done
+                            }
+
                             mkdir -p reports/market-data
                             docker network create "$TEST_NETWORK"
                             docker volume create "$DB_VOLUME"
                             docker volume create "$ARCHIVE_VOLUME"
                             docker build -f infrastructure/docker/Dockerfile.market-data -t "$TEST_TAG" .
-                            docker run -d --name "$DB_CONTAINER" --network "$TEST_NETWORK" -e POSTGRES_DB=trading_season -e POSTGRES_USER=trading_season -e POSTGRES_PASSWORD=test-password -v "$DB_VOLUME:/var/lib/postgresql/data" postgres:16-alpine
-                            until docker exec "$DB_CONTAINER" pg_isready -U trading_season -d trading_season; do sleep 1; done
-                            DATABASE_URL="postgresql://trading_season:test-password@${DB_CONTAINER}:5432/trading_season"
-                            docker run --rm --network "$TEST_NETWORK" "$TEST_TAG" apps/market-data/db/scripts/python/0001-initialize-database.py --database-url "$DATABASE_URL" --disposable-database
+
+                            # Initialize, then restart the database to prove the schema persists.
+                            start_db
+                            docker run --rm --network "$TEST_NETWORK" "$TEST_TAG" $SCRIPTS/0001-initialize-database.py --database-url "$DATABASE_URL" --disposable-database
                             docker rm -f "$DB_CONTAINER"
-                            docker run -d --name "$DB_CONTAINER" --network "$TEST_NETWORK" -e POSTGRES_DB=trading_season -e POSTGRES_USER=trading_season -e POSTGRES_PASSWORD=test-password -v "$DB_VOLUME:/var/lib/postgresql/data" postgres:16-alpine
-                            until docker exec "$DB_CONTAINER" pg_isready -U trading_season -d trading_season; do sleep 1; done
+                            start_db
                             docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select count(*) from information_schema.tables where table_schema='public';" | grep -Eq '^[1-9][0-9]*$'
                             docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select pg_database_size(current_database());" > reports/market-data/database-before.txt
                             docker exec "$DB_CONTAINER" du -sb /var/lib/postgresql/data > reports/market-data/disk-before.txt
                             AVAILABLE_DISK_GB="$(docker exec "$DB_CONTAINER" df -Pk /var/lib/postgresql/data | awk 'NR==2 {print $4/1048576}')"
-                            docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/generation-resources.txt python apps/market-data/db/scripts/python/0002-generate-synthetic-market-data.py --start-date 2026-01-05 --end-date 2026-01-06
-                            docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" "$TEST_TAG" apps/market-data/db/scripts/python/0003-validate-synthetic-market-data.py
-                            docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/import-resources.txt python apps/market-data/db/scripts/python/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
-                            docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:/workspace/apps/market-data/db/seeds" "$TEST_TAG" apps/market-data/db/scripts/python/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
+
+                            # Generate two days of data, validate, then import twice (the second import must be a no-op).
+                            docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:$SEEDS" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/generation-resources.txt python $SCRIPTS/0002-generate-synthetic-market-data.py --start-date 2026-01-05 --end-date 2026-01-06
+                            docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:$SEEDS" "$TEST_TAG" $SCRIPTS/0003-validate-synthetic-market-data.py
+                            docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:$SEEDS" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/import-resources.txt python $SCRIPTS/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
+                            docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:$SEEDS" "$TEST_TAG" $SCRIPTS/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
+
                             docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select count(*) from market_ticks; select count(*) from candles; select pg_database_size(current_database()); select coalesce(sum(pg_indexes_size(quote_ident(schemaname)||'.'||quote_ident(tablename))),0) from pg_tables where schemaname='public';" > reports/market-data/database-after.txt
                             docker exec "$DB_CONTAINER" du -sb /var/lib/postgresql/data > reports/market-data/disk-after.txt
                             docker run --rm -v "$ARCHIVE_VOLUME:/archive" alpine:3.20 du -sb /archive > reports/market-data/archive.txt
@@ -294,26 +246,18 @@ stage('Quality Gate') {
                 }
 
                 stage('Auth Service Tests') {
-                    // Deliberately NOT wrapped in a `command -v npm` check. A missing
-                    // toolchain is a broken pipeline, not a reason to pass: the build
-                    // fails instead of quietly skipping, which is what the acceptance
-                    // criteria require.
                     environment {
                         CI = 'true'
                     }
                     steps {
-                        // No JWT credentials needed: the specs generate an ephemeral
-                        // RSA keypair per run. A committed or injected test key would
-                        // eventually be copied into a deployment config.
+                        // The specs generate an ephemeral RSA keypair, so no JWT credentials are needed.
                         dir('apps/auth-service') {
                             sh '''
                                 set -eu
-                                echo "Running Auth Service Tests (Vitest)..."
                                 npm run test:ci
                                 test -s coverage/lcov.info
                                 npm run build
                                 npm run lint
-                                echo "✓ Auth service tests completed"
                             '''
                         }
                     }
@@ -321,7 +265,6 @@ stage('Quality Gate') {
                         always {
                             archiveArtifacts artifacts: 'apps/auth-service/coverage/**/*, apps/auth-service/reports/**/*',
                                               allowEmptyArchive: true
-                            // Missing required reports fail the stage.
                             junit testResults: 'apps/auth-service/reports/junit/*.xml',
                                   allowEmptyResults: false,
                                   healthScaleFactor: 1.0
@@ -336,44 +279,27 @@ stage('Quality Gate') {
                     steps {
                         catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                             dir('apps/reporting-service') {
+                                // python:3.14-slim: the full image pulls large -dev
+                                // libraries and has exhausted agent disk before.
                                 sh '''
                                     set -eu
-                                    echo "Running Reporting Service Tests (Pytest)..."
-                                    # Run tests in Docker container - no Jenkins configuration needed.
-                                    # python:3.14-slim, not the full python:3.14 image: the full
-                                    # image is built on buildpack-deps and pulls a large set of
-                                    # "-dev" libraries (e.g. libfftw3l) meant for compiling native
-                                    # extensions. requirements.txt only needs pure-Python packages
-                                    # or ones with precompiled wheels (psycopg[binary], gunicorn,
-                                    # etc.), so nothing here needs a compiler. Pulling the full
-                                    # image concurrently with the Synthetic Market Data
-                                    # Integration branch's own image build has exhausted the
-                                    # agent's disk before ("no space left on device").
                                     docker run --rm \
-                                                                            -e PYTHONDONTWRITEBYTECODE=1 \
+                                      -e PYTHONDONTWRITEBYTECODE=1 \
                                       -v "$(pwd)":/app \
                                       -w /app \
                                       python:3.14-slim \
                                       bash -c "
-                                        # Runs as root, so pytest/coverage leave root-owned
-                                        # directories (.pytest_cache, __pycache__, reports,
-                                        # coverage) that the jenkins user cannot delete.
-                                        # Repair the whole app directory on every exit path,
-                                        # not just after a clean pytest run.
+                                        # Runs as root: hand the output back to the jenkins user on any exit.
                                         trap 'chmod -R a+rwX /app' EXIT
-                                        # Any failing step (dependency install or pytest) must
-                                        # fail the stage; the EXIT trap preserves the exit code.
                                         set -eu
                                         mkdir -p reports/junit coverage
-                                        python -m pip install --upgrade pip setuptools wheel
                                         python -m pip install -q -r requirements.txt
-                                                                                python -m pytest -p no:cacheprovider tests/ -v \
+                                        python -m pytest -p no:cacheprovider tests/ -v \
                                           --junit-xml=reports/junit/results.xml \
                                           --cov=. \
                                           --cov-report=xml:coverage/coverage.xml \
                                           --cov-report=html:coverage/htmlcov
                                       "
-                                    echo "✓ Reporting service tests completed"
                                 '''
                             }
                         }
@@ -383,7 +309,6 @@ stage('Quality Gate') {
                             archiveArtifacts artifacts: 'apps/reporting-service/coverage/**/*, apps/reporting-service/reports/**/*',
                                               allowEmptyArchive: true
                             catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                                // Missing required reports fail the stage.
                                 junit testResults: 'apps/reporting-service/reports/junit/*.xml',
                                       allowEmptyResults: false,
                                       healthScaleFactor: 1.0
@@ -395,19 +320,12 @@ stage('Quality Gate') {
                 stage('Frontend Tests') {
                     steps {
                         dir('apps/client-ui') {
+                            // coverageThresholds in angular.json enforce the coverage floor.
                             sh '''
                                 set -eu
-                                echo " Running Frontend Tests (Angular + Vitest)..."
-                                # --no-watch and --coverage are options of the
-                                # @angular/build:unit-test builder. Vitest's own
-                                # --run is not: `ng test --run` fails with
-                                # "Unknown argument: run" before any test executes.
-                                # coverageThresholds in angular.json fails the run
-                                # below the agreed floor.
                                 mkdir -p reports/junit
                                 npm test -- --no-watch --coverage --reporters=junit --reporters=default --output-file=reports/junit/ui.xml --coverage-reporters=text --coverage-reporters=html --coverage-reporters=lcovonly --coverage-reporters=cobertura
                                 test -s coverage/client-ui/lcov.info
-                                echo "✓ Frontend tests completed"
                             '''
                         }
                     }
@@ -444,12 +362,8 @@ stage('Quality Gate') {
 
         stage('Pre-E2E Disk Cleanup') {
             steps {
-                sh '''
-                    set -eu
-                    # Reports have been archived by their owning stages.
-                    rm -rf apps/holdings-and-trade-service/target apps/order-and-sell-service/target apps/client-ui/coverage
-                    df -Pk "$WORKSPACE"
-                '''
+                // Reports were archived by their own stages.
+                sh 'rm -rf apps/holdings-and-trade-service/target apps/order-and-sell-service/target apps/client-ui/coverage'
             }
         }
 
@@ -467,44 +381,20 @@ stage('Quality Gate') {
                 dir('apps/client-ui') {
                     sh '''
                         set -eu
-                        echo " Running Frontend E2E Tests (Playwright)..."
-                        # Headless Chromium needs GTK/ATK shared libraries this agent
-                        # does not carry (libatk-1.0.so.0 and friends), and installing
-                        # them needs root: `playwright install --with-deps` shells out
-                        # to sudo apt-get, which the jenkins user cannot run. So the
-                        # suite runs inside a container that carries those libraries.
-                        # The official Playwright image also ships Firefox and WebKit,
-                        # which this Chromium-only suite never uses, so the pipeline
-                        # builds a slim image holding only chromium-headless-shell and
-                        # ffmpeg. The tag is read from the installed @playwright/test
-                        # so it cannot drift out of step with it -- browser builds are
-                        # only guaranteed to match the Playwright version that
-                        # installed them. The image is built once per version and
-                        # reused while the agent has room for it.
+                        # Chromium needs system libraries the agent lacks and the
+                        # jenkins user cannot install, so the suite runs in a slim
+                        # Chromium-only image tagged with the @playwright/test version.
                         PW_VERSION="$(node -p "require('@playwright/test/package.json').version")"
                         PW_IMAGE="trading-season-playwright:${PW_VERSION}"
                         if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
-                            echo "Building $PW_IMAGE..."
                             docker build --build-arg PLAYWRIGHT_VERSION="$PW_VERSION" \
                                 -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
                         fi
-                        docker image ls "$PW_IMAGE" --format 'Playwright image {{.Repository}}:{{.Tag}} is {{.Size}}'
-                        # The whole workspace is mounted rather than just this app so
-                        # client-ui's node_modules, installed on this Linux agent in
-                        # Setup Dependencies, is reused as is.
-                        # The Jenkins NodeJS tool is mounted in and put first on PATH,
-                        # so the container builds with the same Node that Verify
-                        # Toolchain checked rather than whatever the image carries.
+                        # The workspace (with node_modules) and the Jenkins Node are
+                        # mounted in. --user keeps output owned by jenkins and
+                        # --ipc=host avoids Chromium crashes from the small /dev/shm.
+                        # The API is stubbed, so no backend or database is needed.
                         NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
-                        # --user keeps dist/ and reports/ owned by jenkins rather than
-                        # root, which would break the next build's checkout and the
-                        # archiveArtifacts step below. HOME gives npm a writable cache.
-                        # --ipc=host avoids the Chromium crashes that the default
-                        # 64MB /dev/shm causes under Docker.
-                        # Playwright starts its own server on 4200 and waits for it;
-                        # the API tier is stubbed at the network boundary, so no
-                        # database or backend service is required.
-                        # Includes order-toasts, market-chart, and account rewind journeys.
                         docker run --rm --name "$E2E_TEST_CONTAINER" \
                             --user "$(id -u):$(id -g)" \
                             --ipc=host \
@@ -517,7 +407,6 @@ stage('Quality Gate') {
                             -w /workspace/apps/client-ui \
                             "$PW_IMAGE" \
                             npm run e2e
-                        echo "✓ End-to-end tests completed"
                     '''
                 }
             }
@@ -525,8 +414,6 @@ stage('Quality Gate') {
                 always {
                     archiveArtifacts artifacts: 'apps/client-ui/reports/playwright/**/*',
                                       allowEmptyArchive: true
-                    // allowEmptyResults: false for the same reason as the auth stage:
-                    // a missing report means the suite never ran, which is a failure.
                     junit testResults: 'apps/client-ui/reports/playwright/junit.xml',
                           allowEmptyResults: false,
                           healthScaleFactor: 1.0
@@ -534,109 +421,46 @@ stage('Quality Gate') {
             }
         }
 
-        // No test depends on this stack: E2E stubs the API and market data
-        // starts its own database. Building its five images is the heaviest
-        // step in the pipeline, so it runs last, once the test stages are
-        // green. Every branch builds it, so the docker ps output below reports
-        // the services for the branch under test rather than whatever the
-        // previous build left running.
+        // Nothing depends on this stack, and building its images is the
+        // heaviest step, so it runs last once every test has passed.
         stage('Build Local Docker Stack') {
             when {
                 expression { currentBuild.currentResult == 'SUCCESS' }
             }
             steps {
                 script {
-                    // Lets final cleanup tell a failed stack build apart from
-                    // a failed test, which must leave the previous stack alone.
+                    // Lets cleanup tell a failed stack build from a failed test.
                     env.LOCAL_STACK_STARTED = 'true'
                 }
                 sh '''
                     set -eu
                     COMPOSE_FILE="infrastructure/docker-compose/docker-compose.local.yml"
-                    PROJECT_NAME="trading-season-local"
-                    # The local stack requires JWT_PRIVATE_KEY and JWT_PUBLIC_KEY
-                    # with no default, and the .env that normally holds them is
-                    # gitignored, so a fresh checkout has nothing to interpolate
-                    # and compose exits before building anything. Mint a keypair
-                    # for this build alone, for the same reason the auth specs do:
-                    # a key committed or injected for CI is a key that eventually
-                    # reaches a deployment. The workspace is deleted in `post`.
                     COMPOSE_ENV_FILE="infrastructure/docker-compose/.env"
+                    PROJECT_NAME="trading-season-local"
+                    compose() {
+                        sh infrastructure/docker/run-compose.sh --project-name "$PROJECT_NAME" --env-file "$COMPOSE_ENV_FILE" -f "$COMPOSE_FILE" "$@"
+                    }
+
+                    # The stack requires JWT keys and the .env that holds them is
+                    # gitignored, so mint a keypair for this build only.
                     node apps/auth-service/scripts/generate-dev-keys.mjs > "$COMPOSE_ENV_FILE"
 
-                    # Source the generated keys into the current shell environment.
-                    # We need both the .env file (for docker-compose --env-file) and
-                    # the shell environment (for docker-compose to inherit via subprocess).
-                    eval "$(grep -E '^JWT_|^DB_PASSWORD' "$COMPOSE_ENV_FILE" 2>/dev/null || true | sed 's/^/export /')"
+                    # Disposable stack: always start from an empty database.
+                    compose down -v --remove-orphans
 
-                    # Verify the keys were exported
-                    if [ -z "${JWT_PRIVATE_KEY:-}" ]; then
-                        echo "[ERROR] JWT_PRIVATE_KEY not exported" >&2
-                        exit 1
-                    fi
-                    if [ -z "${JWT_PUBLIC_KEY:-}" ]; then
-                        echo "[ERROR] JWT_PUBLIC_KEY not exported" >&2
-                        exit 1
-                    fi
-                    echo "[INFO] JWT keys exported successfully"
-
-                    # This stack is disposable CI state. A named volume left by an
-                    # earlier build can hold a partial schema that the migrations
-                    # refuse to upgrade, so every build starts from an empty database.
-                    echo "Removing any stack and database volume left by an earlier build..."
-                    env JWT_PRIVATE_KEY="$JWT_PRIVATE_KEY" JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY" JWT_ISSUER="${JWT_ISSUER:-https://auth.dualeapa.local}" \
-                    bash infrastructure/docker/run-compose.sh \
-                        --project-name "$PROJECT_NAME" \
-                        --env-file "$COMPOSE_ENV_FILE" \
-                        -f "$COMPOSE_FILE" \
-                        down -v --remove-orphans
-
-                        echo "Building and starting the long-running local application stack..."
-                    if ! env JWT_PRIVATE_KEY="$JWT_PRIVATE_KEY" JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY" JWT_ISSUER="${JWT_ISSUER:-https://auth.dualeapa.local}" \
-                    bash infrastructure/docker/run-compose.sh \
-                        --project-name "$PROJECT_NAME" \
-                        --env-file "$COMPOSE_ENV_FILE" \
-                        -f "$COMPOSE_FILE" \
-                            up -d --build \
-                            auth-service client-ui db db-init holdings-and-trade-service kafka order-and-sell-service reporting-service reporting-ui; then
-                        # A db-init that exits non-zero fails `up` before any
-                        # later diagnostics run, so show why here.
-                        echo "===== db-init logs =====" >&2
-                        bash infrastructure/docker/run-compose.sh \
-                            --project-name "$PROJECT_NAME" \
-                            --env-file "$COMPOSE_ENV_FILE" \
-                            -f "$COMPOSE_FILE" \
-                            logs --no-color db-init >&2 || true
+                    if ! compose up -d --build auth-service client-ui db db-init holdings-and-trade-service kafka order-and-sell-service reporting-service reporting-ui; then
+                        compose logs --no-color db-init >&2 || true
                         exit 1
                     fi
 
-                        echo "Starting kafka-init separately so Compose does not race a short-lived init container during detached startup..."
-                        env JWT_PRIVATE_KEY="$JWT_PRIVATE_KEY" JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY" JWT_ISSUER="${JWT_ISSUER:-https://auth.dualeapa.local}" \
-                        bash infrastructure/docker/run-compose.sh \
-                            --project-name "$PROJECT_NAME" \
-                            --env-file "$COMPOSE_ENV_FILE" \
-                            -f "$COMPOSE_FILE" \
-                            up -d kafka-init
+                    # kafka-init is started separately because detached startup
+                    # of the whole stack can lose a short-lived init container.
+                    compose up -d kafka-init
+                    compose ps
 
-                    echo "Local application services after startup:"
-                    bash infrastructure/docker/run-compose.sh \
-                        --project-name "$PROJECT_NAME" \
-                        --env-file "$COMPOSE_ENV_FILE" \
-                        -f "$COMPOSE_FILE" \
-                        ps
-
-                    # kafka-init exits, so it must not appear in the running-service
-                    # comparison below. Unlike db-init, nothing declares
-                    # depends_on: service_completed_successfully against it, so
-                    # `up -d` returns while it is still starting. docker inspect
-                    # rather than `docker compose wait`, which needs Compose 2.24
-                    # and run-compose.sh may fall back to legacy docker-compose.
                     attempt=1
                     while [ "$attempt" -le 60 ]; do
-                        INIT_ID="$(sh infrastructure/docker/run-compose.sh \
-                            --project-name "$PROJECT_NAME" \
-                            -f "$COMPOSE_FILE" \
-                            ps -aq kafka-init)"
+                        INIT_ID="$(compose ps -aq kafka-init)"
                         if [ -n "$INIT_ID" ]; then
                             INIT_STATE="$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$INIT_ID")"
                             case "$INIT_STATE" in
@@ -657,48 +481,23 @@ stage('Quality Gate') {
                     fi
 
                     EXPECTED_SERVICES="auth-service client-ui db holdings-and-trade-service kafka order-and-sell-service reporting-service reporting-ui"
-                    RUNNING_SERVICES="$(sh infrastructure/docker/run-compose.sh \
-                        --project-name "$PROJECT_NAME" \
-                        --env-file "$COMPOSE_ENV_FILE" \
-                        -f "$COMPOSE_FILE" \
-                        ps --services --filter status=running | sort | tr '\n' ' ' | sed 's/ $//')"
+                    RUNNING_SERVICES="$(compose ps --services --filter status=running | sort | tr '\\n' ' ' | sed 's/ $//')"
                     if [ "$RUNNING_SERVICES" != "$EXPECTED_SERVICES" ]; then
                         echo "Expected running services: $EXPECTED_SERVICES" >&2
                         echo "Actual running services:   $RUNNING_SERVICES" >&2
-                        bash infrastructure/docker/run-compose.sh \
-                            --project-name "$PROJECT_NAME" \
-                            --env-file "$COMPOSE_ENV_FILE" \
-                            -f "$COMPOSE_FILE" \
-                            ps -a
-                        # Logs of every service together interleave and the
-                        # tail of the one that died is lost, so print each
-                        # missing service's exit status and logs on its own.
-                        # db-init is not in the expected list because it exits
-                        # by design, but a skipped or failed migration is the
-                        # usual reason a service cannot find its tables.
+                        compose ps -a
                         echo "===== db-init logs =====" >&2
-                        bash infrastructure/docker/run-compose.sh \
-                            --project-name "$PROJECT_NAME" \
-                            --env-file "$COMPOSE_ENV_FILE" \
-                            -f "$COMPOSE_FILE" \
-                            logs --no-color db-init >&2 || true
+                        compose logs --no-color db-init >&2 || true
                         for service in $EXPECTED_SERVICES; do
                             case " $RUNNING_SERVICES " in
                                 *" $service "*) continue ;;
                             esac
                             echo "===== $service is not running =====" >&2
-                            SERVICE_ID="$(sh infrastructure/docker/run-compose.sh \
-                                --project-name "$PROJECT_NAME" \
-                                -f "$COMPOSE_FILE" \
-                                ps -aq "$service")"
+                            SERVICE_ID="$(compose ps -aq "$service")"
                             if [ -n "$SERVICE_ID" ]; then
                                 docker inspect --format 'state={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}}' "$SERVICE_ID" >&2
                             fi
-                            bash infrastructure/docker/run-compose.sh \
-                                --project-name "$PROJECT_NAME" \
-                                --env-file "$COMPOSE_ENV_FILE" \
-                                -f "$COMPOSE_FILE" \
-                                logs --no-color --tail 200 "$service" >&2 || true
+                            compose logs --no-color --tail 200 "$service" >&2 || true
                         done
                         exit 1
                     fi
@@ -711,25 +510,11 @@ stage('Quality Gate') {
                         url="http://127.0.0.1:${port}${path}"
                         attempt=1
                         while [ "$attempt" -le 30 ]; do
-                            # python:3.14-slim has no wget, so the reporting-service is read with
-                            # its own Python, the same way its Dockerfile HEALTHCHECK does.
+                            # The slim Python image has no wget.
                             if [ "$service" = reporting-service ]; then
-                                fetch_ok=0
-                                bash infrastructure/docker/run-compose.sh \
-                                    --project-name "$PROJECT_NAME" \
-                                    --env-file "$COMPOSE_ENV_FILE" \
-                                    -f "$COMPOSE_FILE" \
-                                    exec -T "$service" python -c "import sys, urllib.request; sys.stdout.write(urllib.request.urlopen(sys.argv[1], timeout=5).read().decode())" "$url" | grep -F "$expected" >/dev/null && fetch_ok=1
+                                compose exec -T "$service" python -c "import sys, urllib.request; sys.stdout.write(urllib.request.urlopen(sys.argv[1], timeout=5).read().decode())" "$url" | grep -F "$expected" >/dev/null && return 0
                             else
-                                fetch_ok=0
-                                bash infrastructure/docker/run-compose.sh \
-                                    --project-name "$PROJECT_NAME" \
-                                    --env-file "$COMPOSE_ENV_FILE" \
-                                    -f "$COMPOSE_FILE" \
-                                    exec -T "$service" wget -qO- "$url" | grep -F "$expected" >/dev/null && fetch_ok=1
-                            fi
-                            if [ "$fetch_ok" -eq 1 ]; then
-                                return 0
+                                compose exec -T "$service" wget -qO- "$url" | grep -F "$expected" >/dev/null && return 0
                             fi
                             attempt=$((attempt + 1))
                             sleep 2
@@ -740,44 +525,23 @@ stage('Quality Gate') {
 
                     check_http client-ui / '<app-root'
                     check_http reporting-ui / 'Reporting UI placeholder'
-                    # reporting-service listens on 8083, not the 8080 default, and its
-                    # /health reports 'healthy' (liveness), never 'ok'.
                     check_http reporting-service /health '"status": "healthy"' 8083
 
-                    # check_http cannot be reused: this is a kafka-topics.sh describe,
-                    # not an HTTP request. A missing topic makes kafka-topics.sh
-                    # exit non-zero by itself; the awk asserts the partition count
-                    # as a whole tab-delimited field, because a substring match on
-                    # 'PartitionCount: 3' also matches 'PartitionCount: 30'. The
-                    # header line starts at column 0 while per-partition lines
-                    # start with a tab, so ^Topic: anchors to the header.
-                    TOPIC_DESCRIBE="$(sh infrastructure/docker/run-compose.sh \
-                        --project-name "$PROJECT_NAME" \
-                        -f "$COMPOSE_FILE" \
-                        exec -T kafka /opt/kafka/bin/kafka-topics.sh \
-                            --bootstrap-server localhost:9092 \
-                            --describe --topic trade-events)" || {
+                    # Match PartitionCount as a whole tab-delimited field so 3 does not match 30.
+                    TOPIC_DESCRIBE="$(compose exec -T kafka /opt/kafka/bin/kafka-topics.sh \
+                        --bootstrap-server localhost:9092 --describe --topic trade-events)" || {
                         echo "Topic trade-events does not exist." >&2
                         exit 1
                     }
                     echo "$TOPIC_DESCRIBE"
-                    echo "$TOPIC_DESCRIBE" | awk -F'\t' '
+                    echo "$TOPIC_DESCRIBE" | awk -F'\\t' '
                         /^Topic: /{for (i = 1; i <= NF; i++) if ($i == "PartitionCount: 3") ok = 1}
                         END {exit ok ? 0 : 1}' || {
                         echo "Topic trade-events does not have three partitions." >&2
                         exit 1
                     }
 
-                    # -a on a narrow filter rather than on the listing below:
-                    # kafka-init exits once the topic is created, so it is
-                    # invisible to a running-only listing, and its exit status is
-                    # the evidence that topic creation actually ran.
-                    echo "Kafka broker and topic setup:"
-                    docker ps -a --filter name=kafka --format 'table {{.Names}}\t{{.Status}}'
-
-                    echo "All Docker containers after startup:"
-                    docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}'
-                    echo "Local application stack is running on host ports 3001, 4200, 4300, 5432, 8081, 8082, 8083, and 29092."
+                    docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Image}}\\t{{.Ports}}'
                 '''
             }
         }
@@ -785,16 +549,13 @@ stage('Quality Gate') {
 
     post {
         cleanup {
-            // Cleanup runs after other post conditions on success, failure, or abort.
-            // Isolate cleanup errors so later teardown and workspace deletion still run.
+            // Isolate each cleanup step so a failure does not skip the rest,
+            // including workspace deletion.
             catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                 script {
                     def resourceCleanupStatus = sh(script: '''
                         set +e
-                        if ! docker info >/dev/null 2>&1; then
-                            echo "Docker is unavailable; test resource cleanup could not run." >&2
-                            exit 1
-                        fi
+                        docker info >/dev/null 2>&1 || { echo "Docker is unavailable; test resource cleanup could not run." >&2; exit 1; }
                         cleanup_failed=0
                         remove_resource() {
                             resource_kind="$1"
@@ -819,9 +580,10 @@ stage('Quality Gate') {
                     if (resourceCleanupStatus != 0) {
                         echo "Test resource cleanup failed with status ${resourceCleanupStatus}."
                     }
+                    // A successful stack is left running; only tear down a failed one.
                     if (currentBuild.currentResult != 'SUCCESS' && env.LOCAL_STACK_STARTED == 'true') {
                         def composeCleanupStatus = sh(
-                            script: 'bash infrastructure/docker/run-compose.sh --project-name trading-season-local --env-file infrastructure/docker-compose/.env -f infrastructure/docker-compose/docker-compose.local.yml down -v --remove-orphans',
+                            script: 'sh infrastructure/docker/run-compose.sh --project-name trading-season-local --env-file infrastructure/docker-compose/.env -f infrastructure/docker-compose/docker-compose.local.yml down -v --remove-orphans',
                             returnStatus: true
                         )
                         if (composeCleanupStatus != 0) {
@@ -830,10 +592,9 @@ stage('Quality Gate') {
                     }
                 }
             }
-            // Keep the Maven and npm caches, the Playwright image, and up to
-            // 2 GiB of Docker build cache so the next build does not download
-            // them again. When the agent would drop below the free-space floor
-            // after workspace deletion, fall back to removing all of them.
+            // Keep the Playwright image, Maven and npm caches, and up to 2 GiB
+            // of Docker build cache when the agent will still have 6 GiB free
+            // after the workspace is deleted; otherwise start the next build cold.
             catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                 script {
                     def cacheCleanupStatus = sh(script: '''
@@ -842,9 +603,7 @@ stage('Quality Gate') {
                         if [ -f node_modules/@playwright/test/package.json ]; then
                             PW_VERSION="$(node -p "require('@playwright/test/package.json').version" 2>/dev/null)"
                         fi
-                        # Only the current Playwright version's image is worth
-                        # keeping. Older tags, and the much larger official images
-                        # earlier builds pulled, are always removed.
+                        # Drop Playwright images for other versions and the official images.
                         docker image ls trading-season-playwright --format '{{.Tag}}' | while read -r tag; do
                             [ "$tag" = "$PW_VERSION" ] || docker image rm "trading-season-playwright:$tag" >/dev/null 2>&1
                         done
@@ -854,8 +613,6 @@ stage('Quality Gate') {
                         docker image prune -f >/dev/null 2>&1
                         docker builder prune -f --keep-storage=2gb 2>/dev/null || docker builder prune -af 2>/dev/null
 
-                        # One GiB above the 5 GiB Disk Preflight floor. A warm build
-                        # needs far less than the cold build that floor was sized for.
                         KEEP_CACHES_MIN_KB=$((6 * 1024 * 1024))
                         AVAILABLE_KB="$(df -Pk "$WORKSPACE" | awk 'NR == 2 {print $4}')"
                         WORKSPACE_KB="$(du -sk "$WORKSPACE" 2>/dev/null | cut -f1)"
@@ -865,12 +622,11 @@ stage('Quality Gate') {
                             exit 0
                         fi
 
-                        echo "Only $((PROJECTED_KB / 1024 / 1024)) GiB will be free after workspace cleanup; removing all caches so the next build starts cold."
+                        echo "Only $((PROJECTED_KB / 1024 / 1024)) GiB will be free after workspace cleanup; removing all caches."
                         if [ -n "$PW_VERSION" ]; then
                             docker image rm "trading-season-playwright:$PW_VERSION" >/dev/null 2>&1
                         fi
                         docker builder prune -af 2>/dev/null
-                        # Workspace-local Maven repositories leave with deleteDir().
                         exit 0
                     ''', returnStatus: true)
                     if (cacheCleanupStatus != 0) {
@@ -880,27 +636,12 @@ stage('Quality Gate') {
             }
             script {
                 try {
-                    // Stage post blocks have already archived their reports.
-                    // Removing the checkout prevents Git history, dependencies,
-                    // and generated output from accumulating between builds.
+                    // Reports were archived by the stage post blocks.
                     deleteDir()
                 } catch (err) {
                     echo "Workspace cleanup failed: ${err}; preserving the original build result."
                 }
             }
-            echo "Cleanup attempts completed; review any errors above."
-        }
-
-        success {
-            echo " All Tests PASSED"
-        }
-
-        failure {
-            echo " Tests FAILED - Review test results above"
-        }
-
-        unstable {
-            echo "  Build is UNSTABLE - Some tests may have failed or timed out"
         }
     }
 }

@@ -1,6 +1,7 @@
 app
 app.account
 app.auth
+app.config
 app.holding
 app.instrument
 app.market

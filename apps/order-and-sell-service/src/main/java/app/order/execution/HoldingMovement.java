@@ -20,6 +20,10 @@ import java.time.OffsetDateTime;
 @Table(name = "holding_movements")
 public class HoldingMovement {
 
+    /** Creates an instance of this class. */
+    public HoldingMovement() {
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "holding_movement_id", updatable = false, nullable = false)
@@ -41,50 +45,110 @@ public class HoldingMovement {
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
+    /**
+     * Returns the holding movement ID.
+     *
+     * @return the holding movement ID
+     */
     public Integer getHoldingMovementId() {
         return holdingMovementId;
     }
 
+    /**
+     * Sets the holding movement ID.
+     *
+     * @param holdingMovementId the holding movement ID
+     */
     public void setHoldingMovementId(Integer holdingMovementId) {
         this.holdingMovementId = holdingMovementId;
     }
 
+    /**
+     * Returns the account ID.
+     *
+     * @return the account ID
+     */
     public Integer getAccountId() {
         return accountId;
     }
 
+    /**
+     * Sets the account ID.
+     *
+     * @param accountId the account ID
+     */
     public void setAccountId(Integer accountId) {
         this.accountId = accountId;
     }
 
+    /**
+     * Returns the instrument ID.
+     *
+     * @return the instrument ID
+     */
     public Integer getInstrumentId() {
         return instrumentId;
     }
 
+    /**
+     * Sets the instrument ID.
+     *
+     * @param instrumentId the instrument ID
+     */
     public void setInstrumentId(Integer instrumentId) {
         this.instrumentId = instrumentId;
     }
 
+    /**
+     * Returns the fill ID.
+     *
+     * @return the fill ID
+     */
     public Integer getFillId() {
         return fillId;
     }
 
+    /**
+     * Sets the fill ID.
+     *
+     * @param fillId the fill ID
+     */
     public void setFillId(Integer fillId) {
         this.fillId = fillId;
     }
 
+    /**
+     * Returns the quantity delta.
+     *
+     * @return the quantity delta
+     */
     public BigDecimal getQuantityDelta() {
         return quantityDelta;
     }
 
+    /**
+     * Sets the quantity delta.
+     *
+     * @param quantityDelta the quantity delta
+     */
     public void setQuantityDelta(BigDecimal quantityDelta) {
         this.quantityDelta = quantityDelta;
     }
 
+    /**
+     * Returns the created at.
+     *
+     * @return the created at
+     */
     public OffsetDateTime getCreatedAt() {
         return createdAt;
     }
 
+    /**
+     * Sets the created at.
+     *
+     * @param createdAt the created at
+     */
     public void setCreatedAt(OffsetDateTime createdAt) {
         this.createdAt = createdAt;
     }
