@@ -10,7 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -42,6 +41,23 @@ class HoldingMovementRepositoryTest {
         acquire(1, 100, new BigDecimal("200.00"), new BigDecimal("3"));
 
         assertEquals(new BigDecimal("175.00"), costOf(1).get(100));
+    }
+
+    @Test
+    void averageCostRestartsAfterAPositionIsSoldOut() {
+        acquire(1, 100, new BigDecimal("100.00"), new BigDecimal("4"));
+        move(1, 100, new BigDecimal("150.00"), new BigDecimal("-4"));
+        acquire(1, 100, new BigDecimal("300.00"), new BigDecimal("2"));
+
+        assertEquals(new BigDecimal("300.00"), costOf(1).get(100));
+    }
+
+    @Test
+    void aPositionSoldOutHasNoCost() {
+        acquire(1, 100, new BigDecimal("100.00"), new BigDecimal("4"));
+        move(1, 100, new BigDecimal("150.00"), new BigDecimal("-4"));
+
+        assertTrue(costOf(1).isEmpty());
     }
 
     @Test
@@ -93,7 +109,7 @@ class HoldingMovementRepositoryTest {
 
     @Test
     void anAccountWithNoMovementsHasNoCosts() {
-        assertTrue(holdingMovementRepository.averageAcquisitionCostByInstrument(404).isEmpty());
+        assertTrue(holdingMovementRepository.pricedMovements(404).isEmpty());
     }
 
     @Test
@@ -122,13 +138,8 @@ class HoldingMovementRepositoryTest {
 
     private Map<Integer, BigDecimal> costOf(Integer accountId) {
         Map<Integer, BigDecimal> costs = new HashMap<>();
-        List<Object[]> rows = holdingMovementRepository.averageAcquisitionCostByInstrument(accountId);
-        for (Object[] row : rows) {
-            BigDecimal value = row[1] instanceof BigDecimal decimal
-                    ? decimal
-                    : BigDecimal.valueOf(((Number) row[1]).doubleValue());
-            costs.put((Integer) row[0], value.setScale(2, RoundingMode.HALF_UP));
-        }
+        CostBasis.averageCosts(holdingMovementRepository.pricedMovements(accountId))
+                .forEach((instrumentId, cost) -> costs.put(instrumentId, cost.setScale(2, RoundingMode.HALF_UP)));
         return costs;
     }
 

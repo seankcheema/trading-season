@@ -8,7 +8,7 @@ from models import (
     HoldingMovement, AuditTrail, Instrument, ReportingMetadata
 )
 from sqlalchemy import desc, and_, func
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from decimal import Decimal
 import logging
 
@@ -302,7 +302,7 @@ class MetadataRepository:
             db.session.add(metadata)
         else:
             metadata.value = value
-            metadata.updated_at = datetime.utcnow()
+            metadata.updated_at = datetime.now(UTC)
         
         db.session.commit()
         logger.info(f"Set metadata: {key} = {value}")
@@ -316,5 +316,5 @@ class MetadataRepository:
     def update_last_refresh_time(refresh_time=None):
         """Update last refresh timestamp"""
         if refresh_time is None:
-            refresh_time = datetime.utcnow().isoformat()
+            refresh_time = datetime.now(UTC).isoformat()
         MetadataRepository.set_metadata('last_refresh_time', refresh_time)

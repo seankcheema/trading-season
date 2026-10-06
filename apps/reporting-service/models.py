@@ -6,10 +6,15 @@ Maps to read-only views of main application data
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Column, String, Numeric, DateTime, Integer, Boolean, Text, ForeignKey, Enum
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from datetime import datetime, UTC
 import uuid
 
 db = SQLAlchemy()
+
+
+def utc_now():
+    """Return a timezone-aware UTC timestamp for model defaults."""
+    return datetime.now(UTC)
 
 
 class User(db.Model):
@@ -26,8 +31,8 @@ class User(db.Model):
     date_of_birth = Column(DateTime, nullable=False)
     trader_level = Column(String(50), nullable=False)  # BEGINNER, INTERMEDIATE, ADVANCED
     available_funds = Column(Numeric(15, 2), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
     
     def __repr__(self):
         return f'<User {self.email}>'
@@ -43,8 +48,8 @@ class Account(db.Model):
     account_type = Column(String(50), nullable=False)  # TRADING, INVESTMENT, etc.
     status = Column(String(50), nullable=False)  # ACTIVE, FROZEN, CLOSED
     cash_balance = Column(Numeric(15, 2), nullable=False, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
     
     user = db.relationship('User', backref='accounts')
     
@@ -61,7 +66,7 @@ class Instrument(db.Model):
     name = Column(String(255), nullable=False)
     asset_class = Column(String(50), nullable=False)  # EQUITY, BOND, etc.
     is_tradable = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
     
     def __repr__(self):
         return f'<Instrument {self.symbol}>'
@@ -83,7 +88,7 @@ class Order(db.Model):
     client_reference = Column(UUID(as_uuid=True), nullable=True)
     submitted_at = Column(DateTime, nullable=False, index=True)
     resolved_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
     
     account = db.relationship('Account', backref='orders')
     instrument = db.relationship('Instrument', backref='orders')
@@ -103,7 +108,7 @@ class Fill(db.Model):
     filled_price = Column(Numeric(15, 2), nullable=False)
     fill_timestamp = Column(DateTime, nullable=False, index=True)
     commission = Column(Numeric(15, 2), default=0)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
     
     order = db.relationship('Order', backref='fills')
     
@@ -120,8 +125,8 @@ class Holding(db.Model):
     instrument_id = Column(Integer, ForeignKey('instruments.instrument_id'), nullable=False)
     quantity = Column(Numeric(15, 2), nullable=False)
     average_cost = Column(Numeric(15, 2), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
     
     account = db.relationship('Account', backref='holdings')
     instrument = db.relationship('Instrument', backref='holdings')
@@ -141,7 +146,7 @@ class CashTransaction(db.Model):
     transaction_type = Column(String(50), nullable=False)  # DEPOSIT, WITHDRAWAL, FEE, FILL, etc.
     reference_id = Column(Integer, nullable=True)  # Order ID, Fill ID, etc.
     timestamp = Column(DateTime, nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
     
     account = db.relationship('Account', backref='cash_transactions')
     user = db.relationship('User', backref='cash_transactions')
@@ -163,7 +168,7 @@ class HoldingMovement(db.Model):
     price = Column(Numeric(15, 2), nullable=False)
     reference_id = Column(Integer, nullable=True)  # Fill ID, etc.
     timestamp = Column(DateTime, nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
     
     holding = db.relationship('Holding', backref='movements')
     account = db.relationship('Account', backref='holding_movements')
@@ -184,7 +189,7 @@ class AuditTrail(db.Model):
     event_details = Column(Text, nullable=True)  # JSON or descriptive text
     reference_id = Column(Integer, nullable=True)  # Order ID, Fill ID, etc.
     timestamp = Column(DateTime, nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
     
     account = db.relationship('Account', backref='audit_events')
     user = db.relationship('User', backref='audit_events')
@@ -200,7 +205,7 @@ class ReportingMetadata(db.Model):
     metadata_id = Column(Integer, primary_key=True, autoincrement=True)
     key = Column(String(100), unique=True, nullable=False, index=True)
     value = Column(Text, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
     
     def __repr__(self):
         return f'<ReportingMetadata {self.key}>'

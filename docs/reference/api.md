@@ -169,7 +169,7 @@ Every endpoint resolves the owner from the token's `sub`. An account id in a pat
 
 An account is returned as `accountId`, `userId`, `name`, `cashBalance`, `openedDate` and `currency`. Registration opens a default account named `Main Account`, so a new user starts with one empty account rather than none.
 
-A holding is returned as `holdingId`, `accountId`, `instrumentId`, `symbol`, `name`, `quantity`, `averageCost` and `updatedAt`. Neither `symbol` nor `averageCost` is stored on the holding row: the symbol comes from the instrument, preferring `simulated_stock_symbol` so it matches what the market endpoints report, and `averageCost` is derived from `holding_movements` joined to `fills`, weighted by quantity over acquisitions only. An instrument that cannot be resolved reports its id as the symbol, and a position with no acquisition history reports an average cost of 0.
+A holding is returned as `holdingId`, `accountId`, `instrumentId`, `symbol`, `name`, `quantity`, `averageCost` and `updatedAt`. Neither `symbol` nor `averageCost` is stored on the holding row: the symbol comes from the instrument, preferring `simulated_stock_symbol` so it matches what the market endpoints report, and `averageCost` is derived by replaying `holding_movements` joined to `fills` oldest first as a moving weighted average: a buy blends its price into the average by quantity, a sell leaves the average of the remaining shares unchanged, and a sell that takes the quantity to zero closes the position, so buying again starts a fresh average. An instrument that cannot be resolved reports its id as the symbol, and a position with no acquisition history reports an average cost of 0.
 
 ### Portfolio valuation history
 
@@ -222,6 +222,58 @@ Standard format: `{"error": "..."}` with HTTP status. Mismatched bearer token an
 | 404 | Resource not found (e.g., GET /api/users/me before registration) |
 | 409 | Duplicate account or email; account already registered |
 | 422 | Withdrawal exceeds the caller's available funds |
+
+---
+
+## Reporting Service (Flask) - port 8083
+
+This service reads from the shared `trading_season` database and returns portfolio, trade-history, performance, profile, and scheduler-status views for the signed-in caller.
+
+### Service endpoints
+
+| Method | Path | Request | Success response |
+| --- | --- | --- | --- |
+| GET | / | — (public) | 200: service metadata, docs links, endpoint summary |
+| GET | /health | — (public) | 200: `healthy` plus service metadata when the database is reachable; 503 otherwise |
+| GET | /openapi.yaml | — (public) | 200: OpenAPI YAML |
+| GET | /docs | — (public) | 200: Swagger UI |
+
+### Portfolio and reporting endpoints
+
+All `/api/reporting/*` routes use the auth service bearer token. The service validates RS256 JWTs against the auth JWKS and resolves the caller from the token's `sub`.
+
+| Method | Path | Request | Success response |
+| --- | --- | --- | --- |
+| GET | /api/reporting/portfolio | Bearer token | 200: all caller accounts, holdings, balances, and total portfolio summary |
+| GET | /api/reporting/portfolio/{accountId} | Bearer token; owned account | 200: one account's holdings, balance, and portfolio value |
+| GET | /api/reporting/portfolio/{accountId}/performance | Bearer token; owned account; optional `start_date`, `end_date` | 200: account performance metrics and current position |
+| GET | /api/reporting/portfolio/performance | Bearer token; optional `start_date`, `end_date` | 200: aggregate performance across all caller accounts |
+| GET | /api/reporting/trades | Bearer token; optional `account_id`, `symbol`, `order_type`, `status`, `start_date`, `end_date`, `min_profit`, `max_profit`, `limit`, `offset` | 200: filtered trade list, statistics, pagination, filters |
+| GET | /api/reporting/trades/{orderId} | Bearer token; owned order | 200: order/trade detail with fill when present |
+| GET | /api/reporting/trades/statistics | Bearer token; optional `account_id`, `start_date`, `end_date` | 200: aggregate trade statistics |
+| GET | /api/reporting/trades/drill-down | Bearer token; optional `account_id`, `start_date`, `end_date` | 200: grouped trade analytics by symbol and order type, plus best/worst trades |
+| GET | /api/reporting/profile | Bearer token | 200: caller profile summary |
+| GET | /api/reporting/scheduler/status | — (public) | 200: scheduler refresh status |
+
+### Reporting service authentication and scope
+
+Protected reporting endpoints require:
+- RS256 access token from the auth service
+- valid `iss` matching `AUTH_JWT_ISSUER`
+- valid UUID `sub`, which becomes the reporting caller id
+
+Account-scoped endpoints verify ownership through the account's `user_id`. A caller cannot read another user's portfolios, performance, or trades by guessing ids.
+
+### Reporting service errors
+
+Errors use `{"error": "..."}`.
+
+| Status | Cause |
+| --- | --- |
+| 400 | Invalid date or query-parameter format |
+| 401 | Missing, malformed, expired, or unverifiable bearer token |
+| 404 | Requested account, order, or profile data is missing or inaccessible to the caller |
+| 500 | Unexpected reporting, database, or scheduler failure |
 
 ---
 
@@ -403,7 +455,7 @@ Refresh rotates the stored token; replay of an unusable stored token revokes the
 
 ## UI integration
 
-The dashboard stock search sits above Portfolio Value and uses the placeholder "Search for a stock". Below Recent Transactions, the Watch List preview displays all available market stocks with company names, live prices, dollar changes, and percentage changes in a scrollable list under an Asset/Price/Change $/Change % header divider. Watch-list prices update without a flashing highlight. Watch-list headers stay on one line, and rows align with Recent Transactions using the same edge spacing and row dividers. It is a placeholder without a watch-list API or saved user selections; selecting a stock opens the trading dialog.
+The dashboard stock search sits above Portfolio Value and uses the placeholder "Search a stock to buy or sell". It shows a Ctrl+K (Cmd+K on Apple platforms) hint while idle, and either that shortcut or a slash typed outside a field focuses it; the shortcut is ignored while a modal dialog is open. Focusing it with nothing typed lists up to three stocks each under Trending (the largest absolute daily move), Your watch list and Recently viewed, hiding empty groups; typing replaces them with matches on symbol or company name. A Trade button at the right opens the best match for the typed text, or focuses the search when it is empty. Recently viewed holds the last five stocks opened in the order ticket, kept in sessionStorage under `ts.recent-instruments` and cleared whenever the signed-in user changes. The market page and order dialog use the same component without these extras. Below Recent Transactions, the Watch List preview displays all available market stocks with company names, live prices, dollar changes, and percentage changes in a scrollable list under an Asset/Price/Change $/Change % header divider. Watch-list prices update without a flashing highlight. Watch-list headers stay on one line, and rows align with Recent Transactions using the same edge spacing and row dividers. It is a placeholder without a watch-list API or saved user selections; selecting a stock opens the trading dialog.
 
 Order results from the dashboard buy/sell dialog and full-screen market ticket appear as bottom-center toasts that dismiss automatically: fills use success styling, while rejections and request failures use error styling. Only the newest notification is shown: a new result replaces the previous toast, replays a 420 ms slide up from the bottom edge, and resets its timer, so notifications never stack. Each toast shows a shrinking countdown bar that tracks the time remaining. Notifications remain visible for four seconds, then slide down and fade over 400 ms; they survive closing the dialog and respect reduced-motion preferences. The dashboard Buy/Sell button shows a loading circle and Buying/Selling label; the market ticket shows Submitting. Both stay disabled for at least one second after a click, or longer while the request is pending. It becomes available again afterward when the bounded quantity is positive. Reduced-motion preferences disable spinner rotation. Each subsequent click places a new order with a fresh idempotency key; the ticket stays open and refreshes available cash and holdings.
 
@@ -453,7 +505,7 @@ Each market view closes its previous live-price stream before replacing a snapsh
 
 Portfolio history is shared across dashboard navigation, retaining points and their domain per account, session, and timeframe for one minute. Matching loads are deduplicated; trades invalidate the affected account, context changes revalidate, and logout clears the cache. Ordinary portfolio and chart refreshes keep successful content in place without adding visible updating text that shifts the layout. Initial loads and retryable errors remain explicit. Advanced and popup charts also immediately reuse compatible completed candles while expired history or a new replay minute revalidates.
 
-The dashboard Assets list defaults to descending current market value (shares multiplied by the live price). Its sort control also supports asset symbol order; market ticks update values and their ordering locally.
+The dashboard Assets card lists the selected account's holdings by symbol. Its View all link opens an Assets dialog over the same holdings, valued at live prices. The dialog shows four portfolio totals (market value, cost basis, unrealized gain or loss and position count), then a table of asset with company name, today sparkline, shares, average price, price, change percent, value, value dollars, return against average cost and weight as a share of market value. Every column except the sparkline sorts: the first click on a column sorts descending, the next flips it, and the default is descending market value. A gain and loss filter (All, Gainers, Losers) and a symbol or company name filter narrow the rows and the count; the totals always describe the whole portfolio. Market ticks update values, weights and ordering while the dialog is open. Choosing a row closes the dialog and opens that stock's order ticket. The dialog is [AssetsDialogComponent](../../apps/client-ui/src/app/dashboard/history/assets-dialog.component.ts) and follows the TradingSeason design system's View all dialogs.
 
 If live ticks arrive during snapshot revalidation, the response retains the newer live prices and recomputes change and percentage change using the snapshot's opening baseline. Closed streams cannot update cached quotes. Crossing into another trading day refreshes the snapshot to obtain the new session-open baseline before applying further live ticks.
 

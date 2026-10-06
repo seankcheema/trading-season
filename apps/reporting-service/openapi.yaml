@@ -1,0 +1,768 @@
+openapi: 3.0.3
+info:
+  title: Trading Season Reporting Service API
+  version: 0.1.0
+  description: |
+    OpenAPI contract for the Reporting Service. The service provides portfolio,
+    trade-history, performance, profile, and scheduler-status endpoints over the
+    shared trading_season business database.
+servers:
+  - url: http://localhost:8083
+    description: Local development
+tags:
+  - name: Service
+  - name: Portfolio
+  - name: Trades
+  - name: Profile
+  - name: Scheduler
+paths:
+  /:
+    get:
+      tags: [Service]
+      summary: Reporting service metadata
+      responses:
+        '200':
+          description: Service metadata and entry points
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RootResponse'
+  /health:
+    get:
+      tags: [Service]
+      summary: Reporting service liveness
+      responses:
+        '200':
+          description: Service is healthy and database is reachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthFailureResponse'
+  /api/reporting/portfolio:
+    get:
+      tags: [Portfolio]
+      summary: Get portfolio summary across all caller accounts
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Portfolio summary returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioSummaryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/reporting/portfolio/{accountId}:
+    get:
+      tags: [Portfolio]
+      summary: Get a single account portfolio
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+      responses:
+        '200':
+          description: Account portfolio returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountPortfolioResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/reporting/portfolio/{accountId}/performance:
+    get:
+      tags: [Portfolio]
+      summary: Get detailed performance metrics for an account
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+      responses:
+        '200':
+          description: Account performance returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountPerformanceResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/reporting/portfolio/performance:
+    get:
+      tags: [Portfolio]
+      summary: Get aggregated performance across all caller accounts
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+      responses:
+        '200':
+          description: Aggregate portfolio performance returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioPerformanceResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/reporting/trades:
+    get:
+      tags: [Trades]
+      summary: Get trade history across one or all caller accounts
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AccountIdQuery'
+        - $ref: '#/components/parameters/Symbol'
+        - $ref: '#/components/parameters/OrderType'
+        - $ref: '#/components/parameters/Status'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+        - $ref: '#/components/parameters/MinProfit'
+        - $ref: '#/components/parameters/MaxProfit'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Trade list returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/reporting/trades/{orderId}:
+    get:
+      tags: [Trades]
+      summary: Get one trade or order detail
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Trade detail returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradeDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/reporting/trades/statistics:
+    get:
+      tags: [Trades]
+      summary: Get trade statistics and performance metrics
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AccountIdQuery'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+      responses:
+        '200':
+          description: Trade statistics returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradeStatisticsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/reporting/trades/drill-down:
+    get:
+      tags: [Trades]
+      summary: Get grouped trade drill-down analytics
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AccountIdQuery'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+      responses:
+        '200':
+          description: Drill-down analytics returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradeDrillDownResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/reporting/profile:
+    get:
+      tags: [Profile]
+      summary: Get the caller profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Caller profile returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/reporting/scheduler/status:
+    get:
+      tags: [Scheduler]
+      summary: Get scheduler refresh status
+      responses:
+        '200':
+          description: Scheduler status returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchedulerStatusResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      schema:
+        type: integer
+    AccountIdQuery:
+      name: account_id
+      in: query
+      required: false
+      schema:
+        type: integer
+    StartDate:
+      name: start_date
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: ISO-8601 timestamp or date accepted by Python datetime.fromisoformat.
+    EndDate:
+      name: end_date
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: ISO-8601 timestamp or date accepted by Python datetime.fromisoformat.
+    Symbol:
+      name: symbol
+      in: query
+      required: false
+      schema:
+        type: string
+    OrderType:
+      name: order_type
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [BUY, SELL]
+    Status:
+      name: status
+      in: query
+      required: false
+      schema:
+        type: string
+    MinProfit:
+      name: min_profit
+      in: query
+      required: false
+      schema:
+        type: number
+    MaxProfit:
+      name: max_profit
+      in: query
+      required: false
+      schema:
+        type: number
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 100
+        minimum: 1
+        maximum: 500
+    Offset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 0
+        minimum: 0
+  responses:
+    BadRequest:
+      description: Invalid request data or query parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Requested resource is missing or inaccessible
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: healthy
+        service:
+          type: string
+          example: reporting-service
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+          example: 0.1.0
+      required: [status, service, timestamp, version]
+    HealthFailureResponse:
+      allOf:
+        - $ref: '#/components/schemas/HealthResponse'
+        - type: object
+          properties:
+            error:
+              type: string
+          required: [error]
+    RootResponse:
+      type: object
+      properties:
+        service:
+          type: string
+        status:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        documentation:
+          type: string
+        openapi:
+          type: string
+        health:
+          type: string
+        api_endpoints:
+          type: object
+          additionalProperties:
+            type: string
+      required: [service, status, version, documentation, openapi, health, api_endpoints]
+    Holding:
+      type: object
+      properties:
+        holding_id:
+          type: integer
+        instrument_id:
+          type: integer
+        symbol:
+          type: string
+        name:
+          type: string
+        quantity:
+          type: number
+        average_cost:
+          type: number
+        total_value:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AccountSummary:
+      type: object
+      properties:
+        account_id:
+          type: integer
+        account_name:
+          type: string
+        account_type:
+          type: string
+        status:
+          type: string
+        cash_balance:
+          type: number
+        holdings_count:
+          type: integer
+        holdings_value:
+          type: number
+        holdings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Holding'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PortfolioSummary:
+      type: object
+      properties:
+        total_accounts:
+          type: integer
+        total_cash:
+          type: number
+        total_holdings_value:
+          type: number
+        total_portfolio_value:
+          type: number
+        available_funds:
+          type: number
+    PortfolioSummaryResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountSummary'
+        summary:
+          $ref: '#/components/schemas/PortfolioSummary'
+        timestamp:
+          type: string
+          format: date-time
+    AccountPortfolioResponse:
+      type: object
+      properties:
+        account:
+          $ref: '#/components/schemas/AccountSummary'
+        holdings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Holding'
+        portfolio_value:
+          type: number
+        timestamp:
+          type: string
+          format: date-time
+    Fill:
+      type: object
+      properties:
+        fill_id:
+          type: integer
+        filled_quantity:
+          type: number
+        filled_price:
+          type: number
+        commission:
+          type: number
+        fill_timestamp:
+          type: string
+          format: date-time
+    Trade:
+      type: object
+      properties:
+        order_id:
+          type: integer
+        account_id:
+          type: integer
+        instrument_id:
+          type: integer
+        symbol:
+          type: string
+        order_type:
+          type: string
+        quantity:
+          type: number
+        entry_price:
+          type: number
+        indicative_price:
+          type: number
+        filled_quantity:
+          type: number
+        filled_price:
+          type: number
+        commission:
+          type: number
+        realized_pl:
+          type: number
+        status:
+          type: string
+        rejection_reason:
+          type: string
+          nullable: true
+        submitted_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        executed_at:
+          type: string
+          format: date-time
+        fill:
+          $ref: '#/components/schemas/Fill'
+    TradeStatistics:
+      type: object
+      properties:
+        total_trades:
+          type: integer
+        filled_trades:
+          type: integer
+        win_count:
+          type: integer
+        loss_count:
+          type: integer
+        break_even_count:
+          type: integer
+        win_rate:
+          type: number
+        profit_factor:
+          type: number
+        total_realized_pl:
+          type: number
+        average_profit:
+          type: number
+        average_loss:
+          type: number
+        gross_profit:
+          type: number
+        gross_loss:
+          type: number
+    TradesResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        trades:
+          type: array
+          items:
+            $ref: '#/components/schemas/Trade'
+        statistics:
+          $ref: '#/components/schemas/TradeStatistics'
+        pagination:
+          type: object
+          additionalProperties: true
+        filters:
+          type: object
+          additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time
+    TradeDetailResponse:
+      type: object
+      properties:
+        trade:
+          $ref: '#/components/schemas/Trade'
+        timestamp:
+          type: string
+          format: date-time
+    TradeStatisticsResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        statistics:
+          $ref: '#/components/schemas/TradeStatistics'
+        filters:
+          type: object
+          additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time
+    GroupedTradeMetrics:
+      type: object
+      properties:
+        symbol:
+          type: string
+        order_type:
+          type: string
+        count:
+          type: integer
+        filled_trades:
+          type: integer
+        total_realized_pl:
+          type: number
+        win_rate:
+          type: number
+        average_profit:
+          type: number
+        average_loss:
+          type: number
+    TradeDrillDownResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        by_symbol:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupedTradeMetrics'
+        by_order_type:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupedTradeMetrics'
+        best_trades:
+          type: array
+          items:
+            $ref: '#/components/schemas/Trade'
+        worst_trades:
+          type: array
+          items:
+            $ref: '#/components/schemas/Trade'
+        filters:
+          type: object
+          additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time
+    PerformanceMetrics:
+      type: object
+      additionalProperties: true
+      description: Calculated performance metrics returned by the reporting helpers.
+    AccountPerformanceResponse:
+      type: object
+      properties:
+        account_id:
+          type: integer
+        performance:
+          $ref: '#/components/schemas/PerformanceMetrics'
+        current_position:
+          type: object
+          additionalProperties: true
+        filters:
+          type: object
+          additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time
+    PortfolioPerformanceResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        accounts_count:
+          type: integer
+        performance:
+          $ref: '#/components/schemas/PerformanceMetrics'
+        current_position:
+          type: object
+          additionalProperties: true
+        filters:
+          type: object
+          additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time
+    UserProfileResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+        last_name:
+          type: string
+        trader_level:
+          type: string
+        available_funds:
+          type: number
+        timestamp:
+          type: string
+          format: date-time
+    SchedulerStatusResponse:
+      type: object
+      properties:
+        scheduler_status:
+          type: object
+          additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time

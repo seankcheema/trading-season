@@ -72,6 +72,20 @@ Compose validates JWT variables even when selecting database services, so provid
 
 The UI calls the auth service directly on port 3001, which allows the dev server origin through CORS_ORIGINS. Java calls use the relative /api path, which [proxy.conf.json](../../apps/client-ui/proxy.conf.json) forwards by path: /api/orders and /api/instruments to the Order and Sell Service on port 8081, and everything else to the Holdings and Trade Service on port 8082. Both Java services must be running for the dashboard to load accounts and place an order. Registration completes only once the Java register contract accepts the profile the UI sends; see the [API reference](../reference/api.md#ui-integration).
 
+## API Documentation (Swagger/OpenAPI)
+
+All services expose interactive Swagger UI for API exploration and testing:
+
+- **Auth Service**: http://localhost:3001/api/docs
+- **Holdings and Trade Service**: http://localhost:8082/swagger-ui.html  
+- **Order and Sell Service**: http://localhost:8081/swagger-ui.html
+
+Machine-readable OpenAPI specs are available at `/v3/api-docs` (JSON) or `/v3/api-docs.yaml` (YAML) on each service.
+
+**Test Credentials for Development**: See [TEST_CREDENTIALS.md](../TEST_CREDENTIALS.md) for default login credentials and how to authorize in Swagger UI.
+
+See [SWAGGER_DOCS.md](../SWAGGER_DOCS.md) for complete endpoint documentation and authentication details.
+
 ## Checks
 
 Run from repository root after dependency installation:
@@ -101,7 +115,7 @@ Both services must pass independently and share schema compatibility.
 
 ## End-to-end tests
 
-The Playwright suite in [apps/client-ui/e2e](../../apps/client-ui/e2e) covers authentication, account management, watchlists, and buy/sell journeys through the running application against the API stand-in. Backend ledger correctness is verified by the Java integration tests. Install the browser once, then run the suite:
+The Playwright suite in [apps/client-ui/e2e](../../apps/client-ui/e2e) covers authentication, account management, watchlists, the assets dialog, the search bar, and buy/sell journeys through the running application against the API stand-in. Backend ledger correctness is verified by the Java integration tests. Install the browser once, then run the suite:
 
 ```sh
 npx --prefix apps/client-ui playwright install chromium
@@ -124,7 +138,7 @@ Each tier fails its own test command below its coverage floor, so the floor is e
 
 | Tier | Floor | Enforced by | Counters |
 | --- | --- | --- | --- |
-| UI | 70% | coverageThresholds in [angular.json](../../apps/client-ui/angular.json) | statements, branches, functions, lines |
+| UI | 90% | coverageThresholds in [angular.json](../../apps/client-ui/angular.json) | statements, branches, functions, lines |
 | Auth | 70% | coverage.thresholds in [vitest.config.ts](../../apps/auth-service/vitest.config.ts) | statements, branches, functions, lines |
 | Holdings and Trade | 85% | coverage.minimum and jacoco:check in [pom.xml](../../apps/holdings-and-trade-service/pom.xml), per package | instructions, branches, lines, complexity, methods, classes |
 | Order and Sell | 70% | coverage.minimum and jacoco:check in [pom.xml](../../apps/order-and-sell-service/pom.xml), per package | instructions, branches, lines, complexity, methods, classes |
