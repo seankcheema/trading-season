@@ -21,7 +21,7 @@ graph TB
     HT["Holdings and Trade Service<br/>Spring Boot | Port 8082<br/><br/>User profile queries<br/>Account management<br/>Holdings queries<br/>Called by UI"]
     
     BizDB["trading_season<br/>PostgreSQL<br/>Port 5432<br/><br/>user_accounts, refresh_tokens (auth)<br/>users, accounts, orders<br/>market data"]
-    Kafka["Kafka<br/>KRaft | Port 29092<br/><br/>topic trade-events<br/>3 partitions, keyed by account<br/>one message per resolved order"]
+    Kafka["Kafka<br/>KRaft | Port 29092<br/><br/>topic trade-events<br/>3 partitions, keyed by account<br/>one message per order status change"]
     
     UI -->|POST /login/refresh| Auth
     UI -->|/api/* (proxy)| OS
@@ -69,7 +69,7 @@ graph TB
 | **Reporting Service** | Python 3.14, Flask | 8083 | Implemented | Serves report runs (`report.json` and PNG charts) from the `reporting_files` volume; reads `users` and `accounts` only. See [Reporting](reporting.md) |
 | **Reporting consumer** | Python 3.14 (same image) | — | Implemented | Consumer group `reporting-ingester`: appends `trade-events` to JSON line files and writes a report run every 15 minutes |
 | **Market Data** | Infrastructure | — | Implemented | Database migrations, synthetic data generation |
-| **Kafka** | Apache Kafka (KRaft) | 29092 | Implemented | Event broker hosting trade-events. Order and Sell publishes one message per resolved order after the transaction commits, keyed by account id ([TradeEventPublisher](../../apps/order-and-sell-service/src/main/java/app/order/event/TradeEventPublisher.java)). Two groups read it: `order-status-pusher` in Order and Sell forwards each outcome to the owner's open `GET /api/orders/stream` connections; `reporting-ingester` in the reporting consumer stores it for reports |
+| **Kafka** | Apache Kafka (KRaft) | 29092 | Implemented | Event broker hosting trade-events. Order and Sell publishes one message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`), keyed by account id ([TradeEventPublisher](../../apps/order-and-sell-service/src/main/java/app/order/event/TradeEventPublisher.java)). Two groups read it: `order-status-pusher` in Order and Sell forwards each outcome to the owner's open `GET /api/orders/stream` connections; `reporting-ingester` in the reporting consumer stores it for reports |
 
 ## Service naming correction
 

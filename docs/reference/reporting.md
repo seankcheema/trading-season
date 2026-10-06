@@ -6,14 +6,14 @@ Status: the reporting pipeline is implemented end to end on the backend; the Rep
 
 Reporting never reads trade data from the trading tables. It receives it from the `trade-events` Kafka topic and keeps its own copy as files, which matches the reference architecture's file-based reporting store and keeps analysis off the live trading path (BR-16).
 
-1. Order and Sell publishes one message per resolved order, `FILLED` or `REJECTED`, after the database transaction commits, keyed by account id.
+1. Order and Sell publishes one message per committed order status change, `ACCEPTED`, `FILLED` or `REJECTED`, after that transaction commits, keyed by account id.
 2. The reporting consumer, a separate container running [consumer.py](../../apps/reporting-service/consumer.py) in consumer group `reporting-ingester`, appends each message as one JSON line to `events/trade-events-p<partition>.jsonl` on the `reporting_files` volume, then commits the offset. A redelivered offset is skipped, so a crash between the write and the commit never duplicates a line. See [event_store.py](../../apps/reporting-service/event_store.py).
 3. Every `SCHEDULER_INTERVAL_MINUTES` (default 15) the same process runs [report_run.py](../../apps/reporting-service/report_run.py): it reads every event file, joins account and user names from PostgreSQL, and writes a run directory `runs/<UTC timestamp>/` holding `report.json` and three PNG charts. `runs/latest` points at the new run and older runs are deleted, so the store always holds the current report. This is the only point where reporting touches PostgreSQL, and only the `users` and `accounts` tables, read only.
 4. The Flask web service, running gunicorn with the scheduler disabled, exposes the runs. See the [API reference](api.md#reporting-service-python-flask-port-8083).
 
 ### Insights in a run (BR-17)
 
-`report.json` carries `statusCounts` (filled versus rejected), `volumeBySymbol` (fills, shares and notional per symbol, filled orders only), `tradesPerAccount` (total, filled and rejected per account with the account and trader names), and `dailyCounts` per UTC day. The charts are `volume_by_symbol.png`, `daily_trades.png` and `trades_per_account.png`.
+`report.json` carries `statusCounts` (filled versus rejected), `volumeBySymbol` (fills, shares and notional per symbol, filled orders only), `tradesPerAccount` (total, filled and rejected per account with the account and trader names), and `dailyCounts` per UTC day. `ACCEPTED` events are kept in the files as part of each order's lifecycle but are not counted as trades; only final statuses are. The charts are `volume_by_symbol.png`, `daily_trades.png` and `trades_per_account.png`.
 
 ### Boundaries
 

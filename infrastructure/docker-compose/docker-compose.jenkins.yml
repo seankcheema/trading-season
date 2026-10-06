@@ -91,7 +91,7 @@ services:
       - ci-network
 
   # Event broker for the trade-events topic. Order and Sell publishes one
-  # message per resolved order; reporting-consumer (group reporting-ingester)
+  # message per committed order status change; reporting-consumer (group reporting-ingester)
   # and Order and Sell's order-status-pusher read it. See
   # docs/reference/architecture.md.
   kafka:

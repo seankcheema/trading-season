@@ -4,7 +4,7 @@ Python Flask service that turns the `trade-events` Kafka topic into reports. It 
 
 ## How it works
 
-1. Order and Sell publishes one message per resolved order, keyed by account id.
+1. Order and Sell publishes one message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`), keyed by account id. The run counts only final statuses as trades.
 2. `consumer.py`, consumer group `reporting-ingester`, appends each message as one JSON line to `events/trade-events-p<partition>.jsonl` under `REPORTING_FILES_DIR`, then commits the offset. Offsets already on disk are skipped, so redelivery never duplicates a line.
 3. Every `SCHEDULER_INTERVAL_MINUTES` the same process runs `report_run.py`: reads the event files, joins account and trader names from PostgreSQL (`users` and `accounts`, read only), and writes `runs/<UTC timestamp>/report.json` plus three PNG charts. `runs/latest` points at the new run; older runs are deleted.
 4. The web service (`wsgi.py` under gunicorn) serves the runs behind the same RS256 tokens the Java services accept.
