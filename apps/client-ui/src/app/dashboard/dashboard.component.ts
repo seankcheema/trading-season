@@ -250,7 +250,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         ...this.watchlist.entries().map((entry) => entry.symbol),
       ]),
     ]
-      .sort()
+      .sort((left, right) => left.localeCompare(right))
       .join(','),
   );
 
@@ -340,11 +340,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
       [...prices].map(([symbol, price]) => {
         const candles = candlesBySymbol.get(symbol);
         if (candles?.length) {
-          if (marketTime !== null && marketTime < candles[candles.length - 1].time.getTime())
+          const latestCandle = candles.at(-1);
+          if (marketTime !== null && latestCandle && marketTime < latestCandle.time.getTime())
             return [symbol, candles];
           const points = [...candles];
+          const latestPoint = points.at(-1);
           points[points.length - 1] = {
-            time: new Date(marketTime ?? points[points.length - 1].time.getTime()),
+            time: new Date(marketTime ?? latestPoint?.time.getTime() ?? Date.now()),
             value: price,
           };
           return [symbol, points];
@@ -722,7 +724,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private animateTick(symbol: string, direction: TickAnimation['direction']): void {
     const existingTimer = this.tickAnimationTimers.get(symbol);
     if (existingTimer) clearTimeout(existingTimer);
-    const durationMs = 500 + Math.floor(Math.random() * 501);
+    const durationMs = 500;
     this.tickAnimations.update((animations) => {
       const next = new Map(animations);
       const revision = (next.get(symbol)?.revision ?? 0) + 1;
