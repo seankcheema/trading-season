@@ -2,7 +2,7 @@
 
 | Resource | Purpose |
 | --- | --- |
-| [Local Compose](docker-compose/docker-compose.local.yml) | Client UI, application services, database, Kafka broker, and reporting placeholders |
+| [Local Compose](docker-compose/docker-compose.local.yml) | Client UI, application services, database, Kafka broker, the reporting service and its Kafka consumer with the shared `reporting_files` volume, and the reporting UI placeholder |
 | [Jenkins Compose](docker-compose/docker-compose.jenkins.yml) | Optional local Jenkins environment |
 | [Jenkins pipeline](jenkins/Jenkinsfile) | Java, auth, frontend, and synthetic market-data test pipeline |
 | [Jenkins troubleshooting](jenkins/README.md) | Disk-space diagnosis, safe cleanup, and prevention |

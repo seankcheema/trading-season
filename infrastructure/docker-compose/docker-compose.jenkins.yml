@@ -91,8 +91,9 @@ services:
       - ci-network
 
   # Event broker for the trade-events topic. Order and Sell publishes one
-  # message per resolved order and runs the two log-only consumer groups;
-  # see docs/reference/architecture.md.
+  # message per resolved order; reporting-consumer (group reporting-ingester)
+  # and Order and Sell's order-status-pusher read it. See
+  # docs/reference/architecture.md.
   kafka:
     # Single-node KRaft: no ZooKeeper, and the controller quorum is this same
     # node. Sized for a developer machine, not durability -- one replica of
@@ -259,8 +260,41 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200,http://localhost:4300}
       REPORTING_SERVICE_PORT: 8083
       REPORTING_SERVICE_HOST: 0.0.0.0
+      # The web service only serves; the consumer below runs the report job.
+      SCHEDULER_ENABLED: "false"
+      SCHEDULER_INTERVAL_MINUTES: 15
+      REPORTING_FILES_DIR: /data/reporting
+    volumes:
+      - reporting_files:/data/reporting:ro
+    networks:
+      - ci-network
+
+  # Reporting consumer: consumer group reporting-ingester. Same image as
+  # reporting-service, different process; see docker-compose.local.yml.
+  reporting-consumer:
+    build:
+      context: ../../apps/reporting-service
+      dockerfile: Dockerfile
+    command: ["python", "consumer.py"]
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      FLASK_ENV: production
+      DATABASE_URL: postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TRADE_EVENTS_TOPIC: trade-events
+      REPORTING_CONSUMER_GROUP: reporting-ingester
+      REPORTING_FILES_DIR: /data/reporting
       SCHEDULER_ENABLED: "true"
       SCHEDULER_INTERVAL_MINUTES: 15
+    volumes:
+      - reporting_files:/data/reporting
+    healthcheck:
+      disable: true
+    stop_grace_period: 20s
     networks:
       - ci-network
 
@@ -268,6 +302,7 @@ volumes:
   jenkins_home:
   db_data:
   kafka_data:
+  reporting_files:
 
 networks:
   ci-network:

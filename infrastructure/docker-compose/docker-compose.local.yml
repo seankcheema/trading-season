@@ -36,13 +36,51 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200,http://localhost:4300}
       REPORTING_SERVICE_PORT: 8083
       REPORTING_SERVICE_HOST: 0.0.0.0
-      SCHEDULER_ENABLED: "true"
+      # The web service only serves; the consumer below runs the report job.
+      SCHEDULER_ENABLED: "false"
       SCHEDULER_INTERVAL_MINUTES: 15
+      REPORTING_FILES_DIR: /data/reporting
+    volumes:
+      # Read-only view of what the consumer writes.
+      - reporting_files:/data/reporting:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://127.0.0.1:8083/health', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 3
+
+  # Reporting consumer: consumer group reporting-ingester. Appends every
+  # trade-events message to JSON line files on reporting_files and writes a
+  # report run (report.json plus PNG charts) every SCHEDULER_INTERVAL_MINUTES.
+  # Same image as reporting-service, different process. Exactly one replica:
+  # two consumers must never append to the same partition file.
+  reporting-consumer:
+    build:
+      context: ../../apps/reporting-service
+      dockerfile: Dockerfile
+    command: ["python", "consumer.py"]
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      # Auto-creation is off, so the topic must exist before the first poll.
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      FLASK_ENV: development
+      DATABASE_URL: postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TRADE_EVENTS_TOPIC: trade-events
+      REPORTING_CONSUMER_GROUP: reporting-ingester
+      REPORTING_FILES_DIR: /data/reporting
+      SCHEDULER_ENABLED: "true"
+      SCHEDULER_INTERVAL_MINUTES: 15
+    volumes:
+      - reporting_files:/data/reporting
+    # The image healthcheck probes the web port, which this process does not serve.
+    healthcheck:
+      disable: true
+    # Lets an in-flight report run finish before the process is killed.
+    stop_grace_period: 20s
 
   # Holdings and Trade Service: manages accounts, holdings, and market data
   holdings-and-trade-service:
@@ -131,8 +169,9 @@ services:
       else echo "[DB-INIT] Database already initialized, skipping migrations"; fi'
 
   # Event broker for the trade-events topic. Order and Sell publishes one
-  # message per resolved order and runs the two log-only consumer groups;
-  # see docs/reference/architecture.md.
+  # message per resolved order; reporting-consumer (group reporting-ingester)
+  # and Order and Sell's order-status-pusher read it. See
+  # docs/reference/architecture.md.
   kafka:
     # Single-node KRaft: no ZooKeeper, and the controller quorum is this same
     # node. Sized for a developer machine, not durability -- one replica of
@@ -290,6 +329,11 @@ volumes:
     # Named volume: persists Postgres data across `docker compose down` and
     # `docker compose up`. Use `docker compose down -v` to also remove this
     # volume, which wipes the database and starts fresh on the next `up`.
+  reporting_files:
+    # The reporting service's copy of every trade event (JSON lines per
+    # partition) and its generated report runs. Derived data: delete it,
+    # reset the reporting-ingester group's offset to earliest, and the
+    # consumer rebuilds it from the topic.
   market_data_archive:
     # Reusable generated Parquet archive, independent of PostgreSQL db_data.
   kafka_data:

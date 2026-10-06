@@ -577,7 +577,7 @@ pipeline {
                         exit 1
                     fi
 
-                    EXPECTED_SERVICES="auth-service client-ui db holdings-and-trade-service kafka order-and-sell-service reporting-service reporting-ui"
+                    EXPECTED_SERVICES="auth-service client-ui db holdings-and-trade-service kafka order-and-sell-service reporting-consumer reporting-service reporting-ui"
                     RUNNING_SERVICES="$(sh infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
                         --env-file "$COMPOSE_ENV_FILE" \
