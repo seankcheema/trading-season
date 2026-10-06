@@ -146,7 +146,7 @@ class TestRootEndpoint:
         response = client.get('/')
         data = response.get_json()
         assert 'api_endpoints' in data
-        assert 'portfolio' in data['api_endpoints']
+        assert 'runs' in data['api_endpoints']
 
 
 class TestErrorHandlers:
@@ -161,7 +161,7 @@ class TestErrorHandlers:
     
     def test_401_missing_auth(self, client):
         """Test 401 for missing authorization"""
-        response = client.get('/api/reporting/portfolio')
+        response = client.get('/api/reporting/profile')
         assert response.status_code == 401
         data = response.get_json()
         assert 'error' in data

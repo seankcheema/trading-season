@@ -89,7 +89,7 @@ class TestTokenExtraction:
     
     def test_invalid_token_format_rejected(self, client):
         """Test invalid token format is rejected"""
-        response = client.get('/api/reporting/portfolio', 
+        response = client.get('/api/reporting/profile',
                             headers={'Authorization': 'InvalidFormat token'})
         assert response.status_code == 401
 
@@ -136,7 +136,7 @@ class TestAuthenticationErrors:
     
     def test_missing_authorization_header_error(self, client):
         """Test error when authorization header is missing"""
-        response = client.get('/api/reporting/portfolio')
+        response = client.get('/api/reporting/profile')
         assert response.status_code == 401
         data = response.get_json()
         assert 'error' in data
@@ -144,13 +144,13 @@ class TestAuthenticationErrors:
     
     def test_invalid_bearer_format_error(self, client):
         """Test error for invalid Bearer format"""
-        response = client.get('/api/reporting/portfolio', 
+        response = client.get('/api/reporting/profile',
                             headers={'Authorization': 'Bearer'})
         assert response.status_code == 401
     
     def test_missing_bearer_prefix_error(self, client):
         """Test error when Bearer prefix is missing"""
-        response = client.get('/api/reporting/portfolio',
+        response = client.get('/api/reporting/profile',
                             headers={'Authorization': 'test-token'})
         assert response.status_code == 401
 
@@ -197,7 +197,7 @@ class TestAuthorizationFlow:
     
     def test_auth_flow_requires_bearer_token(self, client):
         """Test protected endpoints require Bearer token"""
-        response = client.get('/api/reporting/portfolio')
+        response = client.get('/api/reporting/profile')
         assert response.status_code == 401
     
     def test_health_endpoint_no_auth_required(self, client):
