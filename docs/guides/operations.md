@@ -109,12 +109,16 @@ See [Development](development.md#checks) for local commands and [Javadocs](../JA
 - Market replay reports unavailable prices: for a Parquet-backed session, verify that the archive contains the selected `ticks-YYYY-MM-DD.parquet` partition. Set `MARKET_REPLAY_ARCHIVE_LOCATION` to its absolute root when the metadata path belongs to an older checkout or another host; local repository runs also discover the matching archive under `apps/market-data/db/seeds`. Replay deliberately does not fall back to one-minute candles.
 - UI renders but login does not reach an API: form submission is not yet wired to a service. See [architecture](../reference/architecture.md).
 
-Database initialization in local and Jenkins Compose now mounts the canonical `apps/market-data/db/migrations/V001__Initialize_database.sql` and applies it once to an empty public schema. Existing databases are skipped; partial schemas require a separately reviewed repair. The SQL file guards against overwriting retained data.
+Database initialization in local and Jenkins Compose mounts the canonical `apps/market-data/db/migrations/V001__Initialize_database.sql` and applies it once to an empty public schema; partial schemas require a separately reviewed repair, and the SQL file guards against overwriting retained data. It then applies the incremental migrations V002, V009, and V010 on every start, for fresh and retained databases alike; each is safe to reapply. `scripts/setup-local.sh` does the same for the Docker database.
 
 The database tests directory has been removed. Jenkins no longer invokes its pytest suite or publishes its JUnit report; the synthetic market-data stage still runs generation, validation, import, and repeated import, and archives resource/storage reports.
 
 Market-data Python entry points and requirements are under `apps/market-data/db/scripts/python`; Windows launchers are under `apps/market-data/db/scripts/powershell`. Docker and Jenkins use the relocated Python paths. The database virtual environment and seed locations are unchanged.
 
+## Trade record protection
+
+V010 makes order history append-only at the database, so a deployment or manual session cannot rewrite or delete orders, fills, ledger rows, audit events, or accounts. Order and Sell Service must not be deployed against a retained database without V010 if the permanent record is required; Compose applies it automatically, and a hand-managed database needs the explicit [trade record migration](../reference/database.md#trade-record-migration). An attempted change fails with SQLSTATE `23001`. See the [trade record](../reference/trade-record.md) for what is protected and the remaining limits.
+
 ## Watchlist schema upgrade
 
-Deploy the client and Holdings and Trade watchlist changes after applying V002 as the business database owner. Fresh Compose initialization applies V001 and V002; its existing-database branch skips initialization, so retained databases require the explicit [watchlist upgrade](../reference/database.md#watchlist-migration) before deployment. The migration adds one table without modifying existing data.
+Deploy the client and Holdings and Trade watchlist changes after applying V002 as the business database owner. Compose initialization applies V002 to fresh and retained databases; a hand-managed database requires the explicit [watchlist upgrade](../reference/database.md#watchlist-migration) before deployment. The migration adds one table without modifying existing data.
