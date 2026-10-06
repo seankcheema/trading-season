@@ -96,6 +96,11 @@ pipeline {
             withSonarQubeEnv(sonarInstallation) {
                 sh """
                     set -eu
+                    echo "token length: \${#SONAR_AUTH_TOKEN}"
+                    echo "token prefix: \$(echo "\$SONAR_AUTH_TOKEN" | cut -c1-4)"
+                    curl -s -o /dev/null -w "validate http: %{http_code}\\n" -u "\$SONAR_AUTH_TOKEN:" "\$SONAR_HOST_URL/api/authentication/validate"
+                    curl -s -u "\$SONAR_AUTH_TOKEN:" "\$SONAR_HOST_URL/api/authentication/validate"; echo
+
                     PROJECT_KEY="\${SONAR_PROJECT_KEY:-trading-season}"
                     PROJECT_NAME="\${SONAR_PROJECT_NAME:-Trading Season}"
 
