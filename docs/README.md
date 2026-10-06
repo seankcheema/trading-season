@@ -11,6 +11,7 @@ Read only the guide or reference relevant to your task. Application READMEs prov
 | Change or consume an implemented HTTP endpoint | [API Reference](reference/api.md) |
 | Understand schema ownership, migrations, and relationships | [Database](reference/database.md) |
 | Review the current platform terms shown at first sign-in | [Terms and Conditions](reference/terms-and-conditions.md) |
+| Understand how orders are permanently recorded and disclosed to the client | [Trade record](reference/trade-record.md) |
 | Browse generated Java class and member documentation | [Javadocs](JAVA_DOCS/README.md) |
 | Review test coverage for the client UI, Java services, or auth service | [Code coverage](coverage/README.md) |
 | Plan future analytics work | [Reporting proposal](reference/reporting.md) |
