@@ -608,7 +608,28 @@ pipeline {
                             --project-name "$PROJECT_NAME" \
                             --env-file "$COMPOSE_ENV_FILE" \
                             -f "$COMPOSE_FILE" \
-                            logs --no-color --tail 100
+                            ps -a
+                        # Logs of every service together interleave and the
+                        # tail of the one that died is lost, so print each
+                        # missing service's exit status and logs on its own.
+                        for service in $EXPECTED_SERVICES; do
+                            case " $RUNNING_SERVICES " in
+                                *" $service "*) continue ;;
+                            esac
+                            echo "===== $service is not running =====" >&2
+                            SERVICE_ID="$(sh infrastructure/docker/run-compose.sh \
+                                --project-name "$PROJECT_NAME" \
+                                -f "$COMPOSE_FILE" \
+                                ps -aq "$service")"
+                            if [ -n "$SERVICE_ID" ]; then
+                                docker inspect --format 'state={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}}' "$SERVICE_ID" >&2
+                            fi
+                            bash infrastructure/docker/run-compose.sh \
+                                --project-name "$PROJECT_NAME" \
+                                --env-file "$COMPOSE_ENV_FILE" \
+                                -f "$COMPOSE_FILE" \
+                                logs --no-color --tail 200 "$service" >&2 || true
+                        done
                         exit 1
                     fi
 
