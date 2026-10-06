@@ -107,7 +107,7 @@ const KIND_FILTERS: readonly { id: KindFilter; label: string }[] = [
               ></button>
             }
           </div>
-          <ul class="dash-scroll max-h-[min(60vh,32.5rem)] overflow-y-auto pb-4">
+          <ul class="dash-scroll h-[min(60vh,32.5rem)] overflow-y-auto pb-4">
             @for (row of rows(); track row.key) {
               <li data-testid="transactions-row" [attr.data-tag]="row.tag">
                 <button
