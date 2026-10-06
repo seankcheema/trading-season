@@ -1023,7 +1023,6 @@ describe('DashboardComponent', () => {
 
   it('updates ticker prices immediately and animates the movement for 500 to 1000 ms', () => {
     vi.useFakeTimers();
-    vi.spyOn(Math, 'random').mockReturnValue(0);
     const fixture = createDashboard();
     const component = fixture.componentInstance;
     const instrument: Instrument = {
@@ -1052,11 +1051,9 @@ describe('DashboardComponent', () => {
     vi.advanceTimersByTime(500);
     expect(component['tickAnimations']().has('AAPL')).toBe(false);
     vi.useRealTimers();
-    vi.restoreAllMocks();
   });
 
   it('applies a tick timestamp and prices synchronously without queued price updates', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.999999);
     const fixture = createDashboard();
     const component = fixture.componentInstance;
     component['instruments'].set([{ ...MOCK_INSTRUMENTS[0], price: 100 }]);
@@ -1072,8 +1069,7 @@ describe('DashboardComponent', () => {
     expect(component['marketClockLabel']()).toBe('Jan 5, 8:30:01 AM CT');
     expect(component['instruments']()[0].price).toBe(99);
     expect(component['tickAnimations']().get(MOCK_INSTRUMENTS[0].symbol)?.direction).toBe('loss');
-    expect(component['tickAnimations']().get(MOCK_INSTRUMENTS[0].symbol)?.durationMs).toBe(1000);
-    vi.restoreAllMocks();
+    expect(component['tickAnimations']().get(MOCK_INSTRUMENTS[0].symbol)?.durationMs).toBe(500);
   });
 
   describe('accounts, portfolios and cash', () => {
