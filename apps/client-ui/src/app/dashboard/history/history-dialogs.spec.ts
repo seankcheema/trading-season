@@ -4,7 +4,6 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { AccountStore } from '../accounts/account-store.service';
 import { InstrumentRef, OrderResult } from '../orders/order.models';
 import { OrderService } from '../orders/order.service';
-import { OrderHistoryDialogComponent } from './order-history-dialog.component';
 import { TransactionsDialogComponent } from './transactions-dialog.component';
 
 const CATALOGUE: InstrumentRef[] = ['AAPL', 'MSFT'].map((symbol, index) => ({
@@ -72,85 +71,6 @@ describe('history dialogs', () => {
   });
 
   afterEach(() => http.verify());
-
-  describe('OrderHistoryDialogComponent', () => {
-    function open(orders: OrderResult[] = ORDERS) {
-      const fixture = TestBed.createComponent(OrderHistoryDialogComponent);
-      fixture.detectChanges();
-      http.expectOne('/api/orders').flush(orders);
-      http.expectOne('/api/instruments').flush(CATALOGUE);
-      fixture.detectChanges();
-      return fixture;
-    }
-
-    it('lists every order whatever its status, newest first, with rejection reasons', () => {
-      const fixture = open();
-      const list = rows(fixture, 'order-history-row');
-      expect(list.map((row) => row.dataset['status'])).toEqual(['REJECTED', 'PENDING', 'FILLED']);
-      expect(list[0].textContent).toContain('Insufficient holdings');
-      expect(list[0].textContent).toContain('Sell');
-      expect(
-        fixture.nativeElement.querySelector('[data-testid="order-history-count"]').textContent,
-      ).toContain('3 orders');
-    });
-
-    it('colors statuses green, yellow and red', () => {
-      const fixture = open();
-      const classes = rows(fixture, 'order-history-status').map((tag) => tag.className);
-      expect(classes[0]).toContain('text-loss');
-      expect(classes[1]).toContain('text-amber-400');
-      expect(classes[2]).toContain('text-gain');
-    });
-
-    it('filters by status and by symbol', () => {
-      const fixture = open();
-      click(fixture, '[data-testid="order-history-filter-pending"]');
-      expect(rows(fixture, 'order-history-row')).toHaveLength(1);
-      click(fixture, '[data-testid="order-history-filter-all"]');
-
-      const input = fixture.nativeElement.querySelector('input[type="search"]') as HTMLInputElement;
-      input.value = 'msft';
-      input.dispatchEvent(new Event('input'));
-      fixture.detectChanges();
-      expect(rows(fixture, 'order-history-row')).toHaveLength(1);
-      expect(rows(fixture, 'order-history-row')[0].textContent).toContain('MSFT');
-
-      input.value = 'zzz';
-      input.dispatchEvent(new Event('input'));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('No orders match these filters.');
-    });
-
-    it('sorts by a column and flips direction on a second click', () => {
-      const fixture = open();
-      const header = () =>
-        [...fixture.nativeElement.querySelectorAll('button[app-sort-header]')].find((button) =>
-          (button as HTMLElement).getAttribute('aria-label')?.includes('Shares'),
-        ) as HTMLElement;
-      header().click();
-      fixture.detectChanges();
-      expect(header().dataset['sort']).toBe('desc');
-      header().click();
-      fixture.detectChanges();
-      expect(header().dataset['sort']).toBe('asc');
-    });
-
-    it('says so when there are no orders', () => {
-      const fixture = open([]);
-      expect(fixture.nativeElement.textContent).toContain('You have not placed any orders yet.');
-    });
-
-    it('offers a retry when the orders cannot be loaded', () => {
-      const fixture = TestBed.createComponent(OrderHistoryDialogComponent);
-      fixture.detectChanges();
-      http.expectOne('/api/orders').flush({}, { status: 503, statusText: 'Unavailable' });
-      http.expectOne('/api/instruments').flush(CATALOGUE);
-      fixture.detectChanges();
-      expect(
-        fixture.nativeElement.querySelector('[data-testid="order-history-dialog-error"]'),
-      ).not.toBeNull();
-    });
-  });
 
   describe('TransactionsDialogComponent', () => {
     const CASH = [

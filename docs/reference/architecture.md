@@ -122,7 +122,7 @@ The split is configured twice, once per environment: [proxy.conf.json](../../app
 
 ## Known limitations
 
-1. **No per-order read** – `GET /api/orders` returns every order the caller placed, and the dashboard shows them in Recent Transactions and the Order History dialog, but there is still no per-order or per-account read. Order submission is wired: the dashboard's order dialog posts to `POST /api/orders` and shows the fill or the rejection reason.
+1. **No per-order read** – `GET /api/orders` returns every order the caller placed, and the dashboard shows them in Recent Transactions, but there is still no per-order or per-account read. Order submission is wired: the dashboard's order dialog posts to `POST /api/orders` and shows the fill or the rejection reason.
 
 2. **Market data duplication** – Both Order and Sell Service and Holdings and Trade Service contain market data endpoints. See [Order and Sell Service documentation](services/order-and-sell-service.md) for why.
 

@@ -261,29 +261,20 @@ describe('DashboardComponent', () => {
     expect(tagClass(rows[3])).toContain('text-loss');
   });
 
-  it('opens the transactions and order history dialogs from the panel', () => {
+  it('opens the transactions dialog from the panel', () => {
     const fixture = createDashboard();
     fixture.detectChanges();
     const http = flushAccounts(fixture, ACCOUNTS, { orders: [filledOrder({ instrumentId: 7 })] });
-    const click = (testId: string) => {
-      fixture.nativeElement.querySelector(`[data-testid="${testId}"]`).click();
-      fixture.detectChanges();
-    };
+    expect(fixture.nativeElement.querySelector('[data-testid="open-order-history"]')).toBeNull();
 
-    click('open-transactions');
+    fixture.nativeElement.querySelector('[data-testid="open-transactions"]').click();
+    fixture.detectChanges();
     http.expectOne((request) => request.url === '/api/me/cash-transactions').flush([]);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[data-testid="transactions-table"]')).not.toBeNull();
     fixture.componentInstance['closeHistory']();
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[role="dialog"]')).toBeNull();
-
-    click('open-order-history');
-    for (const request of http.match('/api/orders')) request.flush([filledOrder({ instrumentId: 7 })]);
-    fixture.detectChanges();
-    const rows = fixture.nativeElement.querySelectorAll('[data-testid="order-history-row"]');
-    expect(rows).toHaveLength(1);
-    expect(rows[0].textContent).toContain('AAPL');
   });
 
   it('shows executions at selected replay times and falls back to audit time', () => {

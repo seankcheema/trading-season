@@ -110,34 +110,6 @@ test('recent transactions label every row by type, show its status, and sign onl
   }
 });
 
-test('order history lists every past order and filters by status', async ({ page }) => {
-  await page.getByTestId('open-order-history').click();
-  const dialog = page.getByRole('dialog', { name: 'Order History' });
-  const rows = dialog.getByTestId('order-history-row');
-
-  await expect(rows).toHaveCount(3);
-  // Newest first, each with its status and, for a rejection, the reason.
-  await expect(dialog.getByTestId('order-history-status')).toHaveText([
-    'pending',
-    'rejected',
-    'filled',
-  ]);
-  await expect(rows.nth(1)).toContainText('Insufficient holdings');
-  await expect(rows.nth(0)).toContainText('MSFT');
-  await expect(rows.nth(0)).toContainText('Trading');
-  await expect(dialog.getByTestId('order-history-count')).toHaveText('3 orders');
-
-  await dialog.getByTestId('order-history-filter-rejected').click();
-  await expect(rows).toHaveCount(1);
-  await expect(rows.first()).toContainText('AAPL');
-  await dialog.getByTestId('order-history-filter-all').click();
-  await dialog.getByLabel('Filter by symbol').fill('msft');
-  await expect(rows).toHaveCount(1);
-
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
-});
-
 test('view all opens every transaction, including cash, and filters by type', async ({
   page,
   dashboardPage,
@@ -175,18 +147,13 @@ test('a pending order updates to filled by itself, with the balances it moved', 
   await expect(pendingRow).toContainText('MSFT');
   await expect(dashboardPage.cash).toHaveText('Cash $5,000.00');
 
-  await page.getByTestId('open-order-history').click();
-  const dialog = page.getByRole('dialog', { name: 'Order History' });
-  await expect(dialog.getByTestId('order-history-status').first()).toHaveText('pending');
-
   // The backend settles the order; the page is never told.
   api.resolveOrder(USER.email, 2, { status: 'FILLED' });
 
-  await expect(dialog.getByTestId('order-history-status').first()).toHaveText('filled', {
-    timeout: POLL_TIMEOUT,
-  });
-  await page.keyboard.press('Escape');
-  await expect(dashboardPage.recentTransactions.locator('li[data-status="PENDING"]')).toHaveCount(0);
+  await expect(dashboardPage.recentTransactions.locator('li[data-status="PENDING"]')).toHaveCount(
+    0,
+    { timeout: POLL_TIMEOUT },
+  );
   await expect(dashboardPage.recentTransactions.locator('li[data-status="FILLED"]')).toHaveCount(2);
   // The fill moved cash and added the position without a reload.
   await expect(dashboardPage.cash).toHaveText('Cash $4,600.00');
@@ -212,7 +179,7 @@ test('a pending order that is rejected shows its reason without a reload', async
   await expect(rejected).toHaveCount(2, { timeout: POLL_TIMEOUT });
   await expect(dashboardPage.recentTransactions).toContainText('Insufficient funds');
   await expect(dashboardPage.cash).toHaveText('Cash $5,000.00');
-  await expect(page.getByTestId('open-order-history')).toBeVisible();
+  await expect(page.getByTestId('open-order-history')).toHaveCount(0);
 });
 
 test('the assets and recent transactions tables leave room below their last row', async ({

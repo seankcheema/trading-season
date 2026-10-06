@@ -1,7 +1,6 @@
 import { WatchlistStore } from './watchlist/watchlist-store.service';
 import { ActivityItem, ActivityRowComponent } from './shared/activity-row.component';
 import { cashActivity, orderActivity, orderDate } from './shared/activity';
-import { OrderHistoryDialogComponent } from './history/order-history-dialog.component';
 import { TransactionsDialogComponent } from './history/transactions-dialog.component';
 import { AccountControlComponent } from './shared/account-control.component';
 import { MarketClockControlComponent } from './shared/market-clock-control.component';
@@ -92,7 +91,6 @@ interface PricedHolding {
     MarketClockControlComponent,
     CashTransactionDialogComponent,
     CurrencyPipe,
-    OrderHistoryDialogComponent,
     TransactionsDialogComponent,
     DashboardHeaderDropdownComponent,
     DailySparklineComponent,
@@ -216,7 +214,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly clockUpdating = this.clock.clockUpdating;
   protected readonly marketClockLabel = this.clock.marketClockLabel;
   protected readonly settingsOpen = signal(false);
-  protected readonly historyDialog = signal<'transactions' | 'orders' | null>(null);
+  protected readonly historyDialog = signal<'transactions' | null>(null);
 
   // Symbol currently open in the order submission dialog, if any.
   private readonly orderSymbol = signal<string | null>(null);
@@ -490,8 +488,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.accountDialog.set({ kind: 'account', account });
   }
 
-  protected openHistory(dialog: 'transactions' | 'orders'): void {
-    this.historyDialog.set(dialog);
+  protected openHistory(): void {
+    this.historyDialog.set('transactions');
   }
 
   protected closeHistory(): void {
