@@ -1,8 +1,8 @@
 # Code coverage
 
-Generated coverage reports for the four tested services. All four reports were refreshed from successful local runs on 2026-10-05. Each service keeps its own tooling and its own report format; this directory holds the generated output so the reports can be read without rerunning the suites. Open [index.html](index.html) for a single page of links into all four reports. The reporting placeholders contain no application code and have no coverage.
+Generated coverage reports for the four tested services. All four reports were refreshed from successful local runs on 2026-10-05, except the Client UI report, which was refreshed on 2026-10-06. Each service keeps its own tooling and its own report format; this directory holds the generated output so the reports can be read without rerunning the suites. Open [index.html](index.html) for a single page of links into all four reports. The reporting placeholders contain no application code and have no coverage.
 
-Every service enforces a 70 percent floor in its own test command rather than reporting a number for a human to check (85 percent for Holdings and Trade). The Java services apply it to every package on every JaCoCo counter; the UI and auth service apply it to the whole run on each counter. A suite that falls below the floor fails, so a report in this directory describes a run that already passed its gate. The mechanisms are listed under [coverage floors](../guides/development.md#coverage-floors).
+Every service enforces a floor in its own test command rather than reporting a number for a human to check: 70 percent for Order and Sell and the auth service, 85 percent for Holdings and Trade, and 90 percent for the Client UI. The Java services apply it to every package on every JaCoCo counter; the UI and auth service apply it to the whole run on each counter. A suite that falls below the floor fails, so a report in this directory describes a run that already passed its gate. The mechanisms are listed under [coverage floors](../guides/development.md#coverage-floors).
 
 ## Reports
 
@@ -22,7 +22,7 @@ Counters differ by tool. JaCoCo measures bytecode instructions and branches; the
 
 | Service | Tests | Statements / Instructions | Branches | Functions / Methods | Lines |
 | --- | --- | --- | --- | --- | --- |
-| Client UI | 310 in 22 files | 91.56 percent (3867/4223) | 86.43 percent (1676/1939) | 87.1 percent (689/791) | 92.48 percent (3127/3381) |
+| Client UI | 604 in 45 files | 93.85 percent (5868/6252) | 90.26 percent (2790/3091) | 90.56 percent (1142/1261) | 95.27 percent (4796/5034) |
 | Holdings and Trade | 290 | 98.04 percent (3892/3970) | 95.12 percent (156/164) | 97.65 percent (291/298) | 97.60 percent (773/792) |
 | Order and Sell | 143 | 91.83 percent (3956/4308) | 90.96 percent (151/166) | 91.52 percent (313/342) | 93.68 percent (860/918) |
 | Auth service | 109 in 11 files | 99.05 percent (210/212) | 92.85 percent (78/84) | 96.07 percent (49/51) | 99.52 percent (209/210) |
@@ -32,7 +32,7 @@ Every folder and package is at or above its floor on every counter where a floor
 
 | Service | Weakest folder or package | Lowest counter |
 | --- | --- | --- |
-| Client UI | `src/app/market-page` | branches, 79.2 percent |
+| Client UI | `src/app/market-page` | functions, 75.0 percent |
 | Holdings and Trade | `app.auth` | methods, 92.9 percent |
 | Order and Sell | `app.market` | complexity, 82.9 percent |
 | Auth service | `auth/strategies` | branches, 75.0 percent |
