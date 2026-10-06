@@ -53,7 +53,7 @@ services:
     environment:
       PGPASSWORD: ${DB_PASSWORD:-changeme}
     command: >
-      sh -c 'if [ "$$(psql -h db -U trading_season -d trading_season -t -c
+      sh -c 'if [ "$$(psql -h db -U trading_season -d trading_season -tA -c
       "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='"'"'public'"'"';" 2>/dev/null || echo 0)" = "0" ]; then
       echo "[DB-INIT] Applying migrations...";
       psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 -f /V001__Initialize_database.sql &&
