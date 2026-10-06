@@ -24,6 +24,11 @@ public class InstrumentController {
 
     private final InstrumentRepository instrumentRepository;
 
+    /**
+     * Creates the controller.
+     *
+     * @param instrumentRepository source of instrument reference data
+     */
     public InstrumentController(InstrumentRepository instrumentRepository) {
         this.instrumentRepository = instrumentRepository;
     }

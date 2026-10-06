@@ -14,6 +14,11 @@ public class AuditTrailService {
 
     private final AuditTrailRepository auditTrailRepository;
 
+    /**
+     * Creates the service.
+     *
+     * @param auditTrailRepository persistence for audit rows
+     */
     public AuditTrailService(AuditTrailRepository auditTrailRepository) {
         this.auditTrailRepository = auditTrailRepository;
     }
@@ -22,7 +27,7 @@ public class AuditTrailService {
      * Records one lifecycle event.
      *
      * @param orderId   the order the event belongs to
-        * @param eventType one of {@link app.order.Order}'s STATUS_* constants
+     * @param eventType one of {@link app.order.Order}'s STATUS_* constants
      * @param detail    optional human-readable context, e.g. a rejection reason
      */
     public void record(Integer orderId, String eventType, String detail) {

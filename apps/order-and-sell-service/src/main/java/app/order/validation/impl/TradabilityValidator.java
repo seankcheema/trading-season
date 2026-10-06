@@ -12,6 +12,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class TradabilityValidator implements OrderValidator {
 
+    /** Creates an instance of this class. */
+    public TradabilityValidator() {
+    }
+
     @Override
     public ValidationResult validate(OrderRequest request, User user, Account account, Instrument instrument) {
         if (!Boolean.TRUE.equals(instrument.isTradable())) {

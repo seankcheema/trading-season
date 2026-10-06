@@ -22,6 +22,10 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    /** Creates an instance of this class. */
+    public GlobalExceptionHandler() {
+    }
+
     /**
      * Handles duplicate account or email registration attempts.
      *

@@ -327,7 +327,7 @@ validate_or_initialize_docker_business() {
     required="$(docker_compose exec -T db psql -U trading_season -d trading_season -Atqc "$business_schema_query")"
     total="$(docker_compose exec -T db psql -U trading_season -d trading_season -Atqc "$business_total_query")"
     if [[ "$total" == 0 ]]; then
-        docker_compose exec -T db psql -v ON_ERROR_STOP=1 -U trading_season -d trading_season < apps/market-data/db/migrations/V001__Initialize_database.sql || \
+        docker_compose exec -T db psql -v ON_ERROR_STOP=1 -U trading_season -d trading_season < db/migrations/V001__Initialize_database.sql || \
             fail "Database schema initialization failed."
         done_stage 'Schema — initialized empty Docker database with V001__Initialize_database.sql.'
         return
