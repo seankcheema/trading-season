@@ -14,15 +14,36 @@
     "paths": {
       "@spartan-ng/helm/utils": ["./shared-ui-components/src/lib/utils/src/index.ts"],
       "@spartan-ng/helm/label": ["./shared-ui-components/src/lib/label/src/index.ts"],
-      "@spartan-ng/helm/separator": ["./shared-ui-components/src/lib/separator/src/index.ts"],
-      "@shared/ui-components/button": ["./shared-ui-components/src/lib/button/src/index.ts"],
-      "@shared/ui-components/card": ["./shared-ui-components/src/lib/card/src/index.ts"],
-      "@shared/ui-components/field": ["./shared-ui-components/src/lib/field/src/index.ts"],
-      "@shared/ui-components/input": ["./shared-ui-components/src/lib/input/src/index.ts"],
-      "@shared/ui-components/label": ["./shared-ui-components/src/lib/label/src/index.ts"],
-      "@shared/ui-components/separator": ["./shared-ui-components/src/lib/separator/src/index.ts"],
-      "@shared/ui-components/select": ["./shared-ui-components/src/lib/select/src/index.ts"],
-      "@shared/ui-components/native-select": ["./shared-ui-components/src/lib/native-select/src/index.ts"]
+      "@spartan-ng/helm/separator": [
+        "./shared-ui-components/src/lib/separator/src/index.ts"
+      ],
+      "@shared/ui-components/toast": [
+        "./shared-ui-components/src/lib/toast/src/index.ts"
+      ],
+      "@shared/ui-components/button": [
+        "./shared-ui-components/src/lib/button/src/index.ts"
+      ],
+      "@shared/ui-components/card": [
+        "./shared-ui-components/src/lib/card/src/index.ts"
+      ],
+      "@shared/ui-components/field": [
+        "./shared-ui-components/src/lib/field/src/index.ts"
+      ],
+      "@shared/ui-components/input": [
+        "./shared-ui-components/src/lib/input/src/index.ts"
+      ],
+      "@shared/ui-components/label": [
+        "./shared-ui-components/src/lib/label/src/index.ts"
+      ],
+      "@shared/ui-components/separator": [
+        "./shared-ui-components/src/lib/separator/src/index.ts"
+      ],
+      "@shared/ui-components/select": [
+        "./shared-ui-components/src/lib/select/src/index.ts"
+      ],
+      "@shared/ui-components/native-select": [
+        "./shared-ui-components/src/lib/native-select/src/index.ts"
+      ]
     }
   },
   "angularCompilerOptions": {

@@ -34,7 +34,7 @@ let nextId = 0;
         type="search"
         role="combobox"
         autocomplete="off"
-        placeholder="Search"
+        [placeholder]="placeholder()"
         [class]="inputClasses()"
         [value]="query()"
         [attr.aria-expanded]="open()"
@@ -87,6 +87,7 @@ let nextId = 0;
 })
 export class InstrumentSearchComponent {
   readonly size = input<'md' | 'lg'>('md');
+  readonly placeholder = input('Search');
   readonly embedded = input(false, { transform: booleanAttribute });
   readonly instruments = input<readonly Instrument[]>([]);
   readonly selected = output<Instrument>();

@@ -1,8 +1,16 @@
+import { affordableShares, boundedShares, wholeShares } from './share-limits';
 import { CurrencyPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  input,
+  output,
+  effect,
+  linkedSignal,
+  signal,
+} from '@angular/core';
 import { OrderSide } from '../mock-data';
-
-export const TRADING_AVAILABLE = false;
 
 export interface TradeTicketDraft {
   accountId: string;
@@ -66,6 +74,8 @@ export interface TradeTicketDraft {
         </div>
         <input
           id="future-trade-quantity"
+          step="1"
+          [disabled]="maxShares() === 0 || busy() || !ready()"
           type="number"
           min="0"
           [max]="maxShares()"
@@ -74,6 +84,7 @@ export interface TradeTicketDraft {
           (input)="onQuantityInput($event)"
         />
         <input
+          [disabled]="busy() || !ready()"
           type="range"
           min="0"
           [max]="maxShares()"
@@ -116,15 +127,33 @@ export interface TradeTicketDraft {
             ? 'bg-primary text-primary-foreground hover:bg-primary/85'
             : 'bg-loss hover:bg-loss/85 text-white'
         "
-        [disabled]="quantity() === 0"
-        (click)="previewOrder()"
+        [disabled]="quantity() === 0 || busy() || !ready()"
+        (click)="submitOrder()"
       >
-        {{ side() === 'buy' ? 'Buy' : 'Sell' }} {{ quantity() }} {{ symbol() }}
+        {{
+          busy()
+            ? 'Submitting…'
+            : (side() === 'buy' ? 'Buy' : 'Sell') + ' ' + quantity() + ' ' + symbol()
+        }}
       </button>
-      @if (previewMessage()) {
-        <p class="text-primary mt-1.5 text-center text-[10px]" role="status">
-          {{ previewMessage() }}
-        </p>
+
+      @if (message()) {
+        <p class="mt-1.5 text-center text-xs" role="status">{{ message() }}</p>
+      }
+
+      @if (error()) {
+        <p class="text-loss mt-1.5 text-center text-xs" role="alert">{{ error() }}</p>
+      }
+
+      @if (refreshFailed()) {
+        <button
+          type="button"
+          class="text-primary mt-1 text-xs"
+          (click)="refresh.emit()"
+          [disabled]="busy()"
+        >
+          Retry balance refresh
+        </button>
       }
     </section>
   `,
@@ -135,15 +164,36 @@ export class TradeTicketComponent {
   readonly accountId = input('');
   readonly sessionId = input<number | null>(null);
   readonly marketTimestamp = input('');
-  readonly cashBalance = input(10_000);
-  readonly heldShares = input(25);
+  readonly cashBalance = input(0);
+
+  readonly heldShares = input(0);
+  readonly ready = input(false);
+
+  readonly busy = input(false);
+  readonly message = input('');
+
+  readonly error = input('');
+  readonly refreshFailed = input(false);
+
+  readonly submitted = output<TradeTicketDraft>();
+  readonly refresh = output<void>();
+
   protected readonly side = signal<OrderSide>('buy');
-  protected readonly quantity = signal(0);
-  protected readonly previewMessage = signal('');
+  protected readonly quantity = linkedSignal<number, number>({
+    source: () => this.maxShares(),
+    computation: (maximum, previous) => boundedShares(previous?.value ?? 0, maximum),
+  });
+
+  private readonly resetQuantity = effect(() => {
+    this.accountId();
+    this.symbol();
+    this.quantity.set(0);
+  });
+
   protected readonly maxShares = computed(() =>
     this.side() === 'buy'
-      ? Math.max(0, Math.floor(this.cashBalance() / this.price()))
-      : Math.max(0, Math.floor(this.heldShares())),
+      ? affordableShares(this.cashBalance(), this.price())
+      : wholeShares(this.heldShares()),
   );
   protected readonly cashAfter = computed(() =>
     this.side() === 'buy'
@@ -163,25 +213,19 @@ export class TradeTicketComponent {
   protected selectSide(side: OrderSide): void {
     this.side.set(side);
     this.quantity.set(Math.min(this.quantity(), this.maxShares()));
-    this.previewMessage.set('');
   }
 
   protected onQuantityInput(event: Event): void {
-    const requested = Number((event.target as HTMLInputElement).value);
-    this.quantity.set(Math.min(this.maxShares(), Math.max(0, Math.floor(requested || 0))));
-    this.previewMessage.set('');
+    const input = event.target as HTMLInputElement;
+    const quantity = boundedShares(Number(input.value), this.maxShares());
+    this.quantity.set(quantity);
+    input.value = String(quantity);
   }
 
-  protected previewOrder(): void {
-    if (!this.quantity()) return;
-    this.previewMessage.set(
-      'Demo ' +
-        this.side() +
-        ' preview: ' +
-        this.quantity() +
-        ' ' +
-        this.symbol() +
-        ' at market price.',
-    );
+  protected submitOrder(): void {
+    if (!this.ready() || this.busy() || !this.quantity() || this.quantity() > this.maxShares())
+      return;
+
+    this.submitted.emit(this.draft());
   }
 }

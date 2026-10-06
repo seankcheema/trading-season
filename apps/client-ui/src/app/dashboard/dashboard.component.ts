@@ -1,5 +1,10 @@
-import { CurrencyPipe, DOCUMENT, DatePipe, isPlatformBrowser } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
+import { WatchlistStore } from './watchlist/watchlist-store.service';
+import { ActivityItem, ActivityRowComponent } from './shared/activity-row.component';
+import { AccountControlComponent } from './shared/account-control.component';
+import { MarketClockControlComponent } from './shared/market-clock-control.component';
+import { MarketClockService } from './shared/market-clock.service';
+import { cashAt, executionTime, holdingsAt } from './accounts/simulation-account';
+import { CurrencyPipe, DOCUMENT, isPlatformBrowser } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -29,29 +34,19 @@ import { Subscription } from 'rxjs';
 import { Router } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { AuthService } from '../core/auth/auth.service';
-import {
-  Instrument,
-  MOCK_INSTRUMENTS,
-  OrderRequest,
-  PricePoint,
-  Timeframe,
-  findInstrument,
-  mockPriceSeries,
-} from './mock-data';
-import {
-  MarketCalendarAvailability,
-  MarketDataService,
-  MarketSnapshot,
-  MarketTickEvent,
-} from './market-data.service';
+import { Instrument, PricePoint, Timeframe, findInstrument } from './mock-data';
+import { MarketDataService, MarketSnapshot, MarketTickEvent } from './market-data.service';
 import { AccountStore } from './accounts/account-store.service';
+import { PortfolioHistoryService } from './accounts/portfolio-history.service';
 import { AccountDialogComponent } from './accounts/account-dialog.component';
-import { Account, AccountHolding, CashTransactionReason } from './accounts/account.models';
+import { Account, AccountHolding } from './accounts/account.models';
 import {
   CashTransactionDialogComponent,
   CashTransactionMode,
 } from './accounts/cash-transaction-dialog.component';
 import { OrderSubmissionComponent } from './order-submission/order-submission.component';
+import { OrderResult } from './orders/order.models';
+import { OrderService } from './orders/order.service';
 import { SettingsDialogComponent } from './settings-dialog/settings-dialog.component';
 import { TermsAndConditionsDialogComponent } from './terms-and-conditions-dialog.component';
 import { DashboardHeaderDropdownComponent } from './shared/dashboard-header-dropdown.component';
@@ -61,14 +56,7 @@ import { PriceChartComponent } from './shared/price-chart.component';
 import { SignedPercentPipe } from './shared/signed-percent.pipe';
 import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
 
-const DEFAULT_MARKET_CALENDAR: MarketCalendarAvailability = {
-  timezone: 'America/Chicago',
-  firstTimestamp: '2026-01-01T14:30:00Z',
-  lastTimestamp: '2026-12-31T20:59:59Z',
-  tradingDates: marketWeekdays(2026),
-};
-
-type HeaderDropdown = 'account' | 'market-clock' | 'profile';
+type HeaderDropdown = 'account' | 'market-clock' | 'profile' | 'asset-sort';
 type TickAnimation = {
   direction: 'gain' | 'loss';
   durationMs: number;
@@ -91,24 +79,17 @@ interface PricedHolding {
   gainLoss: number;
 }
 
-// One row of the recent transactions list: a cash deposit or withdrawal the account service
-// recorded for this user. Trades join it once order history has an endpoint to read.
-interface ActivityItem {
-  kind: 'cash';
-  key: string;
-  date: string;
-  reason: CashTransactionReason;
-  value: number;
-}
-
+// User-wide cash movements and successful executions across the caller's owned accounts.
 @Component({
   selector: 'app-dashboard',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ActivityRowComponent,
     AccountDialogComponent,
+    AccountControlComponent,
+    MarketClockControlComponent,
     CashTransactionDialogComponent,
     CurrencyPipe,
-    DatePipe,
     DashboardHeaderDropdownComponent,
     DailySparklineComponent,
     InstrumentSearchComponent,
@@ -121,7 +102,7 @@ interface ActivityItem {
     TimeframeToggleComponent,
   ],
   providers: [
-    AccountStore,
+    MarketClockService,
     provideIcons({
       lucideBriefcaseBusiness,
       lucideCalendarClock,
@@ -138,6 +119,7 @@ interface ActivityItem {
   styleUrl: './dashboard.component.css',
 })
 export class DashboardComponent implements OnInit, OnDestroy {
+  protected readonly clock = inject(MarketClockService);
   private readonly marketData = inject(MarketDataService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly document = inject(DOCUMENT);
@@ -153,9 +135,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // Only ever the signed-in user's own accounts; see AccountStore. Each account's portfolio
   // is its holdings, and the user's cash is shared by all of them.
   protected readonly accountStore = inject(AccountStore);
+  protected readonly orderService = inject(OrderService);
+  private readonly recentOrderSubscriptions = new Subscription();
   protected readonly accounts = this.accountStore.accounts;
   protected readonly selectedAccount = this.accountStore.selectedAccount;
   protected readonly selectedAccountId = this.accountStore.selectedAccountId;
+  private initialAccountRestored = false;
+  private readonly restoreAccount = effect(() => {
+    const id = Number(this._router.routerState.snapshot.root.firstChild?.queryParams['accountId']);
+    if (this.accountStore.status() === 'ready' && !this.initialAccountRestored) {
+      this.initialAccountRestored = true;
+      if (id > 0) this.accountStore.selectAccount(id);
+    }
+  });
   protected readonly hasAccounts = computed(() => this.accounts().length > 0);
   protected readonly accountLabel = computed(() => {
     switch (this.accountStore.status()) {
@@ -170,66 +162,52 @@ export class DashboardComponent implements OnInit, OnDestroy {
   });
   protected readonly accountDialog = signal<AccountDialog | null>(null);
   protected readonly openHeaderDropdown = signal<HeaderDropdown | null>(null);
-  protected readonly cashBalance = this.accountStore.cashBalance;
+  protected readonly cashBalance = computed(() => {
+    const at = this.marketTimeMillis();
+    return at === null
+      ? this.accountStore.cashBalance()
+      : cashAt(this.accountStore.cashBalance(), this.orderService.orders(), at);
+  });
+  private readonly simulationHoldings = computed(() => {
+    const at = this.marketTimeMillis();
+    return new Map(
+      [...this.accountStore.holdingsByAccount()].map(([accountId, current]) => [
+        accountId,
+        at === null
+          ? current
+          : holdingsAt(
+              current,
+              this.orderService.orders(),
+              this.orderService.catalogue(),
+              accountId,
+              at,
+            ),
+      ]),
+    );
+  });
   // First and last initial of the signed-in user; empty until the profile loads.
   protected readonly profileInitials = this.accountStore.initials;
-  protected readonly instruments = signal<Instrument[]>([...MOCK_INSTRUMENTS]);
-  protected readonly tickerInstruments = computed(() => this.instruments().slice(0, 6));
+  protected readonly instruments = signal<Instrument[]>([]);
+  protected readonly watchedInstruments = computed(() =>
+    this.watchlist.entries().map((entry) => ({
+      symbol: entry.symbol,
+      instrument: this.instruments().find((instrument) => instrument.symbol === entry.symbol),
+    })),
+  );
+  protected refreshWatchlist(): void {
+    this.watchlist.load(true).subscribe({ error: () => undefined });
+  }
   protected readonly tickAnimations = signal(new Map<string, TickAnimation>());
   protected readonly portfolioTimeframe = signal<Timeframe>('1D');
-  protected readonly marketSessionId = signal<number | null>(null);
-  protected readonly currentMarketTimestamp = signal('');
+  protected readonly marketSessionId = this.clock.marketSessionId;
+  protected readonly currentMarketTimestamp = this.clock.currentMarketTimestamp;
+  private readonly simulationClockRevision = signal(0);
   protected readonly assetCandlePoints = signal(new Map<string, PricePoint[]>());
-  protected readonly marketCalendar = signal<MarketCalendarAvailability>(DEFAULT_MARKET_CALENDAR);
-  protected readonly marketDateTime = signal('');
-  protected readonly clockError = signal('');
-  protected readonly clockUpdating = signal(false);
-  protected readonly marketClockLabel = computed(() =>
-    this.currentMarketTimestamp()
-      ? this.formatMarketTime(this.currentMarketTimestamp(), {
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-          second: '2-digit',
-          timeZoneName: 'short',
-        })
-      : 'Market time',
-  );
-  protected readonly marketClockRangeLabel = computed(() => {
-    const calendar = this.marketCalendar();
-    return `${this.formatMarketTime(calendar.firstTimestamp, {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    })} - ${this.formatMarketTime(calendar.lastTimestamp, {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      timeZoneName: 'short',
-    })}`;
-  });
-  protected readonly marketClockShortRangeLabel = computed(() => {
-    const calendar = this.marketCalendar();
-    return `${this.formatMarketTime(calendar.firstTimestamp, {
-      month: 'short',
-      day: 'numeric',
-    })} - ${this.formatMarketTime(calendar.lastTimestamp, {
-      month: 'short',
-      day: 'numeric',
-    })}`;
-  });
-  protected readonly marketDateTimeMin = computed(() => {
-    const calendar = this.marketCalendar();
-    return this.isoToMarketLocal(calendar.firstTimestamp);
-  });
-  protected readonly marketDateTimeMax = computed(() => {
-    const calendar = this.marketCalendar();
-    return this.isoToMarketLocal(calendar.lastTimestamp);
-  });
-
+  protected readonly marketCalendar = this.clock.marketCalendar;
+  protected readonly marketDateTime = this.clock.marketDateTime;
+  protected readonly clockError = this.clock.clockError;
+  protected readonly clockUpdating = this.clock.clockUpdating;
+  protected readonly marketClockLabel = this.clock.marketClockLabel;
   protected readonly settingsOpen = signal(false);
   protected readonly termsSignature = signal('');
   protected readonly termsSubmitting = signal(false);
@@ -251,7 +229,27 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // The selected account's portfolio.
   protected readonly holdings = computed(() =>
-    this.priceHoldings(this.accountStore.selectedHoldings()),
+    this.priceHoldings(this.simulationHoldings().get(this.selectedAccountId() ?? -1) ?? []),
+  );
+
+  protected readonly assetSort = signal<'value' | 'symbol'>('value');
+  protected readonly assetSortOptions = [
+    { value: 'value', label: 'Highest value first' },
+    { value: 'symbol', label: 'Asset symbol' },
+  ] as const;
+  protected readonly assetSortLabel = computed(() =>
+    this.assetSortOptions.find((option) => option.value === this.assetSort())!.label,
+  );
+  protected selectAssetSort(value: 'value' | 'symbol'): void {
+    this.assetSort.set(value);
+    this.openHeaderDropdown.set(null);
+  }
+  protected readonly visibleAssets = computed(() =>
+    this.holdings().filter((holding) => holding.value !== 0).sort((a, b) =>
+      this.assetSort() === 'value'
+        ? b.value - a.value || a.symbol.localeCompare(b.symbol)
+        : a.symbol.localeCompare(b.symbol),
+    ),
   );
 
   // Only the symbols, so price ticks don't look like a change of holdings.
@@ -265,29 +263,67 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // Value of each owned account's portfolio, keyed by account id.
   protected readonly portfolioValues = computed(() => {
     const values = new Map<number, number>();
-    for (const [accountId, holdings] of this.accountStore.holdingsByAccount()) {
+    for (const [accountId, holdings] of this.simulationHoldings()) {
       values.set(accountId, totalValue(this.priceHoldings(holdings)));
     }
     return values;
   });
 
-  // Only this user's own cash movements, so a new account's list is genuinely empty.
-  protected readonly transactions = computed<ActivityItem[]>(() =>
-    this.accountStore
-      .cashTransactions()
-      .map((transaction) => ({
-        kind: 'cash' as const,
-        key: `cash-${transaction.cashTransactionId}`,
-        date: transaction.createdAt,
-        reason: transaction.reason,
-        value: transaction.amount,
-      }))
-      // ISO instants sort correctly as strings; newest first.
-      .sort((a, b) => b.date.localeCompare(a.date)),
-  );
+  protected readonly transactions = computed<ActivityItem[]>(() => {
+    const cash: ActivityItem[] = this.accountStore.cashTransactions().map((transaction) => ({
+      kind: 'cash' as const,
+      key: `cash-${transaction.cashTransactionId}`,
+      date: transaction.createdAt,
+      reason: transaction.reason,
+      value: transaction.amount,
+      label: 'Cash',
+      detail: 'Cash transfer',
+      positive: transaction.reason === 'DEPOSIT',
+    }));
+    const catalogue = new Map(
+      this.orderService.catalogue().map((instrument) => [instrument.instrumentId, instrument]),
+    );
+    const trades: ActivityItem[] = this.orderService
+      .orders()
+      .filter(
+        (order) =>
+          order.status === 'FILLED' &&
+          order.resolvedAt !== null &&
+          (this.marketTimeMillis() === null || executionTime(order) <= this.marketTimeMillis()!),
+      )
+      .map((order) => {
+        const instrument =
+          order.instrumentId === undefined ? undefined : catalogue.get(order.instrumentId);
+        return {
+          kind: 'trade',
+          key: `order-${order.orderId}`,
+          date:
+            order.simulatedAt && Number.isFinite(Date.parse(order.simulatedAt))
+              ? order.simulatedAt
+              : order.resolvedAt!,
+          reason: order.orderType,
+          value: order.quantity * order.indicativePrice,
+          label:
+            instrument?.simulatedStockSymbol ?? instrument?.ticker ?? `Order #${order.orderId}`,
+          detail: `${order.quantity} ${order.quantity === 1 ? 'share' : 'shares'} · Filled`,
+          positive: order.orderType === 'SELL',
+        };
+      });
+    return [...cash, ...trades]
+      .sort((a, b) => Date.parse(b.date) - Date.parse(a.date) || b.key.localeCompare(a.key))
+      .slice(0, 20);
+  });
 
   protected readonly positions = computed(() =>
     Object.fromEntries(this.holdings().map((holding) => [holding.symbol, holding.shares])),
+  );
+
+  // Replay changes the portfolio view, while orders spend the persisted balances.
+  protected readonly tradingCashBalance = this.accountStore.cashBalance;
+  protected readonly tradingPositions = computed(() =>
+    Object.fromEntries(
+      this.accountStore.selectedHoldings().map((holding) => [holding.symbol, holding.quantity]),
+    ),
   );
 
   private readonly marketTimeMillis = computed(() => {
@@ -295,6 +331,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return Number.isNaN(time) ? null : time;
   });
 
+  private readonly assetMinute = computed(() =>
+    Math.floor((this.marketTimeMillis() ?? 0) / 60_000),
+  );
   protected readonly assetCharts = computed<Record<string, PricePoint[]>>(() => {
     const candlesBySymbol = this.assetCandlePoints();
     const marketTime = this.marketTimeMillis();
@@ -302,6 +341,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.holdings().map((holding) => {
         const candles = candlesBySymbol.get(holding.symbol);
         if (candles?.length) {
+          if (marketTime !== null && marketTime < candles[candles.length - 1].time.getTime())
+            return [holding.symbol, candles];
           const points = [...candles];
           points[points.length - 1] = {
             time: new Date(marketTime ?? points[points.length - 1].time.getTime()),
@@ -309,24 +350,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
           };
           return [holding.symbol, points];
         }
-        return [
-          holding.symbol,
-          mockPriceSeries(holding.symbol, '1D', holding.instrument.price, marketTime ?? undefined),
-        ];
+        return [holding.symbol, []];
       }),
     );
   });
 
   // The selected account's portfolio value.
   protected readonly portfolioValue = computed(() => totalValue(this.holdings()));
-  protected readonly hasChartablePortfolioValue = computed(() => {
-    const value = this.portfolioValue();
-    return Number.isFinite(value) && value > 0;
-  });
-
+  protected readonly hasChartablePortfolioValue = computed(() => this.portfolioChart().length > 0);
   protected readonly portfolioChangePercent = computed(() => {
-    const cost = this.holdings().reduce((total, h) => total + h.shares * h.costBasis, 0);
-    return cost ? ((this.portfolioValue() - cost) / cost) * 100 : 0;
+    // The range can begin before the first investment, with a synthetic zero baseline.
+    const baseline = this.portfolioChart().find((point) => point.value > 0)?.value;
+    return baseline && this.portfolioHistory.status() === 'ready'
+      ? ((this.portfolioValue() - baseline) / baseline) * 100
+      : null;
   });
 
   // Every account's portfolio value together.
@@ -342,35 +379,92 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.netWorth() ? (this.investedValue() / this.netWorth()) * 100 : 0,
   );
 
-  protected readonly portfolioChart = computed(() =>
-    mockPriceSeries(
-      `portfolio-${this.selectedAccountId()}`,
-      this.portfolioTimeframe(),
-      this.portfolioValue(),
-      this.marketTimeMillis() ?? undefined,
-    ),
+  protected readonly portfolioHistory = inject(PortfolioHistoryService);
+  protected readonly portfolioChart = computed(() => {
+    const points = this.portfolioHistory.points();
+    const at = this.marketTimeMillis();
+    if (at === null || !points.length) return points;
+    return [
+      ...points.filter((point) => point.time.getTime() < at),
+      {
+        time: new Date(at),
+        value: this.portfolioValue(),
+        transition: points.find((point) => point.time.getTime() === at)?.transition,
+      },
+    ];
+  });
+  protected readonly portfolioObservationInterval = computed(
+    () =>
+      ({ '1D': 60_000, '5D': 300_000, '1M': 3_600_000, '1Y': 86_400_000 })[
+        this.portfolioTimeframe()
+      ],
   );
+  private readonly simulationMinute = computed(() => {
+    const at = this.marketTimeMillis();
+    return at === null ? null : Math.floor(at / 60_000);
+  });
+  private historyRefreshTimer?: ReturnType<typeof setInterval>;
 
   constructor() {
+    effect(() => {
+      const accountId = this.selectedAccountId();
+      const timeframe = this.portfolioTimeframe();
+      this.simulationClockRevision();
+      const minute = this.simulationMinute();
+      const sessionId = this.marketSessionId();
+      const orders = this.orderService.orders();
+      const catalogue = this.orderService.catalogue();
+      const current = this.accountStore.holdingsByAccount().get(accountId ?? -1) ?? [];
+      untracked(() =>
+        this.portfolioHistory.select(
+          accountId,
+          timeframe,
+          minute !== null && sessionId !== null && accountId !== null
+            ? {
+                accountId,
+                at: Date.parse(this.currentMarketTimestamp()),
+                sessionId,
+                rangeSymbol: this.instruments()[0]?.symbol,
+                quoteSymbols: this.instruments().map((instrument) => instrument.symbol),
+                current,
+                orders,
+                catalogue,
+              }
+            : undefined,
+        ),
+      );
+    });
     // Holdings arrive after the market snapshot and change with the selected account, so
     // load daily candles for any newly held symbol once there is a market session.
     effect(() => {
       this.heldSymbols();
+      this.assetMinute();
+      this.marketData.revision?.();
       const sessionId = this.marketSessionId();
       if (sessionId !== null) {
-        untracked(() => this.loadAssetCharts(sessionId, this.marketGeneration));
+        untracked(() => {
+          this.clearAssetChartSubscriptions();
+          this.loadAssetCharts(sessionId, this.marketGeneration);
+        });
       }
     });
   }
 
+  protected readonly watchlist = inject(WatchlistStore);
+
   ngOnInit(): void {
     if (isPlatformBrowser(this.platformId)) {
       this.loadMarketSnapshot();
+      this.watchlist.load(true).subscribe({ error: () => undefined });
       this.accountStore.load();
+      this.loadRecentOrders();
+      this.historyRefreshTimer = setInterval(() => this.portfolioHistory.refresh(), 60_000);
     }
   }
 
   ngOnDestroy(): void {
+    this.recentOrderSubscriptions.unsubscribe();
+    clearInterval(this.historyRefreshTimer);
     this.disconnectMarket?.();
     this.clearAssetChartSubscriptions();
     this.clearQueuedUpdates();
@@ -383,7 +477,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   @HostListener('document:click', ['$event'])
   protected closeHeaderDropdownOnDocumentClick(event: MouseEvent): void {
     const target = event.target;
-    if (target instanceof Element && target.closest('app-dashboard-header-dropdown')) {
+    if (
+      target instanceof Element &&
+      target.closest('app-dashboard-header-dropdown, app-market-clock-control, app-account-control')
+    ) {
       return;
     }
     this.openHeaderDropdown.set(null);
@@ -395,7 +492,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   protected retryAccounts(): void {
-    this.accountStore.load();
+    this.accountStore.load(true);
+  }
+
+  protected loadRecentOrders(): void {
+    this.recentOrderSubscriptions.add(
+      this.orderService.loadOrders().subscribe({ error: () => undefined }),
+    );
+    this.recentOrderSubscriptions.add(
+      this.orderService.instruments().subscribe({ error: () => undefined }),
+    );
   }
 
   protected openCreateAccount(): void {
@@ -433,10 +539,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.orderSymbol.set(null);
   }
 
-  protected onOrderSubmitted(order: OrderRequest): void {
-    // TODO: send to the order service once the backend endpoint is available
-    console.log('Order submitted', order);
-    this.closeOrder();
+  // The dialog owns the submission and stays open to show the outcome, so this only reacts
+  // to what a trade changed. A rejection changed nothing, so there is nothing to reload.
+  protected onOrderSubmitted(order: OrderResult): void {
+    if (order.status !== 'FILLED') {
+      return;
+    }
+    const accountId = this.accountStore.selectedAccountId();
+    if (accountId === null) {
+      return;
+    }
+    this.accountStore.refreshAfterTrade(accountId).subscribe({
+      next: () => this.portfolioHistory.afterTrade(accountId),
+      error: () => this.portfolioHistory.afterTrade(accountId),
+    });
   }
 
   protected onDeposit(): void {
@@ -485,48 +601,35 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   protected applyMarketDateTime(value = this.marketDateTime()): void {
-    const sessionId = this.marketSessionId();
-    this.marketDateTime.set(value);
-    if (sessionId === null || !value) {
-      return;
-    }
-    const resolved = this.resolveMarketDateTime(value);
-    if (resolved.error) {
-      this.clockError.set(resolved.error);
-      return;
-    }
-    this.marketDateTime.set(resolved.value);
-    this.clockUpdating.set(true);
-    this.clockError.set('');
-    this.marketData.setClock(sessionId, this.marketLocalToIso(resolved.value)).subscribe({
-      next: (snapshot) => {
-        this.applySnapshot(snapshot);
-        this.clockUpdating.set(false);
-        this.openHeaderDropdown.set(null);
-      },
-      error: (error: HttpErrorResponse) => {
-        this.clockError.set(this.clockErrorMessage(error));
-        this.clockUpdating.set(false);
-      },
-    });
+    this.clock.applyMarketDateTime(
+      value,
+      (snapshot) => this.applySnapshot(snapshot),
+      () => this.openHeaderDropdown.set(null),
+    );
+  }
+  protected onClockSnapshot(snapshot: MarketSnapshot): void {
+    this.applySnapshot(snapshot);
   }
 
   private loadMarketSnapshot(): void {
-    this.marketData.snapshot().subscribe({
-      next: (snapshot) => this.applySnapshot(snapshot),
-      error: () => undefined,
-    });
+    this.recentOrderSubscriptions.add(
+      this.marketData.snapshot().subscribe({
+        next: (snapshot) => this.applySnapshot(snapshot),
+        error: () => undefined,
+      }),
+    );
   }
 
   private applySnapshot(snapshot: MarketSnapshot): void {
     this.disconnectMarket?.();
+    if (this.marketSessionId() !== snapshot.sessionId) this.assetCandlePoints.set(new Map());
     this.clearAssetChartSubscriptions();
     this.clearQueuedUpdates();
     this.marketGeneration++;
+    this.simulationClockRevision.update((value) => value + 1);
     this.marketSessionId.set(snapshot.sessionId);
     this.currentMarketTimestamp.set(snapshot.marketTimestamp);
-    this.marketCalendar.set(snapshot.calendar);
-    this.marketDateTime.set(this.isoToMarketLocal(snapshot.marketTimestamp));
+    this.clock.sync(snapshot);
     const instruments = snapshot.stocks.map((stock) => {
       this.openingPrices.set(stock.symbol, stock.price - stock.change);
       return {
@@ -581,7 +684,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private clearAssetChartSubscriptions(): void {
     this.assetChartSubscriptions.forEach((subscription) => subscription.unsubscribe());
     this.assetChartSubscriptions.clear();
-    this.assetCandlePoints.set(new Map());
   }
 
   private queueTickBatch(event: MarketTickEvent): void {
@@ -636,116 +738,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.tickAnimationTimers.set(symbol, timer);
   }
 
-  private isoToMarketLocal(timestamp: string): string {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Chicago',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    }).formatToParts(new Date(timestamp));
-    const part = (type: Intl.DateTimeFormatPartTypes) =>
-      parts.find((value) => value.type === type)?.value ?? '';
-    return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
-  }
-
-  private resolveMarketDateTime(value: string): { value: string; error: string } {
-    const calendar = this.marketCalendar();
-    const selected = value.slice(0, 10);
-    const min = this.marketDateTimeMin();
-    const max = this.marketDateTimeMax();
-    if ((min && value < min) || (max && value > max)) {
-      return {
-        value,
-        error: `This simulation has market data from ${this.marketClockRangeLabel()}.`,
-      };
-    }
-    if (!calendar.tradingDates.includes(selected)) {
-      const replacement = this.nearestLoadedDateInMonth(selected);
-      if (!replacement) {
-        return {
-          value,
-          error: `${this.formatMarketDate(selected)} is not in this simulation archive. Choose one of the loaded trading dates.`,
-        };
-      }
-      return { value: `${replacement}${value.slice(10)}`, error: '' };
-    }
-    return { value, error: '' };
-  }
-
-  private nearestLoadedDateInMonth(value: string): string {
-    const calendar = this.marketCalendar();
-    const month = value.slice(0, 7);
-    const dates = calendar.tradingDates.filter((date) => date.startsWith(month));
-    const next = dates.find((date) => date >= value);
-    if (next) return next;
-    for (let index = dates.length - 1; index >= 0; index--) {
-      if (dates[index] <= value) return dates[index];
-    }
-    return '';
-  }
-
-  private clockErrorMessage(error: HttpErrorResponse): string {
-    const message = typeof error.error?.error === 'string' ? error.error.error : '';
-    return (
-      message ||
-      `Unable to update the market clock. Available range: ${this.marketClockRangeLabel()}.`
-    );
-  }
-
-  private formatMarketDate(value: string): string {
-    const [year, month, day] = value.split('-').map(Number);
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      timeZone: 'UTC',
-    }).format(new Date(Date.UTC(year, month - 1, day)));
-  }
-
-  private formatMarketTime(timestamp: string, options: Intl.DateTimeFormatOptions): string {
-    const calendar = this.marketCalendar();
-    return new Intl.DateTimeFormat('en-US', {
-      ...options,
-      timeZone: calendar?.timezone ?? 'America/Chicago',
-    })
-      .format(new Date(timestamp))
-      .replace(/\bC[DS]T\b/, 'CT');
-  }
-
-  private marketLocalToIso(value: string): string {
-    const [date, time] = value.split('T');
-    const [year, month, day] = date.split('-').map(Number);
-    const [hour, minute] = time.split(':').map(Number);
-    const desired = Date.UTC(year, month - 1, day, hour, minute);
-    let instant = desired;
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/Chicago',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    });
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const parts = formatter.formatToParts(new Date(instant));
-      const part = (type: Intl.DateTimeFormatPartTypes) =>
-        Number(parts.find((item) => item.type === type)?.value);
-      const represented = Date.UTC(
-        part('year'),
-        part('month') - 1,
-        part('day'),
-        part('hour'),
-        part('minute'),
-      );
-      instant += desired - represented;
-    }
-    return new Date(instant).toISOString();
-  }
-
   protected onSettings(): void {
     if (this.termsDialogOpen()) {
       return;
@@ -784,19 +776,4 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
 function totalValue(holdings: readonly PricedHolding[]): number {
   return holdings.reduce((total, holding) => total + holding.value, 0);
-}
-
-function marketWeekdays(year: number): string[] {
-  const dates: string[] = [];
-  for (
-    let time = Date.UTC(year, 0, 1);
-    time <= Date.UTC(year, 11, 31);
-    time += 24 * 60 * 60 * 1000
-  ) {
-    const day = new Date(time).getUTCDay();
-    if (day !== 0 && day !== 6) {
-      dates.push(new Date(time).toISOString().slice(0, 10));
-    }
-  }
-  return dates;
 }

@@ -1,1 +1,1 @@
-packageSearchIndex = [{"l":"All Packages","u":"allpackages-index.html","k":"18"},{"l":"app"},{"l":"app.account"},{"l":"app.auth"},{"l":"app.cash"},{"l":"app.holding"},{"l":"app.instrument"},{"l":"app.market"},{"l":"app.user"}];updateSearchResults();
+packageSearchIndex = [{"l":"All Packages","u":"allpackages-index.html","k":"18"},{"l":"app"},{"l":"app.account"},{"l":"app.auth"},{"l":"app.cash"},{"l":"app.holding"},{"l":"app.instrument"},{"l":"app.market"},{"l":"app.user"},{"l":"app.watchlist"}];updateSearchResults();

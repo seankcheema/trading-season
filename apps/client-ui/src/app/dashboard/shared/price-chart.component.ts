@@ -1,3 +1,4 @@
+import { ChartTimeDomain, timePosition, monotonePath, spaceTransitions } from './portfolio-axis';
 import {
   DecimalPipe,
   UpperCasePipe,
@@ -455,6 +456,15 @@ interface TooltipPosition {
           ></div>
         }
 
+        @for (point of isolatedObservations(); track point.x) {
+          <div
+            class="price-observation-marker pointer-events-none absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
+            [class]="trendingUp() ? 'bg-gain' : 'bg-loss'"
+            [style.left.%]="point.x"
+            [style.top.%]="point.y"
+          ></div>
+        }
+
         @if (hovered(); as point) {
           <div
             class="ring-card pointer-events-none absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2"
@@ -745,6 +755,12 @@ export class PriceChartComponent {
   readonly enabledIndicators = input<readonly TechnicalIndicator[]>([]);
   // Fills the space under the line with a gradient in the trend color.
   readonly area = input(false, { transform: booleanAttribute });
+  // Recorded observations use elapsed time and leave missing intervals disconnected.
+  readonly observationIntervalMs = input(0);
+  readonly minimumTransitionSpacingPx = input(0);
+  readonly changeBaseline = input<'first' | 'first-positive'>('first');
+  readonly timeDomain = input<ChartTimeDomain | null>(null);
+  readonly curveMode = input<'default' | 'monotone'>('default');
 
   private readonly activePoints = computed(() => {
     const candles = this.candles();
@@ -899,13 +915,58 @@ export class PriceChartComponent {
     const points = this.visiblePoints();
     const scale = this.yScale();
     const last = Math.max(points.length - 1, 1);
+    const positions = points.map((_, i) =>
+      this.timeDomain() || this.observationIntervalMs() ? this.observationX(i) : (i / last) * 100,
+    );
+    const spaced = spaceTransitions(
+      positions,
+      points.map((point) => !!point.transition),
+      (Math.max(0, this.minimumTransitionSpacingPx()) / (this._plotWidth() || 600)) * 100,
+    );
     return points.map((point, i) => ({
-      x: (i / last) * 100,
+      x: spaced[i],
       y: this.valueToY(this.mode() === 'volume' ? (point.volume ?? 0) : point.value, scale),
     }));
   });
 
-  protected readonly linePath = computed(() => this.smoothPath(this.svgCoords()));
+  protected readonly linePath = computed(() => {
+    if (this.curveMode() === 'monotone')
+      return monotonePath(
+        this.svgCoords().map((point, index) => ({
+          ...point,
+          transition: this.visiblePoints()[index].transition,
+        })),
+      );
+    const interval = this.observationIntervalMs();
+    if (!interval) return this.smoothPath(this.svgCoords());
+    return this.svgCoords()
+      .map((point, index) => {
+        return `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)},${point.y.toFixed(2)}`;
+      })
+      .join(' ');
+  });
+
+  protected readonly isolatedObservations = computed(() => {
+    const interval = this.observationIntervalMs();
+    if (!interval) return [];
+    const points = this.visiblePoints();
+    return this._coords().filter(
+      (_, index) =>
+        index < points.length - 1 &&
+        (index === 0 ||
+          points[index].time.getTime() - points[index - 1].time.getTime() > interval * 2) &&
+        points[index + 1].time.getTime() - points[index].time.getTime() > interval * 2,
+    );
+  });
+
+  private observationX(index: number): number {
+    const points = this.visiblePoints();
+    const domain = this.timeDomain();
+    if (domain) return timePosition(points[index].time.getTime(), domain);
+    const start = points[0]?.time.getTime() ?? 0;
+    const span = (points.at(-1)?.time.getTime() ?? start) - start;
+    return span > 0 ? ((points[index].time.getTime() - start) / span) * 100 : 100;
+  }
   protected readonly smaPath = computed(() => this.indicatorPath(this.smaSeries(), this.yScale()));
   protected readonly emaPath = computed(() => this.indicatorPath(this.emaSeries(), this.yScale()));
   protected readonly bollingerUpperPath = computed(() =>
@@ -940,7 +1001,10 @@ export class PriceChartComponent {
   // The line's path closed along the bottom edge of the chart.
   protected readonly areaPath = computed(() => {
     const line = this.linePath();
-    return line ? `${line} L ${WIDTH},${HEIGHT} L 0,${HEIGHT} Z` : '';
+    const coords = this.svgCoords();
+    return line
+      ? `${line} L ${coords.at(-1)?.x ?? WIDTH},${HEIGHT} L ${coords[0]?.x ?? 0},${HEIGHT} Z`
+      : '';
   });
 
   protected readonly trendColor = computed(() =>
@@ -1094,6 +1158,42 @@ export class PriceChartComponent {
     const points = this.visiblePoints();
     const timeframe = this.timeframe();
     const format = AXIS_FORMATS[timeframe];
+    const domain = this.timeDomain();
+    if (domain) {
+      const width = this._plotWidth() || 600;
+      const count = Math.max(2, Math.min(MAX_TICKS, Math.floor(width / 100) + 1));
+      if (domain.sessions?.length) {
+        const sessions = domain.sessions;
+        const visible =
+          sessions.length <= count
+            ? sessions
+            : Array.from(
+                { length: count },
+                (_, i) => sessions[Math.round((i * (sessions.length - 1)) / (count - 1))],
+              );
+        return visible.map((session) => {
+          const x = timePosition((session.start + session.end) / 2, domain);
+          return {
+            index: session.start,
+            x,
+            svgX: x,
+            label: this.formatTime(new Date(session.start), format),
+            transform: this.edgeTransform(x),
+          };
+        });
+      }
+      return Array.from({ length: count }, (_, i) => {
+        const x = (i / (count - 1)) * 100;
+        const time = domain.start + ((domain.end - domain.start) * x) / 100;
+        return {
+          index: i,
+          x,
+          svgX: x,
+          label: this.formatTime(new Date(time), format),
+          transform: this.edgeTransform(x),
+        };
+      });
+    }
     const last = Math.max(points.length - 1, 1);
     const slots = points.map((point) => this.slot(point.time, timeframe));
 
@@ -1108,7 +1208,10 @@ export class PriceChartComponent {
         previous = slot;
         // The first point of each slot carries the label, so labels sit on the boundary
         // itself rather than wherever the thinning happened to land.
-        const x = (index / last) * 100;
+        const x =
+          this.timeDomain() || this.observationIntervalMs()
+            ? this.observationX(index)
+            : (index / last) * 100;
         ticks.push({
           index,
           label: this.formatTime(point.time, format),
@@ -1228,7 +1331,21 @@ export class PriceChartComponent {
       return;
     }
     const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
-    this.hoverIndex.set(Math.round(ratio * (count - 1)));
+    if (this.timeDomain() || this.observationIntervalMs()) {
+      const coords = this._coords();
+      if (this.timeDomain() && ratio * 100 > (coords.at(-1)?.x ?? 0) + 0.5) {
+        this.hoverIndex.set(null);
+        return;
+      }
+      let nearest = 0;
+      for (let index = 1; index < coords.length; index++) {
+        if (Math.abs(coords[index].x - ratio * 100) < Math.abs(coords[nearest].x - ratio * 100))
+          nearest = index;
+      }
+      this.hoverIndex.set(nearest);
+    } else {
+      this.hoverIndex.set(Math.round(ratio * (count - 1)));
+    }
   }
 
   protected onPointerDown(event: PointerEvent, plot: HTMLElement): void {
@@ -1348,6 +1465,10 @@ export class PriceChartComponent {
     if (!point) {
       return null;
     }
+    const baselineIndex = this.changeBaseline() === 'first-positive'
+      ? points.findIndex((observation) => observation.value > 0)
+      : 0;
+    const baseline = points[baselineIndex]?.value;
     return {
       ...this._coords()[index],
       valueLabel: this.formatValue(point.value),
@@ -1357,8 +1478,8 @@ export class PriceChartComponent {
       changePercent:
         this.mode() === 'percent'
           ? point.value
-          : points[0].value
-            ? ((point.value - points[0].value) / points[0].value) * 100
+          : baseline
+            ? ((point.value - baseline) / baseline) * 100
             : 0,
       ohlcLabel: this.describeCandle(index),
     };

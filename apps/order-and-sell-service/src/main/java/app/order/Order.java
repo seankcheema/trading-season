@@ -85,6 +85,18 @@ public class Order {
     @Column(name = "resolved_at")
     private OffsetDateTime resolvedAt;
 
+    /** Selected market replay time; independent of real audit timestamps. */
+    @Column(name = "simulated_at", updatable = false)
+    private OffsetDateTime simulatedAt;
+
+    /** Returns the selected simulation time.
+     * @return simulated time, or null for submissions without replay context */
+    public OffsetDateTime getSimulatedAt() { return simulatedAt; }
+
+    /** Sets the selected simulation time.
+     * @param simulatedAt selected replay time, including backdated submissions */
+    public void setSimulatedAt(OffsetDateTime simulatedAt) { this.simulatedAt = simulatedAt; }
+
     public Integer getOrderId() {
         return orderId;
     }

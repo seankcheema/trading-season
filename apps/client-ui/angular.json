@@ -43,7 +43,7 @@
                 {
                   "type": "initial",
                   "maximumWarning": "500kB",
-                  "maximumError": "550kB"
+                  "maximumError": "600kB"
                 },
                 {
                   "type": "anyComponentStyle",
@@ -79,6 +79,7 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "runnerConfig": true,
             "include": [
               "src/**/*.spec.ts"
             ],

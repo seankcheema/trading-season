@@ -40,12 +40,16 @@
               {{ activeInstrument().symbol.slice(0, 4) }}
             </div>
             <div class="min-w-0">
-              <p class="text-lg leading-tight font-semibold">{{ activeInstrument().symbol }}</p>
+              <p class="flex items-center gap-2 text-lg leading-tight font-semibold">
+                {{ activeInstrument().symbol }}
+                <app-watchlist-star [symbol]="activeInstrument().symbol" />
+              </p>
               <p class="text-muted-foreground truncate text-xs">{{ activeInstrument().name }}</p>
             </div>
           </div>
           <a
             [routerLink]="fullScreenUrl()"
+            [queryParams]="{ accountId: accountId() }"
             class="text-muted-foreground hover:bg-muted hover:text-primary flex h-8 items-center gap-2 rounded-lg px-2 transition-colors shrink-0"
             aria-label="Open full screen market chart"
             title="Open full screen market chart"
@@ -62,25 +66,46 @@
             </span>
             <span
               class="rounded-full px-2 py-0.5 text-xs font-medium tabular-nums"
-              [class]="activeInstrument().change >= 0 ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'"
+              [class]="
+                activeInstrument().change >= 0 ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'
+              "
             >
-              {{ activeInstrument().change >= 0 ? '+' : '' }}{{ activeInstrument().change | currency: 'USD' }}
-              ({{ activeInstrument().changePercent | signedPercent }})
+              {{ activeInstrument().change >= 0 ? '+' : ''
+              }}{{ activeInstrument().change | currency: 'USD' }} ({{
+                activeInstrument().changePercent | signedPercent
+              }})
             </span>
           </p>
           <app-timeframe-toggle [(value)]="timeframe" />
         </div>
-        <app-price-chart
-          class="mt-1 h-56"
-          [points]="chartPoints()"
-          [timeframe]="timeframe()"
-          timezone="America/Chicago"
-        />
+        @if (chartRefreshing()) {
+          <p role="status" class="sr-only">Updating chart…</p>
+        }
+        @if (chartError()) {
+          <p role="status" class="text-loss text-xs">
+            {{ chartError() }}
+            <button type="button" class="underline" (click)="retryChart()">Retry</button>
+          </p>
+        }
+        @if (chartPoints().length) {
+          <app-price-chart
+            class="mt-1 h-56"
+            [points]="chartPoints()"
+            [timeframe]="chartTimeframe()"
+            timezone="America/Chicago"
+          />
+        } @else if (!chartRefreshing() && !chartError()) {
+          <p class="h-56 text-muted-foreground">No candle data is available for this range.</p>
+        }
       </div>
 
       <!-- Order ticket -->
       <div class="flex min-w-0 flex-col p-5">
-        <div role="group" aria-label="Order side" class="bg-muted grid grid-cols-2 gap-1 rounded-xl p-1">
+        <div
+          role="group"
+          aria-label="Order side"
+          class="bg-muted grid grid-cols-2 gap-1 rounded-xl p-1"
+        >
           @for (option of sides; track option) {
             <button
               type="button"
@@ -102,7 +127,10 @@
 
         <div class="border-border mt-4 rounded-xl border p-4">
           <div class="flex items-center justify-between gap-4">
-            <label for="order-shares" class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+            <label
+              for="order-shares"
+              class="text-muted-foreground text-xs font-medium tracking-wide uppercase"
+            >
               Shares
             </label>
             <span class="text-muted-foreground text-xs tabular-nums">
@@ -115,6 +143,7 @@
           </div>
           <input
             id="order-shares"
+            step="1"
             type="number"
             min="0"
             [max]="maxShares()"
@@ -162,14 +191,23 @@
         </dl>
 
         <div class="min-h-4 flex-1"></div>
+
         <button
           type="button"
           class="h-11 w-full cursor-pointer rounded-xl text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-          [class]="side() === 'buy' ? 'bg-primary text-primary-foreground hover:bg-primary/85' : 'bg-loss hover:bg-loss/85 text-white'"
+          [class]="
+            side() === 'buy'
+              ? 'bg-primary text-primary-foreground hover:bg-primary/85'
+              : 'bg-loss hover:bg-loss/85 text-white'
+          "
+          [attr.aria-busy]="busy()"
           [disabled]="!canSubmit()"
           (click)="submit()"
         >
-          {{ side() === 'buy' ? 'Buy' : 'Sell' }} {{ shares() }} {{ activeInstrument().symbol }}
+          @if (busy()) {
+            <span class="order-spinner" aria-hidden="true"></span>
+          }
+          {{ submitLabel() }}
         </button>
       </div>
     </div>

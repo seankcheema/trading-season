@@ -12,17 +12,10 @@ import java.util.UUID;
  * A read-only view of the credential record the auth service owns.
  *
  * &lt;p&gt;Authentication state lives in {@code user_accounts}, written only by the
- * NestJS auth service. This service reads it because two of its values must be
- * current at the moment they are used rather than as of whenever the caller's
- * token was signed:
- *
- * &lt;ul&gt;
- *   &lt;li&gt;{@code accountStatus} gates order placement. A token stays valid for
- *       fifteen minutes, so a deactivated trader would keep trading for that
- *       long if the check read a claim instead of this table.&lt;/li&gt;
- *   &lt;li&gt;{@code userRole} is reported on the caller's profile, where it should
- *       reflect the account as it stands.&lt;/li&gt;
- * &lt;/ul&gt;
+ * NestJS auth service. This service reads it because {@code email} and
+ * {@code userRole} are reported on the caller's profile, where they should
+ * reflect the account as it stands at the moment it is read rather than as of
+ * whenever the caller's token was signed.
  *
  * &lt;p&gt;Marked {@link Immutable} so Hibernate silently discards any attempt to
  * update it: the auth service is the only writer, and that is enforced here
@@ -49,15 +42,11 @@ public class UserAccount {
     @Column(name = &quot;user_role&quot;, nullable = false)
     private String userRole;
 
-    /** ACTIVE or DEACTIVATED. */
-    @Column(name = &quot;account_status&quot;, nullable = false)
-    private String accountStatus;
-
     /**
      * Required by Hibernate.
      */
-<span class="fc" id="L59">    protected UserAccount() {</span>
-<span class="fc" id="L60">    }</span>
+<span class="fc" id="L48">    protected UserAccount() {</span>
+<span class="fc" id="L49">    }</span>
 
     /**
      * Creates a record directly, for tests that stand in for the auth service.
@@ -65,17 +54,15 @@ public class UserAccount {
      * &lt;p&gt;There is no repository method that writes this table, so constructing
      * one here cannot persist it through this service.
      *
-     * @param userId        the account id
-     * @param email         the login email
-     * @param userRole      ADMIN or TRADER
-     * @param accountStatus ACTIVE or DEACTIVATED
+     * @param userId   the account id
+     * @param email    the login email
+     * @param userRole ADMIN or TRADER
      */
-<span class="fc" id="L73">    public UserAccount(UUID userId, String email, String userRole, String accountStatus) {</span>
-<span class="fc" id="L74">        this.userId = userId;</span>
-<span class="fc" id="L75">        this.email = email;</span>
-<span class="fc" id="L76">        this.userRole = userRole;</span>
-<span class="fc" id="L77">        this.accountStatus = accountStatus;</span>
-<span class="fc" id="L78">    }</span>
+<span class="fc" id="L61">    public UserAccount(UUID userId, String email, String userRole) {</span>
+<span class="fc" id="L62">        this.userId = userId;</span>
+<span class="fc" id="L63">        this.email = email;</span>
+<span class="fc" id="L64">        this.userRole = userRole;</span>
+<span class="fc" id="L65">    }</span>
 
     /**
      * Returns the account id.
@@ -83,7 +70,7 @@ public class UserAccount {
      * @return the user UUID
      */
     public UUID getUserId() {
-<span class="nc" id="L86">        return userId;</span>
+<span class="nc" id="L73">        return userId;</span>
     }
 
     /**
@@ -92,7 +79,7 @@ public class UserAccount {
      * @return the email
      */
     public String getEmail() {
-<span class="fc" id="L95">        return email;</span>
+<span class="fc" id="L82">        return email;</span>
     }
 
     /**
@@ -101,25 +88,7 @@ public class UserAccount {
      * @return ADMIN or TRADER
      */
     public String getUserRole() {
-<span class="fc" id="L104">        return userRole;</span>
-    }
-
-    /**
-     * Returns the current account status.
-     *
-     * @return ACTIVE or DEACTIVATED
-     */
-    public String getAccountStatus() {
-<span class="fc" id="L113">        return accountStatus;</span>
-    }
-
-    /**
-     * Whether the account is active right now.
-     *
-     * @return {@code true} if the status is ACTIVE
-     */
-    public boolean isActive() {
-<span class="fc" id="L122">        return &quot;ACTIVE&quot;.equals(accountStatus);</span>
+<span class="fc" id="L91">        return userRole;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

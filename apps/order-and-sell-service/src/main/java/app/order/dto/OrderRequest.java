@@ -7,6 +7,7 @@ import jakarta.validation.constraints.PositiveOrZero;
 
 import java.math.BigDecimal;
 import java.util.UUID;
+import java.time.OffsetDateTime;
 
 /**
  * A client's order submission (KAN-95 acceptance criterion: "acquire
@@ -28,6 +29,7 @@ import java.util.UUID;
  * @param indicativePrice  the price shown to the trader before submission (BR-13)
  * @param bufferPercent    execution price tolerance for this order (KAN-100); when
  *                         omitted, falls back to the user's {@code execution_buffer_percent}
+ * @param simulatedAt      selected simulation time, optional; audit timestamps remain real time
  * @param clientReference  client-generated idempotency key; retried submissions
  *                         with the same key return the original order's outcome
  */
@@ -38,8 +40,22 @@ public record OrderRequest(
         @NotNull @Positive BigDecimal quantity,
         @NotNull @Positive BigDecimal indicativePrice,
         @PositiveOrZero BigDecimal bufferPercent,
-        @NotNull UUID clientReference
+        @NotNull UUID clientReference,
+        OffsetDateTime simulatedAt
 ) {
+    /** Creates a submission without a simulation timestamp for existing callers.
+     * @param accountId owned account
+     * @param instrumentId traded instrument
+     * @param orderType buy or sell
+     * @param quantity units requested
+     * @param indicativePrice submitted price
+     * @param bufferPercent optional price tolerance
+     * @param clientReference idempotency key
+     */
+    public OrderRequest(Integer accountId, Integer instrumentId, String orderType,
+            BigDecimal quantity, BigDecimal indicativePrice, BigDecimal bufferPercent, UUID clientReference) {
+        this(accountId, instrumentId, orderType, quantity, indicativePrice, bufferPercent, clientReference, null);
+    }
 }
 
 

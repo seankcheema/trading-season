@@ -2,9 +2,9 @@
 
 ## Toolchain and installation
 
-Use Node.js 24.x (24.8.0 or later), npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. The Angular framework packages, CLI, build tooling, and SSR are all pinned to 21.2.24, and Angular CDK is pinned to its independently published 21.2.14 release. Angular 21.2.x supports Node ^24.0.0; this repository requires Node ^24.8.0 and TypeScript >=5.9.0 <6.0.0. Check exact dependency requirements in the [UI manifest](../../apps/client-ui/package.json), the [auth manifest](../../apps/auth-service/package.json), and the Java service POMs for [Holdings and Trade](../../apps/holdings-and-trade-service/pom.xml) and [Order and Sell](../../apps/order-and-sell-service/pom.xml).
+Use Node.js 24.x (24.8.0 or later), npm 11.16.0, JDK 21, Maven 3.9+, and Docker Compose. The Angular framework packages, CLI, build tooling, and SSR are all pinned to 21.2.25, and Angular CDK is pinned to its independently published 21.2.14 release. Angular 21.2.x supports Node ^24.0.0; this repository requires Node ^24.8.0 and TypeScript >=5.9.0 <6.0.0. Check exact dependency requirements in the [UI manifest](../../apps/client-ui/package.json), the [auth manifest](../../apps/auth-service/package.json), and the Java service POMs for [Holdings and Trade](../../apps/holdings-and-trade-service/pom.xml) and [Order and Sell](../../apps/order-and-sell-service/pom.xml).
 
-There is no root npm project. The UI and auth service are independent npm projects, each with its own lockfile; install each from repository root:
+The client UI and the auth service are separate npm projects, each with its own manifest and lockfile. Install both from repository root:
 
 ```sh
 npm --prefix apps/client-ui ci
@@ -15,12 +15,12 @@ Reporting has no runnable application yet.
 
 ## Run locally
 
-The application consists of four services. The UI routes only to Holdings and Trade Service; Order and Sell Service runs independently.
+The application consists of four services. The UI routes orders and instruments to Order and Sell on 8081, and other business API paths to Holdings and Trade on 8082. Auth runs separately on 3001.
 ### Automated Linux VM setup
 
 From the repository root, `./scripts/setup-local.sh` validates the toolchain, maintains a 3 GiB free-space reserve, prepares missing dependencies and auth keys, selects databases, and supervises the three applications in one terminal. It reports verified stages as `[READY]`, completed work as `[DONE]`, and actionable failures as `[FAIL]`.
 
-The default `--database-mode auto` prefers verified local PostgreSQL databases. Use `--database-mode local` to prohibit Docker or `--database-mode docker` to require Docker Engine and Compose v2. Docker mode starts only `db` and `auth-db`, validates both schemas, and applies V001 through V003 only when the business schema is proven empty. Local and Docker database storage are separate and are never synchronized automatically.
+The default `--database-mode auto` prefers verified local PostgreSQL databases. Use `--database-mode local` to prohibit Docker or `--database-mode docker` to require Docker Engine and Compose v2. Docker mode starts only `db` and `auth-db`, validates both schemas, and applies the canonical V001__Initialize_database.sql only when the business schema is proven empty. Local and Docker database storage are separate and are never synchronized automatically.
 
 If Compose v2 is already installed as the standalone `docker-compose` command, the bootstrap creates the current user's Docker CLI plugin directory and symlinks that binary so `docker compose` works. An existing plugin entry is never overwritten, and the bootstrap does not download Compose.
 
@@ -65,12 +65,12 @@ Compose validates JWT variables even when selecting database services, so provid
 
 | Working directory | Command | Port | Purpose |
 | --- | --- | --- | --- |
-| Repository root | npm --prefix apps/client-ui start | 4200 | Angular frontend |
-| apps/order-and-sell-service | mvn spring-boot:run | 8081 | Order processing, order validation, order execution (not called by UI yet) |
+| apps/client-ui | npm --prefix apps/client-ui start | 4200 | Angular frontend |
+| apps/order-and-sell-service | mvn spring-boot:run | 8081 | Order processing, order validation, order execution, instrument reference data (called by UI) |
 | apps/holdings-and-trade-service | mvn spring-boot:run | 8082 | User profiles, accounts, holdings, cash movements, market data (called by UI) |
 | apps/auth-service | npm run start:dev | 3001 | Authentication, token issuance |
 
-The UI calls the auth service directly on port 3001, which allows the dev server origin through CORS_ORIGINS. Java calls use the relative /api path, which the dev server forwards to the Holdings and Trade Service on port 8082 through [proxy.conf.json](../../apps/client-ui/proxy.conf.json). Registration completes only once the Java register contract accepts the profile the UI sends; see the [API reference](../reference/api.md#ui-integration).
+The UI calls the auth service directly on port 3001, which allows the dev server origin through CORS_ORIGINS. Java calls use the relative /api path, which [proxy.conf.json](../../apps/client-ui/proxy.conf.json) forwards by path: /api/orders and /api/instruments to the Order and Sell Service on port 8081, and everything else to the Holdings and Trade Service on port 8082. Both Java services must be running for the dashboard to load accounts and place an order. Registration completes only once the Java register contract accepts the profile the UI sends; see the [API reference](../reference/api.md#ui-integration).
 
 After successful sign-in or registration, the dashboard loads `GET /api/users/me` and blocks trading actions until the user accepts the current platform terms. Acceptance is recorded with `PUT /api/users/me/terms-acceptance` and the prompt is suppressed on later sessions once the backend returns `termsAccepted: true`.
 
@@ -82,13 +82,12 @@ Run from repository root after dependency installation:
 | --- | --- | --- |
 | UI | npm --prefix apps/client-ui run build | Angular production build |
 | UI | npm --prefix apps/client-ui test -- --no-watch --coverage | Angular unit-test builder; do not pass Vitest's --run |
-| UI end-to-end | npm --prefix apps/client-ui run e2e | Playwright login and registration journeys |
+| UI end-to-end | npm --prefix apps/client-ui run e2e | Playwright authentication, account, and trading journeys |
 | Holdings and Trade Service | mvn -B -f apps/holdings-and-trade-service/pom.xml test | Unit/integration tests use H2 test configuration |
 | Order and Sell Service | mvn -B -f apps/order-and-sell-service/pom.xml test | Unit/integration tests use H2 test configuration |
 | Auth | npm --prefix apps/auth-service run build | NestJS compilation |
 | Auth | npm --prefix apps/auth-service run test:ci | Vitest coverage and JUnit reports; tests generate ephemeral keys |
 | Auth | npm --prefix apps/auth-service run lint | Oxlint |
-| Market-data scripts | python -m unittest discover apps/market-data/db/tests | Unit checks; use Jenkins for the two-day PostgreSQL integration |
 
 There is no root npm project or task runner. Run each app's commands from its own directory, or with --prefix from repository root. See [operations](operations.md) for CI differences and artifact locations.
 
@@ -104,7 +103,7 @@ Both services must pass independently and share schema compatibility.
 
 ## End-to-end tests
 
-The Playwright suite in [apps/client-ui/e2e](../../apps/client-ui/e2e) covers the login and registration journeys through the running application. Install the browser once, then run the suite:
+The Playwright suite in [apps/client-ui/e2e](../../apps/client-ui/e2e) covers authentication, account management, watchlists, and buy/sell journeys through the running application against the API stand-in. Backend ledger correctness is verified by the Java integration tests. Install the browser once, then run the suite:
 
 ```sh
 npx --prefix apps/client-ui playwright install chromium
@@ -156,7 +155,11 @@ Update the authoritative guide when its contract changes; do not add implementat
 ## Troubleshooting
 
 - Node engine errors: check `node --version` is 24.x at 24.8.0 or later; Angular 21.2.x supports Node 24.x.
-- Missing `@shared/ui-components` imports: run npm --prefix apps/client-ui ci and check shared package exports.
+- Missing `@shared/ui-components/*` or `@spartan-ng/helm/*` imports: check the path mappings in [tsconfig.json](../../apps/client-ui/tsconfig.json). They must point to `./shared-ui-components` inside client-ui. After merging a component move, keep its source and aliases together; reinstalling dependencies cannot repair stale source paths.
 - Unknown ng test option: use --no-watch, not --run.
 - Database connection or key failures: use the [operations checklist](operations.md) and [auth environment instructions](../../apps/auth-service/README.md).
 - Javadoc tool missing: select a full JDK via JAVA_HOME and verify mvn --version and javadoc --version.
+
+## Watchlist and refresh checks
+
+Fresh business setup applies V001 followed by V002. Existing databases require the explicit [watchlist upgrade](../reference/database.md#watchlist-migration). With PostgreSQL binaries on PATH, run `python apps/market-data/db/scripts/python/tests/test_watchlist_migration.py` to validate the migration against a disposable cluster. UI caches are memory-only; see [client refresh behavior](../reference/api.md#client-data-refresh-behavior).

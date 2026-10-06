@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WatchlistController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.watchlist</a> &gt; <span class="el_source">WatchlistController.java</span></div><h1>WatchlistController.java</h1><pre class="source lang-java linenums">package app.watchlist;
+
+import app.auth.AuthenticatedUser;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.*;
+import java.util.List;
+
+/** Authenticated watchlist endpoints; ownership comes only from the token subject. */
+@RestController
+@RequestMapping(&quot;/api/me/watchlist&quot;)
+public class WatchlistController {
+    private final WatchlistService service;
+
+    /**
+     * @param service saved stock business logic
+     */
+<span class="fc" id="L19">    public WatchlistController(WatchlistService service) { this.service = service; }</span>
+
+    /**
+     * @param jwt verified access token
+     * @return caller's saved stocks
+     */
+    @GetMapping
+    public List&lt;WatchlistRepository.Entry&gt; list(@AuthenticationPrincipal Jwt jwt) {
+<span class="fc" id="L27">        return service.list(AuthenticatedUser.from(jwt).userId());</span>
+    }
+
+    /**
+     * @param jwt verified access token
+     * @param symbol seeded stock symbol
+     * @return saved stock, preserving its original timestamp on duplicate requests
+     * @throws org.springframework.web.server.ResponseStatusException if the stock is unknown
+     * @throws app.user.UserNotFoundException if the caller has no business profile
+     */
+    @PutMapping(&quot;/{symbol}&quot;)
+    public WatchlistRepository.Entry add(@AuthenticationPrincipal Jwt jwt, @PathVariable String symbol) {
+<span class="fc" id="L39">        return service.add(AuthenticatedUser.from(jwt).userId(), symbol);</span>
+    }
+
+    /**
+     * @param jwt verified access token
+     * @param symbol stock symbol; missing entries succeed
+     */
+    @DeleteMapping(&quot;/{symbol}&quot;)
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void remove(@AuthenticationPrincipal Jwt jwt, @PathVariable String symbol) {
+<span class="fc" id="L49">        service.remove(AuthenticatedUser.from(jwt).userId(), symbol);</span>
+<span class="fc" id="L50">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

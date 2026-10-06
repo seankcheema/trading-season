@@ -6,11 +6,11 @@ import { NgIcon } from '@ng-icons/core';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgIcon],
   template: `
-    <details [class]="containerClasses()" [open]="open()" (toggle)="onToggle($event)">
+    <details [class]="containerClasses()" [open]="open()" (toggle)="onToggle($event)" (keydown.escape)="onEscape($event)">
       <summary [class]="triggerClasses()" [attr.aria-label]="ariaLabel()">
         <ng-content select="[dropdownTrigger]">
           <ng-icon [name]="iconName()" class="shrink-0 text-[16px]" />
-          <span class="min-w-0 flex-1 whitespace-nowrap text-left leading-tight">{{ label() }}</span>
+          <span class="min-w-0 flex-1 truncate text-left leading-tight">{{ label() }}</span>
           <ng-icon name="lucideChevronDown" class="text-muted-foreground shrink-0 text-[14px]" />
         </ng-content>
       </summary>
@@ -66,6 +66,16 @@ export class DashboardHeaderDropdownComponent {
       .filter(Boolean)
       .join(' '),
   );
+
+  protected onEscape(event: KeyboardEvent): void {
+    const details = event.currentTarget as HTMLDetailsElement;
+    if (!details.open) return;
+    event.preventDefault();
+    event.stopPropagation();
+    details.open = false;
+    this.openChange.emit(false);
+    details.querySelector('summary')?.focus();
+  }
 
   protected onToggle(event: Event): void {
     const isOpen = (event.target as HTMLDetailsElement).open;

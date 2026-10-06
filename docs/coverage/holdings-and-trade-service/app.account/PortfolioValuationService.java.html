@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioValuationService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.account</a> &gt; <span class="el_source">PortfolioValuationService.java</span></div><h1>PortfolioValuationService.java</h1><pre class="source lang-java linenums">package app.account;
+
+import app.holding.HoldingMovementRepository;
+import app.market.MarketReplayService;
+import app.market.MarketRequestException;
+import app.market.MarketTimeframe;
+import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.annotation.Transactional;
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.*;
+
+/** Captures current holdings on real dates, independently of the replay calendar. */
+@Service
+public class PortfolioValuationService {
+    private final AccountService accounts;
+    private final AccountRepository accountRepository;
+    private final HoldingMovementRepository movements;
+    private final PortfolioValuationRepository valuations;
+    private final MarketReplayService market;
+    private final Clock clock;
+
+    /**
+     * Creates the valuation service using the actual UTC clock.
+     * @param accounts owned-account holdings and cost basis
+     * @param accountRepository account locking
+     * @param movements existing acquisition ledger
+     * @param valuations persisted observations
+     * @param market current replay prices
+     */
+    @Autowired
+    public PortfolioValuationService(AccountService accounts, AccountRepository accountRepository,
+            HoldingMovementRepository movements, PortfolioValuationRepository valuations,
+            MarketReplayService market) {
+<span class="fc" id="L38">        this(accounts, accountRepository, movements, valuations, market, Clock.systemUTC());</span>
+<span class="fc" id="L39">    }</span>
+
+    PortfolioValuationService(AccountService accounts, AccountRepository accountRepository,
+            HoldingMovementRepository movements, PortfolioValuationRepository valuations,
+<span class="fc" id="L43">            MarketReplayService market, Clock clock) {</span>
+<span class="fc" id="L44">        this.accounts = accounts;</span>
+<span class="fc" id="L45">        this.accountRepository = accountRepository;</span>
+<span class="fc" id="L46">        this.movements = movements;</span>
+<span class="fc" id="L47">        this.valuations = valuations;</span>
+<span class="fc" id="L48">        this.market = market;</span>
+<span class="fc" id="L49">        this.clock = clock;</span>
+<span class="fc" id="L50">    }</span>
+
+    /**
+     * Captures a current observation after checking ownership. New accounts stay empty.
+     * @param accountId owned account
+     * @param userId verified caller
+     * @param scheduled whether unchanged captures in the same minute should be coalesced
+     * @return observation, or null when the account has never bought shares
+     * @throws AccountNotFoundException for a missing account
+     * @throws app.auth.ForbiddenException for another user's account
+     */
+    @Transactional
+    public Point capture(Integer accountId, UUID userId, boolean scheduled) {
+<span class="fc" id="L63">        accounts.getAccountForUser(accountId, userId);</span>
+<span class="fc" id="L64">        accountRepository.findByIdForUpdate(accountId)</span>
+<span class="fc" id="L65">                .orElseThrow(() -&gt; new AccountNotFoundException(accountId));</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (!movements.hasAcquisitions(accountId)) return null;</span>
+<span class="fc" id="L67">        Instant now = clock.instant();</span>
+<span class="fc" id="L68">        Optional&lt;PortfolioValuation&gt; previous = valuations</span>
+<span class="fc" id="L69">                .findFirstByAccountIdOrderByObservedAtDescIdDesc(accountId);</span>
+<span class="pc bpc" id="L70" title="1 of 4 branches missed.">        if (scheduled &amp;&amp; previous.isPresent() &amp;&amp; previous.get().getObservedAt()</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">                .truncatedTo(ChronoUnit.MINUTES).equals(now.truncatedTo(ChronoUnit.MINUTES))) {</span>
+<span class="fc" id="L72">            return point(previous.get());</span>
+        }
+<span class="fc" id="L74">        var positions = accounts.getHoldingsForAccount(accountId, userId);</span>
+<span class="fc" id="L75">        Map&lt;String, BigDecimal&gt; prices = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L76" title="All 4 branches covered.">        if (positions.stream().anyMatch(position -&gt; position.holding().getQuantity().signum() &gt; 0)) {</span>
+            try {
+<span class="fc" id="L78">                market.snapshot(null).stocks().forEach(stock -&gt; prices.put(stock.symbol(), stock.price()));</span>
+<span class="fc" id="L79">            } catch (MarketRequestException unavailable) {</span>
+                // An account can hold instruments not covered by the replay archive.
+<span class="fc" id="L81">            }</span>
+        }
+<span class="fc" id="L83">        BigDecimal value = BigDecimal.ZERO;</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        for (var position : positions) {</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            String symbol = position.instrument() == null ? &quot;&quot; : position.instrument().displaySymbol();</span>
+<span class="fc" id="L86">            BigDecimal price = prices.getOrDefault(symbol,</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">                    position.averageCost() == null ? BigDecimal.ZERO : position.averageCost());</span>
+<span class="fc" id="L88">            value = value.add(position.holding().getQuantity().multiply(price));</span>
+<span class="fc" id="L89">        }</span>
+<span class="fc" id="L90">        return point(valuations.save(new PortfolioValuation(accountId, now, value)));</span>
+    }
+
+    /**
+     * Returns observations with a zero baseline before the first investment and the latest value carried to now.
+     * @param accountId owned account
+     * @param userId verified caller
+     * @param timeframe supported chart range
+     * @return chronological chart points, including presentation endpoints that are not persisted
+     * @throws IllegalArgumentException for an unsupported timeframe
+     * @throws AccountNotFoundException for a missing account
+     * @throws app.auth.ForbiddenException for another user's account
+     */
+    @Transactional(readOnly = true)
+    public List&lt;Point&gt; history(Integer accountId, UUID userId, String timeframe) {
+<span class="fc" id="L105">        accounts.getAccountForUser(accountId, userId);</span>
+        MarketTimeframe range;
+<span class="fc" id="L107">        try { range = MarketTimeframe.parse(timeframe); }</span>
+<span class="fc" id="L108">        catch (MarketRequestException invalid) { throw new IllegalArgumentException(invalid.getMessage()); }</span>
+<span class="fc" id="L109">        Instant end = clock.instant();</span>
+<span class="fc" id="L110">        Map&lt;Long, Point&gt; buckets = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        for (var valuation : valuations.findByAccountIdAndObservedAtBetweenOrderByObservedAtAscIdAsc(</span>
+<span class="fc" id="L112">                accountId, end.minus(range.lookback()), end)) {</span>
+<span class="fc" id="L113">            buckets.put(valuation.getObservedAt().getEpochSecond() / range.bucket().toSeconds(), point(valuation));</span>
+<span class="fc" id="L114">        }</span>
+<span class="fc" id="L115">        List&lt;Point&gt; points = new ArrayList&lt;&gt;(buckets.values());</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (points.isEmpty()) return points;</span>
+<span class="fc" id="L117">        Instant start = end.minus(range.lookback());</span>
+<span class="fc" id="L118">        Instant firstAcquisition = movements.firstAcquisitionAt(accountId);</span>
+<span class="fc bfc" id="L119" title="All 4 branches covered.">        if (firstAcquisition != null &amp;&amp; firstAcquisition.isAfter(start)</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                &amp;&amp; !firstAcquisition.isAfter(points.getFirst().timestamp())) {</span>
+<span class="fc" id="L121">            points.addFirst(new Point(firstAcquisition.minusMillis(1), BigDecimal.ZERO));</span>
+<span class="fc" id="L122">            points.addFirst(new Point(start, BigDecimal.ZERO));</span>
+        }
+<span class="fc" id="L124">        Point latest = points.getLast();</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        if (latest.timestamp().isBefore(end)) points.add(new Point(end, latest.value()));</span>
+<span class="fc" id="L126">        return List.copyOf(points);</span>
+    }
+
+    private static Point point(PortfolioValuation valuation) {
+<span class="fc" id="L130">        return new Point(valuation.getObservedAt(), valuation.getValue());</span>
+    }
+
+    /**
+     * An observed value returned to the dashboard.
+     * @param timestamp real observation time
+     * @param value holdings value, excluding cash
+     */
+<span class="fc" id="L138">    public record Point(Instant timestamp, BigDecimal value) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

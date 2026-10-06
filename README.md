@@ -3,8 +3,8 @@
 Trading simulation monorepo with an Angular interface, two Spring Boot microservices, and a NestJS authentication service. Reporting applications are placeholders.
 
 The backend consists of two independent Java microservices and one NestJS authentication service:
-- **Holdings and Trade Service** (`apps/holdings-and-trade-service/`) – Order submission, validation, execution, and holdings management
-- **Order and Sell Service** (`apps/order-and-sell-service/`) – User profile queries and market data access
+- **Order and Sell Service** (`apps/order-and-sell-service/`) – Order submission, validation, execution, and instrument reference data
+- **Holdings and Trade Service** (`apps/holdings-and-trade-service/`) – User profiles, accounts, holdings, cash movements, and market data
 - **Auth Service** (`apps/auth-service/`) – Email/password authentication, RS256 token issuance, refresh token rotation
 
 All services share a single PostgreSQL database (`trading_season`).
@@ -23,7 +23,7 @@ Install Node.js 24.8.0+ (24.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL 
 
 ### Quick start with the startup script (requires local databases)
 
-1. Install dependencies. The UI and auth service are independent npm projects, each with its own lockfile:
+1. Install the client UI and auth-service dependencies:
 
    ```powershell
    npm --prefix apps/client-ui ci
@@ -48,7 +48,7 @@ Install Node.js 24.8.0+ (24.x), npm 11.16.0, JDK 21, Maven 3.9+, and PostgreSQL 
    .\scripts\start-local.ps1
    ```
 
-   The launcher consolidates all logs in one terminal and stops all services if any one exits. Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001`, Holdings and Trade Service on `http://localhost:8081`, and Order and Sell Service on `http://localhost:8082`. See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
+   The launcher consolidates all logs in one terminal and stops all services if any one exits. Open the UI at `http://localhost:4200`. Auth runs on `http://localhost:3001`, Order and Sell Service on `http://localhost:8081`, and Holdings and Trade Service on `http://localhost:8082`. Each service's port comes from its own `application.properties`. See the [development guide](docs/guides/development.md) for Docker, tests, and individual service commands.
 
 ### Manual setup with local PostgreSQL
 
@@ -66,17 +66,12 @@ CREATE ROLE trading_season WITH LOGIN PASSWORD 'password';
 CREATE DATABASE trading_season OWNER trading_season;
 ```
 
-Then apply the schema. Connect to `trading_season` as the `trading_season` user and run these migration files in order:
+Then apply the schema. Connect to `trading_season` as the `trading_season` user and run the canonical setup on an empty database. V001 also repairs a legacy database missing `user_accounts`, `refresh_tokens`, and `portfolio_valuations`; see the [legacy upgrade procedure](docs/reference/database.md#upgrade-a-legacy-17-table-database). After the baseline setup, apply the terms-acceptance migration so authenticated users can record acceptance in their profile:
 
 ```powershell
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initial_schema.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Synthetic_market_data_replay_metadata.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V003__Token_authentication.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V004__Order_status_lifecycle.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V005__User_accounts_and_refresh_tokens.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V006__Drop_duplicated_account_columns.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V007__Add_account_name.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V008__Add_terms_acceptance_to_users.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initialize_database.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Add_watchlist.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V009__Add_terms_acceptance_to_users.sql
 ```
 
 Verify that `trading_season` owns the tables. Connect to the `trading_season` database and run:
@@ -148,7 +143,7 @@ mvn spring-boot:run
 cd apps/order-and-sell-service
 mvn spring-boot:run
 
-# Terminal 4: Auth service (migrations run on startup)
+# Terminal 4: Auth service (schema must already exist)
 cd apps/auth-service
 npm run start:dev
 ```
@@ -165,7 +160,7 @@ If you prefer to use Docker Compose for databases:
    docker compose -f infrastructure/docker-compose/docker-compose.local.yml up -d db
    ```
 
-   This creates the `trading_season` database on `localhost:5432` with all required migrations applied.
+   This creates the `trading_season` database on `localhost:5432` with the canonical schema applied.
 
 3. Start all services with the startup script:
 
@@ -180,7 +175,7 @@ After startup, verify that the auth tables exist in `trading_season`. Connect pg
 
 ```sql
 -- Verify user_accounts table exists and check registered users
-SELECT user_id, email, user_role, account_status, created_at
+SELECT user_id, email, user_role, created_at
 FROM user_accounts
 ORDER BY created_at DESC;
 ```
@@ -194,18 +189,18 @@ Synthetic market data is required for the trading simulation. Run the complete r
 ```powershell
 $freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
 
-apps/market-data/db/setup-market-data.ps1 `
+apps/market-data/db/scripts/powershell/setup-market-data.ps1 `
   -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
   -AvailableDiskGb $freeDiskGb
 ```
 
 For a smaller test archive (e.g., 2 days of data), add `-StartDate 2026-01-05 -EndDate 2026-01-06`.
 
-For a fresh database, add `-InitializeDisposableDatabase` to drop and recreate business tables. Add `-Regenerate` to replace an incompatible archive.
+For a fresh database, run `setup-database.ps1` first on an empty public schema. Add `-Regenerate` to replace an incompatible archive.
 
 **On first run**, this script will:
 1. Create a Python virtual environment at `apps/market-data/db/.venv`
-2. Install dependencies from `apps/market-data/db/scripts/requirements.txt`
+2. Install dependencies from `apps/market-data/db/scripts/python/requirements.txt`
 3. Generate synthetic market data for the year 2026
 4. Validate the generated archive
 5. Import into PostgreSQL (raw ticks stay in Parquet; candles load to the database)
@@ -220,9 +215,10 @@ See the [development guide](docs/guides/development.md) for additional commands,
 | --- | --- | --- | --- |
 | Client UI | `apps/client-ui` | 4200 | Login, registration, dashboard with live market data |
 | Auth Service | `apps/auth-service` | 3001 | Email/password authentication, RS256 token issuance, refresh token rotation |
-| Holdings and Trade Service | `apps/holdings-and-trade-service` | 8081 | Order submission, validation, execution; holdings and account management |
-| Order and Sell Service | `apps/order-and-sell-service` | 8082 | User profile queries, market data access |
-| Market Data | `apps/market-data` | — | Shared database migrations and synthetic market data tooling |
+| Order and Sell Service | `apps/order-and-sell-service` | 8081 | Order submission, validation and execution; order history; instrument reference data |
+| Holdings and Trade Service | `apps/holdings-and-trade-service` | 8082 | User profiles, accounts, holdings, cash movements, market data |
+| Market Data | `apps/market-data` | — | Canonical database schema and synthetic market data tooling |
+| Shared UI Components | `apps/client-ui/shared-ui-components` | — | Local Angular components compiled into Client UI |
 | Reporting | `docs/reference/reporting.md` | — | Proposed analytics and portfolio performance reporting |
 
 ## Documentation
@@ -244,13 +240,17 @@ Review the [documentation index](docs/README.md) for all guides and references. 
 
 # Business database ERD
 
-Canonical relationship diagram for the business SQL schema after V001, V002 and V003. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
+Canonical relationship diagram for all 20 current application tables after V001 and V002. SQL defines exact columns and constraints. See the [database reference](docs/reference/database.md) for ownership, initialization, and change rules.
 
-The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change.
+The optional instruments.simulated_stock_symbol links an instrument to a simulator stock. Market data belongs to a simulation session and stock. Keep this diagram synchronized when schema relationships change. Apply V002 after V001 for the saved watchlist; see the [watchlist migration](docs/reference/database.md#watchlist-migration).
 
 ```mermaid
 erDiagram
+    user_accounts ||--|| users : "credentials for"
+    user_accounts ||--o{ refresh_tokens : issues
     users ||--o{ accounts : owns
+    users ||--o{ user_watchlist : saves
+    stocks ||--o{ user_watchlist : appears_in
 
     stocks o|--o| instruments : "optionally powers"
 
@@ -266,6 +266,7 @@ erDiagram
     stocks ||--o{ market_ticks : traded_as
     stocks ||--o{ candles : aggregated_as
 
+    accounts ||--o{ portfolio_valuations : values
     accounts ||--o{ holdings : has
     instruments ||--o{ holdings : held_as
     accounts ||--o{ orders : submits
@@ -279,11 +280,51 @@ erDiagram
     instruments ||--o{ holding_movements : changes
     fills ||--o| holding_movements : creates
 
-    users {
+    user_accounts {
         UUID user_id PK
         TEXT email UK
+        TEXT password_hash
         TEXT user_role
         TEXT account_status
+        INTEGER failed_login_attempts
+        TIMESTAMPTZ locked_until
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+    user_watchlist {
+        UUID user_id PK, FK
+        VARCHAR symbol PK, FK
+        TIMESTAMPTZ created_at
+    }
+    refresh_tokens {
+        UUID id PK
+        UUID user_id FK
+        TEXT token_hash UK
+        TIMESTAMPTZ issued_at
+        TIMESTAMPTZ expires_at
+        TIMESTAMPTZ revoked_at
+        UUID replaced_by
+    }
+    users {
+        UUID user_id PK, FK
+        TEXT first_name
+        TEXT middle_name
+        TEXT last_name
+        TEXT ssn
+        TEXT address
+        DATE date_of_birth
+        TEXT trader_level
+        NUMERIC available_funds
+        INTEGER session_timeout_minutes
+        NUMERIC execution_buffer_percent
+        TIMESTAMPTZ last_activity_at
+        TIMESTAMPTZ created_at
+    }
+    portfolio_valuations {
+        BIGINT valuation_id PK
+        INTEGER account_id FK
+        TIMESTAMPTZ observed_at
+        NUMERIC portfolio_value
     }
     simulation_sessions {
         BIGINT id PK

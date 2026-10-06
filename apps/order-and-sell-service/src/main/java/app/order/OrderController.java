@@ -17,15 +17,14 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * REST endpoints for orders (KAN-95, KAN-47): submitting one, and reading
- * back the caller's own.
+ * REST endpoints for orders (KAN-95, KAN-47, DUA-63): submitting one, and
+ * reading back the caller's own.
  *
- * <p><b>Known gap:</b> the read endpoint is scoped to the caller by the
- * bearer token's {@code sub}, but submission is not.
- * {@link OrderRequest#accountId()} is still taken from the request body
- * as-is, with no check that the caller owns that account, so a valid token
- * can place an order on someone else's account. Don't build anything
- * downstream that assumes submission is already ownership-checked.
+ * <p>Both endpoints are scoped to the bearer token's {@code sub}. Submission
+ * still takes {@link OrderRequest#accountId()} from the request body, because
+ * a user may own several accounts and has to say which one the order is for,
+ * but {@link OrderService#submitOrder} now refuses an account the caller does
+ * not own, so the body can no longer name someone else's account.
  */
 @RestController
 @RequestMapping("/api/orders")
@@ -38,20 +37,21 @@ public class OrderController {
     }
 
     /**
-     * Submits a buy or sell order (KAN-93). Always returns 201 with the
-     * order's outcome: {@code FILLED} when it executed and the user's
-     * available funds moved, or {@code REJECTED} with a reason — a
-     * trading-rule rejection is a successful response describing a failed
-     * trade, not an HTTP error. See {@link OrderService#submitOrder} for
-     * when this throws instead.
+     * Submits a buy or sell order (KAN-93). Returns 201 with the order's
+     * outcome: {@code FILLED} when it executed and the user's available funds
+     * moved, or {@code REJECTED} with a reason — a trading-rule rejection is a
+     * successful response describing a failed trade, not an HTTP error. See
+     * {@link OrderService#submitOrder} for when this throws instead.
      *
      * @param request the order, validated by Bean Validation before this runs
+     * @param jwt     the verified access token identifying the caller
      * @return the order's final status and details
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public OrderResponse submitOrder(@Valid @RequestBody OrderRequest request) {
-        Order order = orderService.submitOrder(request);
+    public OrderResponse submitOrder(@Valid @RequestBody OrderRequest request,
+                                     @AuthenticationPrincipal Jwt jwt) {
+        Order order = orderService.submitOrder(request, AuthenticatedUser.from(jwt).userId());
         return OrderResponse.from(order);
     }
 
@@ -71,5 +71,3 @@ public class OrderController {
                 .toList();
     }
 }
-
-

@@ -16,6 +16,7 @@ import org.springframework.web.context.WebApplicationContext;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -115,5 +116,22 @@ class UserControllerIntegrationTest {
         mockMvc.perform(get("/api/users/me"))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void meReportsAcceptedTermsWhenAcceptanceTimestampExists() throws Exception {
+        UUID userId = UUID.randomUUID();
+        registerUser(userId, "alice", "alice@example.com");
+        OffsetDateTime acceptedAt = OffsetDateTime.parse("2026-10-05T20:00:00Z");
+
+        jdbcTemplate.update(
+                "UPDATE users SET terms_accepted_at = ? WHERE user_id = ?",
+                acceptedAt,
+                userId);
+
+        mockMvc.perform(get("/api/users/me").with(tokenFor(userId, "alice@example.com")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.termsAccepted").value(true))
+                .andExpect(jsonPath("$.termsAcceptedAt").value("2026-10-05T20:00:00Z"));
     }
 }

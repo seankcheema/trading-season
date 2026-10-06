@@ -4,7 +4,7 @@ This reference documents the HTTP contracts for each implemented microservice. E
 
 **Critical:** See [Architecture](architecture.md) for service responsibilities after the KAN-47/KAN-139 restructuring fix. Order and Sell Service (port 8081) handles order operations and is called by Client UI. Holdings and Trade Service (port 8082) provides user profile and account queries.
 
-## Auth Service (NestJS) — port 3001
+## Auth Service (NestJS) - port 3001
 
 Complete implementation. No `/api` prefix.
 
@@ -47,12 +47,12 @@ This service is the primary backend for Client UI. It implements order operation
 - `email` (must match token; ≤100 chars)
 - `firstName`, `lastName`, `address` (nonblank)
 - `middleName` (optional)
-- `ssn` (XXX-XX-XXXX format)
+- `ssn` (NNN-NN-NNNN format)
 - `dateOfBirth` (must be in past)
 - `traderLevel` (BEGINNER, INTERMEDIATE, or ADVANCED)
 - `availableFunds` (≥5000.00; max 2 decimal places)
 
-**Profile response fields:** `GET /api/users/me` and `PUT /api/users/me/terms-acceptance` return the caller's profile with `userId`, `email`, `firstName`, `middleName`, `lastName`, `address`, `dateOfBirth`, `traderLevel`, `availableFunds`, `userRole`, `accountStatus`, `termsAccepted`, `termsAcceptedAt`, and `createdAt`.
+**Profile response fields:** `GET /api/users/me` and `PUT /api/users/me/terms-acceptance` return the caller's profile with `userId`, `email`, `firstName`, `middleName`, `lastName`, `address`, `dateOfBirth`, `traderLevel`, `availableFunds`, `userRole`, `termsAccepted`, `termsAcceptedAt`, and `createdAt`.
 
 **Terms acceptance:** `PUT /api/users/me/terms-acceptance` stores the first acceptance timestamp on the caller's profile and returns the updated profile. Once `termsAccepted` is `true`, the current backend keeps that stored acceptance and the UI should not prompt again unless the product later versions the terms.
 
@@ -83,18 +83,25 @@ This service is the primary backend for Client UI. It implements order operation
 
 | Method | Path | Request | Success |
 | --- | --- | --- | --- |
-| POST | /api/orders | Bearer token + JSON: `accountId`, `instrumentId`, `orderType` (BUY or SELL), `quantity` (> 0), `indicativePrice` (> 0), optional `bufferPercent` (>= 0), `clientReference` (UUID idempotency key) | 201: `orderId`, `status`, `orderType`, `quantity`, `indicativePrice`, `rejectionReason`, `submittedAt`, `resolvedAt` |
+| POST | /api/orders | Bearer token + JSON: `accountId`, `instrumentId`, `orderType` (BUY or SELL), `quantity` (> 0), `indicativePrice` (> 0), optional `bufferPercent` (>= 0), `clientReference` (UUID idempotency key), optional `simulatedAt` (ISO-8601 timestamp with offset) | 201: `orderId`, `instrumentId`, `accountId`, `status`, `orderType`, `quantity`, `indicativePrice`, `rejectionReason`, `submittedAt`, `resolvedAt`, `simulatedAt` |
 | GET | /api/orders | Bearer token | 200: array of the caller's orders, newest first, each in the same shape as the POST response |
+| GET | /api/instruments | Bearer token | 200: array of every instrument by ticker, each with `instrumentId`, `ticker`, `name`, `assetClass`, `market`, `currency`, `tradable`, `simulatedStockSymbol` |
 
-**Order lifecycle (KAN-93):** an order is created `PENDING`, then the trading rules run: the user's account is active, a buy is affordable, a sell is covered by holdings, and the instrument is tradable. A failed rule leaves the order `REJECTED` with a `rejectionReason`. Otherwise the fill is written and the order moves to `FILLED`, its final state. Every transition is recorded in `audit_trail`. A rejection is still a 201 response: it describes a failed trade, not a failed request.
+**Order lifecycle (KAN-93):** an order is created `PENDING`, then the trading rules run: the caller still has a credential record, a buy is affordable, a sell is covered by holdings, and the instrument is tradable. A failed rule leaves the order `REJECTED` with a `rejectionReason`. Otherwise the fill is written and the order moves to `FILLED`, its final state. Every transition is recorded in `audit_trail`. A rejection is still a 201 response: it describes a failed trade, not a failed request. A missing credential record rejects the trade without fill, cash-transaction, or holding-movement rows. Account activation status remains removed. Persistence failures roll back the submission and its ledger writes together; integrity conflicts return 409.
+
+Orders record optional `simulatedAt` from the ticket's current selected replay time. Moving the simulation backward is supported. Real `submittedAt`, `resolvedAt`, and `fills.filled_at` remain server-generated audit times. Old clients and historical orders may omit simulated time; recent activity then uses real execution time. Idempotent retries preserve the original timestamp. The [canonical schema](../../apps/market-data/db/migrations/V001__Initialize_database.sql) includes this column. Persisted portfolio observations continue to use real audit dates. When a simulation clock is available, the dashboard projects holdings, shared cash, net worth, and portfolio history at that selected clock instead. Future filled trades are hidden and their effects are reversed from the displayed balances; rewinding never executes an order again. Current funding is the starting budget, so deposits and withdrawals do not rewind. History combines effective share quantities with replay candles, with acquisition cost as the fallback where no earlier quote exists. Positions without dated orders are starting positions. The server still owns the actual balances and validates new submissions against them; navigation changes only the view.
 
 **Funds:** cash belongs to the user, not to an account. A buy is rejected when `quantity * indicativePrice` exceeds the caller's `availableFunds`, the value returned by `GET /api/users/me`. A filled buy decreases `availableFunds` by that amount and a filled sell increases it. `accounts.cash_balance` is not moved. Orders currently fill at `indicativePrice`; see [OrderExecutionService](../../apps/order-and-sell-service/src/main/java/app/order/execution/OrderExecutionService.java).
+
+The dashboard recent transactions merges cash transfers with filled orders across the caller's accounts, ordered by `simulatedAt` for executions (falling back to `resolvedAt` when absent) and `createdAt` for cash transfers. It shows the latest 20 entries, excluding trades whose effective time is later than the simulation cursor. Cash transfers remain visible as changes to the starting budget. Instrument reference data supplies the stock symbol; trade amounts are `quantity * indicativePrice`, negative for buys and positive for sells. Pending and rejected orders are excluded. Order history already stores these timestamps; showing cash and executions requires no additional migration. Selected replay time is stored separately in `orders.simulated_at`.
 
 **Order history:** `GET /api/orders` returns every order placed on any account the caller owns, newest `submittedAt` first, ties broken by descending `orderId`. The owner comes from the token's `sub`, so there is no parameter that can name another user's orders; a caller who has never traded gets `[]`, not a 404.
 
 **Idempotency:** resubmitting the same `accountId` and `clientReference` returns the original order's outcome without executing again.
 
-**Known gap:** on submission, `accountId` is taken from the request body and is not yet checked against the token's `sub`, so a valid token can place an order on another user's account. The listing endpoint is not affected: it is scoped to the caller. See [OrderController](../../apps/order-and-sell-service/src/main/java/app/order/OrderController.java).
+**Ownership:** `accountId` stays in the request body, because a user may own several accounts and has to say which one the order is for, but submission now refuses an account the caller does not own. A `accountId` belonging to another user is a 403 and an `accountId` that does not exist is a 404; neither writes an order row. Ownership is settled before the idempotency lookup, so a caller cannot read back the outcome of an order on an account that is not theirs. An `instrumentId` that does not exist is a 400 — distinct from an instrument that exists but is closed to trading, which is a 201 carrying a `REJECTED` order. See [OrderController](../../apps/order-and-sell-service/src/main/java/app/order/OrderController.java).
+
+**Instrument lookup:** an order names an `instrumentId`, but market data is keyed by symbol and holdings come back by symbol, so `GET /api/instruments` is how a client turns the symbol a trader picked into the id to submit. Non-tradable instruments are listed and flagged rather than hidden, because a position can outlive its instrument being suspended. Match on `simulatedStockSymbol` first, which is the symbol `GET /api/market/snapshot` reports, and fall back to `ticker` for an instrument nothing simulates.
 
 ### Planned trading endpoints
 
@@ -106,7 +113,7 @@ These endpoints are **NOT YET IMPLEMENTED**. [OrderController](../../apps/order-
 
 Cash movements are not served here. They belong to the Holdings and Trade Service, which owns the balance they move; see [Cash](#cash).
 
-See [Order and Sell Service documentation](services/order-and-sell-service.md) for implementation status.
+See [Order and Sell Service documentation](../../apps/order-and-sell-service/README.md) for implementation status.
 
 ### Errors
 
@@ -139,12 +146,12 @@ This service provides user registration, profile queries, account and holdings q
 - `email` (must match token; ≤100 chars)
 - `firstName`, `lastName`, `address` (nonblank)
 - `middleName` (optional)
-- `ssn` (XXX-XX-XXXX format)
+- `ssn` (NNN-NN-NNNN format)
 - `dateOfBirth` (must be in past)
 - `traderLevel` (BEGINNER, INTERMEDIATE, or ADVANCED)
 - `availableFunds` (≥5000.00; max 2 decimal places)
 
-**Profile response fields:** `GET /api/users/me` and `PUT /api/users/me/terms-acceptance` return the caller's profile with `userId`, `email`, `firstName`, `middleName`, `lastName`, `address`, `dateOfBirth`, `traderLevel`, `availableFunds`, `userRole`, `accountStatus`, `termsAccepted`, `termsAcceptedAt`, and `createdAt`.
+**Profile response fields:** `GET /api/users/me` and `PUT /api/users/me/terms-acceptance` return the caller's profile with `userId`, `email`, `firstName`, `middleName`, `lastName`, `address`, `dateOfBirth`, `traderLevel`, `availableFunds`, `userRole`, `termsAccepted`, `termsAcceptedAt`, and `createdAt`.
 
 **Terms acceptance:** Holdings and Trade Service persists the acceptance timestamp on the caller's `users` row. Order and Sell Service reports the same fields read-only from the shared schema.
 
@@ -171,6 +178,21 @@ Every endpoint resolves the owner from the token's `sub`. An account id in a pat
 An account is returned as `accountId`, `userId`, `name`, `cashBalance`, `openedDate` and `currency`. Registration opens a default account named `Main Account`, so a new user starts with one empty account rather than none.
 
 A holding is returned as `holdingId`, `accountId`, `instrumentId`, `symbol`, `name`, `quantity`, `averageCost` and `updatedAt`. Neither `symbol` nor `averageCost` is stored on the holding row: the symbol comes from the instrument, preferring `simulated_stock_symbol` so it matches what the market endpoints report, and `averageCost` is derived from `holding_movements` joined to `fills`, weighted by quantity over acquisitions only. An instrument that cannot be resolved reports its id as the symbol, and a position with no acquisition history reports an average cost of 0.
+
+### Portfolio valuation history
+
+These authenticated endpoints use the same account ownership checks as holdings (403 for another user's account, 404 for a missing account). See [PortfolioValuationController](../../apps/holdings-and-trade-service/src/main/java/app/account/PortfolioValuationController.java).
+
+| Method | Path | Request | Success |
+| --- | --- | --- | --- |
+| GET | /api/accounts/{accountId}/portfolio-history | Bearer token; optional `timeframe` (default `1D`; `1D`, `5D`, `1W`, `1M`, `1Y`) | 200: chronological `{timestamp, value}` observations |
+| POST | /api/accounts/{accountId}/portfolio-valuations | Bearer token; no valuation data required | 200: server-calculated `{timestamp, value}`, or an empty body before any purchase |
+
+`timestamp` is the actual UTC observation time, independent of the simulated market timestamp. Value is the sum of held quantities multiplied by current replay prices, with average acquisition cost as the fallback for unavailable quotes; shared cash is excluded. Without an active simulation context, the dashboard requests capture after a filled order. In simulation mode it recalculates the projected chart; the background job continues capturing real observations. A background job also records eligible accounts once per minute, including liquidated accounts at zero; scheduled captures in a minute already recorded are coalesced. Rejected orders do not trigger capture.
+
+History begins with the first capture after deployment, including a current baseline for existing portfolios. No historical prices are fabricated from replay candles. Empty accounts have no observations until the ledger contains an acquisition. Lookbacks and buckets follow [MarketTimeframe](../../apps/holdings-and-trade-service/src/main/java/app/market/MarketTimeframe.java), ending at real current time; each bucket retains its latest observation and actual timestamp. The chart connects recorded values into a continuous line and carries the latest value forward to the current time. When the first acquisition falls within the selected range, history includes zero from the range start until immediately before that execution, using the existing `fills.filled_at` timestamp. These baseline and carry-forward endpoints are presentation values, not additional stored observations. Earlier investments outside the selected range do not receive a zero baseline. Unsupported timeframes return 400. The dashboard refreshes each minute, on selection/range changes, and after filled orders; capture failures are displayed separately from successful trades and retried on the next refresh. Net Worth and Portfolio Value display exactly two decimal places.
+
+The [canonical schema](../../apps/market-data/db/migrations/V001__Initialize_database.sql) includes the portfolio observations table. There is no automatic Java migration runner.
 
 ### Cash
 
@@ -222,7 +244,7 @@ The Angular UI (port 4200) orchestrates these services:
    - POST /auth/logout (end session)
 
 2. **Profile, accounts, cash and market data:** Calls to Holdings and Trade Service
-   - Use dev proxy ([proxy.conf.json](../../apps/client-ui/proxy.conf.json)), which forwards all `/api/*` to port 8082
+   - Use dev proxy ([proxy.conf.json](../../apps/client-ui/proxy.conf.json)), which forwards `/api/*` to port 8082 except the trading paths below
    - Bearer token from Auth Service is sent in `Authorization: Bearer` header
    - POST /api/auth/register (submit profile after auth registration)
    - GET /api/users/me (profile: the shared cash balance and the name the header initials come from)
@@ -234,9 +256,14 @@ The Angular UI (port 4200) orchestrates these services:
    - GET /api/market/candles (dashboard charts)
    - GET /api/market/stream (real-time prices)
 
-3. **No calls to Order and Sell Service**
-   - Nothing in the UI or dev proxy targets port 8081
-   - Order submission is not wired yet; the dashboard logs the request instead of sending it
+3. **Trading:** Calls to Order and Sell Service
+   - The dev proxy forwards `/api/orders` and `/api/instruments` to port 8081; everything else under `/api` goes to port 8082. In containers [nginx.conf](../../apps/client-ui/nginx.conf) splits the same two paths off to `order-and-sell-service:8081`.
+   - GET /api/instruments (resolves the trader's symbol to an `instrumentId`)
+   - POST /api/orders (submit a buy or sell from the dashboard dialog or full-screen market ticket)
+   - GET /api/orders (the caller's order history)
+   - The full-screen market page at `/dashboard/markets/:symbol` uses the same OrderService, account data, simulation projections, and shared account/time controls as the dashboard. An owned `accountId` query parameter preserves selection; direct visits default to the first owned account. Available cash previews the displayed balance minus the selected buy quantity's estimated cost, floored at zero; changing the slider or quantity updates the preview without changing account balances or the ticket's buying limit. Sell drafts show the displayed balance. Its Recent Orders tab shows the selected account's latest 20 orders across all stocks at or before the simulated cursor, including pending and rejected orders; deposits and withdrawals are excluded.
+
+The market page header places a notification bell and the dashboard-style profile menu after the time control. The profile menu opens the shared Settings dialog or logs out through AuthService. The notification panel currently shows an empty state; no persistent notification feed is connected.
 
 Market prices and instrument names are shared simulation data. Everything else the dashboard shows is the signed-in user's own: accounts, each account's holdings, the shared cash balance and the funding history all come from the endpoints above, scoped to the token's `sub`.
 
@@ -271,7 +298,7 @@ The Java backend has no login and never receives a password. Sign-up and sign-in
 | POST /api/auth/register | Bearer access token. JSON: email, firstName, optional middleName, lastName, ssn, address, dateOfBirth, traderLevel, availableFunds | 201: userId, email |
 | GET /api/users/me | Bearer access token | 200: caller's profile without ssn |
 
-Registration takes no username and no password; the caller is identified by the bearer token. It requires a valid email up to 100 characters, nonblank firstName, lastName and address, an ssn in XXX-XX-XXXX form, a past dateOfBirth, a traderLevel of BEGINNER, INTERMEDIATE or ADVANCED, and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/holdings-and-trade-service/src/main/java/app/auth/RegisterRequest.java).
+Registration takes no username and no password; the caller is identified by the bearer token. It requires a valid email up to 100 characters, nonblank firstName, lastName and address, an ssn in NNN-NN-NNNN form, a past dateOfBirth, a traderLevel of BEGINNER, INTERMEDIATE or ADVANCED, and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/holdings-and-trade-service/src/main/java/app/auth/RegisterRequest.java).
 
 Errors use an error string: 400 for request validation, 409 for a duplicate account or email, 403 when the request email differs from the token's email claim, and 401 for a missing or untrusted token. See [exception mapping](../../apps/holdings-and-trade-service/src/main/java/app/auth/GlobalExceptionHandler.java).
 
@@ -287,7 +314,7 @@ The token's sub is the only identifier shared with the auth service. It becomes 
 2. Create credentials with POST /auth/register on the auth service and keep the returned accessToken.
 3. Call POST /api/auth/register on the Java backend with that token and the profile fields. The password and confirmation stay with step 2.
 
-Registration requires an email up to 100 characters that equals the token's email claim, ignoring case; nonblank names and address; ssn in XXX-XX-XXXX form; a past dateOfBirth; traderLevel BEGINNER, INTERMEDIATE or ADVANCED; and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/holdings-and-trade-service/src/main/java/app/auth/RegisterRequest.java).
+Registration requires an email up to 100 characters that equals the token's email claim, ignoring case; nonblank names and address; ssn in NNN-NN-NNNN form; a past dateOfBirth; traderLevel BEGINNER, INTERMEDIATE or ADVANCED; and availableFunds of at least 5000.00 with at most two decimal places. See [registration constraints](../../apps/holdings-and-trade-service/src/main/java/app/auth/RegisterRequest.java).
 
 ### Errors
 
@@ -301,11 +328,11 @@ Errors use an `{"error": "..."}` body. See [exception mapping](../../apps/holdin
 | 404 | GET /api/users/me before the caller has registered |
 | 409 | The caller already registered, or the email belongs to another account |
 
-## Java stock market API: port 8081
+## Java stock market API
 
-These public endpoints expose seeded stock data for the dashboard market ticker, instrument popup, and full-screen `/dashboard/markets/:symbol` view. The full-screen view combines candle history with live stream prices and supports `1D`, `5D`, `1M`, and `1Y`; chart modes, technical indicators, and peer comparison are computed in the browser. Its metrics, overview signals, news, AI responses, cash balance, held shares, and order preview are demo data rather than API responses. Buy and Sell only calculate a local preview and do not call an order endpoint. Account, portfolio, holding, transaction, and order integration remains outside this slice, and the dashboard portfolio chart still uses mock data.
+These public endpoints expose seeded stock data for the dashboard market ticker, instrument popup, and full-screen `/dashboard/markets/:symbol` view. Both Java services implement them identically; the UI reaches them on port 8082, because only the trading paths are routed to port 8081. The full-screen view keeps its top stock summary focused on the primary symbol when comparison is enabled; the compared symbol remains in the comparison control and chart. Headline bid and ask values use neutral text, and the headline price updates without a flashing gain/loss highlight. The account dropdown, available cash, and portfolio value share an outer overview box. Separate balance cards align beneath the dropdown, with a subtle warm amber tint for cash and a subtle cyan tint for portfolio value. It combines candle history with live stream prices and supports `1D`, `5D`, `1M`, and `1Y`; chart modes, technical indicators, and peer comparison are computed in the browser. Its metrics, overview signals, news, and AI responses remain demo data. Cash, held shares, and recent orders come from authenticated APIs and follow the dashboard's simulation-time rules. Both pages submit through [Trading endpoints](#trading-endpoints). The dashboard portfolio chart reads real-time account observations through [Portfolio valuation history](#portfolio-valuation-history).
 
-Planned protected trading endpoints will use the [token verification](#token-verification) described above: clients send the auth service access token as a bearer token, and the Java backend scopes account and order resources to the token's sub.
+Protected trading endpoints use the [token verification](#token-verification) described above: clients send the auth service access token as a bearer token, and the Java backend scopes account and order resources to the token's sub.
 
 ### Stock endpoints
 
@@ -387,20 +414,64 @@ Refresh rotates the stored token; replay of an unusable stored token revokes the
 
 ## UI integration
 
+The dashboard stock search sits above Portfolio Value and uses the placeholder "Search for a stock". Below Recent Transactions, the Watch List preview displays all available market stocks with company names, live prices, dollar changes, and percentage changes in a scrollable list under an Asset/Price/Change $/Change % header divider. Watch-list prices update without a flashing highlight. Watch-list headers stay on one line, and rows align with Recent Transactions using the same edge spacing and row dividers. It is a placeholder without a watch-list API or saved user selections; selecting a stock opens the trading dialog.
+
+Order results from the dashboard buy/sell dialog and full-screen market ticket appear as bottom-center toasts that dismiss automatically: fills use success styling, while rejections and request failures use error styling. Only the newest notification is shown: a new result replaces the previous toast, replays a 240 ms upward slide and fade-in, and resets its timer, so notifications never stack. Reduced-motion preferences disable the entrance animation. Notifications remain visible for two seconds, then fade over 400 ms; they survive closing the dialog and respect reduced-motion preferences. The dashboard Buy/Sell button shows a loading circle and Buying/Selling label; the market ticket shows Submitting. Both stay disabled for at least one second after a click, or longer while the request is pending. It becomes available again afterward when the bounded quantity is positive. Reduced-motion preferences disable spinner rotation. Each subsequent click places a new order with a fresh idempotency key; the ticket stays open and refreshes available cash and holdings.
+
+Both the dashboard order dialog and the full-screen market ticket normalize quantity input immediately to whole shares between zero and the current maximum. Buys are capped by the current persisted available cash divided by a valid positive price; sells are capped by the current persisted whole shares held in the selected account. Both tickets use current balances, including every completed trade regardless of the replay cursor. Moving the clock backward or forward changes portfolio and history views, but never restores cash or shares for another trade. Invalid limits become zero, and changing prices, cash, holdings, symbols, or sides preserves valid quantities while clamping excessive ones. Zero cannot be executed. Shared header dropdowns close on Escape and return focus to their trigger. Both tickets capture the selected account, price, quantity, side, and simulated timestamp at submission; backend validation remains authoritative. The market ticket resets quantity when the account or symbol changes. It disables submission until account, history, catalogue, and market data are ready, prevents concurrent submissions, and retains a one-second cooldown. Filled orders refresh cash and holdings for the submitted account; a failed balance refresh retains the fill outcome, blocks further trading until balances recover, and offers a refresh retry without another order POST.
+
 The Angular UI authenticates only against the NestJS auth service. See [AuthService](../../apps/client-ui/src/app/core/auth/auth.service.ts).
 
 - Sign-in posts email and password to POST /auth/login and stores the token response in browser localStorage.
 - Registration first posts email and password to POST /auth/register. If that returns 409, the UI tries POST /auth/login with the same credentials, so a user whose earlier profile step failed can resubmit. Once it has tokens, the UI posts the profile to Java POST /api/auth/register with a Bearer access token: email, firstName, middleName, lastName, dateOfBirth, ssn, address, traderLevel, availableFunds. It sends no password or username. If the profile step fails, the UI clears the stored session.
-- The dashboard route requires a stored session and refreshes an expired access token through POST /auth/refresh. Sign-out posts the refresh token to POST /auth/logout.
-- The dashboard reads and changes the signed-in user's accounts and cash through the planned account endpoints above, which the Java backend does not serve yet; see [AccountStore](../../apps/client-ui/src/app/dashboard/accounts/account-store.service.ts) and [the models it expects](../../apps/client-ui/src/app/dashboard/accounts/account.models.ts). Cash belongs to the user, not to an account: it is availableFunds from GET /api/users/me, every account shares it, and deposits and withdrawals move it through /api/me/cash-transactions without naming an account. An account holds positions only, and its portfolio is exactly its holdings, so an account has one portfolio and a new account starts with none. Net worth is availableFunds plus the value of every account's holdings; the Portfolio Value card and assets table show the selected account's holdings. An account is returned as accountId, name and openedDate; a holding as symbol, quantity and averageCost, valued at the live price or at averageCost when there is none; a cash transaction as cashTransactionId, a positive amount, reason and createdAt. After every successful change the UI reloads the affected data rather than trusting the response body. It maps 400 to the backend's error string, 403 and 404 to an unavailable account, and 409 or 422 to a duplicate account name or, for withdrawals, insufficient funds. The UI lists only the accounts these endpoints return for the caller, requests holdings only for those, and sends no change for an account id outside that set; the backend must still enforce ownership from the token's sub.
+- The dashboard route requires a stored session. Route guards and authenticated business requests renew expired access tokens through POST /auth/refresh, sharing one in-flight refresh even when chart requests are cancelled. A business request returning 401 gets at most one retry with renewed tokens; ordinary backend errors are not retried by authentication. Rejected or missing refresh credentials end the session and protected requests redirect to login. Network and refresh-service failures retain the session and surface a retryable error. Late refresh responses cannot restore a logged-out session or overwrite a newer login. Sign-out posts the refresh token to POST /auth/logout. Tokens are stored in local storage, not session cookies; renewal does not extend the inactivity timeout.
+- The dashboard reads and changes the signed-in user's accounts and cash through the planned account endpoints above, which the Java backend does not serve yet; see [AccountStore](../../apps/client-ui/src/app/dashboard/accounts/account-store.service.ts) and [the models it expects](../../apps/client-ui/src/app/dashboard/accounts/account.models.ts). Cash belongs to the user, not to an account: it is availableFunds from GET /api/users/me, every account shares it, and deposits and withdrawals move it through /api/me/cash-transactions without naming an account. An account holds positions only, and its portfolio is exactly its holdings, so an account has one portfolio and a new account starts with none. Net worth is availableFunds plus the value of every account's holdings; the Portfolio Value card and assets table show the selected account's holdings. The Assets table hides stocks whose total value (quantity times the current price, or average cost when no live price exists) is zero. An account is returned as accountId, name and openedDate; a holding as symbol, quantity and averageCost, valued at the live price or at averageCost when there is none; a cash transaction as cashTransactionId, a positive amount, reason and createdAt. After every successful change the UI reloads the affected data rather than trusting the response body. It maps 400 to the backend's error string, 403 and 404 to an unavailable account, and 409 or 422 to a duplicate account name or, for withdrawals, insufficient funds. The UI lists only the accounts these endpoints return for the caller, requests holdings only for those, and sends no change for an account id outside that set; the backend must still enforce ownership from the token's sub.
 - While a session is stored, the UI signs the user out after 10 minutes without mouse, keyboard, scroll or touch input, using the same POST /auth/logout call, then shows the login page with `?reason=inactive`. The limit can be set to 5, 10, 15, 30 or 60 minutes in the dashboard's Settings dialog, opened from the profile menu, and is kept per browser. The last activity time is shared between tabs and survives a reload. This is enforced by the UI only; neither service tracks inactivity. See [SessionTimeoutService](../../apps/client-ui/src/app/core/auth/session-timeout.service.ts).
 
 Authentication, inactivity timeout, account workflows, and the full-screen market journey are covered end to end by the [Playwright suite](../../apps/client-ui/e2e), which drives the real application against a stand-in for both services. Its stand-in reproduces the contracts on this page, so update the two together.
 - After 3 rejected sign-ins in a row (401 from POST /auth/login), the login form locks for 10 minutes: it shows a lockout notice, disables submission with a countdown, and sends no further login requests until the time is up. Network errors and 5xx responses do not count. A successful sign-in or the lock running out resets the count. The count and lock are kept per browser in localStorage, shared between tabs and kept across a reload. This is enforced by the UI only and is separate from the auth service's own account lockout (5 failed attempts lock the account for 15 minutes; see [UsersService](../../apps/auth-service/src/users/users.service.ts)). See [LoginLockoutService](../../apps/client-ui/src/app/core/auth/login-lockout.service.ts).
-- While a session is stored, the UI signs the user out after 10 minutes without mouse, keyboard, scroll or touch input, using the same POST /auth/logout call, then shows the login page with `?reason=inactive`. The limit can be set to 5, 10, 15, 30 or 60 minutes in the dashboard's Settings dialog, opened from the profile menu, and is kept per browser. The last activity time is shared between tabs and survives a reload. This is enforced by the UI only; neither service tracks inactivity. See [SessionTimeoutService](../../apps/client-ui/src/app/core/auth/session-timeout.service.ts).
 
 The registration, sign-in, failed sign-in lockout and inactivity timeout journeys are covered end to end by the [Playwright suite](../../apps/client-ui/e2e), which drives the real application against a stand-in for both services. Its stand-in reproduces the contracts on this page, so update the two together.
 
 ## Contract maintenance
 
 Update this reference and relevant tests in the same change as endpoint behavior. Proposed endpoints must be clearly labeled as planned or in progress until implemented. Key generation and environment setup belong in the [auth README](../../apps/auth-service/README.md); Java implementation details belong in source Javadocs.
+
+
+### Portfolio chart domains
+
+Candle responses include `rangeStart`, `rangeEnd`, and `tradingSessions` (`start`, `end` instants). For 1D the domain covers the selected session from 08:30 to the exclusive 15:00 closing boundary in America/Chicago. For 5D it covers the latest five seeded sessions, or the available sessions near the archive start. Month and year bounds subtract a calendar month or year in the market timezone, clamping month ends and respecting daylight saving time. Returned candle values still end at `marketTimestamp`.
+
+The dashboard portfolio chart uses these explicit domains: daily future time stays blank, five-day sessions occupy equal widths with overnight/weekend gaps omitted, and longer ranges use elapsed calendar time. The Portfolio Value percentage compares the current value with the opening observation in the selected timeframe, including the year opening value for 1Y, rather than holdings purchase cost. When the range begins before the first investment, the percentage uses the first positive portfolio observation in that range, skipping pre-investment zero baselines. Portfolio hover percentages use this same first positive observation as their baseline, comparing the hovered value rather than the current value. History with no positive observations, and loading or failed history, shows an unavailable percentage (—); equal values show +0.00%. Axis labels are independent of sample density and adapt to available width. Portfolio curves use monotone cubic interpolation between observations without overshoot. Execution boundaries remain sharp and zero baselines remain flat. Crowded portfolio execution points use a minimum eight-pixel horizontal display spacing, moving neighbouring points only as needed to preserve order. Clusters at the latest observation shift left to keep future time blank; spacing reduces uniformly when the elapsed range cannot fit all transitions. Positions adapt to plot width, while axis labels, observation timestamps, and values remain unchanged. Hover uses the displayed positions and reports underlying observations; interpolation and spacing change only presentation. Other chart consumers retain their existing rendering defaults.
+
+## Saved watchlist
+
+Holdings and Trade owns the signed-in user's single watchlist across accounts. Every endpoint requires a bearer token and resolves ownership exclusively from its verified subject.
+
+| Method | Path | Success |
+| --- | --- | --- |
+| GET | `/api/me/watchlist` | 200: array of `{ symbol, createdAt }`, sorted by addition time then symbol |
+| PUT | `/api/me/watchlist/{symbol}` | 200: saved entry; repeated adds preserve the original timestamp |
+| DELETE | `/api/me/watchlist/{symbol}` | 204, including when the entry is absent |
+
+Symbols are trimmed and uppercased. Adding an unknown seeded stock or adding without a business profile returns 404. Stars in the stock popup and fullscreen page share membership; the dashboard displays saved stocks using existing market prices. Writes update optimistically and roll back on failure. An unavailable quote is displayed explicitly, without a per-stock price request.
+
+## Client data refresh behavior
+
+Account, order, catalogue, and watchlist stores are shared across dashboard and fullscreen navigation and cleared synchronously on logout or token subject changes. Browser reloads start with empty memory caches. View entry revalidates orders, cash transactions, watchlist membership, and the market snapshot while retaining successful content. Account data is reused for up to one minute. Concurrent identical reads share one request.
+
+Each market view closes its previous live-price stream before replacing a snapshot and closes its active stream when leaving the page. Cached and revalidated snapshot emissions cannot leave additional connections open across navigation.
+
+Portfolio history is shared across dashboard navigation, retaining points and their domain per account, session, and timeframe for one minute. Matching loads are deduplicated; trades invalidate the affected account, context changes revalidate, and logout clears the cache. Ordinary portfolio and chart refreshes keep successful content in place without adding visible updating text that shifts the layout. Initial loads and retryable errors remain explicit. Advanced and popup charts also immediately reuse compatible completed candles while expired history or a new replay minute revalidates.
+
+The dashboard Assets list defaults to descending current market value (shares multiplied by the live price). Its sort control also supports asset symbol order; market ticks update values and their ordering locally.
+
+If live ticks arrive during snapshot revalidation, the response retains the newer live prices and recomputes change and percentage change using the snapshot's opening baseline. Closed streams cannot update cached quotes. Crossing into another trading day refreshes the snapshot to obtain the new session-open baseline before applying further live ticks.
+
+Candle history is cached for 60 seconds, with at most 64 completed entries, keyed by simulation session, normalized stock symbol, timeframe, and replay cursor minute. Popup charts, fullscreen primary/comparison charts, portfolio calculations, and holding sparklines reuse this cache. Stream ticks update prices locally; a new cursor minute requests fresh history. Explicit clock changes, new simulation sessions, and stream resynchronization invalidate market caches. Requests invalidated by a clock change are cancelled; obsolete results cannot restore the previous cursor.
+
+During a clock change, snapshot and candle reads wait for the shared clock request to finish before reading the new cursor. Incoming ticks are ignored until that seek completes. Ordinary live-minute changes request new history but do not discard a valid in-flight history response; only explicit invalidation makes it obsolete. A failed seek releases waiting reads with an error and allows retries at the unchanged cursor.
+
+Filled orders are inserted locally and trigger the existing targeted holdings/shared-cash refresh and portfolio refresh. Rejected orders do not refresh unchanged balances. Transfers refresh shared cash and the cash ledger; account creation/rename refresh the account list. Request revisions prevent reads started before a mutation from overwriting its newer state; an obsolete read joins or starts a replacement read. Mutation success remains distinct from refresh failure.
+
+Compatible successful charts and activity rows stay visible during refresh. Timeframe changes retain the previous chart range until replacement data arrives; switching stock, account, or simulation does not show another entity's history. Refresh failures retain successful content, report an error, and allow retry. Live charts no longer substitute generated placeholder history. News, AI content, and demo fullscreen metrics remain demo content.
