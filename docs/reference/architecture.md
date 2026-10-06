@@ -33,8 +33,17 @@ graph TB
     Auth --> BizDB
     OS --> BizDB
     HT --> BizDB
+    RC["Reporting consumer<br/>Python | group reporting-ingester<br/><br/>events as JSON lines<br/>report run every 15 min"]
+    RS["Reporting Service<br/>Flask | Port 8083<br/><br/>serves report runs"]
+    Files[("reporting_files volume<br/>events/*.jsonl<br/>runs/<id>/report.json, *.png")]
+
     OS -->|publish after commit| Kafka
-    Kafka -->|groups reporting-ingester, order-status-pusher: log only| OS
+    Kafka -->|group order-status-pusher| OS
+    OS -->|GET /api/orders/stream, SSE| UI
+    Kafka -->|poll, commit| RC
+    RC -->|append events, write runs| Files
+    RC -->|read users, accounts| BizDB
+    Files -->|read| RS
     
     style OS fill:#90EE90
     style HT fill:#FFB6C6
@@ -43,6 +52,9 @@ graph TB
     style AuthDB fill:#E6E6FA
     style BizDB fill:#E6E6FA
     style Kafka fill:#F5DEB3
+    style RC fill:#F5DEB3
+    style RS fill:#DDA0DD
+    style Files fill:#E6E6FA
 ```
 
 ## Service boundaries
@@ -53,10 +65,11 @@ graph TB
 | **Auth Service** | NestJS | 3001 | Implemented | User credentials, token issuance, session management |
 | **Order and Sell Service** | Spring Boot (Java 21) | 8081 | Implemented | Order submission/validation/execution, order history, instrument reference data |
 | **Holdings and Trade Service** | Spring Boot (Java 21) | 8082 | Implemented | User profiles, account management, holdings queries |
-| **Reporting UI** | Angular | 4300 | Proposed | Portfolio performance, trade history, risk summaries |
-| **Reporting Service** | TBD | 8083 | Proposed | Portfolio aggregation, analytics, report generation |
+| **Reporting UI** | Angular | 4300 | Proposed | Report list, viewer and parameters; static placeholder today |
+| **Reporting Service** | Python 3.14, Flask | 8083 | Implemented | Serves report runs (`report.json` and PNG charts) from the `reporting_files` volume; reads `users` and `accounts` only. See [Reporting](reporting.md) |
+| **Reporting consumer** | Python 3.14 (same image) | — | Implemented | Consumer group `reporting-ingester`: appends `trade-events` to JSON line files and writes a report run every 15 minutes |
 | **Market Data** | Infrastructure | — | Implemented | Database migrations, synthetic data generation |
-| **Kafka** | Apache Kafka (KRaft) | 29092 | Implemented | Event broker hosting trade-events. Order and Sell publishes one message per resolved order after the transaction commits, keyed by account id, and runs two log-only consumer groups, `reporting-ingester` and `order-status-pusher`, as the seams for the reporting store and the browser status push. See [TradeEventPublisher](../../apps/order-and-sell-service/src/main/java/app/order/event/TradeEventPublisher.java) |
+| **Kafka** | Apache Kafka (KRaft) | 29092 | Implemented | Event broker hosting trade-events. Order and Sell publishes one message per resolved order after the transaction commits, keyed by account id ([TradeEventPublisher](../../apps/order-and-sell-service/src/main/java/app/order/event/TradeEventPublisher.java)). Two groups read it: `order-status-pusher` in Order and Sell forwards each outcome to the owner's open `GET /api/orders/stream` connections; `reporting-ingester` in the reporting consumer stores it for reports |
 
 ## Service naming correction
 
@@ -77,7 +90,7 @@ Two separate PostgreSQL databases:
 | Spring Boot backend | Token-authenticated profile registration and user APIs, plus public simulated market reads | [Java auth controller](../../apps/holdings-and-trade-service/src/main/java/app/auth/AuthController.java) |
 | NestJS auth service | Email/password login, RS256 access tokens, opaque refresh tokens, JWKS, liveness | [Auth controller](../../apps/auth-service/src/auth/auth.controller.ts) |
 | Shared UI | Angular components consumed through @shared/ui-components subpath exports | [Shared components](../../apps/client-ui/shared-ui-components/README.md) |
-| Reporting | Runnable HTTP placeholders only; no reporting behavior | [Reporting proposal](reporting.md) |
+| Reporting | Kafka consumer storing trade events as files, scheduled report runs with PNG charts, authenticated endpoints serving the runs; UI still a placeholder | [Reporting](reporting.md) |
 
 All three services share the `trading_season` database, and each table has one writer. The auth service owns `user_accounts` and `refresh_tokens`; the Java services own the profile and trading tables. The value joining an account to its profile is the user UUID (`user_accounts.user_id` ↔ `users.user_id`), which is also the access token's `sub` claim.
 
@@ -101,7 +114,7 @@ Neither Java service calls the Auth Service per request. Each fetches and caches
 - NestJS logout is guarded by an access JWT and forwards that JWT to a service method expecting an opaque refresh token. Do not rely on this endpoint to revoke a refresh session until the mismatch is fixed.
 - NestJS bootstrap does not install a global validation pipe, cookie parser, or CORS configuration. DTO fields alone do not imply runtime validation; use JSON body refresh tokens.
 - The Passport JWT strategy restricts RS256 and checks expiry but does not configure issuer/audience enforcement.
-- The reporting containers are availability placeholders only and do not establish a reporting runtime or API contract. See [reporting](reporting.md).
+- The reporting UI container is a static placeholder; the reporting service and consumer are real. See [reporting](reporting.md).
 
 The `trading_season` database is shared by Order and Sell Service and Holdings and Trade Service:
 
@@ -129,14 +142,11 @@ The split is configured twice, once per environment: [proxy.conf.json](../../app
 
 3. **NestJS integration edge cases** – Bootstrap does not install global validation, cookie parser, or CORS. Refresh tokens must be sent as JSON body, not cookies. See [Auth Service documentation](services/auth-service.md) for details.
 
-## Proposed reporting services
+## Reporting
 
-Reporting UI and Reporting Service are proposed but not yet implemented. When built, they will:
+The reporting service and its consumer are implemented; see [Reporting](reporting.md) for the pipeline. In short: the consumer stores every `trade-events` message as a JSON line on the `reporting_files` volume and every 15 minutes writes a report run with PNG charts; the Flask service serves the runs behind the same RS256 tokens as the Java services. Reporting reads `users` and `accounts` from `trading_season` and nothing else, and owns no table (BR-16).
 
-- **Reporting UI** (port 4300) – Display portfolio performance, trade history, drawdown, returns, and risk summaries. Provide administrative operational and audit views. Use shared Angular components.
-- **Reporting Service** (port 8083) – Read-only access to authorized business data from Order and Sell Service; compute aggregates such as Sharpe/Sortino ratios, win rate, and profit factor. Must not write operational records.
-
-Both services will authenticate via the Auth Service and may read from the `trading_season` database. The intended feed for a reporting store is the `trade-events` topic: Order and Sell already publishes every resolved order to it, and the `reporting-ingester` consumer group that only logs today is where the reporting service takes over, so its queries never run against the trading tables (BR-16). Reporting store decisions (technology, refresh frequency, retention, timezone) remain unresolved. See [Reporting proposal](reporting.md) for intended capability and first implementation slice.
+Still proposed: the **Reporting UI** (port 4300), which will show the report list, a viewer for a run's data and charts, and report parameters. It is a static placeholder today and belongs to a separate UI story.
 
 ## Change boundaries
 

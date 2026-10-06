@@ -1,6 +1,6 @@
 # Code coverage
 
-Generated coverage reports for the four tested services. All four reports were refreshed from successful local runs on 2026-10-05. Each service keeps its own tooling and its own report format; this directory holds the generated output so the reports can be read without rerunning the suites. Open [index.html](index.html) for a single page of links into all four reports. The reporting placeholders contain no application code and have no coverage.
+Generated coverage reports for the four tested services. All four reports were refreshed from successful local runs on 2026-10-05. Each service keeps its own tooling and its own report format; this directory holds the generated output so the reports can be read without rerunning the suites. Open [index.html](index.html) for a single page of links into all four reports. The reporting UI placeholder contains no application code and has no coverage; the reporting service's pytest coverage is produced in CI (see [operations](../guides/operations.md#ci-and-artifacts)) and is not checked in here.
 
 Every service enforces a 70 percent floor in its own test command rather than reporting a number for a human to check (85 percent for Holdings and Trade). The Java services apply it to every package on every JaCoCo counter; the UI and auth service apply it to the whole run on each counter. A suite that falls below the floor fails, so a report in this directory describes a run that already passed its gate. The mechanisms are listed under [coverage floors](../guides/development.md#coverage-floors).
 

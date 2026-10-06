@@ -1,6 +1,6 @@
 # Trading Season
 
-Trading simulation monorepo with an Angular interface, two Spring Boot microservices, and a NestJS authentication service. Reporting applications are placeholders.
+Trading simulation monorepo with an Angular interface, two Spring Boot microservices, a NestJS authentication service, and a Python reporting service fed by Kafka. The reporting UI is a placeholder.
 
 The backend consists of two independent Java microservices and one NestJS authentication service:
 - **Order and Sell Service** (`apps/order-and-sell-service/`) – Order submission, validation, execution, and instrument reference data
@@ -218,7 +218,8 @@ See the [development guide](docs/guides/development.md) for additional commands,
 | Holdings and Trade Service | `apps/holdings-and-trade-service` | 8082 | User profiles, accounts, holdings, cash movements, market data |
 | Market Data | `apps/market-data` | — | Canonical database schema and synthetic market data tooling |
 | Shared UI Components | `apps/client-ui/shared-ui-components` | — | Local Angular components compiled into Client UI |
-| Reporting | `docs/reference/reporting.md` | — | Proposed analytics and portfolio performance reporting |
+| Reporting Service | `apps/reporting-service` | 8083 | Kafka consumer storing trade events as files, scheduled report runs with charts, endpoints serving the runs; see `docs/reference/reporting.md` |
+| Reporting UI | `apps/reporting-ui` | 4300 | Placeholder page; the report screens are a separate story |
 
 ## Documentation
 

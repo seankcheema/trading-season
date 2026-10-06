@@ -11,7 +11,7 @@ npm --prefix apps/client-ui ci
 npm --prefix apps/auth-service ci
 ```
 
-Reporting has no runnable application yet.
+The reporting service and its Kafka consumer run in Compose only (see below); the reporting UI is a static placeholder.
 
 ## Run locally
 
@@ -30,16 +30,16 @@ The Windows and fully manual paths below remain supported.
 
 ### Full local container stack
 
-From the repository root, Local Compose builds and starts the implemented applications, databases, and reporting placeholders:
+From the repository root, Local Compose builds and starts the implemented applications, the database, the Kafka broker, the reporting service and consumer, and the reporting UI placeholder:
 
 ```sh
 docker compose --project-name trading-season-local \
   -f infrastructure/docker-compose/docker-compose.local.yml up -d --build
 ```
 
-The client UI is available on port 4200, the reporting UI placeholder on 4300, and the reporting service placeholder on 8083. `GET http://localhost:8083/health` verifies only that the placeholder container is running; it is not a reporting API.
+The client UI is available on port 4200, the reporting UI placeholder on 4300, and the reporting service on 8083. `GET http://localhost:8083/health` reports whether the service can reach the database; the report endpoints are listed in the [API reference](../reference/api.md#reporting-service-python-flask-port-8083).
 
-The stack also starts a Kafka broker, reachable as `kafka:9092` from other containers and `localhost:29092` from the host. A one-shot `kafka-init` container creates the `trade-events` topic with three partitions; broker-side auto-creation is disabled, so a topic that has not been created explicitly fails rather than appearing with one partition. Order and Sell waits for `kafka-init`, publishes one JSON message per resolved order (`FILLED` or `REJECTED`) after the database transaction commits, keyed by account id so one account's events share a partition in submission order, and runs two consumer groups, `reporting-ingester` and `order-status-pusher`, that only log what they receive. Inspect the topic, the messages and the groups' committed offsets with the broker's own tools:
+The stack also starts a Kafka broker, reachable as `kafka:9092` from other containers and `localhost:29092` from the host. A one-shot `kafka-init` container creates the `trade-events` topic with three partitions; broker-side auto-creation is disabled, so a topic that has not been created explicitly fails rather than appearing with one partition. Order and Sell waits for `kafka-init`, publishes one JSON message per resolved order (`FILLED` or `REJECTED`) after the database transaction commits, keyed by account id so one account's events share a partition in submission order, and runs the `order-status-pusher` consumer group, which forwards each outcome to the owner's open `GET /api/orders/stream` connections. The `reporting-consumer` container runs the `reporting-ingester` group: it appends each message to JSON line files on the `reporting_files` volume and writes a report run every 15 minutes. Inspect the topic, the messages and the groups' committed offsets with the broker's own tools:
 
 ```sh
 docker compose --project-name trading-season-local \
@@ -60,7 +60,19 @@ docker compose --project-name trading-season-local \
     --bootstrap-server localhost:9092 --describe --all-groups
 ```
 
-The service's own log shows each publish with its partition and offset and each group's receipt. After `restart order-and-sell-service`, the groups resume from their committed offsets: new orders are logged once and earlier ones are not replayed.
+The Order and Sell log shows each publish with its partition and offset and each receipt by `order-status-pusher`. The reporting side is visible on the volume:
+
+```sh
+docker compose --project-name trading-season-local \
+  -f infrastructure/docker-compose/docker-compose.local.yml \
+  exec -T reporting-consumer sh -c 'cat /data/reporting/events/*.jsonl; ls /data/reporting/runs'
+```
+
+After `restart reporting-consumer` or `restart order-and-sell-service`, each group resumes from its committed offset: new orders appear once and earlier ones are not replayed. A report run appears within the scheduler interval; `GET http://localhost:8083/api/reporting/runs/latest` with a bearer token returns it. To watch order outcomes arrive live, open the stream with a token in one terminal and place an order in another:
+
+```sh
+curl -N -H "Authorization: Bearer <access token>" http://localhost:8081/api/orders/stream
+```
 
 ### Manual and Windows setup
 

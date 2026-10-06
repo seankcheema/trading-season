@@ -1,26 +1,33 @@
-# Reporting proposal
+# Reporting
 
-Status: proposed functionality with runnable container placeholders. The reporting UI serves a static placeholder page, and the reporting service exposes only placeholder and health JSON responses. No reporting API, calculation, scheduler, framework, authorization integration, persistence, or analytics store is implemented.
+Status: the reporting pipeline is implemented end to end on the backend; the Reporting App that presents it is still a placeholder page. Source: [apps/reporting-service](../../apps/reporting-service).
 
-## Intended capability
+## What runs today
 
-Provide traders with portfolio performance, drawdown, returns, trade history, and risk summaries. Provide administrators with operational and audit views scoped to their role. Candidate measures include Sharpe/Sortino ratios, win rate, profit factor, exposure, and concentration; formulas and required inputs must be agreed before implementation.
+Reporting never reads trade data from the trading tables. It receives it from the `trade-events` Kafka topic and keeps its own copy as files, which matches the reference architecture's file-based reporting store and keeps analysis off the live trading path (BR-16).
 
-## Proposed boundaries
+1. Order and Sell publishes one message per resolved order, `FILLED` or `REJECTED`, after the database transaction commits, keyed by account id.
+2. The reporting consumer, a separate container running [consumer.py](../../apps/reporting-service/consumer.py) in consumer group `reporting-ingester`, appends each message as one JSON line to `events/trade-events-p<partition>.jsonl` on the `reporting_files` volume, then commits the offset. A redelivered offset is skipped, so a crash between the write and the commit never duplicates a line. See [event_store.py](../../apps/reporting-service/event_store.py).
+3. Every `SCHEDULER_INTERVAL_MINUTES` (default 15) the same process runs [report_run.py](../../apps/reporting-service/report_run.py): it reads every event file, joins account and user names from PostgreSQL, and writes a run directory `runs/<UTC timestamp>/` holding `report.json` and three PNG charts. `runs/latest` points at the new run and older runs are deleted, so the store always holds the current report. This is the only point where reporting touches PostgreSQL, and only the `users` and `accounts` tables, read only.
+4. The Flask web service, running gunicorn with the scheduler disabled, exposes the runs. See the [API reference](api.md#reporting-service-python-flask-port-8083).
 
-- Reporting service reads authorized business data and computes aggregates. It must not become another writer of order/accounting records. Its intended input is the `trade-events` Kafka topic, to which Order and Sell already publishes every resolved order; the `reporting-ingester` consumer group inside Order and Sell is a log-only placeholder for the ingestion the reporting service will own, so reporting load never reaches the trading tables (BR-16).
-- Reporting UI presents summaries, time-range filters, charts, and drill-down tables using the shared Angular components.
-- Any reporting store is derived data with a documented rebuild process. Operational ledgers remain authoritative.
-- User identity and access control depend on resolving the existing authentication integration described in [architecture](architecture.md).
+### Insights in a run (BR-17)
 
-## First implementation slice
+`report.json` carries `statusCounts` (filled versus rejected), `volumeBySymbol` (fills, shares and notional per symbol, filled orders only), `tradesPerAccount` (total, filled and rejected per account with the account and trader names), and `dailyCounts` per UTC day. The charts are `volume_by_symbol.png`, `daily_trades.png` and `trades_per_account.png`.
 
-Agree one portfolio return calculation and its source data, implement a tested service query for one account/time range, then add a UI summary and trade drill-down. Include empty/loading/error states, accessible chart alternatives, keyboard navigation, and responsive layouts.
+### Boundaries
 
-## Decisions still required
+- The reporting service owns no table and writes nothing to `trading_season`. Its store is the `reporting_files` volume.
+- The store is derived data. To rebuild it: stop `reporting-consumer`, delete the volume's contents, reset the `reporting-ingester` group's offset to earliest with `kafka-consumer-groups.sh`, and start the consumer again. Events older than the broker's retention are gone from Kafka, so the files are the long-term record for reporting.
+- Exactly one consumer instance runs. Two would split partitions and append to the same files.
+- The consumer group id must stay `reporting-ingester`; its committed offsets live in the broker and carry across restarts. The Java placeholder that used this group id before was removed in the same change, so no old container should be sharing the group.
 
-Choose the service runtime, formula conventions (cash flows, fees, periods, currency), refresh frequency, timezone, retention, and authorization contract. Decide whether aggregation needs scheduled jobs or can begin on demand. Previous Python, Quartz, caching, schema, and endpoint examples were options rather than implemented or approved contracts.
+## Not yet built
+
+- The Reporting App screens from the reference architecture (report list, viewer, parameters, customer resolution). `apps/reporting-ui` is a static placeholder. Separate UI story.
+- Portfolio performance measures such as returns, drawdown or Sharpe ratio. Their formulas and inputs still need agreeing; the run is the place to add them once they are.
+- Per-request analytical queries. The design is run-based on purpose; a request reads the latest run.
 
 ## Acceptance for future work
 
-Reconcile computed results against deterministic fixtures, test account isolation and invalid ranges, and label stale/incomplete data. Document measured performance and data freshness requirements before introducing caching or additional infrastructure. Move implemented contracts to the [API reference](api.md) and [database reference](database.md) as work ships.
+Reconcile computed results against deterministic fixtures, as [test_report_run.py](../../apps/reporting-service/tests/test_report_run.py) does for the current insights. Keep the consumer idempotent across redelivery. Document data freshness, which is the run interval, wherever a report is shown.

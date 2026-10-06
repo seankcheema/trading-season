@@ -1,149 +1,85 @@
 # Reporting Service
 
-**Status:** In development. Python Flask microservice for portfolio performance, trade history, and risk summaries.
+Python Flask service that turns the `trade-events` Kafka topic into reports. It never reads trade data from the trading database.
 
-## Overview
+## How it works
 
-The Reporting Service reads authorized business data from the `trading_season` database and computes portfolio aggregates. It provides:
-- Portfolio summaries (holdings, cash, account management)
-- Trade history with filtering and drill-down
-- Performance metrics (returns, Sharpe ratio, profit factor, etc.)
-- Administrative and audit views (role-based)
+1. Order and Sell publishes one message per resolved order, keyed by account id.
+2. `consumer.py`, consumer group `reporting-ingester`, appends each message as one JSON line to `events/trade-events-p<partition>.jsonl` under `REPORTING_FILES_DIR`, then commits the offset. Offsets already on disk are skipped, so redelivery never duplicates a line.
+3. Every `SCHEDULER_INTERVAL_MINUTES` the same process runs `report_run.py`: reads the event files, joins account and trader names from PostgreSQL (`users` and `accounts`, read only), and writes `runs/<UTC timestamp>/report.json` plus three PNG charts. `runs/latest` points at the new run; older runs are deleted.
+4. The web service (`wsgi.py` under gunicorn) serves the runs behind the same RS256 tokens the Java services accept.
 
-## Technology Stack
+See [Reporting](../../docs/reference/reporting.md) for the design and [API reference](../../docs/reference/api.md#reporting-service-python-flask-port-8083) for the endpoints.
 
-- **Runtime:** Python 3.14+
-- **Framework:** Flask 3.0
-- **Database:** PostgreSQL (trading_season)
-- **Authentication:** RS256 JWT via Auth Service JWKS
-- **Task Scheduling:** APScheduler for periodic data refresh
-- **Deployment:** Docker, Gunicorn, Nginx
+## Technology
 
-## Local Development
+- Python 3.14, Flask 3, Flask-SQLAlchemy over psycopg 3
+- confluent-kafka for the consumer, APScheduler for the report job, matplotlib (Agg) for charts
+- gunicorn for the web service; one image, two processes
 
-### Prerequisites
+## Local development
 
-- Python 3.14+
-- PostgreSQL 14+ with `trading_season` database initialized
-- Auth Service running on port 3001
+Prerequisites: Python 3.14, the Compose stack's database and Kafka (`docker compose ... up -d db-init kafka-init`), and the auth service for tokens.
 
-### Setup
+```sh
+python -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env              # adjust DATABASE_URL and KAFKA_BOOTSTRAP_SERVERS if needed
+python consumer.py                # terminal 1: consumer plus report scheduler
+FLASK_ENV=development python app.py   # terminal 2: web service on 8083
+```
 
-1. Create virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+On the host the broker is `localhost:29092` and the files land in `./data/reporting` (ignored by git). Run exactly one consumer at a time.
 
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+## Endpoints
 
-3. Configure environment:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your local settings
-   ```
+Public: `GET /health`, `GET /`, `GET /api/reporting/scheduler/status`.
 
-4. Run the service:
-   ```bash
-   FLASK_ENV=development python app.py
-   ```
+Bearer token required: `GET /api/reporting/profile`, `GET /api/reporting/runs`, `GET /api/reporting/runs/latest`, `GET /api/reporting/runs/{runId}/files/{name}`.
 
-Service will be available at `http://localhost:8083`
+## Configuration
 
-## API Endpoints
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | `postgresql+psycopg://trading_season:password@localhost:5432/trading_season` | Read-only lookups of `users` and `accounts`; plain `postgresql://` is normalised |
+| `AUTH_SERVICE_URL` | `http://localhost:3001` | JWKS source for token verification |
+| `AUTH_JWT_ISSUER` | `http://localhost:3001` | Expected `iss` claim; must equal the auth service's issuer |
+| `CORS_ORIGINS` | `http://localhost:4200` | Allowed browser origins, comma-separated |
+| `REPORTING_FILES_DIR` | `./data/reporting` (host), `/data/reporting` (image) | Event files and report runs |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:29092` | Broker; Compose sets `kafka:9092` |
+| `KAFKA_TRADE_EVENTS_TOPIC` | `trade-events` | Topic to consume |
+| `REPORTING_CONSUMER_GROUP` | `reporting-ingester` | Consumer group; keep it stable so offsets carry across restarts |
+| `SCHEDULER_ENABLED` | `True` | Run the report job; the web service is started with `false` |
+| `SCHEDULER_INTERVAL_MINUTES` | `15` | Report run interval |
 
-### Public Endpoints
+## Files on the volume
 
-- `GET /health` – Service liveness check
-- `GET /` – Service information
+```
+<REPORTING_FILES_DIR>/
+  events/trade-events-p0.jsonl   # one line per message: partition, offset, accountId, orderId, status,
+  events/trade-events-p1.jsonl   #   symbol, side, quantity, price, rejectionReason, occurredAt
+  events/trade-events-p2.jsonl
+  runs/<YYYYMMDDTHHMMSSZ>/report.json, volume_by_symbol.png, daily_trades.png, trades_per_account.png
+  runs/latest                    # the current run id
+```
 
-### Authenticated Endpoints (Bearer token required)
+Everything here is derived. To rebuild: stop the consumer, delete the directory contents, reset the group's offset to earliest (`kafka-consumer-groups.sh --group reporting-ingester --topic trade-events --reset-offsets --to-earliest --execute`), start the consumer.
 
-- `GET /api/reporting/portfolio` – User's portfolio summary
-- `GET /api/reporting/trades` – Trade history with filtering
-- `GET /api/reporting/portfolio/{accountId}/performance` – Account performance metrics
+## Tests
 
-See [reporting proposal](../../docs/reference/reporting.md) for full specification.
-
-## Environment Variables
-
-See [.env.example](.env.example) for all available configuration options.
-
-Key settings:
-- `DATABASE_URL` – PostgreSQL connection string using the `postgresql+psycopg://` SQLAlchemy URL form
-- `AUTH_SERVICE_URL` – Auth Service location for JWKS
-- `SCHEDULER_ENABLED` – Enable/disable periodic data refresh
-- `SCHEDULER_INTERVAL_MINUTES` – Refresh frequency
-
-## Database
-
-Connects to the shared `trading_season` database (read-only access recommended).
-
-### Relevant Tables
-
-- `users` – User profiles and funds
-- `accounts` – Account metadata
-- `orders` – Order history
-- `fills` – Execution records
-- `holdings` – Position tracking
-- `cash_transactions` – Ledger entries
-- `holding_movements` – Position ledger
-- `audit_trail` – Event history
-
-## Authentication
-
-Validates RS256 JWT tokens from Auth Service. Token must include:
-- `sub` – User UUID (identifies the account owner)
-- `iss` – Issuer (verified against AUTH_JWT_ISSUER)
-- `exp` – Expiration time
-
-JWKS is cached and automatically refreshed hourly.
-
-## Scheduled Tasks
-
-- Data refresh job runs every 15 minutes (configurable)
-- Computes/materializes portfolio aggregates
-- Logs refresh timestamps for monitoring
-
-See [APScheduler](https://apscheduler.readthedocs.io/) documentation for advanced configuration.
-
-## Testing
-
-Run tests:
-```bash
+```sh
 pytest
 ```
 
+Tests use in-memory SQLite, a temporary files directory and a fake Kafka source. No broker, database or Docker is needed. Coverage is reported through `pytest-cov` (see `pytest.ini`).
+
 ## Docker
 
-Build the image:
-```bash
-docker build -t reporting-service:latest .
-```
+The image runs gunicorn by default; Compose starts a second container from the same image with `command: ["python", "consumer.py"]`. Both mount the `reporting_files` volume at `/data/reporting`, the web service read-only. See [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml).
 
-Run the container:
-```bash
-docker run -p 8083:8083 \
-   -e DATABASE_URL=postgresql+psycopg://... \
-  -e AUTH_SERVICE_URL=http://auth-service:3001 \
-  reporting-service:latest
-```
+## Known limitations
 
-## Deployment
-
-See [docker-compose.yml](../../infrastructure/docker-compose/docker-compose.local.yml) for full stack deployment.
-
-## Known Limitations
-
-- Initial implementation: read-only access to existing tables
-- Performance metrics placeholder (to be implemented)
-- Admin role authorization pending (tracked separately)
-
-## See Also
-
-- [Architecture](../../docs/reference/architecture.md) – Service topology
-- [Database reference](../../docs/reference/database.md) – Schema and ownership
-- [Reporting proposal](../../docs/reference/reporting.md) – Intended capability and design
+- Portfolio performance measures (returns, drawdown, Sharpe) are not computed yet; the run produces volume, activity and fill/rejection insights.
+- Admin role authorization is not enforced; any valid token can read the runs.
+- The Reporting UI that presents the runs is a placeholder, tracked separately.

@@ -80,6 +80,7 @@ This service is the primary backend for Client UI. It implements order operation
 | --- | --- | --- | --- |
 | POST | /api/orders | Bearer token + JSON: `accountId`, `instrumentId`, `orderType` (BUY or SELL), `quantity` (> 0), `indicativePrice` (> 0), optional `bufferPercent` (>= 0), `clientReference` (UUID idempotency key), optional `simulatedAt` (ISO-8601 timestamp with offset) | 201: `orderId`, `instrumentId`, `accountId`, `status`, `orderType`, `quantity`, `indicativePrice`, `rejectionReason`, `submittedAt`, `resolvedAt`, `simulatedAt` |
 | GET | /api/orders | Bearer token | 200: array of the caller's orders, newest first, each in the same shape as the POST response |
+| GET | /api/orders/stream | Bearer token | 200 text/event-stream: `order-status` events, one per resolved order on any account the caller owns, each carrying the trade event JSON (`orderId`, `status`, `symbol`, `side`, `quantity`, `price`, `rejectionReason`, `occurredAt`); `heartbeat` events every 15 seconds |
 | GET | /api/instruments | Bearer token | 200: array of every instrument by ticker, each with `instrumentId`, `ticker`, `name`, `assetClass`, `market`, `currency`, `tradable`, `simulatedStockSymbol` |
 
 **Order lifecycle (KAN-93):** an order is created `PENDING`, then the trading rules run: a buy is affordable, a sell is covered by holdings, and the instrument is tradable. A failed rule leaves the order `REJECTED` with a `rejectionReason`. Otherwise the fill is written and the order moves to `FILLED`, its final state. Every transition is recorded in `audit_trail`. A rejection is still a 201 response: it describes a failed trade, not a failed request. Once the transaction commits, the final status is also published as one message to the Kafka topic `trade-events`, keyed by `accountId`, with `orderId`, `status`, `symbol`, `side`, `quantity`, `price`, `rejectionReason` and `occurredAt` as the JSON body; publishing happens after the response is decided and cannot change it. A resubmission that returns an existing order publishes nothing.
@@ -91,6 +92,8 @@ The dashboard recent transactions merges cash transfers with filled orders acros
 **Order history:** `GET /api/orders` returns every order placed on any account the caller owns, newest `submittedAt` first, ties broken by descending `orderId`. The owner comes from the token's `sub`, so there is no parameter that can name another user's orders; a caller who has never traded gets `[]`, not a 404.
 
 **Idempotency:** resubmitting the same `accountId` and `clientReference` returns the original order's outcome without executing again.
+
+**Order status stream:** `GET /api/orders/stream` stays open until the client closes it. Outcomes arrive from the `order-status-pusher` Kafka consumer after the order has committed, so the stream can only ever announce something the order list already shows; a client that connects after an order resolved reads the list to catch up. The endpoint requires the bearer header like every other order endpoint, which a browser's native `EventSource` cannot send; the UI must stream through `fetch` or an agreed alternative. See [OrderStatusStreamController](../../apps/order-and-sell-service/src/main/java/app/order/event/OrderStatusStreamController.java).
 
 **Ownership:** `accountId` stays in the request body, because a user may own several accounts and has to say which one the order is for, but submission now refuses an account the caller does not own. A `accountId` belonging to another user is a 403 and an `accountId` that does not exist is a 404; neither writes an order row. Ownership is settled before the idempotency lookup, so a caller cannot read back the outcome of an order on an account that is not theirs. An `instrumentId` that does not exist is a 400 — distinct from an instrument that exists but is closed to trading, which is a 201 carrying a `REJECTED` order. See [OrderController](../../apps/order-and-sell-service/src/main/java/app/order/OrderController.java).
 
@@ -220,6 +223,21 @@ Standard format: `{"error": "..."}` with HTTP status. Mismatched bearer token an
 | 422 | Withdrawal exceeds the caller's available funds |
 
 ---
+
+## Reporting Service (Python Flask) - port 8083
+
+Tokens are the same RS256 access tokens the Java services accept, verified against the auth service's JWKS with the configured issuer. Every endpoint except `/health`, `/` and `/api/reporting/scheduler/status` requires `Authorization: Bearer <token>`. Errors are `{"error": "..."}`. Source: [routes.py](../../apps/reporting-service/routes.py).
+
+| Method | Path | Request | Success |
+| --- | --- | --- | --- |
+| GET | /health | — (public) | 200: `status` healthy when the database answers, 503 otherwise |
+| GET | /api/reporting/profile | Bearer token | 200: `user_id`, `first_name`, `last_name`, `trader_level`, `available_funds` |
+| GET | /api/reporting/runs | Bearer token | 200: `latest` (run id or null) and `runs`, newest first, each with `runId`, `generatedAt`, `eventCount`, `files` |
+| GET | /api/reporting/runs/latest | Bearer token | 200: the latest run's `report.json`; 404 when no run exists yet |
+| GET | /api/reporting/runs/{runId}/files/{name} | Bearer token | 200 image/png: one chart of that run; 404 unless `runId` matches `YYYYMMDDTHHMMSSZ` and `name` is a lowercase `.png` the run contains |
+| GET | /api/reporting/scheduler/status | — (public) | 200: `latest_run`, `generated_at`, `interval_minutes` |
+
+**Report shape:** `report.json` holds `runId`, `generatedAt`, `timezone` (always UTC), `eventCount`, `statusCounts`, `volumeBySymbol`, `tradesPerAccount`, `dailyCounts` and `files`. Decimal amounts are strings. See [Reporting](reporting.md) for how a run is produced and how fresh it is.
 
 ## Client UI integration flow
 

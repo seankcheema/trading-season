@@ -24,14 +24,14 @@ Portfolio history is defined in [V001__Initialize_database.sql](../../apps/marke
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initialize_database.sql
 ```
 
-Both Java services share the same `trading_season` database. This table lists which service has primary responsibility for each table:
+Both Java services share the same `trading_season` database. The reporting service owns no table here and never writes: its trade data arrives on Kafka and lives on the `reporting_files` volume (see [Reporting](reporting.md)); it reads `users` and `accounts` to put names on account ids. This table lists which service has primary responsibility for each table:
 
 | Table | Owned by | Access |
 | --- | --- | --- |
 | user_accounts | Auth Service | Read/write (credentials, role, lockout); Java services read only |
 | refresh_tokens | Auth Service | Read/write (issue, rotate, revoke); Java services never read it |
-| users | Holdings and Trade Service | Read/write (profile, funds, settings) |
-| accounts | Holdings and Trade Service | Read/write (account management) |
+| users | Holdings and Trade Service | Read/write (profile, funds, settings); the reporting service reads names only |
+| accounts | Holdings and Trade Service | Read/write (account management); the reporting service reads names only |
 | orders | Order and Sell Service | Read/write (order lifecycle) |
 | fills | Order and Sell Service | Read/write (execution results) |
 | holdings | Order and Sell Service | Writes positions; Holdings and Trade reads them |
