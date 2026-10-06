@@ -328,18 +328,12 @@ pipeline {
                     withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SQ_TOKEN')]) {
                         sh """
                             set -eu
-                            PROJECT_KEY="\${SONAR_PROJECT_KEY:-trading-season}"
-                            PROJECT_NAME="\${SONAR_PROJECT_NAME:-Trading Season}"
-
-                            echo "SonarScanner location: ${scannerHome}"
-                            "${scannerHome}/bin/sonar-scanner" --version
-
                             "${scannerHome}/bin/sonar-scanner" \
                               -Dproject.settings=infrastructure/jenkins/sonar-project.properties \
                               -Dsonar.host.url="http://localhost:9000" \
                               -Dsonar.token="\$SQ_TOKEN" \
-                              -Dsonar.projectKey="\$PROJECT_KEY" \
-                              -Dsonar.projectName="\$PROJECT_NAME" \
+                              -Dsonar.projectKey="trading-season" \
+                              -Dsonar.projectName="Trading Season" \
                               -Dsonar.projectVersion="\$BUILD_NUMBER"
                         """
                     }
