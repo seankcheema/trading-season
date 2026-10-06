@@ -338,16 +338,16 @@
 
                 <ul>
                   @if (watchlist.error()) {
-                    <li role="status" class="text-loss px-2 py-2 text-xs">
-                      {{ watchlist.error() }}
+                    <li class="text-loss px-2 py-2 text-xs">
+                      <output aria-live="polite">{{ watchlist.error() }}</output>
                       <button type="button" class="underline" (click)="refreshWatchlist()">
                         Retry
                       </button>
                     </li>
                   }
                   @if (watchlist.status() === 'loading') {
-                    <li role="status" class="text-muted-foreground px-2 py-6 text-center text-sm">
-                      Loading watchlist…
+                    <li class="text-muted-foreground px-2 py-6 text-center text-sm">
+                      <output aria-live="polite">Loading watchlist…</output>
                     </li>
                   }
                   @for (watched of watchedInstruments(); track watched.symbol) {
