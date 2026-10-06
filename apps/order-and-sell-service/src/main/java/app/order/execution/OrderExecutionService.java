@@ -47,6 +47,9 @@ import java.time.OffsetDateTime;
 @Service
 public class OrderExecutionService {
 
+    /** Where the fill price comes from; recorded with every fill as its pricing decision. */
+    static final String FILL_PRICE_SOURCE = "client indicative price; no live quote";
+
     private final AccountRepository accountRepository;
     private final UserRepository userRepository;
     private final HoldingRepository holdingRepository;
@@ -77,7 +80,13 @@ public class OrderExecutionService {
     /**
      * Executes an order whose trading rules have passed.
      *
-     * @param order      the {@code PENDING} order to execute
+     * <p>A fill records a {@code FILLED} audit event naming the fill price and
+     * its source ({@link #FILL_PRICE_SOURCE}), the signed cash change for the
+     * owning user, and the signed holding change for the account. Change
+     * {@link #FILL_PRICE_SOURCE} together with {@code fillPrice} once a live
+     * quote source exists.
+     *
+     * @param order     the {@code PENDING} order to execute
      * @param instrument the instrument being traded
      * @return the order as {@code FILLED}, or {@code REJECTED} if funds or
      *         holdings were no longer sufficient under the row lock
@@ -152,8 +161,15 @@ public class OrderExecutionService {
         order.setResolvedAt(now);
         final Order savedOrder = orderRepository.save(order);
         auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_FILLED,
-                "Filled " + savedOrder.getQuantity() + " @ " + fillPrice);
+                "Filled " + savedOrder.getQuantity().toPlainString() + " @ " + fillPrice.toPlainString()
+                        + " (" + FILL_PRICE_SOURCE + "); cash " + signed(cashDelta)
+                        + " for user " + user.getUserId() + "; holding " + signed(quantityDelta)
+                        + " on account " + account.getAccountId());
         return savedOrder;
+    }
+
+    private static String signed(BigDecimal amount) {
+        return (amount.signum() >= 0 ? "+" : "") + amount.toPlainString();
     }
 
     private Order reject(Order order, String reason) {
