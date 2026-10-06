@@ -23,6 +23,10 @@ import java.math.BigDecimal;
 @Component
 public class SufficientFundsValidator implements OrderValidator {
 
+    /** Creates an instance of this class. */
+    public SufficientFundsValidator() {
+    }
+
     /**
      * Passes every SELL, and every BUY whose {@code quantity * indicativePrice}
      * is no more than {@code user.getAvailableFunds()}.

@@ -1,20 +1,9 @@
 # Documentation
 
-Read only the guide or reference relevant to your task. Application READMEs provide local setup details; source and tests define implemented behavior.
+Project documentation lives in the READMEs: start with the [root README](../README.md), then the README of the service you are working on. This folder holds generated and archival material only.
 
-| Read this when you need to… | Document |
+| Contents | Location |
 | --- | --- |
-| Install, run, test, contribute, or regenerate Javadocs | [Development](guides/development.md) |
-| Configure services, investigate failures, or work on CI | [Operations](guides/operations.md) |
-| Understand service architecture and boundaries | [Architecture](reference/architecture.md) |
-| Review detailed per-service structure and endpoints | [Service Reference](reference/services/) |
-| Change or consume an implemented HTTP endpoint | [API Reference](reference/api.md) |
-| Understand schema ownership, migrations, and relationships | [Database](reference/database.md) |
-| Review the current platform terms shown at first sign-in | [Terms and Conditions](reference/terms-and-conditions.md) |
-| Browse generated Java class and member documentation | [Javadocs](JAVA_DOCS/README.md) |
-| Review test coverage for the client UI, Java services, or auth service | [Code coverage](coverage/README.md) |
-| Plan future analytics work | [Reporting proposal](reference/reporting.md) |
-
-Guides contain procedures; references describe the system and clearly label proposed work. Keep each topic in one place and update its document alongside code changes. The checked-in JAVA_DOCS directory holds generated Java documentation, one subdirectory per Java service; refresh the affected service alongside Java code changes using the development guide. The checked-in coverage directory holds generated coverage reports for all four tested services; regenerate it using the commands in that document rather than editing the reports.
-
-[Project overview](../README.md) · [Agent instructions](../AGENTS.md)
+| Generated Java API documentation, one directory per Java service | [JAVA_DOCS](JAVA_DOCS/index.html) |
+| Generated coverage reports | [coverage](coverage/index.html) |
+| Sprint 7 team lead report | [PDF](<Sprint 7 Team Lead Report - Dua LEAPa.pdf>) |

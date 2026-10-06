@@ -11,4 +11,4 @@ This service owns order submission, validation, execution, instrument reference 
 - Run `mvn -B test`; JaCoCo enforces the configured 70 percent floor per package on every counter.
 - Update affected Javadoc comments and regenerate both services with the pinned plugin as required by the root instructions.
 
-See [API reference](../../docs/reference/api.md), [Database](../../docs/reference/database.md), and [Development](../../docs/guides/development.md) for canonical contracts and commands.
+See the [README](README.md) for endpoints and commands and [db/README.md](../../db/README.md) for the schema.

@@ -111,14 +111,14 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ../../apps/market-data/db/migrations:/workspace/apps/market-data/db/migrations:ro
+      - ../../db/migrations:/workspace/db/migrations:ro
       - ../docker/init-db.sh:/init-db.sh:ro
     environment:
       PGPASSWORD: ${DB_PASSWORD:-changeme}
     command: ["sh", "/init-db.sh", "postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season", "/workspace"]
 
   # Event broker for the trade-events topic. Nothing publishes or consumes
-  # yet; see docs/reference/architecture.md.
+  # yet.
   kafka:
     # Single-node KRaft: no ZooKeeper, and the controller quorum is this same
     # node. Sized for a developer machine, not durability -- one replica of

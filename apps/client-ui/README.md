@@ -1,10 +1,100 @@
-# Business UI
+# Client UI
 
-Angular login, registration, and dashboard screens using reactive forms, standalone components, signals, and the shared UI package. The dashboard market ticker and instrument charts read the Java stock snapshot, OHLCV candle API, and live stream. Selecting a ticker, search result, or holding opens the existing instrument popup; its full-screen action navigates to the protected `/dashboard/markets/:symbol` route. That route uses the dashboard's centered wrapper and a one-viewport desktop trading layout; tablet and mobile layouts stack and scroll. Symbol prices, candles, range volume, and connection state are live. It supports line, area, candlestick, OHLC, volume, and percentage chart modes, plus an optional peer comparison stored in the `compare` query parameter. The chart can calculate SMA 20, EMA 20, Bollinger Bands 20 with two standard deviations, and RSI 14 in the browser from the selected candle range; these display choices are not persisted. RSI shows a labeled deterministic demo series until at least 15 candles are available, then switches to the calculated value. Supported chart ranges are `1D`, `5D`, `1M`, and `1Y`.
+Angular 21 single-page app with standalone components, signals, reactive forms, and OnPush change detection. Server-side rendering runs through the Angular SSR server.
 
-The dashboard also creates and renames accounts, shows each account's holdings as its portfolio, and deposits and withdraws the cash all of a user's accounts share, through the implemented endpoints in the [API reference](../../docs/reference/api.md#accounts-and-holdings). The simulation clock controls trade visibility, displayed holdings, shared cash, net worth, and portfolio history. Current funding is the starting budget; only trades rewind. The chart combines share quantities effective at each simulated time with replay prices and shows zero before the first investment. Without a simulation clock, portfolio history uses persisted observations on actual dates; see [the history contract](../../docs/reference/api.md#portfolio-valuation-history). Both financial cards show two decimal places. Net worth is that cash plus every account's portfolio. The full-screen market page places a full-width account dropdown between the insight tabs and Execution, with always-visible available cash (shared across accounts) and the selected account's portfolio value. Both values follow the simulation cursor; portfolio prices use the existing average-cost fallback when market prices are unavailable. The page reuses the dashboard's account and simulated-time dropdowns and executes Buy/Sell orders through the same OrderService. Its ticket uses actual cash and holdings projected at the simulation cursor; a fill refreshes both, while a failed refresh offers a balance-only retry. The selected account round-trips through the `accountId` query parameter. The Recent Orders tab shows that account's latest 20 orders across all stocks at or before the cursor, including pending and rejected outcomes. Metrics, overview signals, news, and AI responses remain browser-only demo data. Signed-in users are signed out after a configurable period of inactivity, 10 minutes by default; see the [API reference](../../docs/reference/api.md#ui-integration).
+| Route | Guard | Screen |
+| --- | --- | --- |
+| `/` | none | Landing page |
+| `/login`, `/register` | guests only | Sign in and registration |
+| `/dashboard` | signed in | Accounts, holdings, portfolio history, watchlist, market ticker, order dialog, recent transactions |
+| `/dashboard/markets/:symbol` | signed in | Full-screen instrument page: chart modes and indicators, account and simulation-time controls, order ticket, recent orders |
 
-client-ui is a standalone npm project with its own lockfile, independent of the repository root:
+Live prices, candles, and the tick stream come from the Java market API. Metrics, news, and AI commentary on the market page are demo data. Users are signed out after a period of inactivity, 10 minutes by default and configurable in settings.
+
+## Architecture
+
+```mermaid
+flowchart TB
+    subgraph Routes
+        Landing
+        Login
+        Register
+        Dashboard
+        MarketPage["Market page"]
+    end
+    subgraph Core["core/auth"]
+        Guard["authGuard / guestGuard"]
+        Interceptor["authInterceptor"]
+        AuthSvc["AuthService"]
+        Storage["TokenStorageService"]
+        Lockout["LoginLockoutService"]
+        Timeout["SessionTimeoutService"]
+    end
+    subgraph Feature["dashboard/"]
+        Accounts["account-store, portfolio-history"]
+        Orders["OrderService"]
+        Watch["watchlist-store"]
+        Market["MarketDataService"]
+        Shared["shared components:<br/>price-chart, trade-ticket,<br/>instrument-search, account and clock controls"]
+    end
+    Lib["shared-ui-components<br/>(Hlm components)"]
+
+    Login --> AuthSvc
+    Register --> AuthSvc
+    Dashboard --> Feature
+    MarketPage --> Feature
+    Routes --> Guard
+    Guard --> Storage
+    AuthSvc --> Storage
+    Interceptor --> AuthSvc
+    Timeout --> AuthSvc
+    Feature --> Interceptor
+    Routes --> Lib
+```
+
+### Request routing
+
+```mermaid
+flowchart LR
+    Browser --> Auth["Auth Service :3001<br/>login, register, refresh, logout"]
+    Browser -- "/api" --> Proxy["dev proxy or Nginx"]
+    Proxy -- "/api/orders, /api/instruments" --> OS["Order and Sell :8081"]
+    Proxy -- "everything else under /api" --> HT["Holdings and Trade :8082"]
+```
+
+The split is configured twice: [proxy.conf.json](proxy.conf.json) for `ng serve` and [nginx.conf](nginx.conf) for the container image. Add a new backend path to both. The auth service is called directly; its CORS policy allows the dev origin.
+
+### Token renewal
+
+```mermaid
+sequenceDiagram
+    participant C as Component
+    participant I as authInterceptor
+    participant A as AuthService
+    participant API as /api
+    participant Auth as Auth Service
+
+    C->>I: HTTP request to /api
+    I->>A: ensureValidSession()
+    opt Access token expired
+        A->>Auth: POST /auth/refresh
+        Auth-->>A: New tokens
+    end
+    I->>API: Request with Bearer token
+    alt 401
+        I->>A: ensureValidSession(token)
+        A->>Auth: POST /auth/refresh
+        I->>API: Retry once
+    end
+    API-->>C: Response
+    Note over I,A: No session, or refresh rejected: navigate to /login
+```
+
+Network and refresh-service failures keep the credentials so the request can be retried; sign-out happens on explicit logout, inactivity, or missing or rejected refresh credentials.
+
+## Commands
+
+client-ui is an independent npm project with its own lockfile. From the repository root:
 
 ```sh
 npm --prefix apps/client-ui ci
@@ -14,16 +104,15 @@ npm --prefix apps/client-ui test -- --no-watch
 npm --prefix apps/client-ui run e2e
 ```
 
-Development runs on port 4200 and proxies `/api` to the Java backend on port 8081. See [routes](src/app/app.routes.ts), [shared components](shared-ui-components/README.md), and [development prerequisites](../../docs/guides/development.md). Angular tests take --no-watch rather than Vitest's --run option.
+`ng serve` runs on port 4200 and proxies `/api` as above. Use `--no-watch` for Angular tests; Vitest's `--run` is not supported by the builder.
 
-The production container installs and builds this project on its own and serves the browser output through unprivileged Nginx on host port 4200. Its Nginx configuration provides SPA fallback and proxies `/api` to the Compose `holdings-and-trade-service`. Build and run it as part of [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml).
+The production [Dockerfile](Dockerfile) builds the app and serves it through unprivileged Nginx, with SPA fallback and the `/api` proxy.
 
 ## Tests
 
-Unit tests live beside the code they cover as `*.spec.ts` under `src`, and run on the Angular unit-test builder. The run fails below 90% on any coverage counter (statements, branches, functions, or lines); the thresholds are in [angular.json](angular.json).
+- **Unit**: `*.spec.ts` beside the code under `src`, on the Angular unit-test builder with Vitest. The run fails below 90 percent on statements, branches, functions, or lines (`coverageThresholds` in [angular.json](angular.json)). Add `--coverage` for the report.
+- **End-to-end**: Playwright in [e2e](e2e), excluded from the unit-test builder. Install the browser once with `npx --prefix apps/client-ui playwright install chromium`; the suite builds the app and serves it on port 4200 (or reuses a server already there). The auth service and Java backend are replaced by an in-memory [API stand-in](e2e/fixtures/api-stub.ts), so no database or backend is needed. Update the stand-in whenever an auth, account, cash, or order contract changes.
 
-End-to-end tests live in [e2e](e2e) and run on Playwright, which owns that directory and is excluded from the unit-test builder. They cover authentication, inactivity timeout, account workflows, and the full-screen market journey, including responsive layout, order execution, account/time controls, recent orders, chart controls, and comparison URL state. Install the browser once with `npx playwright install chromium`; the suite builds and starts its own server, or reuses one already on port 4200.
+## Shared components
 
-The auth service and Java backend are replaced by [an in-memory stand-in](e2e/fixtures/api-stub.ts) installed through request interception, so no database or backend process is needed. It mirrors the contracts in the [API reference](../../docs/reference/api.md), including account, holding, portfolio history and cash transaction endpoints; update it in the same change as any of those contracts.
-
-Portfolio chart ranges and smoothing follow the [chart domain contract](../../docs/reference/api.md#portfolio-chart-domains). The daily axis retains the full session, the five-day axis compresses non-trading gaps, and monotone curves preserve trade transitions.
+[shared-ui-components](shared-ui-components/README.md) holds the Spartan/Tailwind component library compiled into this app. Only this app consumes it.

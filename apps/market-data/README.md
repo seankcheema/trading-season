@@ -1,71 +1,59 @@
-# Business Backend Database Setup
+# Market Data
 
-This directory contains the canonical database schema, scripts, and synthetic market data setup for the Trading Season platform. The Java backend has been refactored into two microservices:
+Tooling that generates a year of synthetic market data and loads it into the `trading_season` database. The Java services replay it as the simulated market. The schema itself lives in [db/migrations](../../db/migrations) at the repository root; see [db/README.md](../../db/README.md).
 
-- **[Holdings and Trade Service](../holdings-and-trade-service/)** - Manages order execution, validation, and holdings updates (port 8081)
-- **[Order and Sell Service](../order-and-sell-service/)** - Provides user profiles, holdings queries, and order history (port 8082)
+Layout under `apps/market-data/db`:
 
-Both services share a single PostgreSQL database managed through the schema setup in this directory.
+| Path | Contents |
+| --- | --- |
+| `scripts/python/` | Numbered entry points, shared `lib/`, generation `config/`, requirements |
+| `scripts/powershell/` | `setup-database.ps1` and `setup-market-data.ps1` launchers |
+| `seeds/` | Generated archive (`synthetic-market-data-2026-v1`, gitignored) and [demo-trader.sql](db/seeds/demo-trader.sql), a development-only demo account |
+| `scripts/notebooks/` | `view-market.ipynb` for inspecting data |
+| `.venv/` | Python virtual environment (gitignored) |
 
-## Database Setup
+## Pipeline
 
-The business database stores trading data (orders, holdings, accounts) and market data for simulations. Follow [database setup instructions](../../docs/reference/database.md#disposable-business-database-setup) to initialize and seed the database.
+```mermaid
+flowchart LR
+    Gen["0002 generate<br/>one-second ticks and<br/>one-minute candles"] --> Archive[("Parquet archive<br/>db/seeds")]
+    Archive --> Val["0003 validate<br/>checksums, coverage,<br/>sequences, spreads"]
+    Val --> Imp["0004 import<br/>one month per transaction"]
+    Imp --> DB[("trading_season<br/>candles, session metadata")]
+    Archive -. "raw ticks stay in Parquet" .-> Replay["Java services replay"]
+    DB --> Replay
+    Init["0001 initialize<br/>empty database only"] -. "optional first step" .-> DB
+```
 
-### Prerequisites
+| Step | Script | Notes |
+| --- | --- | --- |
+| 0001 | `0001-initialize-database.py --database-url URL --empty-database` | Applies V001 and V002 to an empty schema. Never use it for seeding |
+| 0002 | `0002-generate-synthetic-market-data.py [--start-date D --end-date D] [--regenerate]` | No database access. Replacing a different archive needs `--regenerate` and is validated in staging |
+| 0003 | `0003-validate-synthetic-market-data.py` | Checksums, exact one-second coverage, unique sequences, spreads, candle agreement |
+| 0004 | `0004-import-synthetic-market-data.py --database-url URL [--tick-storage parquet\|postgres] [--replace] [--available-disk-gb N]` | Per-month checkpoints are verified and skipped on rerun. The session stays `RUNNING` until every month is verified |
 
-- PostgreSQL 16+
-- Python 3.x with pip
-- Available disk space for market data (optional)
+The full year is 61,074,000 ticks and 1,017,900 candles (about 1.5 GiB compressed). Use a date range for tests. Parquet mode, the default, keeps raw ticks in the archive and imports only candles; do not delete the archive afterwards, since replay and checkpoint verification read it. `postgres` mode also loads raw ticks and needs far more disk.
 
-### Initial Setup
+The importer checks free disk before each month. For a remote or containerized database, pass `--available-disk-gb` or set `MARKET_DATA_AVAILABLE_DISK_GB`, otherwise it fails closed.
 
-1. Create the `trading_season` database:
-   ```sql
-   CREATE USER trading_season WITH PASSWORD 'changeme';
-   CREATE DATABASE trading_season OWNER trading_season;
-   ```
+## Run on Windows
 
-2. Set up Python environment for database scripts:
-   ```powershell
-   py -3 -m venv apps/market-data/db/.venv
-   apps/market-data/db/.venv/Scripts/python.exe -m pip install --upgrade pip
-   apps/market-data/db/.venv/Scripts/python.exe -m pip install -r apps/market-data/db/scripts/python/requirements.txt
-   ```
+From the repository root, with a migrated empty database ([db/README.md](../../db/README.md)):
 
-3. Apply the schema once to the empty database:
-   ```sh
-   apps/market-data/db/scripts/powershell/setup-database.ps1 -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season
-   ```
-
-### Synthetic Market Data (Optional)
-
-Generate and import simulated market data for testing:
 ```powershell
 $freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
 
 apps/market-data/db/scripts/powershell/setup-market-data.ps1 `
   -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
-  -AvailableDiskGb $freeDiskGb `
-  -InitializeDisposableDatabase
+  -AvailableDiskGb $freeDiskGb
 ```
 
-## Files
+The launcher creates the virtual environment, installs dependencies, then generates, validates, and imports. Useful switches: `-StartDate`/`-EndDate` (for example `2026-01-05` to `2026-01-06`), `-Regenerate`, `-Replace`, `-TickStorage`, and `-InitializeDisposableDatabase` for a first-time empty database only. `setup-database.ps1 -DatabaseUrl URL` applies just V001 and V002.
 
-- `db/migrations/V001__Initialize_database.sql` - Canonical schema for all 19 tables
-- `db/scripts/python/` - Python entry points, shared library, configuration, and requirements
-- `seeds/` - Generated market data archive (local developer data, not committed)
-- `db/scripts/powershell/` - Database setup and market-data workflow launchers
+On Linux, run the numbered scripts directly with Python 3 after `pip install -r apps/market-data/db/scripts/python/requirements.txt` (CI uses the smaller `requirements-ci.txt`).
 
-## Docker
+## Docker and CI
 
-Both microservices are built and deployed via Docker. See:
-- [docker-compose.local.yml](../../infrastructure/docker-compose/docker-compose.local.yml) - Local development
-- [Dockerfile](../holdings-and-trade-service/Dockerfile) - Holdings and Trade Service
-- [Dockerfile](../order-and-sell-service/Dockerfile) - Order and Sell Service
-
-## Related Documentation
-
-- [Database Reference](../../docs/reference/database.md) - Schema, migrations, ERD
-- [Architecture](../../docs/reference/architecture.md) - Service boundaries and integration
-- [Development Guide](../../docs/guides/development.md) - Development workflow
-
+- Local Compose runs `db-init` (all migrations) automatically; its opt-in `initialize` and `seed` profiles run the steps above. Set `MARKET_DATA_AVAILABLE_DISK_GB` before using `seed`.
+- Jenkins builds [Dockerfile.market-data](../../infrastructure/docker/Dockerfile.market-data) and runs a two-day integration: initialize, restart the database, generate, validate, then import twice.
+- `python apps/market-data/db/scripts/python/tests/test_watchlist_migration.py` validates the watchlist migration against a disposable cluster when PostgreSQL binaries are on `PATH`.

@@ -1,5 +1,5 @@
 // Shapes of the Java backend's account, holding and cash endpoints. Every endpoint is scoped
-// to the bearer token's subject; see docs/reference/api.md.
+// to the bearer token's subject; see apps/holdings-and-trade-service/README.md.
 //
 // Cash belongs to the user and is shared by all of their accounts. An account holds positions
 // only, and its portfolio is simply those holdings. Net worth is the user's cash plus the value
