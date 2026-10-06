@@ -1,5 +1,7 @@
 package app.market;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
@@ -18,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 /** Public simulated market reads and authenticated shared replay clock control. */
 @RestController
 @RequestMapping("/api/market")
+@Tag(name = "Market Data", description = "Market data and trading simulation endpoints")
 public class MarketController {
     private final MarketReplayService service;
 
@@ -33,6 +36,7 @@ public class MarketController {
      * @return the current synchronized stock snapshot
      */
     @GetMapping("/snapshot")
+    @Operation(summary = "Get current market snapshot", description = "Returns current prices for all stocks at the current market time")
     public ResponseEntity<MarketResponses.Snapshot> snapshot(
             @RequestParam(required = false) Long sessionId) {
         return ResponseEntity.ok().cacheControl(CacheControl.maxAge(1, TimeUnit.SECONDS).cachePrivate())
@@ -47,6 +51,7 @@ public class MarketController {
      * @return the aggregated candle series
      */
     @GetMapping("/candles")
+    @Operation(summary = "Get OHLCV candle data", description = "Retrieves Open-High-Low-Close-Volume (OHLCV) data for a stock in the specified timeframe")
     public ResponseEntity<MarketResponses.CandleSeries> candles(
             @RequestParam(required = false) Long sessionId,
             @RequestParam String symbol,
@@ -63,6 +68,7 @@ public class MarketController {
      * @return a synchronized snapshot at the selected timestamp
      */
     @PutMapping("/clock")
+    @Operation(summary = "Set market clock", description = "Moves the simulated market clock to a specific trading timestamp (authenticated users only)")
     public ResponseEntity<MarketResponses.Snapshot> setClock(
             @RequestParam(required = false) Long sessionId,
             @RequestBody MarketResponses.ClockRequest request) {
@@ -81,6 +87,7 @@ public class MarketController {
      * @return the open event emitter
      */
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @Operation(summary = "Subscribe to market data stream", description = "Opens a server-sent event stream for real-time synchronized market data updates")
     public SseEmitter stream(@RequestParam(required = false) Long sessionId,
             @RequestHeader(value = "Last-Event-ID", required = false) Long lastEventId,
             HttpServletRequest request) {

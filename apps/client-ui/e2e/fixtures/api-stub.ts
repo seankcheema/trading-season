@@ -383,22 +383,71 @@ export class ApiStub {
       simulatedAt:
         typeof body['simulatedAt'] === 'string' ? body['simulatedAt'] : this.marketTimestamp,
     };
-    if (!reason) {
-      profile['availableFunds'] = funds + (side === 'BUY' ? -1 : 1) * quantity * price;
-      if (side === 'BUY') {
-        if (held) {
-          held.averageCost =
-            (held.quantity * held.averageCost + quantity * price) / (held.quantity + quantity);
-          held.quantity += quantity;
-        } else account.holdings.push({ symbol, quantity, averageCost: price });
-      } else if (held) {
-        held.quantity -= quantity;
-        account.holdings = account.holdings.filter((h) => h.quantity > 0);
-      }
-    }
+    if (!reason) this.applyFill(profile, account, symbol, side, quantity, price);
     this.orders.set(owner, [result, ...(this.orders.get(owner) ?? [])]);
     this.orderReferences.set(key, result);
     await this.json(route, 201, result);
+  }
+
+  /** Moves the user's cash and the account's position the way a fill does. */
+  private applyFill(
+    profile: Record<string, unknown>,
+    account: OwnedTradingAccount,
+    symbol: string,
+    side: 'BUY' | 'SELL',
+    quantity: number,
+    price: number,
+  ): void {
+    const funds = Number(profile['availableFunds']);
+    const held = account.holdings.find((h) => h.symbol === symbol);
+    profile['availableFunds'] = funds + (side === 'BUY' ? -1 : 1) * quantity * price;
+    if (side === 'BUY') {
+      if (held) {
+        held.averageCost =
+          (held.quantity * held.averageCost + quantity * price) / (held.quantity + quantity);
+        held.quantity += quantity;
+      } else account.holdings.push({ symbol, quantity, averageCost: price });
+    } else if (held) {
+      held.quantity -= quantity;
+      account.holdings = account.holdings.filter((h) => h.quantity > 0);
+    }
+  }
+
+  /**
+   * Settles a pending order the way the backend does on its own, without any request from the
+   * page: a fill moves cash and holdings, a rejection records why. The page only learns of it
+   * by reading the order history again.
+   */
+  resolveOrder(
+    email: string,
+    orderId: number,
+    outcome: { status: 'FILLED' } | { status: 'REJECTED'; rejectionReason: string },
+  ): void {
+    const owner = this.accounts.get(email.toLowerCase());
+    const orders = owner ? this.orders.get(owner.id) : undefined;
+    const index = orders?.findIndex((order) => order.orderId === orderId) ?? -1;
+    if (!owner?.profile || !orders || index < 0 || orders[index].status !== 'PENDING') {
+      throw new Error(`No pending order ${orderId} for ${email}`);
+    }
+    const pending = orders[index];
+    const account = this.tradingAccounts.find((a) => a.accountId === pending.accountId);
+    if (outcome.status === 'FILLED' && account) {
+      const symbol = pending.instrumentId === 7 ? 'AAPL' : 'MSFT';
+      this.applyFill(
+        owner.profile,
+        account,
+        symbol,
+        pending.orderType,
+        pending.quantity,
+        pending.indicativePrice,
+      );
+    }
+    orders[index] = {
+      ...pending,
+      status: outcome.status,
+      rejectionReason: outcome.status === 'REJECTED' ? outcome.rejectionReason : null,
+      resolvedAt: pending.submittedAt,
+    };
   }
 
   /** Trading accounts the business backend holds for a user, oldest first. */

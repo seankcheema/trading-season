@@ -50,7 +50,7 @@ test('executes a trade and shows recent orders within the full-screen layout', a
   await page.getByRole('button', { name: 'Buy 3 AAPL', exact: true }).click();
   await expect(page.locator('hlm-toaster .toast')).toContainText('Filled 3 AAPL at $225.80.');
   await page.getByRole('tab', { name: 'Recent Orders', exact: true }).click();
-  await expect(page.getByTestId('market-recent-orders')).toContainText('3 shares · Filled');
+  await expect(page.getByTestId('market-recent-orders')).toContainText('3 @ $225.80 · Filled');
   await expect(page.locator('app-trade-ticket')).toContainText('$4,322.60');
   // Available cash previews another current draft; the ticket shows persisted cash.
   await expect(page.getByTestId('available-cash')).toContainText('$3,645.20');
@@ -152,7 +152,7 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   await expect(page.locator('hlm-toaster .toast')).toContainText('Filled 2 AAPL');
   await page.getByRole('tab', { name: 'Recent Orders', exact: true }).click();
   const history = page.getByTestId('market-recent-orders');
-  await expect(history).toContainText('2 shares · Filled');
+  await expect(history).toContainText('2 @ $225.80 · Filled');
   const clock = page.getByTestId('market-clock-dropdown');
   await clock.locator('summary').click();
   await clock.locator('input').fill('2026-01-05T08:30');
@@ -165,7 +165,7 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   await clock.locator('summary').click();
   await clock.locator('input').fill('2026-01-05T09:00');
   await clock.getByRole('button', { name: 'Apply time' }).click();
-  await expect(history).toContainText('2 shares · Filled');
+  await expect(history).toContainText('2 @ $225.80 · Filled');
   expect(
     api.requests.filter((r) => r.method === 'POST' && r.url.endsWith('/api/orders')),
   ).toHaveLength(1);

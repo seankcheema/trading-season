@@ -1,6 +1,8 @@
 package app.cash;
 
 import app.auth.AuthenticatedUser;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -25,6 +27,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/api/me/cash-transactions")
+@Tag(name = "Cash Transactions", description = "User cash deposit and withdrawal endpoints")
 public class CashTransactionController {
 
     private final CashTransactionService cashTransactionService;
@@ -46,6 +49,7 @@ public class CashTransactionController {
      * @return the caller's funding history
      */
     @GetMapping
+    @Operation(summary = "List cash transactions", description = "Retrieves the user's deposit and withdrawal history")
     public List<CashTransactionResponse> listFunding(
             @RequestParam(required = false) Integer limit,
             @AuthenticationPrincipal Jwt jwt
@@ -68,6 +72,7 @@ public class CashTransactionController {
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "Deposit or withdraw cash", description = "Records a cash deposit or withdrawal for the authenticated user")
     public CashTransactionResponse postFunding(
             @Valid @RequestBody CashTransactionRequest request,
             @AuthenticationPrincipal Jwt jwt

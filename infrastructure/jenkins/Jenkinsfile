@@ -82,10 +82,10 @@ pipeline {
                 // This prevents "Operation not permitted" errors during workspace cleanup
                 sh '''
                     set +e
-                    if [ -d apps/reporting-service/reports ] || [ -d apps/reporting-service/coverage ]; then
-                        echo "Repairing permissions on Docker-generated reporting artifacts..."
+                    if [ -d apps/reporting-service ] || [ -d apps/reporting-service/tests/__pycache__ ] || [ -d apps/reporting-service/__pycache__ ] || [ -d apps/reporting-service/.pytest_cache ]; then
+                        echo "Repairing permissions on Docker-generated reporting-service files..."
                         docker run --rm -v "$(pwd)":/ws -w /ws alpine:latest \
-                            chmod -R 777 /ws/apps/reporting-service/reports /ws/apps/reporting-service/coverage 2>/dev/null || true
+                            chmod -R a+rwX /ws/apps/reporting-service 2>/dev/null || true
                     fi
                     set -e
                 '''
@@ -312,20 +312,28 @@ pipeline {
                                     # Integration branch's own image build has exhausted the
                                     # agent's disk before ("no space left on device").
                                     docker run --rm \
+                                                                            -e PYTHONDONTWRITEBYTECODE=1 \
                                       -v "$(pwd)":/app \
                                       -w /app \
                                       python:3.14-slim \
                                       bash -c "
+                                        # Runs as root, so pytest/coverage leave root-owned
+                                        # directories (.pytest_cache, __pycache__, reports,
+                                        # coverage) that the jenkins user cannot delete.
+                                        # Repair the whole app directory on every exit path,
+                                        # not just after a clean pytest run.
+                                        trap 'chmod -R a+rwX /app' EXIT
+                                        # Any failing step (dependency install or pytest) must
+                                        # fail the stage; the EXIT trap preserves the exit code.
+                                        set -eu
                                         mkdir -p reports/junit coverage
                                         python -m pip install --upgrade pip setuptools wheel
                                         python -m pip install -q -r requirements.txt
-                                        python -m pytest tests/ -v \
+                                                                                python -m pytest -p no:cacheprovider tests/ -v \
                                           --junit-xml=reports/junit/results.xml \
                                           --cov=. \
                                           --cov-report=xml:coverage/coverage.xml \
-                                          --cov-report=html:coverage/htmlcov || true
-                                        # Fix file permissions so Jenkins can clean up workspace
-                                        chmod -R 777 reports coverage
+                                          --cov-report=html:coverage/htmlcov
                                       "
                                     echo "✓ Reporting service tests completed"
                                 '''
@@ -337,8 +345,9 @@ pipeline {
                             archiveArtifacts artifacts: 'apps/reporting-service/coverage/**/*, apps/reporting-service/reports/**/*',
                                               allowEmptyArchive: true
                             catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                                // Missing required reports fail the stage.
                                 junit testResults: 'apps/reporting-service/reports/junit/*.xml',
-                                      allowEmptyResults: true,
+                                      allowEmptyResults: false,
                                       healthScaleFactor: 1.0
                             }
                         }
@@ -531,13 +540,43 @@ pipeline {
                     fi
                     echo "[INFO] JWT keys exported successfully"
 
-                    echo "Building and starting the local application stack..."
+                    # This stack is disposable CI state. A named volume left by an
+                    # earlier build can hold a partial schema that the migrations
+                    # refuse to upgrade, so every build starts from an empty database.
+                    echo "Removing any stack and database volume left by an earlier build..."
                     env JWT_PRIVATE_KEY="$JWT_PRIVATE_KEY" JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY" JWT_ISSUER="${JWT_ISSUER:-https://auth.dualeapa.local}" \
                     bash infrastructure/docker/run-compose.sh \
                         --project-name "$PROJECT_NAME" \
                         --env-file "$COMPOSE_ENV_FILE" \
                         -f "$COMPOSE_FILE" \
-                        up -d --build
+                        down -v --remove-orphans
+
+                        echo "Building and starting the long-running local application stack..."
+                    if ! env JWT_PRIVATE_KEY="$JWT_PRIVATE_KEY" JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY" JWT_ISSUER="${JWT_ISSUER:-https://auth.dualeapa.local}" \
+                    bash infrastructure/docker/run-compose.sh \
+                        --project-name "$PROJECT_NAME" \
+                        --env-file "$COMPOSE_ENV_FILE" \
+                        -f "$COMPOSE_FILE" \
+                            up -d --build \
+                            auth-service client-ui db db-init holdings-and-trade-service kafka order-and-sell-service reporting-service reporting-ui; then
+                        # A db-init that exits non-zero fails `up` before any
+                        # later diagnostics run, so show why here.
+                        echo "===== db-init logs =====" >&2
+                        bash infrastructure/docker/run-compose.sh \
+                            --project-name "$PROJECT_NAME" \
+                            --env-file "$COMPOSE_ENV_FILE" \
+                            -f "$COMPOSE_FILE" \
+                            logs --no-color db-init >&2 || true
+                        exit 1
+                    fi
+
+                        echo "Starting kafka-init separately so Compose does not race a short-lived init container during detached startup..."
+                        env JWT_PRIVATE_KEY="$JWT_PRIVATE_KEY" JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY" JWT_ISSUER="${JWT_ISSUER:-https://auth.dualeapa.local}" \
+                        bash infrastructure/docker/run-compose.sh \
+                            --project-name "$PROJECT_NAME" \
+                            --env-file "$COMPOSE_ENV_FILE" \
+                            -f "$COMPOSE_FILE" \
+                            up -d kafka-init
 
                     echo "Local application services after startup:"
                     bash infrastructure/docker/run-compose.sh \
@@ -590,7 +629,37 @@ pipeline {
                             --project-name "$PROJECT_NAME" \
                             --env-file "$COMPOSE_ENV_FILE" \
                             -f "$COMPOSE_FILE" \
-                            logs --no-color --tail 100
+                            ps -a
+                        # Logs of every service together interleave and the
+                        # tail of the one that died is lost, so print each
+                        # missing service's exit status and logs on its own.
+                        # db-init is not in the expected list because it exits
+                        # by design, but a skipped or failed migration is the
+                        # usual reason a service cannot find its tables.
+                        echo "===== db-init logs =====" >&2
+                        bash infrastructure/docker/run-compose.sh \
+                            --project-name "$PROJECT_NAME" \
+                            --env-file "$COMPOSE_ENV_FILE" \
+                            -f "$COMPOSE_FILE" \
+                            logs --no-color db-init >&2 || true
+                        for service in $EXPECTED_SERVICES; do
+                            case " $RUNNING_SERVICES " in
+                                *" $service "*) continue ;;
+                            esac
+                            echo "===== $service is not running =====" >&2
+                            SERVICE_ID="$(sh infrastructure/docker/run-compose.sh \
+                                --project-name "$PROJECT_NAME" \
+                                -f "$COMPOSE_FILE" \
+                                ps -aq "$service")"
+                            if [ -n "$SERVICE_ID" ]; then
+                                docker inspect --format 'state={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}}' "$SERVICE_ID" >&2
+                            fi
+                            bash infrastructure/docker/run-compose.sh \
+                                --project-name "$PROJECT_NAME" \
+                                --env-file "$COMPOSE_ENV_FILE" \
+                                -f "$COMPOSE_FILE" \
+                                logs --no-color --tail 200 "$service" >&2 || true
+                        done
                         exit 1
                     fi
 
@@ -712,7 +781,7 @@ pipeline {
                     }
                     if (currentBuild.currentResult != 'SUCCESS' && env.LOCAL_STACK_STARTED == 'true') {
                         def composeCleanupStatus = sh(
-                            script: 'bash infrastructure/docker/run-compose.sh --project-name trading-season-local --env-file infrastructure/docker-compose/.env -f infrastructure/docker-compose/docker-compose.local.yml down',
+                            script: 'bash infrastructure/docker/run-compose.sh --project-name trading-season-local --env-file infrastructure/docker-compose/.env -f infrastructure/docker-compose/docker-compose.local.yml down -v --remove-orphans',
                             returnStatus: true
                         )
                         if (composeCleanupStatus != 0) {

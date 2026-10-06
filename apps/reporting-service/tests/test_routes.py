@@ -5,7 +5,7 @@ Tests for API routes and endpoints
 import pytest
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from decimal import Decimal
 from models import db, Account, Order, Fill, Instrument
 
@@ -218,7 +218,7 @@ class TestPerformanceMetricsHelpers:
         from routes import _calculate_daily_returns
         trades = [
             {
-                'executed_at': datetime.utcnow().isoformat(),
+                'executed_at': datetime.now(UTC).isoformat(),
                 'realized_pl': 100.0
             }
         ]
@@ -243,9 +243,9 @@ class TestPerformanceMetricsHelpers:
         """Test max drawdown calculation"""
         from routes import _calculate_max_drawdown
         trades = [
-            {'executed_at': (datetime.utcnow() - timedelta(days=3)).isoformat(), 'realized_pl': 100.0},
-            {'executed_at': (datetime.utcnow() - timedelta(days=2)).isoformat(), 'realized_pl': -200.0},
-            {'executed_at': (datetime.utcnow() - timedelta(days=1)).isoformat(), 'realized_pl': 50.0}
+            {'executed_at': (datetime.now(UTC) - timedelta(days=3)).isoformat(), 'realized_pl': 100.0},
+            {'executed_at': (datetime.now(UTC) - timedelta(days=2)).isoformat(), 'realized_pl': -200.0},
+            {'executed_at': (datetime.now(UTC) - timedelta(days=1)).isoformat(), 'realized_pl': 50.0}
         ]
         drawdown = _calculate_max_drawdown(trades)
         assert drawdown >= 0
@@ -254,8 +254,8 @@ class TestPerformanceMetricsHelpers:
         """Test current drawdown calculation"""
         from routes import _calculate_current_drawdown
         trades = [
-            {'executed_at': (datetime.utcnow() - timedelta(days=3)).isoformat(), 'realized_pl': 100.0},
-            {'executed_at': (datetime.utcnow() - timedelta(days=2)).isoformat(), 'realized_pl': -50.0}
+            {'executed_at': (datetime.now(UTC) - timedelta(days=3)).isoformat(), 'realized_pl': 100.0},
+            {'executed_at': (datetime.now(UTC) - timedelta(days=2)).isoformat(), 'realized_pl': -50.0}
         ]
         drawdown = _calculate_current_drawdown(trades)
         assert drawdown >= 0
