@@ -11,6 +11,8 @@ import {
   signal,
 } from '@angular/core';
 import { OrderSide } from '../mock-data';
+import { ORDER_DISCLAIMER_SUBTEXT } from '../orders/order-disclaimer';
+import { OrderReviewDialogComponent } from '../orders/order-review-dialog.component';
 
 export interface TradeTicketDraft {
   accountId: string;
@@ -25,7 +27,7 @@ export interface TradeTicketDraft {
 @Component({
   selector: 'app-trade-ticket',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CurrencyPipe],
+  imports: [CurrencyPipe, OrderReviewDialogComponent],
   host: { class: 'block' },
   template: `
     <section
@@ -136,6 +138,9 @@ export interface TradeTicketDraft {
             : (side() === 'buy' ? 'Buy' : 'Sell') + ' ' + quantity() + ' ' + symbol()
         }}
       </button>
+      <p class="text-muted-foreground mt-1.5 text-center text-[11px] leading-4" data-testid="order-disclaimer">
+        {{ disclaimer }}
+      </p>
 
       @if (message()) {
         <p class="mt-1.5 text-center text-xs" role="status">{{ message() }}</p>
@@ -156,6 +161,17 @@ export interface TradeTicketDraft {
         </button>
       }
     </section>
+
+    @if (reviewOpen()) {
+      <app-order-review-dialog
+        [side]="side()"
+        [symbol]="symbol()"
+        [quantity]="quantity()"
+        [price]="price()"
+        (confirmed)="confirmOrder()"
+        (cancelled)="reviewOpen.set(false)"
+      />
+    }
   `,
 })
 export class TradeTicketComponent {
@@ -179,6 +195,9 @@ export class TradeTicketComponent {
   readonly refresh = output<void>();
 
   protected readonly side = signal<OrderSide>('buy');
+  protected readonly disclaimer = ORDER_DISCLAIMER_SUBTEXT;
+  // Every order is reviewed before it is sent; the review popup owns the final confirmation.
+  protected readonly reviewOpen = signal(false);
   protected readonly quantity = linkedSignal<number, number>({
     source: () => this.maxShares(),
     computation: (maximum, previous) => boundedShares(previous?.value ?? 0, maximum),
@@ -223,9 +242,15 @@ export class TradeTicketComponent {
   }
 
   protected submitOrder(): void {
-    if (!this.ready() || this.busy() || !this.quantity() || this.quantity() > this.maxShares())
-      return;
+    if (this.canSubmit()) this.reviewOpen.set(true);
+  }
 
-    this.submitted.emit(this.draft());
+  protected confirmOrder(): void {
+    this.reviewOpen.set(false);
+    if (this.canSubmit()) this.submitted.emit(this.draft());
+  }
+
+  private canSubmit(): boolean {
+    return this.ready() && !this.busy() && this.quantity() > 0 && this.quantity() <= this.maxShares();
   }
 }

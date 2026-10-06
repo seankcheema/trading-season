@@ -811,10 +811,18 @@ describe('MarketPageComponent', () => {
     input.dispatchEvent(new Event('input'));
     fixture.detectChanges();
   }
+  // Clicks the ticket's submit button, then confirms the review popup if it opened. A disabled
+  // ticket opens no popup, so a blocked click sends nothing.
   function buy(fixture: ComponentFixture<MarketPageComponent>) {
     (
       fixture.nativeElement.querySelector('app-trade-ticket section > button') as HTMLButtonElement
     ).click();
+    fixture.detectChanges();
+    (
+      fixture.nativeElement.querySelector(
+        '[data-testid="order-review-confirm"]',
+      ) as HTMLButtonElement | null
+    )?.click();
   }
   it('submits the selected account and current simulated time, prevents duplicate clicks, and refreshes a fill', async () => {
     const fixture = await setup('aapl', '', '2');

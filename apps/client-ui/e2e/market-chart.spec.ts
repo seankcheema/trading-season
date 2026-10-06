@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { newAccount } from './fixtures/accounts';
-import type { LoginPage } from './fixtures/pages';
+import { confirmOrderReview, type LoginPage } from './fixtures/pages';
 import { expect, test } from './fixtures/test';
 
 const USER = newAccount();
@@ -48,6 +48,7 @@ test('executes a trade and shows recent orders within the full-screen layout', a
 
   await page.locator('#future-trade-quantity').fill('3');
   await page.getByRole('button', { name: 'Buy 3 AAPL', exact: true }).click();
+  await confirmOrderReview(page);
   await expect(page.locator('hlm-toaster .toast')).toContainText('Filled 3 AAPL at $225.80.');
   await page.getByRole('tab', { name: 'Recent Orders', exact: true }).click();
   await expect(page.getByTestId('market-recent-orders')).toContainText('3 shares · Filled');
@@ -149,6 +150,7 @@ test('keeps account selection and rewinds executions with the shared clock', asy
     await page.locator('#future-trade-quantity').fill('2');
     await buy.click({ timeout: 2000 });
   }).toPass();
+  await confirmOrderReview(page);
   await expect(page.locator('hlm-toaster .toast')).toContainText('Filled 2 AAPL');
   await page.getByRole('tab', { name: 'Recent Orders', exact: true }).click();
   const history = page.getByTestId('market-recent-orders');
