@@ -11,8 +11,8 @@ import org.springframework.transaction.event.TransactionalEventListener;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Publishes each {@link OrderResolvedEvent} to the {@value #TOPIC} topic
- * after the transaction that resolved the order has committed.
+ * Publishes each {@link OrderStatusEvent} to the {@value #TOPIC} topic
+ * after the transaction that committed the status change.
  *
  * <p>The message key is the account id, so Kafka places all of one account's
  * events on the same partition in submission order. The body is the event
@@ -33,7 +33,7 @@ import tools.jackson.databind.ObjectMapper;
 @ConditionalOnProperty(name = "app.events.enabled", havingValue = "true", matchIfMissing = true)
 public class TradeEventPublisher {
 
-    /** The topic every resolved order is published to. */
+    /** The topic every committed order status change is published to. */
     public static final String TOPIC = "trade-events";
 
     private static final Logger log = LoggerFactory.getLogger(TradeEventPublisher.class);
@@ -53,14 +53,14 @@ public class TradeEventPublisher {
     }
 
     /**
-     * Sends one message for a resolved order once its transaction has
+     * Sends one message for an order status change once its transaction has
      * committed. Logs the partition and offset the broker assigned, or the
      * failure. Never throws.
      *
-     * @param event the resolved order
+     * @param event the order status that was committed
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void onOrderResolved(OrderResolvedEvent event) {
+    public void onOrderStatus(OrderStatusEvent event) {
         String key = String.valueOf(event.accountId());
         try {
             String value = objectMapper.writeValueAsString(event);

@@ -10,8 +10,9 @@ Spring Boot microservice responsible for managing all trading operations, order 
 - Execute buy and sell transactions
 - Update and maintain current holdings
 - Maintain complete order audit trail and history
-- Publish one `trade-events` message per resolved order after commit
-- Run the `order-status-pusher` consumer group, which forwards each resolved order to the owner's open `GET /api/orders/stream` connections (the reporting service owns the `reporting-ingester` group)
+- Commit an accepted order before executing it (BR-06), then execute in a separate transaction
+- Publish one `trade-events` message per committed status change (`ACCEPTED`, `FILLED`, `REJECTED`)
+- Run the `order-status-pusher` consumer group, which forwards each status change to the owner's open `GET /api/orders/stream` connections (the reporting service owns the `reporting-ingester` group)
 
 **Port:** 8081 (default, configurable via `server.port`)
 
@@ -101,9 +102,9 @@ All endpoints require valid RS256 access token except public market GET endpoint
 - `GET /api/orders` - List the authenticated caller's orders across all of their accounts, newest first (requires auth)
 
 **Orders:**
-- `POST /api/orders` - Submit a buy or sell order; created PENDING and returned FILLED or REJECTED (requires auth)
+- `POST /api/orders` - Submit a buy or sell order; created PENDING and returned FILLED, REJECTED, or ACCEPTED when execution failed and the order stays on record (requires auth)
 - `GET /api/orders/{id}` - Get order details (requires auth)
-- `GET /api/orders/stream` - Server-sent events: `order-status` with each resolved order's JSON body, `heartbeat` every 15 seconds (requires auth; the client must send the bearer header, which native `EventSource` cannot)
+- `GET /api/orders/stream` - Server-sent events: `order-status` with each committed status change's JSON body, `heartbeat` every 15 seconds (requires auth; the client must send the bearer header, which native `EventSource` cannot)
 
 **Market Data (Public):**
 - `GET /api/market/snapshot` - Current market snapshot

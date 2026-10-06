@@ -17,7 +17,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * The open order-status streams, one list of server-sent event emitters per
  * signed-in user. {@link OrderStatusStreamController} adds a connection when
  * a client opens {@code GET /api/orders/stream}; {@link OrderStatusPusherListener}
- * sends each resolved order to the owner's connections (BR-07).
+ * sends each committed status change to the owner's connections (BR-07).
  *
  * <p>Nothing is stored. A user with no open connection receives nothing, and
  * reconnecting clients read the order list to catch up. A connection that
@@ -29,7 +29,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @Component
 public class OrderStatusStreamRegistry {
 
-    /** Event name carrying a resolved order's JSON body. */
+    /** Event name carrying an order status change's JSON body. */
     public static final String EVENT_NAME = "order-status";
 
     /** Event name of the periodic keep-alive. */
@@ -69,7 +69,7 @@ public class OrderStatusStreamRegistry {
     }
 
     /**
-     * Sends one resolved order to every open connection of its owner.
+     * Sends one order status change to every open connection of its owner.
      *
      * @param userId      the owner of the account the order was placed on
      * @param payloadJson the trade event body exactly as published to Kafka

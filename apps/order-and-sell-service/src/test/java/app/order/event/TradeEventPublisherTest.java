@@ -49,8 +49,8 @@ class TradeEventPublisherTest {
         publisher = new TradeEventPublisher(kafkaTemplate, jsonMapper);
     }
 
-    private static OrderResolvedEvent filled() {
-        return new OrderResolvedEvent(42, 7, "FILLED", "TEST", "BUY",
+    private static OrderStatusEvent filled() {
+        return new OrderStatusEvent(42, 7, "FILLED", "TEST", "BUY",
                 new BigDecimal("100"), new BigDecimal("50.00"), null, RESOLVED_AT);
     }
 
@@ -65,7 +65,7 @@ class TradeEventPublisherTest {
         when(kafkaTemplate.send(eq(TOPIC), eq("42"), anyString()))
                 .thenReturn(acknowledged("42", "{}"));
 
-        publisher.onOrderResolved(filled());
+        publisher.onOrderStatus(filled());
 
         ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
         verify(kafkaTemplate).send(eq(TOPIC), eq("42"), body.capture());
@@ -73,7 +73,7 @@ class TradeEventPublisherTest {
 
         // The account id is the key, not part of the body.
         assertFalse(json.contains("accountId"), json);
-        OrderResolvedEvent echoed = jsonMapper.readValue(json, OrderResolvedEvent.class);
+        OrderStatusEvent echoed = jsonMapper.readValue(json, OrderStatusEvent.class);
         assertNull(echoed.accountId());
         assertEquals(7, echoed.orderId());
         assertEquals("FILLED", echoed.status());
@@ -89,14 +89,14 @@ class TradeEventPublisherTest {
     void carriesTheRejectionReasonWhenTheOrderWasRejected() {
         when(kafkaTemplate.send(eq(TOPIC), eq("42"), anyString()))
                 .thenReturn(acknowledged("42", "{}"));
-        OrderResolvedEvent rejected = new OrderResolvedEvent(42, 8, "REJECTED", "TEST", "SELL",
+        OrderStatusEvent rejected = new OrderStatusEvent(42, 8, "REJECTED", "TEST", "SELL",
                 new BigDecimal("5"), new BigDecimal("50.00"), "Insufficient holdings", RESOLVED_AT);
 
-        publisher.onOrderResolved(rejected);
+        publisher.onOrderStatus(rejected);
 
         ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
         verify(kafkaTemplate).send(eq(TOPIC), eq("42"), body.capture());
-        OrderResolvedEvent echoed = jsonMapper.readValue(body.getValue(), OrderResolvedEvent.class);
+        OrderStatusEvent echoed = jsonMapper.readValue(body.getValue(), OrderStatusEvent.class);
         assertEquals("REJECTED", echoed.status());
         assertEquals("Insufficient holdings", echoed.rejectionReason());
     }
@@ -106,7 +106,7 @@ class TradeEventPublisherTest {
         when(kafkaTemplate.send(eq(TOPIC), eq("42"), anyString()))
                 .thenReturn(CompletableFuture.failedFuture(new KafkaException("broker rejected the record")));
 
-        assertDoesNotThrow(() -> publisher.onOrderResolved(filled()));
+        assertDoesNotThrow(() -> publisher.onOrderStatus(filled()));
     }
 
     @Test
@@ -115,6 +115,6 @@ class TradeEventPublisherTest {
         when(kafkaTemplate.send(eq(TOPIC), eq("42"), anyString()))
                 .thenThrow(new KafkaException("no brokers reachable"));
 
-        assertDoesNotThrow(() -> publisher.onOrderResolved(filled()));
+        assertDoesNotThrow(() -> publisher.onOrderStatus(filled()));
     }
 }

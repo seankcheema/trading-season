@@ -4,7 +4,7 @@ This service owns order submission, validation, execution, instrument reference 
 
 - Resolve user ownership from the verified token subject before reading or writing an account.
 - Keep validation and response mapping in controllers, business logic in services, and persistence in repositories.
-- Execute fills, shared user cash balance updates, cash transactions, holding movements, holdings, and audit changes in one transaction. A persistence failure must roll back the whole submission.
+- Commit the accepted order in its own transaction before executing it (BR-06). Execute fills, shared user cash balance updates, cash transactions, holding movements, holdings, and the execution audit change in one separate transaction (BR-09). A persistence failure during execution rolls back only the execution; the accepted order stays on record with an `EXECUTION_FAILED` audit entry.
 - Reject orders whose credential record no longer exists. Account activation status was removed; do not restore it implicitly.
 - Preserve real audit timestamps separately from the simulation cursor and retain idempotent client references.
 - Mirror source packages under `src/test/java/app`. Use H2 with the test profile, and cover cross-user isolation and buy/sell ledgers.
@@ -21,7 +21,7 @@ This service owns order submission, validation, execution, instrument reference 
 - `user/` - User profile and account information
 - `holding/` - Current holdings and position data queries
 - `order/` - Order history and audit queries
-- `order/event/` - Publishes one Kafka `trade-events` message per resolved order after commit; the `order-status-pusher` consumer group forwards each one to the owner's open `GET /api/orders/stream` connections. Publisher and consumer are gated by `app.events.enabled`; the stream endpoint is always present. The `reporting-ingester` group lives in the reporting service.
+- `order/event/` - Publishes one Kafka `trade-events` message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`); the `order-status-pusher` consumer group forwards each one to the owner's open `GET /api/orders/stream` connections. Publisher and consumer are gated by `app.events.enabled`; the stream endpoint is always present. The `reporting-ingester` group lives in the reporting service.
 - `instrument/` - Tradable asset definitions
 - `auth/` - Authentication and authorization
 - `market/` - Shared market data services

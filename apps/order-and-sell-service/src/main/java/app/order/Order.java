@@ -16,11 +16,14 @@ import java.util.UUID;
  * (BR-04/05/06) — deliberately separate from execution, which lives in
  * {@code order.execution.Fill}.
  *
- * <p>Lifecycle (KAN-93, see V004__Order_status_lifecycle.sql):
- * {@code PENDING -> REJECTED} when a trading rule fails, otherwise
- * {@code PENDING -> FILLED} once the fill is written and the user's
- * available funds and the account's holdings have moved. This entity is
- * persisted as {@code PENDING} the moment a request is received, before
+ * <p>Lifecycle (KAN-93, BR-06): {@code PENDING -> REJECTED} when a trading
+ * rule fails, otherwise {@code PENDING -> ACCEPTED}, committed on its own as
+ * the firm's record of intent, then {@code ACCEPTED -> FILLED} once the fill
+ * is written and the user's available funds and the account's holdings have
+ * moved, or {@code ACCEPTED -> REJECTED} if the re-check under the row lock
+ * fails. Execution runs in a separate transaction, so an order whose
+ * execution fails unexpectedly stays {@code ACCEPTED} on record. This entity
+ * is persisted as {@code PENDING} the moment a request is received, before
  * the trading-rule pipeline runs, so a rejected order still leaves a record.
  */
 @Entity
@@ -32,6 +35,12 @@ public class Order {
 
     /** Created and awaiting the trading-rule pipeline. */
     public static final String STATUS_PENDING = "PENDING";
+    /**
+     * Passed the trading rules and committed as a firm commitment before
+     * execution (BR-06). Execution follows in its own transaction; an order
+     * stays here if that execution fails unexpectedly.
+     */
+    public static final String STATUS_ACCEPTED = "ACCEPTED";
     /**
      * Final state of a successful order: the fill, funds movement and
      * holding movement have been written.

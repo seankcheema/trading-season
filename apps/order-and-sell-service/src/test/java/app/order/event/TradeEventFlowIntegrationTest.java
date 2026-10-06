@@ -55,7 +55,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Runs the real path from {@code OrderService} through the after-commit
- * publisher to an embedded broker and back through both consumer groups.
+ * publisher to an embedded broker and back through the order-status pusher
+ * to a subscribed stream.
+ *
+ * <p>Two orders on one account produce three messages: the first order is
+ * accepted then filled, the second fails a trading rule and goes straight
+ * to rejected (BR-06 lifecycle). All three share the account's partition
+ * and arrive in that order.
  *
  * <p>This is the one context with {@code app.events.enabled=true}. The
  * embedded broker also sets {@code spring.kafka.bootstrap-servers} as a JVM
@@ -152,7 +158,7 @@ class TradeEventFlowIntegrationTest {
         instrument.setTradable(true);
         instrument = instrumentRepository.save(instrument);
 
-        // Both consumer groups must own all three partitions before an order is
+        // The consumer group must own all three partitions before an order is
         // placed, or an event could be published before anyone is subscribed.
         for (MessageListenerContainer container : listeners.getListenerContainers()) {
             ContainerTestUtils.waitForAssignment(container, 3);
@@ -161,42 +167,45 @@ class TradeEventFlowIntegrationTest {
 
     private OrderRequest order(String orderType, String quantity, String price) {
         return new OrderRequest(account.getAccountId(), instrument.getInstrumentId(), orderType,
-                new BigDecimal(quantity), new BigDecimal(price), new BigDecimal("2.0"), UUID.randomUUID());
+                new BigDecimal(quantity), new BigDecimal(price), new BigDecimal("2.0"), UUID.randomUUID(), null);
     }
 
     @Test
-    void eachResolvedOrderIsPublishedOnceInOrderOnTheAccountsPartitionAndSeenByBothGroups(
+    void eachStatusChangeIsPublishedOnceInOrderOnTheAccountsPartitionAndPushedToTheOwner(
             CapturedOutput output) {
-        // The owner has the dashboard open: the pusher must deliver both outcomes here.
+        // The owner has the dashboard open: the pusher must deliver every status here.
         RecordingSseEmitter browser = new RecordingSseEmitter();
         streams.register(user.getUserId(), browser);
 
         Order filled = orderService.submitOrder(order("BUY", "100", "50.00"), user.getUserId());
-        // Sells more than the 100 just bought, so the rule pipeline rejects it.
+        // Sells more than the 100 just bought, so the rule pipeline rejects it before acceptance.
         Order rejected = orderService.submitOrder(order("SELL", "500", "50.00"), user.getUserId());
         assertEquals(Order.STATUS_FILLED, filled.getStatus());
         assertEquals(Order.STATUS_REJECTED, rejected.getStatus());
 
-        List<ConsumerRecord<String, String>> records = readTwoRecords();
+        List<ConsumerRecord<String, String>> records = readRecords(3);
         String key = String.valueOf(account.getAccountId());
-        ConsumerRecord<String, String> first = records.get(0);
-        ConsumerRecord<String, String> second = records.get(1);
+        for (ConsumerRecord<String, String> record : records) {
+            assertEquals(key, record.key());
+            assertEquals(records.get(0).partition(), record.partition(), "one account's events share a partition");
+        }
+        assertEquals(records.get(0).offset() + 1, records.get(1).offset(), "consecutive offsets in order");
+        assertEquals(records.get(1).offset() + 1, records.get(2).offset(), "consecutive offsets in order");
 
-        assertEquals(key, first.key());
-        assertEquals(key, second.key());
-        assertEquals(first.partition(), second.partition(), "one account's events share a partition");
-        assertEquals(first.offset() + 1, second.offset(), "consecutive offsets in submission order");
+        JsonNode accepted = objectMapper.readTree(records.get(0).value());
+        assertEquals(filled.getOrderId().intValue(), accepted.get("orderId").intValue());
+        assertEquals("ACCEPTED", accepted.get("status").stringValue());
+        assertEquals("TEST", accepted.get("symbol").stringValue());
+        assertEquals("BUY", accepted.get("side").stringValue());
+        assertTrue(accepted.get("rejectionReason").isNull());
+        assertTrue(accepted.get("accountId") == null, "the account id travels as the key only");
 
-        JsonNode filledBody = objectMapper.readTree(first.value());
+        JsonNode filledBody = objectMapper.readTree(records.get(1).value());
         assertEquals(filled.getOrderId().intValue(), filledBody.get("orderId").intValue());
         assertEquals("FILLED", filledBody.get("status").stringValue());
-        assertEquals("TEST", filledBody.get("symbol").stringValue());
-        assertEquals("BUY", filledBody.get("side").stringValue());
         assertEquals(0, new BigDecimal("50.00").compareTo(filledBody.get("price").decimalValue()));
-        assertTrue(filledBody.get("rejectionReason").isNull());
-        assertTrue(filledBody.get("accountId") == null, "the account id travels as the key only");
 
-        JsonNode rejectedBody = objectMapper.readTree(second.value());
+        JsonNode rejectedBody = objectMapper.readTree(records.get(2).value());
         assertEquals(rejected.getOrderId().intValue(), rejectedBody.get("orderId").intValue());
         assertEquals("REJECTED", rejectedBody.get("status").stringValue());
         assertEquals("SELL", rejectedBody.get("side").stringValue());
@@ -204,34 +213,31 @@ class TradeEventFlowIntegrationTest {
 
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
             String log = output.getAll();
-            for (Order order : List.of(filled, rejected)) {
-                String published = "Published trade event orderId=" + order.getOrderId();
-                assertTrue(log.contains(published), published);
-            }
-            assertTrue(log.contains("partition=" + first.partition() + " offset=" + first.offset()));
-            assertTrue(log.contains("partition=" + second.partition() + " offset=" + second.offset()));
             for (ConsumerRecord<String, String> record : records) {
+                assertTrue(log.contains("partition=" + record.partition() + " offset=" + record.offset()));
                 String received = "Consumer group " + OrderStatusPusherListener.GROUP_ID + " received key=" + key
                         + " partition=" + record.partition() + " offset=" + record.offset();
                 assertTrue(log.contains(received), received);
             }
 
             List<String> pushed = browser.framesNamed(OrderStatusStreamRegistry.EVENT_NAME);
-            assertEquals(2, pushed.size(), "one order-status event per resolved order");
+            assertEquals(3, pushed.size(), "one order-status event per committed status change");
+            assertTrue(pushed.get(0).contains("\"status\":\"ACCEPTED\""), pushed.get(0));
             assertTrue(pushed.get(0).contains("\"orderId\":" + filled.getOrderId()), pushed.get(0));
-            assertTrue(pushed.get(1).contains("\"orderId\":" + rejected.getOrderId()), pushed.get(1));
+            assertTrue(pushed.get(1).contains("\"status\":\"FILLED\""), pushed.get(1));
+            assertTrue(pushed.get(2).contains("\"orderId\":" + rejected.getOrderId()), pushed.get(2));
         });
     }
 
-    private List<ConsumerRecord<String, String>> readTwoRecords() {
+    private List<ConsumerRecord<String, String>> readRecords(int expected) {
         Map<String, Object> props = KafkaTestUtils.consumerProps(broker, "trade-events-assert", false);
         try (Consumer<String, String> consumer = new DefaultKafkaConsumerFactory<>(
                 props, new StringDeserializer(), new StringDeserializer()).createConsumer()) {
             broker.consumeFromAnEmbeddedTopic(consumer, TradeEventPublisher.TOPIC);
             List<ConsumerRecord<String, String>> records = new ArrayList<>();
-            KafkaTestUtils.getRecords(consumer, Duration.ofSeconds(10), 2).forEach(records::add);
+            KafkaTestUtils.getRecords(consumer, Duration.ofSeconds(10), expected).forEach(records::add);
             records.sort(Comparator.comparingLong(ConsumerRecord::offset));
-            assertEquals(2, records.size(), "exactly one message per resolved order");
+            assertEquals(expected, records.size(), "exactly one message per committed status change");
             return records;
         }
     }

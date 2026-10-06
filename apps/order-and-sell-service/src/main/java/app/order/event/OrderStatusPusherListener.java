@@ -14,9 +14,9 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.Optional;
 
 /**
- * Consumer group {@value #GROUP_ID}: forwards each resolved order to the
- * browser sessions of the account's owner, so an order's status changes on
- * screen without a refresh (BR-07).
+ * Consumer group {@value #GROUP_ID}: forwards each committed order status
+ * change to the browser sessions of the account's owner, so an order is seen
+ * as accepted and then filled or rejected without a refresh (BR-07).
  *
  * <p>For every message it resolves the account id in the key to the owning
  * user and hands the JSON body to {@link OrderStatusStreamRegistry#push}.
