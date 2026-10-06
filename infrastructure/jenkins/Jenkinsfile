@@ -86,49 +86,6 @@ pipeline {
                 '''
             }
         }
-        stage('SonarQube Analysis') {
-            when { expression { currentBuild.currentResult == 'SUCCESS' } }
-            steps {
-                script {
-                    def scannerHome = tool(env.SONAR_SCANNER_TOOL ?: 'SonarScanner')
-
-                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SQ_TOKEN')]) {
-                        sh """
-                            set -eu
-                            echo "token length: \${#SONAR_AUTH_TOKEN}"
-                    echo "token prefix: \$(echo "\$SONAR_AUTH_TOKEN" | cut -c1-4)"
-                    curl -s -o /dev/null -w "validate http: %{http_code}\\n" -u "\$SONAR_AUTH_TOKEN:" "\$SONAR_HOST_URL/api/authentication/validate"
-                    curl -s -u "\$SONAR_AUTH_TOKEN:" "\$SONAR_HOST_URL/api/authentication/validate"; echo
-
-                    PROJECT_KEY="\${SONAR_PROJECT_KEY:-trading-season}"
-                            PROJECT_NAME="\${SONAR_PROJECT_NAME:-Trading Season}"
-
-                            echo "SonarScanner location: ${scannerHome}"
-                            "${scannerHome}/bin/sonar-scanner" --version
-
-                            "${scannerHome}/bin/sonar-scanner" \
-                              -Dproject.settings=infrastructure/jenkins/sonar-project.properties \
-                              -Dsonar.host.url="http://localhost:9000" \
-                              -Dsonar.token="\$SQ_TOKEN" \
-                              -Dsonar.projectKey="\$PROJECT_KEY" \
-                              -Dsonar.projectName="\$PROJECT_NAME" \
-                              -Dsonar.projectVersion="\$BUILD_NUMBER"
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Quality Gate') {
-            when { expression { currentBuild.currentResult == 'SUCCESS' } }
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
-            }
-        }
-        
-              
         // Each suite runs once. Java branches use separate Maven repositories.
         // E2E follows the parallel group to avoid browser CPU contention.
         stage('Test Suites') {
@@ -358,6 +315,43 @@ pipeline {
             post {
                 always {
                     archiveArtifacts artifacts: 'apps/*/target/reports/apidocs/**/*', allowEmptyArchive: false
+                }
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            when { expression { currentBuild.currentResult == 'SUCCESS' } }
+            steps {
+                script {
+                    def scannerHome = tool(env.SONAR_SCANNER_TOOL ?: 'SonarScanner')
+
+                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SQ_TOKEN')]) {
+                        sh """
+                            set -eu
+                            PROJECT_KEY="\${SONAR_PROJECT_KEY:-trading-season}"
+                            PROJECT_NAME="\${SONAR_PROJECT_NAME:-Trading Season}"
+
+                            echo "SonarScanner location: ${scannerHome}"
+                            "${scannerHome}/bin/sonar-scanner" --version
+
+                            "${scannerHome}/bin/sonar-scanner" \
+                              -Dproject.settings=infrastructure/jenkins/sonar-project.properties \
+                              -Dsonar.host.url="http://localhost:9000" \
+                              -Dsonar.token="\$SQ_TOKEN" \
+                              -Dsonar.projectKey="\$PROJECT_KEY" \
+                              -Dsonar.projectName="\$PROJECT_NAME" \
+                              -Dsonar.projectVersion="\$BUILD_NUMBER"
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            when { expression { currentBuild.currentResult == 'SUCCESS' } }
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }
