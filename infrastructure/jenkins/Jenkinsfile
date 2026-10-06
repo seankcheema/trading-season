@@ -135,42 +135,41 @@ pipeline {
             }
         }
         stage('SonarQube Analysis') {
-    when { expression { currentBuild.currentResult == 'SUCCESS' } }
-    steps {
-        script {
-            def scannerHome = tool(env.SONAR_SCANNER_TOOL ?: 'SonarScanner')
-            def sonarInstallation = env.SONARQUBE_ENV ?: 'SonarQube'
+            when { expression { currentBuild.currentResult == 'SUCCESS' } }
+            steps {
+                script {
+                    def scannerHome = tool(env.SONAR_SCANNER_TOOL ?: 'SonarScanner')
 
-            withSonarQubeEnv(sonarInstallation) {
-                sh """
-                    set -eu
-                    PROJECT_KEY="\${SONAR_PROJECT_KEY:-trading-season}"
-                    PROJECT_NAME="\${SONAR_PROJECT_NAME:-Trading Season}"
+                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SQ_TOKEN')]) {
+                        sh """
+                            set -eu
+                            PROJECT_KEY="\${SONAR_PROJECT_KEY:-trading-season}"
+                            PROJECT_NAME="\${SONAR_PROJECT_NAME:-Trading Season}"
 
-                    echo "SonarScanner location: ${scannerHome}"
-                    "${scannerHome}/bin/sonar-scanner" --version
+                            echo "SonarScanner location: ${scannerHome}"
+                            "${scannerHome}/bin/sonar-scanner" --version
 
-                    "${scannerHome}/bin/sonar-scanner" \
-                      -Dproject.settings=infrastructure/jenkins/sonar-project.properties \
-                      -Dsonar.host.url="\$SONAR_HOST_URL" \
-                      -Dsonar.token="\$SONAR_AUTH_TOKEN" \
-                      -Dsonar.projectKey="\$PROJECT_KEY" \
-                      -Dsonar.projectName="\$PROJECT_NAME" \
-                      -Dsonar.projectVersion="\$BUILD_NUMBER"
-                """
+                            "${scannerHome}/bin/sonar-scanner" \
+                              -Dproject.settings=infrastructure/jenkins/sonar-project.properties \
+                              -Dsonar.host.url="http://localhost:9000" \
+                              -Dsonar.token="\$SQ_TOKEN" \
+                              -Dsonar.projectKey="\$PROJECT_KEY" \
+                              -Dsonar.projectName="\$PROJECT_NAME" \
+                              -Dsonar.projectVersion="\$BUILD_NUMBER"
+                        """
+                    }
+                }
             }
         }
-    }
-}
 
-stage('Quality Gate') {
-    when { expression { currentBuild.currentResult == 'SUCCESS' } }
-    steps {
-        timeout(time: 5, unit: 'MINUTES') {
-            waitForQualityGate abortPipeline: true
+        stage('Quality Gate') {
+            when { expression { currentBuild.currentResult == 'SUCCESS' } }
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
         }
-    }
-}
         
               
         // Each suite runs once. Java branches use separate Maven repositories.
