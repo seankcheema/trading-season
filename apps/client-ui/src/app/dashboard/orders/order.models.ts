@@ -1,4 +1,4 @@
-// Shapes of the Order and Sell Service's trading endpoints; see docs/reference/api.md.
+// Shapes of the Order and Sell Service's trading endpoints; see apps/order-and-sell-service/README.md.
 //
 // An order is placed against an instrumentId, but a trader picks a symbol and market data is
 // keyed by symbol, so GET /api/instruments is the lookup between the two.

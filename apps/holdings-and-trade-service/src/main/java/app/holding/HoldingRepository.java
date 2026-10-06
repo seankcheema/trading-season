@@ -14,7 +14,13 @@ import java.util.Optional;
  */
 public interface HoldingRepository extends JpaRepository<Holding, Integer> {
 
-    /** Finds the current holding row for one account/instrument pair, if any. */
+    /**
+     * Finds the current holding row for one account/instrument pair, if any.
+     *
+     * @param accountId the owning account
+     * @param instrumentId the held instrument
+     * @return the holding, or empty when the account holds none
+     */
     Optional<Holding> findByAccountIdAndInstrumentId(Integer accountId, Integer instrumentId);
 
     /**
@@ -22,6 +28,10 @@ public interface HoldingRepository extends JpaRepository<Holding, Integer> {
      * commits — use this in {@code OrderExecutionService} immediately
      * before writing a fill, for the same reason {@code
      * AccountRepository.findByIdForUpdate} exists.
+     *
+     * @param accountId the owning account
+     * @param instrumentId the held instrument
+     * @return the locked holding, or empty when the account holds none
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select h from Holding h where h.accountId = :accountId and h.instrumentId = :instrumentId")

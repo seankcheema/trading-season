@@ -2,6 +2,7 @@ app
 app.account
 app.auth
 app.cash
+app.config
 app.holding
 app.instrument
 app.market

@@ -11,7 +11,7 @@ async def run(url: str) -> None:
     try:
         async with connection.transaction():
             for name in ('V001__Initialize_database.sql', 'V002__Add_watchlist.sql'):
-                sql = (Path(__file__).parents[2] / 'migrations' / name).read_text(encoding='utf-8-sig')
+                sql = (Path(__file__).parents[5] / 'db' / 'migrations' / name).read_text(encoding='utf-8-sig')
                 sql = re.sub(r'^\s*(?:BEGIN|COMMIT);\s*$', '', sql, flags=re.MULTILINE)
                 await connection.execute(sql)
         print('Database setup completed: schema committed.')

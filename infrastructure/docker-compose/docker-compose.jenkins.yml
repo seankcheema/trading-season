@@ -48,8 +48,8 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ../../apps/market-data/db/migrations/V001__Initialize_database.sql:/V001__Initialize_database.sql:ro
-      - ../../apps/market-data/db/migrations/V002__Add_watchlist.sql:/V002__Add_watchlist.sql:ro
+      - ../../db/migrations/V001__Initialize_database.sql:/V001__Initialize_database.sql:ro
+      - ../../db/migrations/V002__Add_watchlist.sql:/V002__Add_watchlist.sql:ro
     environment:
       PGPASSWORD: ${DB_PASSWORD:-changeme}
     command: >
@@ -91,7 +91,7 @@ services:
       - ci-network
 
   # Event broker for the trade-events topic. Nothing publishes or consumes
-  # yet; see docs/reference/architecture.md.
+  # yet.
   kafka:
     # Single-node KRaft: no ZooKeeper, and the controller quorum is this same
     # node. Sized for a developer machine, not durability -- one replica of

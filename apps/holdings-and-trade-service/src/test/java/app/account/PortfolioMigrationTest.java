@@ -12,7 +12,7 @@ class PortfolioMigrationTest {
         try (var connection = DriverManager.getConnection("jdbc:h2:mem:portfolio_migration;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE");
              var statement = connection.createStatement()) {
             statement.execute("create table accounts(account_id integer primary key)");
-            String schema = Files.readString(Path.of("../market-data/db/migrations/V001__Initialize_database.sql"));
+            String schema = Files.readString(Path.of("../../db/migrations/V001__Initialize_database.sql"));
             // Execute the canonical table and constraints, adapting only PostgreSQL's sequence syntax.
             var table = java.util.regex.Pattern.compile("CREATE TABLE portfolio_valuations \\(.*?\\);", java.util.regex.Pattern.DOTALL).matcher(schema);
             assertTrue(table.find());
