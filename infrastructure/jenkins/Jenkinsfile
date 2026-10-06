@@ -82,10 +82,10 @@ pipeline {
                 // This prevents "Operation not permitted" errors during workspace cleanup
                 sh '''
                     set +e
-                    if [ -d apps/reporting-service/reports ] || [ -d apps/reporting-service/coverage ]; then
-                        echo "Repairing permissions on Docker-generated reporting artifacts..."
+                    if [ -d apps/reporting-service ]; then
+                        echo "Repairing permissions on Docker-generated reporting files..."
                         docker run --rm -v "$(pwd)":/ws -w /ws alpine:latest \
-                            chmod -R 777 /ws/apps/reporting-service/reports /ws/apps/reporting-service/coverage 2>/dev/null || true
+                            chmod -R a+rwX /ws/apps/reporting-service 2>/dev/null || true
                     fi
                     set -e
                 '''
@@ -316,6 +316,12 @@ pipeline {
                                       -w /app \
                                       python:3.14-slim \
                                       bash -c "
+                                        # Runs as root, so pytest/coverage leave root-owned
+                                        # directories (.pytest_cache, __pycache__, reports,
+                                        # coverage) that the jenkins user cannot delete.
+                                        # Repair the whole app directory on every exit path,
+                                        # not just after a clean pytest run.
+                                        trap 'chmod -R a+rwX /app' EXIT
                                         mkdir -p reports/junit coverage
                                         python -m pip install --upgrade pip setuptools wheel
                                         python -m pip install -q -r requirements.txt
