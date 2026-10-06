@@ -124,26 +124,42 @@ describe('history dialogs', () => {
       ]);
     });
 
-    it('filters to trades or cash', () => {
+    it('filters by type', () => {
       seedOrders();
       const fixture = open();
-      click(fixture, '[data-testid="transactions-filter-cash"]');
-      expect(rows(fixture, 'transactions-row')).toHaveLength(2);
-      click(fixture, '[data-testid="transactions-filter-trades"]');
-      expect(rows(fixture, 'transactions-row')).toHaveLength(3);
+      const typed = (type: string) => {
+        click(fixture, `[data-testid="transactions-filter-${type}"]`);
+        return rows(fixture, 'transactions-row').length;
+      };
+      expect(typed('buy')).toBe(2);
+      expect(typed('sell')).toBe(1);
+      expect(typed('deposit')).toBe(1);
+      expect(typed('withdrawal')).toBe(1);
+      expect(typed('all')).toBe(5);
     });
 
-    it('opens the ticket for a trade row only', () => {
+    it('colors and signs only cash amounts', () => {
       seedOrders();
       const fixture = open();
-      const selected: string[] = [];
-      fixture.componentInstance.symbolSelected.subscribe((symbol) => selected.push(symbol));
-      const buttons = rows(fixture, 'transactions-row').map(
-        (row) => row.querySelector('button') as HTMLButtonElement,
-      );
-      expect(buttons[0].disabled).toBe(true);
-      buttons[3].click();
-      expect(selected).toEqual(['AAPL']);
+      const amount = (row: HTMLElement) => row.firstElementChild!.lastElementChild as HTMLElement;
+      for (const row of rows(fixture, 'transactions-row')) {
+        const cell = amount(row);
+        if (row.dataset['status'] === 'COMPLETED') {
+          expect(cell.textContent).toMatch(/^\s*[+-]\$/);
+          expect(cell.className).toMatch(/text-(gain|loss)/);
+        } else {
+          expect(cell.textContent).toMatch(/^\s*\$/);
+          expect(cell.className).not.toMatch(/text-(gain|loss)/);
+        }
+      }
+    });
+
+    it('does not make rows clickable', () => {
+      seedOrders();
+      const fixture = open();
+      expect(
+        fixture.nativeElement.querySelectorAll('[data-testid="transactions-row"] button'),
+      ).toHaveLength(0);
     });
 
     it('still shows the recent transfers when the full ledger cannot be loaded', () => {

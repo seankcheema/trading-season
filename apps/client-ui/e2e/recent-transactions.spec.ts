@@ -123,10 +123,16 @@ test('view all opens every transaction, including cash, and filters by type', as
   await expect(rows).toHaveCount(4);
   await expect(rows.first()).toHaveAttribute('data-status', 'COMPLETED');
 
-  await dialog.getByTestId('transactions-filter-cash').click();
+  await dialog.getByTestId('transactions-filter-deposit').click();
   await expect(rows).toHaveCount(1);
-  await dialog.getByTestId('transactions-filter-trades').click();
-  await expect(rows).toHaveCount(3);
+  await dialog.getByTestId('transactions-filter-withdrawal').click();
+  await expect(rows).toHaveCount(0);
+  await dialog.getByTestId('transactions-filter-sell').click();
+  await expect(rows).toHaveCount(1);
+  await dialog.getByTestId('transactions-filter-buy').click();
+  await expect(rows).toHaveCount(2);
+  await dialog.getByTestId('transactions-filter-all').click();
+  await expect(rows).toHaveCount(4);
 
   // Sorting by value puts the largest first, and a second click reverses it.
   await dialog.getByRole('button', { name: 'Sort by Value' }).click();

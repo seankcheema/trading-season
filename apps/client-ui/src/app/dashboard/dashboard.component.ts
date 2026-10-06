@@ -496,14 +496,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.historyDialog.set(null);
   }
 
-  // A row in a history table opens the order ticket for its stock, if the market lists it.
-  protected openOrderForSymbol(symbol: string): void {
-    const instrument = findInstrument(symbol, this.instruments());
-    if (!instrument) return;
-    this.closeHistory();
-    this.openOrder(instrument);
-  }
-
   protected closeAccountDialog(): void {
     this.accountDialog.set(null);
   }

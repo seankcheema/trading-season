@@ -26,12 +26,14 @@ import { ACTIVITY_STATUS_CLASSES } from '../shared/activity-row.component';
 import { DashboardDialogComponent } from '../shared/dashboard-dialog.component';
 import { SortHeaderComponent } from '../shared/sort-header.component';
 
-type KindFilter = 'all' | 'trades' | 'cash';
+type TypeFilter = 'all' | HistoryRow['side'];
 
-const KIND_FILTERS: readonly { id: KindFilter; label: string }[] = [
+const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
   { id: 'all', label: 'All' },
-  { id: 'trades', label: 'Trades' },
-  { id: 'cash', label: 'Cash' },
+  { id: 'Buy', label: 'Buy' },
+  { id: 'Sell', label: 'Sell' },
+  { id: 'Deposit', label: 'Deposit' },
+  { id: 'Withdrawal', label: 'Withdrawal' },
 ];
 
 // Every cash transfer and order the user has made, not just the latest few on the dashboard.
@@ -54,18 +56,18 @@ const KIND_FILTERS: readonly { id: KindFilter; label: string }[] = [
           role="group"
           aria-label="Transaction type"
         >
-          @for (filter of kindFilters; track filter.id) {
+          @for (filter of typeFilters; track filter.id) {
             <button
               type="button"
               class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
               [class]="
-                kind() === filter.id
+                type() === filter.id
                   ? 'bg-primary text-primary-foreground'
                   : 'text-muted-foreground hover:text-foreground'
               "
-              [attr.aria-pressed]="kind() === filter.id"
-              [attr.data-testid]="'transactions-filter-' + filter.id"
-              (click)="kind.set(filter.id)"
+              [attr.aria-pressed]="type() === filter.id"
+              [attr.data-testid]="'transactions-filter-' + filter.id.toLowerCase()"
+              (click)="type.set(filter.id)"
             >
               {{ filter.label }}
             </button>
@@ -110,12 +112,8 @@ const KIND_FILTERS: readonly { id: KindFilter; label: string }[] = [
           <ul class="dash-scroll h-[min(60vh,32.5rem)] overflow-y-auto pb-4">
             @for (row of rows(); track row.key) {
               <li data-testid="transactions-row" [attr.data-status]="row.status">
-                <button
-                  type="button"
-                  class="history-grid hover:bg-muted grid w-full items-center gap-2 rounded-lg px-2 py-2.5 text-left text-sm transition-colors enabled:cursor-pointer disabled:cursor-default disabled:hover:bg-transparent"
-                  [disabled]="!row.symbol"
-                  [attr.aria-label]="row.symbol ? 'Trade ' + row.symbol : null"
-                  (click)="onRow(row)"
+                <div
+                  class="history-grid grid w-full cursor-default items-center gap-2 px-2 py-2.5 text-left text-sm"
                 >
                   <span class="text-muted-foreground truncate tabular-nums">
                     {{ row.date | date: 'MMM d, y, h:mm a' : '' : 'en-US' }}
@@ -140,11 +138,11 @@ const KIND_FILTERS: readonly { id: KindFilter; label: string }[] = [
                   </span>
                   <span
                     class="truncate text-right tabular-nums"
-                    [class]="row.positive ? 'text-gain' : 'text-loss'"
+                    [class]="row.kind === 'cash' ? (row.positive ? 'text-gain' : 'text-loss') : ''"
                   >
-                    {{ row.positive ? '+' : '-' }}{{ row.value | currency: 'USD' }}
+                    {{ sign(row) }}{{ row.value | currency: 'USD' }}
                   </span>
-                </button>
+                </div>
               </li>
             } @empty {
               <li class="text-muted-foreground px-2 py-8 text-center text-sm">
@@ -166,10 +164,8 @@ export class TransactionsDialogComponent implements OnInit {
   // The simulated clock in milliseconds, or null when there is none. Orders after it are hidden.
   readonly marketTime = input<number | null>(null);
   readonly closed = output<void>();
-  // A trade row was chosen; the owner decides whether that opens the order ticket.
-  readonly symbolSelected = output<string>();
 
-  protected readonly kindFilters = KIND_FILTERS;
+  protected readonly typeFilters = TYPE_FILTERS;
   protected readonly columns: readonly {
     key: HistorySortKey;
     label: string;
@@ -183,7 +179,7 @@ export class TransactionsDialogComponent implements OnInit {
     { key: 'price', label: 'Price', align: 'right' },
     { key: 'value', label: 'Value', align: 'right' },
   ];
-  protected readonly kind = signal<KindFilter>('all');
+  protected readonly type = signal<TypeFilter>('all');
   protected readonly query = signal('');
   protected readonly sortKey = signal<HistorySortKey>('date');
   protected readonly sortDirection = signal<SortDirection>('desc');
@@ -210,12 +206,12 @@ export class TransactionsDialogComponent implements OnInit {
   });
 
   protected readonly rows = computed(() => {
-    const kind = this.kind();
+    const type = this.type();
     const query = this.query().trim().toLowerCase();
     return sortHistoryRows(
       this.allRows().filter(
         (row) =>
-          (kind === 'all' || (kind === 'trades' ? row.kind === 'trade' : row.kind === 'cash')) &&
+          (type === 'all' || row.side === type) &&
           (!query || row.label.toLowerCase().includes(query)),
       ),
       this.sortKey(),
@@ -243,10 +239,6 @@ export class TransactionsDialogComponent implements OnInit {
     this.query.set((event.target as HTMLInputElement).value);
   }
 
-  protected onRow(row: HistoryRow): void {
-    if (row.symbol) this.symbolSelected.emit(row.symbol);
-  }
-
   protected sortBy(key: HistorySortKey): void {
     if (this.sortKey() === key) {
       this.sortDirection.update((direction) => (direction === 'desc' ? 'asc' : 'desc'));
@@ -254,6 +246,12 @@ export class TransactionsDialogComponent implements OnInit {
       this.sortKey.set(key);
       this.sortDirection.set('desc');
     }
+  }
+
+  // Only cash transfers carry a +/- sign; a trade's value is its plain notional amount.
+  protected sign(row: HistoryRow): string {
+    if (row.kind !== 'cash') return '';
+    return row.positive ? '+' : '-';
   }
 
   protected tagClass(row: HistoryRow): string {
