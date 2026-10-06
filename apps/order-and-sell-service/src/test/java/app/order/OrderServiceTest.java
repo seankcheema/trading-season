@@ -167,7 +167,8 @@ class OrderServiceTest {
         assertNull(order.getRejectionReason());
         assertNotNull(order.getAcceptedAt());
         assertNotNull(order.getResolvedAt());
-        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_FILLED), auditEventsFor(order));
+        assertEquals(List.of(Order.STATUS_PENDING, AuditTrail.EVENT_ACCEPTED, Order.STATUS_FILLED),
+                auditEventsFor(order));
     }
 
     @Test
@@ -230,7 +231,8 @@ class OrderServiceTest {
                 .findByAccountIdAndInstrumentId(account.getAccountId(), instrument.getInstrumentId())
                 .orElseThrow();
         assertEquals(0, BigDecimal.ZERO.compareTo(holding.getQuantity()));
-        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_FILLED), auditEventsFor(order));
+        assertEquals(List.of(Order.STATUS_PENDING, AuditTrail.EVENT_ACCEPTED, Order.STATUS_FILLED),
+                auditEventsFor(order));
     }
 
     @Test
@@ -243,6 +245,51 @@ class OrderServiceTest {
         assertNotNull(order.getRejectionReason());
         assertEquals(0, STARTING_FUNDS.compareTo(availableFunds()));
         assertEquals(0, fillRepository.count());
+    }
+
+    private List<String> auditDetailsFor(Order order) {
+        return auditTrailRepository.findAll().stream()
+                .filter(event -> event.getOrderId().equals(order.getOrderId()))
+                .sorted(Comparator.comparing(AuditTrail::getAuditId))
+                .map(AuditTrail::getDetail)
+                .toList();
+    }
+
+    @Test
+    void auditTrailAttributesTheOrderToTheClientAndRecordsThePricingDecision() {
+        UUID clientReference = UUID.randomUUID();
+        OffsetDateTime simulatedAt = OffsetDateTime.parse("2026-01-05T14:30:00Z");
+        OrderRequest request = new OrderRequest(account.getAccountId(), instrument.getInstrumentId(), "BUY",
+                new BigDecimal("4"), new BigDecimal("25.50"), new BigDecimal("2.0"), clientReference, simulatedAt);
+
+        Order order = orderService.submitOrder(request, user.getUserId());
+
+        List<String> details = auditDetailsFor(order);
+        assertEquals("Submitted by user " + user.getUserId() + " on account " + account.getAccountId()
+                + ": BUY 4 TEST at indicative price 25.50, buffer 2.0%, client reference " + clientReference
+                + ", simulated at " + simulatedAt, details.get(0));
+        assertEquals("Passed trading rules; accepted at indicative price 25.50 with buffer 2.0%", details.get(1));
+        assertEquals("Filled 4 @ 25.50 (client indicative price; no live quote); cash -102.00 for user "
+                + user.getUserId() + "; holding +4 on account " + account.getAccountId(), details.get(2));
+    }
+
+    @Test
+    void submissionDetailOmitsSimulatedTimeWhenNoneWasSent() {
+        Order order = orderService.submitOrder(order("SELL", "50", "100.00"), user.getUserId());
+
+        assertTrue(auditDetailsFor(order).get(0).endsWith(", client reference " + order.getClientReference()));
+    }
+
+    @Test
+    void idempotentReplayWritesNoFurtherAuditEvents() {
+        OrderRequest request = order("BUY", "1", "10.00");
+        Order first = orderService.submitOrder(request, user.getUserId());
+        long events = auditTrailRepository.count();
+
+        Order replay = orderService.submitOrder(request, user.getUserId());
+
+        assertEquals(first.getOrderId(), replay.getOrderId());
+        assertEquals(events, auditTrailRepository.count());
     }
 
     @Test

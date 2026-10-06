@@ -199,7 +199,7 @@ class OrderControllerIntegrationTest {
         List<String> events = auditTrailRepository.findAll().stream()
                 .sorted(Comparator.comparing(AuditTrail::getAuditId))
                 .map(AuditTrail::getEventType).toList();
-        assertEquals(List.of("PENDING", "FILLED", "PENDING", "FILLED"), events);
+        assertEquals(List.of("PENDING", "ACCEPTED", "FILLED", "PENDING", "ACCEPTED", "FILLED"), events);
     }
 
     @Test
@@ -215,7 +215,7 @@ class OrderControllerIntegrationTest {
         assertEquals(3, fillRepository.count());
         assertEquals(3, cashTransactionRepository.count());
         assertEquals(3, holdingMovementRepository.count());
-        assertEquals(6, auditTrailRepository.count());
+        assertEquals(9, auditTrailRepository.count());
     }
 
     @Test

@@ -7,6 +7,7 @@ import app.auth.ForbiddenException;
 import app.instrument.Instrument;
 import app.instrument.InstrumentNotFoundException;
 import app.instrument.InstrumentRepository;
+import app.order.audit.AuditTrail;
 import app.order.audit.AuditTrailService;
 import app.order.dto.OrderRequest;
 import app.order.execution.OrderExecutionService;
@@ -70,6 +71,12 @@ public class OrderService {
      * when the request names something that doesn't exist or isn't the
      * caller's.
      *
+     * <p>Each step is written to the audit trail in the same transaction:
+     * {@code PENDING} with the caller's id and the submitted terms,
+     * {@code ACCEPTED} with the price and buffer once the rules pass, then
+     * the final {@code FILLED} or {@code REJECTED} event. An idempotent replay
+     * writes nothing.
+     *
      * <p>Ownership is settled before anything else, including the idempotency
      * lookup: an idempotency key is scoped to an account, so answering one
      * before checking the account would hand a caller the outcome of an order
@@ -126,7 +133,8 @@ public class OrderService {
         order.setSubmittedAt(now);
         order.setSimulatedAt(request.simulatedAt());
         order = orderRepository.save(order);
-        auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, null);
+        auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING,
+                submissionDetail(order, instrument, callerId));
 
         ValidationResult result = validationPipeline.run(request, user, account, instrument);
         if (!result.passed()) {
@@ -142,8 +150,26 @@ public class OrderService {
         // moves it to FILLED, or rejects it under the row lock.
         order.setAcceptedAt(OffsetDateTime.now());
         order = orderRepository.save(order);
+        auditTrailService.record(order.getOrderId(), AuditTrail.EVENT_ACCEPTED,
+                "Passed trading rules; accepted at indicative price "
+                        + order.getIndicativePrice().toPlainString()
+                        + " with buffer " + order.getBufferPercent().toPlainString() + "%");
 
         return orderExecutionService.execute(order, instrument);
+    }
+
+    /**
+     * Describes a new order so its audit row identifies the client and the
+     * terms they submitted without relying on any other row.
+     */
+    private static String submissionDetail(Order order, Instrument instrument, UUID callerId) {
+        return "Submitted by user " + callerId + " on account " + order.getAccountId() + ": "
+                + order.getOrderType() + " " + order.getQuantity().toPlainString() + " "
+                + instrument.getTicker() + " at indicative price "
+                + order.getIndicativePrice().toPlainString()
+                + ", buffer " + order.getBufferPercent().toPlainString() + "%"
+                + ", client reference " + order.getClientReference()
+                + (order.getSimulatedAt() == null ? "" : ", simulated at " + order.getSimulatedAt());
     }
 
     /**
