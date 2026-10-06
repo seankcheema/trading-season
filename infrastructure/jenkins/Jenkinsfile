@@ -612,6 +612,15 @@ pipeline {
                         # Logs of every service together interleave and the
                         # tail of the one that died is lost, so print each
                         # missing service's exit status and logs on its own.
+                        # db-init is not in the expected list because it exits
+                        # by design, but a skipped or failed migration is the
+                        # usual reason a service cannot find its tables.
+                        echo "===== db-init logs =====" >&2
+                        bash infrastructure/docker/run-compose.sh \
+                            --project-name "$PROJECT_NAME" \
+                            --env-file "$COMPOSE_ENV_FILE" \
+                            -f "$COMPOSE_FILE" \
+                            logs --no-color db-init >&2 || true
                         for service in $EXPECTED_SERVICES; do
                             case " $RUNNING_SERVICES " in
                                 *" $service "*) continue ;;
