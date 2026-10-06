@@ -58,6 +58,34 @@ describe('simulation account projection', () => {
     }
     expect(orders).toHaveLength(2);
   });
+  it('restarts the average cost after a position is sold out and bought again', () => {
+    const rebuy = {
+      ...orders[0],
+      orderId: 3,
+      quantity: 2,
+      indicativePrice: 130,
+      simulatedAt: '2026-01-25T16:00:00Z',
+    };
+    const at = Date.parse(rebuy.simulatedAt);
+    const [position] = holdingsAt([], [...orders, rebuy], catalogue, 1, at);
+    expect(position.quantity).toBe(2);
+    expect(position.averageCost).toBe(130);
+    // Before the rebuy the position is closed, so nothing is held.
+    expect(holdingsAt([], [...orders, rebuy], catalogue, 1, sell)).toEqual([]);
+  });
+  it('keeps the average of the remaining shares after a partial sell', () => {
+    const partial = [orders[0], { ...orders[1], quantity: 1 }];
+    const rebuy = {
+      ...orders[0],
+      orderId: 3,
+      quantity: 1,
+      indicativePrice: 140,
+      simulatedAt: '2026-01-25T16:00:00Z',
+    };
+    const [position] = holdingsAt([], [...partial, rebuy], catalogue, 1, Date.parse(rebuy.simulatedAt));
+    expect(position.quantity).toBe(2);
+    expect(position.averageCost).toBe(120);
+  });
   it('ignores other accounts and unsuccessful trades and retains undated starting positions', () => {
     const current = [{ symbol: 'AAPL', quantity: 3, averageCost: 90 }];
     const positions = holdingsAt(

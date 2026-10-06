@@ -169,7 +169,7 @@ Every endpoint resolves the owner from the token's `sub`. An account id in a pat
 
 An account is returned as `accountId`, `userId`, `name`, `cashBalance`, `openedDate` and `currency`. Registration opens a default account named `Main Account`, so a new user starts with one empty account rather than none.
 
-A holding is returned as `holdingId`, `accountId`, `instrumentId`, `symbol`, `name`, `quantity`, `averageCost` and `updatedAt`. Neither `symbol` nor `averageCost` is stored on the holding row: the symbol comes from the instrument, preferring `simulated_stock_symbol` so it matches what the market endpoints report, and `averageCost` is derived from `holding_movements` joined to `fills`, weighted by quantity over acquisitions only. An instrument that cannot be resolved reports its id as the symbol, and a position with no acquisition history reports an average cost of 0.
+A holding is returned as `holdingId`, `accountId`, `instrumentId`, `symbol`, `name`, `quantity`, `averageCost` and `updatedAt`. Neither `symbol` nor `averageCost` is stored on the holding row: the symbol comes from the instrument, preferring `simulated_stock_symbol` so it matches what the market endpoints report, and `averageCost` is derived by replaying `holding_movements` joined to `fills` oldest first as a moving weighted average: a buy blends its price into the average by quantity, a sell leaves the average of the remaining shares unchanged, and a sell that takes the quantity to zero closes the position, so buying again starts a fresh average. An instrument that cannot be resolved reports its id as the symbol, and a position with no acquisition history reports an average cost of 0.
 
 ### Portfolio valuation history
 
