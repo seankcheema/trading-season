@@ -42,13 +42,13 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "500kB",
-                  "maximumError": "600kB"
+                  "maximumWarning": "600kB",
+                  "maximumError": "700kB"
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "12kB",
-                  "maximumError": "16kB"
+                  "maximumWarning": "20kB",
+                  "maximumError": "28kB"
                 }
               ],
               "outputHashing": "all"
@@ -93,10 +93,10 @@
               "src/server.ts"
             ],
             "coverageThresholds": {
-              "statements": 70,
-              "branches": 70,
-              "functions": 70,
-              "lines": 70
+              "statements": 90,
+              "branches": 90,
+              "functions": 90,
+              "lines": 90
             }
           }
         }

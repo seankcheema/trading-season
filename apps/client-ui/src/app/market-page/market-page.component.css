@@ -173,19 +173,28 @@
   display: grid;
   grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);
   gap: 0.75rem;
+  /* Expanding: the chart narrows while the tools slide out. */
   transition:
-    grid-template-columns 280ms ease,
-    gap 280ms ease;
+    grid-template-columns 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    gap 320ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .market-grid.tools-collapsed {
   grid-template-columns: minmax(0, 10fr) minmax(0, 0fr);
   gap: 0;
+  /* Collapsing: wait for the tools to fade out, then fill the freed space. */
+  transition:
+    grid-template-columns 320ms ease 160ms,
+    gap 320ms ease 160ms;
 }
 .market-grid.tools-collapsed .tools-column {
   visibility: hidden;
   opacity: 0;
   transform: translateX(1rem);
   pointer-events: none;
+  transition:
+    opacity 150ms ease 0s,
+    transform 150ms ease 0s,
+    visibility 0s linear 150ms;
 }
 .market-main {
   display: flex;
@@ -247,28 +256,19 @@
   position: relative;
 }
 
-.comparison-price-label-left {
-  position: absolute;
-  top: 0.75rem;
-  right: calc(50% + 0.75rem);
-  z-index: 20;
-  display: flex;
-  flex-direction: row;
-  gap: 0.5rem;
-  align-items: center;
-  pointer-events: none;
-}
-
+.comparison-price-label-left,
 .comparison-price-label-right {
   position: absolute;
   top: 0.75rem;
   right: 0.75rem;
   z-index: 20;
   display: flex;
-  flex-direction: row;
   gap: 0.5rem;
   align-items: center;
   pointer-events: none;
+}
+.comparison-price-label-left {
+  right: calc(50% + 0.75rem);
 }
 
 .chart-stage ::ng-deep .chart-controls {
@@ -390,16 +390,27 @@
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
-  border: 1px solid rgba(238, 250, 255, 0.1);
+  border: 1px solid rgba(238, 250, 255, 0.28);
   border-radius: 0.5rem;
-  background: #181818;
-  padding: 0 0.625rem;
-  color: rgba(238, 250, 255, 0.42);
-  font-size: 0.6875rem;
+  background: #242424;
+  padding: 0 0.75rem;
+  color: rgba(238, 250, 255, 0.85);
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease;
 }
 .tool-button:not(:disabled),
 .tool-icon:not(:disabled) {
   cursor: pointer;
+}
+.tool-button:hover,
+.tool-icon:hover {
+  border-color: rgba(0, 187, 255, 0.55);
+  background: rgba(0, 187, 255, 0.1);
+  color: #eefaff;
 }
 .tool-button-active {
   border-color: rgba(0, 187, 255, 0.45);
@@ -419,16 +430,11 @@
   overflow: visible;
   opacity: 1;
   transform: translateX(0);
+  /* Expanding: slide out alongside the chart narrowing, fading in part-way through. */
   transition:
-    opacity 180ms ease,
-    transform 280ms ease,
+    opacity 240ms ease 100ms,
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
     visibility 0s linear 0s;
-}
-.market-grid.tools-collapsed .tools-column {
-  transition:
-    opacity 140ms ease,
-    transform 280ms ease,
-    visibility 0s linear 280ms;
 }
 .insight-panel {
   display: flex;
@@ -610,9 +616,6 @@
   line-height: 1.15;
   overflow-wrap: anywhere;
 }
-.overview-card-heading > strong.overview-risk {
-  color: rgba(255, 255, 255, 0.9);
-}
 .overview-progress {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -718,8 +721,8 @@
   flex: 0 0 auto;
   overflow: visible;
 }
-.tools-close-button {
-  position: relative;
+.tools-close-button,
+.tools-open-button {
   height: 1.875rem;
   width: 1.875rem;
   flex: 0 0 auto;
@@ -728,22 +731,15 @@
   justify-content: center;
   color: rgba(238, 250, 255, 0.8);
   border-color: rgba(238, 250, 255, 0.2);
+}
+.tools-close-button {
+  position: relative;
 }
 .tools-close-button::after {
   display: none;
 }
 .market-grid.tools-collapsed .tools-close-button .chevron-rotate {
   transform: rotate(180deg);
-}
-.tools-open-button {
-  height: 1.875rem;
-  width: 1.875rem;
-  flex: 0 0 auto;
-  color: rgba(238, 250, 255, 0.8);
-  border-color: rgba(238, 250, 255, 0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 .tools-close-button .chevron-rotate,
 .tools-open-button .chevron-rotate {
@@ -882,7 +878,6 @@
     min-height: 55rem;
   }
   .market-metrics {
-    display: grid;
     grid-template-columns: repeat(3, 1fr);
   }
   .comparison-metrics {

@@ -103,9 +103,9 @@ BEGIN
         RAISE EXCEPTION 'Import Jan-Oct 1, 2026 one-minute candles and tradable instruments for AAPL, MSFT, NVDA, JPM, XOM, TSLA in session % first; no seed data written', seed_session;
     END IF;
 
-    INSERT INTO user_accounts (user_id, email, password_hash, user_role, account_status)
+    INSERT INTO user_accounts (user_id, email, password_hash, user_role)
     VALUES (demo_user, demo_email, CASE WHEN seed_password = '' THEN default_password_hash
-            ELSE crypt(seed_password, gen_salt('bf', 10)) END, 'TRADER', 'ACTIVE');
+            ELSE crypt(seed_password, gen_salt('bf', 10)) END, 'TRADER');
     INSERT INTO users (user_id, first_name, last_name, ssn, address, date_of_birth,
                        trader_level, available_funds, last_activity_at)
     VALUES (demo_user, 'John', 'Doe', '000-00-0000', 'Development demo profile',

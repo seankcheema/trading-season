@@ -41,23 +41,31 @@ export function holdingsAt(
         (position?.quantity ?? 0) - future.reduce((sum, order) => sum + signedQuantity(order), 0);
       const startingQuantity =
         (position?.quantity ?? 0) - history.reduce((sum, order) => sum + signedQuantity(order), 0);
-      const buys = history.filter((order) => order.orderType === 'BUY');
-      const bought = buys.reduce((sum, order) => sum + order.quantity, 0);
-      const paid = buys.reduce((sum, order) => sum + order.quantity * order.indicativePrice, 0);
-      const startingCost =
-        startingQuantity > 0
-          ? (position?.averageCost ?? 0) * (startingQuantity + bought) - paid
-          : 0;
-      const visibleBuys = buys.filter((order) => executionTime(order) <= at);
-      const acquisitionQuantity =
-        Math.max(0, startingQuantity) + visibleBuys.reduce((sum, order) => sum + order.quantity, 0);
-      const cost =
-        startingCost +
-        visibleBuys.reduce((sum, order) => sum + order.quantity * order.indicativePrice, 0);
+      // Same moving weighted average the holdings service reports: a buy blends its price in,
+      // a sell leaves the average alone, and selling out forgets the position. Orders replay in
+      // the order they were placed, as the ledger does, even if the clock was rewound between them.
+      let held = Math.max(0, startingQuantity);
+      let average = held > 0 ? (position?.averageCost ?? 0) : 0;
+      const visible = history
+        .filter((order) => executionTime(order) <= at)
+        .sort((a, b) => a.orderId - b.orderId);
+      for (const order of visible) {
+        if (order.orderType === 'BUY') {
+          average =
+            (held * average + order.quantity * order.indicativePrice) / (held + order.quantity);
+          held += order.quantity;
+        } else {
+          held -= order.quantity;
+          if (held < 1e-9) {
+            held = 0;
+            average = 0;
+          }
+        }
+      }
       return {
         symbol,
         quantity: Math.abs(quantity) < 1e-9 ? 0 : quantity,
-        averageCost: acquisitionQuantity > 0 ? cost / acquisitionQuantity : 0,
+        averageCost: quantity > 1e-9 ? average : 0,
       };
     })
     .filter((holding) => holding.quantity !== 0);

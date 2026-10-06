@@ -18,6 +18,7 @@ import { PriceChartComponent } from '../dashboard/shared/price-chart.component';
 import { MarketPageComponent } from './market-page.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
 import { AuthService } from '../core/auth/auth.service';
+import { ToastService } from '../notifications/toast.service';
 
 const SNAPSHOT: MarketSnapshot = {
   sessionId: 7,
@@ -317,14 +318,14 @@ describe('MarketPageComponent', () => {
     ).not.toContain('$');
   });
 
-  it('defaults to a line chart and lets the user select another chart mode', async () => {
+  it('defaults to an area chart and lets the user select another chart mode', async () => {
     const fixture = await setup();
     const chart = fixture.debugElement.query(By.directive(PriceChartComponent)).componentInstance;
-    expect(fixture.componentInstance['chartMode']()).toBe('line');
-    expect(chart.mode()).toBe('line');
+    expect(fixture.componentInstance['chartMode']()).toBe('area');
+    expect(chart.mode()).toBe('area');
     expect(
       fixture.nativeElement.querySelector('[aria-controls="chart-mode-picker"]').textContent,
-    ).toContain('Graph view: Line');
+    ).toContain('Graph view: Area');
     expect(fixture.nativeElement.querySelector('#chart-mode-picker')).toBeNull();
 
     (
@@ -840,8 +841,10 @@ describe('MarketPageComponent', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance['heldShares']()).toBe(2);
     expect(fixture.componentInstance['cashBalance']()).toBe(9548.4);
-    expect(fixture.componentInstance['recentOrders']()[0].detail).toContain('Filled');
-    expect(fixture.nativeElement.textContent).toContain('Filled 2 AAPL');
+    expect(fixture.componentInstance['recentOrders']()[0].status).toBe('FILLED');
+    expect(fixture.componentInstance['orderMessage']()).toBe('');
+    expect(fixture.nativeElement.querySelector('app-trade-ticket [role="status"]')).toBeNull();
+    expect(TestBed.inject(ToastService).messages()[0].message).toContain('Filled 2 AAPL');
     http.verify();
   });
   it('sells all owned shares and displays the execution immediately', async () => {
@@ -858,7 +861,7 @@ describe('MarketPageComponent', () => {
     http.expectOne('/api/users/me').flush({ availableFunds: 11129 });
     fixture.detectChanges();
     expect(fixture.componentInstance['heldShares']()).toBe(0);
-    expect(fixture.componentInstance['recentOrders']()[0].positive).toBe(true);
+    expect(fixture.componentInstance['recentOrders']()[0].type).toBe('SELL');
     http.verify();
   });
   it('shows a rejected order and reason without refreshing balances', async () => {
@@ -903,7 +906,7 @@ describe('MarketPageComponent', () => {
       .flush({}, { status: 503, statusText: 'Unavailable' });
     expect(funds.cancelled).toBe(true);
     fixture.detectChanges();
-    expect(fixture.componentInstance['orderMessage']()).toContain('Filled');
+    expect(fixture.componentInstance['orders'].orders()).toHaveLength(1);
     expect(fixture.componentInstance['tradeReady']()).toBe(false);
     fixture.componentInstance['retryBalances']();
     http

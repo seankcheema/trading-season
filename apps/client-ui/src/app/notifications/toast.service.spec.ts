@@ -10,12 +10,12 @@ describe('Toast notifications', () => {
     vi.useRealTimers();
   });
 
-  it('replaces old notifications, expires after two seconds, and cleans up after fading', () => {
+  it('replaces old notifications, expires after four seconds, and cleans up after fading', () => {
     vi.useFakeTimers();
     const service = TestBed.inject(ToastService);
     service.show('Filled 1 AAPL at $260.06.', 'success');
     service.show('Rejected: insufficient funds', 'error');
-    vi.advanceTimersByTime(1999);
+    vi.advanceTimersByTime(3999);
     expect(service.messages()).toHaveLength(1);
     expect(service.messages()[0].message).toBe('Rejected: insufficient funds');
     expect(service.messages().every((message) => !message.closing)).toBe(true);
@@ -29,14 +29,14 @@ describe('Toast notifications', () => {
     vi.useFakeTimers();
     const service = TestBed.inject(ToastService);
     service.show('Old fill', 'success');
-    vi.advanceTimersByTime(2000);
+    vi.advanceTimersByTime(4000);
     expect(service.messages()[0].closing).toBe(true);
     service.show('New fill', 'success');
     vi.advanceTimersByTime(400);
     expect(service.messages()).toHaveLength(1);
     expect(service.messages()[0].message).toBe('New fill');
     expect(service.messages()[0].closing).toBe(false);
-    vi.advanceTimersByTime(1600);
+    vi.advanceTimersByTime(3600);
     expect(service.messages()[0].closing).toBe(true);
     vi.advanceTimersByTime(400);
     expect(service.messages()).toEqual([]);

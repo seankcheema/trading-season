@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">53.84% </span>
+                <span class="strong">96.15% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>14/26</span>
+                <span class='fraction'>25/26</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">88.88% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>16/18</span>
+                <span class='fraction'>18/18</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">14.28% </span>
+                <span class="strong">85.71% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>1/7</span>
+                <span class='fraction'>6/7</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">68.75% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>11/16</span>
+                <span class='fraction'>16/16</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line medium'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -120,43 +120,43 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">187x</span>
+<span class="cline-any cline-yes">221x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">79x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">90x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">108x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">79x</span>
+<span class="cline-any cline-yes">131x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">79x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">108x</span>
+<span class="cline-any cline-yes">90x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">79x</span>
-<span class="cline-any cline-yes">108x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">90x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">131x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">90x</span>
+<span class="cline-any cline-yes">131x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">79x</span>
-<span class="cline-any cline-yes">79x</span>
+<span class="cline-any cline-yes">90x</span>
+<span class="cline-any cline-yes">90x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
@@ -182,17 +182,17 @@ import { WatchlistStore } from './watchlist-store.service';
       [disabled]="
         store.pending().has(symbol()) || store.status() === 'idle' || store.status() === 'loading'
       "
-<span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >      (click)="t</span>oggle()"</span>
+      (click)="toggle()"
     &gt;
       &lt;ng-icon
         name="lucideStar"
-<span class="branch-0 cbranch-no" title="branch not covered" >        [class]="store.has(symbol()) ? 'text-primary [&amp;_svg]:fill-current' : ''"</span>
+        [class]="store.has(symbol()) ? 'text-primary [&amp;_svg]:fill-current' : ''"
       /&gt;
     &lt;/button&gt;
-<span class="branch-0 cbranch-no" title="branch not covered" >    @if (store.error()) {</span>
-<span class="cstat-no" title="statement not covered" >      &lt;span role="status" class="text-loss text-xs"</span>
-        &gt;<span class="cstat-no" title="statement not covered" >{{ store.error() }}</span>
-<span class="cstat-no" title="statement not covered" >        &lt;button type="button" class="underline" <span class="cstat-no" title="statement not covered" ><span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >(</span>click)="r</span></span>etry()"&gt;<span class="cstat-no" title="statement not covered" >R</span>etry loading<span class="cstat-no" title="statement not covered" >&lt;</span>/button&gt;&lt;/span</span>
+    @if (store.error()) {
+      &lt;span role="status" class="text-loss text-xs"
+        &gt;{{ store.error() }}
+        &lt;button type="button" class="underline" (click)="retry()"&gt;Retry loading&lt;/button&gt;&lt;/span
       &gt;
     }
   `,
@@ -200,11 +200,11 @@ import { WatchlistStore } from './watchlist-store.service';
 export class WatchlistStarComponent {
   readonly symbol = input.required&lt;string&gt;();
   protected readonly store = inject(WatchlistStore);
-  protected <span class="fstat-no" title="function not covered" >toggle(</span>): void {
-<span class="cstat-no" title="statement not covered" >    this.store.toggle(this.symbol()).subscribe({ error: <span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >u</span>ndefined </span>});</span>
+  protected toggle(): void {
+    this.store.toggle(this.symbol()).subscribe({ error: () =&gt; undefined });
   }
-  protected <span class="fstat-no" title="function not covered" >retry(</span>): void {
-<span class="cstat-no" title="statement not covered" >    this.store.load(true).subscribe({ error: <span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >u</span>ndefined </span>});</span>
+  protected retry(): void {
+    this.store.load(true).subscribe({ error: <span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >u</span>ndefined </span>});
   }
 }
 &nbsp;</pre></td></tr></table></pre>
@@ -214,7 +214,7 @@ export class WatchlistStarComponent {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-10-05T15:00:02.803Z
+                at 2026-10-06T14:07:34.295Z
             </div>
         <script src="../../../../prettify.js"></script>
         <script>

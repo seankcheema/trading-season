@@ -1,9 +1,12 @@
 import { WatchlistStore } from './watchlist/watchlist-store.service';
 import { ActivityItem, ActivityRowComponent } from './shared/activity-row.component';
+import { cashActivity, orderActivity, orderDate } from './shared/activity';
+import { AssetsDialogComponent } from './history/assets-dialog.component';
+import { TransactionsDialogComponent } from './history/transactions-dialog.component';
 import { AccountControlComponent } from './shared/account-control.component';
 import { MarketClockControlComponent } from './shared/market-clock-control.component';
 import { MarketClockService } from './shared/market-clock.service';
-import { cashAt, executionTime, holdingsAt } from './accounts/simulation-account';
+import { cashAt, holdingsAt } from './accounts/simulation-account';
 import { CurrencyPipe, DOCUMENT, isPlatformBrowser } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -20,7 +23,6 @@ import {
   untracked,
 } from '@angular/core';
 import {
-  lucideBriefcaseBusiness,
   lucideCalendarClock,
   lucideCheck,
   lucideChevronDown,
@@ -30,6 +32,7 @@ import {
   lucidePlus,
   lucideSettings,
 } from '@ng-icons/lucide';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription } from 'rxjs';
 import { Router } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
@@ -50,12 +53,17 @@ import { OrderService } from './orders/order.service';
 import { SettingsDialogComponent } from './settings-dialog/settings-dialog.component';
 import { DashboardHeaderDropdownComponent } from './shared/dashboard-header-dropdown.component';
 import { DailySparklineComponent } from './shared/daily-sparkline.component';
-import { InstrumentSearchComponent } from './shared/instrument-search.component';
+import { PricedHolding } from './shared/assets';
+import {
+  InstrumentSearchComponent,
+  SearchSuggestionGroup,
+} from './shared/instrument-search.component';
+import { RecentInstrumentsService } from './shared/recent-instruments.service';
 import { PriceChartComponent } from './shared/price-chart.component';
 import { SignedPercentPipe } from './shared/signed-percent.pipe';
 import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
 
-type HeaderDropdown = 'account' | 'market-clock' | 'profile' | 'asset-sort';
+type HeaderDropdown = 'account' | 'market-clock' | 'profile';
 type TickAnimation = {
   direction: 'gain' | 'loss';
   durationMs: number;
@@ -67,28 +75,19 @@ type TickAnimation = {
 type AccountDialog =
   { kind: 'account'; account: Account | null } | { kind: 'cash'; mode: CashTransactionMode };
 
-// One position in an account's portfolio, valued at the latest price.
-interface PricedHolding {
-  symbol: string;
-  shares: number;
-  // Average cost per share, used to derive gain/loss.
-  costBasis: number;
-  instrument: Instrument;
-  value: number;
-  gainLoss: number;
-}
-
-// User-wide cash movements and successful executions across the caller's owned accounts.
+// User-wide cash movements and orders across the caller's owned accounts.
 @Component({
   selector: 'app-dashboard',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ActivityRowComponent,
     AccountDialogComponent,
+    AssetsDialogComponent,
     AccountControlComponent,
     MarketClockControlComponent,
     CashTransactionDialogComponent,
     CurrencyPipe,
+    TransactionsDialogComponent,
     DashboardHeaderDropdownComponent,
     DailySparklineComponent,
     InstrumentSearchComponent,
@@ -102,7 +101,6 @@ interface PricedHolding {
   providers: [
     MarketClockService,
     provideIcons({
-      lucideBriefcaseBusiness,
       lucideCalendarClock,
       lucideCheck,
       lucideChevronDown,
@@ -192,6 +190,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
       instrument: this.instruments().find((instrument) => instrument.symbol === entry.symbol),
     })),
   );
+  protected readonly portfolioTabs = [
+    { id: 'assets', label: 'Assets' },
+    { id: 'watchlist', label: 'Watch List' },
+  ] as const;
+  protected readonly assetsTab = signal<'assets' | 'watchlist'>('assets');
   protected refreshWatchlist(): void {
     this.watchlist.load(true).subscribe({ error: () => undefined });
   }
@@ -207,6 +210,39 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly clockUpdating = this.clock.clockUpdating;
   protected readonly marketClockLabel = this.clock.marketClockLabel;
   protected readonly settingsOpen = signal(false);
+  protected readonly historyDialog = signal<'transactions' | null>(null);
+  protected readonly assetsDialogOpen = signal(false);
+  private readonly recentInstruments = inject(RecentInstrumentsService);
+
+  // What the search bar offers before anything is typed: the biggest movers today, the user's
+  // watch list and the stocks they opened last. Empty groups are hidden by the search bar.
+  protected readonly searchSuggestions = computed<SearchSuggestionGroup[]>(() => {
+    const instruments = this.instruments();
+    const named = (symbols: readonly string[]) =>
+      symbols
+        .map((symbol) => instruments.find((instrument) => instrument.symbol === symbol))
+        .filter((instrument): instrument is Instrument => instrument !== undefined)
+        .slice(0, 3);
+    return [
+      {
+        label: 'Trending',
+        icon: 'lucideFlame',
+        items: [...instruments]
+          .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
+          .slice(0, 3),
+      },
+      {
+        label: 'Your watch list',
+        icon: 'lucideStar',
+        items: named(this.watchlist.entries().map((entry) => entry.symbol)),
+      },
+      {
+        label: 'Recently viewed',
+        icon: 'lucideHistory',
+        items: named(this.recentInstruments.symbols()),
+      },
+    ];
+  });
 
   // Symbol currently open in the order submission dialog, if any.
   private readonly orderSymbol = signal<string | null>(null);
@@ -220,31 +256,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.priceHoldings(this.simulationHoldings().get(this.selectedAccountId() ?? -1) ?? []),
   );
 
-  protected readonly assetSort = signal<'value' | 'symbol'>('value');
-  protected readonly assetSortOptions = [
-    { value: 'value', label: 'Highest value first' },
-    { value: 'symbol', label: 'Asset symbol' },
-  ] as const;
-  protected readonly assetSortLabel = computed(() =>
-    this.assetSortOptions.find((option) => option.value === this.assetSort())!.label,
-  );
-  protected selectAssetSort(value: 'value' | 'symbol'): void {
-    this.assetSort.set(value);
-    this.openHeaderDropdown.set(null);
-  }
   protected readonly visibleAssets = computed(() =>
-    this.holdings().filter((holding) => holding.value !== 0).sort((a, b) =>
-      this.assetSort() === 'value'
-        ? b.value - a.value || a.symbol.localeCompare(b.symbol)
-        : a.symbol.localeCompare(b.symbol),
-    ),
+    this.holdings()
+      .filter((holding) => holding.value !== 0)
+      .sort((a, b) => a.symbol.localeCompare(b.symbol)),
   );
 
-  // Only the symbols, so price ticks don't look like a change of holdings.
-  private readonly heldSymbols = computed(() =>
-    this.accountStore
-      .selectedHoldings()
-      .map((holding) => holding.symbol)
+  // Only the symbols, so price ticks don't look like a change of holdings. Watched symbols
+  // are included because the watch list shows the same daily chart as Assets.
+  private readonly chartedSymbols = computed(() =>
+    [
+      ...new Set([
+        ...this.accountStore.selectedHoldings().map((holding) => holding.symbol),
+        ...this.watchlist.entries().map((entry) => entry.symbol),
+      ]),
+    ]
+      .sort()
       .join(','),
   );
 
@@ -257,46 +284,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return values;
   });
 
+  // The latest 20 cash transfers and orders of any status, newest first. Orders after the
+  // simulated clock are hidden, as they have not happened yet in the replay.
   protected readonly transactions = computed<ActivityItem[]>(() => {
-    const cash: ActivityItem[] = this.accountStore.cashTransactions().map((transaction) => ({
-      kind: 'cash' as const,
-      key: `cash-${transaction.cashTransactionId}`,
-      date: transaction.createdAt,
-      reason: transaction.reason,
-      value: transaction.amount,
-      label: 'Cash',
-      detail: 'Cash transfer',
-      positive: transaction.reason === 'DEPOSIT',
-    }));
-    const catalogue = new Map(
-      this.orderService.catalogue().map((instrument) => [instrument.instrumentId, instrument]),
-    );
-    const trades: ActivityItem[] = this.orderService
+    const cursor = this.marketTimeMillis();
+    const catalogue = this.orderService.catalogue();
+    const trades = this.orderService
       .orders()
-      .filter(
-        (order) =>
-          order.status === 'FILLED' &&
-          order.resolvedAt !== null &&
-          (this.marketTimeMillis() === null || executionTime(order) <= this.marketTimeMillis()!),
-      )
-      .map((order) => {
-        const instrument =
-          order.instrumentId === undefined ? undefined : catalogue.get(order.instrumentId);
-        return {
-          kind: 'trade',
-          key: `order-${order.orderId}`,
-          date:
-            order.simulatedAt && Number.isFinite(Date.parse(order.simulatedAt))
-              ? order.simulatedAt
-              : order.resolvedAt!,
-          reason: order.orderType,
-          value: order.quantity * order.indicativePrice,
-          label:
-            instrument?.simulatedStockSymbol ?? instrument?.ticker ?? `Order #${order.orderId}`,
-          detail: `${order.quantity} ${order.quantity === 1 ? 'share' : 'shares'} · Filled`,
-          positive: order.orderType === 'SELL',
-        };
-      });
+      .filter((order) => {
+        const at = Date.parse(orderDate(order));
+        return Number.isFinite(at) && (cursor === null || at <= cursor);
+      })
+      .map((order) => orderActivity(order, catalogue));
+    const cash = this.accountStore.cashTransactions().map(cashActivity);
     return [...cash, ...trades]
       .sort((a, b) => Date.parse(b.date) - Date.parse(a.date) || b.key.localeCompare(a.key))
       .slice(0, 20);
@@ -314,7 +314,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     ),
   );
 
-  private readonly marketTimeMillis = computed(() => {
+  protected readonly marketTimeMillis = computed(() => {
     const time = Date.parse(this.currentMarketTimestamp());
     return Number.isNaN(time) ? null : time;
   });
@@ -325,20 +325,25 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly assetCharts = computed<Record<string, PricePoint[]>>(() => {
     const candlesBySymbol = this.assetCandlePoints();
     const marketTime = this.marketTimeMillis();
+    const prices = new Map<string, number>();
+    for (const entry of this.watchedInstruments()) {
+      if (entry.instrument) prices.set(entry.symbol, entry.instrument.price);
+    }
+    for (const holding of this.holdings()) prices.set(holding.symbol, holding.instrument.price);
     return Object.fromEntries(
-      this.holdings().map((holding) => {
-        const candles = candlesBySymbol.get(holding.symbol);
+      [...prices].map(([symbol, price]) => {
+        const candles = candlesBySymbol.get(symbol);
         if (candles?.length) {
           if (marketTime !== null && marketTime < candles[candles.length - 1].time.getTime())
-            return [holding.symbol, candles];
+            return [symbol, candles];
           const points = [...candles];
           points[points.length - 1] = {
             time: new Date(marketTime ?? points[points.length - 1].time.getTime()),
-            value: holding.instrument.price,
+            value: price,
           };
-          return [holding.symbol, points];
+          return [symbol, points];
         }
-        return [holding.symbol, []];
+        return [symbol, []];
       }),
     );
   });
@@ -394,6 +399,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private historyRefreshTimer?: ReturnType<typeof setInterval>;
 
   constructor() {
+    // A pending order that fills moves cash and holdings on the backend without the user doing
+    // anything, so reload them as a trade the user just made would.
+    this.orderService.pendingFilled
+      .pipe(takeUntilDestroyed())
+      .subscribe((order) => this.refreshAfterFill(order.accountId ?? this.selectedAccountId()));
     effect(() => {
       const accountId = this.selectedAccountId();
       const timeframe = this.portfolioTimeframe();
@@ -425,7 +435,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // Holdings arrive after the market snapshot and change with the selected account, so
     // load daily candles for any newly held symbol once there is a market session.
     effect(() => {
-      this.heldSymbols();
+      this.chartedSymbols();
       this.assetMinute();
       this.marketData.revision?.();
       const sessionId = this.marketSessionId();
@@ -506,11 +516,34 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.accountDialog.set({ kind: 'account', account });
   }
 
+  protected openHistory(): void {
+    this.historyDialog.set('transactions');
+  }
+
+  protected closeHistory(): void {
+    this.historyDialog.set(null);
+  }
+
+  protected openAssets(): void {
+    this.assetsDialogOpen.set(true);
+  }
+
+  protected closeAssets(): void {
+    this.assetsDialogOpen.set(false);
+  }
+
+  // Choosing an asset leaves the table for its order ticket.
+  protected openOrderFromAssets(instrument: Instrument): void {
+    this.closeAssets();
+    this.openOrder(instrument);
+  }
+
   protected closeAccountDialog(): void {
     this.accountDialog.set(null);
   }
 
   protected openOrder(instrument: Instrument): void {
+    this.recentInstruments.record(instrument.symbol);
     this.orderSymbol.set(instrument.symbol);
   }
 
@@ -524,7 +557,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (order.status !== 'FILLED') {
       return;
     }
-    const accountId = this.accountStore.selectedAccountId();
+    this.refreshAfterFill(this.accountStore.selectedAccountId());
+  }
+
+  private refreshAfterFill(accountId: number | null): void {
     if (accountId === null) {
       return;
     }
@@ -623,8 +659,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   private loadAssetCharts(sessionId: number, generation: number): void {
-    for (const holding of this.holdings()) {
-      const symbol = holding.symbol;
+    const symbols = new Set([
+      ...this.holdings().map((holding) => holding.symbol),
+      ...this.watchlist.entries().map((entry) => entry.symbol),
+    ]);
+    for (const symbol of symbols) {
       if (this.assetChartSubscriptions.has(symbol)) {
         continue;
       }

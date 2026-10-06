@@ -5,6 +5,7 @@ import { Router, provideRouter } from '@angular/router';
 import { DashboardComponent } from './dashboard.component';
 import { Instrument, MOCK_INSTRUMENTS } from './mock-data';
 import { OrderResult } from './orders/order.models';
+import { OrderService } from './orders/order.service';
 import { vi } from 'vitest';
 
 const CALENDAR = {
@@ -148,12 +149,18 @@ describe('DashboardComponent', () => {
     }).compileComponents();
   });
 
-  it('merges filled executions with cash by execution time and excludes unfilled orders', () => {
+  it('merges orders of every status with cash, newest first, tagging and coloring each', () => {
     const fixture = createDashboard();
     fixture.detectChanges();
     flushAccounts(fixture, ACCOUNTS, {
       transactions: [
         { cashTransactionId: 8, amount: 500, reason: 'DEPOSIT', createdAt: '2026-01-05T16:30:00Z' },
+        {
+          cashTransactionId: 9,
+          amount: 50,
+          reason: 'WITHDRAWAL',
+          createdAt: '2026-01-05T16:20:00Z',
+        },
       ],
       orders: [
         filledOrder({
@@ -171,8 +178,18 @@ describe('DashboardComponent', () => {
           indicativePrice: 120,
           resolvedAt: '2026-01-05T10:00:00-06:00',
         }),
-        filledOrder({ orderId: 3, status: 'PENDING', resolvedAt: null }),
-        filledOrder({ orderId: 4, status: 'REJECTED' }),
+        filledOrder({
+          orderId: 3,
+          status: 'PENDING',
+          resolvedAt: null,
+          submittedAt: '2026-01-05T15:50:00Z',
+        }),
+        filledOrder({
+          orderId: 4,
+          status: 'REJECTED',
+          rejectionReason: 'Insufficient funds',
+          resolvedAt: '2026-01-05T15:40:00Z',
+        }),
       ],
     });
     const rows = [
@@ -180,14 +197,84 @@ describe('DashboardComponent', () => {
         '[data-testid="recent-transactions"] li[data-kind]',
       ),
     ] as HTMLElement[];
-    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => row.dataset['type'])).toEqual([
+      'BUY',
+      'DEPOSIT',
+      'WITHDRAWAL',
+      'SELL',
+      'BUY',
+      'BUY',
+    ]);
+    expect(rows.map((row) => row.dataset['status'])).toEqual([
+      'FILLED',
+      'COMPLETED',
+      'COMPLETED',
+      'FILLED',
+      'PENDING',
+      'REJECTED',
+    ]);
     expect(rows[0].textContent).toContain('AAPL');
-    expect(rows[0].textContent).toContain('BUY');
-    expect(rows[0].textContent).toContain('-$200.00');
-    expect(rows[0].textContent).toContain('2 shares');
-    expect(rows[1].dataset['kind']).toBe('cash');
-    expect(rows[2].textContent).toContain('SELL');
-    expect(rows[2].textContent).toContain('+$120.00');
+    expect(rows[0].textContent).toContain('2 @ $100.00');
+    expect(rows[5].textContent).toContain('Insufficient funds');
+
+    const text = (row: HTMLElement, testId: string) =>
+      row.querySelector(`[data-testid="${testId}"]`)!.textContent!.trim();
+    // The label names the type and the bottom right names the status.
+    expect(rows.map((row) => text(row, 'activity-tag'))).toEqual([
+      'buy',
+      'deposit',
+      'withdrawal',
+      'sell',
+      'buy',
+      'buy',
+    ]);
+    expect(rows.map((row) => text(row, 'activity-status'))).toEqual([
+      'Filled',
+      'Cash Transaction',
+      'Cash Transaction',
+      'Filled',
+      'Pending',
+      'Rejected',
+    ]);
+    expect(text(rows[0], 'activity-detail')).toBe('2 @ $100.00');
+    expect(rows[1].querySelector('[data-testid="activity-detail"]')).toBeNull();
+
+    // Only cash transfers carry a +/- sign, and no amount is colored.
+    expect(rows.map((row) => text(row, 'activity-value'))).toEqual([
+      '$200.00',
+      '+$500.00',
+      '-$50.00',
+      '$120.00',
+      expect.any(String),
+      expect.any(String),
+    ]);
+    for (const row of rows) {
+      const valueClass = row.querySelector('[data-testid="activity-value"]')!.className;
+      expect(valueClass).not.toMatch(/text-(gain|loss)/);
+    }
+
+    const tagClass = (row: HTMLElement) =>
+      row.querySelector('[data-testid="activity-tag"]')!.className;
+    expect(tagClass(rows[0])).toContain('text-gain');
+    expect(tagClass(rows[1])).toContain('text-primary');
+    expect(tagClass(rows[2])).toContain('text-amber-400');
+    expect(tagClass(rows[3])).toContain('text-loss');
+  });
+
+  it('opens the transactions dialog from the panel', () => {
+    const fixture = createDashboard();
+    fixture.detectChanges();
+    const http = flushAccounts(fixture, ACCOUNTS, { orders: [filledOrder({ instrumentId: 7 })] });
+    expect(fixture.nativeElement.querySelector('[data-testid="open-order-history"]')).toBeNull();
+
+    fixture.nativeElement.querySelector('[data-testid="open-transactions"]').click();
+    fixture.detectChanges();
+    http.expectOne((request) => request.url === '/api/me/cash-transactions').flush([]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="transactions-table"]')).not.toBeNull();
+    fixture.componentInstance['closeHistory']();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it('shows executions at selected replay times and falls back to audit time', () => {
@@ -397,6 +484,18 @@ describe('DashboardComponent', () => {
       .flush([{ timestamp: '2026-10-01T18:00:00Z', value: 6500 }]);
     expect(component['cashBalance']()).toBe(9_683.41);
     expect(component['portfolioChart']()[0].value).toBe(6500);
+  });
+
+  it('reloads cash and holdings when a pending order fills on its own', () => {
+    const fixture = createDashboard();
+    fixture.detectChanges();
+    const http = flushAccounts(fixture);
+
+    TestBed.inject(OrderService).pendingFilled.next(filledOrder({ accountId: 2 }));
+
+    http.expectOne('/api/users/me').flush({ ...PROFILE, availableFunds: 9_000 });
+    http.expectOne('/api/accounts/2/holdings').flush(HOLDINGS[2]);
+    expect(fixture.componentInstance['cashBalance']()).toBe(9_000);
   });
 
   it('should reload nothing when an order was rejected', () => {
@@ -620,15 +719,64 @@ describe('DashboardComponent', () => {
     expect(marketLabel.className).not.toContain('break-words');
   });
 
-  it('sorts assets by market value by default and allows symbol sorting', () => {
+  it('toggles one card between assets and the watch list', () => {
+    const fixture = createDashboard();
+    fixture.detectChanges();
+    flushAccounts(fixture);
+    const root = fixture.nativeElement as HTMLElement;
+    const tab = (id: string) =>
+      root.querySelector(`[data-testid="assets-tab-${id}"]`) as HTMLElement;
+
+    expect(tab('assets').getAttribute('aria-selected')).toBe('true');
+    expect(root.querySelector('[data-testid="assets-table"]')).not.toBeNull();
+    expect(root.querySelector('[data-testid="watchlist-table"]')).toBeNull();
+
+    tab('watchlist').click();
+    fixture.detectChanges();
+
+    expect(tab('watchlist').getAttribute('aria-selected')).toBe('true');
+    expect(root.querySelector('[data-testid="assets-table"]')).toBeNull();
+    expect(root.querySelector('[data-testid="watchlist-table"]')).not.toBeNull();
+
+    tab('assets').click();
+    fixture.detectChanges();
+
+    expect(root.querySelector('[data-testid="assets-table"]')).not.toBeNull();
+  });
+
+  it('shows a daily chart for each watched stock', () => {
+    const fixture = createDashboard();
+    fixture.detectChanges();
+    flushAccounts(fixture);
+    const component = fixture.componentInstance as unknown as {
+      instruments: { set(value: unknown[]): void };
+      watchlist: { entries: { set(value: unknown[]): void } };
+      assetsTab: { set(value: string): void };
+    };
+    component.instruments.set([
+      { symbol: 'NVDA', name: 'NVIDIA', price: 120, change: 2, changePercent: 1.7 },
+    ]);
+    component.watchlist.entries.set([{ symbol: 'NVDA', createdAt: '2026-01-05T00:00:00Z' }]);
+    component.assetsTab.set('watchlist');
+    fixture.detectChanges();
+
+    const row = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="watchlist-row-NVDA"]',
+    ) as HTMLElement;
+    expect(row.querySelector('app-daily-sparkline')).not.toBeNull();
+    expect(row.children).toHaveLength(5);
+  });
+
+  it('sorts assets by ticker', () => {
     const fixture = createDashboard();
     const component = fixture.componentInstance;
-    vi.spyOn(component as unknown as { holdings: () => ReturnType<typeof component['holdings']> }, 'holdings').mockReturnValue([
-      { symbol: 'AAPL', value: 100 },
+    vi.spyOn(
+      component as unknown as { holdings: () => ReturnType<(typeof component)['holdings']> },
+      'holdings',
+    ).mockReturnValue([
       { symbol: 'MSFT', value: 300 },
-    ] as ReturnType<typeof component['holdings']>);
-    expect(component['visibleAssets']().map((holding) => holding.symbol)).toEqual(['MSFT', 'AAPL']);
-    component['assetSort'].set('symbol');
+      { symbol: 'AAPL', value: 100 },
+    ] as ReturnType<(typeof component)['holdings']>);
     expect(component['visibleAssets']().map((holding) => holding.symbol)).toEqual(['AAPL', 'MSFT']);
   });
 
@@ -959,6 +1107,297 @@ describe('DashboardComponent', () => {
     vi.restoreAllMocks();
   });
 
+  describe('assets dialog and search bar', () => {
+    function render() {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture);
+      return fixture;
+    }
+
+    const root = (fixture: ComponentFixture<DashboardComponent>) =>
+      fixture.nativeElement as HTMLElement;
+    const searchInput = (fixture: ComponentFixture<DashboardComponent>) =>
+      root(fixture).querySelector('app-instrument-search input') as HTMLInputElement;
+    const clickTestId = (fixture: ComponentFixture<DashboardComponent>, testId: string) => {
+      (root(fixture).querySelector(`[data-testid="${testId}"]`) as HTMLElement).click();
+      fixture.detectChanges();
+    };
+    const suggestionSymbols = (
+      fixture: ComponentFixture<DashboardComponent>,
+      group: string,
+    ): string[] =>
+      [
+        ...root(fixture).querySelectorAll(
+          `[data-testid="search-suggestions-${group}"] li[role="option"]`,
+        ),
+      ].map((option) => option.querySelector('span span')!.textContent!.trim());
+
+    beforeEach(() => sessionStorage.clear());
+
+    it('opens every holding of the selected account from View all', () => {
+      const fixture = render();
+      expect(root(fixture).querySelector('app-assets-dialog')).toBeNull();
+
+      clickTestId(fixture, 'open-assets');
+
+      const dialog = root(fixture).querySelector('app-assets-dialog')!;
+      expect(dialog.querySelector('h2')!.textContent).toContain('Assets');
+      const symbols = [...dialog.querySelectorAll('[data-testid^="assets-dialog-row-"]')].map(
+        (row) => row.getAttribute('data-testid')!.replace('assets-dialog-row-', ''),
+      );
+      expect(symbols).toHaveLength(5);
+      expect(symbols).toEqual(expect.arrayContaining(['AAPL', 'NVDA', 'MSFT', 'SPY', 'TSLA']));
+      expect(
+        dialog.querySelector('[data-testid="assets-summary-positions"]')!.textContent!.trim(),
+      ).toBe('5');
+      // Largest position first: 3 SPY at $648.20 beats 10 NVDA at $184.77.
+      expect(symbols.slice(0, 2)).toEqual(['SPY', 'NVDA']);
+    });
+
+    it('closes the assets dialog with its button, Escape and the backdrop', () => {
+      const fixture = render();
+      const open = () => clickTestId(fixture, 'open-assets');
+
+      open();
+      (root(fixture).querySelector('button[aria-label="Close assets"]') as HTMLElement).click();
+      fixture.detectChanges();
+      expect(root(fixture).querySelector('app-assets-dialog')).toBeNull();
+
+      open();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
+      expect(root(fixture).querySelector('app-assets-dialog')).toBeNull();
+
+      open();
+      (root(fixture).querySelector('.dashboard-dialog-backdrop') as HTMLElement).click();
+      fixture.detectChanges();
+      expect(root(fixture).querySelector('app-assets-dialog')).toBeNull();
+    });
+
+    it('shows the assets table for another account after switching', () => {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture);
+      fixture.componentInstance['selectAccount'](2);
+      fixture.detectChanges();
+
+      clickTestId(fixture, 'open-assets');
+
+      expect(
+        root(fixture).querySelectorAll('app-assets-dialog [data-testid^="assets-dialog-row-"]'),
+      ).toHaveLength(1);
+    });
+
+    it('leaves the assets dialog for the order ticket of the chosen asset', () => {
+      const fixture = render();
+      clickTestId(fixture, 'open-assets');
+
+      clickTestId(fixture, 'assets-dialog-row-NVDA');
+
+      expect(root(fixture).querySelector('app-assets-dialog')).toBeNull();
+      const ticket = root(fixture).querySelector('app-order-submission')!;
+      expect(ticket).not.toBeNull();
+      expect(ticket.textContent).toContain('NVDA');
+    });
+
+    it('only offers View all on the Assets tab', () => {
+      const fixture = render();
+      expect(root(fixture).querySelector('[data-testid="open-assets"]')).not.toBeNull();
+
+      clickTestId(fixture, 'assets-tab-watchlist');
+
+      expect(root(fixture).querySelector('[data-testid="open-assets"]')).toBeNull();
+    });
+
+    it('gives the search a purpose, a shortcut and a Trade button', () => {
+      const fixture = render();
+      const input = searchInput(fixture);
+
+      expect(input.placeholder).toBe('Search a stock to buy or sell');
+      expect(input.getAttribute('aria-keyshortcuts')).toBe('/ Control+K Meta+K');
+      expect(
+        root(fixture).querySelector('app-instrument-search [data-testid="search-action"]')!
+          .textContent,
+      ).toContain('Trade');
+      expect(root(fixture).querySelector('[data-testid="search-hint"]')).not.toBeNull();
+    });
+
+    it('focuses the search from the page with Ctrl+K', () => {
+      const fixture = render();
+      document.body.appendChild(root(fixture));
+
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, cancelable: true }),
+      );
+
+      expect(document.activeElement).toBe(searchInput(fixture));
+      root(fixture).remove();
+    });
+
+    it('offers the biggest movers before anything is typed', () => {
+      const fixture = render();
+      searchInput(fixture).dispatchEvent(new Event('focus'));
+      fixture.detectChanges();
+
+      expect(suggestionSymbols(fixture, 'Trending')).toEqual(['AAPL', 'SPCX', 'TSLA']);
+      expect(
+        root(fixture).querySelector('[data-testid="search-suggestions-Your watch list"]'),
+      ).toBeNull();
+      expect(
+        root(fixture).querySelector('[data-testid="search-suggestions-Recently viewed"]'),
+      ).toBeNull();
+    });
+
+    it('offers up to three stocks from the watch list that are still quoted', () => {
+      const fixture = render();
+      fixture.componentInstance['watchlist'].entries.set(
+        ['NVDA', 'GONE', 'META', 'JPM', 'SPY'].map((symbol) => ({
+          symbol,
+          createdAt: '2026-01-05T00:00:00Z',
+        })),
+      );
+      searchInput(fixture).dispatchEvent(new Event('focus'));
+      fixture.detectChanges();
+
+      expect(suggestionSymbols(fixture, 'Your watch list')).toEqual(['NVDA', 'META', 'JPM']);
+    });
+
+    it('remembers the stocks that were opened, newest first', () => {
+      const fixture = render();
+      const component = fixture.componentInstance;
+      component['openOrder'](MOCK_INSTRUMENTS[1]);
+      component['openOrder'](MOCK_INSTRUMENTS[0]);
+      component['openOrder'](MOCK_INSTRUMENTS[1]);
+      component['closeOrder']();
+      fixture.detectChanges();
+
+      searchInput(fixture).dispatchEvent(new Event('focus'));
+      fixture.detectChanges();
+
+      expect(suggestionSymbols(fixture, 'Recently viewed')).toEqual(['MSFT', 'AAPL']);
+    });
+
+    it('opens the order ticket for a suggestion and lists it as recently viewed afterwards', () => {
+      const fixture = render();
+      searchInput(fixture).dispatchEvent(new Event('focus'));
+      fixture.detectChanges();
+
+      (
+        root(fixture).querySelector(
+          '[data-testid="search-suggestions-Trending"] li[role="option"]',
+        ) as HTMLElement
+      ).click();
+      fixture.detectChanges();
+
+      expect(root(fixture).querySelector('app-order-submission')!.textContent).toContain('AAPL');
+      expect(JSON.parse(sessionStorage.getItem('ts.recent-instruments')!)).toEqual(['AAPL']);
+    });
+
+    it('opens the best match when Trade is pressed with a query', () => {
+      const fixture = render();
+      const input = searchInput(fixture);
+      input.dispatchEvent(new Event('focus'));
+      input.value = 'nvidia';
+      input.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+
+      (root(fixture).querySelector('[data-testid="search-action"]') as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(root(fixture).querySelector('app-order-submission')!.textContent).toContain('NVDA');
+    });
+  });
+
+  describe('watch list and portfolio history states', () => {
+    function render() {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      const http = flushAccounts(fixture);
+      return { fixture, http };
+    }
+
+    const root = (fixture: ComponentFixture<DashboardComponent>) =>
+      fixture.nativeElement as HTMLElement;
+    const showWatchList = (fixture: ComponentFixture<DashboardComponent>) => {
+      (root(fixture).querySelector('[data-testid="assets-tab-watchlist"]') as HTMLElement).click();
+      fixture.detectChanges();
+    };
+    const table = (fixture: ComponentFixture<DashboardComponent>) =>
+      root(fixture).querySelector('[data-testid="watchlist-table"]')!;
+
+    it('says the watch list is loading', () => {
+      const { fixture } = render();
+      fixture.componentInstance['watchlist'].status.set('loading');
+      showWatchList(fixture);
+
+      expect(table(fixture).textContent).toContain('Loading watchlist');
+    });
+
+    it('explains a watch list that failed to load and retries on request', () => {
+      const { fixture, http } = render();
+      fixture.componentInstance['watchlist'].error.set('Unable to refresh watchlist.');
+      showWatchList(fixture);
+      expect(table(fixture).textContent).toContain('Unable to refresh watchlist.');
+
+      (table(fixture).querySelector('li[role="status"] button') as HTMLElement).click();
+
+      http.expectOne('/api/me/watchlist').flush([]);
+    });
+
+    it('invites the user to add a stock when the watch list is empty', () => {
+      const { fixture } = render();
+      fixture.componentInstance['watchlist'].status.set('ready');
+      showWatchList(fixture);
+
+      expect(table(fixture).textContent).toContain('click its star to add it to your watchlist');
+    });
+
+    it('colors a falling watched stock as a loss and flags one with no quote', () => {
+      const { fixture } = render();
+      const component = fixture.componentInstance;
+      component['watchlist'].entries.set(
+        ['NVDA', 'GONE'].map((symbol) => ({ symbol, createdAt: '2026-01-05T00:00:00Z' })),
+      );
+      showWatchList(fixture);
+
+      const row = table(fixture).querySelector('[data-testid="watchlist-row-NVDA"]')!;
+      expect(row.children[3].className).toContain('text-loss');
+      expect(row.children[3].textContent).not.toContain('+');
+      expect(row.children[4].className).toContain('text-loss');
+      expect(table(fixture).textContent).toContain('GONE unavailable');
+    });
+
+    it('opens the order ticket from a watched stock', () => {
+      const { fixture } = render();
+      fixture.componentInstance['watchlist'].entries.set([
+        { symbol: 'NVDA', createdAt: '2026-01-05T00:00:00Z' },
+      ]);
+      showWatchList(fixture);
+
+      (table(fixture).querySelector('[data-testid="watchlist-row-NVDA"]') as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(root(fixture).querySelector('app-order-submission')!.textContent).toContain('NVDA');
+    });
+
+    it('offers to retry portfolio history that failed to refresh', () => {
+      const { fixture, http } = render();
+      const history = fixture.componentInstance['portfolioHistory'];
+      history.status.set('error');
+      fixture.detectChanges();
+
+      const error = root(fixture).querySelector('[data-testid="portfolio-history-error"]')!;
+      expect(error.textContent).toContain('Unable to refresh portfolio history');
+
+      (error.querySelector('button') as HTMLElement).click();
+
+      http
+        .match((request) => request.url.includes('/portfolio-history'))
+        .forEach((r) => r.flush([]));
+    });
+  });
+
   describe('accounts, portfolios and cash', () => {
     function render() {
       const fixture = createDashboard();
@@ -1045,7 +1484,7 @@ describe('DashboardComponent', () => {
       const fixture = render();
       flushAccounts(fixture);
 
-      expect(assetSymbols(fixture)).toEqual(['SPY', 'NVDA', 'AAPL', 'MSFT', 'TSLA']);
+      expect(assetSymbols(fixture)).toEqual(['AAPL', 'MSFT', 'NVDA', 'SPY', 'TSLA']);
       expect(text(element(fixture).querySelector('h2.dash-label'))).toBe('Net Worth');
       expect(element(fixture).textContent).toContain(
         'Portfolio Value · Personal Investing Account',

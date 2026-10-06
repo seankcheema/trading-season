@@ -24,6 +24,9 @@ apps/market-data/db/seeds/.ipynb_checkpoints/
 
 # VS Code Settingss
 .vscode/
+.claude/
+.pytest_cache/
+TradingSeason Design System/
 
 # Python
 .venv/
