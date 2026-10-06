@@ -40,7 +40,7 @@ Both Java services share the same `trading_season` database. This table lists wh
 | portfolio_valuations | Holdings and Trade Service | Append/read (real-time portfolio history) |
 | cash_transactions | Both Java services | Cash transfers in Holdings and Trade; execution ledger in Order and Sell |
 | holding_movements | Order and Sell Service | Read/write (position ledger) |
-| audit_trail | Order and Sell Service | Read/write (event history) |
+| audit_trail | Order and Sell Service | Append/read (event history) |
 | stocks | Holdings and Trade Service | Read/write (reference data) |
 | instruments | Order and Sell Service | Read/write (tradable assets) |
 | simulation_sessions | Holdings and Trade Service | Read/write (simulation metadata) |
@@ -71,6 +71,22 @@ python apps/market-data/db/scripts/python/tests/test_watchlist_migration.py
 
 The test requires PostgreSQL binaries on PATH and never connects to an existing database.
 
+## Trade record migration
+
+[V010__Protect_trade_records.sql](../../apps/market-data/db/migrations/V010__Protect_trade_records.sql) adds triggers that make `audit_trail`, `fills`, `cash_transactions`, and `holding_movements` insert-only, let an order be resolved once and never deleted, and stop an account from being deleted or moved to another user. It adds no tables or columns and changes no existing rows. The [trade record](trade-record.md) reference describes what the triggers allow and their limits.
+
+The Python initializer, local and Jenkins Compose, and `scripts/setup-local.sh` apply V010 after V009 on fresh and retained databases. For a database managed by hand, apply it as the database owner after V009:
+
+```powershell
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V010__Protect_trade_records.sql
+```
+
+V010 may be reapplied. Once it is applied, manual cleanup of orders, fills, ledger rows, or accounts with `DELETE`, `UPDATE`, or `TRUNCATE` fails; reset a disposable database by recreating it instead. With PostgreSQL binaries on PATH, validate the migration against an isolated temporary cluster with:
+
+```powershell
+python apps/market-data/db/scripts/python/tests/test_trade_record_migration.py
+```
+
 ## Business model
 
 | Group | Tables and responsibility |
@@ -81,7 +97,7 @@ The test requires PostgreSQL binaries on PATH and never connects to an existing 
 | Accounts/execution | accounts, holdings, orders, fills: balances, positions, instructions and executions |
 | Ledgers/audit | cash_transactions, holding_movements, audit_trail: accounting and event history |
 
-Orders are distinct from fills. The schema allows at most one fill per order. The account/client_reference pair supplies order idempotency. An order's status is PENDING, FILLED or REJECTED . Buy and sell orders move users.available_funds; accounts.cash_balance is not moved by order execution. Cash balances and holdings are caches reconciled against append-only ledgers. Application grants should limit ledger/audit access to the appropriate insert/read operations; table definitions alone do not enforce every operational policy.
+Orders are distinct from fills. The schema allows at most one fill per order. The account/client_reference pair supplies order idempotency. An order's status is PENDING, FILLED or REJECTED . Buy and sell orders move users.available_funds; accounts.cash_balance is not moved by order execution. Cash balances and holdings are caches reconciled against append-only ledgers. V010 enforces that with triggers: the ledgers, fills, and audit trail accept inserts only, and a resolved order is final. See the [trade record](trade-record.md).
 
 Simulation data is scoped by run and stock. Deleting a simulation session cascades through its generated market data. The unique `instruments.simulated_stock_symbol` connects simulated U.S. equities to instruments. The [market-data importer](../../apps/market-data/db/scripts/python/lib/importing.py) creates these instrument rows idempotently. Schema support for other asset classes does not imply their simulation APIs exist.
 
@@ -145,7 +161,9 @@ Alternatively, open `V001__Initialize_database.sql` in pgAdmin connected to `tra
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V009__Add_terms_acceptance_to_users.sql
 ```
 
-The setup script does not create the database or role, or import market data. Historical numbered migrations and repair files have been consolidated; existing databases require a separately reviewed upgrade except for the bounded legacy repair below. If your database already includes the canonical V001 and V002 schema, apply only the later additive terms migration.
+Finally apply V010 using the [trade record migration](#trade-record-migration) command.
+
+The setup script does not create the database or role, or import market data. Historical numbered migrations and repair files have been consolidated; existing databases require a separately reviewed upgrade except for the bounded legacy repair below. If your database already includes the canonical V001 and V002 schema, apply only the later terms and trade record migrations.
 
 ### Upgrade a legacy 17-table database
 

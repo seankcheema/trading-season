@@ -66,12 +66,13 @@ CREATE ROLE trading_season WITH LOGIN PASSWORD 'password';
 CREATE DATABASE trading_season OWNER trading_season;
 ```
 
-Then apply the schema. Connect to `trading_season` as the `trading_season` user and run the canonical setup on an empty database. V001 also repairs a legacy database missing `user_accounts`, `refresh_tokens`, and `portfolio_valuations`; see the [legacy upgrade procedure](docs/reference/database.md#upgrade-a-legacy-17-table-database). After the baseline setup, apply the terms-acceptance migration so authenticated users can record acceptance in their profile:
+Then apply the schema. Connect to `trading_season` as the `trading_season` user and run the canonical setup on an empty database. V001 also repairs a legacy database missing `user_accounts`, `refresh_tokens`, and `portfolio_valuations`; see the [legacy upgrade procedure](docs/reference/database.md#upgrade-a-legacy-17-table-database). After the baseline setup, apply the terms-acceptance migration so authenticated users can record acceptance in their profile, and the [trade record](docs/reference/trade-record.md) migration that makes order history permanent:
 
 ```powershell
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initialize_database.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Add_watchlist.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V009__Add_terms_acceptance_to_users.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V010__Protect_trade_records.sql
 ```
 
 Verify that `trading_season` owns the tables. Connect to the `trading_season` database and run:
