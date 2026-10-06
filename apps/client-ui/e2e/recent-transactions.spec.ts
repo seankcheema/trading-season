@@ -138,7 +138,8 @@ test('view all opens every transaction, including cash, and filters by type', as
   await dialog.getByRole('button', { name: 'Sort by Value' }).click();
   await expect(rows.first()).toContainText('$10,000.00');
   await dialog.getByRole('button', { name: 'Sort by Value' }).click();
-  await expect(rows.first()).toContainText('$400.00');
+  // The smallest value is the $100 deposit; the $400 trades sit above it.
+  await expect(rows.first()).toContainText('+$100.00');
 
   await dialog.getByRole('button', { name: 'Close recent transactions' }).click();
   await expect(dialog).toBeHidden();
