@@ -51,7 +51,8 @@ export function holdingsAt(
         .sort((a, b) => a.orderId - b.orderId);
       for (const order of visible) {
         if (order.orderType === 'BUY') {
-          average = (held * average + order.quantity * order.indicativePrice) / (held + order.quantity);
+          average =
+            (held * average + order.quantity * order.indicativePrice) / (held + order.quantity);
           held += order.quantity;
         } else {
           held -= order.quantity;

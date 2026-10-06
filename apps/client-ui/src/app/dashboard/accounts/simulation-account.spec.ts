@@ -67,11 +67,13 @@ describe('simulation account projection', () => {
       simulatedAt: '2026-01-25T16:00:00Z',
     };
     const at = Date.parse(rebuy.simulatedAt);
-    const [position] = holdingsAt([], [...orders, rebuy], catalogue, 1, at);
+    // What the holdings service reports now: the 100 and 120 round trip is forgotten.
+    const current = [{ symbol: 'AAPL', quantity: 2, averageCost: 130 }];
+    const [position] = holdingsAt(current, [...orders, rebuy], catalogue, 1, at);
     expect(position.quantity).toBe(2);
     expect(position.averageCost).toBe(130);
     // Before the rebuy the position is closed, so nothing is held.
-    expect(holdingsAt([], [...orders, rebuy], catalogue, 1, sell)).toEqual([]);
+    expect(holdingsAt(current, [...orders, rebuy], catalogue, 1, sell)).toEqual([]);
   });
   it('keeps the average of the remaining shares after a partial sell', () => {
     const partial = [orders[0], { ...orders[1], quantity: 1 }];
@@ -82,9 +84,20 @@ describe('simulation account projection', () => {
       indicativePrice: 140,
       simulatedAt: '2026-01-25T16:00:00Z',
     };
-    const [position] = holdingsAt([], [...partial, rebuy], catalogue, 1, Date.parse(rebuy.simulatedAt));
+    const current = [{ symbol: 'AAPL', quantity: 2, averageCost: 120 }];
+    const [position] = holdingsAt(
+      current,
+      [...partial, rebuy],
+      catalogue,
+      1,
+      Date.parse(rebuy.simulatedAt),
+    );
     expect(position.quantity).toBe(2);
     expect(position.averageCost).toBe(120);
+    // Rewound to just after the partial sell, the remaining share still costs 100.
+    const [rewound] = holdingsAt(current, [...partial, rebuy], catalogue, 1, sell);
+    expect(rewound.quantity).toBe(1);
+    expect(rewound.averageCost).toBe(100);
   });
   it('ignores other accounts and unsuccessful trades and retains undated starting positions', () => {
     const current = [{ symbol: 'AAPL', quantity: 3, averageCost: 90 }];
