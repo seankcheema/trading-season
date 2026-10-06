@@ -73,21 +73,12 @@ public class OrderService {
     }
 
     /**
-<<<<<<< HEAD
-     * Submits an order. The order is created {@code PENDING}; it returns as
-     * {@code REJECTED} when a trading rule fails, or {@code FILLED} once the
-     * fill is written and the owning user's available funds and the account's
-     * holdings have moved. Either final status raises an
-     * {@link OrderResolvedEvent} that is published to the trade-events topic
-     * after this transaction commits. Never throws for a trade that fails a
-     * trading rule — that's a normal outcome, reflected in the returned
-     * order's status, not an HTTP-level error. It throws only when the
-     * request refers to something that doesn't exist.
-=======
      * Submits an order on an account the caller owns. The order is created
      * {@code PENDING}; it returns as {@code REJECTED} when a trading rule
      * fails, or {@code FILLED} once the fill is written and the owning user's
-     * available funds and the account's holdings have moved. Never throws for
+     * available funds and the account's holdings have moved. Either final
+     * status raises an {@link OrderResolvedEvent} that is published to the
+     * trade-events topic after this transaction commits. Never throws for
      * a trade that fails a trading rule — that's a normal outcome, reflected
      * in the returned order's status, not an HTTP-level error. It throws only
      * when the request names something that doesn't exist or isn't the
@@ -97,7 +88,6 @@ public class OrderService {
      * lookup: an idempotency key is scoped to an account, so answering one
      * before checking the account would hand a caller the outcome of an order
      * on an account they don't own.
->>>>>>> f7a027e57cd77f536be1d2170e1a2e778cc01f3d
      *
      * @param request the validated submission
      * @param callerId the caller's user id, from the token's {@code sub} claim
