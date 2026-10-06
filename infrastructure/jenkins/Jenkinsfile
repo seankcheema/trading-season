@@ -420,9 +420,9 @@ pipeline {
 
                             "${scannerHome}/bin/sonar-scanner" \
                                                             -Dproject.settings=infrastructure/jenkins/sonar-project.properties \
-                              -Dsonar.projectKey=\"$PROJECT_KEY\" \
-                              -Dsonar.projectName=\"$PROJECT_NAME\" \
-                                                            -Dsonar.projectVersion=\"$BUILD_NUMBER\"
+                                  -Dsonar.projectKey="\$PROJECT_KEY" \
+                                  -Dsonar.projectName="\$PROJECT_NAME" \
+                                                                -Dsonar.projectVersion="\$BUILD_NUMBER"
                         """
                     }
                 }
