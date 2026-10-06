@@ -1,6 +1,7 @@
 import { WatchlistStore } from './watchlist/watchlist-store.service';
 import { ActivityItem, ActivityRowComponent } from './shared/activity-row.component';
 import { cashActivity, orderActivity, orderDate } from './shared/activity';
+import { AssetsDialogComponent } from './history/assets-dialog.component';
 import { TransactionsDialogComponent } from './history/transactions-dialog.component';
 import { AccountControlComponent } from './shared/account-control.component';
 import { MarketClockControlComponent } from './shared/market-clock-control.component';
@@ -52,7 +53,12 @@ import { OrderService } from './orders/order.service';
 import { SettingsDialogComponent } from './settings-dialog/settings-dialog.component';
 import { DashboardHeaderDropdownComponent } from './shared/dashboard-header-dropdown.component';
 import { DailySparklineComponent } from './shared/daily-sparkline.component';
-import { InstrumentSearchComponent } from './shared/instrument-search.component';
+import { PricedHolding } from './shared/assets';
+import {
+  InstrumentSearchComponent,
+  SearchSuggestionGroup,
+} from './shared/instrument-search.component';
+import { RecentInstrumentsService } from './shared/recent-instruments.service';
 import { PriceChartComponent } from './shared/price-chart.component';
 import { SignedPercentPipe } from './shared/signed-percent.pipe';
 import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
@@ -69,17 +75,6 @@ type TickAnimation = {
 type AccountDialog =
   { kind: 'account'; account: Account | null } | { kind: 'cash'; mode: CashTransactionMode };
 
-// One position in an account's portfolio, valued at the latest price.
-interface PricedHolding {
-  symbol: string;
-  shares: number;
-  // Average cost per share, used to derive gain/loss.
-  costBasis: number;
-  instrument: Instrument;
-  value: number;
-  gainLoss: number;
-}
-
 // User-wide cash movements and orders across the caller's owned accounts.
 @Component({
   selector: 'app-dashboard',
@@ -87,6 +82,7 @@ interface PricedHolding {
   imports: [
     ActivityRowComponent,
     AccountDialogComponent,
+    AssetsDialogComponent,
     AccountControlComponent,
     MarketClockControlComponent,
     CashTransactionDialogComponent,
@@ -215,6 +211,38 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly marketClockLabel = this.clock.marketClockLabel;
   protected readonly settingsOpen = signal(false);
   protected readonly historyDialog = signal<'transactions' | null>(null);
+  protected readonly assetsDialogOpen = signal(false);
+  private readonly recentInstruments = inject(RecentInstrumentsService);
+
+  // What the search bar offers before anything is typed: the biggest movers today, the user's
+  // watch list and the stocks they opened last. Empty groups are hidden by the search bar.
+  protected readonly searchSuggestions = computed<SearchSuggestionGroup[]>(() => {
+    const instruments = this.instruments();
+    const named = (symbols: readonly string[]) =>
+      symbols
+        .map((symbol) => instruments.find((instrument) => instrument.symbol === symbol))
+        .filter((instrument): instrument is Instrument => instrument !== undefined)
+        .slice(0, 3);
+    return [
+      {
+        label: 'Trending',
+        icon: 'lucideFlame',
+        items: [...instruments]
+          .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
+          .slice(0, 3),
+      },
+      {
+        label: 'Your watch list',
+        icon: 'lucideStar',
+        items: named(this.watchlist.entries().map((entry) => entry.symbol)),
+      },
+      {
+        label: 'Recently viewed',
+        icon: 'lucideHistory',
+        items: named(this.recentInstruments.symbols()),
+      },
+    ];
+  });
 
   // Symbol currently open in the order submission dialog, if any.
   private readonly orderSymbol = signal<string | null>(null);
@@ -496,11 +524,26 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.historyDialog.set(null);
   }
 
+  protected openAssets(): void {
+    this.assetsDialogOpen.set(true);
+  }
+
+  protected closeAssets(): void {
+    this.assetsDialogOpen.set(false);
+  }
+
+  // Choosing an asset leaves the table for its order ticket.
+  protected openOrderFromAssets(instrument: Instrument): void {
+    this.closeAssets();
+    this.openOrder(instrument);
+  }
+
   protected closeAccountDialog(): void {
     this.accountDialog.set(null);
   }
 
   protected openOrder(instrument: Instrument): void {
+    this.recentInstruments.record(instrument.symbol);
     this.orderSymbol.set(instrument.symbol);
   }
 
