@@ -128,8 +128,14 @@
         <section class="dash-card flex min-h-0 flex-1 flex-col p-5">
           <div class="flex items-center justify-between">
             <h2 class="text-sm font-semibold">Recent Transactions</h2>
-            <!-- TODO: link to transaction history page -->
-            <button type="button" class="dash-link">View all</button>
+            <button
+              type="button"
+              class="dash-link"
+              data-testid="open-transactions"
+              (click)="openHistory()"
+            >
+              View all
+            </button>
           </div>
 
           <div class="dash-table-head mt-4 flex justify-between">
@@ -138,7 +144,7 @@
           </div>
 
           <ul
-            class="dash-scroll dash-fade min-h-0 flex-1 overflow-y-auto"
+            class="dash-scroll dash-fade min-h-0 flex-1 overflow-y-auto pb-8"
             data-testid="recent-transactions"
           >
             @if (orderService.historyStatus() === 'error' || orderService.historyError()) {
@@ -147,7 +153,7 @@
                 role="status"
                 data-testid="order-history-error"
               >
-                Unable to load executed orders.
+                Unable to load orders.
                 <button type="button" class="text-primary underline" (click)="loadRecentOrders()">
                   Retry
                 </button>
@@ -326,7 +332,7 @@
 
           @if (assetsTab() === 'watchlist') {
             <div
-              class="dash-scroll mt-4 min-h-0 flex-1 overflow-auto pb-1"
+              class="dash-scroll mt-4 min-h-0 flex-1 overflow-auto pb-4"
               data-testid="watchlist-table"
             >
               <div class="min-w-[40rem]">
@@ -403,7 +409,7 @@
               </div>
             </div>
           } @else {
-            <div class="dash-scroll mt-4 min-h-0 flex-1 overflow-auto pb-1">
+            <div class="dash-scroll mt-4 min-h-0 flex-1 overflow-auto pb-4">
               <div class="min-w-[59rem]" data-testid="assets-table">
                 <div
                   class="assets-table-grid dash-table-head bg-card sticky top-0 grid gap-1.5 px-2 whitespace-nowrap"
@@ -503,6 +509,15 @@
 
 @if (settingsOpen()) {
   <app-settings-dialog (closed)="closeSettings()" />
+}
+
+@switch (historyDialog()) {
+  @case ('transactions') {
+    <app-transactions-dialog
+      [marketTime]="marketTimeMillis()"
+      (closed)="closeHistory()"
+    />
+  }
 }
 
 @if (accountDialog(); as dialog) {
