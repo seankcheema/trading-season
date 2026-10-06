@@ -316,7 +316,7 @@ class TestDatabaseModelsEdgeCases:
     def test_order_with_all_status_types(self, db_session, test_user, test_account, test_instrument):
         """Test orders with all possible statuses"""
         from models import Order
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         statuses = ['PENDING', 'PARTIAL_FILL', 'FILLED', 'CANCELLED', 'REJECTED']
         
@@ -329,7 +329,7 @@ class TestDatabaseModelsEdgeCases:
                 indicative_price=Decimal('50.00'),
                 order_type='BUY',
                 status=status,
-                submitted_at=datetime.utcnow()
+                submitted_at=datetime.now(UTC)
             )
             db_session.add(order)
         

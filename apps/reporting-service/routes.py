@@ -4,7 +4,7 @@ Defines the REST endpoints for portfolio and trade data
 """
 
 from flask import Blueprint, jsonify, request, g
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from db_service import (
     AccountRepository, HoldingRepository, OrderRepository, 
     TradeRepository, UserRepository
@@ -72,7 +72,7 @@ def get_portfolio_summary():
                 'total_portfolio_value': total_cash + total_holdings_value,
                 'available_funds': available_funds
             },
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(UTC).isoformat()
         }), 200
     
     except Exception as e:
@@ -107,7 +107,7 @@ def get_account_portfolio(account_id):
             'account': summary,
             'holdings': holdings,
             'portfolio_value': sum(h['total_value'] for h in holdings) + summary['cash_balance'],
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(UTC).isoformat()
         }), 200
     
     except Exception as e:
@@ -238,7 +238,7 @@ def get_trades():
                 'min_profit': min_profit,
                 'max_profit': max_profit
             },
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(UTC).isoformat()
         }), 200
     
     except Exception as e:
@@ -263,7 +263,7 @@ def get_trade_detail(order_id):
         
         return jsonify({
             'trade': order,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(UTC).isoformat()
         }), 200
     
     except Exception as e:
@@ -335,7 +335,7 @@ def get_trade_statistics():
                 'start_date': start_date_str,
                 'end_date': end_date_str
             },
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(UTC).isoformat()
         }), 200
     
     except Exception as e:
@@ -409,7 +409,7 @@ def get_trade_drilldown():
                 'start_date': start_date_str,
                 'end_date': end_date_str
             },
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(UTC).isoformat()
         }), 200
     
     except Exception as e:
@@ -481,7 +481,7 @@ def get_account_performance(account_id):
                 'start_date': start_date_str,
                 'end_date': end_date_str
             },
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(UTC).isoformat()
         }), 200
     
     except Exception as e:
@@ -554,7 +554,7 @@ def get_portfolio_performance():
                 'start_date': start_date_str,
                 'end_date': end_date_str
             },
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(UTC).isoformat()
         }), 200
     
     except Exception as e:
@@ -588,7 +588,7 @@ def get_user_profile():
             'last_name': user.last_name,
             'trader_level': user.trader_level,
             'available_funds': float(user.available_funds),
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(UTC).isoformat()
         }), 200
     
     except Exception as e:
@@ -614,14 +614,14 @@ def get_scheduler_status():
         
         return jsonify({
             'scheduler_status': status,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(UTC).isoformat()
         }), 200
     
     except Exception as e:
         logger.error(f"Error getting scheduler status: {e}")
         return jsonify({
             'error': 'Failed to retrieve scheduler status',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(UTC).isoformat()
         }), 500
 
 

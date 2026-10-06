@@ -3,7 +3,7 @@ Scheduled Background Tasks
 Periodic jobs for data aggregation and cache updates
 """
 
-from datetime import datetime
+from datetime import datetime, UTC
 from apscheduler.schedulers.background import BackgroundScheduler
 from db_service import (
     AccountRepository, UserRepository, OrderRepository,
@@ -97,7 +97,7 @@ def refresh_reporting_data():
     - Archive old audit records
     - Validate data integrity
     """
-    start_time = datetime.utcnow()
+    start_time = datetime.now(UTC)
     logger.info("Starting reporting data refresh job")
     
     try:
@@ -113,14 +113,14 @@ def refresh_reporting_data():
         # 4. Track completion metrics
         
         # For now, we log successful completion
-        elapsed = (datetime.utcnow() - start_time).total_seconds()
+        elapsed = (datetime.now(UTC) - start_time).total_seconds()
         logger.info(f"Reporting data refresh completed in {elapsed:.2f} seconds")
         
     except Exception as e:
         logger.error(f"Error refreshing reporting data: {e}", exc_info=True)
         # Update metadata with error status if needed
         try:
-            error_msg = f"Error at {datetime.utcnow().isoformat()}: {str(e)}"
+            error_msg = f"Error at {datetime.now(UTC).isoformat()}: {str(e)}"
             MetadataRepository.set_metadata('last_refresh_error', error_msg)
         except:
             pass
@@ -139,7 +139,7 @@ def get_refresh_status():
             'scheduler_running': scheduler is not None and scheduler.running if scheduler else False,
             'last_refresh_time': last_refresh_time,
             'last_refresh_error': last_refresh_error,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(UTC).isoformat()
         }
         
         return status
@@ -147,5 +147,5 @@ def get_refresh_status():
         logger.error(f"Error getting refresh status: {e}")
         return {
             'error': str(e),
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(UTC).isoformat()
         }

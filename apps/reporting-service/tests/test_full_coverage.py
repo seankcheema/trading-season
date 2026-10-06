@@ -5,13 +5,15 @@ coverage gaps in routes.py, app.py, scheduled_tasks.py, and wsgi.py.
 """
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from decimal import Decimal
 
 import jwt
 import pytest
 
 from models import User, Order, Fill
+
+TEST_HS256_KEY = 'reporting-service-test-secret-key-32b'
 
 
 # ============================================================================
@@ -48,8 +50,8 @@ def sell_order_profit(db_session, test_account, test_instrument):
         quantity=Decimal('10.00'),
         indicative_price=Decimal('160.00'),
         status='FILLED',
-        submitted_at=datetime.utcnow() - timedelta(days=2),
-        resolved_at=datetime.utcnow() - timedelta(days=2)
+        submitted_at=datetime.now(UTC) - timedelta(days=2),
+        resolved_at=datetime.now(UTC) - timedelta(days=2)
     )
     db_session.add(order)
     db_session.commit()
@@ -58,7 +60,7 @@ def sell_order_profit(db_session, test_account, test_instrument):
         filled_quantity=Decimal('10.00'),
         filled_price=Decimal('160.00'),
         commission=Decimal('5.00'),
-        fill_timestamp=datetime.utcnow() - timedelta(days=2)
+        fill_timestamp=datetime.now(UTC) - timedelta(days=2)
     )
     db_session.add(fill)
     db_session.commit()
@@ -76,8 +78,8 @@ def sell_order_loss(db_session, test_account, test_instrument):
         quantity=Decimal('5.00'),
         indicative_price=Decimal('100.00'),
         status='FILLED',
-        submitted_at=datetime.utcnow() - timedelta(days=1),
-        resolved_at=datetime.utcnow() - timedelta(days=1)
+        submitted_at=datetime.now(UTC) - timedelta(days=1),
+        resolved_at=datetime.now(UTC) - timedelta(days=1)
     )
     db_session.add(order)
     db_session.commit()
@@ -86,7 +88,7 @@ def sell_order_loss(db_session, test_account, test_instrument):
         filled_quantity=Decimal('5.00'),
         filled_price=Decimal('1.00'),
         commission=Decimal('50.00'),
-        fill_timestamp=datetime.utcnow() - timedelta(days=1)
+        fill_timestamp=datetime.now(UTC) - timedelta(days=1)
     )
     db_session.add(fill)
     db_session.commit()
@@ -444,9 +446,9 @@ class TestPerformanceMetricsHelpersFull:
     def test_calculate_performance_metrics_with_trades(self):
         from routes import _calculate_performance_metrics
         trades = [
-            {'realized_pl': 500.0, 'executed_at': (datetime.utcnow() - timedelta(days=2)).isoformat()},
-            {'realized_pl': -100.0, 'executed_at': (datetime.utcnow() - timedelta(days=1)).isoformat()},
-            {'realized_pl': 300.0, 'executed_at': datetime.utcnow().isoformat()},
+            {'realized_pl': 500.0, 'executed_at': (datetime.now(UTC) - timedelta(days=2)).isoformat()},
+            {'realized_pl': -100.0, 'executed_at': (datetime.now(UTC) - timedelta(days=1)).isoformat()},
+            {'realized_pl': 300.0, 'executed_at': datetime.now(UTC).isoformat()},
         ]
         metrics = _calculate_performance_metrics(trades)
         assert metrics['trade_count'] == 3
@@ -459,8 +461,8 @@ class TestPerformanceMetricsHelpersFull:
         trades = [
             {'executed_at': None, 'realized_pl': 10.0},
             {'executed_at': 'not-a-valid-date', 'realized_pl': 20.0},
-            {'executed_at': datetime.utcnow(), 'realized_pl': 30.0},
-            {'executed_at': (datetime.utcnow() - timedelta(days=1)).isoformat(), 'realized_pl': 40.0},
+            {'executed_at': datetime.now(UTC), 'realized_pl': 30.0},
+            {'executed_at': (datetime.now(UTC) - timedelta(days=1)).isoformat(), 'realized_pl': 40.0},
         ]
         returns = _calculate_daily_returns(trades)
         assert len(returns) >= 1
@@ -504,7 +506,7 @@ class TestVerifyTokenBranches:
 
     @staticmethod
     def _make_token(kid='test-kid'):
-        return jwt.encode({'sub': 'abc'}, 'secret', algorithm='HS256', headers={'kid': kid})
+        return jwt.encode({'sub': 'abc'}, TEST_HS256_KEY, algorithm='HS256', headers={'kid': kid})
 
     @staticmethod
     def _patch_rsa_algorithm(mocker):
