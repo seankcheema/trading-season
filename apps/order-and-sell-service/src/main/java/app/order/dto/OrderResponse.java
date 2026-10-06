@@ -36,7 +36,12 @@ public record OrderResponse(
         OffsetDateTime resolvedAt,
         OffsetDateTime simulatedAt
 ) {
-    /** Builds a response from a persisted order. */
+    /**
+     * Builds a response from a persisted order.
+     *
+     * @param order the persisted order
+     * @return the response describing the order
+     */
     public static OrderResponse from(Order order) {
         return new OrderResponse(
                 order.getOrderId(),

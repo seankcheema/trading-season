@@ -56,6 +56,18 @@ public class OrderExecutionService {
     private final HoldingMovementRepository holdingMovementRepository;
     private final AuditTrailService auditTrailService;
 
+    /**
+     * Creates the service.
+     *
+     * @param accountRepository account lookup
+     * @param userRepository user lookup with row locking
+     * @param holdingRepository holding lookup with row locking
+     * @param orderRepository order persistence
+     * @param fillRepository fill persistence
+     * @param cashTransactionRepository cash ledger persistence
+     * @param holdingMovementRepository position ledger persistence
+     * @param auditTrailService lifecycle event recorder
+     */
     public OrderExecutionService(AccountRepository accountRepository,
                                   UserRepository userRepository,
                                   HoldingRepository holdingRepository,

@@ -74,6 +74,11 @@ public class Instrument {
         return ticker;
     }
 
+    /**
+     * Sets the ticker.
+     *
+     * @param ticker the ticker
+     */
     public void setTicker(String ticker) {
         this.ticker = ticker;
     }
@@ -87,6 +92,11 @@ public class Instrument {
         return name;
     }
 
+    /**
+     * Sets the name.
+     *
+     * @param name the name
+     */
     public void setName(String name) {
         this.name = name;
     }
@@ -154,6 +164,11 @@ public class Instrument {
         return tradable;
     }
 
+    /**
+     * Sets the tradable.
+     *
+     * @param tradable the tradable
+     */
     public void setTradable(Boolean tradable) {
         this.tradable = tradable;
     }
@@ -167,6 +182,11 @@ public class Instrument {
         return simulatedStockSymbol;
     }
 
+    /**
+     * Sets the simulated stock symbol.
+     *
+     * @param simulatedStockSymbol the simulated stock symbol
+     */
     public void setSimulatedStockSymbol(String simulatedStockSymbol) {
         this.simulatedStockSymbol = simulatedStockSymbol;
     }

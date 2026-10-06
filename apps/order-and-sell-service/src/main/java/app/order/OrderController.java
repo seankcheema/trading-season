@@ -35,6 +35,11 @@ public class OrderController {
 
     private final OrderService orderService;
 
+    /**
+     * Creates the controller.
+     *
+     * @param orderService order submission and history logic
+     */
     public OrderController(OrderService orderService) {
         this.orderService = orderService;
     }

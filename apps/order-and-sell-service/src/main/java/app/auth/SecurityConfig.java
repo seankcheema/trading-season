@@ -45,6 +45,10 @@ import java.util.List;
 @Configuration
 public class SecurityConfig {
 
+    /** Creates an instance of this class. */
+    public SecurityConfig() {
+    }
+
     /**
      * Builds the security filter chain: stateless bearer-token authentication,
      * no CSRF protection (no cookies are used), CORS for the configured origins,
