@@ -188,4 +188,4 @@ Update the authoritative guide when its contract changes; do not add implementat
 
 ## Watchlist and refresh checks
 
-Fresh business setup applies V001 followed by V002. Existing databases require the explicit [watchlist upgrade](../reference/database.md#watchlist-migration). With PostgreSQL binaries on PATH, run `python apps/market-data/db/scripts/python/tests/test_watchlist_migration.py` to validate the migration against a disposable cluster. UI caches are memory-only; see [client refresh behavior](../reference/api.md#client-data-refresh-behavior).
+Fresh business setup applies V001, V002 and V003 in order. Existing databases require the explicit [watchlist upgrade](../reference/database.md#watchlist-migration) and the [order status upgrade](../reference/database.md#order-status-migration). With PostgreSQL binaries on PATH, run `python apps/market-data/db/scripts/python/tests/test_watchlist_migration.py` to validate the migration against a disposable cluster. UI caches are memory-only; see [client refresh behavior](../reference/api.md#client-data-refresh-behavior).

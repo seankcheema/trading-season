@@ -66,11 +66,12 @@ CREATE ROLE trading_season WITH LOGIN PASSWORD 'password';
 CREATE DATABASE trading_season OWNER trading_season;
 ```
 
-Then apply the schema. Connect to `trading_season` as the `trading_season` user and run V001 followed by V002 on an empty database. V001 also repairs a legacy database missing `user_accounts`, `refresh_tokens`, and `portfolio_valuations`; see the [legacy upgrade procedure](docs/reference/database.md#upgrade-a-legacy-17-table-database). It preserves the legacy `sessions` table, so a repaired database has 21 tables while a fresh database has 20:
+Then apply the schema. Connect to `trading_season` as the `trading_season` user and run V001, V002 and V003 in order on an empty database. V001 also repairs a legacy database missing `user_accounts`, `refresh_tokens`, and `portfolio_valuations`; see the [legacy upgrade procedure](docs/reference/database.md#upgrade-a-legacy-17-table-database). It preserves the legacy `sessions` table, so a repaired database has 21 tables while a fresh database has 20:
 
 ```powershell
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V001__Initialize_database.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Add_watchlist.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V003__Order_status_accepted.sql
 ```
 
 Verify that `trading_season` owns the tables. Connect to the `trading_season` database and run:

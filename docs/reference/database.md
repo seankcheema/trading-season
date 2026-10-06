@@ -55,13 +55,23 @@ Both Java services connect to the same database. Order and Sell implements order
 
 [V002__Add_watchlist.sql](../../apps/market-data/db/migrations/V002__Add_watchlist.sql) adds `user_watchlist` with a composite `(user_id, symbol)` primary key, an addition timestamp, and cascading foreign keys to `users` and `stocks`. Holdings and Trade owns its reads and writes. Watchlists belong to users rather than trading accounts.
 
-Fresh setup through the Python initializer or Compose applies V001 followed by V002. There is no automatic Java migration runner. For an existing database, apply only V002 as the database owner before starting the updated application:
+Fresh setup through the Python initializer or Compose applies V001, V002 and V003 in order. There is no automatic Java migration runner. For an existing database, apply only V002 as the database owner before starting the updated application:
 
 ```powershell
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V002__Add_watchlist.sql
 ```
 
-V002 preserves existing data and may be reapplied without resetting membership. V001 remains unchanged. Fresh databases now contain 20 application tables; legacy databases retaining `sessions` contain 21. Validate the upgrade against an isolated temporary PostgreSQL cluster with:
+V002 preserves existing data and may be reapplied without resetting membership. V001 remains unchanged. Fresh databases now contain 20 application tables; legacy databases retaining `sessions` contain 21.
+
+## Order status migration
+
+[V003__Order_status_accepted.sql](../../apps/market-data/db/migrations/V003__Order_status_accepted.sql) replaces the `orders_status_check` constraint so `status` may also be `ACCEPTED`. Order and Sell commits an order as `ACCEPTED` before executing it (BR-06; see the [API reference](api.md#trading-endpoints)), and V001's constraint listed only `PENDING`, `FILLED` and `REJECTED`, so the write was refused. Fresh setup through the Python initializer or Compose applies V001, V002 and V003 in order. For an existing database, apply only V003 as the database owner before deploying the updated Order and Sell service; it preserves every row and may be reapplied:
+
+```powershell
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f apps/market-data/db/migrations/V003__Order_status_accepted.sql
+```
+
+The `audit_trail` event type constraint already allowed `ACCEPTED` and `EXECUTION_FAILED`, so no change is needed there. Validate the upgrade against an isolated temporary PostgreSQL cluster with:
 
 ```powershell
 python apps/market-data/db/scripts/python/tests/test_watchlist_migration.py
