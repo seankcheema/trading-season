@@ -1,4 +1,4 @@
-/* Shared by the transactions and order history dialogs. The dashboard's own table styles are
+/* Shared by the transactions, order history and assets dialogs. The dashboard's own table styles are
    scoped to that component, so the dialogs carry their copies. */
 .dash-table-head {
   border-bottom: 1px solid var(--border);
@@ -39,4 +39,18 @@
     minmax(0, 0.75fr)
     minmax(0, 0.85fr)
     minmax(0, 1fr);
+}
+
+.assets-grid {
+  grid-template-columns:
+    minmax(0, 1.4fr)
+    minmax(0, 0.9fr)
+    minmax(0, 0.55fr)
+    minmax(0, 0.85fr)
+    minmax(0, 0.85fr)
+    minmax(0, 0.8fr)
+    minmax(0, 0.95fr)
+    minmax(0, 0.95fr)
+    minmax(0, 0.8fr)
+    minmax(0, 0.9fr);
 }

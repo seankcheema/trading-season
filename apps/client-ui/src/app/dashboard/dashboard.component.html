@@ -179,7 +179,10 @@
         <app-instrument-search
           class="shrink-0"
           size="lg"
-          placeholder="Search for a stock"
+          placeholder="Search a stock to buy or sell"
+          shortcut
+          action="Trade"
+          [suggestions]="searchSuggestions()"
           [instruments]="instruments()"
           (selected)="openOrder($event)"
         />
@@ -325,8 +328,14 @@
               }
             </div>
             @if (assetsTab() === 'assets') {
-              <!-- TODO: link to full holdings page -->
-              <button type="button" class="dash-link">View all</button>
+              <button
+                type="button"
+                class="dash-link"
+                data-testid="open-assets"
+                (click)="openAssets()"
+              >
+                View all
+              </button>
             }
           </div>
 
@@ -518,6 +527,15 @@
       (closed)="closeHistory()"
     />
   }
+}
+
+@if (assetsDialogOpen()) {
+  <app-assets-dialog
+    [holdings]="visibleAssets()"
+    [charts]="assetCharts()"
+    (closed)="closeAssets()"
+    (selected)="openOrderFromAssets($event)"
+  />
 }
 
 @if (accountDialog(); as dialog) {
