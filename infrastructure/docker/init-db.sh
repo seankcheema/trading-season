@@ -8,14 +8,21 @@ REPO_ROOT="${2:-/workspace}"
 MIGRATIONS_DIR="$REPO_ROOT/apps/market-data/db/migrations"
 
 echo "[DB-INIT] Waiting for database to be ready..."
-until pg_isready -q "$(echo "$DATABASE_URL" | sed 's|postgresql://||; s|/.*||')"; do
+attempt=1
+until pg_isready -q -d "$DATABASE_URL"; do
+  # Fail visibly instead of letting every dependent service wait forever.
+  if [ "$attempt" -ge 60 ]; then
+    echo "[DB-INIT] Database did not become ready within 60 seconds" >&2
+    exit 1
+  fi
+  attempt=$((attempt + 1))
   sleep 1
 done
 
 echo "[DB-INIT] Checking if database needs initialization..."
 
 # Check if any tables exist (quick way to detect if already initialized)
-TABLE_COUNT=$(psql "$DATABASE_URL" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public';" 2>/dev/null || echo "0")
+TABLE_COUNT=$(psql "$DATABASE_URL" -tA -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public';" 2>/dev/null || echo "0")
 
 if [ "$TABLE_COUNT" = "0" ]; then
     echo "[DB-INIT] Database is empty, applying migrations from $MIGRATIONS_DIR..."
