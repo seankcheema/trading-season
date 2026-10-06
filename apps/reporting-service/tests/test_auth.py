@@ -204,3 +204,71 @@ class TestAuthorizationFlow:
         """Test health endpoint requires no auth"""
         response = client.get('/health')
         assert response.status_code != 401
+
+
+class TestRs256Verification:
+    """Real RS256 tokens against a JWKS, the way the auth service issues them."""
+
+    @staticmethod
+    def _rsa_jwk(kid=None):
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from jwt.algorithms import RSAAlgorithm
+        import json
+
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        jwk = json.loads(RSAAlgorithm.to_jwk(private_key.public_key()))
+        jwk.update({'use': 'sig', 'alg': 'RS256'})
+        if kid is not None:
+            jwk['kid'] = kid
+        return private_key, jwk
+
+    @staticmethod
+    def _token(private_key, app, headers=None, **claims):
+        payload = {
+            'sub': str(uuid.uuid4()),
+            'iss': app.config['AUTH_JWT_ISSUER'],
+            'exp': datetime.utcnow() + timedelta(minutes=5),
+        }
+        payload.update(claims)
+        return jwt.encode(payload, private_key, algorithm='RS256', headers=headers)
+
+    def test_token_without_a_kid_verifies_against_the_published_key(self, app, mocker):
+        # The auth service publishes a kid in its JWKS but signs tokens without one.
+        private_key, jwk = self._rsa_jwk(kid='auth-key-1')
+        mocker.patch('app.jwks_cache.get_keys', return_value=[jwk])
+
+        decoded = verify_token(self._token(private_key, app))
+
+        assert decoded['iss'] == app.config['AUTH_JWT_ISSUER']
+        assert uuid.UUID(decoded['sub'])
+
+    def test_token_with_a_matching_kid_uses_that_key(self, app, mocker):
+        other_key, other_jwk = self._rsa_jwk(kid='old')
+        private_key, jwk = self._rsa_jwk(kid='current')
+        mocker.patch('app.jwks_cache.get_keys', return_value=[other_jwk, jwk])
+
+        decoded = verify_token(self._token(private_key, app, headers={'kid': 'current'}))
+
+        assert decoded['iss'] == app.config['AUTH_JWT_ISSUER']
+
+    def test_token_signed_by_an_unknown_key_is_rejected(self, app, mocker):
+        _, published_jwk = self._rsa_jwk(kid='auth-key-1')
+        rogue_key, _ = self._rsa_jwk()
+        mocker.patch('app.jwks_cache.get_keys', return_value=[published_jwk])
+
+        with pytest.raises(ValueError, match='Invalid token'):
+            verify_token(self._token(rogue_key, app))
+
+    def test_token_naming_an_unknown_kid_is_rejected(self, app, mocker):
+        private_key, jwk = self._rsa_jwk(kid='auth-key-1')
+        mocker.patch('app.jwks_cache.get_keys', return_value=[jwk])
+
+        with pytest.raises(ValueError, match='not found in JWKS'):
+            verify_token(self._token(private_key, app, headers={'kid': 'rotated-away'}))
+
+    def test_wrong_issuer_is_rejected(self, app, mocker):
+        private_key, jwk = self._rsa_jwk()
+        mocker.patch('app.jwks_cache.get_keys', return_value=[jwk])
+
+        with pytest.raises(ValueError, match='Invalid token'):
+            verify_token(self._token(private_key, app, iss='https://someone-else.example'))

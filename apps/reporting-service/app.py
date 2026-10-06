@@ -83,39 +83,46 @@ class JWKSCache:
 jwks_cache = JWKSCache()
 
 
+def candidate_keys(keys, kid):
+    """
+    The JWKS keys a token may have been signed with. A token that names a
+    key id gets exactly that key. The auth service signs its tokens without a
+    key id, so such a token is checked against every published key, the same
+    way the Java services' JWKS verifier does.
+    """
+    if kid is None:
+        return list(keys)
+    return [k for k in keys if k.get('kid') == kid]
+
+
 def verify_token(token):
     """Verify JWT token and return decoded payload"""
     try:
-        # Get the kid from the token header
+        from jwt.algorithms import RSAAlgorithm
+
         unverified_header = jwt.get_unverified_header(token)
         kid = unverified_header.get('kid')
-        
-        # Get the public key from JWKS
-        keys = jwks_cache.get_keys()
-        key = None
-        for k in keys:
-            if k.get('kid') == kid:
-                key = k
-                break
-        
-        if not key:
+
+        candidates = candidate_keys(jwks_cache.get_keys(), kid)
+        if not candidates:
             raise ValueError(f"Key {kid} not found in JWKS")
-        
-        # Build the public key
-        from jwt.algorithms import RSAAlgorithm
-        public_key = RSAAlgorithm.from_jwk(key)
-        
-        # Verify and decode the token
-        decoded = jwt.decode(
-            token,
-            public_key,
-            algorithms=[app.config['JWT_ALGORITHM']],
-            issuer=app.config['AUTH_JWT_ISSUER'],
-            options={'verify_exp': True}
-        )
-        
-        return decoded
-    
+
+        last_signature_error = None
+        for key in candidates:
+            public_key = RSAAlgorithm.from_jwk(key)
+            try:
+                return jwt.decode(
+                    token,
+                    public_key,
+                    algorithms=[app.config['JWT_ALGORITHM']],
+                    issuer=app.config['AUTH_JWT_ISSUER'],
+                    options={'verify_exp': True}
+                )
+            except jwt.InvalidSignatureError as e:
+                # Not this key; a token without a kid may match a later one.
+                last_signature_error = e
+        raise last_signature_error
+
     except jwt.ExpiredSignatureError:
         raise ValueError("Token has expired")
     except jwt.InvalidTokenError as e:

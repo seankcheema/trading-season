@@ -5,7 +5,8 @@ SQLAlchemy==2.0.43
 # 3.2.3 ships no Python 3.14 wheel; 3.2.13 is the first 3.2.x that does.
 psycopg[binary]==3.2.13
 python-dotenv==1.0.0
-PyJWT==2.15.1
+# The crypto extra pulls in cryptography, which RS256 verification needs.
+PyJWT[crypto]==2.15.1
 requests==2.31.0
 APScheduler==3.10.4
 gunicorn==21.2.0
