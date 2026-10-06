@@ -233,6 +233,32 @@ class UserServiceUnitTest {
         assertEquals("admin@example.com", result.getEmail());
     }
 
+    @Test
+    void acceptTermsSetsTimestampWhenMissing() {
+        User user = createTestUser(USER_ID);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(userRepository.save(user)).thenReturn(user);
+
+        User result = userService.acceptTerms(USER_ID);
+
+        assertNotNull(result.getTermsAcceptedAt());
+        verify(userRepository).save(user);
+    }
+
+    @Test
+    void acceptTermsPreservesExistingTimestamp() {
+        User user = createTestUser(USER_ID);
+        OffsetDateTime acceptedAt = OffsetDateTime.parse("2026-10-06T10:15:30Z");
+        user.setTermsAcceptedAt(acceptedAt);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(userRepository.save(user)).thenReturn(user);
+
+        User result = userService.acceptTerms(USER_ID);
+
+        assertEquals(acceptedAt, result.getTermsAcceptedAt());
+        verify(userRepository).save(user);
+    }
+
 
     private User createTestUser(UUID userId) {
         User user = new User();
