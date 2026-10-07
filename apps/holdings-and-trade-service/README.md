@@ -5,13 +5,14 @@ Spring Boot microservice responsible for managing all trading operations, order 
 ## Architecture
 
 **Responsibilities:**
-- Create and accept trade orders
-- Validate orders (funds, holdings, tradability)
-- Execute buy and sell transactions
-- Update and maintain current holdings
-- Maintain complete order audit trail and history
+- User profiles and the shared cash balance
+- Accounts, holdings views with cost basis, and the cash ledger (deposits and withdrawals)
+- Portfolio valuation history: a snapshot per minute for accounts that have bought, on request from the dashboard, and, through the `portfolio-valuation-capture` Kafka consumer, at the moment an order fills
+- Market data replay endpoints and saved watchlists
 
-**Port:** 8081 (default, configurable via `server.port`)
+Order submission, validation and execution live in Order and Sell; this service reads the holdings and ledger rows that service writes.
+
+**Port:** 8082 (default, configurable via `server.port`)
 
 **Database:** Shared PostgreSQL with Order and Sell Service. Schema is read-only; migrations managed centrally.
 
@@ -75,6 +76,9 @@ Environment variables override defaults in [application.properties](src/main/res
 | `AUTH_JWT_ISSUER` | `https://auth.dualeapa.local` | Required JWT issuer claim |
 | `CORS_ORIGINS` | `http://localhost:4200` | Allowed browser origins (comma-separated) |
 | `MARKET_REPLAY_ARCHIVE_LOCATION` | empty | Optional absolute Parquet archive root override |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:29092` | Event broker for the `trade-events` consumer; Compose sets `kafka:9092` |
+
+The property `app.events.enabled` (default `true`) registers the `portfolio-valuation-capture` consumer; the test profile sets it to `false` so contexts without a broker never contact one.
 
 Parquet-backed simulation sessions first use `MARKET_REPLAY_ARCHIVE_LOCATION`, then the archive location recorded during import, and finally discover the matching archive under the repository's `apps/market-data/db/seeds` directory. This discovery keeps an existing database usable after the repository moves. Missing raw tick partitions return an unavailable market-data error rather than falling back to one-minute candles.
 
