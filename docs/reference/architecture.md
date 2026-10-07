@@ -18,7 +18,7 @@ graph TB
     UI["Client UI<br/>Angular 21+ | Port 4200"]
     Auth["Auth Service<br/>NestJS | Port 3001"]
     OS["Order and Sell Service<br/>Spring Boot | Port 8081<br/><br/>Order submission/validation<br/>Order execution<br/>Order history<br/>Instrument reference data<br/>Called by UI"]
-    HT["Holdings and Trade Service<br/>Spring Boot | Port 8082<br/><br/>User profile queries<br/>Account management<br/>Holdings queries<br/>Called by UI"]
+    HT["Holdings and Trade Service<br/>Spring Boot | Port 8082<br/><br/>User profile queries<br/>Account management<br/>Holdings queries<br/>Portfolio valuation on fill<br/>Called by UI"]
     
     BizDB["trading_season<br/>PostgreSQL<br/>Port 5432<br/><br/>user_accounts, refresh_tokens (auth)<br/>users, accounts, orders<br/>market data"]
     Kafka["Kafka<br/>KRaft | Port 29092<br/><br/>topic trade-events<br/>3 partitions, keyed by account<br/>one message per order status change"]
@@ -39,6 +39,7 @@ graph TB
 
     OS -->|publish after commit| Kafka
     Kafka -->|group order-status-pusher| OS
+    Kafka -->|group portfolio-valuation-capture| HT
     OS -->|GET /api/orders/stream, SSE| UI
     Kafka -->|poll, commit| RC
     RC -->|append events, write runs| Files
@@ -64,12 +65,12 @@ graph TB
 | **Client UI** | Angular 21+ | 4200 | Implemented | User interface, login, registration, dashboard |
 | **Auth Service** | NestJS | 3001 | Implemented | User credentials, token issuance, session management |
 | **Order and Sell Service** | Spring Boot (Java 21) | 8081 | Implemented | Order submission/validation/execution, order history, instrument reference data |
-| **Holdings and Trade Service** | Spring Boot (Java 21) | 8082 | Implemented | User profiles, account management, holdings queries |
+| **Holdings and Trade Service** | Spring Boot (Java 21) | 8082 | Implemented | User profiles, account management, holdings queries, cash ledger, portfolio valuation history; consumer group `portfolio-valuation-capture` records a valuation when an order fills |
 | **Reporting UI** | Angular | 4300 | Proposed | Report list, viewer and parameters; static placeholder today |
 | **Reporting Service** | Python 3.14, Flask | 8083 | Implemented | Serves report runs (`report.json` and PNG charts) from the `reporting_files` volume; reads `users` and `accounts` only. See [Reporting](reporting.md) |
 | **Reporting consumer** | Python 3.14 (same image) | — | Implemented | Consumer group `reporting-ingester`: appends `trade-events` to JSON line files and writes a report run every 15 minutes |
 | **Market Data** | Infrastructure | — | Implemented | Database migrations, synthetic data generation |
-| **Kafka** | Apache Kafka (KRaft) | 29092 | Implemented | Event broker hosting trade-events. Order and Sell publishes one message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`), keyed by account id ([TradeEventPublisher](../../apps/order-and-sell-service/src/main/java/app/order/event/TradeEventPublisher.java)). Two groups read it: `order-status-pusher` in Order and Sell forwards each outcome to the owner's open `GET /api/orders/stream` connections; `reporting-ingester` in the reporting consumer stores it for reports |
+| **Kafka** | Apache Kafka (KRaft) | 29092 | Implemented | Event broker hosting trade-events. Order and Sell publishes one message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`), keyed by account id ([TradeEventPublisher](../../apps/order-and-sell-service/src/main/java/app/order/event/TradeEventPublisher.java)). Three groups read it: `order-status-pusher` in Order and Sell forwards each status change to the owner's open `GET /api/orders/stream` connections; `reporting-ingester` in the reporting consumer stores it for reports; `portfolio-valuation-capture` in Holdings and Trade records a portfolio valuation on each `FILLED` event ([PortfolioValuationListener](../../apps/holdings-and-trade-service/src/main/java/app/account/PortfolioValuationListener.java)) |
 
 ## Service naming correction
 
