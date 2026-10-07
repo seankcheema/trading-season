@@ -34,7 +34,7 @@ class UserControllerUnitTest {
     private UserController controller;
 
     @BeforeEach
-    void setUp() {
+    public void setUp() {
         controller = new UserController(userService);
     }
 
@@ -62,7 +62,7 @@ class UserControllerUnitTest {
         when(userService.getOwnAccount(USER_ID))
                 .thenThrow(new UserNotFoundException("Account is not registered"));
 
-        assertThrows(UserNotFoundException.class, () -> controller.me(jwt));
+        assertNotNull(assertThrows(UserNotFoundException.class, () -> controller.me(jwt)));
     }
 
     @Test

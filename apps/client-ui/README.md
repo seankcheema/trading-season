@@ -116,3 +116,11 @@ The production [Dockerfile](Dockerfile) builds the app and serves it through unp
 ## Shared components
 
 [shared-ui-components](shared-ui-components/README.md) holds the Spartan/Tailwind component library compiled into this app. Only this app consumes it.
+
+## Delete an account
+
+Each account in the dashboard and market-page selector opens Account settings, where you can edit its name or choose Delete account. Confirming removes an empty account from the active list while retaining all history for reporting and auditing. The dialog shows a centered loading circle while deletion is pending, then a centered success message until dismissed with Done or the dialog's close controls. Animations respect reduced-motion preferences. Close all positions first; shared cash is unaffected. The next account becomes selected, or the empty state offers account creation when none remain.
+
+## Execution buffer
+
+Settings includes a saved user-wide execution buffer from 0 to 10 percent, with two decimal places and a 1 percent default. Save applies the setting through Holdings and Trade. The save button shows a loading circle during the request, then a success message for 2.5 seconds; it stays disabled until the success message disappears. Animations respect reduced-motion preferences. Both trade tickets check eligibility through `/api/orders/check` before submitting. That check reserves nothing: submission rechecks the current server quote, buffer, cash, and shares. A failed eligibility check shows its reason and creates no order. Filled confirmations, history, and replay portfolio calculations use actual fill prices and server replay execution times, with legacy fallbacks for older history. See the [order execution contract](../order-and-sell-service/README.md#execution-price-protection).

@@ -187,12 +187,32 @@ test('creates and renames accounts from the reused market dropdown', async ({
   await expect(create).not.toBeVisible();
   await expect(account.locator('summary')).toContainText('Market trades');
   await account.locator('summary').click();
-  await page.getByRole('menuitem', { name: 'Rename Market trades', exact: true }).click();
-  const rename = page.getByRole('dialog', { name: 'Rename account', exact: true });
+  await page
+    .getByRole('menuitem', { name: 'Account settings for Market trades', exact: true })
+    .click();
+  const rename = page.getByRole('dialog', { name: 'Account settings', exact: true });
   await rename.getByLabel('Account name', { exact: true }).fill('Market savings');
   await rename.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(rename).not.toBeVisible();
   await expect(account.locator('summary')).toContainText('Market savings');
   await page.reload();
   await expect(account.locator('summary')).toContainText('Market savings');
+});
+
+test('deletes an empty portfolio from account settings on the market page', async ({
+  page,
+  loginPage,
+}) => {
+  await openMarketPage(page, loginPage);
+  const selector = page.getByTestId('account-dropdown');
+  await selector.locator('summary').click();
+  await page.getByRole('menuitem', { name: 'Account settings for Investing', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: 'Account settings', exact: true });
+  await settings.getByRole('button', { name: 'Delete account', exact: true }).click();
+  await settings.getByRole('button', { name: 'Delete account', exact: true }).click();
+  await expect(settings.getByRole('status')).toHaveText('Account deleted successfully.');
+  await expect(settings.getByRole('button', { name: 'Delete account', exact: true })).toHaveCount(0);
+  await settings.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(settings).toBeHidden();
+  await expect(selector.locator('summary')).toContainText('Retirement');
 });

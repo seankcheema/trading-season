@@ -33,7 +33,7 @@ class AccountControllerUnitTest {
     private AccountController controller;
 
     @BeforeEach
-    void setUp() {
+    public void setUp() {
         controller = new AccountController(accountService);
     }
 
@@ -86,8 +86,8 @@ class AccountControllerUnitTest {
         when(accountService.getAccountForUser(1, USER_ID))
                 .thenThrow(new ForbiddenException("Access denied"));
 
-        assertThrows(ForbiddenException.class, 
-                () -> controller.getAccount(1, jwt));
+        assertNotNull(assertThrows(ForbiddenException.class,
+                () -> controller.getAccount(1, jwt)));
     }
 
     @Test
@@ -96,8 +96,8 @@ class AccountControllerUnitTest {
         when(accountService.getAccountForUser(99, USER_ID))
                 .thenThrow(new AccountNotFoundException(99));
 
-        assertThrows(AccountNotFoundException.class, 
-                () -> controller.getAccount(99, jwt));
+        assertNotNull(assertThrows(AccountNotFoundException.class,
+                () -> controller.getAccount(99, jwt)));
     }
 
     private static app.instrument.Instrument instrument(int instrumentId, String ticker) {
@@ -149,8 +149,8 @@ class AccountControllerUnitTest {
         when(accountService.getHoldingsForAccount(1, USER_ID))
                 .thenThrow(new ForbiddenException("Access denied"));
 
-        assertThrows(ForbiddenException.class, 
-                () -> controller.listHoldings(1, jwt));
+        assertNotNull(assertThrows(ForbiddenException.class,
+                () -> controller.listHoldings(1, jwt)));
     }
 
     @Test
@@ -190,8 +190,8 @@ class AccountControllerUnitTest {
         when(accountService.updateAccountName(1, USER_ID, "New Name"))
                 .thenThrow(new ForbiddenException("Access denied"));
 
-        assertThrows(ForbiddenException.class, 
-                () -> controller.updateAccount(1, request, jwt));
+        assertNotNull(assertThrows(ForbiddenException.class,
+                () -> controller.updateAccount(1, request, jwt)));
     }
 
     @Test

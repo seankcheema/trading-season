@@ -71,6 +71,7 @@ export interface StoredCashTransaction {
 }
 
 interface OwnedTradingAccount extends TradingAccount {
+  archivedAt?: string;
   ownerId: string;
   holdings: SeedHolding[];
 }
@@ -241,6 +242,17 @@ export class ApiStub {
     await page.route('**/api/auth/register', (route) => this.registerProfile(route));
     await page.route('**/api/auth/account-exists', (route) => this.accountExists(route));
     await page.route(/\/api\/me\/watchlist(?:\/[^/?]+)?$/, (route) => this.watchlist(route));
+    await page.route('**/api/orders/check', (route) => this.orderRequest(route, true));
+    await page.route('**/api/users/me/execution-settings', async (route) => {
+      const owner = await this.caller(route);
+      if (!owner) return;
+      const profile = [...this.accounts.values()].find((a) => a.id === owner)!.profile!;
+      if (route.request().method() === 'PUT')
+        profile['executionBufferPercent'] = this.body(route)['executionBufferPercent'];
+      await this.json(route, 200, {
+        executionBufferPercent: profile['executionBufferPercent'] ?? 1,
+      });
+    });
     await page.route('**/api/orders', (route) => this.orderRequest(route));
     await page.route('**/api/instruments', async (route) => {
       if (await this.caller(route))
@@ -271,6 +283,7 @@ export class ApiStub {
     await page.route('**/api/market/**', (route) => this.market(route));
     await page.route('**/api/me/accounts', (route) => this.meAccounts(route));
     await page.route(ACCOUNT_PATH, (route) => this.renameAccount(route));
+    await page.route(/\/api\/accounts\/\d+$/, (route) => this.archiveAccount(route));
     await page.route(
       (url) => HOLDINGS_PATH.test(url.pathname),
       (route) => this.accountHoldings(route),
@@ -286,22 +299,37 @@ export class ApiStub {
     const owner = await this.caller(route);
     if (!owner) return;
     const entries = this.watchlists.get(owner) ?? [];
-    const symbol = decodeURIComponent(new URL(route.request().url()).pathname.split('/')[4] ?? '').trim().toUpperCase();
+    const symbol = decodeURIComponent(new URL(route.request().url()).pathname.split('/')[4] ?? '')
+      .trim()
+      .toUpperCase();
     const method = route.request().method();
-    if (method === 'GET') { await this.json(route, 200, entries); return; }
-    if (method === 'DELETE') {
-      this.watchlists.set(owner, entries.filter((entry) => entry.symbol !== symbol));
-      await route.fulfill({ status: 204 }); return;
+    if (method === 'GET') {
+      await this.json(route, 200, entries);
+      return;
     }
-    if (!['AAPL', 'MSFT'].includes(symbol)) { await this.json(route, 404, { error: 'Unknown stock symbol' }); return; }
-    const entry = entries.find((item) => item.symbol === symbol) ?? { symbol, createdAt: new Date().toISOString() };
+    if (method === 'DELETE') {
+      this.watchlists.set(
+        owner,
+        entries.filter((entry) => entry.symbol !== symbol),
+      );
+      await route.fulfill({ status: 204 });
+      return;
+    }
+    if (!['AAPL', 'MSFT'].includes(symbol)) {
+      await this.json(route, 404, { error: 'Unknown stock symbol' });
+      return;
+    }
+    const entry = entries.find((item) => item.symbol === symbol) ?? {
+      symbol,
+      createdAt: new Date().toISOString(),
+    };
     if (!entries.includes(entry)) entries.push(entry);
     this.watchlists.set(owner, entries);
     await this.json(route, 200, entry);
   }
 
   /** Submit at the quoted price; apply only fills to persisted cash and holdings. */
-  private async orderRequest(route: Route): Promise<void> {
+  private async orderRequest(route: Route, check = false): Promise<void> {
     const owner = await this.caller(route);
     if (!owner) return;
     if (route.request().method() === 'GET') {
@@ -310,7 +338,9 @@ export class ApiStub {
     }
     const body = this.body(route);
     const accountId = Number(body['accountId']);
-    const account = this.ownedAccounts(owner).find((a) => a.accountId === accountId);
+    const account = this.tradingAccounts.find(
+      (a) => a.ownerId === owner && a.accountId === accountId,
+    );
     if (!account) {
       await this.json(route, 404, { error: 'Account not found' });
       return;
@@ -321,8 +351,13 @@ export class ApiStub {
       await this.json(route, 201, existing);
       return;
     }
+    if (account.archivedAt) {
+      await this.json(route, 409, { error: 'This account is archived' });
+      return;
+    }
     const quantity = Number(body['quantity']),
-      price = Number(body['indicativePrice']);
+      indicativePrice = Number(body['indicativePrice']);
+    const price = Number(body['instrumentId']) === 7 ? 225.8 : 420.5;
     const side = body['orderType'];
     const symbol =
       Number(body['instrumentId']) === 7
@@ -344,12 +379,29 @@ export class ApiStub {
     const profile = [...this.accounts.values()].find((a) => a.id === owner)!.profile!;
     const funds = Number(profile['availableFunds']);
     const held = account.holdings.find((h) => h.symbol === symbol);
-    const reason =
-      side === 'BUY' && funds < quantity * price
+    const buffer = Number(body['bufferPercent'] ?? profile['executionBufferPercent'] ?? 1);
+    const boundary = indicativePrice * (1 + (side === 'BUY' ? buffer : -buffer) / 100);
+    const reason = (side === 'BUY' ? price > boundary : price < boundary)
+      ? 'Execution price is outside your buffer.'
+      : side === 'BUY' && funds < quantity * price
         ? 'Insufficient funds'
         : side === 'SELL' && (held?.quantity ?? 0) < quantity
           ? 'Insufficient holdings'
           : null;
+    if (check) {
+      await this.json(route, 200, {
+        eligible: !reason,
+        rejectionReason: reason,
+        bufferPercent: buffer,
+        indicativePrice,
+        executionPrice: price,
+        estimatedTradeValue: quantity * price,
+        priceBoundary: boundary,
+        sessionId: 1,
+        quoteTimestamp: this.marketTimestamp,
+      });
+      return;
+    }
     const now = new Date().toISOString();
     const result: OrderResult = {
       orderId: Math.max(0, ...[...this.orders.values()].flat().map((o) => o.orderId)) + 1,
@@ -357,7 +409,10 @@ export class ApiStub {
       instrumentId: Number(body['instrumentId']),
       orderType: side,
       quantity,
-      indicativePrice: price,
+      indicativePrice,
+      executionPrice: reason ? null : price,
+      bufferPercent: buffer,
+      executedSimulatedAt: reason ? null : this.marketTimestamp,
       status: reason ? 'REJECTED' : 'FILLED',
       rejectionReason: reason,
       submittedAt: now,
@@ -710,6 +765,36 @@ export class ApiStub {
     await this.json(route, 201, publicAccount(this.openTradingAccount(ownerId, name)));
   }
 
+  /** Archiving preserves the fixture's historical account and holdings. */
+  private async archiveAccount(route: Route): Promise<void> {
+    const ownerId = await this.caller(route);
+    if (!ownerId) return;
+    const id = Number(new URL(route.request().url()).pathname.split('/')[3]);
+    const account = this.tradingAccounts.find((candidate) => candidate.accountId === id);
+    if (!account) {
+      await this.json(route, 404, { error: 'Account not found' });
+      return;
+    }
+    if (account.ownerId !== ownerId) {
+      await this.json(route, 403, { error: 'Forbidden' });
+      return;
+    }
+    if (route.request().method() === 'GET') {
+      await this.json(route, 200, publicAccount(account));
+      return;
+    }
+    if (route.request().method() !== 'DELETE') {
+      await this.json(route, 405, { error: 'Method not allowed' });
+      return;
+    }
+    if (account.holdings.some((holding) => holding.quantity !== 0)) {
+      await this.json(route, 422, { error: 'Close all positions before deleting this account' });
+      return;
+    }
+    account.archivedAt ??= new Date().toISOString();
+    await route.fulfill({ status: 204 });
+  }
+
   /** PUT renames one of the caller's trading accounts. */
   private async renameAccount(route: Route): Promise<void> {
     const ownerId = await this.caller(route);
@@ -848,7 +933,9 @@ export class ApiStub {
   }
 
   private ownedAccounts(ownerId: string): OwnedTradingAccount[] {
-    return this.tradingAccounts.filter((account) => account.ownerId === ownerId);
+    return this.tradingAccounts.filter(
+      (account) => account.ownerId === ownerId && !account.archivedAt,
+    );
   }
 
   private openTradingAccount(ownerId: string, name: string): OwnedTradingAccount {

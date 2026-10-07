@@ -1,4 +1,4 @@
-import { cashAt, holdingsAt } from './simulation-account';
+import { cashAt, holdingsAt, executionTime } from './simulation-account';
 import { InstrumentRef, OrderResult } from '../orders/order.models';
 const catalogue: InstrumentRef[] = [
   {
@@ -43,6 +43,24 @@ const orders: OrderResult[] = [
   },
 ];
 describe('simulation account projection', () => {
+  it('projects cash and cost basis using the fill price and server replay time', () => {
+    const executed = {
+      ...orders[0],
+      executionPrice: 101,
+      executedSimulatedAt: new Date(buy + 1000).toISOString(),
+    };
+    expect(executionTime(executed)).toBe(buy + 1000);
+    expect(cashAt(798, [executed], buy)).toBe(1000);
+    expect(
+      holdingsAt(
+        [{ symbol: 'AAPL', quantity: 2, averageCost: 101 }],
+        [executed],
+        catalogue,
+        1,
+        buy + 1000,
+      )[0].averageCost,
+    ).toBe(101);
+  });
   it('rewinds and restores shares and cash at inclusive execution boundaries without mutating facts', () => {
     for (const [at, quantity, cash] of [
       [buy - 1, 0, 1000],

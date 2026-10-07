@@ -50,14 +50,15 @@ public class AccountService {
     }
 
     /**
-     * Retrieves all accounts belonging to the authenticated user.
+     * Retrieves active accounts belonging to the authenticated user; archived accounts remain stored.
      *
      * @param userId the authenticated user's UUID from the token's sub claim
      * @return a list of the user's accounts ordered by opened date (newest first)
      */
     @Transactional(readOnly = true)
     public List<Account> getAccountsForUser(UUID userId) {
-        return accountRepository.findByUserIdOrderByOpenedDateDesc(userId);
+        return accountRepository.findByUserIdOrderByOpenedDateDesc(userId).stream()
+                .filter(account -> account.getArchivedAt() == null).toList();
     }
 
     /**
@@ -126,7 +127,8 @@ public class AccountService {
     }
 
     /**
-     * Updates the name of an account.
+     * Updates the name of an active account under the archive and trading row lock.
+     * @throws org.springframework.web.server.ResponseStatusException if archived
      *
      * @param accountId the account ID
      * @param userId    the authenticated user's UUID
@@ -137,9 +139,51 @@ public class AccountService {
      */
     @Transactional
     public Account updateAccountName(Integer accountId, UUID userId, String newName) {
-        Account account = getAccountForUser(accountId, userId);
+        Account account = lockedOwnedAccount(accountId, userId);
+        requireActive(account);
         account.setName(newName);
         return accountRepository.save(account);
+    }
+
+    /**
+     * Archives an empty owned account without deleting any history. Repeated calls are harmless.
+     * @param accountId the account ID
+     * @param userId verified owner
+     * @throws AccountNotFoundException if missing
+     * @throws ForbiddenException if owned by another user
+     * @throws org.springframework.web.server.ResponseStatusException if positions remain
+     */
+    @Transactional
+    public void archiveAccount(Integer accountId, UUID userId) {
+        Account account = lockedOwnedAccount(accountId, userId);
+        if (account.getArchivedAt() != null) return;
+        if (holdingRepository.findByAccountId(accountId).stream()
+                .anyMatch(holding -> holding.getQuantity().signum() != 0)) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,
+                    "Close all positions before deleting this account");
+        }
+        account.setArchivedAt(java.time.Instant.now());
+        accountRepository.save(account);
+    }
+
+    private Account lockedOwnedAccount(Integer accountId, UUID userId) {
+        Account account = accountRepository.findByIdForUpdate(accountId)
+                .orElseThrow(() -> new AccountNotFoundException(accountId));
+        if (!account.getUserId().equals(userId))
+            throw new ForbiddenException("You do not have access to this account");
+        return account;
+    }
+
+    /**
+     * Rejects mutations of an archived account.
+     * @param account the account being changed
+     * @throws org.springframework.web.server.ResponseStatusException if archived
+     */
+    public static void requireActive(Account account) {
+        if (account.getArchivedAt() != null)
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT, "This account is archived");
     }
 
     /**

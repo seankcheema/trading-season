@@ -7,7 +7,7 @@ Order creation, validation and execution live in [Order and Sell Service](../ord
 ## Responsibilities
 
 - **Profile registration and reads** - Create the caller's profile from the registration form and return it
-- **Accounts** - List, open and rename the caller's accounts; open a default account at registration
+- **Accounts** - List active accounts, open, rename and archive the caller's accounts; open a default account at registration
 - **Holdings** - Report an owned account's positions with their symbol and average cost
 - **Cash** - Deposit and withdraw the user's shared funds, and list the resulting ledger
 - **Market data** - Serve the shared simulation snapshot, candles and tick stream

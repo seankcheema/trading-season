@@ -287,8 +287,10 @@ test.describe('portfolios and net worth', () => {
     await signIn({ loginPage, dashboardPage }, EXISTING_USER);
 
     await dashboardPage.accountMenuTrigger.click();
-    await dashboardPage.accountMenu.getByRole('menuitem', { name: 'Rename IRA' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Rename account' });
+    await dashboardPage.accountMenu
+      .getByRole('menuitem', { name: 'Account settings for IRA' })
+      .click();
+    const dialog = page.getByRole('dialog', { name: 'Account settings' });
     await expect(dialog.getByLabel('Account name')).toHaveValue('IRA');
     await dialog.getByLabel('Account name').fill('Roth IRA');
     await dialog.getByRole('button', { name: 'Save' }).click();
@@ -406,5 +408,52 @@ test.describe('rewinding executed trades', () => {
         (request) => request.url.includes('/api/orders') && request.method === 'POST',
       ),
     ).toHaveLength(0);
+  });
+});
+
+test.describe('archiving accounts', () => {
+  test.use({
+    stubOptions: {
+      accounts: [
+        seed(EXISTING_USER, {
+          tradingAccounts: [
+            { name: 'Empty', holdings: [] },
+            { name: 'Invested', holdings: [{ symbol: 'IBM', quantity: 1, averageCost: 0 }] },
+          ],
+        }),
+      ],
+    },
+  });
+
+  test('confirmation preserves cancellation, removes an empty account, and rejects an open position', async ({
+    loginPage,
+    dashboardPage,
+    page,
+  }) => {
+    await signIn({ loginPage, dashboardPage }, EXISTING_USER);
+    await dashboardPage.accountMenuTrigger.click();
+    await page.getByRole('menuitem', { name: 'Account settings for Empty', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Account settings', exact: true });
+    await dialog.getByRole('button', { name: 'Delete account', exact: true }).click();
+    await expect(dialog).toContainText('All positions must be closed before deletion.');
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Close account settings', exact: true }).click();
+    expect(await dashboardPage.listedAccounts()).toContain('Empty');
+    await dashboardPage.accountMenuTrigger.click();
+    await page.getByRole('menuitem', { name: 'Account settings for Empty', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Delete account', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Delete account', exact: true }).click();
+    await expect(dialog.getByRole('status')).toHaveText('Account deleted successfully.');
+    await expect(dialog.getByRole('button', { name: 'Delete account', exact: true })).toHaveCount(0);
+    await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    expect(await dashboardPage.listedAccounts()).not.toContain('Empty');
+    await dashboardPage.accountMenuTrigger.click();
+    await page
+      .getByRole('menuitem', { name: 'Account settings for Invested', exact: true })
+      .click();
+    await dialog.getByRole('button', { name: 'Delete account', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Delete account', exact: true }).click();
+    await expect(dialog.getByRole('alert')).toContainText('Close all positions');
   });
 });

@@ -74,7 +74,7 @@ public class Order {
     @Column(name = "indicative_price", updatable = false)
     private BigDecimal indicativePrice;
 
-    /** KAN-100: the trader's execution price tolerance, acquired from the client. */
+    /** Effective adverse-price tolerance: per-order override or the user's saved setting. */
     @Column(name = "buffer_percent", updatable = false)
     private BigDecimal bufferPercent;
 
@@ -94,6 +94,32 @@ public class Order {
     /** Selected market replay time; independent of real audit timestamps. */
     @Column(name = "simulated_at", updatable = false)
     private OffsetDateTime simulatedAt;
+
+    @Column(name = "session_id")
+    private Long sessionId;
+    @Column(name = "executed_simulated_at")
+    private OffsetDateTime executedSimulatedAt;
+    @jakarta.persistence.Transient
+    private BigDecimal executionPrice;
+
+    /** Returns the replay session.
+     * @return session or null */
+    public Long getSessionId() { return sessionId; }
+    /** Sets the replay session.
+     * @param sessionId replay session */
+    public void setSessionId(Long sessionId) { this.sessionId = sessionId; }
+    /** Returns the server replay execution time.
+     * @return execution time or null */
+    public OffsetDateTime getExecutedSimulatedAt() { return executedSimulatedAt; }
+    /** Sets server replay execution time.
+     * @param time execution time */
+    public void setExecutedSimulatedAt(OffsetDateTime time) { executedSimulatedAt = time; }
+    /** Returns the price loaded from the fill.
+     * @return execution price or null */
+    public BigDecimal getExecutionPrice() { return executionPrice; }
+    /** Attaches the fill price for response mapping.
+     * @param price persisted fill price */
+    public void setExecutionPrice(BigDecimal price) { executionPrice = price; }
 
     /** Returns the selected simulation time.
      * @return simulated time, or null for submissions without replay context */

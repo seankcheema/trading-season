@@ -33,7 +33,7 @@ class CashTransactionControllerUnitTest {
     private CashTransactionController controller;
 
     @BeforeEach
-    void setUp() {
+    public void setUp() {
         controller = new CashTransactionController(cashTransactionService);
     }
 

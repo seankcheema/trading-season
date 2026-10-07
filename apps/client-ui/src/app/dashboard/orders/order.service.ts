@@ -14,8 +14,14 @@ import {
   throwError,
 } from 'rxjs';
 import { BACKEND_API_URL } from '../../core/api.config';
-import { UnknownInstrumentError } from './order-error';
-import { InstrumentRef, OrderResult, OrderSubmission, OrderType } from './order.models';
+import { UnknownInstrumentError, TradeEligibilityError } from './order-error';
+import {
+  InstrumentRef,
+  OrderCheckResult,
+  OrderResult,
+  OrderSubmission,
+  OrderType,
+} from './order.models';
 
 // How often to re-read the history while an order is still pending.
 export const PENDING_ORDER_POLL_MS = 5_000;
@@ -90,6 +96,8 @@ export class OrderService {
   submitOrder(order: {
     accountId: number;
     simulatedAt?: string;
+    sessionId?: number;
+    bufferPercent?: number;
     symbol: string;
     orderType: OrderType;
     quantity: number;
@@ -108,9 +116,25 @@ export class OrderService {
           quantity: order.quantity,
           indicativePrice: order.indicativePrice,
           clientReference: newClientReference(),
+          ...(order.sessionId != null ? { sessionId: order.sessionId } : {}),
+          ...(order.bufferPercent != null ? { bufferPercent: order.bufferPercent } : {}),
           ...(order.simulatedAt ? { simulatedAt: order.simulatedAt } : {}),
         };
-        return this._http.post<OrderResult>(`${this._apiUrl}/orders`, submission);
+        const { clientReference: _reference, ...check } = submission;
+        return this._http
+          .post<OrderCheckResult>(`${this._apiUrl}/orders/check`, check)
+          .pipe(
+            switchMap((assessment) =>
+              assessment.eligible
+                ? this._http.post<OrderResult>(`${this._apiUrl}/orders`, submission)
+                : throwError(
+                    () =>
+                      new TradeEligibilityError(
+                        assessment.rejectionReason ?? 'This trade is not currently eligible.',
+                      ),
+                  ),
+            ),
+          );
       }),
       takeUntil(this.cancelled),
       // A fill moves funds and holdings, so the history the dashboard shows is stale

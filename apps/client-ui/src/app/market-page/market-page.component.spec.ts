@@ -1,3 +1,5 @@
+import { HttpResponse, withInterceptors } from '@angular/common/http';
+import { of as eligibleResponse } from 'rxjs';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { OrderResult } from '../dashboard/orders/order.models';
@@ -88,7 +90,14 @@ describe('MarketPageComponent', () => {
       imports: [MarketPageComponent],
       providers: [
         provideRouter([]),
-        provideHttpClient(),
+        provideHttpClient(
+          withInterceptors([
+            (req, next) =>
+              req.url.endsWith('/orders/check')
+                ? eligibleResponse(new HttpResponse({ body: { eligible: true } }))
+                : next(req),
+          ]),
+        ),
         provideHttpClientTesting(),
         { provide: PLATFORM_ID, useValue: 'browser' },
         {
@@ -168,7 +177,9 @@ describe('MarketPageComponent', () => {
       serverTimestamp: '2026-01-05T15:01:10Z',
       prices: [{ symbol: 'AAPL', price: 230, sequenceNumber: 2 }],
     });
-    expect(fixture.componentInstance['instruments']().find((stock) => stock.symbol === 'AAPL')?.price).toBe(230);
+    expect(
+      fixture.componentInstance['instruments']().find((stock) => stock.symbol === 'AAPL')?.price,
+    ).toBe(230);
     fixture.destroy();
     expect(disconnect).toHaveBeenCalledTimes(2);
   });
@@ -180,9 +191,12 @@ describe('MarketPageComponent', () => {
     marketData.candles.mockImplementationOnce(() => pending);
     fixture.componentInstance['candleRevision'].update((revision) => revision + 1);
     fixture.detectChanges();
-    expect(fixture.debugElement.query(By.directive(PriceChartComponent)).componentInstance).toBe(chart);
-    const status = [...fixture.nativeElement.querySelectorAll('[role="status"]')]
-      .find((element: HTMLElement) => element.textContent?.includes('Updating chart'));
+    expect(fixture.debugElement.query(By.directive(PriceChartComponent)).componentInstance).toBe(
+      chart,
+    );
+    const status = [...fixture.nativeElement.querySelectorAll('[role="status"]')].find(
+      (element: HTMLElement) => element.textContent?.includes('Updating chart'),
+    );
     expect(status?.classList.contains('sr-only')).toBe(true);
     pending.complete();
     fixture.destroy();
@@ -227,7 +241,9 @@ describe('MarketPageComponent', () => {
     expect(fixture.componentInstance['openHeaderDropdown']()).toBeNull();
 
     const logout = vi.spyOn(TestBed.inject(AuthService), 'logout').mockReturnValue(of(undefined));
-    const navigateToLogin = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+    const navigateToLogin = vi
+      .spyOn(TestBed.inject(Router), 'navigateByUrl')
+      .mockResolvedValue(true);
     profile.querySelectorAll('button')[1].click();
     expect(logout).toHaveBeenCalledOnce();
     expect(navigateToLogin).toHaveBeenCalledWith('/login');

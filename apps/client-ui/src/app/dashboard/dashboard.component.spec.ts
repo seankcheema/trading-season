@@ -1689,12 +1689,12 @@ describe('DashboardComponent', () => {
 
       (
         element(fixture).querySelector(
-          '[aria-label="Rename Retirement Account"]',
+          '[aria-label="Account settings for Retirement Account"]',
         ) as HTMLButtonElement
       ).click();
       fixture.detectChanges();
 
-      expect(text(element(fixture).querySelector('[role="dialog"] h2'))).toBe('Rename account');
+      expect(text(element(fixture).querySelector('[role="dialog"] h2'))).toBe('Account settings');
       expect((element(fixture).querySelector('#accountName') as HTMLInputElement).value).toBe(
         'Retirement Account',
       );

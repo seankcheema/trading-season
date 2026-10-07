@@ -53,6 +53,7 @@ public class PortfolioValuationService {
      * Captures a current observation after checking ownership. New accounts stay empty.
      * @param accountId owned account
      * @param userId verified caller
+     * @throws org.springframework.web.server.ResponseStatusException if the account is archived
      * @param scheduled whether unchanged captures in the same minute should be coalesced
      * @return observation, or null when the account has never bought shares
      * @throws AccountNotFoundException for a missing account
@@ -60,9 +61,12 @@ public class PortfolioValuationService {
      */
     @Transactional
     public Point capture(Integer accountId, UUID userId, boolean scheduled) {
-        accounts.getAccountForUser(accountId, userId);
-        accountRepository.findByIdForUpdate(accountId)
+        Account account = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new AccountNotFoundException(accountId));
+        if (!account.getUserId().equals(userId))
+            throw new app.auth.ForbiddenException("You do not have access to this account");
+        if (scheduled && account.getArchivedAt() != null) return null;
+        AccountService.requireActive(account);
         if (!movements.hasAcquisitions(accountId)) return null;
         Instant now = clock.instant();
         Optional<PortfolioValuation> previous = valuations

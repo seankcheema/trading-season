@@ -90,6 +90,23 @@ class CashTransactionRepositoryTest {
     }
 
     @Test
+    void activeCashTargetsExcludeArchivedAccountsButTheirLedgerRemainsReadable() {
+        UUID user = UUID.randomUUID();
+        Integer archivedId = openAccount(user, LocalDate.of(2026, 1, 1));
+        Integer activeId = openAccount(user, LocalDate.of(2026, 2, 1));
+        Account archived = accountRepository.findById(archivedId).orElseThrow();
+        archived.setArchivedAt(java.time.Instant.now());
+        accountRepository.saveAndFlush(archived);
+        record(archivedId, BigDecimal.TEN, "DEPOSIT", "2026-01-01T12:00:00Z");
+        assertEquals(List.of(activeId), accountRepository.findActiveForUpdate(user).stream().map(Account::getId).toList());
+        assertEquals(1, cashTransactionRepository.findFundingForUser(user, PageRequest.of(0, 50)).size());
+        Account active = accountRepository.findById(activeId).orElseThrow();
+        active.setArchivedAt(java.time.Instant.now());
+        accountRepository.saveAndFlush(active);
+        assertTrue(accountRepository.findActiveForUpdate(user).isEmpty());
+    }
+
+    @Test
     void firstAccountOfAUserIsTheEarliestOneOpened() {
         UUID user = UUID.randomUUID();
         Integer earliest = openAccount(user, LocalDate.of(2026, 1, 1));

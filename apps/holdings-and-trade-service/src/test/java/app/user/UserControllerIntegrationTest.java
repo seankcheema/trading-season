@@ -48,7 +48,7 @@ class UserControllerIntegrationTest {
     private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
-    void cleanDatabase() {
+    public void cleanDatabase() {
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
         userRepository.deleteAll();
         UserAccountFixture.deleteAll(jdbcTemplate);
@@ -81,6 +81,32 @@ class UserControllerIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(body)))
             .andExpect(status().isCreated());
+    }
+
+    @Test void settingsPersistAndCannotChangeAnotherUser() throws Exception {
+        UUID alice = UUID.randomUUID(), bob = UUID.randomUUID();
+        registerUser(alice, "Alice", "alice@example.com"); registerUser(bob, "Bob", "bob@example.com");
+        mockMvc.perform(get("/api/users/me/execution-settings").with(tokenFor(alice, "alice@example.com")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.executionBufferPercent").value(1));
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/users/me/execution-settings")
+                .with(tokenFor(alice, "alice@example.com")).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"executionBufferPercent\":1.25,\"userId\":\"" + bob + "\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.executionBufferPercent").value(1.25));
+        mockMvc.perform(get("/api/users/me/execution-settings").with(tokenFor(bob, "bob@example.com")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.executionBufferPercent").value(1));
+        for (String value : new String[]{"null", "-1", "10.01", "1.001"})
+            mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/users/me/execution-settings")
+                    .with(tokenFor(alice, "alice@example.com")).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"executionBufferPercent\":" + value + "}"))
+                    .andExpect(status().isBadRequest());
+        for (String value : new String[]{"0", "10"})
+            mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/users/me/execution-settings")
+                    .with(tokenFor(alice, "alice@example.com")).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"executionBufferPercent\":" + value + "}"))
+                    .andExpect(status().isOk());
+        mockMvc.perform(get("/api/users/me/execution-settings")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/users/me/execution-settings").with(tokenFor(UUID.randomUUID(), "missing@example.com")))
+                .andExpect(status().isNotFound());
     }
 
     @Test

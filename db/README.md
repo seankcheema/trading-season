@@ -1,3 +1,137 @@
+# Database
+
+The services share the PostgreSQL `trading_season` database on port 5432. The canonical schema is maintained in [migrations](migrations); services do not apply migrations themselves. Run the commands below from the repository root.
+
+## Local PostgreSQL setup
+
+Install PostgreSQL 16 and make `psql` available on `PATH`. Connect to the default `postgres` database as your PostgreSQL administrator, using psql or pgAdmin's Query Tool. Create the development role and database, running each statement separately (database creation cannot run inside a transaction):
+
+```sql
+CREATE ROLE trading_season WITH LOGIN PASSWORD 'password';
+```
+
+```sql
+CREATE DATABASE trading_season OWNER trading_season;
+```
+
+These commands assume the role and database do not already exist. The password is a local development example; use the same value in each service's configuration.
+
+### Apply migrations
+
+Connect as the database owner and apply the checked-in migrations in version order. For a fresh database, the `public` schema must be empty before V001:
+
+```powershell
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f db/migrations/V001__Initialize_database.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f db/migrations/V002__Add_watchlist.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f db/migrations/V008__Drop_account_status.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f db/migrations/V009__Add_account_archiving.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f db/migrations/V010__Enforce_execution_buffers.sql
+```
+
+Stop if any command fails. The repository currently contains V001, V002, V008, V009, and V010; there are no separate V003-V007 files. V001 initializes the schema, V002 adds the saved watchlist, V008 removes `user_accounts.account_status` and its values, and V009 adds portfolio account archiving. V010 adds execution buffer defaults and replay execution context. After all five, a fresh database has 20 application tables.
+
+### Upgrade a legacy database
+
+V001 also repairs a legacy schema missing all three of `user_accounts`, `refresh_tokens`, and `portfolio_valuations`, preserving existing application data. Run it as the database owner, then apply V002, V008, V009, and V010 using the commands above. A legacy database retaining the `sessions` table has 21 application tables after repair.
+
+V001 refuses to run if any of those three tables already exists; do not rerun it on an initialized or partially upgraded database. For a database where V001 is already applied, apply only the remaining migrations. The SQL is the authority for supported repair behavior: see [V001](migrations/V001__Initialize_database.sql).
+
+### Verify ownership and permissions
+
+Connect to `trading_season` and check table ownership:
+
+```sql
+SELECT tablename, tableowner
+FROM pg_tables
+WHERE schemaname = 'public'
+ORDER BY tablename;
+```
+
+Application tables should be owned by `trading_season`. If they were created as another user, connect to this database as the administrator and correct ownership and permissions:
+
+```sql
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
+    EXECUTE format('ALTER TABLE public.%I OWNER TO trading_season', r.tablename);
+  END LOOP;
+END $$;
+
+GRANT USAGE ON SCHEMA public TO trading_season;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO trading_season;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO trading_season;
+```
+
+Run the ownership query again to verify the result. Future migrations should also run as `trading_season`. If another role will create future objects, run these grants as that creating role (default privileges apply only to objects it creates):
+
+```sql
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO trading_season;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO trading_season;
+```
+
+## Docker Compose setup
+
+To run the database in Docker while running applications locally:
+
+```powershell
+$env:DB_PASSWORD = 'password'
+docker compose --project-name trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml up -d db db-init
+docker compose --project-name trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml logs db-init
+```
+
+Check that `db-init` finishes successfully before starting applications. PostgreSQL is available at `localhost:5432`, with database and user `trading_season`. Setting `DB_PASSWORD` above aligns it with the local configuration example; Compose defaults to `changeme` when it is unset. Ensure port 5432 is available.
+
+The [migration runner](../infrastructure/docker/init-db.sh) waits for PostgreSQL, applies each migration once, and records filenames in `public.schema_migrations`. That ledger is an additional table beyond the 20 application tables. Starting only `db` does not apply migrations. The named database volume persists across restarts; changing `DB_PASSWORD` does not change the password of a role already stored in that volume.
+
+## Connect applications and verify setup
+
+Copy [the auth environment example](../apps/auth-service/.env.example) if you have not configured it yet:
+
+```powershell
+Copy-Item apps/auth-service/.env.example apps/auth-service/.env
+```
+
+Set `DB_HOST=localhost`, `DB_PORT=5432`, `DB_NAME=trading_season`, `DB_USER=trading_season`, and `DB_PASSWORD` to the chosen database password in `apps/auth-service/.env`. For the Java services, set the matching password before starting local processes:
+
+```powershell
+$env:SPRING_DATASOURCE_PASSWORD = 'password'
+```
+
+Both Java services default to `jdbc:postgresql://localhost:5432/trading_season` and user `trading_season`. See the [root getting-started instructions](../README.md#getting-started) for dependencies, JWT key generation, and application startup.
+
+After startup, verify that the auth table is accessible:
+
+```sql
+SELECT user_id, email, user_role, created_at
+FROM user_accounts
+ORDER BY created_at DESC;
+```
+
+The query lists registered users, if any; an empty result before registration or development seeding is valid.
+
+## Synthetic market data
+
+With the schema migrated, generate and load synthetic data using the routine from the pasted setup:
+
+```powershell
+$freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
+
+apps/market-data/db/scripts/powershell/setup-market-data.ps1 `
+  -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
+  -AvailableDiskGb $freeDiskGb
+```
+
+Use the configured password in the URL and report free space on the drive storing PostgreSQL data. Add `-StartDate 2026-01-05 -EndDate 2026-01-06` for a smaller archive, or `-Regenerate` to replace an incompatible archive. The launcher creates a Python virtual environment, installs dependencies, generates the 2026 archive, validates it, and imports candles and session metadata. Raw ticks remain in Parquet; retain the archive for replay.
+
+The separate `setup-database.ps1` initializer applies only V001 and V002 to an empty schema; apply V008, V009, and V010 afterwards. For pipeline details and individual troubleshooting commands, see the [Market Data README](../apps/market-data/README.md).
+
+## Schema
+
+The diagram describes the 20 application tables after all checked-in migrations. SQL defines the full columns and constraints. Add new migrations for schema changes; do not edit applied migrations.
+
 ```mermaid
 erDiagram
     user_accounts ||--|| users : "credentials for"
@@ -199,3 +333,13 @@ erDiagram
         TIMESTAMPTZ recorded_at
     }
 ```
+
+## Portfolio account archiving
+
+Apply `db/migrations/V009__Add_account_archiving.sql` after V008 before starting updated Java services. It adds nullable `accounts.archived_at`; existing accounts remain active. Archiving updates only this timestamp. Account IDs, names, foreign keys, and all related transaction and valuation rows are retained for reporting and future auditing. No name uniqueness constraint prevents reusing an archived name.
+
+## Execution buffer migration
+
+Apply [V010](migrations/V010__Enforce_execution_buffers.sql) after V009 before starting the updated services. It changes `users.execution_buffer_percent`'s default to 1 and backfills existing zero values to 1; nonzero values remain unchanged. Users may select zero again after migration. API validation restricts new settings and overrides to 0-10 percent with two decimal places. Legacy out-of-range settings must be corrected before use; the migration deliberately preserves them.
+
+Orders gain nullable `session_id` and `executed_simulated_at`. The session records replay context without a foreign key so unavailable requested sessions can still leave a rejected order. The execution timestamp comes from the server quote; `simulated_at` remains client context and existing audit timestamps remain real server times. Actual execution prices stay canonical in `fills.quote_price`; historical rows require no backfill.

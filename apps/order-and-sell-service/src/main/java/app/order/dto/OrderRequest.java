@@ -3,35 +3,24 @@ package app.order.dto;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
-import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.Digits;
 
 import java.math.BigDecimal;
 import java.util.UUID;
 import java.time.OffsetDateTime;
 
-/**
- * A client's order submission (KAN-95 acceptance criterion: "acquire
- * trading rules from the client"). {@code indicativePrice} and
- * {@code bufferPercent} are the trading rule itself, not just order
- * details — they're what {@code PriceBufferValidator} checks execution
- * against (BR-13, KAN-100).
- *
- * <p>{@code accountId} is included directly here as a stopgap: business-backend
- * does not yet resolve the calling account from an authenticated session
- * (see {@link app.order.OrderController}). Once that's wired
- * up, this field should come from the session instead of the request body,
- * and {@code OrderService} must verify it belongs to the caller.
- *
- * @param accountId        the account the order is placed against (temporary — see above)
- * @param instrumentId     the instrument being bought or sold
- * @param orderType        {@code BUY} or {@code SELL}
- * @param quantity         units to trade, must be positive
- * @param indicativePrice  the price shown to the trader before submission (BR-13)
- * @param bufferPercent    execution price tolerance for this order (KAN-100); when
- *                         omitted, falls back to the user's {@code execution_buffer_percent}
- * @param simulatedAt      selected simulation time, optional; audit timestamps remain real time
- * @param clientReference  client-generated idempotency key; retried submissions
- *                         with the same key return the original order's outcome
+/** A trade instruction scoped to an owned account.
+ * @param accountId owned account
+ * @param instrumentId asset to trade
+ * @param orderType BUY or SELL
+ * @param quantity positive shares
+ * @param indicativePrice displayed reference price for protection
+ * @param bufferPercent optional percentage override, otherwise the user setting
+ * @param clientReference account-scoped idempotency key
+ * @param simulatedAt displayed replay time; does not select the execution price
+ * @param sessionId replay session, or null for the market default
  */
 public record OrderRequest(
         @NotNull Integer accountId,
@@ -39,9 +28,10 @@ public record OrderRequest(
         @NotNull @Pattern(regexp = "BUY|SELL") String orderType,
         @NotNull @Positive BigDecimal quantity,
         @NotNull @Positive BigDecimal indicativePrice,
-        @PositiveOrZero BigDecimal bufferPercent,
+        @DecimalMin("0") @DecimalMax("10") @Digits(integer = 2, fraction = 2) BigDecimal bufferPercent,
         @NotNull UUID clientReference,
-        OffsetDateTime simulatedAt
+        OffsetDateTime simulatedAt,
+        @Positive Long sessionId
 ) {
     /** Creates a submission without a simulation timestamp for existing callers.
      * @param accountId owned account
@@ -54,7 +44,22 @@ public record OrderRequest(
      */
     public OrderRequest(Integer accountId, Integer instrumentId, String orderType,
             BigDecimal quantity, BigDecimal indicativePrice, BigDecimal bufferPercent, UUID clientReference) {
-        this(accountId, instrumentId, orderType, quantity, indicativePrice, bufferPercent, clientReference, null);
+        this(accountId, instrumentId, orderType, quantity, indicativePrice, bufferPercent, clientReference, null, null);
+    }
+    /** Creates a submission with legacy replay context and the default session.
+     * @param accountId owned account
+     * @param instrumentId asset
+     * @param orderType BUY or SELL
+     * @param quantity shares
+     * @param indicativePrice displayed price
+     * @param bufferPercent optional override
+     * @param clientReference idempotency key
+     * @param simulatedAt displayed time */
+    public OrderRequest(Integer accountId, Integer instrumentId, String orderType,
+            BigDecimal quantity, BigDecimal indicativePrice, BigDecimal bufferPercent,
+            UUID clientReference, OffsetDateTime simulatedAt) {
+        this(accountId, instrumentId, orderType, quantity, indicativePrice, bufferPercent,
+                clientReference, simulatedAt, null);
     }
 }
 

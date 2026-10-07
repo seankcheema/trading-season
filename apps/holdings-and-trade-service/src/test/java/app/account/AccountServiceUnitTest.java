@@ -48,8 +48,9 @@ class AccountServiceUnitTest {
 
     private AccountService accountService;
 
+    // JUnit invokes this lifecycle hook through reflection.
     @BeforeEach
-    void setUp() {
+    public void setUp() {
         accountService = new AccountService(accountRepository, holdingRepository,
                 holdingMovementRepository, instrumentRepository);
     }
@@ -71,6 +72,53 @@ class AccountServiceUnitTest {
 
         // The 100.00 shares were sold out, so only the 300.00 purchase prices the position.
         assertEquals(0, new BigDecimal("300").compareTo(result.get(0).averageCost()));
+    }
+
+    @Test
+    void archiveRetainsAccountAndZeroQuantityHoldingsAndIsIdempotent() {
+        Account account = createAccount(1, USER_ID, "Reusable");
+        when(accountRepository.findByIdForUpdate(1)).thenReturn(Optional.of(account));
+        when(holdingRepository.findByAccountId(1)).thenReturn(List.of(createHolding(1, 1, 100, BigDecimal.ZERO)));
+        accountService.archiveAccount(1, USER_ID);
+        var archivedAt = account.getArchivedAt();
+        assertNotNull(archivedAt);
+        accountService.archiveAccount(1, USER_ID);
+        assertEquals(archivedAt, account.getArchivedAt());
+        verify(accountRepository, times(1)).save(account);
+        verify(accountRepository, never()).delete(any());
+        verify(holdingRepository, never()).delete(any());
+    }
+
+    @Test
+    void archiveRefusesNonzeroPositionWithoutChangingAccount() {
+        Account account = createAccount(1, USER_ID, "Invested");
+        when(accountRepository.findByIdForUpdate(1)).thenReturn(Optional.of(account));
+        when(holdingRepository.findByAccountId(1)).thenReturn(List.of(createHolding(1, 1, 100, BigDecimal.ONE)));
+        var error = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> accountService.archiveAccount(1, USER_ID));
+        assertEquals(422, error.getStatusCode().value());
+        assertNull(account.getArchivedAt());
+        verify(accountRepository, never()).save(any());
+    }
+
+    @Test
+    void archiveChecksOwnershipBeforeReadingHoldings() {
+        when(accountRepository.findByIdForUpdate(1)).thenReturn(Optional.of(createAccount(1, OTHER_USER_ID, "Other")));
+        assertNotNull(assertThrows(ForbiddenException.class, () -> accountService.archiveAccount(1, USER_ID)));
+        verifyNoInteractions(holdingRepository);
+    }
+
+    @Test
+    void archivedAccountsAreHiddenButStillReadableAndCannotBeRenamed() {
+        Account account = createAccount(1, USER_ID, "Archived");
+        account.setArchivedAt(java.time.Instant.now());
+        when(accountRepository.findByUserIdOrderByOpenedDateDesc(USER_ID)).thenReturn(List.of(account));
+        when(accountRepository.findByIdAndUserId(1, USER_ID)).thenReturn(Optional.of(account));
+        when(accountRepository.findByIdForUpdate(1)).thenReturn(Optional.of(account));
+        assertTrue(accountService.getAccountsForUser(USER_ID).isEmpty());
+        assertSame(account, accountService.getAccountForUser(1, USER_ID));
+        assertNotNull(assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> accountService.updateAccountName(1, USER_ID, "Changed")));
     }
 
     private static Instrument instrument(int instrumentId, String ticker) {
@@ -126,8 +174,8 @@ class AccountServiceUnitTest {
         when(accountRepository.existsById(1))
                 .thenReturn(true);
 
-        assertThrows(ForbiddenException.class, 
-                () -> accountService.getAccountForUser(1, USER_ID));
+        assertNotNull(assertThrows(ForbiddenException.class,
+                () -> accountService.getAccountForUser(1, USER_ID)));
     }
 
     @Test
@@ -137,8 +185,8 @@ class AccountServiceUnitTest {
         when(accountRepository.existsById(99))
                 .thenReturn(false);
 
-        assertThrows(AccountNotFoundException.class, 
-                () -> accountService.getAccountForUser(99, USER_ID));
+        assertNotNull(assertThrows(AccountNotFoundException.class,
+                () -> accountService.getAccountForUser(99, USER_ID)));
     }
 
     @Test
@@ -203,7 +251,7 @@ class AccountServiceUnitTest {
     @Test
     void updateAccountNameUpdatesWhenOwned() {
         Account account = createAccount(1, USER_ID, "Old Name");
-        when(accountRepository.findByIdAndUserId(1, USER_ID))
+        when(accountRepository.findByIdForUpdate(1))
                 .thenReturn(Optional.of(account));
         when(accountRepository.save(any(Account.class)))
                 .thenReturn(account);
@@ -220,13 +268,11 @@ class AccountServiceUnitTest {
 
     @Test
     void updateAccountNameThrowsForbiddenWhenNotOwned() {
-        when(accountRepository.findByIdAndUserId(1, USER_ID))
-                .thenReturn(Optional.empty());
-        when(accountRepository.existsById(1))
-                .thenReturn(true);
+        when(accountRepository.findByIdForUpdate(1))
+                .thenReturn(Optional.of(createAccount(1, OTHER_USER_ID, "Other")));
 
-        assertThrows(ForbiddenException.class, 
-                () -> accountService.updateAccountName(1, USER_ID, "New Name"));
+        assertNotNull(assertThrows(ForbiddenException.class,
+                () -> accountService.updateAccountName(1, USER_ID, "New Name")));
     }
 
     @Test
@@ -263,8 +309,8 @@ class AccountServiceUnitTest {
         when(accountRepository.existsById(1))
                 .thenReturn(true);
 
-        assertThrows(ForbiddenException.class, 
-                () -> accountService.getHoldingsForAccount(1, USER_ID));
+        assertNotNull(assertThrows(ForbiddenException.class,
+                () -> accountService.getHoldingsForAccount(1, USER_ID)));
         
         verify(holdingRepository, never()).findByAccountId(any());
     }
@@ -345,7 +391,7 @@ class AccountServiceUnitTest {
     @Test
     void updateAccountNameToEmptyString() {
         Account account = createAccount(1, USER_ID, "Original");
-        when(accountRepository.findByIdAndUserId(1, USER_ID))
+        when(accountRepository.findByIdForUpdate(1))
                 .thenReturn(Optional.of(account));
         when(accountRepository.save(any(Account.class)))
                 .thenReturn(account);
@@ -363,7 +409,7 @@ class AccountServiceUnitTest {
     void updateAccountNameToVeryLongString() {
         Account account = createAccount(1, USER_ID, "Original");
         String longName = "A".repeat(500);
-        when(accountRepository.findByIdAndUserId(1, USER_ID))
+        when(accountRepository.findByIdForUpdate(1))
                 .thenReturn(Optional.of(account));
         when(accountRepository.save(any(Account.class)))
                 .thenReturn(account);
@@ -424,21 +470,19 @@ class AccountServiceUnitTest {
         when(accountRepository.existsById(999))
                 .thenReturn(false);
 
-        assertThrows(AccountNotFoundException.class, 
-                () -> accountService.getHoldingsForAccount(999, USER_ID));
+        assertNotNull(assertThrows(AccountNotFoundException.class,
+                () -> accountService.getHoldingsForAccount(999, USER_ID)));
         
         verify(holdingRepository, never()).findByAccountId(any());
     }
 
     @Test
     void updateAccountNameThrowsNotFoundWhenAccountDoesNotExist() {
-        when(accountRepository.findByIdAndUserId(999, USER_ID))
+        when(accountRepository.findByIdForUpdate(999))
                 .thenReturn(Optional.empty());
-        when(accountRepository.existsById(999))
-                .thenReturn(false);
 
-        assertThrows(AccountNotFoundException.class, 
-                () -> accountService.updateAccountName(999, USER_ID, "New Name"));
+        assertNotNull(assertThrows(AccountNotFoundException.class,
+                () -> accountService.updateAccountName(999, USER_ID, "New Name")));
     }
 
     @Test

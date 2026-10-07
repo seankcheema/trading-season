@@ -23,9 +23,9 @@ class UserNotFoundExceptionTest {
     void exceptionIsThrowable() {
         UserNotFoundException exception = new UserNotFoundException("Test message");
 
-        assertThrows(UserNotFoundException.class, () -> {
+        assertNotNull(assertThrows(UserNotFoundException.class, () -> {
             throw exception;
-        });
+        }));
     }
 
     @Test

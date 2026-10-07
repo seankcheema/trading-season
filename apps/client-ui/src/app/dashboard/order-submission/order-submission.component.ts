@@ -244,6 +244,7 @@ export class OrderSubmissionComponent {
     this.orders
       .submitOrder({
         accountId,
+        sessionId: this.sessionId() ?? undefined,
         symbol,
         orderType: this.side() === 'buy' ? 'BUY' : 'SELL',
         quantity: this.shares(),
@@ -260,7 +261,7 @@ export class OrderSubmissionComponent {
             const price = new Intl.NumberFormat('en-US', {
               style: 'currency',
               currency: 'USD',
-            }).format(result.indicativePrice);
+            }).format(result.executionPrice ?? result.indicativePrice);
             this.toasts.show(`Filled ${result.quantity} ${symbol} at ${price}.`, 'success');
           } else if (result.status === 'REJECTED') {
             this.toasts.show(`Rejected: ${result.rejectionReason ?? ORDER_REJECTED}`, 'error');

@@ -54,7 +54,7 @@ class MarketControllerTest {
     private MockMvc mockMvc;
 
     @BeforeEach
-    void setUp() {
+    public void setUp() {
         when(repository.resolveSession(nullable(Long.class))).thenReturn(SESSION);
         when(repository.tradingDays(7L)).thenReturn(List.of(LocalDate.of(2026, 1, 5)));
         when(repository.stocks()).thenReturn(List.of(new MarketModels.Stock("AAPL", "Apple Inc.")));
@@ -100,8 +100,8 @@ class MarketControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}")));
 
-        assertInstanceOf(MarketRequestException.class, error.getCause());
-        assertEquals("timestamp is required", error.getCause().getMessage());
+        MarketRequestException cause = assertInstanceOf(MarketRequestException.class, error.getCause());
+        assertEquals("timestamp is required", cause.getMessage());
     }
 
     @Test
@@ -112,7 +112,7 @@ class MarketControllerTest {
         assertTrue(first.getResponse().getContentAsString().contains("event:snapshot"));
 
         var limited = assertThrows(ServletException.class, () -> mockMvc.perform(get("/api/market/stream")));
-        assertInstanceOf(MarketLimitException.class, limited.getCause());
+        assertEquals(MarketLimitException.class, limited.getCause().getClass());
 
         first.getRequest().getAsyncContext().complete();
 

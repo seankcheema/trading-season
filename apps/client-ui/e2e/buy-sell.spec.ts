@@ -28,7 +28,9 @@ test('buy and sell submit replay time and refresh the account', async ({ page, l
   await dialog.getByRole('button', { name: 'Sell 2 AAPL', exact: true }).click();
   const sell = await (await sellResponse).json();
   expect(sell.status).toBe('FILLED');
-  const submitted = api.requestsContaining('/api/orders').filter(r => r.method === 'POST');
+  const submitted = api.requestsContaining('/api/orders').filter(
+    r => r.method === 'POST' && new URL(r.url).pathname === '/api/orders',
+  );
   expect(submitted).toHaveLength(2);
   expect(JSON.parse(submitted[0].body!).clientReference).not.toBe(JSON.parse(submitted[1].body!).clientReference);
   await expect.poll(() => api.fundsOf(credentials.email)).toBeCloseTo(5000);

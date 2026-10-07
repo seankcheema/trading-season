@@ -71,7 +71,8 @@ public class CashTransactionService {
     /**
      * Moves money into or out of the user's cash and records it in the ledger.
      *
-     * <p>The balance row is locked before it is read, so two concurrent
+     * <p>Active accounts are locked in stable order before the user balance row.
+     * The earliest active account receives the ledger entry. The balance is locked before it is read, so two concurrent
      * withdrawals cannot both pass the funds check against the same balance.
      *
      * @param userId the authenticated user's UUID from the token's sub claim
@@ -94,15 +95,11 @@ public class CashTransactionService {
             throw new IllegalArgumentException("Reason must be DEPOSIT or WITHDRAWAL");
         }
 
-        // Locked before the balance is read, because the funds check below decides
-        // whether the write is allowed.
+        // Account locks precede the user lock, as they do in order execution.
+        Account account = accountRepository.findActiveForUpdate(userId).stream().findFirst()
+                .orElseThrow(() -> new AccountNotFoundException("No account is open for this user; create an account first"));
         User user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new UserNotFoundException("Account is not registered"));
-
-        // The schema keys every ledger row to an account. Cash is the user's, so any
-        // of their accounts would do; the first is the default opened at sign-up.
-        Account account = accountRepository.findFirstByUserIdOrderByOpenedDateAscIdAsc(userId)
-                .orElseThrow(() -> new AccountNotFoundException("No account is open for this user"));
 
         BigDecimal available = user.getAvailableFunds();
         if (!deposit && amount.compareTo(available) > 0) {

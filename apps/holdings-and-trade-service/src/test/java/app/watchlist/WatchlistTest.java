@@ -18,7 +18,7 @@ class WatchlistTest {
     private final UUID bob = UUID.randomUUID();
 
     @BeforeEach
-    void setup() {
+    public void setup() {
         jdbc = new JdbcTemplate(new DriverManagerDataSource("jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", ""));
         jdbc.execute("CREATE TABLE users(user_id UUID PRIMARY KEY)");
         jdbc.execute("CREATE TABLE stocks(symbol VARCHAR(5) PRIMARY KEY)");
@@ -52,7 +52,7 @@ class WatchlistTest {
     @Test
     void rejectsUnknownStocksAndMissingProfilesWithoutWriting() {
         assertEquals(404, assertThrows(ResponseStatusException.class, () -> service.add(alice, "NOPE")).getStatusCode().value());
-        assertThrows(UserNotFoundException.class, () -> service.add(UUID.randomUUID(), "AAPL"));
+        assertNotNull(assertThrows(UserNotFoundException.class, () -> service.add(UUID.randomUUID(), "AAPL")));
         assertTrue(service.list(alice).isEmpty());
     }
 

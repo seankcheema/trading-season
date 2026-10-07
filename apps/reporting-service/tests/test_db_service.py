@@ -240,3 +240,24 @@ class TestMetadataRepository:
         last_refresh = MetadataRepository.get_last_refresh_time()
         # May be None if not set yet
         assert last_refresh is None or isinstance(last_refresh, str)
+
+
+def test_archived_account_remains_in_reporting_with_its_transaction_history(
+    db_session, test_user, test_account, test_order, test_fill, test_holding, test_cash_transaction
+):
+    """A database archive marker must not filter historical reporting queries."""
+    from sqlalchemy import text
+    db_session.execute(text("ALTER TABLE accounts ADD COLUMN archived_at TIMESTAMP"))
+    db_session.execute(
+        text("UPDATE accounts SET archived_at = :archived_at WHERE account_id = :account_id"),
+        {"archived_at": datetime.now(UTC), "account_id": test_account.account_id},
+    )
+    test_holding.quantity = Decimal("0")
+    db_session.commit()
+    assert any(account.account_id == test_account.account_id
+               for account in AccountRepository.get_user_accounts(test_user.user_id))
+    assert AccountRepository.get_account(test_account.account_id) is not None
+    assert len(OrderRepository.get_user_orders(test_user.user_id)) == 1
+    assert len(TradeRepository.get_trade_history(test_account.account_id)) == 1
+    assert len(HoldingRepository.get_account_holdings(test_account.account_id)) == 1
+    assert len(CashTransactionRepository.get_account_transactions(test_account.account_id)) == 1

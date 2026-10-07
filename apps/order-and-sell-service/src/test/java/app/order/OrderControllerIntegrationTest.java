@@ -80,8 +80,13 @@ class OrderControllerIntegrationTest {
     private Instrument instrument;
     private UUID userId;
 
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private app.order.execution.ExecutionQuoteSource quotes;
+
     @BeforeEach
-    void setUp() {
+    public void setUp() {
+        org.mockito.Mockito.when(quotes.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal("20.00"), 1L, java.time.Instant.parse("2026-01-05T16:00:00Z")));
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
         auditTrailRepository.deleteAll();
         holdingMovementRepository.deleteAll();
@@ -447,6 +452,22 @@ class OrderControllerIntegrationTest {
         return jwt().jwt(token -> token.subject(userId.toString()));
     }
 
+    @Test void checkRequiresAuthenticationValidatesBufferAndDoesNotPersist() throws Exception {
+        String check = body("BUY", "1", "20");
+        mockMvc.perform(post("/api/orders/check").contentType(MediaType.APPLICATION_JSON).content(check))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/orders/check").with(tokenFor(user.getUserId()))
+                .contentType(MediaType.APPLICATION_JSON).content(check))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.eligible").value(true))
+                .andExpect(jsonPath("$.executionPrice").value(20));
+        assertEquals(0, orderRepository.count()); assertEquals(0, fillRepository.count());
+        for (String buffer : new String[]{"-1", "10.01", "1.001"}) {
+            mockMvc.perform(post("/api/orders/check").with(tokenFor(user.getUserId()))
+                    .contentType(MediaType.APPLICATION_JSON).content(check.replace("}", ", \"bufferPercent\": " + buffer + "}")))
+                    .andExpect(status().isBadRequest());
+        }
+    }
+
     private ResultActions submit(String type, String quantity, String price) throws Exception {
         return submitAs(user.getUserId(), type, quantity, price);
     }
@@ -460,6 +481,8 @@ class OrderControllerIntegrationTest {
     }
 
     private String body(String type, String quantity, String price) {
+        org.mockito.Mockito.when(quotes.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal(price), 1L, java.time.Instant.parse("2026-01-05T16:00:00Z")));
         return bodyFor(account.getAccountId(), instrument.getInstrumentId(), type, quantity, price);
     }
 

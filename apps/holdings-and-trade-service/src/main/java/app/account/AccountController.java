@@ -111,6 +111,21 @@ public class AccountController {
     }
 
     /**
+     * Archives an owned account with no open positions, retaining all history.
+     * @param accountId the account ID
+     * @param jwt verified access token
+     * @throws AccountNotFoundException if missing
+     * @throws app.auth.ForbiddenException if owned by another user
+     * @throws org.springframework.web.server.ResponseStatusException if positions remain
+     */
+    @DeleteMapping("/accounts/{accountId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Archive account", description = "Requires all positions closed; preserves all historical data")
+    public void archiveAccount(@PathVariable Integer accountId, @AuthenticationPrincipal Jwt jwt) {
+        accountService.archiveAccount(accountId, AuthenticatedUser.from(jwt).userId());
+    }
+
+    /**
      * Updates the name of an account owned by the authenticated caller.
      *
      * @param accountId the account ID

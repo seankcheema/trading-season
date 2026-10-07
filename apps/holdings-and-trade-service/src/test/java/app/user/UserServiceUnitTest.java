@@ -31,7 +31,7 @@ class UserServiceUnitTest {
     private UserService userService;
 
     @BeforeEach
-    void setUp() {
+    public void setUp() {
         userService = new UserService(userRepository, userAccountRepository);
     }
 
@@ -51,8 +51,8 @@ class UserServiceUnitTest {
     void getOwnAccountThrowsUserNotFoundWhenNotFound() {
         when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
 
-        assertThrows(UserNotFoundException.class, 
-                () -> userService.getOwnAccount(USER_ID));
+        assertNotNull(assertThrows(UserNotFoundException.class,
+                () -> userService.getOwnAccount(USER_ID)));
         verify(userRepository).findById(USER_ID);
     }
 
@@ -207,8 +207,8 @@ class UserServiceUnitTest {
     void getUserAccountThrowsUserNotFoundWhenNotFound() {
         when(userAccountRepository.findById(USER_ID)).thenReturn(Optional.empty());
 
-        assertThrows(UserNotFoundException.class, 
-                () -> userService.getUserAccount(USER_ID));
+        assertNotNull(assertThrows(UserNotFoundException.class,
+                () -> userService.getUserAccount(USER_ID)));
         verify(userAccountRepository).findById(USER_ID);
     }
 

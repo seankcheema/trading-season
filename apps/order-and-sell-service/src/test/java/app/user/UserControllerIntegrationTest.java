@@ -48,7 +48,7 @@ class UserControllerIntegrationTest {
     private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
-    void cleanDatabase() {
+    public void cleanDatabase() {
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
         userRepository.deleteAll();
         UserAccountFixture.deleteAll(jdbcTemplate);

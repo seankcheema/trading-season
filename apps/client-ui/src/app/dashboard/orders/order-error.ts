@@ -9,6 +9,12 @@ export class UnknownInstrumentError extends Error {
   }
 }
 
+export class TradeEligibilityError extends Error {
+  constructor(readonly reason: string) {
+    super(reason);
+  }
+}
+
 export const ORDER_ERROR_MESSAGES = {
   network: "Can't reach the server. Check your connection and try again.",
   unavailable: 'The service is unavailable right now. Please try again shortly.',
@@ -24,6 +30,7 @@ export const ORDER_ERROR_MESSAGES = {
 // A rejected trade is not an error and never reaches here: the backend answers it 201 with a
 // REJECTED status and a reason, which the dialog shows as the order's outcome.
 export function toOrderErrorMessage(error: unknown): string {
+  if (error instanceof TradeEligibilityError) return error.reason;
   if (error instanceof UnknownInstrumentError) {
     return ORDER_ERROR_MESSAGES.unknownInstrument;
   }

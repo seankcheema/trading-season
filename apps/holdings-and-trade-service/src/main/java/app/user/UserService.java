@@ -41,6 +41,20 @@ public class UserService {
                 .orElseThrow(() -> new UserNotFoundException("Account is not registered"));
     }
 
+    /** Saves the owner's execution buffer under the shared user row lock.
+     * @param userId verified caller
+     * @param settings validated execution settings
+     * @return saved settings
+     * @throws UserNotFoundException if the business profile is missing */
+    @Transactional
+    public ExecutionSettings saveExecutionSettings(UUID userId, ExecutionSettings settings) {
+        User user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new UserNotFoundException("Account is not registered"));
+        user.setExecutionBufferPercent(settings.executionBufferPercent());
+        userRepository.save(user);
+        return new ExecutionSettings(user.getExecutionBufferPercent());
+    }
+
     /**
      * Loads the credential record for the given user, so callers can report the
      * role and status as they stand rather than as the caller's token describes

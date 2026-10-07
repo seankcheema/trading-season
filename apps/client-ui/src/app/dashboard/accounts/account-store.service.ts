@@ -223,6 +223,27 @@ export class AccountStore {
     );
   }
 
+  // Retains all server history and removes only the active account from this store.
+  deleteAccount(accountId: number): Observable<void> {
+    if (!this.isOwnedAccount(accountId)) return throwError(() => new NotOwnedError());
+    return this._http.delete<void>(`${this._apiUrl}/accounts/${accountId}`).pipe(
+      takeUntil(this.cancelled),
+      tap(() => {
+        this.invalidate();
+        this._accounts.update((accounts) =>
+          accounts.filter((account) => account.accountId !== accountId),
+        );
+        this._holdings.update((holdings) => {
+          const remaining = new Map(holdings);
+          remaining.delete(accountId);
+          return remaining;
+        });
+        if (this._selectedAccountId() === accountId) this._selectedAccountId.set(null);
+      }),
+      switchMap(() => this.afterChange(this.fetchAccounts(), undefined)),
+    );
+  }
+
   deposit(amount: number): Observable<void> {
     return this.postCashTransaction(amount, 'DEPOSIT');
   }
@@ -318,9 +339,10 @@ export class AccountStore {
     return this.read(`holdings:${accountId}`, () =>
       this._http.get<AccountHolding[]>(`${this._apiUrl}/accounts/${accountId}/holdings`),
     ).pipe(
-      tap((holdings) =>
-        this._holdings.update((current) => new Map(current).set(accountId, holdings)),
-      ),
+      tap((holdings) => {
+        if (this.isOwnedAccount(accountId))
+          this._holdings.update((current) => new Map(current).set(accountId, holdings));
+      }),
     );
   }
 

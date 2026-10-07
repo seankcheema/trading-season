@@ -51,7 +51,7 @@ class MarketControllerCorsTest {
     private WebApplicationContext webApplicationContext;
 
     @BeforeEach
-    void configureMockMvc() {
+    public void configureMockMvc() {
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
     }
 
@@ -116,7 +116,7 @@ class MarketControllerCorsTest {
     static class TestConfig {
         @Bean
         @Primary
-        MarketReplayService fakeMarketReplayService() {
+        public MarketReplayService fakeMarketReplayService() {
             return new MarketReplayService(new FakeMarketDataSource(),
                     Clock.fixed(MARKET_TIME, ZoneOffset.UTC), "", 3, 200);
         }

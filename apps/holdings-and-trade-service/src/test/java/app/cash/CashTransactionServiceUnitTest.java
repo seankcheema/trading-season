@@ -49,8 +49,9 @@ class CashTransactionServiceUnitTest {
 
     private CashTransactionService service;
 
+    // JUnit invokes this lifecycle hook through reflection.
     @BeforeEach
-    void setUp() {
+    public void setUp() {
         service = new CashTransactionService(cashTransactionRepository, accountRepository, userRepository);
     }
 
@@ -103,8 +104,8 @@ class CashTransactionServiceUnitTest {
         User user = user(new BigDecimal("10.00"));
         givenUserWithAccount(user, 7);
 
-        assertThrows(InsufficientFundsException.class,
-                () -> service.move(USER_ID, new BigDecimal("10.01"), "WITHDRAWAL"));
+        assertNotNull(assertThrows(InsufficientFundsException.class,
+                () -> service.move(USER_ID, new BigDecimal("10.01"), "WITHDRAWAL")));
 
         assertEquals(new BigDecimal("10.00"), user.getAvailableFunds());
         verify(userRepository, never()).save(any(User.class));
@@ -126,43 +127,44 @@ class CashTransactionServiceUnitTest {
 
     @Test
     void movingCashForAnUnregisteredUserIsNotFound() {
+        Account account = new Account();
+        when(accountRepository.findActiveForUpdate(USER_ID)).thenReturn(List.of(account));
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.empty());
 
-        assertThrows(UserNotFoundException.class,
-                () -> service.move(USER_ID, BigDecimal.TEN, "DEPOSIT"));
+        assertNotNull(assertThrows(UserNotFoundException.class,
+                () -> service.move(USER_ID, BigDecimal.TEN, "DEPOSIT")));
 
         verify(cashTransactionRepository, never()).save(any(CashTransaction.class));
     }
 
     @Test
     void movingCashWithNoAccountToBookItAgainstIsNotFound() {
-        when(userRepository.findByIdForUpdate(USER_ID))
-                .thenReturn(Optional.of(user(BigDecimal.TEN)));
-        when(accountRepository.findFirstByUserIdOrderByOpenedDateAscIdAsc(USER_ID))
-                .thenReturn(Optional.empty());
 
-        assertThrows(AccountNotFoundException.class,
-                () -> service.move(USER_ID, BigDecimal.ONE, "DEPOSIT"));
+        when(accountRepository.findActiveForUpdate(USER_ID))
+                .thenReturn(List.of());
+
+        assertNotNull(assertThrows(AccountNotFoundException.class,
+                () -> service.move(USER_ID, BigDecimal.ONE, "DEPOSIT")));
     }
 
     @Test
     void anAmountThatIsNotPositiveIsRejectedBeforeAnythingIsRead() {
-        assertThrows(IllegalArgumentException.class,
-                () -> service.move(USER_ID, BigDecimal.ZERO, "DEPOSIT"));
-        assertThrows(IllegalArgumentException.class,
-                () -> service.move(USER_ID, new BigDecimal("-1"), "DEPOSIT"));
-        assertThrows(IllegalArgumentException.class,
-                () -> service.move(USER_ID, null, "DEPOSIT"));
+        assertNotNull(assertThrows(IllegalArgumentException.class,
+                () -> service.move(USER_ID, BigDecimal.ZERO, "DEPOSIT")));
+        assertNotNull(assertThrows(IllegalArgumentException.class,
+                () -> service.move(USER_ID, new BigDecimal("-1"), "DEPOSIT")));
+        assertNotNull(assertThrows(IllegalArgumentException.class,
+                () -> service.move(USER_ID, null, "DEPOSIT")));
 
         verify(userRepository, never()).findByIdForUpdate(any());
     }
 
     @Test
     void anUnknownReasonIsRejected() {
-        assertThrows(IllegalArgumentException.class,
-                () -> service.move(USER_ID, BigDecimal.TEN, "ORDER_FILL"));
-        assertThrows(IllegalArgumentException.class,
-                () -> service.move(USER_ID, BigDecimal.TEN, null));
+        assertNotNull(assertThrows(IllegalArgumentException.class,
+                () -> service.move(USER_ID, BigDecimal.TEN, "ORDER_FILL")));
+        assertNotNull(assertThrows(IllegalArgumentException.class,
+                () -> service.move(USER_ID, BigDecimal.TEN, null)));
 
         verify(userRepository, never()).findByIdForUpdate(any());
     }
@@ -206,8 +208,8 @@ class CashTransactionServiceUnitTest {
         account.setUserId(USER_ID);
         account.setName("Main Account");
         account.setOpenedDate(LocalDate.of(2026, 1, 1));
-        when(accountRepository.findFirstByUserIdOrderByOpenedDateAscIdAsc(USER_ID))
-                .thenReturn(Optional.of(account));
+        when(accountRepository.findActiveForUpdate(USER_ID))
+                .thenReturn(List.of(account));
     }
 
     private static User user(BigDecimal funds) {

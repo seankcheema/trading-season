@@ -1,5 +1,12 @@
 package app.order;
-
+import app.order.dto.OrderCheckResponse;
+import app.order.dto.OrderCheckRequest;
+import app.order.execution.Fill;
+import app.order.execution.FillRepository;
+import app.holding.Holding;
+import app.holding.HoldingRepository;
+import app.order.execution.ExecutionPolicy;
+import app.order.execution.ExecutionQuoteSource;
 import app.account.Account;
 import app.account.AccountNotFoundException;
 import app.account.AccountRepository;
@@ -16,7 +23,6 @@ import app.user.User;
 import app.user.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -36,6 +42,9 @@ import java.util.Optional;
 @Service
 public class OrderService {
 
+    private final ExecutionQuoteSource quotes;
+    private final HoldingRepository holdingRepository;
+    private final FillRepository fillRepository;
     private final OrderRepository orderRepository;
     private final AccountRepository accountRepository;
     private final InstrumentRepository instrumentRepository;
@@ -47,6 +56,9 @@ public class OrderService {
     /**
      * Creates the service.
      *
+     * @param quotes authoritative market source
+     * @param holdingRepository holdings lookup
+     * @param fillRepository executed prices
      * @param orderRepository order persistence
      * @param accountRepository account lookup and ownership checks
      * @param instrumentRepository instrument lookup
@@ -61,7 +73,13 @@ public class OrderService {
                          UserRepository userRepository,
                          OrderValidationPipeline validationPipeline,
                          OrderExecutionService orderExecutionService,
-                         AuditTrailService auditTrailService) {
+                         AuditTrailService auditTrailService,
+                         ExecutionQuoteSource quotes,
+                         HoldingRepository holdingRepository,
+                         FillRepository fillRepository) {
+        this.quotes = quotes;
+        this.holdingRepository = holdingRepository;
+        this.fillRepository = fillRepository;
         this.orderRepository = orderRepository;
         this.accountRepository = accountRepository;
         this.instrumentRepository = instrumentRepository;
@@ -86,6 +104,11 @@ public class OrderService {
      * before checking the account would hand a caller the outcome of an order
      * on an account they don't own.
      *
+     * <p>The user row is locked before its first read, so different accounts
+     * cannot spend a stale copy of their shared cash. Execution uses a fresh
+     * server replay quote and the effective buffer saved on this order.
+     *
+     * @throws org.springframework.web.server.ResponseStatusException if the account is archived
      * @param request the validated submission
      * @param callerId the caller's user id, from the token's {@code sub} claim
      * @return the persisted order in its final status
@@ -98,7 +121,7 @@ public class OrderService {
      */
     @Transactional
     public Order submitOrder(OrderRequest request, UUID callerId) {
-        Account account = accountRepository.findById(request.accountId())
+        Account account = accountRepository.findByIdForUpdate(request.accountId())
                 .orElseThrow(() -> new AccountNotFoundException("No account " + request.accountId()));
         if (!account.getUserId().equals(callerId)) {
             throw new ForbiddenException("You do not have access to this account");
@@ -109,12 +132,17 @@ public class OrderService {
         if (existing.isPresent()) {
             // Same idempotency key already processed (or in flight) for this account —
             // return its outcome rather than validating or executing a second time.
-            // Note: a genuinely concurrent duplicate can still race past this check;
-            // the DB's UNIQUE (account_id, client_reference) constraint is the backstop.
-            return existing.get();
+            // The account lock serializes submissions, and the database uniqueness
+            // constraint remains the backstop for client references.
+            return withFillPrice(existing.get());
         }
 
-        User user = userRepository.findById(account.getUserId())
+        if (account.getArchivedAt() != null)
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT, "This account is archived");
+        // Lock before first loading the user: a later locking query would retain
+        // an already-managed stale balance in Hibernate's persistence context.
+        User user = userRepository.findByIdForUpdate(account.getUserId())
                 .orElseThrow(() -> new IllegalStateException(
                         "Account " + account.getAccountId() + " has no owning user"));
         Instrument instrument = instrumentRepository.findById(request.instrumentId())
@@ -136,6 +164,7 @@ public class OrderService {
         order.setStatus(Order.STATUS_PENDING);
         order.setSubmittedAt(now);
         order.setSimulatedAt(request.simulatedAt());
+        order.setSessionId(request.sessionId());
         order = orderRepository.save(order);
         auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, null);
 
@@ -157,6 +186,54 @@ public class OrderService {
         return orderExecutionService.execute(order, instrument);
     }
 
+    private Order withFillPrice(Order order) {
+        order.setExecutionPrice(fillRepository.findByOrderId(order.getOrderId())
+                .map(Fill::getQuotePrice).orElse(null));
+        return order;
+    }
+
+    /** Checks current eligibility without writing or reserving resources.
+     * @param check advisory trade request
+     * @param callerId verified owner
+     * @return nonbinding assessment
+     * @throws AccountNotFoundException if the account is missing
+     * @throws ForbiddenException if another user owns the account
+     * @throws InstrumentNotFoundException if the instrument is missing
+     * @throws org.springframework.web.server.ResponseStatusException if archived */
+    @Transactional(readOnly = true)
+    public OrderCheckResponse check(OrderCheckRequest check, UUID callerId) {
+        OrderRequest request = check.asOrderRequest();
+        Account account = accountRepository.findById(request.accountId())
+                .orElseThrow(() -> new AccountNotFoundException("No account " + request.accountId()));
+        if (!account.getUserId().equals(callerId)) throw new ForbiddenException("You do not have access to this account");
+        if (account.getArchivedAt() != null) throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.CONFLICT, "This account is archived");
+        User user = userRepository.findById(callerId).orElseThrow(() -> new IllegalStateException("Account has no owning user"));
+        Instrument instrument = instrumentRepository.findById(request.instrumentId())
+                .orElseThrow(() -> new InstrumentNotFoundException("No instrument " + request.instrumentId()));
+        BigDecimal buffer = request.bufferPercent() == null ? user.getExecutionBufferPercent() : request.bufferPercent();
+        boolean valid = ExecutionPolicy.validBuffer(buffer);
+        BigDecimal boundary = valid ? ExecutionPolicy.boundary(request.orderType(), request.indicativePrice(), buffer) : null;
+        String code = valid ? null : "INVALID_BUFFER";
+        String reason = code == null ? null : ExecutionPolicy.reason(code);
+        ValidationResult validation = validationPipeline.run(request, user, account, instrument);
+        if (code == null && !validation.passed()) { code = "TRADING_RULE_FAILED"; reason = validation.reason(); }
+        ExecutionQuoteSource.Quote quote = null;
+        if (code == null) {
+            try { quote = quotes.current(instrument, request.sessionId()); }
+            catch (ExecutionQuoteSource.QuoteUnavailableException ex) { code = "MARKET_PRICE_UNAVAILABLE"; reason = ex.getMessage(); }
+        }
+        if (quote != null) {
+            BigDecimal held = holdingRepository.findByAccountIdAndInstrumentId(account.getAccountId(), instrument.getInstrumentId())
+                    .map(Holding::getQuantity).orElse(BigDecimal.ZERO);
+            code = ExecutionPolicy.failure(request.orderType(), request.quantity(), quote.price(), boundary, user.getAvailableFunds(), held);
+            reason = code == null ? null : ExecutionPolicy.reason(code);
+        }
+        return new OrderCheckResponse(code == null, code, reason, buffer, request.indicativePrice(),
+                quote == null ? null : quote.price(), quote == null ? null : request.quantity().multiply(quote.price()),
+                boundary, quote == null ? null : quote.sessionId(), quote == null ? null : quote.timestamp());
+    }
+
     /**
      * Lists the caller's own orders, newest submission first. Callers pass
      * the id from the verified token, never an id supplied in the request,
@@ -168,7 +245,7 @@ public class OrderService {
      */
     @Transactional(readOnly = true)
     public List<Order> getOwnOrders(UUID userId) {
-        return orderRepository.findAllByOwningUserId(userId);
+        return orderRepository.findAllByOwningUserId(userId).stream().map(this::withFillPrice).toList();
     }
 }
 
