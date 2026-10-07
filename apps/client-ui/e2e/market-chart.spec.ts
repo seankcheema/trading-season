@@ -210,6 +210,9 @@ test('deletes an empty portfolio from account settings on the market page', asyn
   const settings = page.getByRole('dialog', { name: 'Account settings', exact: true });
   await settings.getByRole('button', { name: 'Delete account', exact: true }).click();
   await settings.getByRole('button', { name: 'Delete account', exact: true }).click();
+  await expect(settings.getByRole('status')).toHaveText('Account deleted successfully.');
+  await expect(settings.getByRole('button', { name: 'Delete account', exact: true })).toHaveCount(0);
+  await settings.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(settings).toBeHidden();
   await expect(selector.locator('summary')).toContainText('Retirement');
 });
