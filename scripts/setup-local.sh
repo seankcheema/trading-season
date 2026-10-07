@@ -327,7 +327,7 @@ validate_or_initialize_docker_business() {
     required="$(docker_compose exec -T db psql -U trading_season -d trading_season -Atqc "$business_schema_query")"
     total="$(docker_compose exec -T db psql -U trading_season -d trading_season -Atqc "$business_total_query")"
     if [[ "$total" == 0 ]]; then
-        docker_compose exec -T db psql -v ON_ERROR_STOP=1 -U trading_season -d trading_season < apps/market-data/db/migrations/V001__Initialize_database.sql || \
+        docker_compose exec -T db psql -v ON_ERROR_STOP=1 -U trading_season -d trading_season < db/migrations/V001__Initialize_database.sql || \
             fail "Database schema initialization failed."
         apply_docker_incremental_migrations
         done_stage 'Schema — initialized empty Docker database with V001 and the incremental migrations.'
@@ -345,7 +345,7 @@ validate_or_initialize_docker_business() {
 apply_docker_incremental_migrations() {
     local migration
     for migration in V002__Add_watchlist.sql V009__Add_terms_acceptance_to_users.sql V010__Protect_trade_records.sql; do
-        docker_compose exec -T db psql -q -v ON_ERROR_STOP=1 -U trading_season -d trading_season < "apps/market-data/db/migrations/$migration" || \
+        docker_compose exec -T db psql -q -v ON_ERROR_STOP=1 -U trading_season -d trading_season < "db/migrations/$migration" || \
             fail "Database migration $migration failed."
     done
 }

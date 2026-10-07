@@ -31,7 +31,7 @@ class TradeRecordMigrationTest(unittest.TestCase):
         cls.run_binary("initdb", "-D", str(cls.cluster), "-U", "trade_record_test", "-A", "trust", "--no-locale", "-E", "UTF8")
         cls.run_binary("pg_ctl", "-D", str(cls.cluster), "-l", str(Path(cls.temp.name) / "postgres.log"),
                        "-o", f"-h 127.0.0.1 -p {cls.port}", "-w", "start")
-        cls.migrations = Path(__file__).resolve().parents[3] / "migrations"
+        cls.migrations = Path(__file__).resolve().parents[6] / "db" / "migrations"
 
     @classmethod
     def run_binary(cls, name, *args):

@@ -31,6 +31,9 @@ export type AccountLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 // Most recent cash transactions shown on the dashboard.
 const CASH_TRANSACTION_LIMIT = 20;
 
+// Most cash transactions the backend returns in one read; the full transaction history uses it.
+const CASH_HISTORY_LIMIT = 200;
+
 // The signed-in user's accounts, each account's holdings, and the cash they share.
 //
 // Shared across authenticated views; identity changes synchronously cancel and clear user data.
@@ -293,6 +296,16 @@ export class AccountStore {
       }),
       map(() => result),
     );
+  }
+
+  // The user's cash transactions, newest first, beyond the few the dashboard keeps. The result
+  // is not cached: it belongs to the dialog that asked for it.
+  loadCashHistory(): Observable<CashTransaction[]> {
+    return this._http
+      .get<CashTransaction[]>(`${this._apiUrl}/me/cash-transactions`, {
+        params: { limit: CASH_HISTORY_LIMIT },
+      })
+      .pipe(takeUntil(this.cancelled));
   }
 
   private fetchAccounts(): Observable<Account[]> {

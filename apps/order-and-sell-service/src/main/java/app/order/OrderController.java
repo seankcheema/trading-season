@@ -3,6 +3,8 @@ package app.order;
 import app.auth.AuthenticatedUser;
 import app.order.dto.OrderRequest;
 import app.order.dto.OrderResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -28,10 +30,16 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/api/orders")
+@Tag(name = "Orders", description = "Order submission and retrieval endpoints")
 public class OrderController {
 
     private final OrderService orderService;
 
+    /**
+     * Creates the controller.
+     *
+     * @param orderService order submission and history logic
+     */
     public OrderController(OrderService orderService) {
         this.orderService = orderService;
     }
@@ -49,6 +57,7 @@ public class OrderController {
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "Submit an order", description = "Submits a buy or sell order and returns the order's outcome (filled or rejected)")
     public OrderResponse submitOrder(@Valid @RequestBody OrderRequest request,
                                      @AuthenticationPrincipal Jwt jwt) {
         Order order = orderService.submitOrder(request, AuthenticatedUser.from(jwt).userId());
@@ -65,6 +74,7 @@ public class OrderController {
      * @return the caller's orders across every account they own
      */
     @GetMapping
+    @Operation(summary = "List user orders", description = "Retrieves all orders submitted by the authenticated user, newest first")
     public List<OrderResponse> listOwnOrders(@AuthenticationPrincipal Jwt jwt) {
         return orderService.getOwnOrders(AuthenticatedUser.from(jwt).userId()).stream()
                 .map(OrderResponse::from)

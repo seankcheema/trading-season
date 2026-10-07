@@ -3,6 +3,7 @@ import {
   Component,
   ElementRef,
   afterNextRender,
+  computed,
   input,
   output,
   viewChild,
@@ -31,7 +32,8 @@ let nextDialogId = 0;
         aria-modal="true"
         [attr.aria-labelledby]="titleId"
         tabindex="-1"
-        class="dashboard-dialog border-border bg-card w-full max-w-md rounded-2xl border shadow-2xl shadow-black/50 outline-none"
+        class="dashboard-dialog border-border bg-card w-full rounded-2xl border shadow-2xl shadow-black/50 outline-none"
+        [class]="sizeClass()"
         (click)="$event.stopPropagation()"
       >
         <header class="border-border flex items-center justify-between gap-4 border-b px-5 py-3">
@@ -85,7 +87,13 @@ export class DashboardDialogComponent {
 
   readonly dialogTitle = input.required<string>();
   readonly closeLabel = input('Close dialog');
+  // Form dialogs are narrow; tables need room, and the full assets table needs the most.
+  readonly size = input<'narrow' | 'wide' | 'xwide'>('narrow');
   readonly closed = output<void>();
+
+  protected readonly sizeClass = computed(
+    () => ({ narrow: 'max-w-md', wide: 'max-w-4xl', xwide: 'max-w-[70rem]' })[this.size()],
+  );
 
   protected readonly titleId = `dashboard-dialog-title-${nextDialogId++}`;
 

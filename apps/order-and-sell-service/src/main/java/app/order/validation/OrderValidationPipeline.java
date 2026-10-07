@@ -27,6 +27,11 @@ public class OrderValidationPipeline {
 
     private final List<OrderValidator> validators;
 
+    /**
+     * Creates the pipeline.
+     *
+     * @param validators every {@link OrderValidator} rule, discovered by Spring
+     */
     public OrderValidationPipeline(List<OrderValidator> validators) {
         this.validators = validators;
     }
@@ -34,6 +39,12 @@ public class OrderValidationPipeline {
     /**
      * Runs the order through every validator, returning the first rejection
      * encountered, or {@link ValidationResult#pass()} if none rejects it.
+     *
+     * @param request the order being validated
+     * @param user the order owner
+     * @param account the account the order is placed against
+     * @param instrument the instrument being traded
+     * @return the first rejection, or a pass when every rule is satisfied
      */
     public ValidationResult run(OrderRequest request, User user, Account account, Instrument instrument) {
         for (OrderValidator validator : validators) {

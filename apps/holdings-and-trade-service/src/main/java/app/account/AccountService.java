@@ -1,6 +1,7 @@
 package app.account;
 
 import app.auth.ForbiddenException;
+import app.holding.CostBasis;
 import app.holding.Holding;
 import app.holding.HoldingMovementRepository;
 import app.holding.HoldingRepository;
@@ -12,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -167,7 +167,8 @@ public class AccountService {
                 .findByInstrumentIdIn(holdings.stream().map(Holding::getInstrumentId).toList())
                 .stream()
                 .collect(Collectors.toMap(Instrument::getInstrumentId, Function.identity()));
-        Map<Integer, BigDecimal> averageCosts = averageCostsFor(accountId);
+        Map<Integer, BigDecimal> averageCosts =
+                CostBasis.averageCosts(holdingMovementRepository.pricedMovements(accountId));
 
         return holdings.stream()
                 .map(holding -> new HoldingWithCost(
@@ -175,36 +176,5 @@ public class AccountService {
                         instruments.get(holding.getInstrumentId()),
                         averageCosts.get(holding.getInstrumentId())))
                 .toList();
-    }
-
-    /**
-     * Average price paid per share for each instrument this account has acquired,
-     * keyed by instrument id.
-     *
-     * @param accountId the account whose positions to price
-     * @return the average acquisition cost per instrument; an instrument with no
-     *         recorded acquisitions is absent
-     */
-    private Map<Integer, BigDecimal> averageCostsFor(Integer accountId) {
-        Map<Integer, BigDecimal> costs = new HashMap<>();
-        for (Object[] row : holdingMovementRepository.averageAcquisitionCostByInstrument(accountId)) {
-            if (row[0] != null && row[1] != null) {
-                costs.put((Integer) row[0], toBigDecimal(row[1]));
-            }
-        }
-        return costs;
-    }
-
-    /**
-     * Normalises the numeric type the aggregate query returns, which differs
-     * between Postgres and the in-memory database tests run against.
-     *
-     * @param value the aggregate value
-     * @return the value as a BigDecimal
-     */
-    private static BigDecimal toBigDecimal(Object value) {
-        return value instanceof BigDecimal decimal
-                ? decimal
-                : BigDecimal.valueOf(((Number) value).doubleValue());
     }
 }

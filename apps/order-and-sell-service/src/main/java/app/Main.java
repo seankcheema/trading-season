@@ -8,6 +8,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @SpringBootApplication
 @EnableScheduling
 public class Main {
+
+    /** Creates an instance of this class. */
+    public Main() {
+    }
     /**
      * Starts the Spring Boot application.
      * @param args command-line arguments passed to Spring Boot

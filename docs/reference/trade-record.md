@@ -37,7 +37,7 @@ The fill price is the client's indicative price; there is no live quote source. 
 
 ## Permanence
 
-[V010__Protect_trade_records.sql](../../apps/market-data/db/migrations/V010__Protect_trade_records.sql) adds database triggers that make the record append-only for every role, including the table owner that the services connect as.
+[V010__Protect_trade_records.sql](../../db/migrations/V010__Protect_trade_records.sql) adds database triggers that make the record append-only for every role, including the table owner that the services connect as.
 
 | Table | Allowed | Rejected |
 | --- | --- | --- |
@@ -55,7 +55,23 @@ PostgreSQL makes committed rows durable across restarts. Because each order is o
 - Dropping a table or the database is not prevented. Backups and their retention are an operational concern outside this repository.
 - The Java service tests run against H2, which does not load V010. The triggers are verified separately by the [migration test](../../apps/market-data/db/scripts/python/tests/test_trade_record_migration.py).
 
-See the [database reference](database.md#trade-record-migration) for how to apply and verify V010.
+### Applying V010
+
+V010 adds no tables or columns, changes no existing rows, and may be reapplied.
+
+- Local Compose applies it through [init-db.sh](../../infrastructure/docker/init-db.sh), which runs every file in `db/migrations` once.
+- The Jenkins Compose file, [setup-local.sh](../../scripts/setup-local.sh), and the [Python initializer](../../apps/market-data/db/scripts/python/0001-initialize-database.py) name it explicitly after V009.
+- For a database managed by hand, apply it as the database owner after V009:
+
+```powershell
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f db/migrations/V010__Protect_trade_records.sql
+```
+
+Once it is applied, manual cleanup of orders, fills, ledger rows, or accounts with `DELETE`, `UPDATE`, or `TRUNCATE` fails; reset a disposable database by recreating it instead. With PostgreSQL binaries on PATH, verify the triggers against an isolated temporary cluster:
+
+```powershell
+python apps/market-data/db/scripts/python/tests/test_trade_record_migration.py
+```
 
 ## Client disclosure
 

@@ -14,6 +14,11 @@ public class AuditTrailService {
 
     private final AuditTrailRepository auditTrailRepository;
 
+    /**
+     * Creates the service.
+     *
+     * @param auditTrailRepository persistence for audit rows
+     */
     public AuditTrailService(AuditTrailRepository auditTrailRepository) {
         this.auditTrailRepository = auditTrailRepository;
     }

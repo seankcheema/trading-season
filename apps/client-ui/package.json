@@ -59,7 +59,8 @@
     "@angular-devkit/schematics": "21.2.25",
     "@schematics/angular": "21.2.25",
     "piscina": "5.3.2",
-    "http-cache-semantics": "^4.3.0"
+    "http-cache-semantics": "^4.3.0",
+    "@modelcontextprotocol/sdk": "1.32.1"
   },
   "allowScripts": {
     "@parcel/watcher@2.6.0": true,

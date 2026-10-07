@@ -29,25 +29,21 @@ public interface HoldingMovementRepository extends JpaRepository<HoldingMovement
     List<Integer> acquiredAccountIds();
 
     /**
-     * Average price paid per share for each instrument an account has acquired.
+     * An account's whole movement ledger with the price each movement executed at.
      *
-     * <p>Weighted by quantity across every acquiring movement, so buying 1 share
-     * at 100 and 3 at 200 reports 175 rather than 150. Only positive movements
-     * count: a sell disposes of shares at the market price and does not change
-     * what the remaining ones cost.
+     * <p>Buys and sells are both returned, in the order they were recorded, because
+     * the cost of an open position depends on when earlier positions were closed;
+     * see {@link CostBasis}.
      *
-     * <p>Returned as rows of {@code [instrumentId, averageCost]} rather than a
-     * projection interface because the caller only indexes it by instrument.
-     *
-     * @param accountId the account whose positions to price
-     * @return one row per acquired instrument; instruments never bought are absent
+     * @param accountId the account whose ledger to read
+     * @return every movement of the account, oldest first
      */
     @Query("""
-            select m.instrumentId, sum(f.quotePrice * m.quantityDelta) / sum(m.quantityDelta)
+            select new app.holding.PricedMovement(m.instrumentId, m.quantityDelta, f.quotePrice)
             from HoldingMovement m
             join Fill f on f.fillId = m.fillId
-            where m.accountId = :accountId and m.quantityDelta > 0
-            group by m.instrumentId
+            where m.accountId = :accountId
+            order by m.holdingMovementId
             """)
-    List<Object[]> averageAcquisitionCostByInstrument(@Param("accountId") Integer accountId);
+    List<PricedMovement> pricedMovements(@Param("accountId") Integer accountId);
 }

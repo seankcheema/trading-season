@@ -16,6 +16,10 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
      * Finds a prior order by its idempotency key. Checked before creating a
      * new order so a retried submission returns the original outcome
      * instead of being validated and possibly executed a second time.
+     *
+     * @param accountId the account the order was placed on
+     * @param clientReference the caller-supplied idempotency key
+     * @return the earlier order, or empty if the key has not been used
      */
     Optional<Order> findByAccountIdAndClientReference(Integer accountId, UUID clientReference);
 

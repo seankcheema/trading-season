@@ -1,8 +1,6 @@
 # Documentation instructions
 
 - Verify source, tests, manifests, and configuration before changing documentation.
-- Document implemented behavior as current state.
-- Clearly label proposed or future work.
-- Keep one canonical document per topic and link to it.
-- Update [Documentation](README.md) when documents are added, removed, or renamed.
-- Do not manually edit generated [Javadocs](JAVA_DOCS/README.md); regenerate the affected service after Java source or Javadoc changes.
+- Document implemented behavior as current state and label proposed work clearly.
+- Keep one canonical document per topic: system diagrams in the root README, technical diagrams in each service README, schema in [db/README.md](../db/README.md).
+- Do not manually edit the generated [Javadocs](JAVA_DOCS/index.html) or [coverage reports](coverage/index.html); regenerate them.

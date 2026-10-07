@@ -3,7 +3,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { UnknownInstrumentError } from './order-error';
 import { InstrumentRef, OrderResult } from './order.models';
-import { OrderService } from './order.service';
+import { OrderService, PENDING_ORDER_POLL_MS } from './order.service';
+import { vi } from 'vitest';
 
 function instrument(overrides: Partial<InstrumentRef> = {}): InstrumentRef {
   return {
@@ -314,6 +315,56 @@ describe('OrderService', () => {
     http.expectOne('/api/orders').flush({}, { status: 503, statusText: 'Unavailable' });
     expect(service.orders()[0].orderId).toBe(99);
     expect(service.historyError()).toContain('Unable');
+  });
+
+
+  describe('pending order polling', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    function loadPending(): void {
+      service.loadOrders().subscribe();
+      http.expectOne('/api/orders').flush([order({ status: 'PENDING', resolvedAt: null })]);
+      TestBed.tick();
+    }
+
+    it('re-reads the history while an order is pending and announces the fill', () => {
+      const filled: OrderResult[] = [];
+      service.pendingFilled.subscribe((result) => filled.push(result));
+      loadPending();
+
+      vi.advanceTimersByTime(PENDING_ORDER_POLL_MS);
+      http.expectOne('/api/orders').flush([order({ status: 'PENDING', resolvedAt: null })]);
+      expect(filled).toEqual([]);
+
+      vi.advanceTimersByTime(PENDING_ORDER_POLL_MS);
+      http.expectOne('/api/orders').flush([order()]);
+      expect(filled).toEqual([order()]);
+      expect(service.orders()[0].status).toBe('FILLED');
+      TestBed.tick();
+
+      // Nothing is pending any more, so the timer stops.
+      vi.advanceTimersByTime(PENDING_ORDER_POLL_MS * 3);
+      http.expectNone('/api/orders');
+    });
+
+    it('does not announce an order that was rejected', () => {
+      const filled: OrderResult[] = [];
+      service.pendingFilled.subscribe((result) => filled.push(result));
+      loadPending();
+      vi.advanceTimersByTime(PENDING_ORDER_POLL_MS);
+      http.expectOne('/api/orders').flush([order({ status: 'REJECTED', rejectionReason: 'No' })]);
+      expect(filled).toEqual([]);
+      expect(service.orders()[0].status).toBe('REJECTED');
+    });
+
+    it('never polls when no order is pending', () => {
+      service.loadOrders().subscribe();
+      http.expectOne('/api/orders').flush([order()]);
+      TestBed.tick();
+      vi.advanceTimersByTime(PENDING_ORDER_POLL_MS * 3);
+      http.expectNone('/api/orders');
+    });
   });
 
 });

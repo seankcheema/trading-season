@@ -23,7 +23,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
   database: process.env.DB_NAME || 'trading_season',
   entities: [User, RefreshToken],
 
-  // The schema belongs to the migrations in apps/market-data/db/migrations.
+  // The schema belongs to the migrations in db/migrations.
   // Two migration tools pointed at one database is how half a schema gets
   // dropped, so this service reads and writes tables it never creates.
   //
@@ -33,7 +33,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
   synchronize: false,
 
   // This service runs no migrations of its own. Every table it reads is created
-  // by Flyway in apps/market-data/db/migrations, so there is no migration list
+  // by Flyway in db/migrations, so there is no migration list
   // and nothing to run at startup. Adding one back would put a second migration
   // tool in charge of a schema Flyway already owns.
 

@@ -21,6 +21,10 @@ import java.time.OffsetDateTime;
 @Table(name = "holdings")
 public class Holding {
 
+    /** Creates an instance of this class. */
+    public Holding() {
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "holding_id", updatable = false, nullable = false)
@@ -38,42 +42,92 @@ public class Holding {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
+    /**
+     * Returns the holding ID.
+     *
+     * @return the holding ID
+     */
     public Integer getHoldingId() {
         return holdingId;
     }
 
+    /**
+     * Sets the holding ID.
+     *
+     * @param holdingId the holding ID
+     */
     public void setHoldingId(Integer holdingId) {
         this.holdingId = holdingId;
     }
 
+    /**
+     * Returns the account ID.
+     *
+     * @return the account ID
+     */
     public Integer getAccountId() {
         return accountId;
     }
 
+    /**
+     * Sets the account ID.
+     *
+     * @param accountId the account ID
+     */
     public void setAccountId(Integer accountId) {
         this.accountId = accountId;
     }
 
+    /**
+     * Returns the instrument ID.
+     *
+     * @return the instrument ID
+     */
     public Integer getInstrumentId() {
         return instrumentId;
     }
 
+    /**
+     * Sets the instrument ID.
+     *
+     * @param instrumentId the instrument ID
+     */
     public void setInstrumentId(Integer instrumentId) {
         this.instrumentId = instrumentId;
     }
 
+    /**
+     * Returns the quantity.
+     *
+     * @return the quantity
+     */
     public BigDecimal getQuantity() {
         return quantity;
     }
 
+    /**
+     * Sets the quantity.
+     *
+     * @param quantity the quantity
+     */
     public void setQuantity(BigDecimal quantity) {
         this.quantity = quantity;
     }
 
+    /**
+     * Returns the updated at.
+     *
+     * @return the updated at
+     */
     public OffsetDateTime getUpdatedAt() {
         return updatedAt;
     }
 
+    /**
+     * Sets the updated at.
+     *
+     * @param updatedAt the updated at
+     */
     public void setUpdatedAt(OffsetDateTime updatedAt) {
         this.updatedAt = updatedAt;
     }

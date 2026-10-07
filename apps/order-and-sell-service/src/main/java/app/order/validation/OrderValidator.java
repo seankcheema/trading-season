@@ -24,6 +24,12 @@ public interface OrderValidator {
      * validators have or haven't run — {@link OrderValidationPipeline} stops
      * at the first rejection, so a validator can't rely on an earlier one
      * having already ruled out some case.
+     *
+     * @param request the order being validated
+     * @param user the order owner
+     * @param account the account the order is placed against
+     * @param instrument the instrument being traded
+     * @return the outcome of this rule
      */
     ValidationResult validate(OrderRequest request, User user, Account account, Instrument instrument);
 }

@@ -1,137 +1,153 @@
 # Order and Sell Service
 
-Spring Boot microservice responsible for managing all trading operations, order execution, and holding updates. This service is the core trading engine for the Trading Season platform.
+Spring Boot (Java 21) service that submits, validates, and executes buy and sell orders, and serves instrument reference data and order history. It is the trading half of the backend; accounts, cash, and holdings reads belong to the [Holdings and Trade Service](../holdings-and-trade-service/README.md).
 
-## Architecture
+- Port 8081, Swagger UI at http://localhost:8081/swagger-ui.html
+- Shares the `trading_season` database. The schema comes from [db/migrations](../../db/migrations); Hibernate never alters it.
+- Authenticates callers by verifying RS256 tokens from the [Auth Service](../auth-service/README.md) against its cached JWKS. The caller is always the token's `sub`.
 
-**Responsibilities:**
-- Create and accept trade orders
-- Validate orders (funds, holdings, tradability)
-- Execute buy and sell transactions
-- Update and maintain current holdings
-- Maintain complete order audit trail and history
+## Endpoints
 
-**Port:** 8081 (default, configurable via `server.port`)
+All require a bearer token except the public market reads.
 
-**Database:** Shared PostgreSQL with Order and Sell Service. Schema is read-only; migrations managed centrally.
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/orders` | Submit a buy or sell order. Returns 201 with the outcome (`FILLED` or `REJECTED`) |
+| GET | `/api/orders` | The caller's orders across all their accounts, newest first |
+| GET | `/api/instruments` | Every instrument with `tradable` and `simulatedStockSymbol` |
+| POST | `/api/auth/account-exists` | Whether an email is registered (public) |
+| POST | `/api/auth/register` | Create the caller's profile from the bearer token |
+| GET | `/api/users/me` | The caller's profile, without the SSN |
+| GET | `/api/market/snapshot`, `/candles`, `/stream` | Public market data (snapshot, OHLCV candles, SSE ticks) |
+| PUT | `/api/market/clock` | Move the shared replay cursor |
 
-**Authentication:** RS256 tokens issued by the NestJS auth service. Verifies tokens, never handles passwords.
+Order request: `accountId`, `instrumentId`, `orderType` (`BUY` or `SELL`), `quantity`, `indicativePrice`, `clientReference` (UUID idempotency key), and optional `bufferPercent` and `simulatedAt`.
 
-**Documentation:** See [service instructions](AGENTS.md) for development guidelines.
+Behavior worth knowing:
 
-## Quick Start
+- A rule failure is a normal outcome: the response is still 201 with `status: REJECTED` and a `rejectionReason`.
+- Resubmitting the same `accountId` and `clientReference` returns the original outcome without executing again.
+- Another user's account is 403 and a missing account is 404, checked before the idempotency lookup. An unknown `instrumentId` is 400.
+- Cash belongs to the user, not the account: a fill moves `users.available_funds`. Orders fill at `indicativePrice`.
+- `simulatedAt` records the replay time chosen in the UI. `submittedAt`, `resolvedAt`, and fill times are always real server times.
+- Errors use `{"error": "..."}`.
 
-### Prerequisites
+## Design
 
-- JDK 21
-- Maven 3.9+
-- PostgreSQL (shared with Order and Sell Service)
-- NestJS auth service running on port 3001
-
-### Setup
-
-1. Create the trading_season database and apply migrations (V001 through V004):
-   ```powershell
-   # From repository root
-   py -3 -m venv apps/market-data/db/.venv
-   apps/market-data/db/.venv/Scripts/python.exe -m pip install --upgrade pip
-   apps/market-data/db/.venv/Scripts/python.exe -m pip install -r apps/market-data/db/scripts/requirements.txt
-   ```
-
-2. Run migrations:
-   ```sh
-   # See database setup guide in ../../docs/reference/database.md
-   ```
-
-3. Start the service:
-   ```sh
-   mvn spring-boot:run
-   ```
-
-4. Verify it's running:
-   ```powershel
-
-   Invoke-RestMethod http://localhost:8081/api/market/snapshot
-   ```
-
-### Tests
-
-Run all tests with code coverage verification:
-```sh
-mvn test
+```mermaid
+flowchart TB
+    subgraph Web["Web layer"]
+        OC[OrderController]
+        IC[InstrumentController]
+        UC[UserController]
+        AC[auth.AuthController]
+        MC[market.MarketController]
+    end
+    subgraph Domain["Order domain"]
+        OS[OrderService]
+        VP[OrderValidationPipeline]
+        subgraph Rules["OrderValidator rules"]
+            V1[AccountCredentialsValidator]
+            V2[TradabilityValidator]
+            V3[SufficientFundsValidator]
+            V4[SufficientHoldingsValidator]
+        end
+        OE[OrderExecutionService]
+        AT[AuditTrailService]
+    end
+    subgraph Data["JPA entities"]
+        E1["Order, Fill, CashTransaction,<br/>HoldingMovement, AuditTrail"]
+        E2["Account, Holding, User,<br/>UserAccount, Instrument"]
+    end
+    OC --> OS
+    OS --> VP
+    VP --> Rules
+    OS --> OE
+    OS --> AT
+    OE --> AT
+    OS --> E1
+    OE --> E1
+    OS --> E2
+    OE --> E2
+    IC --> E2
+    UC --> E2
+    MC --> MR[MarketReplayService]
 ```
 
-Coverage must be at least 70% in every package on every JaCoCo counter (instructions, branches, lines, complexity, methods, and classes); `mvn test` fails otherwise. Reports are in `target/site/jacoco/`.
+### Order submission
+
+```mermaid
+sequenceDiagram
+    participant C as OrderController
+    participant S as OrderService
+    participant P as ValidationPipeline
+    participant E as OrderExecutionService
+    participant DB as PostgreSQL
+
+    C->>S: submitOrder(request, callerId)
+    S->>DB: Load account, check owner (403 or 404)
+    S->>DB: Look up accountId + clientReference
+    alt Already processed
+        S-->>C: Original order
+    else New
+        S->>DB: Load user and instrument (400 if instrument unknown)
+        S->>DB: Insert order PENDING and audit entry
+        S->>P: run(request, user, account, instrument)
+        alt A rule fails
+            S->>DB: Mark REJECTED with reason and audit entry
+        else All rules pass
+            S->>E: execute(order, instrument)
+            E->>DB: Lock user row and holding row
+            alt Funds or holdings changed since validation
+                E->>DB: Mark REJECTED
+            else Still valid
+                E->>DB: Insert fill, cash transaction, holding movement
+                E->>DB: Update available funds and holding
+                E->>DB: Mark FILLED and audit entry
+            end
+        end
+        S-->>C: Order in its final status
+    end
+```
+
+Submission runs in one transaction, so a persistence failure rolls back the order and its whole ledger together.
+
+### Order status
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: submitted
+    PENDING --> REJECTED: rule fails or funds/holdings changed
+    PENDING --> FILLED: fill and ledger written
+    REJECTED --> [*]
+    FILLED --> [*]
+```
+
+Every transition is recorded in `audit_trail`, along with an `ACCEPTED` event when the rules pass. Migration V010 makes orders, fills, the ledgers, and the audit trail append-only; see the [trade record](../../docs/reference/trade-record.md) for the events and what the database rejects. A new validation rule is a new `OrderValidator` class; the pipeline discovers it automatically and stops at the first rejection.
 
 ## Configuration
 
-Environment variables override defaults in [application.properties](src/main/resources/application.properties):
+Environment variables override [application.properties](src/main/resources/application.properties).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/trading_season` | Database connection |
+| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/trading_season` | Database |
 | `SPRING_DATASOURCE_USERNAME` | `trading_season` | Database user |
 | `SPRING_DATASOURCE_PASSWORD` | `changeme` | Database password |
-| `AUTH_JWK_SET_URI` | `http://localhost:3001/.well-known/jwks.json` | Auth service JWKS endpoint |
-| `AUTH_JWT_ISSUER` | `https://auth.dualeapa.local` | Required JWT issuer claim |
-| `CORS_ORIGINS` | `http://localhost:4200` | Allowed browser origins (comma-separated) |
-| `MARKET_REPLAY_ARCHIVE_LOCATION` | empty | Optional absolute Parquet archive root override |
+| `AUTH_JWK_SET_URI` | `http://localhost:3001/.well-known/jwks.json` | Auth service public keys |
+| `AUTH_JWT_ISSUER` | `https://auth.dualeapa.local` | Required `iss`, must equal the auth service's `JWT_ISSUER` |
+| `CORS_ORIGINS` | `http://localhost:4200` | Allowed browser origins, comma-separated |
+| `MARKET_REPLAY_ARCHIVE_LOCATION` | empty | Absolute path to the Parquet archive when the recorded path is not reachable |
 
-Parquet-backed simulation sessions first use `MARKET_REPLAY_ARCHIVE_LOCATION`, then the archive location recorded during import, and finally discover the matching archive under the repository's `apps/market-data/db/seeds` directory. This discovery keeps an existing database usable after the repository moves. Missing raw tick partitions return an unavailable market-data error rather than falling back to one-minute candles.
+## Run and test
 
-## API Endpoints
+Start a migrated database ([db/README.md](../../db/README.md)) and the auth service, then:
 
-All endpoints require valid RS256 access token except public market GET endpoints.
-
-**User Management:**
-- `GET /api/users/{id}` - Get user profile by ID (requires auth)
-- `GET /api/users` - List all users (admin only)
-
-**Account Data:**
-- `GET /api/accounts/{accountId}` - Get account details (requires auth)
-- `GET /api/accounts/{accountId}/holdings` - Get current holdings (requires auth)
-
-**Order History:**
-- `GET /api/orders` - List the authenticated caller's orders across all of their accounts, newest first (requires auth)
-
-**Orders:**
-- `POST /api/orders` - Submit a buy or sell order; created PENDING and returned FILLED or REJECTED (requires auth)
-- `GET /api/orders/{id}` - Get order details (requires auth)
-
-**Market Data (Public):**
-- `GET /api/market/snapshot` - Current market snapshot
-- `GET /api/market/quotes` - Current quotes for all stocks
-- `GET /api/market/stream` - SSE stream of market ticks
-
-For full API contracts, see [API reference](../../docs/reference/api.md).
-
-## Code Organization
-
-Source is rooted at `src/main/java/app`. Tests mirror structure under `src/test/java/app`.
-
-```
-app/
-├── order/           # Order management core
-│   ├── validation/  # Validation pipeline
-│   ├── execution/   # Order execution and settlement
-│   └── audit/       # Order event audit
-├── account/         # Trading account entities
-├── holding/         # Current position data
-├── instrument/      # Tradable asset definitions
-├── auth/            # Authentication and authorization
-├── market/          # Market data and replay
-└── Main.java        # Application entry point
+```sh
+mvn spring-boot:run
+mvn test
 ```
 
+Tests use H2 with the `test` profile and mirror the source packages under `src/test/java/app`. JaCoCo fails the build below 70 percent on every counter in any package (`coverage.minimum` in [pom.xml](pom.xml)); reports are in `target/site/jacoco/`.
 
-## Development
-
-See [service development guide](AGENTS.md) for coding standards, testing patterns, and contribution workflow.
-
-## Related Services
-
-- **Order and Sell Service** - Queries orders, holdings, and user data for UI
-- **Auth Service** - Issues and validates RS256 tokens
-- **Business UI** - Consumes this service's APIs
-
-See [Architecture reference](../../docs/reference/architecture.md) for service boundaries and integration patterns.
+After changing Java code, regenerate the Javadocs; see [AGENTS.md](../../AGENTS.md).

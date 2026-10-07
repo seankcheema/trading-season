@@ -3,7 +3,7 @@ Tests for database service layer (repositories)
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from decimal import Decimal
 from db_service import (
     UserRepository, AccountRepository, HoldingRepository,
@@ -131,8 +131,8 @@ class TestOrderRepository:
     
     def test_get_orders_by_date_range(self, test_user, test_order):
         """Test getting orders by date range"""
-        start_date = datetime.utcnow() - timedelta(days=1)
-        end_date = datetime.utcnow() + timedelta(days=1)
+        start_date = datetime.now(UTC) - timedelta(days=1)
+        end_date = datetime.now(UTC) + timedelta(days=1)
         orders = OrderRepository.get_orders_by_date_range(
             test_user.user_id, start_date, end_date
         )
@@ -156,8 +156,8 @@ class TestTradeRepository:
     
     def test_get_trade_history_with_date_range(self, test_account, test_order, test_fill):
         """Test getting trade history with date range"""
-        start_date = datetime.utcnow() - timedelta(days=1)
-        end_date = datetime.utcnow() + timedelta(days=1)
+        start_date = datetime.now(UTC) - timedelta(days=1)
+        end_date = datetime.now(UTC) + timedelta(days=1)
         trades = TradeRepository.get_trade_history(
             test_account.account_id, start_date, end_date
         )
@@ -166,8 +166,8 @@ class TestTradeRepository:
     def test_get_trade_history_empty(self, test_account):
         """Test getting trade history with no trades"""
         # Set account to future date
-        start_date = datetime.utcnow() + timedelta(days=30)
-        end_date = datetime.utcnow() + timedelta(days=60)
+        start_date = datetime.now(UTC) + timedelta(days=30)
+        end_date = datetime.now(UTC) + timedelta(days=60)
         trades = TradeRepository.get_trade_history(
             test_account.account_id, start_date, end_date
         )
@@ -188,8 +188,8 @@ class TestCashTransactionRepository:
     
     def test_get_transactions_by_date_range(self, test_account, test_cash_transaction):
         """Test getting transactions by date range"""
-        start_date = datetime.utcnow() - timedelta(days=1)
-        end_date = datetime.utcnow() + timedelta(days=1)
+        start_date = datetime.now(UTC) - timedelta(days=1)
+        end_date = datetime.now(UTC) + timedelta(days=1)
         transactions = CashTransactionRepository.get_transactions_by_date_range(
             test_account.account_id, start_date, end_date
         )
@@ -209,7 +209,7 @@ class TestAuditRepository:
             user_id=test_account.user_id,
             event_type='ORDER_SUBMITTED',
             event_details='Test order submitted',
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(UTC)
         )
         db.session.add(event)
         db.session.commit()
@@ -230,7 +230,7 @@ class TestMetadataRepository:
     
     def test_update_last_refresh_time(self):
         """Test updating last refresh time"""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(UTC).isoformat()
         MetadataRepository.update_last_refresh_time(now)
         last_refresh = MetadataRepository.get_last_refresh_time()
         assert last_refresh is not None
