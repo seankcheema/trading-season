@@ -2,7 +2,7 @@ import { AccountHolding } from './account.models';
 import { InstrumentRef, OrderResult } from '../orders/order.models';
 
 export function executionTime(order: OrderResult): number {
-  const simulated = Date.parse(order.simulatedAt ?? '');
+  const simulated = Date.parse(order.executedSimulatedAt ?? order.simulatedAt ?? '');
   return Number.isFinite(simulated) ? simulated : Date.parse(order.resolvedAt ?? '');
 }
 
@@ -52,7 +52,8 @@ export function holdingsAt(
       for (const order of visible) {
         if (order.orderType === 'BUY') {
           average =
-            (held * average + order.quantity * order.indicativePrice) / (held + order.quantity);
+            (held * average + order.quantity * (order.executionPrice ?? order.indicativePrice)) /
+            (held + order.quantity);
           held += order.quantity;
         } else {
           held -= order.quantity;
@@ -78,7 +79,10 @@ export function cashAt(current: number, orders: readonly OrderResult[], at: numb
       .filter((order) => executionTime(order) > at)
       .reduce(
         (sum, order) =>
-          sum + (order.orderType === 'BUY' ? 1 : -1) * order.quantity * order.indicativePrice,
+          sum +
+          (order.orderType === 'BUY' ? 1 : -1) *
+            order.quantity *
+            (order.executionPrice ?? order.indicativePrice),
         0,
       )
   );

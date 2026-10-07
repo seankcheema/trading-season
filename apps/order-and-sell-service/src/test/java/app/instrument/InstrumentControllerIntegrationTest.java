@@ -46,7 +46,7 @@ class InstrumentControllerIntegrationTest {
     private MockMvc mockMvc;
 
     @BeforeEach
-    void setUp() {
+    public void setUp() {
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
         clearInstruments();
 

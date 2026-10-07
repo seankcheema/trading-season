@@ -39,7 +39,7 @@ class MarketReplayServiceTest {
     }
 
     @BeforeEach
-    void setUp() {
+    public void setUp() {
         when(repository.resolveSession(nullable(Long.class))).thenReturn(session);
         when(repository.tradingDays(session.id())).thenReturn(List.of(LocalDate.of(2026, 1, 5)));
         when(repository.stocks()).thenReturn(List.of(new MarketModels.Stock("AAPL", "Apple Inc.")));
@@ -198,8 +198,8 @@ class MarketReplayServiceTest {
     void candlesRejectMissingAndUnknownSymbols() {
         assertEquals("Unknown stock symbol",
                 assertThrows(MarketRequestException.class, () -> service.candles(null, "MSFT", "1D")).getMessage());
-        assertThrows(MarketRequestException.class, () -> service.candles(null, "  ", "1D"));
-        assertThrows(MarketRequestException.class, () -> service.candles(null, null, "1D"));
+        assertNotNull(assertThrows(MarketRequestException.class, () -> service.candles(null, "  ", "1D")));
+        assertNotNull(assertThrows(MarketRequestException.class, () -> service.candles(null, null, "1D")));
     }
 
     @Test
@@ -421,7 +421,7 @@ class MarketReplayServiceTest {
         service.subscribe(null, "client-a", null);
         var perClient = assertThrows(MarketLimitException.class, () -> service.subscribe(null, "client-a", null));
         service.subscribe(null, "client-b", null);
-        assertThrows(MarketLimitException.class, () -> service.subscribe(null, "client-c", null));
+        assertNotNull(assertThrows(MarketLimitException.class, () -> service.subscribe(null, "client-c", null)));
 
         assertEquals("Market stream connection limit reached", perClient.getMessage());
     }
@@ -432,7 +432,7 @@ class MarketReplayServiceTest {
         service.snapshot(null);
         when(repository.stocks()).thenThrow(new IllegalStateException("database unavailable"));
 
-        assertThrows(IllegalStateException.class, () -> service.subscribe(null, "client-a", null));
+        assertNotNull(assertThrows(IllegalStateException.class, () -> service.subscribe(null, "client-a", null)));
 
         doReturn(List.of(new MarketModels.Stock("AAPL", "Apple Inc."))).when(repository).stocks();
         assertNotNull(service.subscribe(null, "client-a", null));

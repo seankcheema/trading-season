@@ -64,6 +64,17 @@ public class OrderController {
         return OrderResponse.from(order);
     }
 
+    /** Checks eligibility without creating an order or reserving funds.
+     * @param request validated advisory request
+     * @param jwt verified caller token
+     * @return current eligibility; submission always checks again */
+    @PostMapping("/check")
+    @Operation(summary = "Check trade eligibility", description = "Nonbinding quote, buffer and resource assessment; no order or reservation is created")
+    public app.order.dto.OrderCheckResponse check(@Valid @RequestBody app.order.dto.OrderCheckRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        return orderService.check(request, AuthenticatedUser.from(jwt).userId());
+    }
+
     /**
      * Lists the caller's own orders, newest submission first. The owner is
      * resolved from the bearer token, so there is no path or query parameter

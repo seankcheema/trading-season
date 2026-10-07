@@ -1,3 +1,5 @@
+import { HttpResponse, withInterceptors } from '@angular/common/http';
+import { of as eligibleResponse } from 'rxjs';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -48,7 +50,18 @@ describe('OrderService', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [OrderService, provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        OrderService,
+        provideHttpClient(
+          withInterceptors([
+            (req, next) =>
+              req.url.endsWith('/orders/check')
+                ? eligibleResponse(new HttpResponse({ body: { eligible: true } }))
+                : next(req),
+          ]),
+        ),
+        provideHttpClientTesting(),
+      ],
     });
     service = TestBed.inject(OrderService);
     http = TestBed.inject(HttpTestingController);
@@ -146,11 +159,19 @@ describe('OrderService', () => {
     it('posts a sell with the selected replay time and preserves the response', () => {
       const simulatedAt = '2026-01-05T16:30:00Z';
       const results: OrderResult[] = [];
-      service.submitOrder({ ...BUY, orderType: 'SELL', simulatedAt }).subscribe(value => results.push(value));
+      service
+        .submitOrder({ ...BUY, orderType: 'SELL', simulatedAt })
+        .subscribe((value) => results.push(value));
       http.expectOne('/api/instruments').flush([instrument()]);
       const posted = http.expectOne({ method: 'POST', url: '/api/orders' });
-      expect(posted.request.body).toMatchObject({ accountId: 42, instrumentId: 7,
-        orderType: 'SELL', quantity: 2, indicativePrice: 100, simulatedAt });
+      expect(posted.request.body).toMatchObject({
+        accountId: 42,
+        instrumentId: 7,
+        orderType: 'SELL',
+        quantity: 2,
+        indicativePrice: 100,
+        simulatedAt,
+      });
       const response = order({ orderType: 'SELL', simulatedAt });
       posted.flush(response);
       expect(results).toEqual([response]);
@@ -301,10 +322,25 @@ describe('OrderService', () => {
   it('shares refreshes and never lets pre-submission history erase a new order', () => {
     service.instruments().subscribe();
     http.expectOne('/api/instruments').flush([instrument()]);
-    service.loadOrders().subscribe(); service.loadOrders().subscribe();
+    service.loadOrders().subscribe();
+    service.loadOrders().subscribe();
     const old = http.expectOne('/api/orders');
-    service.submitOrder({ accountId: 1, symbol: 'AAPL', orderType: 'BUY', quantity: 1, indicativePrice: 100 }).subscribe();
-    const result = { orderId: 99, status: 'FILLED', orderType: 'BUY', quantity: 1, indicativePrice: 100 };
+    service
+      .submitOrder({
+        accountId: 1,
+        symbol: 'AAPL',
+        orderType: 'BUY',
+        quantity: 1,
+        indicativePrice: 100,
+      })
+      .subscribe();
+    const result = {
+      orderId: 99,
+      status: 'FILLED',
+      orderType: 'BUY',
+      quantity: 1,
+      indicativePrice: 100,
+    };
     http.expectOne({ method: 'POST', url: '/api/orders' }).flush(result);
     expect(service.orders()[0].orderId).toBe(99);
     old.flush([]);
@@ -316,7 +352,6 @@ describe('OrderService', () => {
     expect(service.orders()[0].orderId).toBe(99);
     expect(service.historyError()).toContain('Unable');
   });
-
 
   describe('pending order polling', () => {
     beforeEach(() => vi.useFakeTimers());
@@ -366,5 +401,4 @@ describe('OrderService', () => {
       http.expectNone('/api/orders');
     });
   });
-
 });

@@ -143,6 +143,44 @@ function Write-NewLogLines {
     }
 }
 
+function Wait-LocalBackends {
+    $pending = @{
+        'auth' = 'http://127.0.0.1:3001/health'
+        'holdings-and-trade' = 'http://127.0.0.1:8082/v3/api-docs'
+        'order-and-sell' = 'http://127.0.0.1:8081/v3/api-docs'
+    }
+    $deadline = [DateTime]::UtcNow.AddMinutes(3)
+    Write-Host 'Waiting for auth and both Java services before starting the UI...'
+    while ($pending.Count -gt 0) {
+        foreach ($service in $processes) {
+            Write-NewLogLines -Service $service
+            $service.Process.Refresh()
+            if ($service.Process.HasExited) {
+                throw "$($service.Name) exited with code $($service.Process.ExitCode) before startup completed."
+            }
+        }
+        foreach ($name in @($pending.Keys)) {
+            try {
+                $response = Invoke-WebRequest -Uri $pending[$name] -UseBasicParsing -TimeoutSec 2
+                if ($response.StatusCode -eq 200) {
+                    $pending.Remove($name)
+                    Write-Host "$name is ready."
+                }
+            }
+            catch {
+                # Connection failures are expected while the services initialize.
+            }
+        }
+        if ($pending.Count -gt 0) {
+            if ([DateTime]::UtcNow -ge $deadline) {
+                throw "Startup timed out waiting for: $($pending.Keys -join ', ')."
+            }
+            Start-Sleep -Milliseconds 250
+        }
+    }
+}
+
+$startupFailed = $false
 try {
     $processes += Start-LocalService -Name 'auth' -FilePath $npm `
         -ArgumentList @('run', 'start:dev') -WorkingDirectory $authDirectory
@@ -164,6 +202,8 @@ try {
         $env:SPRING_DATASOURCE_URL = $oldBusinessUrl
     }
 
+    Wait-LocalBackends
+
     $processes += Start-LocalService -Name 'ui' -FilePath $npm `
         -ArgumentList @('start') -WorkingDirectory $clientUiDirectory
 
@@ -179,6 +219,11 @@ try {
         Start-Sleep -Milliseconds 250
     }
 }
+catch {
+    $startupFailed = $true
+    Write-Host "Local stack failed. Service logs are preserved at $logDirectory"
+    throw
+}
 finally {
     foreach ($service in $processes) {
         Write-NewLogLines -Service $service
@@ -190,7 +235,8 @@ finally {
     }
 
     $resolvedLogDirectory = [System.IO.Path]::GetFullPath($logDirectory)
-    if ($resolvedLogDirectory.StartsWith($tempRoot, [System.StringComparison]::OrdinalIgnoreCase) -and
+    if (-not $startupFailed -and
+        $resolvedLogDirectory.StartsWith($tempRoot, [System.StringComparison]::OrdinalIgnoreCase) -and
         (Split-Path -Leaf $resolvedLogDirectory).StartsWith('trading-season-')) {
         Remove-Item -LiteralPath $resolvedLogDirectory -Recurse -Force -ErrorAction SilentlyContinue
     }

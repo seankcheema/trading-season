@@ -67,7 +67,7 @@ class CashTransactionControllerIntegrationTest {
     private Integer bobAccountId;
 
     @BeforeEach
-    void setUp() {
+    public void setUp() {
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
         cashTransactionRepository.deleteAll();
         accountRepository.deleteAll();

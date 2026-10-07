@@ -24,6 +24,7 @@ flowchart LR
     UI -- "/api/orders, /api/instruments" --> OS["Order and Sell Service<br/>Spring Boot :8081"]
     UI -- "all other /api/*" --> HT["Holdings and Trade Service<br/>Spring Boot :8082"]
 
+    OS -- "execution replay quote" --> HT
     OS -. "cached JWKS" .-> Auth
     HT -. "cached JWKS" .-> Auth
     RS["Reporting Service<br/>Flask :8083"] -. "cached JWKS" .-> Auth
@@ -69,9 +70,10 @@ sequenceDiagram
     UI->>OS: POST /api/orders
     OS->>DB: Insert order as PENDING
     OS->>OS: Run validation rules
-    alt A rule fails
+    alt Validation or execution checks fail
         OS->>DB: Mark REJECTED and write audit entry
     else All rules pass
+        OS->>OS: Check server replay price, buffer, and locked funds/holdings
         OS->>DB: One transaction: fill, cash, holding movement, holding, audit
         OS->>DB: Mark FILLED
     end
@@ -148,13 +150,15 @@ $env:SPRING_DATASOURCE_PASSWORD = 'password'
 
 This needs a running `trading_season` database; see [db/README.md](db/README.md) to create and migrate one, and [apps/market-data](apps/market-data/README.md) to load synthetic market data. On Linux, `scripts/setup-local.sh` does the equivalent setup.
 
+The Windows script waits up to three minutes for auth and both Java services to respond before starting the UI. If a service exits or startup times out, it stops the stack and prints the temporary directory containing the preserved service logs. SpringDoc's warning that `/v3/api-docs` is enabled is informational; that endpoint supplies the Java readiness checks.
+
 ### Development login
 
 In development the auth service seeds `admin@example.com` / `admin123`. Production never seeds it.
 
 ## VS Code workspace
 
-Open [trading-season.code-workspace](trading-season.code-workspace) to load the repository and both Java Maven project folders explicitly. This lets Java language servers resolve each service's dependency classpath when working from the repository root.
+Open each Java service folder as a Maven project in VS Code, or add both service folders to the current workspace. If Java imports remain unresolved after a successful Maven build, run Java: Clean Java Language Server Workspace and reload the projects. Test fixtures are part of each service's `src/test/java` source tree.
 
 ## Checks
 

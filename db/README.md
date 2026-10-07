@@ -25,13 +25,14 @@ psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STO
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f db/migrations/V002__Add_watchlist.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f db/migrations/V008__Drop_account_status.sql
 psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f db/migrations/V009__Add_account_archiving.sql
+psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f db/migrations/V010__Enforce_execution_buffers.sql
 ```
 
-Stop if any command fails. The repository currently contains V001, V002, V008, and V009; there are no separate V003-V007 files. V001 initializes the schema, V002 adds the saved watchlist, V008 removes `user_accounts.account_status` and its values, and V009 adds portfolio account archiving. After all four, a fresh database has 20 application tables.
+Stop if any command fails. The repository currently contains V001, V002, V008, V009, and V010; there are no separate V003-V007 files. V001 initializes the schema, V002 adds the saved watchlist, V008 removes `user_accounts.account_status` and its values, and V009 adds portfolio account archiving. V010 adds execution buffer defaults and replay execution context. After all five, a fresh database has 20 application tables.
 
 ### Upgrade a legacy database
 
-V001 also repairs a legacy schema missing all three of `user_accounts`, `refresh_tokens`, and `portfolio_valuations`, preserving existing application data. Run it as the database owner, then apply V002, V008, and V009 using the commands above. A legacy database retaining the `sessions` table has 21 application tables after repair.
+V001 also repairs a legacy schema missing all three of `user_accounts`, `refresh_tokens`, and `portfolio_valuations`, preserving existing application data. Run it as the database owner, then apply V002, V008, V009, and V010 using the commands above. A legacy database retaining the `sessions` table has 21 application tables after repair.
 
 V001 refuses to run if any of those three tables already exists; do not rerun it on an initialized or partially upgraded database. For a database where V001 is already applied, apply only the remaining migrations. The SQL is the authority for supported repair behavior: see [V001](migrations/V001__Initialize_database.sql).
 
@@ -125,7 +126,7 @@ apps/market-data/db/scripts/powershell/setup-market-data.ps1 `
 
 Use the configured password in the URL and report free space on the drive storing PostgreSQL data. Add `-StartDate 2026-01-05 -EndDate 2026-01-06` for a smaller archive, or `-Regenerate` to replace an incompatible archive. The launcher creates a Python virtual environment, installs dependencies, generates the 2026 archive, validates it, and imports candles and session metadata. Raw ticks remain in Parquet; retain the archive for replay.
 
-The separate `setup-database.ps1` initializer applies only V001 and V002 to an empty schema; apply V008 and V009 afterwards. For pipeline details and individual troubleshooting commands, see the [Market Data README](../apps/market-data/README.md).
+The separate `setup-database.ps1` initializer applies only V001 and V002 to an empty schema; apply V008, V009, and V010 afterwards. For pipeline details and individual troubleshooting commands, see the [Market Data README](../apps/market-data/README.md).
 
 ## Schema
 
@@ -336,3 +337,9 @@ erDiagram
 ## Portfolio account archiving
 
 Apply `db/migrations/V009__Add_account_archiving.sql` after V008 before starting updated Java services. It adds nullable `accounts.archived_at`; existing accounts remain active. Archiving updates only this timestamp. Account IDs, names, foreign keys, and all related transaction and valuation rows are retained for reporting and future auditing. No name uniqueness constraint prevents reusing an archived name.
+
+## Execution buffer migration
+
+Apply [V010](migrations/V010__Enforce_execution_buffers.sql) after V009 before starting the updated services. It changes `users.execution_buffer_percent`'s default to 1 and backfills existing zero values to 1; nonzero values remain unchanged. Users may select zero again after migration. API validation restricts new settings and overrides to 0-10 percent with two decimal places. Legacy out-of-range settings must be corrected before use; the migration deliberately preserves them.
+
+Orders gain nullable `session_id` and `executed_simulated_at`. The session records replay context without a foreign key so unavailable requested sessions can still leave a rejected order. The execution timestamp comes from the server quote; `simulated_at` remains client context and existing audit timestamps remain real server times. Actual execution prices stay canonical in `fills.quote_price`; historical rows require no backfill.

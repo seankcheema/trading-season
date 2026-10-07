@@ -22,15 +22,63 @@
         <ng-icon name="lucideX" class="text-[18px]" />
       </button>
     </header>
-
     <div class="flex flex-col gap-4 p-5">
+      <div class="flex flex-col gap-2">
+        <h3 class="text-sm font-semibold">Trading</h3>
+        <label for="executionBuffer" class="text-sm">Execution buffer (%)</label>
+        <input
+          id="executionBuffer"
+          type="number"
+          min="0"
+          max="10"
+          step="0.01"
+          class="border-border rounded border px-3 py-2"
+          [formControl]="buffer"
+          aria-describedby="buffer-help buffer-feedback"
+        />
+        <p id="buffer-help" class="text-muted-foreground text-sm">
+          Accept up to 0–10% unfavorable price movement. Better prices are always accepted. Up to
+          two decimals. Default: 1%.
+        </p>
+        @if (buffer.invalid && buffer.dirty) {
+          <p class="text-sm text-red-500">
+            Enter a percentage from 0 to 10 with up to two decimal places.
+          </p>
+        }
+        <button
+          hlmBtn
+          type="button"
+          class="w-full cursor-pointer hover:bg-primary/80"
+          [disabled]="buffer.invalid || loading() || saving() || saved()"
+          [attr.aria-busy]="saving()"
+          aria-label="Save execution buffer"
+          (click)="saveBuffer()"
+        >
+          <span class="buffer-save-content" aria-live="polite" aria-atomic="true">
+            @if (saving()) {
+              <span class="buffer-save-spinner" aria-hidden="true"></span>
+              <span>Saving…</span>
+            } @else if (saved()) {
+              <span class="buffer-save-success">Saved successfully</span>
+            } @else {
+              <span>Save execution buffer</span>
+            }
+          </span>
+        </button>
+        @if (loadFailed()) {
+          <button type="button" class="text-sm underline" (click)="loadBuffer()">
+            Retry loading settings
+          </button>
+        }
+        <p id="buffer-feedback" role="status" class="text-sm">{{ settingsMessage() }}</p>
+      </div>
+      <div hlmSeparator></div>
       <div>
         <h3 class="text-sm font-semibold">Security</h3>
         <p class="text-muted-foreground text-sm">
           Control how long you stay signed in on this browser.
         </p>
       </div>
-
       <div hlmField>
         <label hlmFieldLabel for="idleTimeout" class="text-foreground">
           Sign out after inactivity
@@ -47,8 +95,8 @@
           }
         </hlm-native-select>
         <p class="text-muted-foreground text-sm">
-          You will be signed out automatically when there is no mouse, keyboard or touch input
-          for this long. Changes apply immediately.
+          You will be signed out automatically when there is no mouse, keyboard or touch input for
+          this long. Changes apply immediately.
         </p>
       </div>
     </div>

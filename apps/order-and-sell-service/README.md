@@ -12,6 +12,7 @@ All require a bearer token except the public market reads.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
+| POST | `/api/orders/check` | Advisory eligibility check; no order or reservation is created |
 | POST | `/api/orders` | Submit a buy or sell order. Returns 201 with the outcome (`FILLED` or `REJECTED`) |
 | GET | `/api/orders` | The caller's orders across all their accounts, newest first |
 | GET | `/api/instruments` | Every instrument with `tradable` and `simulatedStockSymbol` |
@@ -21,14 +22,15 @@ All require a bearer token except the public market reads.
 | GET | `/api/market/snapshot`, `/candles`, `/stream` | Public market data (snapshot, OHLCV candles, SSE ticks) |
 | PUT | `/api/market/clock` | Move the shared replay cursor |
 
-Order request: `accountId`, `instrumentId`, `orderType` (`BUY` or `SELL`), `quantity`, `indicativePrice`, `clientReference` (UUID idempotency key), and optional `bufferPercent` and `simulatedAt`.
+Order request: `accountId`, `instrumentId`, `orderType` (`BUY` or `SELL`), `quantity`, `indicativePrice`, `clientReference` (UUID idempotency key), and optional `bufferPercent`, `simulatedAt`, and positive `sessionId`. The check accepts the same trade fields without requiring `clientReference`.
 
 Behavior worth knowing:
 
 - A rule failure is a normal outcome: the response is still 201 with `status: REJECTED` and a `rejectionReason`.
 - Resubmitting the same `accountId` and `clientReference` returns the original outcome without executing again.
 - Another user's account is 403 and a missing account is 404, checked before the idempotency lookup. An unknown `instrumentId` is 400.
-- Cash belongs to the user, not the account: a fill moves `users.available_funds`. Orders fill at `indicativePrice`.
+- Cash belongs to the user, not the account: a fill moves `users.available_funds`. Orders fill at the authoritative Holdings and Trade replay price for the selected session.
+- Responses include `bufferPercent`, `executionPrice` from the persisted fill (null for unfilled orders), and `executedSimulatedAt` from the execution quote.
 - `simulatedAt` records the replay time chosen in the UI. `submittedAt`, `resolvedAt`, and fill times are always real server times.
 - Errors use `{"error": "..."}`.
 
@@ -49,7 +51,6 @@ flowchart TB
         subgraph Rules["OrderValidator rules"]
             V1[AccountCredentialsValidator]
             V2[TradabilityValidator]
-            V3[SufficientFundsValidator]
             V4[SufficientHoldingsValidator]
         end
         OE[OrderExecutionService]
@@ -64,6 +65,7 @@ flowchart TB
     VP --> Rules
     OS --> OE
     OS --> AT
+    OE --> EP[ExecutionPolicy]
     OE --> AT
     OS --> E1
     OE --> E1
@@ -97,8 +99,9 @@ sequenceDiagram
             S->>DB: Mark REJECTED with reason and audit entry
         else All rules pass
             S->>E: execute(order, instrument)
-            E->>DB: Lock user row and holding row
-            alt Funds or holdings changed since validation
+            E->>DB: Lock account, user row and holding row
+            E->>E: Read authoritative replay quote and check buffer and actual cost
+            alt Buffer, quote availability, funds or holdings fail at execution
                 E->>DB: Mark REJECTED
             else Still valid
                 E->>DB: Insert fill, cash transaction, holding movement
@@ -137,6 +140,7 @@ Environment variables override [application.properties](src/main/resources/appli
 | `AUTH_JWK_SET_URI` | `http://localhost:3001/.well-known/jwks.json` | Auth service public keys |
 | `AUTH_JWT_ISSUER` | `https://auth.dualeapa.local` | Required `iss`, must equal the auth service's `JWT_ISSUER` |
 | `CORS_ORIGINS` | `http://localhost:4200` | Allowed browser origins, comma-separated |
+| `EXECUTION_MARKET_BASE_URL` | `http://localhost:8082` | Holdings and Trade URL for execution quotes |
 | `MARKET_REPLAY_ARCHIVE_LOCATION` | empty | Absolute path to the Parquet archive when the recorded path is not reachable |
 
 ## Run and test
@@ -155,3 +159,13 @@ After changing Java code, regenerate the Javadocs; see [AGENTS.md](../../AGENTS.
 ## Archived portfolio accounts
 
 New orders and execution on archived accounts return 409 with an `error` message. Account row locks serialize trading with archiving before user cash and holdings locks. Existing client-reference retries still return the previous order outcome. Historical order reads continue to include archived accounts. Portfolio archiving is separate from credential records.
+
+## Execution price protection
+
+Execution reads `/api/market/snapshot` from Holdings and Trade so it uses the same server replay clock as the UI. The selected `sessionId` is passed through; an omitted session uses that market API's default. `simulatedAt` never selects a quote. Instruments require a `simulatedStockSymbol` mapping and a positive quote at the snapshot cursor. Missing prices or unavailable market data reject the trade without ledger changes. Quote requests have a two-second timeout and no application retry.
+
+For reference price P and buffer B%, buys permit prices at or below P * (1 + B/100); sells permit prices at or above P * (1 - B/100). Boundaries pass and favorable movement always passes. Buffers accept 0 through 10 percent with up to two decimal places. A per-order override takes precedence over the user's saved setting; the effective value is recorded on the order. Invalid legacy user settings must be corrected or overridden before execution.
+
+Buy affordability uses quantity times the actual quote, including a recheck under resource locks. The earlier indicative-price funds validator is removed. Immediate full fills remain a simulation assumption: no liquidity, spread, or partial-fill model is implemented.
+
+`POST /api/orders/check` returns `eligible`, `rejectionCode`, `rejectionReason`, `bufferPercent`, `indicativePrice`, `executionPrice`, `estimatedTradeValue`, `priceBoundary`, `sessionId`, and `quoteTimestamp`. Quote-dependent fields are null when no quote is available. Business rejection returns 200 with `eligible: false`; authentication, ownership, archive, missing-resource, and malformed-input errors use normal HTTP errors. The check does not write orders, audits, fills, or reservations. Submission independently checks again and can reject after a successful check.

@@ -242,6 +242,17 @@ export class ApiStub {
     await page.route('**/api/auth/register', (route) => this.registerProfile(route));
     await page.route('**/api/auth/account-exists', (route) => this.accountExists(route));
     await page.route(/\/api\/me\/watchlist(?:\/[^/?]+)?$/, (route) => this.watchlist(route));
+    await page.route('**/api/orders/check', (route) => this.orderRequest(route, true));
+    await page.route('**/api/users/me/execution-settings', async (route) => {
+      const owner = await this.caller(route);
+      if (!owner) return;
+      const profile = [...this.accounts.values()].find((a) => a.id === owner)!.profile!;
+      if (route.request().method() === 'PUT')
+        profile['executionBufferPercent'] = this.body(route)['executionBufferPercent'];
+      await this.json(route, 200, {
+        executionBufferPercent: profile['executionBufferPercent'] ?? 1,
+      });
+    });
     await page.route('**/api/orders', (route) => this.orderRequest(route));
     await page.route('**/api/instruments', async (route) => {
       if (await this.caller(route))
@@ -318,7 +329,7 @@ export class ApiStub {
   }
 
   /** Submit at the quoted price; apply only fills to persisted cash and holdings. */
-  private async orderRequest(route: Route): Promise<void> {
+  private async orderRequest(route: Route, check = false): Promise<void> {
     const owner = await this.caller(route);
     if (!owner) return;
     if (route.request().method() === 'GET') {
@@ -327,7 +338,9 @@ export class ApiStub {
     }
     const body = this.body(route);
     const accountId = Number(body['accountId']);
-    const account = this.tradingAccounts.find((a) => a.ownerId === owner && a.accountId === accountId);
+    const account = this.tradingAccounts.find(
+      (a) => a.ownerId === owner && a.accountId === accountId,
+    );
     if (!account) {
       await this.json(route, 404, { error: 'Account not found' });
       return;
@@ -343,7 +356,8 @@ export class ApiStub {
       return;
     }
     const quantity = Number(body['quantity']),
-      price = Number(body['indicativePrice']);
+      indicativePrice = Number(body['indicativePrice']);
+    const price = Number(body['instrumentId']) === 7 ? 225.8 : 420.5;
     const side = body['orderType'];
     const symbol =
       Number(body['instrumentId']) === 7
@@ -365,12 +379,29 @@ export class ApiStub {
     const profile = [...this.accounts.values()].find((a) => a.id === owner)!.profile!;
     const funds = Number(profile['availableFunds']);
     const held = account.holdings.find((h) => h.symbol === symbol);
-    const reason =
-      side === 'BUY' && funds < quantity * price
+    const buffer = Number(body['bufferPercent'] ?? profile['executionBufferPercent'] ?? 1);
+    const boundary = indicativePrice * (1 + (side === 'BUY' ? buffer : -buffer) / 100);
+    const reason = (side === 'BUY' ? price > boundary : price < boundary)
+      ? 'Execution price is outside your buffer.'
+      : side === 'BUY' && funds < quantity * price
         ? 'Insufficient funds'
         : side === 'SELL' && (held?.quantity ?? 0) < quantity
           ? 'Insufficient holdings'
           : null;
+    if (check) {
+      await this.json(route, 200, {
+        eligible: !reason,
+        rejectionReason: reason,
+        bufferPercent: buffer,
+        indicativePrice,
+        executionPrice: price,
+        estimatedTradeValue: quantity * price,
+        priceBoundary: boundary,
+        sessionId: 1,
+        quoteTimestamp: this.marketTimestamp,
+      });
+      return;
+    }
     const now = new Date().toISOString();
     const result: OrderResult = {
       orderId: Math.max(0, ...[...this.orders.values()].flat().map((o) => o.orderId)) + 1,
@@ -378,7 +409,10 @@ export class ApiStub {
       instrumentId: Number(body['instrumentId']),
       orderType: side,
       quantity,
-      indicativePrice: price,
+      indicativePrice,
+      executionPrice: reason ? null : price,
+      bufferPercent: buffer,
+      executedSimulatedAt: reason ? null : this.marketTimestamp,
       status: reason ? 'REJECTED' : 'FILLED',
       rejectionReason: reason,
       submittedAt: now,

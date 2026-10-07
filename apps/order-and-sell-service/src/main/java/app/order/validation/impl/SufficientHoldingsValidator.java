@@ -14,12 +14,9 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 
 /**
- * A SELL can't take a holding negative. Short selling isn't modelled by
- * this schema (see docs/db/SCHEMA-README.md), so unlike {@code
- * cash_balance}, {@code holdings.quantity} has no DB-level CHECK
- * preventing it — this validator is the only thing stopping it today.
- * Worth raising with the team whether {@code CHECK (quantity >= 0)}
- * should be added to the holdings table as a second line of defence.
+ * Rejects a SELL exceeding the account's current shares. Short selling is
+ * not modeled. Execution checks again under resource locks before writing
+ * any fill or holding movement; this rule provides early rejection.
  */
 @Component
 public class SufficientHoldingsValidator implements OrderValidator {

@@ -22,15 +22,10 @@ import java.time.OffsetDateTime;
  * itself decide whether a trade is allowed, it carries out one that already
  * was.
  *
- * <p><b>Simplification:</b> this fills at the order's client-submitted
- * {@code indicativePrice} rather than a live market quote — business-backend
- * doesn't yet read the {@code quotes}/{@code market_ticks} tables FMS
- * writes. BR-08 calls for the quote price prevailing at execution time, and
- * KAN-100's buffer_percent tolerance only means something once there's a
- * live price to compare the indicative price against. Wiring that up is
- * follow-on work (plausibly KAN-129) — {@code fillPrice} below is the one
- * line to change once a quote source exists; everything downstream of it
- * (ledger writes, balance/holding updates) doesn't need to change.
+ * <p>The fill uses one current quote from Holdings and Trade's replay clock,
+ * obtained after resource locks. Adverse movement outside the order's buffer,
+ * unavailable quotes, or insufficient resources reject without ledger writes.
+ * Favorable movement is always permitted. Audit times remain real server time.
  *
  * <p><b>Funds:</b> cash belongs to the user, not to an account, so a BUY
  * debits and a SELL credits the owning user's {@code availableFunds}
@@ -47,6 +42,7 @@ import java.time.OffsetDateTime;
 @Service
 public class OrderExecutionService {
 
+    private final ExecutionQuoteSource quotes;
     private final AccountRepository accountRepository;
     private final UserRepository userRepository;
     private final HoldingRepository holdingRepository;
@@ -59,6 +55,7 @@ public class OrderExecutionService {
     /**
      * Creates the service.
      *
+     * @param quotes authoritative replay quote source
      * @param accountRepository account lookup
      * @param userRepository user lookup with row locking
      * @param holdingRepository holding lookup with row locking
@@ -75,7 +72,8 @@ public class OrderExecutionService {
                                   FillRepository fillRepository,
                                   CashTransactionRepository cashTransactionRepository,
                                   HoldingMovementRepository holdingMovementRepository,
-                                  AuditTrailService auditTrailService) {
+                                  AuditTrailService auditTrailService, ExecutionQuoteSource quotes) {
+        this.quotes = quotes;
         this.accountRepository = accountRepository;
         this.userRepository = userRepository;
         this.holdingRepository = holdingRepository;
@@ -92,15 +90,13 @@ public class OrderExecutionService {
      * @throws org.springframework.web.server.ResponseStatusException if the account is archived
      * @param order      the {@code PENDING} order to execute
      * @param instrument the instrument being traded
-     * @return the order as {@code FILLED}, or {@code REJECTED} if funds or
-     *         holdings were no longer sufficient under the row lock
+     * @return the order as {@code FILLED}, or {@code REJECTED} when its buffer,
+     *         quote availability, funds or holdings fail execution checks
      * @throws IllegalStateException if the account or its owning user no longer exists
      */
     @Transactional
     public Order execute(Order order, Instrument instrument) {
         boolean isBuy = Order.TYPE_BUY.equals(order.getOrderType());
-        BigDecimal fillPrice = order.getIndicativePrice();
-        BigDecimal tradeValue = order.getQuantity().multiply(fillPrice);
 
         Account account = accountRepository.findByIdForUpdate(order.getAccountId())
                 .orElseThrow(() -> new IllegalStateException(
@@ -112,17 +108,24 @@ public class OrderExecutionService {
                 .orElseThrow(() -> new IllegalStateException(
                         "Account " + account.getAccountId() + " has no owning user"));
 
-        if (isBuy && tradeValue.compareTo(user.getAvailableFunds()) > 0) {
-            return reject(order, "BR-09: insufficient funds at execution time");
-        }
-
         Holding holding = holdingRepository
                 .findByAccountIdAndInstrumentIdForUpdate(order.getAccountId(), order.getInstrumentId())
                 .orElse(null);
         BigDecimal currentQuantity = holding == null ? BigDecimal.ZERO : holding.getQuantity();
-        if (!isBuy && order.getQuantity().compareTo(currentQuantity) > 0) {
-            return reject(order, "Insufficient holdings at execution time");
-        }
+        if (!ExecutionPolicy.validBuffer(order.getBufferPercent()))
+            return reject(order, ExecutionPolicy.reason("INVALID_BUFFER"));
+        ExecutionQuoteSource.Quote quote;
+        try { quote = quotes.current(instrument, order.getSessionId()); }
+        catch (ExecutionQuoteSource.QuoteUnavailableException ex) { return reject(order, ex.getMessage()); }
+        BigDecimal fillPrice = quote.price();
+        BigDecimal tradeValue = order.getQuantity().multiply(fillPrice);
+        BigDecimal boundary = ExecutionPolicy.boundary(order.getOrderType(), order.getIndicativePrice(), order.getBufferPercent());
+        String failure = ExecutionPolicy.failure(order.getOrderType(), order.getQuantity(), fillPrice,
+                boundary, user.getAvailableFunds(), currentQuantity);
+        if (failure != null) return reject(order, ExecutionPolicy.reason(failure));
+        order.setSessionId(quote.sessionId());
+        order.setExecutedSimulatedAt(quote.timestamp().atOffset(java.time.ZoneOffset.UTC));
+        order.setExecutionPrice(fillPrice);
 
         OffsetDateTime now = OffsetDateTime.now();
 

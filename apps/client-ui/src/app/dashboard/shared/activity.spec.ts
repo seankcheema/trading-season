@@ -39,6 +39,16 @@ function order(overrides: Partial<OrderResult> = {}): OrderResult {
 }
 
 describe('activity helpers', () => {
+  it('uses the actual fill price and server execution time when available', () => {
+    const filled = order({
+      executionPrice: 11,
+      executedSimulatedAt: '2026-01-05T16:00:02Z',
+      simulatedAt: '2026-01-05T16:00:00Z',
+    });
+    expect(orderDate(filled)).toBe('2026-01-05T16:00:02Z');
+    expect(orderActivity(filled, CATALOGUE).value).toBe(33);
+    expect(orderHistoryRow(filled, CATALOGUE, 'Main').price).toBe(11);
+  });
   it('dates an order by replay time, then resolution, then submission', () => {
     expect(orderDate(order({ simulatedAt: '2026-01-02T15:00:00Z' }))).toBe('2026-01-02T15:00:00Z');
     expect(orderDate(order({ simulatedAt: 'nonsense' }))).toBe('2026-01-05T16:00:05Z');

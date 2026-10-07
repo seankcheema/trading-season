@@ -21,7 +21,7 @@ class MarketDataRepositoryTest {
     Path archive;
 
     @BeforeEach
-    void createArchiveDirectory() throws Exception {
+    public void createArchiveDirectory() throws Exception {
         archive = Path.of("target", "test-market-data", UUID.randomUUID().toString());
         Files.createDirectories(archive);
     }

@@ -1,3 +1,5 @@
+import { HttpResponse, withInterceptors } from '@angular/common/http';
+import { of as eligibleResponse } from 'rxjs';
 import { vi, afterEach } from 'vitest';
 import { ToastService } from '../../notifications/toast.service';
 import { TestBed } from '@angular/core/testing';
@@ -73,7 +75,19 @@ describe('OrderSubmissionComponent', () => {
     vi.useFakeTimers();
     await TestBed.configureTestingModule({
       imports: [OrderSubmissionComponent],
-      providers: [OrderService, provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      providers: [
+        OrderService,
+        provideHttpClient(
+          withInterceptors([
+            (req, next) =>
+              req.url.endsWith('/orders/check')
+                ? eligibleResponse(new HttpResponse({ body: { eligible: true } }))
+                : next(req),
+          ]),
+        ),
+        provideHttpClientTesting(),
+        provideRouter([]),
+      ],
     }).compileComponents();
   });
 
@@ -661,22 +675,29 @@ describe('OrderSubmissionComponent', () => {
     fixture.componentRef.setInput('sessionId', 3);
     fixture.componentRef.setInput('marketTimestamp', '2026-01-05T16:00:00Z');
     fixture.detectChanges();
-    http.expectOne((request) => request.url === '/api/market/candles').flush({ points: [
-      { timestamp: '2026-01-05T15:30:00Z', close: 310 }, { timestamp: '2026-01-05T16:00:00Z', close: 316.59 },
-    ] });
+    http
+      .expectOne((request) => request.url === '/api/market/candles')
+      .flush({
+        points: [
+          { timestamp: '2026-01-05T15:30:00Z', close: 310 },
+          { timestamp: '2026-01-05T16:00:00Z', close: 316.59 },
+        ],
+      });
     fixture.detectChanges();
     const previous = component['chartPoints']();
-    component['timeframe'].set('5D'); fixture.detectChanges();
+    component['timeframe'].set('5D');
+    fixture.detectChanges();
     const refresh = http.expectOne((request) => request.url === '/api/market/candles');
     expect(component['chartPoints']()).toEqual(previous);
     expect(component['chartTimeframe']()).toBe('1D');
     expect(fixture.nativeElement.querySelector('app-price-chart')).not.toBeNull();
-    refresh.flush({}, { status: 503, statusText: 'Unavailable' }); fixture.detectChanges();
+    refresh.flush({}, { status: 503, statusText: 'Unavailable' });
+    fixture.detectChanges();
     expect(component['chartPoints']()).toEqual(previous);
     expect(component['chartError']()).toContain('could not refresh');
-    component['retryChart'](); fixture.detectChanges();
+    component['retryChart']();
+    fixture.detectChanges();
     http.expectOne((request) => request.url === '/api/market/candles').flush({ points: [] });
     expect(component['chartPoints']()).toEqual([]);
   });
-
 });

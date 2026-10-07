@@ -26,7 +26,7 @@ class WatchlistSecurityTest {
     private MockMvc mvc;
     private final UUID owner = UUID.randomUUID();
 
-    @BeforeEach void setup() { mvc = webAppContextSetup(context).apply(springSecurity()).build(); }
+    @BeforeEach public void setup() { mvc = webAppContextSetup(context).apply(springSecurity()).build(); }
 
     @Test void allOperationsRequireAuthentication() throws Exception {
         mvc.perform(get("/api/me/watchlist")).andExpect(status().isUnauthorized());

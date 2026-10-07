@@ -32,7 +32,7 @@ class PortfolioValuationIntegrationTest {
     private int id;
 
     @BeforeEach
-    void setup() {
+    public void setup() {
         http = webAppContextSetup(context).apply(springSecurity()).build();
         Account account = new Account();
         account.setUserId(owner);

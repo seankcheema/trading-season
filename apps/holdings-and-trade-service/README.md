@@ -14,6 +14,7 @@ All require a bearer token except where marked public.
 | --- | --- | --- |
 | POST | `/api/auth/account-exists` | Whether an email is registered (public) |
 | POST | `/api/auth/register` | Create the caller's profile and a default account |
+| GET, PUT | `/api/users/me/execution-settings` | Read or save the caller's execution buffer |
 | GET | `/api/users/me` | The caller's profile, without the SSN |
 | GET, POST | `/api/me/accounts` | List (newest first) or open an account |
 | PUT | `/api/me/accounts/{accountId}` | Rename an owned account |
@@ -174,3 +175,7 @@ Keep HTTP validation in controllers, business logic in services, and persistence
 `DELETE /api/accounts/{accountId}` archives an owned account with no nonzero holding quantities. Shared user cash is excluded. Success (including repeated deletion) is 204; open positions return 422, another owner 403, and a missing account 404. Errors use the standard `error` envelope. Archived accounts leave `GET /api/me/accounts`, cannot be renamed or receive new valuation captures, and keep all historical reads. Account names can be reused. Deposits and withdrawals book against the earliest active account; create an account first if none remains.
 
 Archiving sets `accounts.archived_at` and never deletes accounts, orders, fills, holdings, movements, cash transactions, audit entries, or portfolio valuations. Account IDs and relationships remain available for reporting and a future audit service.
+
+## Execution settings
+
+`GET /api/users/me/execution-settings` returns `executionBufferPercent`. PUT accepts the same field: a required number from 0 to 10 with up to two decimal places. The caller is resolved only from the token; updates acquire the shared user row lock. New users default to 1 percent. The settings protect against unfavorable execution price movement; better prices are always allowed. Order and Sell enforces the saved buffer against this service's replay snapshot; see its [execution contract](../order-and-sell-service/README.md#execution-price-protection).

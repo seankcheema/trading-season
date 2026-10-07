@@ -10,6 +10,9 @@ import java.time.OffsetDateTime;
  * {@code rejectionReason} together answer the second acceptance criterion:
  * whether the trade executed, and if not, why.
  *
+ * @param bufferPercent effective execution tolerance
+ * @param executionPrice persisted fill price, null for unfilled orders
+ * @param executedSimulatedAt server replay execution time
  * @param orderId          the created order's id
  * @param accountId        owned account, for projecting its simulated positions
  * @param instrumentId     instrument traded, for matching execution history to the catalogue
@@ -34,7 +37,10 @@ public record OrderResponse(
         String rejectionReason,
         OffsetDateTime submittedAt,
         OffsetDateTime resolvedAt,
-        OffsetDateTime simulatedAt
+        OffsetDateTime simulatedAt,
+        BigDecimal bufferPercent,
+        BigDecimal executionPrice,
+        OffsetDateTime executedSimulatedAt
 ) {
     /**
      * Builds a response from a persisted order.
@@ -54,7 +60,8 @@ public record OrderResponse(
                 order.getRejectionReason(),
                 order.getSubmittedAt(),
                 order.getResolvedAt(),
-                order.getSimulatedAt()
+                order.getSimulatedAt(),
+                order.getBufferPercent(), order.getExecutionPrice(), order.getExecutedSimulatedAt()
         );
     }
 }

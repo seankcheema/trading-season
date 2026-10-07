@@ -47,6 +47,7 @@ class OrderExecutionServiceTest {
     private final HoldingMovementRepository holdingMovementRepository = mock(HoldingMovementRepository.class);
     private final AuditTrailService auditTrailService = mock(AuditTrailService.class);
 
+    private final ExecutionQuoteSource quotes = mock(ExecutionQuoteSource.class);
     private OrderExecutionService service;
     private Account account;
     private User user;
@@ -54,7 +55,8 @@ class OrderExecutionServiceTest {
     @BeforeEach
     public void setUp() {
         service = new OrderExecutionService(accountRepository, userRepository, holdingRepository, orderRepository,
-                fillRepository, cashTransactionRepository, holdingMovementRepository, auditTrailService);
+                fillRepository, cashTransactionRepository, holdingMovementRepository, auditTrailService, quotes);
+        when(quotes.current(any(), any())).thenReturn(new ExecutionQuoteSource.Quote(new BigDecimal("25.00"), 1, java.time.Instant.parse("2026-01-05T16:00:00Z")));
         account = new Account();
         account.setId(ACCOUNT_ID);
         account.setUserId(USER_ID);
@@ -136,6 +138,7 @@ class OrderExecutionServiceTest {
         when(holdingRepository.findByAccountIdAndInstrumentIdForUpdate(ACCOUNT_ID, INSTRUMENT_ID))
                 .thenReturn(Optional.of(existing));
 
+        when(quotes.current(any(), any())).thenReturn(new ExecutionQuoteSource.Quote(new BigDecimal("40.00"), 1, java.time.Instant.parse("2026-01-05T16:00:00Z")));
         Order result = service.execute(order(Order.TYPE_SELL, "3", "40.00"), new Instrument());
 
         assertEquals(Order.STATUS_FILLED, result.getStatus());
@@ -186,6 +189,28 @@ class OrderExecutionServiceTest {
         verify(orderRepository, never()).save(any());
     }
 
+    @Test void rejectsUnavailableQuoteWithoutLedgerWrites() {
+        when(quotes.current(any(), any())).thenThrow(new ExecutionQuoteSource.QuoteUnavailableException());
+        assertFailed(service.execute(order("BUY", "1", "25"), new Instrument()), ExecutionPolicy.reason("MARKET_PRICE_UNAVAILABLE"));
+    }
+    @Test void rejectsInvalidStoredBufferWithoutRequestingQuote() {
+        Order order = order("BUY", "1", "25"); order.setBufferPercent(new BigDecimal("11"));
+        assertFailed(service.execute(order, new Instrument()), ExecutionPolicy.reason("INVALID_BUFFER"));
+        verify(quotes, never()).current(any(), any());
+    }
+    @Test void adverseMovementRejectsButFavorablePriceUsesActualCash() {
+        Order order = order("BUY", "10", "24");
+        assertFailed(service.execute(order, new Instrument()), ExecutionPolicy.reason("PRICE_OUTSIDE_BUFFER"));
+    }
+    @Test void favorableExecutionCanMakeAnOtherwiseUnaffordableBuyPass() {
+        user.setAvailableFunds(new BigDecimal("250"));
+        Order result = service.execute(order("BUY", "10", "26"), new Instrument());
+        assertEquals(Order.STATUS_FILLED, result.getStatus());
+        assertEquals(0, user.getAvailableFunds().signum());
+        assertEquals(new BigDecimal("25.00"), savedFill().getQuotePrice());
+        assertNotNull(result.getExecutedSimulatedAt());
+    }
+
     private void assertFailed(Order result, String reason) {
         assertEquals(Order.STATUS_REJECTED, result.getStatus());
         assertEquals(reason, result.getRejectionReason());
@@ -204,6 +229,7 @@ class OrderExecutionServiceTest {
         order.setQuantity(new BigDecimal(quantity));
         order.setIndicativePrice(new BigDecimal(price));
         order.setStatus(Order.STATUS_PENDING);
+        order.setBufferPercent(BigDecimal.ONE);
         return order;
     }
 

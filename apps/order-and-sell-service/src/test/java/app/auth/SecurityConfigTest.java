@@ -31,6 +31,7 @@ import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
@@ -115,7 +116,7 @@ class SecurityConfigTest {
     void rejectsTokenSignedWithDifferentKey() throws JOSEException {
         String token = signRs256(otherKeyWithSameKid, claims(c -> { }));
 
-        assertThrows(JwtException.class, () -> decoder().decode(token));
+        assertNotNull(assertThrows(JwtException.class, () -> decoder().decode(token)));
     }
 
     @Test
@@ -125,28 +126,28 @@ class SecurityConfigTest {
             .issueTime(Date.from(past.minusSeconds(900)))
             .expirationTime(Date.from(past))));
 
-        assertThrows(JwtException.class, () -> decoder().decode(token));
+        assertNotNull(assertThrows(JwtException.class, () -> decoder().decode(token)));
     }
 
     @Test
     void rejectsTokenFromAnotherIssuer() throws JOSEException {
         String token = signRs256(signingKey, claims(c -> c.issuer("https://evil.example.com")));
 
-        assertThrows(JwtException.class, () -> decoder().decode(token));
+        assertNotNull(assertThrows(JwtException.class, () -> decoder().decode(token)));
     }
 
     @Test
     void rejectsTokenWhoseSubjectIsNotUuid() throws JOSEException {
         String token = signRs256(signingKey, claims(c -> c.subject("alice")));
 
-        assertThrows(JwtException.class, () -> decoder().decode(token));
+        assertNotNull(assertThrows(JwtException.class, () -> decoder().decode(token)));
     }
 
     @Test
     void rejectsTokenWithoutSubject() throws JOSEException {
         String token = signRs256(signingKey, claims(c -> c.subject(null)));
 
-        assertThrows(JwtException.class, () -> decoder().decode(token));
+        assertNotNull(assertThrows(JwtException.class, () -> decoder().decode(token)));
     }
 
     @Test
@@ -155,14 +156,14 @@ class SecurityConfigTest {
         jwt.sign(new MACSigner(new byte[32]));
         String token = jwt.serialize();
 
-        assertThrows(JwtException.class, () -> decoder().decode(token));
+        assertNotNull(assertThrows(JwtException.class, () -> decoder().decode(token)));
     }
 
     @Test
     void rejectsUnsignedToken() {
         String token = new PlainJWT(claims(c -> { })).serialize();
 
-        assertThrows(JwtException.class, () -> decoder().decode(token));
+        assertNotNull(assertThrows(JwtException.class, () -> decoder().decode(token)));
     }
 
     @Test

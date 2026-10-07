@@ -1,11 +1,14 @@
 package app.user;
 
 import app.auth.AuthenticatedUser;
+import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -17,7 +20,7 @@ import java.util.UUID;
  * another user.
  */
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping("/api/users/me")
 @Tag(name = "Users", description = "User profile information endpoints")
 public class UserController {
 
@@ -32,6 +35,26 @@ public class UserController {
         this.userService = userService;
     }
 
+    /** Returns the owner's execution protection.
+     * @param jwt verified token
+     * @return saved percentage */
+    @GetMapping("/execution-settings")
+    @Operation(summary = "Get execution buffer")
+    public ExecutionSettings executionSettings(@AuthenticationPrincipal Jwt jwt) {
+        return new ExecutionSettings(userService.getOwnAccount(AuthenticatedUser.from(jwt).userId()).getExecutionBufferPercent());
+    }
+
+    /** Updates the owner's execution protection.
+     * @param settings percentage from zero to ten, with two decimals
+     * @param jwt verified token
+     * @return saved percentage */
+    @PutMapping("/execution-settings")
+    @Operation(summary = "Save execution buffer", description = "Saves a user-wide adverse price tolerance from 0 to 10 percent")
+    public ExecutionSettings saveExecutionSettings(@Valid @RequestBody ExecutionSettings settings,
+            @AuthenticationPrincipal Jwt jwt) {
+        return userService.saveExecutionSettings(AuthenticatedUser.from(jwt).userId(), settings);
+    }
+
     /**
      * Returns the caller's business account.
      *
@@ -39,7 +62,7 @@ public class UserController {
      * @return the caller's profile, without the SSN
      * @throws UserNotFoundException if the caller has not registered
      */
-    @GetMapping("/me")
+    @GetMapping
     @Operation(summary = "Get authenticated user profile", description = "Returns the profile of the authenticated user, including personal and account information")
     public UserProfileResponse me(@AuthenticationPrincipal Jwt jwt) {
         UUID userId = AuthenticatedUser.from(jwt).userId();

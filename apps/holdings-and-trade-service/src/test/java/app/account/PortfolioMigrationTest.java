@@ -24,10 +24,10 @@ class PortfolioMigrationTest {
             assertTrue(schema.contains("CREATE INDEX portfolio_valuations_account_time"));
             statement.execute("insert into accounts values (1)");
             statement.execute("insert into portfolio_valuations(account_id, observed_at, portfolio_value) values (1, CURRENT_TIMESTAMP, 100.50)");
-            assertThrows(java.sql.SQLException.class, () -> statement.execute(
-                    "insert into portfolio_valuations(account_id, observed_at, portfolio_value) values (2, CURRENT_TIMESTAMP, 100)"));
-            assertThrows(java.sql.SQLException.class, () -> statement.execute(
-                    "insert into portfolio_valuations(account_id, observed_at, portfolio_value) values (1, CURRENT_TIMESTAMP, -1)"));
+            assertNotNull(assertThrows(java.sql.SQLException.class, () -> statement.execute(
+                    "insert into portfolio_valuations(account_id, observed_at, portfolio_value) values (2, CURRENT_TIMESTAMP, 100)")));
+            assertNotNull(assertThrows(java.sql.SQLException.class, () -> statement.execute(
+                    "insert into portfolio_valuations(account_id, observed_at, portfolio_value) values (1, CURRENT_TIMESTAMP, -1)")));
             statement.execute("delete from accounts where account_id=1");
             try (var result = statement.executeQuery("select count(*) from portfolio_valuations")) {
                 assertTrue(result.next());

@@ -64,4 +64,8 @@ Never run `docker volume prune` or `docker system prune --volumes` on the agent:
 
 An `Operation not permitted` failure under `apps/reporting-service` means a root-owned file from the pytest container survived; the Checkout stage repairs permissions, but a workspace stuck by an older build must be removed once by hand.
 
-The local and Jenkins Compose database initializers mount the complete migrations directory and run `docker/init-db.sh`, including V009 account archiving, before dependent services start. Existing volumes receive pending migrations through the migration ledger.
+The local and Jenkins Compose database initializers mount the complete migrations directory and run `docker/init-db.sh`, including V009 account archiving and V010 execution buffers, before dependent services start. Existing volumes receive pending migrations through the migration ledger.
+
+## Execution market dependency
+
+Order and Sell reads execution quotes from Holdings and Trade's authoritative replay snapshot. Both Compose environments set `EXECUTION_MARKET_BASE_URL` to `http://holdings-and-trade-service:8082`; local processes default to `http://localhost:8082`. An unreachable service rejects trading instead of filling at client prices. Apply pending migrations, including V010, before starting the updated services. Deploy both updated Java services before the UI; old order history retains legacy replay time fallbacks.

@@ -27,17 +27,35 @@ export interface InstrumentRef {
 
 export interface OrderSubmission {
   simulatedAt?: string;
+  sessionId?: number;
+  bufferPercent?: number;
   accountId: number;
   instrumentId: number;
   orderType: OrderType;
   quantity: number;
-  // The price shown to the trader before they submitted (BR-13). Orders currently fill at it.
+  // The displayed reference price; execution uses the server replay quote.
   indicativePrice: number;
   // Idempotency key. Resubmitting it returns the original order's outcome.
   clientReference: string;
 }
 
+export interface OrderCheckResult {
+  eligible: boolean;
+  rejectionCode: string | null;
+  rejectionReason: string | null;
+  bufferPercent: number;
+  indicativePrice: number;
+  executionPrice: number | null;
+  estimatedTradeValue: number | null;
+  priceBoundary: number | null;
+  sessionId: number | null;
+  quoteTimestamp: string | null;
+}
+
 export interface OrderResult {
+  bufferPercent?: number;
+  executionPrice?: number | null;
+  executedSimulatedAt?: string | null;
   simulatedAt?: string | null;
   orderId: number;
   // Optional during rollout against an older backend; identifies the catalogue entry.

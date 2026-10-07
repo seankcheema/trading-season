@@ -439,6 +439,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     this.orders
       .submitOrder({
         accountId,
+        sessionId: this.sessionId() ?? undefined,
         symbol: draft.symbol,
         orderType: draft.side === 'buy' ? 'BUY' : 'SELL',
         quantity: draft.quantity,
@@ -454,7 +455,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
           this.submitting.set(false);
 
           if (result.status === 'FILLED') {
-            const message = `Filled ${result.quantity} ${draft.symbol} at ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(result.indicativePrice)}.`;
+            const message = `Filled ${result.quantity} ${draft.symbol} at ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(result.executionPrice ?? result.indicativePrice)}.`;
 
             this.toasts.show(message, 'success');
             this.refreshBalances(accountId);
@@ -803,8 +804,12 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   @HostListener('window:resize')
   protected positionToolbarMenu(): void {
     const menu = this.openToolbarMenu();
-    const id = menu === 'indicators' ? 'indicator-picker' :
-      menu === 'chart-mode' ? 'chart-mode-picker' : 'comparison-picker';
+    const id =
+      menu === 'indicators'
+        ? 'indicator-picker'
+        : menu === 'chart-mode'
+          ? 'chart-mode-picker'
+          : 'comparison-picker';
     const toolbar = this.menuHost.nativeElement.querySelector('.chart-toolbar');
     const trigger = toolbar?.querySelector(`[aria-controls="${id}"]`);
     if (!menu || !toolbar || !trigger) return;

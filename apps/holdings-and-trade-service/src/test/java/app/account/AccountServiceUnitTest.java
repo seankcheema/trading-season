@@ -48,8 +48,10 @@ class AccountServiceUnitTest {
 
     private AccountService accountService;
 
+    // JUnit invokes this lifecycle hook through reflection.
+    @SuppressWarnings("unused")
     @BeforeEach
-    void setUp() {
+    public void setUp() {
         accountService = new AccountService(accountRepository, holdingRepository,
                 holdingMovementRepository, instrumentRepository);
     }
@@ -103,7 +105,7 @@ class AccountServiceUnitTest {
     @Test
     void archiveChecksOwnershipBeforeReadingHoldings() {
         when(accountRepository.findByIdForUpdate(1)).thenReturn(Optional.of(createAccount(1, OTHER_USER_ID, "Other")));
-        assertThrows(ForbiddenException.class, () -> accountService.archiveAccount(1, USER_ID));
+        assertNotNull(assertThrows(ForbiddenException.class, () -> accountService.archiveAccount(1, USER_ID)));
         verifyNoInteractions(holdingRepository);
     }
 
@@ -116,8 +118,8 @@ class AccountServiceUnitTest {
         when(accountRepository.findByIdForUpdate(1)).thenReturn(Optional.of(account));
         assertTrue(accountService.getAccountsForUser(USER_ID).isEmpty());
         assertSame(account, accountService.getAccountForUser(1, USER_ID));
-        assertThrows(org.springframework.web.server.ResponseStatusException.class,
-                () -> accountService.updateAccountName(1, USER_ID, "Changed"));
+        assertNotNull(assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> accountService.updateAccountName(1, USER_ID, "Changed")));
     }
 
     private static Instrument instrument(int instrumentId, String ticker) {
@@ -173,8 +175,8 @@ class AccountServiceUnitTest {
         when(accountRepository.existsById(1))
                 .thenReturn(true);
 
-        assertThrows(ForbiddenException.class, 
-                () -> accountService.getAccountForUser(1, USER_ID));
+        assertNotNull(assertThrows(ForbiddenException.class,
+                () -> accountService.getAccountForUser(1, USER_ID)));
     }
 
     @Test
@@ -184,8 +186,8 @@ class AccountServiceUnitTest {
         when(accountRepository.existsById(99))
                 .thenReturn(false);
 
-        assertThrows(AccountNotFoundException.class, 
-                () -> accountService.getAccountForUser(99, USER_ID));
+        assertNotNull(assertThrows(AccountNotFoundException.class,
+                () -> accountService.getAccountForUser(99, USER_ID)));
     }
 
     @Test
@@ -270,8 +272,8 @@ class AccountServiceUnitTest {
         when(accountRepository.findByIdForUpdate(1))
                 .thenReturn(Optional.of(createAccount(1, OTHER_USER_ID, "Other")));
 
-        assertThrows(ForbiddenException.class, 
-                () -> accountService.updateAccountName(1, USER_ID, "New Name"));
+        assertNotNull(assertThrows(ForbiddenException.class,
+                () -> accountService.updateAccountName(1, USER_ID, "New Name")));
     }
 
     @Test
@@ -308,8 +310,8 @@ class AccountServiceUnitTest {
         when(accountRepository.existsById(1))
                 .thenReturn(true);
 
-        assertThrows(ForbiddenException.class, 
-                () -> accountService.getHoldingsForAccount(1, USER_ID));
+        assertNotNull(assertThrows(ForbiddenException.class,
+                () -> accountService.getHoldingsForAccount(1, USER_ID)));
         
         verify(holdingRepository, never()).findByAccountId(any());
     }
@@ -469,8 +471,8 @@ class AccountServiceUnitTest {
         when(accountRepository.existsById(999))
                 .thenReturn(false);
 
-        assertThrows(AccountNotFoundException.class, 
-                () -> accountService.getHoldingsForAccount(999, USER_ID));
+        assertNotNull(assertThrows(AccountNotFoundException.class,
+                () -> accountService.getHoldingsForAccount(999, USER_ID)));
         
         verify(holdingRepository, never()).findByAccountId(any());
     }
@@ -480,8 +482,8 @@ class AccountServiceUnitTest {
         when(accountRepository.findByIdForUpdate(999))
                 .thenReturn(Optional.empty());
 
-        assertThrows(AccountNotFoundException.class, 
-                () -> accountService.updateAccountName(999, USER_ID, "New Name"));
+        assertNotNull(assertThrows(AccountNotFoundException.class,
+                () -> accountService.updateAccountName(999, USER_ID, "New Name")));
     }
 
     @Test

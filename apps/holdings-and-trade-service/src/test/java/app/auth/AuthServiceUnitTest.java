@@ -40,7 +40,7 @@ class AuthServiceUnitTest {
     private AuthService authService;
 
     @BeforeEach
-    void setUp() {
+    public void setUp() {
         authService = new AuthService(userRepository, accountService, userAccountRepository);
     }
 
@@ -96,8 +96,8 @@ class AuthServiceUnitTest {
     void registerFailsWhenEmailDoesNotMatchToken() {
         AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "someone-else@example.com");
 
-        assertThrows(ForbiddenException.class,
-            () -> authService.register(caller, request("test@example.com")));
+        assertNotNull(assertThrows(ForbiddenException.class,
+            () -> authService.register(caller, request("test@example.com"))));
         verify(userRepository, never()).save(any());
     }
 
@@ -105,8 +105,8 @@ class AuthServiceUnitTest {
     void registerFailsWhenTokenHasNoEmail() {
         AuthenticatedUser caller = new AuthenticatedUser(USER_ID, null);
 
-        assertThrows(ForbiddenException.class,
-            () -> authService.register(caller, request("test@example.com")));
+        assertNotNull(assertThrows(ForbiddenException.class,
+            () -> authService.register(caller, request("test@example.com"))));
         verify(userRepository, never()).save(any());
     }
 
@@ -115,8 +115,8 @@ class AuthServiceUnitTest {
         AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "test@example.com");
         when(userRepository.existsById(USER_ID)).thenReturn(true);
 
-        assertThrows(ConflictException.class,
-            () -> authService.register(caller, request("test@example.com")));
+        assertNotNull(assertThrows(ConflictException.class,
+            () -> authService.register(caller, request("test@example.com"))));
         verify(userRepository, never()).save(any());
     }
 

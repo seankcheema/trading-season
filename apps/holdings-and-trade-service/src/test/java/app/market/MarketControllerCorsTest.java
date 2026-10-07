@@ -51,7 +51,7 @@ class MarketControllerCorsTest {
     private WebApplicationContext webApplicationContext;
 
     @BeforeEach
-    void configureMockMvc() {
+    public void configureMockMvc() {
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
     }
 

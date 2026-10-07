@@ -54,7 +54,7 @@ class MarketControllerTest {
     private MockMvc mockMvc;
 
     @BeforeEach
-    void setUp() {
+    public void setUp() {
         when(repository.resolveSession(nullable(Long.class))).thenReturn(SESSION);
         when(repository.tradingDays(7L)).thenReturn(List.of(LocalDate.of(2026, 1, 5)));
         when(repository.stocks()).thenReturn(List.of(new MarketModels.Stock("AAPL", "Apple Inc.")));

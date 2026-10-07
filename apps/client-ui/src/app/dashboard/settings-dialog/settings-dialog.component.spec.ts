@@ -1,3 +1,5 @@
+import { of } from 'rxjs';
+import { ExecutionSettingsService } from './execution-settings.service';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { SessionTimeoutService } from '../../core/auth/session-timeout.service';
@@ -11,6 +13,13 @@ describe('SettingsDialogComponent', () => {
     await TestBed.configureTestingModule({
       imports: [SettingsDialogComponent],
       providers: [
+        {
+          provide: ExecutionSettingsService,
+          useValue: {
+            load: () => of({ executionBufferPercent: 1 }),
+            save: (value: number) => of({ executionBufferPercent: value }),
+          },
+        },
         {
           provide: SessionTimeoutService,
           useValue: { timeoutMinutes: signal(15), setTimeoutMinutes },

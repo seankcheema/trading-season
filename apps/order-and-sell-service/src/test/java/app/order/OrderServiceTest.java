@@ -1,5 +1,10 @@
 package app.order;
 
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.support.TransactionTemplate;
 import app.account.Account;
 import app.account.AccountNotFoundException;
 import app.account.AccountRepository;
@@ -45,7 +50,7 @@ class OrderServiceTest {
     private OrderService orderService;
 
     @Autowired
-    private org.springframework.transaction.PlatformTransactionManager transactionManager;
+    private PlatformTransactionManager transactionManager;
 
     @Autowired
     private OrderRepository orderRepository;
@@ -81,8 +86,13 @@ class OrderServiceTest {
     private User user;
     private Instrument instrument;
 
+    @MockitoBean
+    private app.order.execution.ExecutionQuoteSource quotes;
+
     @BeforeEach
-    void setUp() {
+    public void setUp() {
+        org.mockito.Mockito.when(quotes.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal("50.00"), 1L, java.time.Instant.parse("2026-01-05T16:00:00Z")));
         auditTrailRepository.deleteAll();
         holdingMovementRepository.deleteAll();
         cashTransactionRepository.deleteAll();
@@ -130,6 +140,8 @@ class OrderServiceTest {
     }
 
     private OrderRequest order(String orderType, String quantity, String price) {
+        org.mockito.Mockito.when(quotes.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal(price), 1L, java.time.Instant.parse("2026-01-05T16:00:00Z")));
         return new OrderRequest(
                 account.getAccountId(),
                 instrument.getInstrumentId(),
@@ -139,6 +151,91 @@ class OrderServiceTest {
                 new BigDecimal("2.0"),
                 UUID.randomUUID()
         );
+    }
+
+    @Test void checkIsAdvisoryAndExecutionRechecksPrice() {
+        var request = new app.order.dto.OrderCheckRequest(account.getAccountId(), instrument.getInstrumentId(), "BUY",
+                new BigDecimal("10"), new BigDecimal("50"), null, 7L, null);
+        var assessment = orderService.check(request, user.getUserId());
+        assertTrue(assessment.eligible());
+        assertEquals(0, orderRepository.count()); assertEquals(0, auditTrailRepository.count());
+        assertEquals(0, fillRepository.count()); assertEquals(0, cashTransactionRepository.count());
+        org.mockito.Mockito.when(quotes.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal("60"), 7L, java.time.Instant.parse("2026-01-05T16:00:01Z")));
+        Order result = orderService.submitOrder(request.asOrderRequest(), user.getUserId());
+        assertEquals("REJECTED", result.getStatus()); assertEquals(0, fillRepository.count());
+        assertEquals(0, STARTING_FUNDS.compareTo(availableFunds()));
+    }
+    @Test void checkReportsInvalidBufferRulesUnavailablePricesAndResources() {
+        var request = new app.order.dto.OrderCheckRequest(account.getAccountId(), instrument.getInstrumentId(), "BUY",
+                new BigDecimal("10"), new BigDecimal("50"), null, null, null);
+        assertNotNull(assertThrows(ForbiddenException.class, () -> orderService.check(request, UUID.randomUUID())));
+        user.setExecutionBufferPercent(new BigDecimal("11")); userRepository.save(user);
+        assertEquals("INVALID_BUFFER", orderService.check(request, user.getUserId()).rejectionCode());
+        user.setExecutionBufferPercent(BigDecimal.ONE); user.setAvailableFunds(BigDecimal.ONE); userRepository.save(user);
+        assertEquals("INSUFFICIENT_FUNDS", orderService.check(request, user.getUserId()).rejectionCode());
+        org.mockito.Mockito.when(quotes.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new app.order.execution.ExecutionQuoteSource.QuoteUnavailableException());
+        assertEquals("MARKET_PRICE_UNAVAILABLE", orderService.check(request, user.getUserId()).rejectionCode());
+        instrument.setTradable(false); instrumentRepository.save(instrument);
+        assertEquals("TRADING_RULE_FAILED", orderService.check(request, user.getUserId()).rejectionCode());
+        account.setArchivedAt(java.time.Instant.now()); accountRepository.save(account);
+        assertNotNull(assertThrows(ResponseStatusException.class, () -> orderService.check(request, user.getUserId())));
+    }
+    @Test void historyAndRetryReadActualPersistedFillPrice() {
+        var request = order("BUY", "1", "50");
+        org.mockito.Mockito.when(quotes.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal("49"), 7L, java.time.Instant.parse("2026-01-05T16:00:01Z")));
+        Order filled = orderService.submitOrder(request, user.getUserId());
+        assertEquals(0, new BigDecimal("49").compareTo(filled.getExecutionPrice()));
+        assertEquals(0, new BigDecimal("49").compareTo(orderService.getOwnOrders(user.getUserId()).getFirst().getExecutionPrice()));
+        assertEquals(0, new BigDecimal("49").compareTo(orderService.submitOrder(request, user.getUserId()).getExecutionPrice()));
+        assertNotNull(filled.getExecutedSimulatedAt()); assertEquals(7L, filled.getSessionId());
+    }
+
+    @Test
+    void concurrentOrdersOnDifferentAccountsCannotSpendTheSameUserCash() throws Exception {
+        user.setAvailableFunds(new BigDecimal("50.00"));
+        userRepository.save(user);
+        Account second = new Account();
+        second.setUserId(user.getUserId());
+        second.setOpenedDate(LocalDate.now());
+        second.setCashBalance(BigDecimal.ZERO);
+        second = accountRepository.save(second);
+        OrderRequest firstRequest = order("BUY", "1", "50.00");
+        OrderRequest secondRequest = new OrderRequest(second.getAccountId(), instrument.getInstrumentId(),
+                "BUY", BigDecimal.ONE, new BigDecimal("50.00"), null, UUID.randomUUID());
+        var start = new java.util.concurrent.CountDownLatch(1);
+        try (var pool = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var first = pool.submit(() -> { start.await(); return orderService.submitOrder(firstRequest, user.getUserId()); });
+            var other = pool.submit(() -> { start.await(); return orderService.submitOrder(secondRequest, user.getUserId()); });
+            start.countDown();
+            var statuses = java.util.stream.Stream.of(first.get(10, java.util.concurrent.TimeUnit.SECONDS),
+                    other.get(10, java.util.concurrent.TimeUnit.SECONDS)).map(Order::getStatus).sorted().toList();
+            assertEquals(List.of("FILLED", "REJECTED"), statuses);
+        }
+        assertEquals(0, availableFunds().signum());
+        assertEquals(1, fillRepository.count());
+    }
+
+    @Test
+    void ledgerFailureRollsBackTheOrderFillCashAndHoldingsTogether() {
+        jdbcTemplate.execute("alter table holding_movements add constraint buffer_test_failure check (quantity_delta <= 0)");
+        try {
+            var request = order("BUY", "1", "50.00");
+            var failure = assertThrows(DataIntegrityViolationException.class,
+                    () -> orderService.submitOrder(request, user.getUserId()));
+            assertNotNull(failure);
+            assertEquals(0, orderRepository.count());
+            assertEquals(0, fillRepository.count());
+            assertEquals(0, cashTransactionRepository.count());
+            assertEquals(0, holdingMovementRepository.count());
+            assertEquals(0, holdingRepository.count());
+            assertEquals(0, auditTrailRepository.count());
+            assertEquals(0, STARTING_FUNDS.compareTo(availableFunds()));
+        } finally {
+            jdbcTemplate.execute("alter table holding_movements drop constraint buffer_test_failure");
+        }
     }
 
     private Holding holdingOf(String quantity) {
@@ -164,7 +261,7 @@ class OrderServiceTest {
 
     @Test
     void submissionWaitsForConcurrentArchiveAndCannotFillAfterward() throws Exception {
-        var transactions = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+        var transactions = new TransactionTemplate(transactionManager);
         var locked = new java.util.concurrent.CountDownLatch(1);
         var release = new java.util.concurrent.CountDownLatch(1);
         var submitting = new java.util.concurrent.CountDownLatch(1);
@@ -185,13 +282,14 @@ class OrderServiceTest {
                 return orderService.submitOrder(request, user.getUserId());
             });
             assertTrue(submitting.await(5, java.util.concurrent.TimeUnit.SECONDS));
-            assertThrows(java.util.concurrent.TimeoutException.class,
-                    () -> trade.get(200, java.util.concurrent.TimeUnit.MILLISECONDS));
+            assertNotNull(assertThrows(java.util.concurrent.TimeoutException.class,
+                    () -> trade.get(200, java.util.concurrent.TimeUnit.MILLISECONDS)));
             release.countDown();
             archive.get(5, java.util.concurrent.TimeUnit.SECONDS);
             var failure = assertThrows(java.util.concurrent.ExecutionException.class,
                     () -> trade.get(5, java.util.concurrent.TimeUnit.SECONDS));
-            assertInstanceOf(org.springframework.web.server.ResponseStatusException.class, failure.getCause());
+            var cause = assertInstanceOf(ResponseStatusException.class, failure.getCause());
+            assertEquals(409, cause.getStatusCode().value());
             assertEquals(0, orderRepository.count());
             assertEquals(0, fillRepository.count());
             assertEquals(0, cashTransactionRepository.count());
@@ -208,7 +306,7 @@ class OrderServiceTest {
         account.setArchivedAt(java.time.Instant.now());
         accountRepository.save(account);
         assertEquals(saved.getOrderId(), orderService.submitOrder(original, user.getUserId()).getOrderId());
-        var error = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+        var error = assertThrows(ResponseStatusException.class,
                 () -> orderService.submitOrder(order("BUY", "1", "50.00"), user.getUserId()));
         assertEquals(409, error.getStatusCode().value());
         assertEquals(1, orderRepository.count());
@@ -390,7 +488,7 @@ class OrderServiceTest {
                 UUID.randomUUID()
         );
 
-        assertThrows(AccountNotFoundException.class, () -> orderService.submitOrder(request, user.getUserId()));
+        assertNotNull(assertThrows(AccountNotFoundException.class, () -> orderService.submitOrder(request, user.getUserId())));
     }
 
     @Test
@@ -405,7 +503,7 @@ class OrderServiceTest {
                 UUID.randomUUID()
         );
 
-        assertThrows(InstrumentNotFoundException.class, () -> orderService.submitOrder(request, user.getUserId()));
+        assertNotNull(assertThrows(InstrumentNotFoundException.class, () -> orderService.submitOrder(request, user.getUserId())));
     }
 
     @Test
@@ -453,8 +551,8 @@ class OrderServiceTest {
     void submitOrderRefusesAnAccountTheCallerDoesNotOwn() {
         OrderRequest request = order("BUY", "1", "10.00");
 
-        assertThrows(ForbiddenException.class,
-                () -> orderService.submitOrder(request, UUID.randomUUID()));
+        assertNotNull(assertThrows(ForbiddenException.class,
+                () -> orderService.submitOrder(request, UUID.randomUUID())));
         // Refused before anything is written: no order row, so no PENDING to explain later.
         assertTrue(orderRepository.findAll().isEmpty());
     }
@@ -473,8 +571,8 @@ class OrderServiceTest {
                 placed.getClientReference()
         );
 
-        assertThrows(ForbiddenException.class,
-                () -> orderService.submitOrder(replay, UUID.randomUUID()));
+        assertNotNull(assertThrows(ForbiddenException.class,
+                () -> orderService.submitOrder(replay, UUID.randomUUID())));
     }
 
     @Test
