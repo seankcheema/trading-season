@@ -100,8 +100,8 @@ class MarketControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}")));
 
-        assertInstanceOf(MarketRequestException.class, error.getCause());
-        assertEquals("timestamp is required", error.getCause().getMessage());
+        MarketRequestException cause = assertInstanceOf(MarketRequestException.class, error.getCause());
+        assertEquals("timestamp is required", cause.getMessage());
     }
 
     @Test
@@ -112,7 +112,7 @@ class MarketControllerTest {
         assertTrue(first.getResponse().getContentAsString().contains("event:snapshot"));
 
         var limited = assertThrows(ServletException.class, () -> mockMvc.perform(get("/api/market/stream")));
-        assertInstanceOf(MarketLimitException.class, limited.getCause());
+        assertEquals(MarketLimitException.class, limited.getCause().getClass());
 
         first.getRequest().getAsyncContext().complete();
 

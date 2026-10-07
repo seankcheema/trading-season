@@ -44,7 +44,6 @@ class AccountControllerIntegrationTest {
     private app.holding.HoldingRepository holdingRepository;
 
     // JUnit invokes this lifecycle hook through reflection.
-    @SuppressWarnings("unused")
     @BeforeEach
     public void setUp() {
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();

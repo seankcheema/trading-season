@@ -1,0 +1,59 @@
+{
+  "properties": [
+    {
+      "name": "app.auth.jwk-set-uri",
+      "type": "java.lang.String",
+      "description": "URI of the auth service public JSON Web Key Set."
+    },
+    {
+      "name": "app.auth.issuer",
+      "type": "java.lang.String",
+      "description": "Required issuer claim in access tokens."
+    },
+    {
+      "name": "app.cors.allowed-origins",
+      "type": "java.util.List<java.lang.String>",
+      "description": "Comma-separated browser origins allowed to call the API."
+    },
+    {
+      "name": "market.replay.archive-location",
+      "type": "java.lang.String",
+      "description": "Optional path overriding the imported Parquet tick archive location."
+    },
+    {
+      "name": "market.replay.start-at",
+      "type": "java.lang.String",
+      "description": "Optional initial replay cursor timestamp."
+    },
+    {
+      "name": "market.replay.tick-millis",
+      "type": "java.lang.Long",
+      "description": "Replay scheduler interval in milliseconds.",
+      "defaultValue": 1000
+    },
+    {
+      "name": "market.limits.streams-per-client",
+      "type": "java.lang.Integer",
+      "description": "Maximum simultaneous streams per client.",
+      "defaultValue": 3
+    },
+    {
+      "name": "market.limits.streams-global",
+      "type": "java.lang.Integer",
+      "description": "Maximum simultaneous streams across clients.",
+      "defaultValue": 200
+    },
+    {
+      "name": "market.cors.allowed-origins",
+      "type": "java.lang.String",
+      "description": "Comma-separated origins for public market endpoints.",
+      "defaultValue": "http://localhost:4200"
+    },
+    {
+      "name": "market.limits.rest-requests-per-minute",
+      "type": "java.lang.Integer",
+      "description": "Maximum market REST requests per client per minute.",
+      "defaultValue": 120
+    }
+  ]
+}

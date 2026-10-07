@@ -50,7 +50,6 @@ class CashTransactionServiceUnitTest {
     private CashTransactionService service;
 
     // JUnit invokes this lifecycle hook through reflection.
-    @SuppressWarnings("unused")
     @BeforeEach
     public void setUp() {
         service = new CashTransactionService(cashTransactionRepository, accountRepository, userRepository);

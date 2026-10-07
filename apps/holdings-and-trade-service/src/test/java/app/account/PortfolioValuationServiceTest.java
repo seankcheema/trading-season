@@ -25,7 +25,6 @@ class PortfolioValuationServiceTest {
             movements, valuations, market, Clock.fixed(now, ZoneOffset.UTC));
 
     // JUnit invokes this lifecycle hook through reflection.
-    @SuppressWarnings("unused")
     @BeforeEach
     public void setup() {
         Account owned = new Account();

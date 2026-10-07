@@ -49,7 +49,6 @@ class AccountServiceUnitTest {
     private AccountService accountService;
 
     // JUnit invokes this lifecycle hook through reflection.
-    @SuppressWarnings("unused")
     @BeforeEach
     public void setUp() {
         accountService = new AccountService(accountRepository, holdingRepository,

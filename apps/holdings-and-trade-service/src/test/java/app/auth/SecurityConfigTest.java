@@ -49,7 +49,7 @@ class SecurityConfigTest {
     private static RSAKey otherKeyWithSameKid;
 
     @BeforeAll
-    static void generateKeys() throws JOSEException {
+    public static void generateKeys() throws JOSEException {
         signingKey = new RSAKeyGenerator(2048).keyID("test-kid").generate();
         otherKeyWithSameKid = new RSAKeyGenerator(2048).keyID("test-kid").generate();
     }
