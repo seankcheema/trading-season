@@ -93,8 +93,8 @@ services:
       - ci-network
 
   # Event broker for the trade-events topic. Order and Sell publishes one
-  # message per committed order status change; reporting-consumer (group reporting-ingester)
-  # and Order and Sell's order-status-pusher read it. See
+  # message per committed order status change; reporting-consumer (group reporting-ingester),
+  # Order and Sell's order-status-pusher and Holdings and Trade's portfolio-valuation-capture read it. See
   # docs/reference/architecture.md.
   kafka:
     # Single-node KRaft: no ZooKeeper, and the controller quorum is this same
@@ -204,6 +204,10 @@ services:
     depends_on:
       db-init:
         condition: service_completed_successfully
+      # Consumer group portfolio-valuation-capture reads trade-events, so the
+      # topic must exist before the first poll.
+      kafka-init:
+        condition: service_completed_successfully
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
       SPRING_DATASOURCE_USERNAME: trading_season
@@ -211,6 +215,8 @@ services:
       AUTH_JWK_SET_URI: http://auth-service:3001/.well-known/jwks.json
       AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
+      # In-network listener; the host-facing localhost:29092 does not resolve here.
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     networks:
       - ci-network
 
