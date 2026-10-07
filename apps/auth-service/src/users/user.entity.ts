@@ -14,7 +14,7 @@ import {
  * only by the Java services; this entity cannot reach it. Splitting the two is
  * what lets each table keep a single writer now that one database holds both.
  *
- * The schema is owned by Flyway in apps/market-data/db/migrations, not by this
+ * The schema is owned by Flyway in db/migrations, not by this
  * service, so every column mapping below is explicit.
  */
 @Entity('user_accounts')

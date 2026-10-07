@@ -1,6 +1,6 @@
 # Javadocs
 
-Generated API documentation for the two Java services, regenerated and reviewed on 2026-10-07 (Holdings and Trade) and 2026-10-06 (Order and Sell). Open [index.html](index.html) for links into both. The generated output is refreshed only after successful generation and review.
+Generated API documentation for the two Java services, regenerated and reviewed on 2026-10-07 for both services. Open [index.html](index.html) for links into both. The generated output is refreshed only after successful generation and review.
 
 Each service has its own directory. Both root their packages at `app` and share the names `account`, `auth`, `holding`, `instrument`, `market` and `user`, with different classes under them, so a single merged directory would silently overwrite one service's pages with the other's. Before this split the checked-in copy held the Order and Sell Service only, and changes to Holdings and Trade were not published at all.
 
@@ -20,8 +20,8 @@ Run from the repository root. Each command writes to its service's own build out
 
 Review the changed class pages before copying, and never replace a checked-in subdirectory after failed generation. Do not edit these files by hand.
 
-Generation currently reports warnings on pre-existing entity accessors and repository methods that carry no comment, in both services. Fix the warnings a change introduces rather than the whole backlog. Note that `javadoc` stops after 100 warnings by default, so a count at that ceiling is truncated rather than complete.
+Generation currently completes with no warnings in either service; keep it that way by documenting every public constructor, parameter and return value a change adds.
 
-See [Development](../guides/development.md#javadocs) for where this sits in the check list.
+See the root [AGENTS.md](../../AGENTS.md) for where this sits in the definition of done.
 
 [Documentation](../README.md)

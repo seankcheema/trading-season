@@ -30,7 +30,13 @@ import java.util.UUID;
 @Table(name = "orders")
 public class Order {
 
+    /** Creates an instance of this class. */
+    public Order() {
+    }
+
+    /** Order type for a purchase. */
     public static final String TYPE_BUY = "BUY";
+    /** Order type for a sale. */
     public static final String TYPE_SELL = "SELL";
 
     /** Created and awaiting the trading-rule pipeline. */
@@ -106,106 +112,236 @@ public class Order {
      * @param simulatedAt selected replay time, including backdated submissions */
     public void setSimulatedAt(OffsetDateTime simulatedAt) { this.simulatedAt = simulatedAt; }
 
+    /**
+     * Returns the order ID.
+     *
+     * @return the order ID
+     */
     public Integer getOrderId() {
         return orderId;
     }
 
+    /**
+     * Sets the order ID.
+     *
+     * @param orderId the order ID
+     */
     public void setOrderId(Integer orderId) {
         this.orderId = orderId;
     }
 
+    /**
+     * Returns the account ID.
+     *
+     * @return the account ID
+     */
     public Integer getAccountId() {
         return accountId;
     }
 
+    /**
+     * Sets the account ID.
+     *
+     * @param accountId the account ID
+     */
     public void setAccountId(Integer accountId) {
         this.accountId = accountId;
     }
 
+    /**
+     * Returns the instrument ID.
+     *
+     * @return the instrument ID
+     */
     public Integer getInstrumentId() {
         return instrumentId;
     }
 
+    /**
+     * Sets the instrument ID.
+     *
+     * @param instrumentId the instrument ID
+     */
     public void setInstrumentId(Integer instrumentId) {
         this.instrumentId = instrumentId;
     }
 
+    /**
+     * Returns the client reference.
+     *
+     * @return the client reference
+     */
     public UUID getClientReference() {
         return clientReference;
     }
 
+    /**
+     * Sets the client reference.
+     *
+     * @param clientReference the client reference
+     */
     public void setClientReference(UUID clientReference) {
         this.clientReference = clientReference;
     }
 
+    /**
+     * Returns the order type.
+     *
+     * @return the order type
+     */
     public String getOrderType() {
         return orderType;
     }
 
+    /**
+     * Sets the order type.
+     *
+     * @param orderType the order type
+     */
     public void setOrderType(String orderType) {
         this.orderType = orderType;
     }
 
+    /**
+     * Returns the status.
+     *
+     * @return the status
+     */
     public String getStatus() {
         return status;
     }
 
+    /**
+     * Sets the status.
+     *
+     * @param status the status
+     */
     public void setStatus(String status) {
         this.status = status;
     }
 
+    /**
+     * Returns the quantity.
+     *
+     * @return the quantity
+     */
     public BigDecimal getQuantity() {
         return quantity;
     }
 
+    /**
+     * Sets the quantity.
+     *
+     * @param quantity the quantity
+     */
     public void setQuantity(BigDecimal quantity) {
         this.quantity = quantity;
     }
 
+    /**
+     * Returns the indicative price.
+     *
+     * @return the indicative price
+     */
     public BigDecimal getIndicativePrice() {
         return indicativePrice;
     }
 
+    /**
+     * Sets the indicative price.
+     *
+     * @param indicativePrice the indicative price
+     */
     public void setIndicativePrice(BigDecimal indicativePrice) {
         this.indicativePrice = indicativePrice;
     }
 
+    /**
+     * Returns the buffer percent.
+     *
+     * @return the buffer percent
+     */
     public BigDecimal getBufferPercent() {
         return bufferPercent;
     }
 
+    /**
+     * Sets the buffer percent.
+     *
+     * @param bufferPercent the buffer percent
+     */
     public void setBufferPercent(BigDecimal bufferPercent) {
         this.bufferPercent = bufferPercent;
     }
 
+    /**
+     * Returns the rejection reason.
+     *
+     * @return the rejection reason
+     */
     public String getRejectionReason() {
         return rejectionReason;
     }
 
+    /**
+     * Sets the rejection reason.
+     *
+     * @param rejectionReason the rejection reason
+     */
     public void setRejectionReason(String rejectionReason) {
         this.rejectionReason = rejectionReason;
     }
 
+    /**
+     * Returns the submitted at.
+     *
+     * @return the submitted at
+     */
     public OffsetDateTime getSubmittedAt() {
         return submittedAt;
     }
 
+    /**
+     * Sets the submitted at.
+     *
+     * @param submittedAt the submitted at
+     */
     public void setSubmittedAt(OffsetDateTime submittedAt) {
         this.submittedAt = submittedAt;
     }
 
+    /**
+     * Returns the accepted at.
+     *
+     * @return the accepted at
+     */
     public OffsetDateTime getAcceptedAt() {
         return acceptedAt;
     }
 
+    /**
+     * Sets the accepted at.
+     *
+     * @param acceptedAt the accepted at
+     */
     public void setAcceptedAt(OffsetDateTime acceptedAt) {
         this.acceptedAt = acceptedAt;
     }
 
+    /**
+     * Returns the resolved at.
+     *
+     * @return the resolved at
+     */
     public OffsetDateTime getResolvedAt() {
         return resolvedAt;
     }
 
+    /**
+     * Sets the resolved at.
+     *
+     * @param resolvedAt the resolved at
+     */
     public void setResolvedAt(OffsetDateTime resolvedAt) {
         this.resolvedAt = resolvedAt;
     }

@@ -4,4 +4,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends time && rm -rf 
 COPY apps/market-data/db/scripts/python/requirements-ci.txt /tmp/requirements-ci.txt
 RUN pip install --no-cache-dir -r /tmp/requirements-ci.txt
 COPY apps/market-data/db /workspace/apps/market-data/db
+COPY db/migrations /workspace/db/migrations
 ENTRYPOINT ["python"]

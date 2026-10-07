@@ -5,9 +5,10 @@ Python Flask microservice for portfolio performance, trade history, and risk sum
 
 import os
 import uuid
-from flask import Flask, jsonify, request, g
+from pathlib import Path
+from flask import Flask, jsonify, request, g, send_from_directory
 from flask_cors import CORS
-from datetime import datetime
+from datetime import datetime, UTC
 import jwt
 import requests
 from functools import wraps
@@ -21,6 +22,8 @@ from models import db
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+APP_ROOT = Path(__file__).resolve().parent
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -172,7 +175,7 @@ def health():
         return jsonify({
             'status': 'healthy',
             'service': 'reporting-service',
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(UTC).isoformat(),
             'version': '0.1.0'
         }), 200
     
@@ -182,8 +185,20 @@ def health():
             'status': 'unhealthy',
             'service': 'reporting-service',
             'error': str(e),
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(UTC).isoformat()
         }), 503
+
+
+@app.route('/openapi.yaml', methods=['GET'])
+def openapi_spec():
+    """Serve the static OpenAPI specification for this service."""
+    return send_from_directory(APP_ROOT, 'openapi.yaml', mimetype='application/yaml')
+
+
+@app.route('/docs', methods=['GET'])
+def swagger_ui():
+    """Serve Swagger UI for the reporting service."""
+    return send_from_directory(APP_ROOT, 'swagger-ui.html')
 
 
 # ============================================================================
@@ -192,13 +207,14 @@ def health():
 
 @app.route('/', methods=['GET'])
 def root():
-    """Root endpoint - identifies this as a placeholder"""
+    """Root endpoint with service metadata and documentation links."""
     return jsonify({
         'service': 'Trading Season Reporting Service',
         'status': 'initialized',
         'version': '0.1.0',
         'description': 'Portfolio performance, trade history, and risk summaries',
         'documentation': '/docs',
+        'openapi': '/openapi.yaml',
         'health': '/health',
         'api_endpoints': {
             'profile': 'GET /api/reporting/profile',

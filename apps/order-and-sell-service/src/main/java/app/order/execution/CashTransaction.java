@@ -21,6 +21,11 @@ import java.time.OffsetDateTime;
 @Table(name = "cash_transactions")
 public class CashTransaction {
 
+    /** Creates an instance of this class. */
+    public CashTransaction() {
+    }
+
+    /** Reason recorded on cash transactions created by an order fill. */
     public static final String REASON_ORDER_FILL = "ORDER_FILL";
 
     @Id
@@ -44,50 +49,110 @@ public class CashTransaction {
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
+    /**
+     * Returns the cash transaction ID.
+     *
+     * @return the cash transaction ID
+     */
     public Integer getCashTransactionId() {
         return cashTransactionId;
     }
 
+    /**
+     * Sets the cash transaction ID.
+     *
+     * @param cashTransactionId the cash transaction ID
+     */
     public void setCashTransactionId(Integer cashTransactionId) {
         this.cashTransactionId = cashTransactionId;
     }
 
+    /**
+     * Returns the account ID.
+     *
+     * @return the account ID
+     */
     public Integer getAccountId() {
         return accountId;
     }
 
+    /**
+     * Sets the account ID.
+     *
+     * @param accountId the account ID
+     */
     public void setAccountId(Integer accountId) {
         this.accountId = accountId;
     }
 
+    /**
+     * Returns the fill ID.
+     *
+     * @return the fill ID
+     */
     public Integer getFillId() {
         return fillId;
     }
 
+    /**
+     * Sets the fill ID.
+     *
+     * @param fillId the fill ID
+     */
     public void setFillId(Integer fillId) {
         this.fillId = fillId;
     }
 
+    /**
+     * Returns the amount.
+     *
+     * @return the amount
+     */
     public BigDecimal getAmount() {
         return amount;
     }
 
+    /**
+     * Sets the amount.
+     *
+     * @param amount the amount
+     */
     public void setAmount(BigDecimal amount) {
         this.amount = amount;
     }
 
+    /**
+     * Returns the reason.
+     *
+     * @return the reason
+     */
     public String getReason() {
         return reason;
     }
 
+    /**
+     * Sets the reason.
+     *
+     * @param reason the reason
+     */
     public void setReason(String reason) {
         this.reason = reason;
     }
 
+    /**
+     * Returns the created at.
+     *
+     * @return the created at
+     */
     public OffsetDateTime getCreatedAt() {
         return createdAt;
     }
 
+    /**
+     * Sets the created at.
+     *
+     * @param createdAt the created at
+     */
     public void setCreatedAt(OffsetDateTime createdAt) {
         this.createdAt = createdAt;
     }

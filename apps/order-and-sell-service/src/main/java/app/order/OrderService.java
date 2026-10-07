@@ -74,6 +74,19 @@ public class OrderService {
     private final ApplicationEventPublisher events;
     private final TransactionTemplate transactions;
 
+    /**
+     * Creates the service.
+     *
+     * @param orderRepository order persistence
+     * @param accountRepository account lookup and ownership checks
+     * @param instrumentRepository instrument lookup
+     * @param userRepository user lookup
+     * @param validationPipeline trading-rule pipeline
+     * @param orderExecutionService settlement of orders that pass validation
+     * @param auditTrailService lifecycle event recorder
+     * @param events publisher of the {@link app.order.event.OrderStatusEvent} raised at each committed status change
+     * @param transactionManager manager behind the acceptance transaction, which commits before execution begins
+     */
     public OrderService(OrderRepository orderRepository,
                          AccountRepository accountRepository,
                          InstrumentRepository instrumentRepository,

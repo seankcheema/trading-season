@@ -14,11 +14,15 @@ public class WatchlistController {
     private final WatchlistService service;
 
     /**
+     * Creates the controller.
+     *
      * @param service saved stock business logic
      */
     public WatchlistController(WatchlistService service) { this.service = service; }
 
     /**
+     * Lists the caller's saved stocks.
+     *
      * @param jwt verified access token
      * @return caller's saved stocks
      */
@@ -28,6 +32,8 @@ public class WatchlistController {
     }
 
     /**
+     * Saves a stock to the caller's watchlist.
+     *
      * @param jwt verified access token
      * @param symbol seeded stock symbol
      * @return saved stock, preserving its original timestamp on duplicate requests
@@ -40,6 +46,8 @@ public class WatchlistController {
     }
 
     /**
+     * Removes a stock from the caller's watchlist.
+     *
      * @param jwt verified access token
      * @param symbol stock symbol; missing entries succeed
      */

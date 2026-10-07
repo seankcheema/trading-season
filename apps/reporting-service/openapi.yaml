@@ -1,0 +1,393 @@
+openapi: 3.0.3
+info:
+  title: Trading Season Reporting Service API
+  version: 0.1.0
+  description: |
+    OpenAPI contract for the Reporting Service. The service serves the report
+    runs that the reporting consumer produces from the trade-events Kafka topic,
+    plus the caller's trader profile. Trade data is never read from the
+    trading_season database; only users and accounts are, for names.
+servers:
+  - url: http://localhost:8083
+    description: Local development
+tags:
+  - name: Service
+  - name: Profile
+  - name: Runs
+  - name: Scheduler
+paths:
+  /:
+    get:
+      tags: [Service]
+      summary: Reporting service metadata
+      responses:
+        '200':
+          description: Service metadata and entry points
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RootResponse'
+  /health:
+    get:
+      tags: [Service]
+      summary: Reporting service liveness
+      responses:
+        '200':
+          description: Service is healthy and database is reachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthFailureResponse'
+  /api/reporting/profile:
+    get:
+      tags: [Profile]
+      summary: Get the caller profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Caller profile returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/reporting/runs:
+    get:
+      tags: [Runs]
+      summary: List every complete report run, newest first
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Run list returned; empty before the first run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/reporting/runs/latest:
+    get:
+      tags: [Runs]
+      summary: Get the latest run's report
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The latest report.json
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No report has been generated yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/reporting/runs/{runId}/files/{name}:
+    get:
+      tags: [Runs]
+      summary: Get one chart image of a run
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: Run id as listed by /api/reporting/runs, a UTC timestamp such as 20260107T120000Z.
+          schema:
+            type: string
+            pattern: '^[0-9]{8}T[0-9]{6}Z$'
+        - name: name
+          in: path
+          required: true
+          description: One of the file names in the run's files list.
+          schema:
+            type: string
+            enum: [volume_by_symbol.png, daily_trades.png, trades_per_account.png]
+      responses:
+        '200':
+          description: The PNG chart
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/reporting/scheduler/status:
+    get:
+      tags: [Scheduler]
+      summary: Get the report scheduler status
+      description: Public, for monitoring. Reports the latest run on disk and the configured interval.
+      responses:
+        '200':
+          description: Scheduler status returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchedulerStatusResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Requested resource is missing
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: healthy
+        service:
+          type: string
+          example: reporting-service
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+          example: 0.1.0
+      required: [status, service, timestamp, version]
+    HealthFailureResponse:
+      allOf:
+        - $ref: '#/components/schemas/HealthResponse'
+        - type: object
+          properties:
+            error:
+              type: string
+          required: [error]
+    RootResponse:
+      type: object
+      properties:
+        service:
+          type: string
+        status:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        documentation:
+          type: string
+          example: /docs
+        openapi:
+          type: string
+          example: /openapi.yaml
+        health:
+          type: string
+          example: /health
+        api_endpoints:
+          type: object
+          additionalProperties:
+            type: string
+      required: [service, status, version, documentation, openapi, health, api_endpoints]
+    UserProfileResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        first_name:
+          type: string
+        last_name:
+          type: string
+        trader_level:
+          type: string
+          enum: [BEGINNER, INTERMEDIATE, ADVANCED]
+        available_funds:
+          type: number
+        timestamp:
+          type: string
+          format: date-time
+      required: [user_id, first_name, last_name, trader_level, available_funds, timestamp]
+    RunSummary:
+      type: object
+      properties:
+        runId:
+          type: string
+          example: 20260107T120000Z
+        generatedAt:
+          type: string
+          format: date-time
+        eventCount:
+          type: integer
+          description: Trade-event lines read for this run, every status included.
+        files:
+          type: array
+          items:
+            type: string
+          example: [volume_by_symbol.png, daily_trades.png, trades_per_account.png]
+      required: [runId, generatedAt, eventCount, files]
+    RunListResponse:
+      type: object
+      properties:
+        latest:
+          type: string
+          nullable: true
+          description: The run id that /runs/latest serves, or null before the first run.
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunSummary'
+        timestamp:
+          type: string
+          format: date-time
+      required: [latest, runs, timestamp]
+    StatusCounts:
+      type: object
+      description: Final order statuses counted as trades. ACCEPTED events are not counted.
+      properties:
+        FILLED:
+          type: integer
+        REJECTED:
+          type: integer
+      required: [FILLED, REJECTED]
+    VolumeBySymbol:
+      type: object
+      properties:
+        symbol:
+          type: string
+        fills:
+          type: integer
+        shares:
+          type: string
+          description: Decimal as a string.
+        notional:
+          type: string
+          description: Shares times fill price, as a decimal string with two places.
+      required: [symbol, fills, shares, notional]
+    TradesPerAccount:
+      type: object
+      properties:
+        accountId:
+          type: integer
+        total:
+          type: integer
+        filled:
+          type: integer
+        rejected:
+          type: integer
+        accountName:
+          type: string
+          nullable: true
+        userName:
+          type: string
+          nullable: true
+        label:
+          type: string
+          description: Account name and trader name, or the account id when the account is unknown.
+      required: [accountId, total, filled, rejected, label]
+    DailyCount:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          description: UTC day.
+        filled:
+          type: integer
+        rejected:
+          type: integer
+      required: [date, filled, rejected]
+    Report:
+      type: object
+      description: The report.json of one run.
+      properties:
+        runId:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+          example: UTC
+        eventCount:
+          type: integer
+        statusCounts:
+          $ref: '#/components/schemas/StatusCounts'
+        volumeBySymbol:
+          type: array
+          items:
+            $ref: '#/components/schemas/VolumeBySymbol'
+        tradesPerAccount:
+          type: array
+          items:
+            $ref: '#/components/schemas/TradesPerAccount'
+        dailyCounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/DailyCount'
+        files:
+          type: array
+          items:
+            type: string
+          description: Chart file names served by /api/reporting/runs/{runId}/files/{name}.
+      required: [runId, generatedAt, timezone, eventCount, statusCounts, volumeBySymbol, tradesPerAccount, dailyCounts, files]
+    SchedulerStatusResponse:
+      type: object
+      properties:
+        latest_run:
+          type: string
+          nullable: true
+        generated_at:
+          type: string
+          format: date-time
+          nullable: true
+        interval_minutes:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+      required: [latest_run, generated_at, interval_minutes, timestamp]

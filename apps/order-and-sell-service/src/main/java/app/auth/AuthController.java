@@ -1,6 +1,8 @@
 package app.auth;
 
 import app.user.User;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/auth")
+@Tag(name = "Authentication", description = "Account registration and verification endpoints")
 public class AuthController {
 
     private final AuthService authService;
@@ -41,6 +44,7 @@ public class AuthController {
      */
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "Register business account", description = "Registers a business account for an authenticated user")
     public RegisterResponse register(@AuthenticationPrincipal Jwt jwt,
                                      @Valid @RequestBody RegisterRequest request) {
         AuthenticatedUser caller = AuthenticatedUser.from(jwt);
@@ -59,6 +63,7 @@ public class AuthController {
      * @return whether an account exists
      */
     @PostMapping("/account-exists")
+    @Operation(summary = "Check if account exists", description = "Verifies whether a business account is registered with the given email (no authentication required)")
     public AccountExistsResponse accountExists(@Valid @RequestBody AccountExistsRequest request) {
         return new AccountExistsResponse(authService.accountExists(request.email()));
     }

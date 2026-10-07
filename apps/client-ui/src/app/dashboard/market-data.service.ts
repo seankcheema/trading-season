@@ -195,7 +195,10 @@ export class MarketDataService {
       finalize(() => {
         if (this.candleRequests.get(key) === request) this.candleRequests.delete(key);
       }),
-      shareReplay({ bufferSize: 1, refCount: true }),
+      // An effect that re-runs unsubscribes before it resubscribes. Counting references here
+      // would abort the in-flight request and send an identical one; letting it finish
+      // keeps one request per key and still fills the cache. Invalidation cancels it above.
+      shareReplay({ bufferSize: 1, refCount: false }),
     );
     this.candleRequests.set(key, request);
     return retained ? concat(of(retained.value), request) : request;

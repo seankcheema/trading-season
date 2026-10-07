@@ -39,6 +39,10 @@ public class OrderStatusStreamRegistry {
 
     private final Map<UUID, List<SseEmitter>> emitters = new ConcurrentHashMap<>();
 
+    /** Creates an empty registry; Spring instantiates it. */
+    public OrderStatusStreamRegistry() {
+    }
+
     /**
      * Opens a stream for a user. The emitter never times out on its own; the
      * client closes it, or a failed send does.

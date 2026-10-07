@@ -26,6 +26,11 @@ public class SufficientHoldingsValidator implements OrderValidator {
 
     private final HoldingRepository holdingRepository;
 
+    /**
+     * Creates the validator.
+     *
+     * @param holdingRepository source of the account's current holdings
+     */
     public SufficientHoldingsValidator(HoldingRepository holdingRepository) {
         this.holdingRepository = holdingRepository;
     }

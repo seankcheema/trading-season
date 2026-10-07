@@ -1,146 +1,185 @@
 # Order and Sell Service
 
-Spring Boot microservice responsible for managing all trading operations, order execution, and holding updates. This service is the core trading engine for the Trading Season platform.
+Spring Boot (Java 21) service that submits, validates, and executes buy and sell orders, and serves instrument reference data and order history. It is the trading half of the backend; accounts, cash, and holdings reads belong to the [Holdings and Trade Service](../holdings-and-trade-service/README.md).
 
-## Architecture
+- Port 8081, Swagger UI at http://localhost:8081/swagger-ui.html
+- Shares the `trading_season` database. The schema comes from [db/migrations](../../db/migrations); Hibernate never alters it.
+- Authenticates callers by verifying RS256 tokens from the [Auth Service](../auth-service/README.md) against its cached JWKS. The caller is always the token's `sub`.
+- Publishes one Kafka `trade-events` message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`) and runs the `order-status-pusher` consumer group, which forwards each change to the owner's open `GET /api/orders/stream` connections. The other two groups live in the [Holdings and Trade Service](../holdings-and-trade-service/README.md) and the [Reporting Service](../reporting-service/README.md).
 
-**Responsibilities:**
-- Create and accept trade orders
-- Validate orders (funds, holdings, tradability)
-- Execute buy and sell transactions
-- Update and maintain current holdings
-- Maintain complete order audit trail and history
-- Commit an accepted order before executing it (BR-06), then execute in a separate transaction
-- Publish one `trade-events` message per committed status change (`ACCEPTED`, `FILLED`, `REJECTED`)
-- Run the `order-status-pusher` consumer group, which forwards each status change to the owner's open `GET /api/orders/stream` connections (the reporting service owns the `reporting-ingester` group)
+## Endpoints
 
-**Port:** 8081 (default, configurable via `server.port`)
+All require a bearer token except the public market reads.
 
-**Database:** Shared PostgreSQL with Order and Sell Service. Schema is read-only; migrations managed centrally.
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/orders` | Submit a buy or sell order. Returns 201 with the outcome (`FILLED`, `REJECTED`, or `ACCEPTED` when execution failed and the order stays on record) |
+| GET | `/api/orders` | The caller's orders across all their accounts, newest first |
+| GET | `/api/orders/stream` | Server-Sent Events: an `order-status` event with each committed status change's JSON body, and a `heartbeat` every 15 seconds |
+| GET | `/api/instruments` | Every instrument with `tradable` and `simulatedStockSymbol` |
+| POST | `/api/auth/account-exists` | Whether an email is registered (public) |
+| POST | `/api/auth/register` | Create the caller's profile from the bearer token |
+| GET | `/api/users/me` | The caller's profile, without the SSN |
+| GET | `/api/market/snapshot`, `/candles`, `/stream` | Public market data (snapshot, OHLCV candles, SSE ticks) |
+| PUT | `/api/market/clock` | Move the shared replay cursor |
 
-**Authentication:** RS256 tokens issued by the NestJS auth service. Verifies tokens, never handles passwords.
+Order request: `accountId`, `instrumentId`, `orderType` (`BUY` or `SELL`), `quantity`, `indicativePrice`, `clientReference` (UUID idempotency key), and optional `bufferPercent` and `simulatedAt`.
 
-**Documentation:** See [service instructions](AGENTS.md) for development guidelines.
+Behavior worth knowing:
 
-## Quick Start
+- A rule failure is a normal outcome: the response is still 201 with `status: REJECTED` and a `rejectionReason`.
+- Resubmitting the same `accountId` and `clientReference` returns the original outcome without executing again.
+- Another user's account is 403 and a missing account is 404, checked before the idempotency lookup. An unknown `instrumentId` is 400.
+- Cash belongs to the user, not the account: a fill moves `users.available_funds`. Orders fill at `indicativePrice`.
+- `simulatedAt` records the replay time chosen in the UI. `submittedAt`, `resolvedAt`, and fill times are always real server times.
+- `GET /api/orders/stream` needs the bearer header, which the browser's native `EventSource` cannot send; use `fetch` or an SSE client that sets headers. Only the caller's own order events are pushed.
+- Errors use `{"error": "..."}`.
 
-### Prerequisites
+## Design
 
-- JDK 21
-- Maven 3.9+
-- PostgreSQL (shared with Order and Sell Service)
-- NestJS auth service running on port 3001
-- Kafka broker with the `trade-events` topic, from Local Compose (`up -d kafka-init`). The service starts without it, but every order then waits up to five seconds for the broker before responding.
-
-### Setup
-
-1. Create the trading_season database and apply migrations (V001 through V004):
-   ```powershell
-   # From repository root
-   py -3 -m venv apps/market-data/db/.venv
-   apps/market-data/db/.venv/Scripts/python.exe -m pip install --upgrade pip
-   apps/market-data/db/.venv/Scripts/python.exe -m pip install -r apps/market-data/db/scripts/requirements.txt
-   ```
-
-2. Run migrations:
-   ```sh
-   # See database setup guide in ../../docs/reference/database.md
-   ```
-
-3. Start the service:
-   ```sh
-   mvn spring-boot:run
-   ```
-
-4. Verify it's running:
-   ```powershel
-
-   Invoke-RestMethod http://localhost:8081/api/market/snapshot
-   ```
-
-### Tests
-
-Run all tests with code coverage verification:
-```sh
-mvn test
+```mermaid
+flowchart TB
+    subgraph Web["Web layer"]
+        OC[OrderController]
+        IC[InstrumentController]
+        UC[UserController]
+        AC[auth.AuthController]
+        MC[market.MarketController]
+    end
+    subgraph Domain["Order domain"]
+        OS[OrderService]
+        VP[OrderValidationPipeline]
+        subgraph Rules["OrderValidator rules"]
+            V1[AccountCredentialsValidator]
+            V2[TradabilityValidator]
+            V3[SufficientFundsValidator]
+            V4[SufficientHoldingsValidator]
+        end
+        OE[OrderExecutionService]
+        AT[AuditTrailService]
+    end
+    subgraph Events["order.event"]
+        TP[TradeEventPublisher]
+        PL[OrderStatusPusherListener]
+        SR[OrderStatusStreamRegistry]
+        SC[OrderStatusStreamController]
+    end
+    K[["Kafka trade-events"]]
+    subgraph Data["JPA entities"]
+        E1["Order, Fill, CashTransaction,<br/>HoldingMovement, AuditTrail"]
+        E2["Account, Holding, User,<br/>UserAccount, Instrument"]
+    end
+    OC --> OS
+    OS --> VP
+    VP --> Rules
+    OS --> OE
+    OS --> AT
+    OE --> AT
+    OS --> E1
+    OE --> E1
+    OS --> E2
+    OE --> E2
+    IC --> E2
+    UC --> E2
+    MC --> MR[MarketReplayService]
+    OS -. "OrderStatusEvent after commit" .-> TP
+    OE -. "OrderStatusEvent after commit" .-> TP
+    TP --> K
+    K -- "group order-status-pusher" --> PL
+    PL --> SR
+    SC --> SR
 ```
 
-Coverage must be at least 70% in every package on every JaCoCo counter (instructions, branches, lines, complexity, methods, and classes); `mvn test` fails otherwise. Reports are in `target/site/jacoco/`.
+### Order submission
+
+```mermaid
+sequenceDiagram
+    participant C as OrderController
+    participant S as OrderService
+    participant P as ValidationPipeline
+    participant E as OrderExecutionService
+    participant DB as PostgreSQL
+    participant K as Kafka trade-events
+
+    C->>S: submitOrder(request, callerId)
+    Note over S,DB: Transaction 1: acceptance
+    S->>DB: Load account, check owner (403 or 404)
+    S->>DB: Look up accountId + clientReference
+    alt Already processed
+        S-->>C: Original order
+    else New
+        S->>DB: Load user and instrument (400 if instrument unknown)
+        S->>DB: Insert order PENDING and audit entry
+        S->>P: run(request, user, account, instrument)
+        alt A rule fails
+            S->>DB: Mark REJECTED with reason and audit entry, commit
+            S->>K: REJECTED (after commit)
+        else All rules pass
+            S->>DB: Mark ACCEPTED and audit entry, commit
+            S->>K: ACCEPTED (after commit)
+            Note over E,DB: Transaction 2: execution (REQUIRES_NEW)
+            S->>E: execute(order, instrument)
+            E->>DB: Lock user row and holding row
+            alt Funds or holdings changed since validation
+                E->>DB: Mark REJECTED, commit
+                E->>K: REJECTED (after commit)
+            else Still valid
+                E->>DB: Insert fill, cash transaction, holding movement
+                E->>DB: Update available funds and holding
+                E->>DB: Mark FILLED and audit entry, commit
+                E->>K: FILLED (after commit)
+            end
+        end
+        S-->>C: Order in its final status
+    end
+```
+
+Acceptance and execution are separate transactions (BR-06). The accepted order is committed before any ledger row is written, and the fill, cash transaction, holding movement, holding update and FILLED status commit together or not at all (BR-09). If execution throws, only the execution rolls back: the order stays `ACCEPTED`, an `EXECUTION_FAILED` audit entry records the cause (truncated to 255 characters), and the response returns the order in that state. Nothing retries it automatically.
+
+Each `trade-events` message is published by `TradeEventPublisher` from an `AFTER_COMMIT` transactional event listener, so a consumer never sees a status the database does not hold. The message key is the account id as a string; the body is JSON with `orderId`, `status`, `symbol`, `side`, `quantity`, `price`, `rejectionReason` and `occurredAt`. A send failure is logged and never fails the order.
+
+### Order status
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: submitted
+    PENDING --> REJECTED: rule fails
+    PENDING --> ACCEPTED: all rules pass (committed)
+    ACCEPTED --> REJECTED: funds or holdings changed
+    ACCEPTED --> FILLED: fill and ledger written
+    ACCEPTED --> ACCEPTED: execution failed (EXECUTION_FAILED audit)
+    REJECTED --> [*]
+    FILLED --> [*]
+```
+
+Every transition is recorded in `audit_trail`, and every committed `ACCEPTED`, `FILLED` and `REJECTED` status is also published to `trade-events`. A new validation rule is a new `OrderValidator` class; the pipeline discovers it automatically and stops at the first rejection.
 
 ## Configuration
 
-Environment variables override defaults in [application.properties](src/main/resources/application.properties):
+Environment variables override [application.properties](src/main/resources/application.properties).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/trading_season` | Database connection |
+| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/trading_season` | Database |
 | `SPRING_DATASOURCE_USERNAME` | `trading_season` | Database user |
 | `SPRING_DATASOURCE_PASSWORD` | `changeme` | Database password |
-| `AUTH_JWK_SET_URI` | `http://localhost:3001/.well-known/jwks.json` | Auth service JWKS endpoint |
-| `AUTH_JWT_ISSUER` | `https://auth.dualeapa.local` | Required JWT issuer claim |
-| `CORS_ORIGINS` | `http://localhost:4200` | Allowed browser origins (comma-separated) |
-| `MARKET_REPLAY_ARCHIVE_LOCATION` | empty | Optional absolute Parquet archive root override |
-| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:29092` | Event broker for `trade-events`; Compose sets `kafka:9092` |
+| `AUTH_JWK_SET_URI` | `http://localhost:3001/.well-known/jwks.json` | Auth service public keys |
+| `AUTH_JWT_ISSUER` | `https://auth.dualeapa.local` | Required `iss`, must equal the auth service's `JWT_ISSUER` |
+| `CORS_ORIGINS` | `http://localhost:4200` | Allowed browser origins, comma-separated |
+| `MARKET_REPLAY_ARCHIVE_LOCATION` | empty | Absolute path to the Parquet archive when the recorded path is not reachable |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:29092` | Broker for `trade-events`; Compose sets `kafka:9092` |
 
-The property `app.events.enabled` (default `true`) registers the trade-event publisher and both consumers; the test profile sets it to `false` so contexts without a broker never contact one.
+The property `app.events.enabled` (default `true`) registers the trade-event publisher and the `order-status-pusher` consumer; the test profile sets it to `false` so contexts without a broker never contact one. The stream endpoint is always present. `app.events.stream.heartbeat-millis` (default 15000) is the SSE keep-alive interval. Without a broker the service still starts, but every order then waits up to five seconds (`max.block.ms`) for it before responding.
 
-Parquet-backed simulation sessions first use `MARKET_REPLAY_ARCHIVE_LOCATION`, then the archive location recorded during import, and finally discover the matching archive under the repository's `apps/market-data/db/seeds` directory. This discovery keeps an existing database usable after the repository moves. Missing raw tick partitions return an unavailable market-data error rather than falling back to one-minute candles.
+## Run and test
 
-## API Endpoints
+Start a migrated database ([db/README.md](../../db/README.md)), the auth service, and the Kafka broker with its topic from the Compose file (`docker compose -f infrastructure/docker-compose/docker-compose.local.yml up -d kafka-init`), then:
 
-All endpoints require valid RS256 access token except public market GET endpoints.
-
-**User Management:**
-- `GET /api/users/{id}` - Get user profile by ID (requires auth)
-- `GET /api/users` - List all users (admin only)
-
-**Account Data:**
-- `GET /api/accounts/{accountId}` - Get account details (requires auth)
-- `GET /api/accounts/{accountId}/holdings` - Get current holdings (requires auth)
-
-**Order History:**
-- `GET /api/orders` - List the authenticated caller's orders across all of their accounts, newest first (requires auth)
-
-**Orders:**
-- `POST /api/orders` - Submit a buy or sell order; created PENDING and returned FILLED, REJECTED, or ACCEPTED when execution failed and the order stays on record (requires auth)
-- `GET /api/orders/{id}` - Get order details (requires auth)
-- `GET /api/orders/stream` - Server-sent events: `order-status` with each committed status change's JSON body, `heartbeat` every 15 seconds (requires auth; the client must send the bearer header, which native `EventSource` cannot)
-
-**Market Data (Public):**
-- `GET /api/market/snapshot` - Current market snapshot
-- `GET /api/market/quotes` - Current quotes for all stocks
-- `GET /api/market/stream` - SSE stream of market ticks
-
-For full API contracts, see [API reference](../../docs/reference/api.md).
-
-## Code Organization
-
-Source is rooted at `src/main/java/app`. Tests mirror structure under `src/test/java/app`.
-
-```
-app/
-├── order/           # Order management core
-│   ├── validation/  # Validation pipeline
-│   ├── execution/   # Order execution and settlement
-│   ├── audit/       # Order event audit
-│   └── event/       # trade-events publisher, order-status-pusher consumer, order status stream
-├── account/         # Trading account entities
-├── holding/         # Current position data
-├── instrument/      # Tradable asset definitions
-├── auth/            # Authentication and authorization
-├── market/          # Market data and replay
-└── Main.java        # Application entry point
+```sh
+mvn spring-boot:run
+mvn test
 ```
 
+Tests use H2 with the `test` profile and mirror the source packages under `src/test/java/app`. The trade-event flow test starts an embedded Kafka broker; no external broker is needed. JaCoCo fails the build below 70 percent on every counter in any package (`coverage.minimum` in [pom.xml](pom.xml)); reports are in `target/site/jacoco/`.
 
-## Development
-
-See [service development guide](AGENTS.md) for coding standards, testing patterns, and contribution workflow.
-
-## Related Services
-
-- **Order and Sell Service** - Queries orders, holdings, and user data for UI
-- **Auth Service** - Issues and validates RS256 tokens
-- **Business UI** - Consumes this service's APIs
-
-See [Architecture reference](../../docs/reference/architecture.md) for service boundaries and integration patterns.
+After changing Java code, regenerate the Javadocs; see [AGENTS.md](../../AGENTS.md).

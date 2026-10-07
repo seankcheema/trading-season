@@ -148,6 +148,31 @@ class TestRootEndpoint:
         assert 'api_endpoints' in data
         assert 'runs' in data['api_endpoints']
 
+    def test_root_endpoint_lists_docs_links(self, client):
+        """Test root endpoint exposes docs links."""
+        response = client.get('/')
+        data = response.get_json()
+        assert data['documentation'] == '/docs'
+        assert data['openapi'] == '/openapi.yaml'
+
+
+class TestSwaggerDocs:
+    """Test OpenAPI and Swagger UI endpoints."""
+
+    def test_openapi_endpoint_success(self, client):
+        """Test OpenAPI YAML is served."""
+        response = client.get('/openapi.yaml')
+        assert response.status_code == 200
+        assert 'openapi: 3.0.3' in response.get_data(as_text=True)
+
+    def test_swagger_ui_success(self, client):
+        """Test Swagger UI page is served."""
+        response = client.get('/docs')
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert 'SwaggerUIBundle' in body
+        assert '/openapi.yaml' in body
+
 
 class TestErrorHandlers:
     """Test error handlers"""

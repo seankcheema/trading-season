@@ -167,25 +167,16 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ../../apps/market-data/db/migrations/V001__Initialize_database.sql:/V001__Initialize_database.sql:ro
-      - ../../apps/market-data/db/migrations/V002__Add_watchlist.sql:/V002__Add_watchlist.sql:ro
-      - ../../apps/market-data/db/migrations/V003__Order_status_accepted.sql:/V003__Order_status_accepted.sql:ro
+      - ../../db/migrations:/workspace/db/migrations:ro
+      - ../docker/init-db.sh:/init-db.sh:ro
     environment:
       PGPASSWORD: ${DB_PASSWORD:-changeme}
-    command: >
-      sh -c 'if [ "$$(psql -h db -U trading_season -d trading_season -tA -c
-      "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='"'"'public'"'"';" 2>/dev/null || echo 0)" = "0" ]; then
-      echo "[DB-INIT] Applying migrations...";
-      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 -f /V001__Initialize_database.sql &&
-      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 -f /V002__Add_watchlist.sql &&
-      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 -f /V003__Order_status_accepted.sql
-      && echo "[DB-INIT] Migrations complete";
-      else echo "[DB-INIT] Database already initialized, skipping migrations"; fi'
+    command: ["sh", "/init-db.sh", "postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season", "/workspace"]
 
   # Event broker for the trade-events topic. Order and Sell publishes one
-  # message per committed order status change; reporting-consumer (group reporting-ingester),
-  # Order and Sell's order-status-pusher and Holdings and Trade's portfolio-valuation-capture read it. See
-  # docs/reference/architecture.md.
+  # message per committed order status change; three consumer groups read it:
+  # order-status-pusher (Order and Sell), portfolio-valuation-capture (Holdings
+  # and Trade) and reporting-ingester (reporting-consumer).
   kafka:
     # Single-node KRaft: no ZooKeeper, and the controller quorum is this same
     # node. Sized for a developer machine, not durability -- one replica of
