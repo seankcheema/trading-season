@@ -26,7 +26,9 @@ class PortfolioValuationServiceTest {
 
     @BeforeEach
     void setup() {
-        when(repository.findByIdForUpdate(1)).thenReturn(Optional.of(new Account()));
+        Account owned = new Account();
+        owned.setUserId(user);
+        when(repository.findByIdForUpdate(1)).thenReturn(Optional.of(owned));
         when(movements.hasAcquisitions(1)).thenReturn(true);
         when(valuations.findFirstByAccountIdOrderByObservedAtDescIdDesc(1)).thenReturn(Optional.empty());
         when(valuations.save(any())).thenAnswer(call -> call.getArgument(0));
@@ -144,10 +146,27 @@ class PortfolioValuationServiceTest {
 
     @Test
     void ownershipIsCheckedBeforeReadingOrWriting() {
+        Account other = new Account();
+        other.setUserId(UUID.randomUUID());
+        when(repository.findByIdForUpdate(1)).thenReturn(Optional.of(other));
         when(accounts.getAccountForUser(1, user)).thenThrow(new ForbiddenException("Forbidden"));
         assertThrows(ForbiddenException.class, () -> service.capture(1, user, false));
         assertThrows(ForbiddenException.class, () -> service.history(1, user, "1D"));
-        verifyNoInteractions(repository, valuations, market, movements);
+        verify(repository).findByIdForUpdate(1);
+        verifyNoInteractions(valuations, market, movements);
+    }
+
+    @Test
+    void archivedAccountSkipsScheduledCaptureAndRejectsManualCapture() {
+        Account archived = new Account();
+        archived.setUserId(user);
+        archived.setArchivedAt(now);
+        when(repository.findByIdForUpdate(1)).thenReturn(Optional.of(archived));
+        assertNull(service.capture(1, user, true));
+        var error = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> service.capture(1, user, false));
+        assertEquals(409, error.getStatusCode().value());
+        verify(valuations, never()).save(any());
     }
 
     @Test

@@ -46,6 +46,8 @@ export function toAccountErrorMessage(error: unknown, action: AccountAction): st
       return ACCOUNT_ERROR_MESSAGES.sessionExpired;
     case 403:
     case 404:
+      if ((action === 'deposit' || action === 'withdraw') && backendMessage(error)?.startsWith('No account is open'))
+        return 'Create an account before depositing or withdrawing cash.';
       return ACCOUNT_ERROR_MESSAGES.notOwned;
     case 400:
       return backendMessage(error) ?? ACCOUNT_ERROR_MESSAGES.invalid;

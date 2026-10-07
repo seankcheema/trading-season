@@ -44,14 +44,22 @@ public interface AccountRepository extends JpaRepository<Account, Integer> {
     Optional<Account> findByIdAndUserId(Integer accountId, UUID userId);
 
     /**
-     * Finds the user's first account: the default one opened at sign-up unless it
-     * has since been closed. Cash belongs to the user and every account shares
-     * it, so this is the account a deposit or withdrawal is booked against.
+     * Finds the user's earliest account, including archived accounts, for historical reads.
+     * New cash movements use {@link #findActiveForUpdate(UUID)} instead.
      *
      * @param userId the owner's UUID
      * @return the user's earliest account, or empty if they have none
      */
     Optional<Account> findFirstByUserIdOrderByOpenedDateAscIdAsc(UUID userId);
+
+    /**
+     * Locks active accounts in a stable order before cash is booked.
+     * @param userId verified owner
+     * @return active accounts, earliest first
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT a FROM Account a WHERE a.userId = :userId AND a.archivedAt IS NULL ORDER BY a.openedDate, a.id")
+    List<Account> findActiveForUpdate(UUID userId);
 }
 
 

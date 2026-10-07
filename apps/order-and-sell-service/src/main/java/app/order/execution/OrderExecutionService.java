@@ -89,6 +89,7 @@ public class OrderExecutionService {
     /**
      * Executes an order whose trading rules have passed.
      *
+     * @throws org.springframework.web.server.ResponseStatusException if the account is archived
      * @param order      the {@code PENDING} order to execute
      * @param instrument the instrument being traded
      * @return the order as {@code FILLED}, or {@code REJECTED} if funds or
@@ -101,9 +102,12 @@ public class OrderExecutionService {
         BigDecimal fillPrice = order.getIndicativePrice();
         BigDecimal tradeValue = order.getQuantity().multiply(fillPrice);
 
-        Account account = accountRepository.findById(order.getAccountId())
+        Account account = accountRepository.findByIdForUpdate(order.getAccountId())
                 .orElseThrow(() -> new IllegalStateException(
                         "Account " + order.getAccountId() + " disappeared mid-execution"));
+        if (account.getArchivedAt() != null)
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT, "This account is archived");
         User user = userRepository.findByIdForUpdate(account.getUserId())
                 .orElseThrow(() -> new IllegalStateException(
                         "Account " + account.getAccountId() + " has no owning user"));

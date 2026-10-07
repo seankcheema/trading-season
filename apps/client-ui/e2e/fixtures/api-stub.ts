@@ -71,6 +71,7 @@ export interface StoredCashTransaction {
 }
 
 interface OwnedTradingAccount extends TradingAccount {
+  archivedAt?: string;
   ownerId: string;
   holdings: SeedHolding[];
 }
@@ -271,6 +272,7 @@ export class ApiStub {
     await page.route('**/api/market/**', (route) => this.market(route));
     await page.route('**/api/me/accounts', (route) => this.meAccounts(route));
     await page.route(ACCOUNT_PATH, (route) => this.renameAccount(route));
+    await page.route(/\/api\/accounts\/\d+$/, (route) => this.archiveAccount(route));
     await page.route(
       (url) => HOLDINGS_PATH.test(url.pathname),
       (route) => this.accountHoldings(route),
@@ -286,15 +288,30 @@ export class ApiStub {
     const owner = await this.caller(route);
     if (!owner) return;
     const entries = this.watchlists.get(owner) ?? [];
-    const symbol = decodeURIComponent(new URL(route.request().url()).pathname.split('/')[4] ?? '').trim().toUpperCase();
+    const symbol = decodeURIComponent(new URL(route.request().url()).pathname.split('/')[4] ?? '')
+      .trim()
+      .toUpperCase();
     const method = route.request().method();
-    if (method === 'GET') { await this.json(route, 200, entries); return; }
-    if (method === 'DELETE') {
-      this.watchlists.set(owner, entries.filter((entry) => entry.symbol !== symbol));
-      await route.fulfill({ status: 204 }); return;
+    if (method === 'GET') {
+      await this.json(route, 200, entries);
+      return;
     }
-    if (!['AAPL', 'MSFT'].includes(symbol)) { await this.json(route, 404, { error: 'Unknown stock symbol' }); return; }
-    const entry = entries.find((item) => item.symbol === symbol) ?? { symbol, createdAt: new Date().toISOString() };
+    if (method === 'DELETE') {
+      this.watchlists.set(
+        owner,
+        entries.filter((entry) => entry.symbol !== symbol),
+      );
+      await route.fulfill({ status: 204 });
+      return;
+    }
+    if (!['AAPL', 'MSFT'].includes(symbol)) {
+      await this.json(route, 404, { error: 'Unknown stock symbol' });
+      return;
+    }
+    const entry = entries.find((item) => item.symbol === symbol) ?? {
+      symbol,
+      createdAt: new Date().toISOString(),
+    };
     if (!entries.includes(entry)) entries.push(entry);
     this.watchlists.set(owner, entries);
     await this.json(route, 200, entry);
@@ -310,7 +327,7 @@ export class ApiStub {
     }
     const body = this.body(route);
     const accountId = Number(body['accountId']);
-    const account = this.ownedAccounts(owner).find((a) => a.accountId === accountId);
+    const account = this.tradingAccounts.find((a) => a.ownerId === owner && a.accountId === accountId);
     if (!account) {
       await this.json(route, 404, { error: 'Account not found' });
       return;
@@ -319,6 +336,10 @@ export class ApiStub {
     const existing = this.orderReferences.get(key);
     if (existing) {
       await this.json(route, 201, existing);
+      return;
+    }
+    if (account.archivedAt) {
+      await this.json(route, 409, { error: 'This account is archived' });
       return;
     }
     const quantity = Number(body['quantity']),
@@ -710,6 +731,36 @@ export class ApiStub {
     await this.json(route, 201, publicAccount(this.openTradingAccount(ownerId, name)));
   }
 
+  /** Archiving preserves the fixture's historical account and holdings. */
+  private async archiveAccount(route: Route): Promise<void> {
+    const ownerId = await this.caller(route);
+    if (!ownerId) return;
+    const id = Number(new URL(route.request().url()).pathname.split('/')[3]);
+    const account = this.tradingAccounts.find((candidate) => candidate.accountId === id);
+    if (!account) {
+      await this.json(route, 404, { error: 'Account not found' });
+      return;
+    }
+    if (account.ownerId !== ownerId) {
+      await this.json(route, 403, { error: 'Forbidden' });
+      return;
+    }
+    if (route.request().method() === 'GET') {
+      await this.json(route, 200, publicAccount(account));
+      return;
+    }
+    if (route.request().method() !== 'DELETE') {
+      await this.json(route, 405, { error: 'Method not allowed' });
+      return;
+    }
+    if (account.holdings.some((holding) => holding.quantity !== 0)) {
+      await this.json(route, 422, { error: 'Close all positions before deleting this account' });
+      return;
+    }
+    account.archivedAt ??= new Date().toISOString();
+    await route.fulfill({ status: 204 });
+  }
+
   /** PUT renames one of the caller's trading accounts. */
   private async renameAccount(route: Route): Promise<void> {
     const ownerId = await this.caller(route);
@@ -848,7 +899,9 @@ export class ApiStub {
   }
 
   private ownedAccounts(ownerId: string): OwnedTradingAccount[] {
-    return this.tradingAccounts.filter((account) => account.ownerId === ownerId);
+    return this.tradingAccounts.filter(
+      (account) => account.ownerId === ownerId && !account.archivedAt,
+    );
   }
 
   private openTradingAccount(ownerId: string, name: string): OwnedTradingAccount {

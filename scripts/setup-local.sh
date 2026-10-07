@@ -270,6 +270,9 @@ validate_business_schema_local() {
     removed="$(PGPASSWORD="$password" psql -h localhost -p 5432 -U trading_season -d trading_season -Atqc "$business_v3_query")"
     [[ "$required" == 18 && "$removed" == 0 ]] || \
         fail "Local schema is partial or unexpected ($required/18 required tables, $total total tables). No migrations were run."
+    local archived_column
+    archived_column="$(PGPASSWORD="$password" psql -h localhost -p 5432 -U trading_season -d trading_season -Atqc "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='accounts' AND column_name='archived_at';")"
+    [[ "$archived_column" == 1 ]] || fail 'Apply V009__Add_account_archiving.sql before starting updated services. See db/README.md.'
     data_directory="$(PGPASSWORD="$password" psql -h localhost -p 5432 -U trading_season -d trading_season -Atqc 'SHOW data_directory' 2>/dev/null || true)"
     if [[ -n "$data_directory" && -e "$data_directory" ]] && df -Pk "$data_directory" >/dev/null 2>&1; then
         check_storage 'Local PostgreSQL storage' "$data_directory"
@@ -329,13 +332,15 @@ validate_or_initialize_docker_business() {
     if [[ "$total" == 0 ]]; then
         docker_compose exec -T db psql -v ON_ERROR_STOP=1 -U trading_season -d trading_season < db/migrations/V001__Initialize_database.sql || \
             fail "Database schema initialization failed."
-        done_stage 'Schema — initialized empty Docker database with V001__Initialize_database.sql.'
+        docker_compose run --rm db-init || fail 'Applying remaining business migrations failed.'
+        done_stage 'Schema — initialized empty Docker database and applied all pending migrations.'
         return
     fi
     removed="$(docker_compose exec -T db psql -U trading_season -d trading_season -Atqc "$business_v3_query")"
     [[ "$required" == 18 && "$removed" == 0 ]] || \
         fail "Docker schema is partial or unexpected ($required/18 required tables, $total total tables). No migrations were run."
-    ready 'Schema — existing Docker schema is valid; skipping.'
+    docker_compose run --rm db-init || fail 'Applying pending business migrations failed.'
+    ready 'Schema — existing Docker schema is valid and pending migrations are applied.'
 }
 
 check_docker_database_storage() {

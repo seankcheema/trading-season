@@ -151,3 +151,7 @@ mvn test
 Tests use H2 with the `test` profile and mirror the source packages under `src/test/java/app`. JaCoCo fails the build below 70 percent on every counter in any package (`coverage.minimum` in [pom.xml](pom.xml)); reports are in `target/site/jacoco/`.
 
 After changing Java code, regenerate the Javadocs; see [AGENTS.md](../../AGENTS.md).
+
+## Archived portfolio accounts
+
+New orders and execution on archived accounts return 409 with an `error` message. Account row locks serialize trading with archiving before user cash and holdings locks. Existing client-reference retries still return the previous order outcome. Historical order reads continue to include archived accounts. Portfolio archiving is separate from credential records.

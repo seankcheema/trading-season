@@ -86,6 +86,7 @@ public class OrderService {
      * before checking the account would hand a caller the outcome of an order
      * on an account they don't own.
      *
+     * @throws org.springframework.web.server.ResponseStatusException if the account is archived
      * @param request the validated submission
      * @param callerId the caller's user id, from the token's {@code sub} claim
      * @return the persisted order in its final status
@@ -98,7 +99,7 @@ public class OrderService {
      */
     @Transactional
     public Order submitOrder(OrderRequest request, UUID callerId) {
-        Account account = accountRepository.findById(request.accountId())
+        Account account = accountRepository.findByIdForUpdate(request.accountId())
                 .orElseThrow(() -> new AccountNotFoundException("No account " + request.accountId()));
         if (!account.getUserId().equals(callerId)) {
             throw new ForbiddenException("You do not have access to this account");
@@ -109,11 +110,14 @@ public class OrderService {
         if (existing.isPresent()) {
             // Same idempotency key already processed (or in flight) for this account —
             // return its outcome rather than validating or executing a second time.
-            // Note: a genuinely concurrent duplicate can still race past this check;
-            // the DB's UNIQUE (account_id, client_reference) constraint is the backstop.
+            // The account lock serializes submissions, and the database uniqueness
+            // constraint remains the backstop for client references.
             return existing.get();
         }
 
+        if (account.getArchivedAt() != null)
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT, "This account is archived");
         User user = userRepository.findById(account.getUserId())
                 .orElseThrow(() -> new IllegalStateException(
                         "Account " + account.getAccountId() + " has no owning user"));

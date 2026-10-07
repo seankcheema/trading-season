@@ -116,3 +116,7 @@ The production [Dockerfile](Dockerfile) builds the app and serves it through unp
 ## Shared components
 
 [shared-ui-components](shared-ui-components/README.md) holds the Spartan/Tailwind component library compiled into this app. Only this app consumes it.
+
+## Delete an account
+
+Each account in the dashboard and market-page selector opens Account settings, where you can edit its name or choose Delete account. Confirming removes an empty account from the active list while retaining all history for reporting and auditing. The dialog shows a centered loading circle while deletion is pending, then a centered success message until dismissed with Done or the dialog's close controls. Animations respect reduced-motion preferences. Close all positions first; shared cash is unaffected. The next account becomes selected, or the empty state offers account creation when none remain.

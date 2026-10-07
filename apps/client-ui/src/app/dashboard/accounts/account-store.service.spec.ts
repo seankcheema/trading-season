@@ -51,6 +51,46 @@ describe('AccountStore', () => {
     http.expectOne(isCashTransactions).flush([]);
   }
 
+  describe('deletion', () => {
+    it('removes the selected account and holdings while retaining shared cash', () => {
+      load();
+      store.selectAccount(1, false);
+      store.deleteAccount(1).subscribe();
+      const request = http.expectOne('/api/accounts/1');
+      expect(request.request.method).toBe('DELETE');
+      request.flush(null);
+      expect(store.selectedAccountId()).toBe(2);
+      expect(store.holdingsOf(1)).toEqual([]);
+      expect(store.cashBalance()).toBe(5000);
+      http.expectOne('/api/me/accounts').flush([ACCOUNTS[1]]);
+    });
+
+    it('keeps a successful archive when refresh fails and allows deleting the last account', () => {
+      load([ACCOUNTS[0]]);
+      let completed = false;
+      store.deleteAccount(1).subscribe(() => (completed = true));
+      http.expectOne('/api/accounts/1').flush(null);
+      http.expectOne('/api/me/accounts').flush({}, { status: 503, statusText: 'Unavailable' });
+      expect(completed).toBe(true);
+      expect(store.accounts()).toEqual([]);
+      expect(store.selectedAccountId()).toBeNull();
+      expect(store.refreshError()).not.toBe('');
+    });
+
+    it('retains an account when deletion is refused', () => {
+      load();
+      store.deleteAccount(1).subscribe({ error: () => undefined });
+      http
+        .expectOne('/api/accounts/1')
+        .flush(
+          { error: 'Close all positions' },
+          { status: 422, statusText: 'Unprocessable Content' },
+        );
+      expect(store.accounts()).toEqual(ACCOUNTS);
+      expect(store.holdingsOf(1)).toEqual(HOLDINGS[1]);
+    });
+  });
+
   describe('loading', () => {
     it('starts idle with nothing selected and no cash', () => {
       expect(store.status()).toBe('idle');
@@ -322,5 +362,4 @@ describe('AccountStore', () => {
     expect(store.cashBalance()).toBe(4700);
     expect(store.holdingsOf(1)[0].quantity).toBe(5);
   });
-
 });

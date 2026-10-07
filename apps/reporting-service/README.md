@@ -96,3 +96,5 @@ docker run -p 8083:8083 -e DATABASE_URL=postgresql+psycopg://... -e AUTH_SERVICE
 ```
 
 Do not add fallback signing keys, disable issuer checks, or widen data scope beyond the token's `sub`.
+
+Portfolio accounts archived by Holdings and Trade remain included in reporting queries. Archiving preserves account IDs and all orders, fills, holdings, cash transactions, movements, and audit entries for historical reporting and future auditing.

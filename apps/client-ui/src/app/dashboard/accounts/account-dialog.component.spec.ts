@@ -12,14 +12,20 @@ describe('AccountDialogComponent', () => {
   let response: Subject<Account>;
   let createAccount: ReturnType<typeof vi.fn>;
   let renameAccount: ReturnType<typeof vi.fn>;
+  let deletion: Subject<void>;
+  let deleteAccount: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     response = new Subject<Account>();
     createAccount = vi.fn(() => response);
     renameAccount = vi.fn(() => response);
+    deletion = new Subject<void>();
+    deleteAccount = vi.fn(() => deletion);
     await TestBed.configureTestingModule({
       imports: [AccountDialogComponent],
-      providers: [{ provide: AccountStore, useValue: { createAccount, renameAccount } }],
+      providers: [
+        { provide: AccountStore, useValue: { createAccount, renameAccount, deleteAccount } },
+      ],
     }).compileComponents();
   });
 
@@ -100,11 +106,72 @@ describe('AccountDialogComponent', () => {
     });
   });
 
+  describe('account settings deletion', () => {
+    function click(element: HTMLElement, label: string): void {
+      const button = Array.from(element.querySelectorAll('button')).find(
+        (candidate) => candidate.textContent?.trim() === label,
+      );
+      expect(button).toBeDefined();
+      button!.click();
+    }
+
+    it('keeps deletion inside settings and requires confirmation', () => {
+      const { fixture, element, closed } = render(BROKERAGE);
+      click(element, 'Delete account');
+      fixture.detectChanges();
+      expect(element.textContent).toContain('All positions must be closed before deletion.');
+      expect(deleteAccount).not.toHaveBeenCalled();
+      click(element, 'Cancel');
+      fixture.detectChanges();
+      expect(element.querySelector('#accountName')).not.toBeNull();
+      expect(closed).not.toHaveBeenCalled();
+      click(element, 'Delete account');
+      fixture.detectChanges();
+      click(element, 'Delete account');
+      fixture.detectChanges();
+      expect(element.querySelector('.account-delete-spinner')).not.toBeNull();
+      expect(element.querySelector('[role="status"]')?.textContent).toContain('Deleting account…');
+      expect(element.querySelector('[aria-busy="true"]')).not.toBeNull();
+      expect(element.textContent).not.toContain('Account deleted successfully.');
+      (element.querySelector('[aria-label="Close account settings"]') as HTMLButtonElement).click();
+      expect(closed).not.toHaveBeenCalled();
+      expect(deleteAccount).toHaveBeenCalledTimes(1);
+      expect(deleteAccount).toHaveBeenCalledWith(1);
+      deletion.next();
+      fixture.detectChanges();
+      expect(element.querySelector('.account-delete-spinner')).toBeNull();
+      expect(element.querySelector('[role="status"]')?.textContent).toBe(
+        'Account deleted successfully.',
+      );
+      expect(closed).not.toHaveBeenCalled();
+      expect(element.querySelector('#accountName')).toBeNull();
+      expect(element.textContent).not.toContain('Delete account');
+      click(element, 'Done');
+      expect(closed).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows the open-position refusal and keeps the dialog open', () => {
+      const { fixture, element, closed } = render(BROKERAGE);
+      click(element, 'Delete account');
+      fixture.detectChanges();
+      click(element, 'Delete account');
+      deletion.error(new HttpErrorResponse({ status: 422 }));
+      fixture.detectChanges();
+      expect(element.querySelector('[role="alert"]')?.textContent).toContain('Close all positions');
+      expect(closed).not.toHaveBeenCalled();
+    });
+
+    it('offers no deletion while creating an account', () => {
+      const { element } = render();
+      expect(element.textContent).not.toContain('Delete account');
+    });
+  });
+
   describe('renaming', () => {
     it('prefills the current name', () => {
       const { element, name, submit } = render(BROKERAGE);
 
-      expect(element.querySelector('[role="dialog"]')?.textContent).toContain('Rename account');
+      expect(element.querySelector('[role="dialog"]')?.textContent).toContain('Account settings');
       expect(name.value).toBe('Brokerage');
       expect(element.textContent).not.toContain('starts with no holdings');
       expect(submit.textContent?.trim()).toBe('Save');

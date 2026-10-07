@@ -126,6 +126,8 @@ class CashTransactionServiceUnitTest {
 
     @Test
     void movingCashForAnUnregisteredUserIsNotFound() {
+        Account account = new Account();
+        when(accountRepository.findActiveForUpdate(USER_ID)).thenReturn(List.of(account));
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.empty());
 
         assertThrows(UserNotFoundException.class,
@@ -136,10 +138,9 @@ class CashTransactionServiceUnitTest {
 
     @Test
     void movingCashWithNoAccountToBookItAgainstIsNotFound() {
-        when(userRepository.findByIdForUpdate(USER_ID))
-                .thenReturn(Optional.of(user(BigDecimal.TEN)));
-        when(accountRepository.findFirstByUserIdOrderByOpenedDateAscIdAsc(USER_ID))
-                .thenReturn(Optional.empty());
+
+        when(accountRepository.findActiveForUpdate(USER_ID))
+                .thenReturn(List.of());
 
         assertThrows(AccountNotFoundException.class,
                 () -> service.move(USER_ID, BigDecimal.ONE, "DEPOSIT"));
@@ -206,8 +207,8 @@ class CashTransactionServiceUnitTest {
         account.setUserId(USER_ID);
         account.setName("Main Account");
         account.setOpenedDate(LocalDate.of(2026, 1, 1));
-        when(accountRepository.findFirstByUserIdOrderByOpenedDateAscIdAsc(USER_ID))
-                .thenReturn(Optional.of(account));
+        when(accountRepository.findActiveForUpdate(USER_ID))
+                .thenReturn(List.of(account));
     }
 
     private static User user(BigDecimal funds) {

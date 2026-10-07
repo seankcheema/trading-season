@@ -46,8 +46,8 @@ class AccountControllerIntegrationTest {
     @BeforeEach
     void setUp() {
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
-        accountRepository.deleteAll();
         holdingRepository.deleteAll();
+        accountRepository.deleteAll();
     }
 
     private static RequestPostProcessor tokenFor(UUID userId, String email) {
@@ -55,6 +55,61 @@ class AccountControllerIntegrationTest {
             .subject(userId.toString())
             .claim("email", email)
             .claim("roles", List.of("TRADER")));
+    }
+
+    @Test
+    void deletionArchivesWithoutRemovingHoldingsAndAllowsNameReuse() throws Exception {
+        UUID owner = UUID.randomUUID();
+        Account account = new Account();
+        account.setUserId(owner);
+        account.setName("Reusable");
+        account.setOpenedDate(LocalDate.now());
+        account = accountRepository.save(account);
+        int id = account.getId();
+        app.holding.Holding holding = new app.holding.Holding();
+        holding.setAccountId(id);
+        holding.setInstrumentId(100);
+        holding.setQuantity(BigDecimal.ZERO);
+        holding.setUpdatedAt(java.time.OffsetDateTime.now());
+        holdingRepository.save(holding);
+        mockMvc.perform(delete("/api/accounts/" + id)).andExpect(status().isUnauthorized());
+        mockMvc.perform(delete("/api/accounts/" + id).with(tokenFor(UUID.randomUUID(), "other@example.com")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(delete("/api/accounts/" + id).with(tokenFor(owner, "owner@example.com")))
+                .andExpect(status().isNoContent());
+        org.junit.jupiter.api.Assertions.assertNotNull(accountRepository.findById(id).orElseThrow().getArchivedAt());
+        org.junit.jupiter.api.Assertions.assertEquals(1, holdingRepository.findByAccountId(id).size());
+        mockMvc.perform(delete("/api/accounts/" + id).with(tokenFor(owner, "owner@example.com")))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/me/accounts").with(tokenFor(owner, "owner@example.com")))
+                .andExpect(content().json("[]"));
+        mockMvc.perform(get("/api/accounts/" + id).with(tokenFor(owner, "owner@example.com")))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/me/accounts").with(tokenFor(owner, "owner@example.com"))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Reusable\"}"))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void openPositionRefusesDeletionAndMissingAccountReturns404() throws Exception {
+        UUID owner = UUID.randomUUID();
+        Account account = new Account();
+        account.setUserId(owner);
+        account.setName("Invested");
+        account.setOpenedDate(LocalDate.now());
+        int id = accountRepository.save(account).getId();
+        app.holding.Holding holding = new app.holding.Holding();
+        holding.setAccountId(id);
+        holding.setInstrumentId(100);
+        holding.setQuantity(BigDecimal.ONE);
+        holding.setUpdatedAt(java.time.OffsetDateTime.now());
+        holdingRepository.save(holding);
+        mockMvc.perform(delete("/api/accounts/" + id).with(tokenFor(owner, "owner@example.com")))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.error").value("Close all positions before deleting this account"));
+        org.junit.jupiter.api.Assertions.assertNull(accountRepository.findById(id).orElseThrow().getArchivedAt());
+        mockMvc.perform(delete("/api/accounts/2147483647").with(tokenFor(owner, "owner@example.com")))
+                .andExpect(status().isNotFound());
     }
 
     @Test

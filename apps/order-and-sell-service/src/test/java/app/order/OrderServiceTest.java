@@ -45,6 +45,9 @@ class OrderServiceTest {
     private OrderService orderService;
 
     @Autowired
+    private org.springframework.transaction.PlatformTransactionManager transactionManager;
+
+    @Autowired
     private OrderRepository orderRepository;
 
     @Autowired
@@ -157,6 +160,62 @@ class OrderServiceTest {
                 .sorted(Comparator.comparing(AuditTrail::getAuditId))
                 .map(AuditTrail::getEventType)
                 .toList();
+    }
+
+    @Test
+    void submissionWaitsForConcurrentArchiveAndCannotFillAfterward() throws Exception {
+        var transactions = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+        var locked = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        var submitting = new java.util.concurrent.CountDownLatch(1);
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var archive = pool.submit(() -> transactions.executeWithoutResult(status -> {
+                Account target = accountRepository.findByIdForUpdate(account.getAccountId()).orElseThrow();
+                target.setArchivedAt(java.time.Instant.now());
+                accountRepository.saveAndFlush(target);
+                locked.countDown();
+                try { assertTrue(release.await(5, java.util.concurrent.TimeUnit.SECONDS)); }
+                catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IllegalStateException(interrupted); }
+            }));
+            assertTrue(locked.await(5, java.util.concurrent.TimeUnit.SECONDS));
+            var request = order("BUY", "1", "50.00");
+            var trade = pool.submit(() -> {
+                submitting.countDown();
+                return orderService.submitOrder(request, user.getUserId());
+            });
+            assertTrue(submitting.await(5, java.util.concurrent.TimeUnit.SECONDS));
+            assertThrows(java.util.concurrent.TimeoutException.class,
+                    () -> trade.get(200, java.util.concurrent.TimeUnit.MILLISECONDS));
+            release.countDown();
+            archive.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            var failure = assertThrows(java.util.concurrent.ExecutionException.class,
+                    () -> trade.get(5, java.util.concurrent.TimeUnit.SECONDS));
+            assertInstanceOf(org.springframework.web.server.ResponseStatusException.class, failure.getCause());
+            assertEquals(0, orderRepository.count());
+            assertEquals(0, fillRepository.count());
+            assertEquals(0, cashTransactionRepository.count());
+        } finally {
+            release.countDown();
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void archivedAccountRejectsNewOrdersButKeepsIdempotentHistory() {
+        OrderRequest original = order("BUY", "1", "50.00");
+        Order saved = orderService.submitOrder(original, user.getUserId());
+        account.setArchivedAt(java.time.Instant.now());
+        accountRepository.save(account);
+        assertEquals(saved.getOrderId(), orderService.submitOrder(original, user.getUserId()).getOrderId());
+        var error = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> orderService.submitOrder(order("BUY", "1", "50.00"), user.getUserId()));
+        assertEquals(409, error.getStatusCode().value());
+        assertEquals(1, orderRepository.count());
+        assertEquals(1, fillRepository.count());
+        assertEquals(1, cashTransactionRepository.count());
+        assertEquals(1, holdingMovementRepository.count());
+        assertEquals(1, orderService.getOwnOrders(user.getUserId()).size());
     }
 
     @Test

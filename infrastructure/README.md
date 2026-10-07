@@ -63,3 +63,5 @@ docker system df
 Never run `docker volume prune` or `docker system prune --volumes` on the agent: unattached volumes may hold Jenkins home, databases, or archives. Rerun through Jenkins so files keep the agent's ownership. If cleanup logs show every build removing all caches, give the agent more storage.
 
 An `Operation not permitted` failure under `apps/reporting-service` means a root-owned file from the pytest container survived; the Checkout stage repairs permissions, but a workspace stuck by an older build must be removed once by hand.
+
+The local and Jenkins Compose database initializers mount the complete migrations directory and run `docker/init-db.sh`, including V009 account archiving, before dependent services start. Existing volumes receive pending migrations through the migration ledger.

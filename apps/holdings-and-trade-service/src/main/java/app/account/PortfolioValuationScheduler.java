@@ -31,7 +31,7 @@ public class PortfolioValuationScheduler {
     public void captureAccounts() {
         for (Integer id : movements.acquiredAccountIds()) {
             try {
-                accounts.findById(id).ifPresent(account -> service.capture(id, account.getUserId(), true));
+                accounts.findById(id).filter(account -> account.getArchivedAt() == null).ifPresent(account -> service.capture(id, account.getUserId(), true));
             } catch (RuntimeException failure) {
                 LOG.warn("Portfolio capture failed for account {}", id, failure);
             }

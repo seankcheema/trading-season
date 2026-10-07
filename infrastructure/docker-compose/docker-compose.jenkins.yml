@@ -48,18 +48,11 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ../../db/migrations/V001__Initialize_database.sql:/V001__Initialize_database.sql:ro
-      - ../../db/migrations/V002__Add_watchlist.sql:/V002__Add_watchlist.sql:ro
+      - ../../db/migrations:/workspace/db/migrations:ro
+      - ../docker/init-db.sh:/workspace/infrastructure/docker/init-db.sh:ro
     environment:
-      PGPASSWORD: ${DB_PASSWORD:-changeme}
-    command: >
-      sh -c 'if [ "$$(psql -h db -U trading_season -d trading_season -t -c
-      "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='"'"'public'"'"';" 2>/dev/null || echo 0)" = "0" ]; then
-      echo "[DB-INIT] Applying migrations...";
-      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 -f /V001__Initialize_database.sql &&
-      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 -f /V002__Add_watchlist.sql
-      && echo "[DB-INIT] Migrations complete";
-      else echo "[DB-INIT] Database already initialized, skipping migrations"; fi'
+      DATABASE_URL: postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season
+    command: ["sh", "-c", 'exec sh /workspace/infrastructure/docker/init-db.sh "$$DATABASE_URL"']
     networks:
       - ci-network
 

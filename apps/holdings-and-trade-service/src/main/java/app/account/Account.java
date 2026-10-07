@@ -9,6 +9,7 @@ import jakarta.persistence.Table;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -28,6 +29,15 @@ public class Account {
     /** Creates an instance of this class. */
     public Account() {
     }
+
+    @Column(name = "archived_at")
+    private Instant archivedAt;
+
+    /** @return the archive timestamp, or null for an active account */
+    public Instant getArchivedAt() { return archivedAt; }
+
+    /** @param archivedAt the archive timestamp; null means active */
+    public void setArchivedAt(Instant archivedAt) { this.archivedAt = archivedAt; }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

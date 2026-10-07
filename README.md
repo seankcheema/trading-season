@@ -152,6 +152,10 @@ This needs a running `trading_season` database; see [db/README.md](db/README.md)
 
 In development the auth service seeds `admin@example.com` / `admin123`. Production never seeds it.
 
+## VS Code workspace
+
+Open [trading-season.code-workspace](trading-season.code-workspace) to load the repository and both Java Maven project folders explicitly. This lets Java language servers resolve each service's dependency classpath when working from the repository root.
+
 ## Checks
 
 Run from the repository root. There is no root npm project.

@@ -52,7 +52,7 @@ class OrderExecutionServiceTest {
     private User user;
 
     @BeforeEach
-    void setUp() {
+    public void setUp() {
         service = new OrderExecutionService(accountRepository, userRepository, holdingRepository, orderRepository,
                 fillRepository, cashTransactionRepository, holdingMovementRepository, auditTrailService);
         account = new Account();
@@ -62,7 +62,7 @@ class OrderExecutionServiceTest {
         user = new User();
         user.setUserId(USER_ID);
         user.setAvailableFunds(new BigDecimal("1000.00"));
-        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account));
+        when(accountRepository.findByIdForUpdate(ACCOUNT_ID)).thenReturn(Optional.of(account));
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
         when(holdingRepository.findByAccountIdAndInstrumentIdForUpdate(ACCOUNT_ID, INSTRUMENT_ID))
                 .thenReturn(Optional.empty());
@@ -72,6 +72,18 @@ class OrderExecutionServiceTest {
             fill.setFillId(FILL_ID);
             return fill;
         });
+    }
+
+    @Test
+    void archivedAccountCannotExecuteOrWriteAnyLedger() {
+        account.setArchivedAt(java.time.Instant.now());
+        var error = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> service.execute(order(Order.TYPE_BUY, "1", "25.00"), new Instrument()));
+        assertEquals(409, error.getStatusCode().value());
+        verify(userRepository, never()).findByIdForUpdate(any());
+        verify(fillRepository, never()).save(any());
+        verify(cashTransactionRepository, never()).save(any());
+        verify(holdingMovementRepository, never()).save(any());
     }
 
     @Test
@@ -165,7 +177,7 @@ class OrderExecutionServiceTest {
 
     @Test
     void executionStopsIfTheAccountDisappears() {
-        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.empty());
+        when(accountRepository.findByIdForUpdate(ACCOUNT_ID)).thenReturn(Optional.empty());
 
         var error = assertThrows(IllegalStateException.class,
                 () -> service.execute(order(Order.TYPE_BUY, "1", "1.00"), new Instrument()));

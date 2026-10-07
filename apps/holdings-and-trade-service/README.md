@@ -168,3 +168,9 @@ mvn test
 Tests use H2 with [application-test.properties](src/test/resources/application-test.properties), mirror the source packages under `src/test/java/app`, and cover cross-user isolation for every user-specific endpoint. Use `@SpringBootTest` with `@Transactional` for repository tests; `@DataJpaTest` is not available. JaCoCo fails the build below 85 percent on every counter in any package (`coverage.minimum` in [pom.xml](pom.xml)); reports are in `target/site/jacoco/`.
 
 Keep HTTP validation in controllers, business logic in services, and persistence in repositories. After changing Java code, regenerate the Javadocs; see [AGENTS.md](../../AGENTS.md).
+
+## Account archiving
+
+`DELETE /api/accounts/{accountId}` archives an owned account with no nonzero holding quantities. Shared user cash is excluded. Success (including repeated deletion) is 204; open positions return 422, another owner 403, and a missing account 404. Errors use the standard `error` envelope. Archived accounts leave `GET /api/me/accounts`, cannot be renamed or receive new valuation captures, and keep all historical reads. Account names can be reused. Deposits and withdrawals book against the earliest active account; create an account first if none remains.
+
+Archiving sets `accounts.archived_at` and never deletes accounts, orders, fills, holdings, movements, cash transactions, audit entries, or portfolio valuations. Account IDs and relationships remain available for reporting and a future audit service.
