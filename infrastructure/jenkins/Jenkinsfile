@@ -325,7 +325,7 @@ pipeline {
                 script {
                     def scannerHome = tool(env.SONAR_SCANNER_TOOL ?: 'SonarScanner')
 
-                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SQ_TOKEN')]) {
+                    withCredentials([string(credentialsId: 'SonarQube Token', variable: 'SQ_TOKEN')]) {
                         sh """
                             set -eu
                             "${scannerHome}/bin/sonar-scanner" \
