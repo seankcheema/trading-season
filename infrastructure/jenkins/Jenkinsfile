@@ -325,17 +325,24 @@ pipeline {
                 script {
                     def scannerHome = tool(env.SONAR_SCANNER_TOOL ?: 'SonarScanner')
 
-                    withCredentials([string(credentialsId: 'SonarQube-Token', variable: 'SQ_TOKEN')]) {
-                        sh """
-                            set -eu
-                            "${scannerHome}/bin/sonar-scanner" \
-                              -Dproject.settings=infrastructure/jenkins/sonar-project.properties \
-                              -Dsonar.host.url="http://localhost:9000" \
-                              -Dsonar.token="\$SQ_TOKEN" \
-                              -Dsonar.projectKey="trading-season" \
-                              -Dsonar.projectName="Trading Season" \
-                              -Dsonar.projectVersion="\$BUILD_NUMBER"
-                        """
+                    withSonarQubeEnv('SonarQube') {
+                        withCredentials([
+                            string(
+                                credentialsId: 'SonarQube Token',
+                                variable: 'SQ_TOKEN'
+                            )
+                        ]) {
+                            sh """
+                                set -eu
+                                "${scannerHome}/bin/sonar-scanner" \
+                                  -Dproject.settings=infrastructure/jenkins/sonar-project.properties \
+                                  -Dsonar.host.url="http://localhost:9000" \
+                                  -Dsonar.token="\$SQ_TOKEN" \
+                                  -Dsonar.projectKey="trading-season" \
+                                  -Dsonar.projectName="Trading Season" \
+                                  -Dsonar.projectVersion="\$BUILD_NUMBER"
+                            """
+                        }
                     }
                 }
             }
