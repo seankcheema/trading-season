@@ -1,6 +1,6 @@
 # Javadocs
 
-Generated API documentation for the two Java services, regenerated and reviewed on 2026-10-05 (Holdings and Trade) and 2026-10-06 (Order and Sell). Open [index.html](index.html) for links into both. The generated output is refreshed only after successful generation and review.
+Generated API documentation for the two Java services, regenerated and reviewed on 2026-10-07 (Holdings and Trade) and 2026-10-06 (Order and Sell). Open [index.html](index.html) for links into both. The generated output is refreshed only after successful generation and review.
 
 Each service has its own directory. Both root their packages at `app` and share the names `account`, `auth`, `holding`, `instrument`, `market` and `user`, with different classes under them, so a single merged directory would silently overwrite one service's pages with the other's. Before this split the checked-in copy held the Order and Sell Service only, and changes to Holdings and Trade were not published at all.
 
