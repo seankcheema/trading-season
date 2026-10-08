@@ -20,7 +20,9 @@
     <section class="dash-card flex flex-col items-center gap-2 px-5 py-14 text-center">
       <ng-icon name="lucideInbox" size="24" class="text-muted-foreground" />
       <h2 class="text-sm font-semibold">No report yet</h2>
-      <p class="text-muted-foreground max-w-sm text-sm">{{ emptyMessage() }}</p>
+      <p class="text-muted-foreground max-w-sm text-sm">
+        Start the reporting consumer to write the first run.
+      </p>
     </section>
   }
   @case ('error') {
@@ -32,7 +34,7 @@
   }
   @case ('ready') {
     @let report = store.report()!;
-    <div class="flex flex-col gap-3">
+    <div class="flex min-h-0 flex-1 flex-col gap-3">
       @if (store.refreshFailed()) {
         <p role="status" class="bg-muted rounded-lg px-3 py-2 text-sm">
           We couldn't refresh the report. Showing the run generated
@@ -40,7 +42,7 @@
         </p>
       }
 
-      <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+      <div class="grid shrink-0 grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         @for (kpi of kpis(); track kpi.label) {
           <section class="dash-card p-4">
             <h2 class="dash-label">{{ kpi.label }}</h2>
@@ -50,8 +52,10 @@
         }
       </div>
 
-      <div class="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <section class="dash-card flex flex-col p-5">
+      <div
+        class="grid gap-3 lg:min-h-[25rem] lg:flex-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]"
+      >
+        <section class="dash-card flex min-h-0 flex-col p-5">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h2 class="text-sm font-semibold">Trades per day</h2>
             <ul class="text-muted-foreground flex items-center gap-4 text-xs">
@@ -66,7 +70,7 @@
           <app-daily-trades-chart class="mt-3 flex-1" [days]="report.dailyCounts" />
         </section>
 
-        <div class="flex flex-col gap-3">
+        <div class="flex min-h-0 flex-col gap-3">
           <section class="dash-card p-5">
             <h2 class="text-sm font-semibold">Orders by status</h2>
             <div class="mt-5 flex flex-col gap-4">
@@ -96,7 +100,7 @@
             </div>
           </section>
 
-          <section class="dash-card p-5">
+          <section class="dash-card p-5 lg:flex-1">
             <div class="flex items-center justify-between gap-2">
               <h2 class="text-sm font-semibold">Report pipeline</h2>
               <span class="text-muted-foreground flex items-center gap-1.5 text-xs">
@@ -128,8 +132,10 @@
         </div>
       </div>
 
-      <div class="grid gap-3 lg:grid-cols-2">
-        <section class="dash-card flex flex-col p-5">
+      <div
+        class="grid gap-3 lg:min-h-[15rem] lg:flex-1 lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]"
+      >
+        <section class="dash-card flex min-h-0 flex-col p-5">
           <h2 class="text-sm font-semibold">Most traded</h2>
           @if (symbols().length) {
             <div class="dash-table-head symbol-grid mt-4 grid gap-2">
@@ -165,7 +171,7 @@
                 (toggled)="sortSymbols('notional')"
               ></button>
             </div>
-            <ul class="max-h-80 overflow-y-auto">
+            <ul class="dash-scroll max-h-80 min-h-0 lg:max-h-none lg:flex-1">
               @for (row of symbols(); track row.symbol) {
                 <li class="dash-table-row symbol-grid grid items-center gap-2">
                   <span class="truncate font-medium">{{ row.symbol }}</span>
@@ -180,7 +186,7 @@
           }
         </section>
 
-        <section class="dash-card flex flex-col p-5">
+        <section class="dash-card flex min-h-0 flex-col p-5">
           <h2 class="text-sm font-semibold">Accounts</h2>
           @if (accounts().length) {
             <div class="dash-table-head account-grid mt-4 grid gap-2">
@@ -223,7 +229,7 @@
                 (toggled)="sortAccounts('rejected')"
               ></button>
             </div>
-            <ul class="max-h-80 overflow-y-auto">
+            <ul class="dash-scroll max-h-80 min-h-0 lg:max-h-none lg:flex-1">
               @for (row of accounts(); track row.accountId) {
                 <li class="dash-table-row account-grid grid items-center gap-2">
                   <span class="truncate font-medium">{{ accountName(row) }}</span>

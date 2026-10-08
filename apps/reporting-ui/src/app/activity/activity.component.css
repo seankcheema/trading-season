@@ -1,5 +1,8 @@
+/* Fills the screen when there is room and scrolls with the page when there is not. */
 :host {
-  display: block;
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
 }
 
 .symbol-grid {

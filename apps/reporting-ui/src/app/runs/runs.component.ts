@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideDownload, lucideInbox, lucideRefreshCw } from '@ng-icons/lucide';
+import { lucideCircleAlert, lucideDownload, lucideInbox, lucideRefreshCw } from '@ng-icons/lucide';
 import { catchError, distinctUntilChanged, forkJoin, map, of, startWith, switchMap, tap } from 'rxjs';
 import { count, dateTime } from '../reporting/format';
 import { RunSummary } from '../reporting/report.models';
@@ -35,7 +35,7 @@ const CHART_TITLES: Record<string, string> = {
   selector: 'app-runs',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgIcon, PageHeaderComponent],
-  providers: [provideIcons({ lucideDownload, lucideInbox, lucideRefreshCw })],
+  providers: [provideIcons({ lucideCircleAlert, lucideDownload, lucideInbox, lucideRefreshCw })],
   templateUrl: './runs.component.html',
   styleUrl: './runs.component.css',
 })
@@ -56,9 +56,8 @@ export class RunsComponent {
 
   protected readonly subtitle = computed(() => {
     const interval = this.store.scheduler()?.interval_minutes;
-    return interval
-      ? `Written by the reporting consumer every ${interval} minutes · each run replaces the one before`
-      : 'Written by the reporting consumer · each run replaces the one before';
+    const every = interval === 1 ? ' every minute' : interval ? ` every ${interval} minutes` : '';
+    return `Written by the reporting consumer${every} · each run replaces the one before`;
   });
 
   protected readonly count = count;

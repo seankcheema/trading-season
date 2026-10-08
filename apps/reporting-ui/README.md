@@ -8,7 +8,7 @@ Angular 21 single-page app that presents the [Reporting Service](../reporting-se
 | Route | Guard | Screen |
 | --- | --- | --- |
 | `/login` | anyone not signed in as an analyst | Sign in |
-| `/` | signed-in analyst | Activity: headline figures, trades per day, orders by status, report pipeline, most traded symbols, accounts |
+| `/` | signed-in analyst | Activity: headline figures, filled and rejected orders per day, orders by status, report pipeline, most traded symbols, accounts |
 | `/runs` | signed-in analyst | Report runs: the runs on disk and the PNG charts of the selected run, with download |
 
 Every figure on screen comes from the Reporting Service. Nothing is demo data. Days are UTC days, as the report job buckets them; the time a run was generated is shown in the viewer's time zone with the zone named.
@@ -24,7 +24,7 @@ flowchart LR
     RS -- "/api/reporting" --> UI["Reporting UI :4300"]
 ```
 
-The UI never talks to Kafka. The consumer writes a new run every `SCHEDULER_INTERVAL_MINUTES`; the UI asks `GET /api/reporting/scheduler/status` every 30 seconds and reloads the report when the latest run id changes, so a new run appears without a page reload. The Activity screen shows the run interval, when the next run is due, and whether it is overdue by the service's own clock.
+The UI never talks to Kafka. The consumer writes a run when it starts and a new one every `SCHEDULER_INTERVAL_MINUTES`; the UI asks `GET /api/reporting/scheduler/status` every 30 seconds and reloads the report when the latest run id changes, so a new run appears without a page reload. The Activity screen shows the run interval, when the next run is due, and whether it is overdue by the service's own clock.
 
 | Screen element | Endpoint |
 | --- | --- |
@@ -102,7 +102,15 @@ A role change takes effect at the account's next sign-in or token refresh. See [
 
 The screens follow the TradingSeason design system: dark only, Archivo, the cyan accent, filled orders in the gain color and rejected orders in the loss color, dashboard cards with quiet uppercase labels, Lucide icons through `@ng-icons/lucide`. The tokens are declared in [src/styles.css](src/styles.css) with the same values as the Client UI's dark theme, and Tailwind v4 maps them to utilities. The design system export itself is not checked in.
 
-The layout adapts the design system's proposed reporting console. Its Customers and Orders screens are not built: the Reporting Service has no endpoints for customer lookup, per-order history, or audit trails.
+The layout adapts the design system's proposed reporting console. Its Customers and Orders screens are not built: the Reporting Service has no endpoints for customer lookup, per-order history, or audit trails. Its range toggle and export menu are not built either: a run covers every event on disk, and the service has no export.
+
+| Design system rule | Where it is applied |
+| --- | --- |
+| The dashboard fills the viewport; lists clip inside their cards with a bottom fade and no scrollbar | Activity from 1024px wide, while the window is tall enough; below that, and on a short window, the page scrolls. `.dash-scroll` in [src/styles.css](src/styles.css) |
+| Charts are 2px lines over hairline gridlines, with a right-hand axis, a ringed marker, and a hover crosshair with a label row | [daily-trades-chart.component.ts](src/app/activity/daily-trades-chart.component.ts): filled orders as a line over a faded area, rejected orders as a second line, both on one count axis |
+| Focus is a 3px ring at half strength | Every link and button, from the base layer of [src/styles.css](src/styles.css) |
+
+The chart images on the Report runs screen are drawn by the Reporting Service, in the same surface and colors.
 
 This app does not use the Client UI's [shared-ui-components](../client-ui/shared-ui-components/README.md). Its own markup is styled directly from the tokens, so that library still has one consumer.
 
@@ -117,7 +125,18 @@ npm --prefix apps/reporting-ui run build
 npm --prefix apps/reporting-ui test -- --no-watch
 ```
 
-`ng serve` runs on port 4300 and expects the Auth Service on `localhost:3001` and the Reporting Service on `localhost:8083`. A report appears once the reporting consumer has written its first run; until then the screens say that no report exists yet. Use `--no-watch` for the tests; Vitest's `--run` is not supported by the builder.
+`ng serve` runs on port 4300 and expects the Auth Service on `localhost:3001` and the Reporting Service on `localhost:8083`; [scripts/start-local.ps1](../../scripts/start-local.ps1) starts all three, see [Local processes](../../README.md#local-processes-windows). Use `--no-watch` for the tests; Vitest's `--run` is not supported by the builder.
+
+What the screens show depends on what is running:
+
+| Situation | Activity and Report runs show |
+| --- | --- |
+| Reporting Service not reachable | "We couldn't load the report." with a retry |
+| Reporting Service up, consumer never started | "No report yet" |
+| Consumer running, no trade event stored yet | A report of zeros |
+| Orders placed while the broker and consumer run | Those orders, from the next run on |
+
+Trade events exist only for orders placed while a Kafka broker is running. Orders already in the database are never replayed, so a stack that was started without a broker has nothing to report until new orders are placed.
 
 The production [Dockerfile](Dockerfile) builds the app and serves it through unprivileged Nginx, with SPA fallback and the two proxies. In [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) the container starts after `reporting-service` and `auth-service`, because Nginx resolves both upstream names when it starts.
 

@@ -9,7 +9,7 @@ Python Flask service that turns the `trade-events` Kafka topic into reports. It 
 
 1. Order and Sell publishes one message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`), keyed by account id. The run counts only final statuses as trades.
 2. `consumer.py`, consumer group `reporting-ingester`, appends each message as one JSON line to `events/trade-events-p<partition>.jsonl` under `REPORTING_FILES_DIR`, then commits the offset. Offsets already on disk are skipped, so redelivery never duplicates a line.
-3. Every `SCHEDULER_INTERVAL_MINUTES` the same process runs `report_run.py`: reads the event files, joins account and trader names from PostgreSQL (`users` and `accounts`, read only), and writes `runs/<UTC timestamp>/report.json` plus three PNG charts. `runs/latest` points at the new run; older runs are deleted.
+3. When it starts, and then every `SCHEDULER_INTERVAL_MINUTES`, the same process runs `report_run.py`: reads the event files, joins account and trader names from PostgreSQL (`users` and `accounts`, read only), and writes `runs/<UTC timestamp>/report.json` plus three PNG charts. `runs/latest` points at the new run; older runs are deleted. The first run reports the events already on disk, so a restart serves a report at once; a run that comes due while the process is busy runs late instead of being skipped. The charts use the Reporting UI's dark surface and colors, filled orders in the gain color and rejected orders in the loss color.
 4. The web service (`wsgi.py` under gunicorn) serves the runs behind the same RS256 tokens the Java services accept, to accounts with the `ANALYST` role only.
 
 ## Technology
@@ -32,6 +32,8 @@ FLASK_ENV=development python app.py   # terminal 2: web service on 8083
 ```
 
 On the host the broker is `localhost:29092` and the files land in `./data/reporting` (ignored by git). Run exactly one consumer at a time.
+
+On Windows, [scripts/start-local.ps1](../../scripts/start-local.ps1) starts both processes from this `venv` with the rest of the stack, and can start a broker without Docker; see [Local processes](../../README.md#local-processes-windows).
 
 ## Endpoints
 
@@ -78,7 +80,7 @@ flowchart LR
 | `KAFKA_TRADE_EVENTS_TOPIC` | `trade-events` | Topic to consume |
 | `REPORTING_CONSUMER_GROUP` | `reporting-ingester` | Consumer group; keep it stable so offsets carry across restarts |
 | `SCHEDULER_ENABLED` | `True` | Run the report job; the web service is started with `false` |
-| `SCHEDULER_INTERVAL_MINUTES` | `15` | Report run interval |
+| `SCHEDULER_INTERVAL_MINUTES` | `15` | Report run interval, after the run the consumer makes when it starts |
 
 ## Files on the volume
 

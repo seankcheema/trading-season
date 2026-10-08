@@ -102,6 +102,11 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Focus: a 3px ring at half strength, in place of the browser outline. */
+  :where(a, button):focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent);
+  }
 }
 
 /* The dashboard vocabulary from the client UI (dashboard.component.css), shared
@@ -149,6 +154,19 @@
     border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
     padding-block: 0.625rem;
     font-size: 0.875rem;
+  }
+
+  /* A list that scrolls inside its card: no scrollbar, and a fade where it
+     clips. The bottom padding keeps the last row clear of the fade. */
+  .dash-scroll {
+    overflow-y: auto;
+    padding-bottom: 1.5rem;
+    scrollbar-width: none;
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 2rem), transparent);
+  }
+
+  .dash-scroll::-webkit-scrollbar {
+    display: none;
   }
 
   /* Rounded-full status tag: 10px uppercase on a 15 percent tint. */
@@ -223,6 +241,10 @@
 
   .ghost-button:hover {
     background: color-mix(in srgb, var(--input) 50%, transparent);
+  }
+
+  .ghost-button:focus-visible {
+    border-color: var(--ring);
   }
 
   .ghost-button:active {

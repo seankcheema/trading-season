@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { fakeReportStore, report, schedulerStatus } from '../../testing/fixtures';
+import { fakeReportStore, report } from '../../testing/fixtures';
 import { ReportState, ReportStore } from '../reporting/report-store.service';
 import { ActivityComponent } from './activity.component';
 
@@ -174,18 +174,10 @@ describe('ActivityComponent', () => {
     expect(text(root)).toContain('From the trade-events topic');
   });
 
-  it('explains when the first run is due while there is no report', () => {
+  it('says what to start while there is no report', () => {
     const root = render('empty');
     expect(text(root)).toContain('No report yet');
-    expect(text(root)).toContain('writes the first run 15 minutes after it starts');
-
-    store.scheduler.set(null);
-    fixture.detectChanges();
-    expect(text(root)).toContain('on its next scheduled pass');
-
-    store.scheduler.set(schedulerStatus({ interval_minutes: 5 }));
-    fixture.detectChanges();
-    expect(text(root)).toContain('first run 5 minutes');
+    expect(text(root)).toContain('Start the reporting consumer to write the first run.');
   });
 
   it('offers a retry when the report cannot be loaded', () => {

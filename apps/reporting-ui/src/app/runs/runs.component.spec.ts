@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Subject, of, throwError } from 'rxjs';
-import { fakeReportStore, run } from '../../testing/fixtures';
+import { fakeReportStore, run, schedulerStatus } from '../../testing/fixtures';
 import { ReportState, ReportStore } from '../reporting/report-store.service';
 import { ReportingApiService } from '../reporting/reporting-api.service';
 import { RunsComponent } from './runs.component';
@@ -140,5 +140,22 @@ describe('RunsComponent', () => {
     fixture.detectChanges();
     expect(text(root)).toContain('No report runs yet');
     expect(text(root)).toContain('Written by the reporting consumer · each run replaces');
+
+    store.scheduler.set(schedulerStatus({ interval_minutes: 1 }));
+    fixture.detectChanges();
+    expect(text(root)).toContain('Written by the reporting consumer every minute · each run');
+  });
+
+  it('offers a retry instead of an empty list when the service cannot be reached', () => {
+    const root = render('error');
+    expect(text(root.querySelector('[role="alert"]')!)).toContain(
+      "We couldn't load the report runs.",
+    );
+    expect(text(root)).not.toContain('No report runs yet');
+
+    Array.from(root.querySelectorAll('button'))
+      .find((button) => button.textContent!.includes('Try again'))!
+      .click();
+    expect(store.refresh).toHaveBeenCalledTimes(1);
   });
 });

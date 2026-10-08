@@ -15,6 +15,7 @@ from functools import wraps
 from config import config
 import logging
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 
 # Database models (users and accounts only; trade data comes from the event files)
 from models import db
@@ -313,7 +314,8 @@ def init_app():
     started here: it runs in the consumer process (consumer.py).
     """
     logger.info(f"Initializing Reporting Service (env: {app.config['ENV']})")
-    logger.info(f"Database: {app.config['DATABASE_URL']}")
+    # Never the raw URL: it carries the database password.
+    logger.info(f"Database: {make_url(app.config['DATABASE_URL']).render_as_string(hide_password=True)}")
     logger.info(f"Auth Service: {app.config['AUTH_SERVICE_URL']}")
     logger.info(f"Reporting files: {app.config['REPORTING_FILES_DIR']}")
 

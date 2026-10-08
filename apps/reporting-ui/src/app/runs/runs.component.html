@@ -14,12 +14,18 @@
   <section class="dash-card p-5" aria-busy="true">
     <p class="text-muted-foreground text-sm">Loading report runs…</p>
   </section>
+} @else if (store.state() === 'error') {
+  <section class="dash-card flex flex-col items-center gap-3 px-5 py-14 text-center" role="alert">
+    <ng-icon name="lucideCircleAlert" size="24" class="text-loss" />
+    <p class="text-sm">We couldn't load the report runs.</p>
+    <button type="button" class="ghost-button" (click)="store.refresh()">Try again</button>
+  </section>
 } @else if (!store.runs().length) {
   <section class="dash-card flex flex-col items-center gap-2 px-5 py-14 text-center">
     <ng-icon name="lucideInbox" size="24" class="text-muted-foreground" />
     <h2 class="text-sm font-semibold">No report runs yet</h2>
     <p class="text-muted-foreground max-w-sm text-sm">
-      Runs appear here once the reporting consumer has written its first report.
+      Start the reporting consumer to write the first run.
     </p>
   </section>
 } @else {

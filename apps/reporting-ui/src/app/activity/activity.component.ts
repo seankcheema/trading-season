@@ -114,13 +114,6 @@ export class ActivityComponent {
     };
   });
 
-  protected readonly emptyMessage = computed(() => {
-    const interval = this.store.scheduler()?.interval_minutes;
-    return interval
-      ? `The reporting consumer writes the first run ${interval} minutes after it starts.`
-      : 'The reporting consumer writes the first run on its next scheduled pass.';
-  });
-
   protected readonly count = count;
   protected readonly dollars = dollars;
   protected readonly percent = percent;

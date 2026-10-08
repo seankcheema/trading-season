@@ -4,6 +4,7 @@ import json
 import sys
 import threading
 import types
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import consumer
@@ -130,9 +131,29 @@ class TestScheduler:
             job = scheduler.get_job('report_run')
             assert job is not None
             assert job.trigger.interval.total_seconds() == 3600
+            first_run_in = job.next_run_time - datetime.now(timezone.utc)
+            assert timedelta(minutes=59) < first_run_in <= timedelta(minutes=60)
         finally:
             scheduler.shutdown(wait=False)
 
+    def test_the_first_run_can_be_due_before_a_whole_interval(self, app, tmp_path):
+        first_run_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+        scheduler = start_scheduler(app, str(tmp_path), interval_minutes=60, first_run_at=first_run_at)
+        try:
+            assert scheduler.get_job('report_run').next_run_time == first_run_at
+        finally:
+            scheduler.shutdown(wait=False)
+
+    def test_a_run_that_comes_due_late_still_runs(self, app, tmp_path, mocker):
+        ran = threading.Event()
+        mocker.patch('report_run.run_report', side_effect=lambda *args: ran.set())
+        mocker.patch('models.db.session.remove')
+        overdue = datetime.now(timezone.utc) - timedelta(minutes=5)
+        scheduler = start_scheduler(app, str(tmp_path), interval_minutes=60, first_run_at=overdue)
+        try:
+            assert ran.wait(5), 'a first run already overdue at start-up is not dropped as a misfire'
+        finally:
+            scheduler.shutdown(wait=True)
 
     def test_the_job_runs_a_report_inside_the_app_context(self, app, tmp_path, mocker):
         run_report = mocker.patch('report_run.run_report')
@@ -224,10 +245,14 @@ class TestMain:
         signal = mocker.patch('consumer.signal.signal')
         source_cls = mocker.patch('consumer.KafkaSource')
         loop = mocker.patch('consumer.run_consumer_loop')
-        scheduler = mocker.patch('consumer.start_scheduler').return_value
+        start_scheduler = mocker.patch('consumer.start_scheduler')
+        scheduler = start_scheduler.return_value
 
         main()
 
+        assert start_scheduler.call_args.args[1:] == (str(files_dir), 5)
+        first_run_in = start_scheduler.call_args.kwargs['first_run_at'] - datetime.now(timezone.utc)
+        assert abs(first_run_in) < timedelta(seconds=30), 'the first report run is due as the consumer starts'
         assert signal.call_count == 2, 'SIGTERM and SIGINT both ask the loop to stop'
         source_cls.assert_called_once()
         assert source_cls.call_args.args == ('kafka:9092', 'reporting-ingester', 'trade-events')

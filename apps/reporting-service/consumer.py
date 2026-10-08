@@ -12,6 +12,7 @@ import json
 import logging
 import signal
 import threading
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -95,8 +96,11 @@ def run_consumer_loop(source, store, stop_event, poll_timeout=1.0):
     return stats
 
 
-def start_scheduler(app, files_dir, interval_minutes):
-    """Run the report job on an interval inside the Flask app context."""
+def start_scheduler(app, files_dir, interval_minutes, first_run_at=None):
+    """
+    Run the report job on an interval inside the Flask app context. The first
+    run is one interval away unless first_run_at names an earlier time.
+    """
     from models import db
     from report_run import run_report
 
@@ -109,9 +113,13 @@ def start_scheduler(app, files_dir, interval_minutes):
             finally:
                 db.session.remove()
 
+    # Passed only when set: APScheduler reads next_run_time=None as a paused job.
+    first_run = {'next_run_time': first_run_at} if first_run_at is not None else {}
+    # No misfire grace limit: a run that comes due while the process is busy,
+    # as the first one does during start-up, still runs instead of being dropped.
     scheduler = BackgroundScheduler()
     scheduler.add_job(job, trigger='interval', minutes=interval_minutes, id='report_run',
-                      coalesce=True, max_instances=1)
+                      coalesce=True, max_instances=1, misfire_grace_time=None, **first_run)
     scheduler.start()
     logger.info('Report run scheduled every %s minutes', interval_minutes)
     return scheduler
@@ -129,9 +137,12 @@ def main():
     for signum in (signal.SIGTERM, signal.SIGINT):
         signal.signal(signum, lambda *_: stop.set())
 
+    # The first run is due at once, so a restarted consumer serves a report of
+    # the events already on disk instead of nothing for a whole interval.
     scheduler = None
     if config['SCHEDULER_ENABLED']:
-        scheduler = start_scheduler(app, files_dir, config['SCHEDULER_INTERVAL_MINUTES'])
+        scheduler = start_scheduler(app, files_dir, config['SCHEDULER_INTERVAL_MINUTES'],
+                                    first_run_at=datetime.now(timezone.utc))
 
     source = KafkaSource(config['KAFKA_BOOTSTRAP_SERVERS'], config['REPORTING_CONSUMER_GROUP'],
                          config['KAFKA_TRADE_EVENTS_TOPIC'], on_assign=store.refresh)

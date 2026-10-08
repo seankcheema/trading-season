@@ -19,6 +19,7 @@ from pathlib import Path
 import matplotlib
 matplotlib.use('Agg')  # headless; must precede the pyplot import
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.ticker import FuncFormatter, MaxNLocator  # noqa: E402
 
 from event_store import EventStore  # noqa: E402
 from models import Account, User  # noqa: E402
@@ -142,39 +143,95 @@ def load_account_names(session, account_ids):
     }
 
 
-def _save_bar_chart(path, labels, values, title, ylabel):
-    fig, axis = plt.subplots(figsize=(8, 4.5))
-    if labels:
-        axis.bar(labels, values)
-        axis.tick_params(axis='x', labelrotation=30)
-    else:
-        axis.text(0.5, 0.5, 'No trade events yet', ha='center', va='center', transform=axis.transAxes)
-        axis.set_xticks([])
-    axis.set_title(title)
-    axis.set_ylabel(ylabel)
+# The product is dark-only, so the charts wear the same TradingSeason tokens as
+# the Reporting UI that shows them (apps/reporting-ui/src/styles.css): the card
+# surface, frost text, the cyan accent, filled in the gain color and rejected in
+# the loss color.
+CHART_SURFACE = '#141414'
+CHART_TEXT = '#eefaff'
+CHART_MUTED = (238 / 255, 250 / 255, 1.0, 0.5)
+CHART_BORDER = (238 / 255, 250 / 255, 1.0, 0.15)
+CHART_GRID = (238 / 255, 250 / 255, 1.0, 0.09)
+CHART_ACCENT = '#00bbff'
+CHART_GAIN = '#25eb69'
+CHART_LOSS = '#ff3d5a'
+BAR_WIDTH = 0.6
+# The plot is at least this many bars wide, so a run with one or two bars
+# draws them as bars and not as blocks that fill the chart.
+MIN_BAR_SLOTS = 8
+# Past this many bars the labels are slanted to keep them apart.
+MAX_LEVEL_LABELS = 8
+
+
+def _new_chart(title, ylabel):
+    """A figure on the card surface with a right-hand value axis and hairline gridlines."""
+    fig, axis = plt.subplots(figsize=(8, 4.5), facecolor=CHART_SURFACE)
+    axis.set_facecolor(CHART_SURFACE)
+    axis.set_title(title, color=CHART_TEXT, fontsize=12, fontweight='bold', loc='left', pad=14)
+    axis.yaxis.tick_right()
+    axis.yaxis.set_label_position('right')
+    axis.set_ylabel(ylabel, color=CHART_MUTED, labelpad=10)
+    axis.tick_params(colors=CHART_MUTED, length=0, labelsize=9)
+    for side in ('top', 'left', 'right'):
+        axis.spines[side].set_visible(False)
+    axis.spines['bottom'].set_color(CHART_BORDER)
+    axis.grid(axis='y', color=CHART_GRID, linewidth=0.8)
+    axis.set_axisbelow(True)
+    return fig, axis
+
+
+def _fit_bars(axis, count):
+    """Give every bar the same slot width whatever their number, and keep their labels readable."""
+    axis.set_xlim(-0.5, max(count, MIN_BAR_SLOTS) - 0.5)
+    if count > MAX_LEVEL_LABELS:
+        plt.setp(axis.get_xticklabels(), rotation=30, ha='right')
+
+
+def _mark_empty(axis):
+    axis.text(0.5, 0.5, 'No trade events yet', ha='center', va='center', color=CHART_MUTED,
+              transform=axis.transAxes)
+    axis.set_xticks([])
+    axis.set_yticks([])
+
+
+def _write_chart(fig, path):
     fig.tight_layout()
-    fig.savefig(path, format='png', dpi=100)
+    fig.savefig(path, format='png', dpi=100, facecolor=fig.get_facecolor())
     plt.close(fig)
 
 
+def _save_bar_chart(path, labels, values, title, ylabel, money=False):
+    fig, axis = _new_chart(title, ylabel)
+    if labels:
+        axis.bar(labels, values, width=BAR_WIDTH, color=CHART_ACCENT)
+        _fit_bars(axis, len(labels))
+        if money:
+            axis.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f'${value:,.0f}'))
+        else:
+            axis.yaxis.set_major_locator(MaxNLocator(integer=True))
+    else:
+        _mark_empty(axis)
+    _write_chart(fig, path)
+
+
 def _save_daily_chart(path, daily_counts):
-    fig, axis = plt.subplots(figsize=(8, 4.5))
+    fig, axis = _new_chart('Trades per day (UTC)', 'Orders resolved')
     if daily_counts:
         days = [row['date'] for row in daily_counts]
         filled = [row['filled'] for row in daily_counts]
         rejected = [row['rejected'] for row in daily_counts]
-        axis.bar(days, filled, label='Filled')
-        axis.bar(days, rejected, bottom=filled, label='Rejected')
-        axis.legend()
-        axis.tick_params(axis='x', labelrotation=30)
+        # The surface-colored edge leaves a gap between the two stacked segments.
+        edge = {'edgecolor': CHART_SURFACE, 'linewidth': 1.5, 'width': BAR_WIDTH}
+        axis.bar(days, filled, label='Filled', color=CHART_GAIN, **edge)
+        axis.bar(days, rejected, bottom=filled, label='Rejected', color=CHART_LOSS, **edge)
+        # Above the plot, level with the title, so it never covers a bar.
+        axis.legend(frameon=False, labelcolor=CHART_MUTED, fontsize=9, ncols=2,
+                    loc='lower right', bbox_to_anchor=(1.0, 1.0), borderaxespad=0.6)
+        _fit_bars(axis, len(days))
+        axis.yaxis.set_major_locator(MaxNLocator(integer=True))
     else:
-        axis.text(0.5, 0.5, 'No trade events yet', ha='center', va='center', transform=axis.transAxes)
-        axis.set_xticks([])
-    axis.set_title('Trades per day (UTC)')
-    axis.set_ylabel('Orders resolved')
-    fig.tight_layout()
-    fig.savefig(path, format='png', dpi=100)
-    plt.close(fig)
+        _mark_empty(axis)
+    _write_chart(fig, path)
 
 
 def render_charts(insights, run_dir):
@@ -184,7 +241,7 @@ def render_charts(insights, run_dir):
     _save_bar_chart(run_dir / 'volume_by_symbol.png',
                     [row['symbol'] for row in volume],
                     [float(row['notional']) for row in volume],
-                    'Traded value by symbol (filled orders)', 'Notional')
+                    'Traded value by symbol (filled orders)', 'Notional', money=True)
     _save_daily_chart(run_dir / 'daily_trades.png', insights['dailyCounts'])
     accounts = insights['tradesPerAccount']
     _save_bar_chart(run_dir / 'trades_per_account.png',

@@ -188,15 +188,29 @@ The UI is at http://localhost:4200 and the Reporting UI at http://localhost:4300
 npm --prefix apps/client-ui ci
 npm --prefix apps/reporting-ui ci
 npm --prefix apps/auth-service ci
+python -m venv apps/reporting-service/venv
+apps/reporting-service/venv/Scripts/python -m pip install -r apps/reporting-service/requirements.txt
 Copy-Item apps/auth-service/.env.example apps/auth-service/.env
 node apps/auth-service/scripts/generate-dev-keys.mjs | Add-Content apps/auth-service/.env
 $env:SPRING_DATASOURCE_PASSWORD = 'password'
 .\scripts\start-local.ps1
 ```
 
-The script starts the Client UI on 4200, the Reporting UI on 4300, the Auth Service and both Java services, and stops with an instruction if any npm project has no installed dependencies. It does not start the Reporting Service or its consumer; until they run, the Reporting UI signs in but has no report to show. See [apps/reporting-service](apps/reporting-service/README.md).
+The script starts the Client UI on 4200, the Reporting UI on 4300, the Auth Service, both Java services, the Reporting Service on 8083 and its consumer, and stops with an instruction if a project's dependencies are not installed. This needs a running `trading_season` database; see [db/README.md](db/README.md) to create and migrate one, and [apps/market-data](apps/market-data/README.md) to load synthetic market data. On Linux, `scripts/setup-local.sh` does the equivalent setup.
 
-This needs a running `trading_season` database; see [db/README.md](db/README.md) to create and migrate one, and [apps/market-data](apps/market-data/README.md) to load synthetic market data. On Linux, `scripts/setup-local.sh` does the equivalent setup. The Java services also expect the Kafka broker from the Compose file on `localhost:29092`; start only the `kafka` and `kafka-init` services from it, or set `app.events.enabled=false` on both Java services to run without a broker.
+Trade events, and so everything the Reporting UI shows, need a Kafka broker on `localhost:29092`. The script handles the three cases:
+
+| Broker | What the script does |
+| --- | --- |
+| Already listening on `localhost:29092`, for example the `kafka` and `kafka-init` services of the Compose file | Uses it |
+| Not running, and `-KafkaHome` or `KAFKA_HOME` names an unpacked [Apache Kafka](https://kafka.apache.org/downloads) distribution | Starts a single-node broker from it with the JDK, keeps its data in `%LOCALAPPDATA%\trading-season\kafka`, and creates `trade-events` with three partitions. For a machine without Docker |
+| Neither | Sets `app.events.enabled=false` on both Java services, does not start the consumer, and warns that the Reporting UI has no trades to report |
+
+```powershell
+.\scripts\start-local.ps1 -KafkaHome C:\tools\kafka_2.13-4.1.1
+```
+
+Only orders placed while a broker is running become trade events; orders already in the database are never replayed. The consumer writes a report when it starts and then every minute (`-ReportIntervalMinutes`; the Compose stack uses 15), so an order placed in the Client UI appears in the Reporting UI within that time. `-SkipReporting` starts the stack without the Reporting Service and its consumer, for a machine without Python. See [apps/reporting-service](apps/reporting-service/README.md).
 
 ### Development login
 
