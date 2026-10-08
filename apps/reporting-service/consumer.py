@@ -142,5 +142,5 @@ def main():
             scheduler.shutdown(wait=True)
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover - the container entry point
     main()

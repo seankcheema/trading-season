@@ -1,9 +1,13 @@
 """The consumer loop, driven by a fake Kafka source."""
 
 import json
+import sys
 import threading
+import types
+from unittest.mock import MagicMock
 
-from consumer import handle_message, run_consumer_loop, start_scheduler
+import consumer
+from consumer import KafkaSource, handle_message, main, run_consumer_loop, start_scheduler
 from event_store import EventStore
 
 BODY = {'orderId': 7, 'status': 'FILLED', 'symbol': 'TEST', 'side': 'BUY',
@@ -128,3 +132,139 @@ class TestScheduler:
             assert job.trigger.interval.total_seconds() == 3600
         finally:
             scheduler.shutdown(wait=False)
+
+
+    def test_the_job_runs_a_report_inside_the_app_context(self, app, tmp_path, mocker):
+        run_report = mocker.patch('report_run.run_report')
+        remove = mocker.patch('models.db.session.remove')
+        scheduler = start_scheduler(app, str(tmp_path), interval_minutes=60)
+        try:
+            scheduler.get_job('report_run').func()
+        finally:
+            scheduler.shutdown(wait=False)
+
+        run_report.assert_called_once()
+        assert run_report.call_args.args[0] == str(tmp_path)
+        assert remove.called
+
+    def test_a_failed_report_is_logged_and_does_not_escape(self, app, tmp_path, mocker, caplog):
+        mocker.patch('report_run.run_report', side_effect=RuntimeError('database away'))
+        remove = mocker.patch('models.db.session.remove')
+        scheduler = start_scheduler(app, str(tmp_path), interval_minutes=60)
+        try:
+            with caplog.at_level('ERROR', logger='consumer'):
+                scheduler.get_job('report_run').func()
+        finally:
+            scheduler.shutdown(wait=False)
+
+        assert 'Report run failed' in caplog.text
+        assert remove.called, 'the session is released even when the run fails'
+
+
+def fake_confluent_kafka(mocker):
+    """
+    Stand in for the confluent_kafka package. The real one loads a native
+    library, which is neither needed nor always loadable on a test machine.
+    """
+    module = types.ModuleType('confluent_kafka')
+    module.Consumer = MagicMock(name='Consumer')
+    mocker.patch.dict(sys.modules, {'confluent_kafka': module})
+    return module.Consumer
+
+
+class TestKafkaSource:
+    """The wrapper over confluent_kafka.Consumer, with the client replaced by a fake."""
+
+    def test_subscribes_with_manual_commits_from_the_earliest_offset(self, mocker):
+        consumer_cls = fake_confluent_kafka(mocker)
+        assigned = []
+
+        KafkaSource('kafka:9092', 'reporting-ingester', 'trade-events', on_assign=lambda: assigned.append(True))
+
+        config = consumer_cls.call_args.args[0]
+        assert config['bootstrap.servers'] == 'kafka:9092'
+        assert config['group.id'] == 'reporting-ingester'
+        assert config['enable.auto.commit'] is False, 'offsets are committed only after the line is on disk'
+        assert config['auto.offset.reset'] == 'earliest'
+        subscribe = consumer_cls.return_value.subscribe
+        assert subscribe.call_args.args[0] == ['trade-events']
+        # The assignment callback lets the store re-read the partition files it now owns.
+        subscribe.call_args.kwargs['on_assign'](consumer_cls.return_value, [])
+        assert assigned == [True]
+
+    def test_without_an_assign_callback(self, mocker):
+        consumer_cls = fake_confluent_kafka(mocker)
+
+        KafkaSource('kafka:9092', 'reporting-ingester', 'trade-events')
+
+        on_assign = consumer_cls.return_value.subscribe.call_args.kwargs['on_assign']
+        assert on_assign(consumer_cls.return_value, []) is None
+
+    def test_delegates_poll_commit_and_close(self, mocker):
+        client = fake_confluent_kafka(mocker).return_value
+        client.poll.return_value = 'a message'
+        source = KafkaSource('kafka:9092', 'reporting-ingester', 'trade-events')
+
+        assert source.poll(1.5) == 'a message'
+        source.commit('the message')
+        source.close()
+
+        client.poll.assert_called_once_with(1.5)
+        client.commit.assert_called_once_with(message='the message', asynchronous=False)
+        client.close.assert_called_once()
+
+
+class TestMain:
+    """The process entry point, with the client, loop and signals stubbed."""
+
+    def test_wires_the_store_scheduler_and_source_from_the_app_config(self, app, files_dir, mocker):
+        mocker.patch.dict(app.config, {
+            'SCHEDULER_ENABLED': True, 'SCHEDULER_INTERVAL_MINUTES': 5, 'KAFKA_BOOTSTRAP_SERVERS': 'kafka:9092',
+            'REPORTING_CONSUMER_GROUP': 'reporting-ingester', 'KAFKA_TRADE_EVENTS_TOPIC': 'trade-events'})
+        signal = mocker.patch('consumer.signal.signal')
+        source_cls = mocker.patch('consumer.KafkaSource')
+        loop = mocker.patch('consumer.run_consumer_loop')
+        scheduler = mocker.patch('consumer.start_scheduler').return_value
+
+        main()
+
+        assert signal.call_count == 2, 'SIGTERM and SIGINT both ask the loop to stop'
+        source_cls.assert_called_once()
+        assert source_cls.call_args.args == ('kafka:9092', 'reporting-ingester', 'trade-events')
+        store = loop.call_args.args[1]
+        assert source_cls.call_args.kwargs['on_assign'] == store.refresh
+        assert store.events_dir == files_dir / 'events'
+        loop.assert_called_once_with(source_cls.return_value, store, loop.call_args.args[2])
+        scheduler.shutdown.assert_called_once_with(wait=True)
+
+    def test_signal_handler_stops_the_loop(self, app, files_dir, mocker):
+        mocker.patch.dict(app.config, {'SCHEDULER_ENABLED': False})
+        handlers = {}
+        mocker.patch('consumer.signal.signal', side_effect=lambda signum, handler: handlers.__setitem__(signum, handler))
+        mocker.patch('consumer.KafkaSource')
+        loop = mocker.patch('consumer.run_consumer_loop')
+        start_scheduler = mocker.patch('consumer.start_scheduler')
+
+        main()
+
+        start_scheduler.assert_not_called()
+        stop = loop.call_args.args[2]
+        assert not stop.is_set()
+        handlers[consumer.signal.SIGTERM]()
+        assert stop.is_set()
+
+    def test_the_scheduler_is_shut_down_when_the_loop_fails(self, app, files_dir, mocker):
+        mocker.patch.dict(app.config, {'SCHEDULER_ENABLED': True})
+        mocker.patch('consumer.signal.signal')
+        mocker.patch('consumer.KafkaSource')
+        mocker.patch('consumer.run_consumer_loop', side_effect=OSError('disk full'))
+        scheduler = mocker.patch('consumer.start_scheduler').return_value
+
+        try:
+            main()
+        except OSError:
+            pass
+        else:  # pragma: no cover - the failure must propagate so the container exits
+            raise AssertionError('expected the disk error to propagate')
+
+        scheduler.shutdown.assert_called_once_with(wait=True)
