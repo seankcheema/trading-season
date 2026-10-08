@@ -1,3 +1,18 @@
+# Database
+
+One PostgreSQL database, `trading_season`, shared by every service. The schema is defined only by the migrations in [migrations](migrations), applied in file order; no service runs migrations itself and Hibernate never alters tables.
+
+| Migration | Purpose |
+| --- | --- |
+| [V001__Initialize_database.sql](migrations/V001__Initialize_database.sql) | The full schema for an empty database |
+| [V002__Add_watchlist.sql](migrations/V002__Add_watchlist.sql) | `user_watchlist` |
+| [V003__Order_status_accepted.sql](migrations/V003__Order_status_accepted.sql) | Allows `ACCEPTED` in `orders.status`: an order is committed as accepted before it executes, then becomes `FILLED` or `REJECTED` |
+| [V008__Drop_account_status.sql](migrations/V008__Drop_account_status.sql) | Removes `user_accounts.account_status` |
+
+In Docker, `db-init` runs [infrastructure/docker/init-db.sh](../infrastructure/docker/init-db.sh), which applies each file once and records it in `public.schema_migrations`. For a local PostgreSQL, apply the files in order with `psql -v ON_ERROR_STOP=1 -f`. Never edit an applied migration; add a new one.
+
+## Schema
+
 ```mermaid
 erDiagram
     user_accounts ||--|| users : "credentials for"

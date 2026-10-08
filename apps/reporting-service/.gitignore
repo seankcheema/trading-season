@@ -71,3 +71,8 @@ instance/
 # Logs
 *.log
 logs/
+
+# Local reporting files (events and runs) and Jenkins test artifacts
+data/
+reports/
+coverage/

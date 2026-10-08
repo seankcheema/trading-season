@@ -57,7 +57,10 @@ public class OrderController {
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Submit an order", description = "Submits a buy or sell order and returns the order's outcome (filled or rejected)")
+    @Operation(summary = "Submit an order", description = "Submits a buy or sell order and returns its outcome: "
+            + "FILLED, REJECTED, or ACCEPTED when the order was accepted but its execution failed and it stays on record. "
+            + "Each committed status change is also published to the Kafka topic trade-events and pushed to the caller's "
+            + "open GET /api/orders/stream connections.")
     public OrderResponse submitOrder(@Valid @RequestBody OrderRequest request,
                                      @AuthenticationPrincipal Jwt jwt) {
         Order order = orderService.submitOrder(request, AuthenticatedUser.from(jwt).userId());

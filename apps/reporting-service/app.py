@@ -17,16 +17,8 @@ from config import config
 import logging
 from sqlalchemy import text
 
-# Import database models and services
+# Database models (users and accounts only; trade data comes from the event files)
 from models import db
-from db_service import (
-    UserRepository, AccountRepository, HoldingRepository,
-    OrderRepository, TradeRepository, CashTransactionRepository,
-    AuditRepository, MetadataRepository
-)
-
-# Import scheduled tasks
-from scheduled_tasks import init_scheduler, shutdown_scheduler, get_refresh_status
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -106,39 +98,46 @@ class JWKSCache:
 jwks_cache = JWKSCache()
 
 
+def candidate_keys(keys, kid):
+    """
+    The JWKS keys a token may have been signed with. A token that names a
+    key id gets exactly that key. The auth service signs its tokens without a
+    key id, so such a token is checked against every published key, the same
+    way the Java services' JWKS verifier does.
+    """
+    if kid is None:
+        return list(keys)
+    return [k for k in keys if k.get('kid') == kid]
+
+
 def verify_token(token):
     """Verify JWT token and return decoded payload"""
     try:
-        # Get the kid from the token header
+        from jwt.algorithms import RSAAlgorithm
+
         unverified_header = jwt.get_unverified_header(token)
         kid = unverified_header.get('kid')
-        
-        # Get the public key from JWKS
-        keys = jwks_cache.get_keys()
-        key = None
-        for k in keys:
-            if k.get('kid') == kid:
-                key = k
-                break
-        
-        if not key:
+
+        candidates = candidate_keys(jwks_cache.get_keys(), kid)
+        if not candidates:
             raise ValueError(f"Key {kid} not found in JWKS")
-        
-        # Build the public key
-        from jwt.algorithms import RSAAlgorithm
-        public_key = RSAAlgorithm.from_jwk(key)
-        
-        # Verify and decode the token
-        decoded = jwt.decode(
-            token,
-            public_key,
-            algorithms=[app.config['JWT_ALGORITHM']],
-            issuer=app.config['AUTH_JWT_ISSUER'],
-            options={'verify_exp': True}
-        )
-        
-        return decoded
-    
+
+        last_signature_error = None
+        for key in candidates:
+            public_key = RSAAlgorithm.from_jwk(key)
+            try:
+                return jwt.decode(
+                    token,
+                    public_key,
+                    algorithms=[app.config['JWT_ALGORITHM']],
+                    issuer=app.config['AUTH_JWT_ISSUER'],
+                    options={'verify_exp': True}
+                )
+            except jwt.InvalidSignatureError as e:
+                # Not this key; a token without a kid may match a later one.
+                last_signature_error = e
+        raise last_signature_error
+
     except jwt.ExpiredSignatureError:
         raise ValueError("Token has expired")
     except jwt.InvalidTokenError as e:
@@ -230,10 +229,11 @@ def root():
         'openapi': '/openapi.yaml',
         'health': '/health',
         'api_endpoints': {
-            'portfolio': 'GET /api/reporting/portfolio',
-            'account_portfolio': 'GET /api/reporting/portfolio/{accountId}',
-            'trades': 'GET /api/reporting/trades',
-            'profile': 'GET /api/reporting/profile'
+            'profile': 'GET /api/reporting/profile',
+            'runs': 'GET /api/reporting/runs',
+            'latest_report': 'GET /api/reporting/runs/latest',
+            'run_file': 'GET /api/reporting/runs/{runId}/files/{name}',
+            'scheduler_status': 'GET /api/reporting/scheduler/status'
         }
     }), 200
 
@@ -294,11 +294,16 @@ def register_routes():
 # ============================================================================
 
 def init_app():
-    """Initialize the application"""
+    """
+    Initialize the application for the development server (python app.py).
+    Checks the database and registers the routes. The report scheduler is not
+    started here: it runs in the consumer process (consumer.py).
+    """
     logger.info(f"Initializing Reporting Service (env: {app.config['ENV']})")
     logger.info(f"Database: {app.config['DATABASE_URL']}")
     logger.info(f"Auth Service: {app.config['AUTH_SERVICE_URL']}")
-    
+    logger.info(f"Reporting files: {app.config['REPORTING_FILES_DIR']}")
+
     # Verify database connectivity
     try:
         with app.app_context():
@@ -311,19 +316,11 @@ def init_app():
 
             version = db.session.execute(version_query).scalar()
             logger.info(f"Database connected: {version}")
-            
+
             # Register API routes
             register_routes()
             logger.info("Application initialized successfully")
-            
-            # Initialize background scheduler
-            init_scheduler(app)
-            logger.info("Background scheduler initialized")
-            
-            # Register graceful shutdown handler
-            import atexit
-            atexit.register(shutdown_scheduler)
-    
+
     except Exception as e:
         logger.error(f"Failed to initialize application: {e}")
         raise

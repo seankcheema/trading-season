@@ -5,6 +5,7 @@ Spring Boot (Java 21) service for the signed-in user's own data: profile, accoun
 - Port 8082, Swagger UI at http://localhost:8082/swagger-ui.html
 - Shares the `trading_season` database. The schema comes from [db/migrations](../../db/migrations); Hibernate never alters it.
 - Authenticates callers by verifying RS256 tokens from the [Auth Service](../auth-service/README.md) against its cached JWKS. Every user-specific endpoint resolves the owner from the token's `sub`; no path or body field can name another user. An account that belongs to someone else is 403 and a missing one is 404.
+- Runs the `portfolio-valuation-capture` Kafka consumer group on `trade-events`: when an order fills, it records a portfolio valuation for that account, so the portfolio chart gets a point at the moment of the trade even with no dashboard open.
 
 ## Endpoints
 
@@ -32,7 +33,7 @@ Behavior worth knowing:
 - Registration needs a bearer token whose `email` matches the profile email, a nonblank name and address, SSN as `NNN-NN-NNNN`, a past date of birth, `traderLevel` of `BEGINNER`, `INTERMEDIATE`, or `ADVANCED`, and `availableFunds` of at least 5000.00. Credentials are created first with the Auth Service; this service never sees a password.
 - Cash belongs to the user, not the account: every account shares `users.available_funds`. Each deposit or withdrawal updates that balance and appends a `cash_transactions` row in one transaction with the user row locked. A withdrawal above the balance is 422.
 - A holding's `averageCost` is derived by replaying `holding_movements` and `fills` oldest first as a moving weighted average. This service never writes those tables.
-- Portfolio history is recorded once a minute for eligible accounts, and the UI also requests a capture after a fill. Value is held quantity times replay price, falling back to average cost; cash is excluded.
+- Portfolio history is recorded once a minute for eligible accounts, by the Kafka consumer when an order fills, and on request from the UI after a fill; captures within the same minute are coalesced. Value is held quantity times replay price, falling back to average cost; cash is excluded.
 - Candles come from the seeded one-minute data and are capped at 500 points. The stream keeps 30 events for `Last-Event-ID` reconnection and then asks the client to reload the snapshot.
 - Errors use `{"error": "..."}`.
 
@@ -54,6 +55,7 @@ flowchart TB
         AcS[AccountService]
         PVS[PortfolioValuationService]
         PVJ[PortfolioValuationScheduler]
+        PVL[PortfolioValuationListener]
         CS[CashTransactionService]
         WS[WatchlistService]
         MR[MarketReplayService]
@@ -72,6 +74,8 @@ flowchart TB
     AcS --> T2
     PVC --> PVS
     PVJ --> PVS
+    K[["Kafka trade-events"]] -- "group portfolio-valuation-capture" --> PVL
+    PVL --> PVS
     PVS --> T2
     PVS --> T4
     PVS --> MR
@@ -118,6 +122,28 @@ sequenceDiagram
     end
 ```
 
+### Portfolio valuation on fill
+
+```mermaid
+sequenceDiagram
+    participant K as Kafka trade-events
+    participant L as PortfolioValuationListener
+    participant S as PortfolioValuationService
+    participant DB as PostgreSQL
+
+    K->>L: message keyed by account id
+    alt status is not FILLED
+        L-->>K: ignore, commit offset
+    else FILLED
+        L->>DB: Load account for its owner
+        L->>S: capture(accountId, userId, false)
+        S->>DB: Sum holdings at replay price, insert portfolio_valuations row
+        L-->>K: commit offset
+    end
+```
+
+The listener resolves the owner from the account row, not from a token, because there is no caller. A failed capture is logged and the offset is still committed, so one bad message never blocks the group. Replaying offsets only adds chart points.
+
 ### Market replay
 
 ```mermaid
@@ -155,16 +181,19 @@ Environment variables override [application.properties](src/main/resources/appli
 | `AUTH_JWT_ISSUER` | `https://auth.dualeapa.local` | Required `iss`, must equal the auth service's `JWT_ISSUER` |
 | `CORS_ORIGINS` | `http://localhost:4200` | Allowed browser origins, comma-separated |
 | `MARKET_REPLAY_ARCHIVE_LOCATION` | empty | Absolute path to the Parquet archive |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:29092` | Broker for the `trade-events` consumer; Compose sets `kafka:9092` |
+
+The property `app.events.enabled` (default `true`) registers the `portfolio-valuation-capture` consumer; the test profile sets it to `false` so contexts without a broker never contact one.
 
 ## Run and test
 
-Start a migrated database with market data ([db/README.md](../../db/README.md), [apps/market-data](../market-data/README.md)) and the auth service, then:
+Start a migrated database with market data ([db/README.md](../../db/README.md), [apps/market-data](../market-data/README.md)), the auth service, and the Kafka broker with its topic from the Compose file (`docker compose -f infrastructure/docker-compose/docker-compose.local.yml up -d kafka-init`), then:
 
 ```sh
 mvn spring-boot:run
 mvn test
 ```
 
-Tests use H2 with [application-test.properties](src/test/resources/application-test.properties), mirror the source packages under `src/test/java/app`, and cover cross-user isolation for every user-specific endpoint. Use `@SpringBootTest` with `@Transactional` for repository tests; `@DataJpaTest` is not available. JaCoCo fails the build below 85 percent on every counter in any package (`coverage.minimum` in [pom.xml](pom.xml)); reports are in `target/site/jacoco/`.
+Tests use H2 with [application-test.properties](src/test/resources/application-test.properties), mirror the source packages under `src/test/java/app`, and cover cross-user isolation for every user-specific endpoint. The valuation-capture flow test starts an embedded Kafka broker; no external broker is needed. Use `@SpringBootTest` with `@Transactional` for repository tests; `@DataJpaTest` is not available. JaCoCo fails the build below 85 percent on every counter in any package (`coverage.minimum` in [pom.xml](pom.xml)); reports are in `target/site/jacoco/`.
 
 Keep HTTP validation in controllers, business logic in services, and persistence in repositories. After changing Java code, regenerate the Javadocs; see [AGENTS.md](../../AGENTS.md).
