@@ -1,4 +1,5 @@
 asyncpg>=0.30.0
+coverage>=7.6.0
 duckdb>=1.4.0
 numpy>=2.1.0
 pyarrow>=18.0.0
