@@ -35,6 +35,9 @@ Run from repository root unless a working directory is specified:
 | Auth dependencies | npm --prefix apps/auth-service ci |
 | UI build | npm --prefix apps/client-ui run build |
 | UI tests | npm --prefix apps/client-ui test -- --no-watch |
+| Reporting UI dependencies | npm --prefix apps/reporting-ui ci |
+| Reporting UI build | npm --prefix apps/reporting-ui run build |
+| Reporting UI tests | npm --prefix apps/reporting-ui test -- --no-watch |
 | Holdings and Trade tests | mvn -B -f apps/holdings-and-trade-service/pom.xml test |
 | Order and Sell tests | mvn -B -f apps/order-and-sell-service/pom.xml test |
 | Auth tests | npm --prefix apps/auth-service test |
@@ -42,7 +45,7 @@ Run from repository root unless a working directory is specified:
 | Holdings and Trade Javadocs | mvn -B -f apps/holdings-and-trade-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc |
 | Order and Sell Javadocs | mvn -B -f apps/order-and-sell-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc |
 
-There is no root npm project. client-ui and auth-service are independent npm projects, each installed, built, and tested from its own directory; check each app's manifest before assuming a task exists.
+There is no root npm project. client-ui, reporting-ui and auth-service are independent npm projects, each installed, built, and tested from its own directory; check each app's manifest before assuming a task exists.
 
 ## Definition of done
 

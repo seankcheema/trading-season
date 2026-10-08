@@ -1,0 +1,94 @@
+<app-page-header title="Report runs" [subtitle]="subtitle()">
+  <button
+    type="button"
+    class="ghost-button"
+    [disabled]="store.refreshing()"
+    (click)="store.refresh()"
+  >
+    <ng-icon name="lucideRefreshCw" size="16" />
+    {{ store.refreshing() ? 'Refreshing…' : 'Refresh' }}
+  </button>
+</app-page-header>
+
+@if (store.state() === 'loading') {
+  <section class="dash-card p-5" aria-busy="true">
+    <p class="text-muted-foreground text-sm">Loading report runs…</p>
+  </section>
+} @else if (!store.runs().length) {
+  <section class="dash-card flex flex-col items-center gap-2 px-5 py-14 text-center">
+    <ng-icon name="lucideInbox" size="24" class="text-muted-foreground" />
+    <h2 class="text-sm font-semibold">No report runs yet</h2>
+    <p class="text-muted-foreground max-w-sm text-sm">
+      Runs appear here once the reporting consumer has written its first report.
+    </p>
+  </section>
+} @else {
+  <div class="flex flex-col gap-3">
+    <section class="dash-card p-5">
+      <h2 class="text-sm font-semibold">Runs</h2>
+      <div class="dash-table-head run-grid mt-4 grid gap-2 px-2">
+        <span>Run</span>
+        <span>Generated</span>
+        <span class="text-right">Events</span>
+        <span class="text-right">Charts</span>
+      </div>
+      <ul>
+        @for (run of store.runs(); track run.runId) {
+          <li>
+            <button
+              type="button"
+              class="run-grid hover:bg-muted grid w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2.5 text-left text-sm transition-colors"
+              [class.bg-muted]="selectedRun()?.runId === run.runId"
+              [attr.aria-pressed]="selectedRun()?.runId === run.runId"
+              (click)="select(run)"
+            >
+              <span class="flex min-w-0 items-center gap-2">
+                <span class="truncate font-medium tabular-nums">{{ run.runId }}</span>
+                @if (run.runId === store.latestRunId()) {
+                  <span class="status-pill bg-primary/15 text-primary">Latest</span>
+                }
+              </span>
+              <span class="truncate tabular-nums">{{ dateTime(run.generatedAt) }}</span>
+              <span class="text-right tabular-nums">{{ count(run.eventCount) }}</span>
+              <span class="text-right tabular-nums">{{ run.files.length }}</span>
+            </button>
+          </li>
+        }
+      </ul>
+    </section>
+
+    @if (charts().length) {
+      <div class="grid gap-3 xl:grid-cols-2">
+        @for (chart of charts(); track chart.name) {
+          <section class="dash-card flex flex-col p-5">
+            <div class="flex items-center justify-between gap-2">
+              <h2 class="text-sm font-semibold">{{ chart.title }}</h2>
+              @if (chart.url) {
+                <a
+                  class="dash-link flex items-center gap-1"
+                  [href]="chart.url"
+                  [download]="selectedRun()?.runId + '-' + chart.name"
+                >
+                  <ng-icon name="lucideDownload" size="12" />Download PNG
+                </a>
+              }
+            </div>
+            @if (chart.url) {
+              <img
+                class="mt-4 w-full rounded-lg"
+                [src]="chart.url"
+                [alt]="chart.title + ', chart from run ' + selectedRun()?.runId"
+              />
+            } @else if (chart.url === null) {
+              <p class="text-muted-foreground mt-4 text-sm" role="alert">
+                We couldn't load this chart.
+              </p>
+            } @else {
+              <p class="text-muted-foreground mt-4 text-sm">Loading chart…</p>
+            }
+          </section>
+        }
+      </div>
+    }
+  </div>
+}

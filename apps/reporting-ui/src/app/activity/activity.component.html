@@ -1,0 +1,248 @@
+<app-page-header title="Activity" [subtitle]="subtitle()">
+  <button
+    type="button"
+    class="ghost-button"
+    [disabled]="store.refreshing()"
+    (click)="store.refresh()"
+  >
+    <ng-icon name="lucideRefreshCw" size="16" />
+    {{ store.refreshing() ? 'Refreshing…' : 'Refresh' }}
+  </button>
+</app-page-header>
+
+@switch (store.state()) {
+  @case ('loading') {
+    <section class="dash-card p-5" aria-busy="true">
+      <p class="text-muted-foreground text-sm">Loading the latest report…</p>
+    </section>
+  }
+  @case ('empty') {
+    <section class="dash-card flex flex-col items-center gap-2 px-5 py-14 text-center">
+      <ng-icon name="lucideInbox" size="24" class="text-muted-foreground" />
+      <h2 class="text-sm font-semibold">No report yet</h2>
+      <p class="text-muted-foreground max-w-sm text-sm">{{ emptyMessage() }}</p>
+    </section>
+  }
+  @case ('error') {
+    <section class="dash-card flex flex-col items-center gap-3 px-5 py-14 text-center" role="alert">
+      <ng-icon name="lucideCircleAlert" size="24" class="text-loss" />
+      <p class="text-sm">We couldn't load the report.</p>
+      <button type="button" class="ghost-button" (click)="store.refresh()">Try again</button>
+    </section>
+  }
+  @case ('ready') {
+    @let report = store.report()!;
+    <div class="flex flex-col gap-3">
+      @if (store.refreshFailed()) {
+        <p role="status" class="bg-muted rounded-lg px-3 py-2 text-sm">
+          We couldn't refresh the report. Showing the run generated
+          {{ dateTime(report.generatedAt) }}.
+        </p>
+      }
+
+      <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        @for (kpi of kpis(); track kpi.label) {
+          <section class="dash-card p-4">
+            <h2 class="dash-label">{{ kpi.label }}</h2>
+            <p class="mt-1.5 text-2xl font-semibold tracking-tight tabular-nums">{{ kpi.value }}</p>
+            <p class="text-muted-foreground mt-2 text-xs tabular-nums">{{ kpi.note }}</p>
+          </section>
+        }
+      </div>
+
+      <div class="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <section class="dash-card flex flex-col p-5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h2 class="text-sm font-semibold">Trades per day</h2>
+            <ul class="text-muted-foreground flex items-center gap-4 text-xs">
+              <li class="flex items-center gap-1.5">
+                <span class="bg-gain size-2 rounded-full"></span>Filled
+              </li>
+              <li class="flex items-center gap-1.5">
+                <span class="bg-loss size-2 rounded-full"></span>Rejected
+              </li>
+            </ul>
+          </div>
+          <app-daily-trades-chart class="mt-3 flex-1" [days]="report.dailyCounts" />
+        </section>
+
+        <div class="flex flex-col gap-3">
+          <section class="dash-card p-5">
+            <h2 class="text-sm font-semibold">Orders by status</h2>
+            <div class="mt-5 flex flex-col gap-4">
+              @for (row of statuses(); track row.status) {
+                <div>
+                  <div class="flex items-center justify-between text-sm">
+                    <span
+                      class="status-pill"
+                      [class]="row.tone === 'gain' ? 'bg-gain/15 text-gain' : 'bg-loss/15 text-loss'"
+                    >
+                      {{ row.status }}
+                    </span>
+                    <span class="tabular-nums">
+                      {{ count(row.value) }}
+                      <span class="text-muted-foreground text-xs">{{ percent(row.share) }}</span>
+                    </span>
+                  </div>
+                  <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      class="h-full rounded-full"
+                      [class]="row.tone === 'gain' ? 'bg-gain' : 'bg-loss'"
+                      [style.width.%]="row.share"
+                    ></div>
+                  </div>
+                </div>
+              }
+            </div>
+          </section>
+
+          <section class="dash-card p-5">
+            <div class="flex items-center justify-between gap-2">
+              <h2 class="text-sm font-semibold">Report pipeline</h2>
+              <span class="text-muted-foreground flex items-center gap-1.5 text-xs">
+                @switch (pipeline().health) {
+                  @case ('overdue') {
+                    <span class="bg-loss size-1.5 rounded-full"></span>Run overdue
+                  }
+                  @case ('on-schedule') {
+                    <span class="bg-gain size-1.5 rounded-full"></span>On schedule
+                  }
+                  @default {
+                    <span class="bg-muted-foreground size-1.5 rounded-full"></span>Waiting
+                  }
+                }
+              </span>
+            </div>
+            <dl class="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2.5 text-sm">
+              <dt class="text-muted-foreground">Events ingested</dt>
+              <dd class="text-right tabular-nums">{{ count(report.eventCount) }}</dd>
+              <dt class="text-muted-foreground">Latest run</dt>
+              <dd class="truncate text-right tabular-nums">{{ report.runId }}</dd>
+              <dt class="text-muted-foreground">Runs every</dt>
+              <dd class="text-right tabular-nums">{{ pipeline().interval }}</dd>
+              <dt class="text-muted-foreground">Next run</dt>
+              <dd class="text-right tabular-nums">{{ pipeline().nextRun }}</dd>
+            </dl>
+            <a routerLink="/runs" class="dash-link mt-4 inline-block">View report runs</a>
+          </section>
+        </div>
+      </div>
+
+      <div class="grid gap-3 lg:grid-cols-2">
+        <section class="dash-card flex flex-col p-5">
+          <h2 class="text-sm font-semibold">Most traded</h2>
+          @if (symbols().length) {
+            <div class="dash-table-head symbol-grid mt-4 grid gap-2">
+              <button
+                app-sort-header
+                label="Asset"
+                [active]="symbolSort().key === 'symbol'"
+                [direction]="symbolSort().direction"
+                (toggled)="sortSymbols('symbol')"
+              ></button>
+              <button
+                app-sort-header
+                label="Fills"
+                align="right"
+                [active]="symbolSort().key === 'fills'"
+                [direction]="symbolSort().direction"
+                (toggled)="sortSymbols('fills')"
+              ></button>
+              <button
+                app-sort-header
+                label="Shares"
+                align="right"
+                [active]="symbolSort().key === 'shares'"
+                [direction]="symbolSort().direction"
+                (toggled)="sortSymbols('shares')"
+              ></button>
+              <button
+                app-sort-header
+                label="Notional"
+                align="right"
+                [active]="symbolSort().key === 'notional'"
+                [direction]="symbolSort().direction"
+                (toggled)="sortSymbols('notional')"
+              ></button>
+            </div>
+            <ul class="max-h-80 overflow-y-auto">
+              @for (row of symbols(); track row.symbol) {
+                <li class="dash-table-row symbol-grid grid items-center gap-2">
+                  <span class="truncate font-medium">{{ row.symbol }}</span>
+                  <span class="text-right tabular-nums">{{ count(row.fills) }}</span>
+                  <span class="text-right tabular-nums">{{ count(toNumber(row.shares)) }}</span>
+                  <span class="text-right tabular-nums">{{ dollars(toNumber(row.notional)) }}</span>
+                </li>
+              }
+            </ul>
+          } @else {
+            <p class="text-muted-foreground mt-4 text-sm">No orders have filled yet.</p>
+          }
+        </section>
+
+        <section class="dash-card flex flex-col p-5">
+          <h2 class="text-sm font-semibold">Accounts</h2>
+          @if (accounts().length) {
+            <div class="dash-table-head account-grid mt-4 grid gap-2">
+              <button
+                app-sort-header
+                label="Account"
+                [active]="accountSort().key === 'account'"
+                [direction]="accountSort().direction"
+                (toggled)="sortAccounts('account')"
+              ></button>
+              <button
+                app-sort-header
+                label="Trader"
+                [active]="accountSort().key === 'trader'"
+                [direction]="accountSort().direction"
+                (toggled)="sortAccounts('trader')"
+              ></button>
+              <button
+                app-sort-header
+                label="Orders"
+                align="right"
+                [active]="accountSort().key === 'total'"
+                [direction]="accountSort().direction"
+                (toggled)="sortAccounts('total')"
+              ></button>
+              <button
+                app-sort-header
+                label="Filled"
+                align="right"
+                [active]="accountSort().key === 'filled'"
+                [direction]="accountSort().direction"
+                (toggled)="sortAccounts('filled')"
+              ></button>
+              <button
+                app-sort-header
+                label="Rejected"
+                align="right"
+                [active]="accountSort().key === 'rejected'"
+                [direction]="accountSort().direction"
+                (toggled)="sortAccounts('rejected')"
+              ></button>
+            </div>
+            <ul class="max-h-80 overflow-y-auto">
+              @for (row of accounts(); track row.accountId) {
+                <li class="dash-table-row account-grid grid items-center gap-2">
+                  <span class="truncate font-medium">{{ accountName(row) }}</span>
+                  <span class="truncate" [class.text-muted-foreground]="!row.userName">
+                    {{ row.userName || 'Unknown' }}
+                  </span>
+                  <span class="text-right tabular-nums">{{ count(row.total) }}</span>
+                  <span class="text-right tabular-nums">{{ count(row.filled) }}</span>
+                  <span class="text-right tabular-nums" [class.text-loss]="row.rejected > 0">
+                    {{ count(row.rejected) }}
+                  </span>
+                </li>
+              }
+            </ul>
+          } @else {
+            <p class="text-muted-foreground mt-4 text-sm">No account has a resolved order yet.</p>
+          }
+        </section>
+      </div>
+    </div>
+  }
+}

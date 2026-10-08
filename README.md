@@ -1,6 +1,6 @@
 # Trading Season
 
-A trading simulation platform: an Angular client, two Spring Boot services for trading and holdings, a NestJS authentication service, and a Flask reporting service, all sharing one PostgreSQL database. A Kafka topic, `trade-events`, carries every order status change from the Order and Sell Service to three consumers.
+A trading simulation platform: an Angular client, two Spring Boot services for trading and holdings, a NestJS authentication service, and a Flask reporting service with its own Angular UI, all sharing one PostgreSQL database. A Kafka topic, `trade-events`, carries every order status change from the Order and Sell Service to three consumers.
 
 ## Services
 
@@ -11,7 +11,7 @@ A trading simulation platform: an Angular client, two Spring Boot services for t
 | Order and Sell Service | [apps/order-and-sell-service](apps/order-and-sell-service/README.md) | 8081 | Order submission, validation, execution, instruments |
 | Holdings and Trade Service | [apps/holdings-and-trade-service](apps/holdings-and-trade-service/README.md) | 8082 | Profiles, accounts, holdings, cash, watchlist, market data |
 | Reporting Service | [apps/reporting-service](apps/reporting-service/README.md) | 8083 | Kafka consumer storing trade events as files, scheduled report runs with charts, endpoints serving the runs |
-| Reporting UI | [apps/reporting-ui](apps/reporting-ui/README.md) | 4300 | Placeholder page |
+| Reporting UI | [apps/reporting-ui](apps/reporting-ui/README.md) | 4300 | Sign-in, activity overview and report runs, read from the Reporting Service |
 | Market Data | [apps/market-data](apps/market-data/README.md) | - | Synthetic market data generation and import |
 | Database | [db](db/README.md) | 5432 | Migrations and schema for the shared `trading_season` database |
 
@@ -39,9 +39,13 @@ flowchart LR
     Kafka -- "group reporting-ingester" --> RC["Reporting consumer<br/>python consumer.py"]
     RC --> Files[("reporting_files volume")]
     RS --> Files
+
+    Analyst([Analyst]) --> RUI["Reporting UI<br/>Angular :4300"]
+    RUI -- "/auth: login, refresh" --> Auth
+    RUI -- "/api/reporting" --> RS
 ```
 
-The UI reaches both Java services through one relative `/api` prefix that the dev proxy and the Nginx image split by path. The Java services never call the Auth Service per request: they verify tokens locally against its cached public keys.
+The UI reaches both Java services through one relative `/api` prefix that the dev proxy and the Nginx image split by path. The Java services never call the Auth Service per request: they verify tokens locally against its cached public keys. The Reporting UI calls the Auth Service and the Reporting Service through a proxy on its own origin. It shows only what the reporting consumer has built from the topic; it never reads Kafka or the database itself.
 
 The Order and Sell Service publishes one `trade-events` message after each committed order status change (ACCEPTED, FILLED or REJECTED), keyed by account id. Three consumer groups read the topic independently:
 
@@ -65,7 +69,7 @@ Each part of the flow can be followed from its description here to the code that
 | One `trade-events` message per committed status change | Section 3 (loose coupling) | [Architecture](#architecture) | [TradeEventPublisher](apps/order-and-sell-service/src/main/java/app/order/event/TradeEventPublisher.java), [OrderStatusEvent](apps/order-and-sell-service/src/main/java/app/order/event/OrderStatusEvent.java) | [TradeEventPublisherTest](apps/order-and-sell-service/src/test/java/app/order/event/TradeEventPublisherTest.java), [TradeEventFlowIntegrationTest](apps/order-and-sell-service/src/test/java/app/order/event/TradeEventFlowIntegrationTest.java) (embedded broker) | Stage "Order and Sell Service Tests"; stack stage prints the `trade-events` topic with three partitions; end-to-end stage shows the ACCEPTED and FILLED messages published for a real order |
 | Order status pushed live to the trader (`order-status-pusher`) | BR-07, section 9.2 | [Order and Sell README](apps/order-and-sell-service/README.md) | [OrderStatusPusherListener](apps/order-and-sell-service/src/main/java/app/order/event/OrderStatusPusherListener.java), [OrderStatusStreamRegistry](apps/order-and-sell-service/src/main/java/app/order/event/OrderStatusStreamRegistry.java), [OrderStatusStreamController](apps/order-and-sell-service/src/main/java/app/order/event/OrderStatusStreamController.java) | [OrderStatusPusherListenerTest](apps/order-and-sell-service/src/test/java/app/order/event/OrderStatusPusherListenerTest.java), [OrderStatusStreamRegistryTest](apps/order-and-sell-service/src/test/java/app/order/event/OrderStatusStreamRegistryTest.java), [OrderStatusStreamControllerTest](apps/order-and-sell-service/src/test/java/app/order/event/OrderStatusStreamControllerTest.java), [TradeEventFlowIntegrationTest](apps/order-and-sell-service/src/test/java/app/order/event/TradeEventFlowIntegrationTest.java) | Stage "Order and Sell Service Tests"; stack stage lists `order-status-pusher` as a live consumer group; end-to-end stage shows both status frames arriving on the order stream |
 | Portfolio value captured at the moment of a fill (`portfolio-valuation-capture`) | Section 9.2, BR-18 | [Holdings and Trade: portfolio valuation on fill](apps/holdings-and-trade-service/README.md#portfolio-valuation-on-fill) | [PortfolioValuationListener](apps/holdings-and-trade-service/src/main/java/app/account/PortfolioValuationListener.java) | [PortfolioValuationListenerTest](apps/holdings-and-trade-service/src/test/java/app/account/PortfolioValuationListenerTest.java), [PortfolioValuationCaptureFlowIntegrationTest](apps/holdings-and-trade-service/src/test/java/app/account/PortfolioValuationCaptureFlowIntegrationTest.java) (embedded broker) | Stage "Holdings and Trade Service Tests"; stack stage lists `portfolio-valuation-capture` as a live consumer group; end-to-end stage shows the valuation row captured for the order |
-| Trade events stored as files and turned into scheduled reports with charts (`reporting-ingester`) | BR-14, BR-16, BR-17 | [Reporting README](apps/reporting-service/README.md) | [consumer.py](apps/reporting-service/consumer.py), [event_store.py](apps/reporting-service/event_store.py), [report_run.py](apps/reporting-service/report_run.py), [routes.py](apps/reporting-service/routes.py) | [test_consumer.py](apps/reporting-service/tests/test_consumer.py), [test_event_store.py](apps/reporting-service/tests/test_event_store.py), [test_report_run.py](apps/reporting-service/tests/test_report_run.py), [test_runs_routes.py](apps/reporting-service/tests/test_runs_routes.py) | Stage "Reporting Service Tests"; stack stage requires the `reporting-consumer` container to be running and lists `reporting-ingester` as a live consumer group; end-to-end stage shows both events in the files and the report served with the order in it |
+| Trade events stored as files and turned into scheduled reports with charts (`reporting-ingester`) | BR-14, BR-16, BR-17 | [Reporting README](apps/reporting-service/README.md), [Reporting UI README](apps/reporting-ui/README.md) | [consumer.py](apps/reporting-service/consumer.py), [event_store.py](apps/reporting-service/event_store.py), [report_run.py](apps/reporting-service/report_run.py), [routes.py](apps/reporting-service/routes.py) | [test_consumer.py](apps/reporting-service/tests/test_consumer.py), [test_event_store.py](apps/reporting-service/tests/test_event_store.py), [test_report_run.py](apps/reporting-service/tests/test_report_run.py), [test_runs_routes.py](apps/reporting-service/tests/test_runs_routes.py) | Stage "Reporting Service Tests"; stack stage requires the `reporting-consumer` container to be running and lists `reporting-ingester` as a live consumer group; end-to-end stage shows both events in the files and the report served with the order in it |
 | Broker and topic provisioning | Section 3 | [Infrastructure README](infrastructure/README.md#local-stack) | [docker-compose.local.yml](infrastructure/docker-compose/docker-compose.local.yml) (`kafka`, `kafka-init`, `reporting-consumer`) | Stack stage of the pipeline | Stage "Build Local Docker Stack": every expected container running, topic described, all three groups registered; stage "Kafka End-to-End Flow": lag 0 on every group after the order |
 
 ## Authentication and request flow
@@ -160,6 +164,7 @@ flowchart LR
         T4["Reporting"]
         T5["Frontend"]
         T6["Market data"]
+        T7["Reporting UI"]
     end
     Tests --> Docs["Javadocs"] --> E2E["Playwright E2E"] --> Stack["Build local<br/>Docker stack"] --> Flow["Kafka end-to-end<br/>flow"]
 ```
@@ -175,7 +180,7 @@ node apps/auth-service/scripts/generate-dev-keys.mjs | Add-Content infrastructur
 docker compose --project-name trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml up -d --build
 ```
 
-The UI is at http://localhost:4200. The database is created and migrated automatically, and a one-shot `kafka-init` container creates the `trade-events` topic before the Java services and the reporting consumer start. See [infrastructure/README.md](infrastructure/README.md) for ports and the broker.
+The UI is at http://localhost:4200 and the Reporting UI at http://localhost:4300. The database is created and migrated automatically, and a one-shot `kafka-init` container creates the `trade-events` topic before the Java services and the reporting consumer start. See [infrastructure/README.md](infrastructure/README.md) for ports and the broker.
 
 ### Local processes (Windows)
 
@@ -187,6 +192,8 @@ node apps/auth-service/scripts/generate-dev-keys.mjs | Add-Content apps/auth-ser
 $env:SPRING_DATASOURCE_PASSWORD = 'password'
 .\scripts\start-local.ps1
 ```
+
+The script starts the Client UI, the Auth Service and both Java services. The Reporting Service, its consumer and the Reporting UI are started separately; see [apps/reporting-service](apps/reporting-service/README.md) and [apps/reporting-ui](apps/reporting-ui/README.md).
 
 This needs a running `trading_season` database; see [db/README.md](db/README.md) to create and migrate one, and [apps/market-data](apps/market-data/README.md) to load synthetic market data. On Linux, `scripts/setup-local.sh` does the equivalent setup. The Java services also expect the Kafka broker from the Compose file on `localhost:29092`; start only the `kafka` and `kafka-init` services from it, or set `app.events.enabled=false` on both Java services to run without a broker.
 
@@ -203,6 +210,8 @@ Run from the repository root. There is no root npm project.
 | UI build | `npm --prefix apps/client-ui run build` |
 | UI tests | `npm --prefix apps/client-ui test -- --no-watch` |
 | UI end-to-end | `npm --prefix apps/client-ui run e2e` |
+| Reporting UI build | `npm --prefix apps/reporting-ui run build` |
+| Reporting UI tests | `npm --prefix apps/reporting-ui test -- --no-watch` |
 | Holdings and Trade tests | `mvn -B -f apps/holdings-and-trade-service/pom.xml test` |
 | Order and Sell tests | `mvn -B -f apps/order-and-sell-service/pom.xml test` |
 | Auth tests and lint | `npm --prefix apps/auth-service test` and `npm --prefix apps/auth-service run lint` |

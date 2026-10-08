@@ -3,7 +3,7 @@
 Python Flask service that turns the `trade-events` Kafka topic into reports. It never reads trade data from the trading database.
 
 - Port 8083, Swagger UI at http://localhost:8083/docs, OpenAPI at `/openapi.yaml`
-- Served by Gunicorn in Docker. The matching [Reporting UI](../reporting-ui/README.md) is only a placeholder page.
+- Served by Gunicorn in Docker. The [Reporting UI](../reporting-ui/README.md) presents the runs; it calls this service through its own origin, so it needs no entry in `CORS_ORIGINS`.
 
 ## How it works
 
@@ -109,4 +109,3 @@ The image runs gunicorn by default; Compose starts a second container from the s
 
 - Portfolio performance measures (returns, drawdown, Sharpe) are not computed yet; the run produces volume, activity and fill/rejection insights.
 - Admin role authorization is not enforced; any valid token can read the runs.
-- The Reporting UI that presents the runs is a placeholder, tracked separately.

@@ -1,0 +1,14 @@
+[
+  {
+    "context": ["/api/reporting"],
+    "target": "http://localhost:8083",
+    "secure": false,
+    "changeOrigin": true
+  },
+  {
+    "context": ["/auth"],
+    "target": "http://localhost:3001",
+    "secure": false,
+    "changeOrigin": true
+  }
+]

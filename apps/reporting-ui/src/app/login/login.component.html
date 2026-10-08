@@ -1,0 +1,101 @@
+<div class="bg-background relative flex min-h-screen items-center justify-center px-4 py-12">
+  <div class="fixed top-0 left-0 z-10 flex h-24 items-center gap-3 px-4 md:h-28 md:px-8">
+    <img src="2b-waves.svg" alt="" class="size-11 md:size-14" />
+    <span class="flex flex-col leading-[1.15]">
+      <span class="text-2xl font-semibold tracking-tight md:text-3xl">TradingSeason</span>
+      <span class="dash-label">Reporting</span>
+    </span>
+  </div>
+
+  <div
+    class="bg-card text-card-foreground ring-foreground/10 flex w-full max-w-sm flex-col gap-4 overflow-hidden rounded-[10px] pt-4 text-sm ring-1"
+  >
+    <div class="grid gap-1 px-4 text-center">
+      <h1 class="text-xl leading-snug font-medium">Welcome back</h1>
+      <p class="text-muted-foreground text-sm">Sign in to Trading Season reporting</p>
+    </div>
+
+    <div class="px-4">
+      <form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate class="flex flex-col gap-5">
+        <div class="flex flex-col gap-2">
+          <label for="email" class="w-fit text-sm leading-snug font-medium">Email</label>
+          <div class="relative">
+            <ng-icon
+              name="lucideMail"
+              class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[16px]"
+            />
+            <input
+              id="email"
+              type="email"
+              autocomplete="email"
+              placeholder="you@example.com"
+              class="auth-input"
+              formControlName="email"
+              [attr.aria-invalid]="form.controls.email.invalid && form.controls.email.touched"
+              [attr.aria-describedby]="
+                form.controls.email.invalid && form.controls.email.touched ? 'email-error' : null
+              "
+            />
+          </div>
+          @if (form.controls.email.invalid && form.controls.email.touched) {
+            <p id="email-error" class="text-destructive text-sm">Enter a valid email address.</p>
+          }
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <label for="password" class="w-fit text-sm leading-snug font-medium">Password</label>
+          <div class="relative">
+            <ng-icon
+              name="lucideLock"
+              class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[16px]"
+            />
+            <input
+              id="password"
+              [type]="showPassword() ? 'text' : 'password'"
+              autocomplete="current-password"
+              placeholder="••••••••"
+              class="auth-input"
+              formControlName="password"
+              [attr.aria-invalid]="form.controls.password.invalid && form.controls.password.touched"
+              [attr.aria-describedby]="
+                form.controls.password.invalid && form.controls.password.touched
+                  ? 'password-error'
+                  : null
+              "
+            />
+            <button
+              type="button"
+              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 flex -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 transition-colors"
+              (click)="togglePasswordVisibility()"
+              [attr.aria-label]="showPassword() ? 'Hide password' : 'Show password'"
+            >
+              <ng-icon [name]="showPassword() ? 'lucideEyeOff' : 'lucideEye'" class="text-[16px]" />
+            </button>
+          </div>
+          @if (form.controls.password.invalid && form.controls.password.touched) {
+            <p id="password-error" class="text-destructive text-sm">Password is required.</p>
+          }
+        </div>
+
+        @if (errorMessage()) {
+          <p role="alert" class="text-destructive text-sm">{{ errorMessage() }}</p>
+        }
+
+        <button
+          type="submit"
+          [disabled]="loading()"
+          class="auth-button hover:bg-primary/80 mt-1 w-full cursor-pointer active:translate-y-px disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          <ng-icon name="lucideLogIn" />
+          {{ loading() ? 'Signing in...' : 'Sign in' }}
+        </button>
+      </form>
+    </div>
+
+    <div class="bg-muted/50 flex items-center justify-center border-t p-4">
+      <p class="text-muted-foreground text-center text-sm">
+        Use your Trading Season account. Accounts are created in the trading app.
+      </p>
+    </div>
+  </div>
+</div>

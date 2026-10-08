@@ -21,6 +21,13 @@ services:
       dockerfile: Dockerfile
     ports:
       - "4300:8080"
+    # Same reason as client-ui: Nginx resolves both proxy upstreams when it
+    # starts and exits if either name is unknown.
+    depends_on:
+      reporting-service:
+        condition: service_started
+      auth-service:
+        condition: service_started
 
   reporting-service:
     build:

@@ -82,6 +82,7 @@ pipeline {
                 sh '''
                     set -eu
                     npm --prefix apps/client-ui ci
+                    npm --prefix apps/reporting-ui ci
                     npm --prefix apps/auth-service ci
                 '''
             }
@@ -299,6 +300,27 @@ pipeline {
                         }
                     }
                 }
+
+                stage('Reporting UI Tests') {
+                    steps {
+                        dir('apps/reporting-ui') {
+                            // coverageThresholds in angular.json enforce the coverage floor.
+                            sh '''
+                                set -eu
+                                mkdir -p reports/junit
+                                npm test -- --no-watch --coverage --reporters=junit --reporters=default --output-file=reports/junit/reporting-ui.xml --coverage-reporters=text --coverage-reporters=html --coverage-reporters=lcovonly --coverage-reporters=cobertura
+                                test -s coverage/reporting-ui/lcov.info
+                            '''
+                        }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'apps/reporting-ui/coverage/**/*, apps/reporting-ui/reports/junit/*.xml',
+                                              allowEmptyArchive: true
+                            junit testResults: 'apps/reporting-ui/reports/junit/reporting-ui.xml', allowEmptyResults: false
+                        }
+                    }
+                }
             }
         }
 
@@ -323,7 +345,7 @@ pipeline {
         stage('Pre-E2E Disk Cleanup') {
             steps {
                 // Reports were archived by their own stages.
-                sh 'rm -rf apps/holdings-and-trade-service/target apps/order-and-sell-service/target apps/client-ui/coverage'
+                sh 'rm -rf apps/holdings-and-trade-service/target apps/order-and-sell-service/target apps/client-ui/coverage apps/reporting-ui/coverage'
             }
         }
 
@@ -484,7 +506,7 @@ pipeline {
                     }
 
                     check_http client-ui / '<app-root'
-                    check_http reporting-ui / 'Reporting UI placeholder'
+                    check_http reporting-ui / '<app-root'
                     check_http reporting-service /health '"status": "healthy"' 8083
 
                     # Match PartitionCount as a whole tab-delimited field so 3 does not match 30.
