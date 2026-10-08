@@ -2,10 +2,15 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideEye, lucideEyeOff, lucideLock, lucideLogIn, lucideMail } from '@ng-icons/lucide';
 import { AuthService } from '../core/auth/auth.service';
+import {
+  NO_ACCESS_MESSAGE,
+  NO_ACCESS_REASON,
+  ReportingAccessError,
+} from '../core/auth/reporting-access';
 
 export const LOGIN_ERROR_MESSAGES = {
   network: "Can't reach the server. Check your connection and try again.",
@@ -13,10 +18,14 @@ export const LOGIN_ERROR_MESSAGES = {
   invalidCredentials:
     'Incorrect email or password. Too many failed attempts will temporarily lock your account.',
   failed: 'Something went wrong signing you in. Please try again.',
+  noAccess: NO_ACCESS_MESSAGE,
 } as const;
 
 // Maps a failed sign-in to a message that is safe and useful to show the user.
 export function toLoginErrorMessage(error: unknown): string {
+  if (error instanceof ReportingAccessError) {
+    return LOGIN_ERROR_MESSAGES.noAccess;
+  }
   if (!(error instanceof HttpErrorResponse)) {
     return LOGIN_ERROR_MESSAGES.failed;
   }
@@ -40,6 +49,11 @@ export class LoginComponent {
   private readonly _authService = inject(AuthService);
   private readonly _router = inject(Router);
   private readonly _destroyRef = inject(DestroyRef);
+
+  // Set when a signed-in account was sent here because it is not an analyst.
+  protected readonly turnedAway =
+    inject(ActivatedRoute).snapshot.queryParamMap.get('reason') === NO_ACCESS_REASON;
+  protected readonly noAccessMessage = NO_ACCESS_MESSAGE;
 
   // Toggles masking on the password field.
   protected readonly showPassword = signal(false);

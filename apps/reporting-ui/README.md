@@ -3,13 +3,13 @@
 Angular 21 single-page app that presents the [Reporting Service](../reporting-service/README.md) output: the report runs the reporting consumer builds from the `trade-events` Kafka topic. Standalone components, signals, reactive forms, and OnPush change detection, with no server-side rendering.
 
 - Port 4300, for both `ng serve` and the Compose container
-- Signs in against the [Auth Service](../auth-service/README.md) with the same accounts as the Client UI. It has no registration screen.
+- For analysts only. It signs in against the [Auth Service](../auth-service/README.md) and admits an account only if its token carries the `ANALYST` [role](../auth-service/README.md#roles). It has no registration screen. In development, sign in as `analyst@example.com` / `analyst123`.
 
 | Route | Guard | Screen |
 | --- | --- | --- |
-| `/login` | guests only | Sign in |
-| `/` | signed in | Activity: headline figures, trades per day, orders by status, report pipeline, most traded symbols, accounts |
-| `/runs` | signed in | Report runs: the runs on disk and the PNG charts of the selected run, with download |
+| `/login` | anyone not signed in as an analyst | Sign in |
+| `/` | signed-in analyst | Activity: headline figures, trades per day, orders by status, report pipeline, most traded symbols, accounts |
+| `/runs` | signed-in analyst | Report runs: the runs on disk and the PNG charts of the selected run, with download |
 
 Every figure on screen comes from the Reporting Service. Nothing is demo data. Days are UTC days, as the report job buckets them; the time a run was generated is shown in the viewer's time zone with the zone named.
 
@@ -86,6 +86,18 @@ Both backends are called on the UI's own origin, so neither needs a CORS entry f
 
 Token handling matches the Client UI: the interceptor adds the bearer token to `/api/reporting` calls, refreshes an expired access token through `POST /auth/refresh`, retries once after a 401, and sends the user to `/login` when the refresh token is missing or rejected. The session is kept in `localStorage` under its own key, separate from the Client UI's because the two apps are different origins.
 
+### Analyst access
+
+The Reporting Service is what enforces the rule: it answers 403 on every run endpoint to a token without the `ANALYST` role. The UI checks the same claim so that nobody else gets a screen that could only show errors:
+
+| Moment | What happens to an account that is not an analyst |
+| --- | --- |
+| Sign-in | The credentials are accepted by the Auth Service, the UI revokes that session at once, keeps no token, and says the account has no access to reporting |
+| Opening a screen with a stored session | The route guard signs it out and returns to `/login` with the same message |
+| A 403 from the Reporting Service, for example after a refresh issued a token for a changed role | The interceptor signs it out and returns to `/login` with the same message |
+
+A role change takes effect at the account's next sign-in or token refresh. See [roles](../auth-service/README.md#roles) for how an account becomes an analyst.
+
 ## Design system
 
 The screens follow the TradingSeason design system: dark only, Archivo, the cyan accent, filled orders in the gain color and rejected orders in the loss color, dashboard cards with quiet uppercase labels, Lucide icons through `@ng-icons/lucide`. The tokens are declared in [src/styles.css](src/styles.css) with the same values as the Client UI's dark theme, and Tailwind v4 maps them to utilities. The design system export itself is not checked in.
@@ -115,7 +127,6 @@ The production [Dockerfile](Dockerfile) builds the app and serves it through unp
 
 ## Known limitations
 
-- Any signed-in account can read the reports. The Reporting Service does not enforce an admin role, and this UI does not hide anything by role.
 - The service keeps only the newest run, so the run list normally has one entry.
 - There is no time-range filter: a run covers every event on disk.
 - Users are not signed out for inactivity, unlike the Client UI.

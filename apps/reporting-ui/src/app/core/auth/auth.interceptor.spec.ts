@@ -92,6 +92,35 @@ describe('authInterceptor', () => {
     expect(navigate).toHaveBeenCalledWith(['/login']);
   });
 
+  it('signs out and says why when the service refuses the role', async () => {
+    signIn();
+    const done = firstValueFrom(client.get('/api/reporting/runs/latest'));
+
+    http
+      .expectOne('/api/reporting/runs/latest')
+      .flush({ error: 'The ANALYST role is required' }, { status: 403, statusText: 'Forbidden' });
+
+    await expect(done).rejects.toMatchObject({ status: 403 });
+    expect(http.expectOne('/auth/logout').request.body).toEqual({ refreshToken: 'refresh-1' });
+    expect(storage.hasSession()).toBe(false);
+    expect(navigate).toHaveBeenCalledWith(['/login'], { queryParams: { reason: 'role' } });
+  });
+
+  it('signs out when a renewed token no longer carries the role', async () => {
+    signIn();
+    const done = firstValueFrom(client.get('/api/reporting/runs'));
+
+    http.expectOne('/api/reporting/runs').flush({}, { status: 401, statusText: 'Unauthorized' });
+    http
+      .expectOne('/auth/refresh')
+      .flush({ accessToken: 'access-2', refreshToken: 'refresh-2', expiresIn: 900 });
+    http.expectOne('/api/reporting/runs').flush({}, { status: 403, statusText: 'Forbidden' });
+
+    await expect(done).rejects.toMatchObject({ status: 403 });
+    expect(http.expectOne('/auth/logout').request.body).toEqual({ refreshToken: 'refresh-2' });
+    expect(navigate).toHaveBeenCalledWith(['/login'], { queryParams: { reason: 'role' } });
+  });
+
   it('passes other failures through untouched', async () => {
     signIn();
     const done = firstValueFrom(client.get('/api/reporting/runs/latest'));

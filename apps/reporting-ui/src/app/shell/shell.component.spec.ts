@@ -55,7 +55,7 @@ describe('ShellComponent', () => {
       .map((part) => part.textContent!.trim());
 
   it('frames the reporting screens with navigation', async () => {
-    signIn({ email: 'sean@example.com', roles: ['TRADER'] });
+    signIn({ email: 'sean@example.com', roles: ['ANALYST'] });
     await TestBed.inject(Router).navigateByUrl('/');
     const root = render();
     await fixture.whenStable();
@@ -69,17 +69,17 @@ describe('ShellComponent', () => {
     expect(root.querySelector('router-outlet')).not.toBeNull();
   });
 
-  it("shows the signed-in trader's name, role and level", () => {
-    signIn({ email: 'sean@example.com', roles: ['TRADER'] });
+  it("shows the signed-in analyst's name, role and trader level", () => {
+    signIn({ email: 'sean@example.com', roles: ['ANALYST'] });
     const root = render();
-    expect(user(root)).toEqual(['SC', 'Sean Cheema', 'Trader · Advanced']);
+    expect(user(root)).toEqual(['SC', 'Sean Cheema', 'Analyst · Advanced']);
   });
 
   it('falls back to the sign-in email for a user without a trading profile', () => {
     loadProfile.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 404 })));
-    signIn({ email: 'admin@example.com', roles: ['ADMIN'] });
+    signIn({ email: 'analyst@example.com', roles: ['ANALYST'] });
     const root = render();
-    expect(user(root)).toEqual(['AE', 'admin@example.com', 'Admin']);
+    expect(user(root)).toEqual(['AE', 'analyst@example.com', 'Analyst']);
   });
 
   it('still renders when neither a profile nor token claims are available', () => {
@@ -89,7 +89,7 @@ describe('ShellComponent', () => {
   });
 
   it('signs out and returns to the login page', () => {
-    signIn({ email: 'sean@example.com' });
+    signIn({ email: 'sean@example.com', roles: ['ANALYST'] });
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     const root = render();
 

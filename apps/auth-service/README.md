@@ -21,10 +21,28 @@ The token response is `accessToken`, `refreshToken`, and `expiresIn` (900). Erro
 
 ## Tokens and sessions
 
-- **Access token**: RS256 JWT valid for 15 minutes with claims `sub` (user UUID), `email`, `roles` (`ADMIN` or `TRADER`), `iss`, `iat`, `exp`. It stays valid until expiry even after logout.
+- **Access token**: RS256 JWT valid for 15 minutes with claims `sub` (user UUID), `email`, `roles` (one of `TRADER`, `ANALYST` or `ADMIN`), `iss`, `iat`, `exp`. It stays valid until expiry even after logout.
 - **Refresh token**: opaque 256-bit random string valid for 7 days. Only its SHA-256 hash is stored. It rotates on every use, and presenting an already-used token revokes every live session for that user.
 - **Lockout**: five failed logins lock the account for 15 minutes. Unknown account, wrong password, and locked all return the same generic 401, and each costs one bcrypt comparison so timing does not reveal which case occurred.
 - Send refresh tokens in the JSON body; cookies are not used. Logout needs no access token, so a session can be ended after the access token expires.
+
+## Roles
+
+Each account has one role, stored in `user_accounts.user_role` and carried in the token's `roles` claim. This service only issues the claim; the services that receive the token decide what a role may do.
+
+| Role | Assigned | Used by |
+| --- | --- | --- |
+| `TRADER` | Every registration | The default; the trading services do not check roles |
+| `ANALYST` | Never by registration | The [Reporting Service](../reporting-service/README.md) serves report runs to this role only, so it is the only role that can use the [Reporting UI](../reporting-ui/README.md) |
+| `ADMIN` | Never by registration | Reserved; nothing grants it anything today |
+
+`POST /auth/register` takes no role and rejects a body that carries one, so a caller cannot choose their own. To make an existing account an analyst, update it in the database:
+
+```sql
+UPDATE user_accounts SET user_role = 'ANALYST' WHERE email = 'someone@example.com';
+```
+
+The change reaches the account's tokens at its next sign-in or refresh, so within 15 minutes for a session that is already open. The allowed values are fixed by a check constraint in [db/migrations](../../db/migrations) and by [user-role.ts](src/users/user-role.ts); a new role needs a migration and an entry there.
 
 ## Design
 
@@ -189,7 +207,7 @@ node scripts/generate-dev-keys.mjs >> .env
 
 Keep `DB_HOST=localhost`, `DB_PORT=5432`, `DB_NAME=trading_season` and the matching `DB_USER` and `DB_PASSWORD`. Start a migrated database first (see [db/README.md](../../db/README.md)), then run `npm run start:dev`. The service refuses to start without both JWT keys. The Java services must use the same issuer as `JWT_ISSUER`.
 
-In development the service seeds `admin@example.com` / `admin123`; production never does.
+In development the service seeds two sign-ins, each only if its email is not already there: `admin@example.com` / `admin123`, a `TRADER` for the Client UI, and `analyst@example.com` / `analyst123`, an `ANALYST` for the Reporting UI. Production never seeds either.
 
 | Variable | Purpose |
 | --- | --- |

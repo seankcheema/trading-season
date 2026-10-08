@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { catchError, switchMap, throwError } from 'rxjs';
 import { REPORTING_API_URL } from '../api.config';
 import { AuthService } from './auth.service';
+import { NO_ACCESS_REASON } from './reporting-access';
 import { TokenStorageService } from './token-storage.service';
 
 // Adds the bearer token to reporting calls and renews it once on a 401.
@@ -22,8 +23,18 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       () => new HttpErrorResponse({ status: 401, statusText: 'Session expired', url: req.url }),
     );
   };
+  // A 403 means the service no longer sees the analyst role on this account, for example
+  // after a refresh issued a token for a changed role. Nothing here can be shown without it.
   const send = (token: string) =>
-    next(req.clone({ setHeaders: { Authorization: `Bearer ${token}` } }));
+    next(req.clone({ setHeaders: { Authorization: `Bearer ${token}` } })).pipe(
+      catchError((error: unknown) => {
+        if (error instanceof HttpErrorResponse && error.status === 403) {
+          auth.logout().subscribe();
+          void router.navigate(['/login'], { queryParams: { reason: NO_ACCESS_REASON } });
+        }
+        return throwError(() => error);
+      }),
+    );
   return auth.ensureValidSession().pipe(
     switchMap((valid) => {
       const token = storage.accessToken;

@@ -112,6 +112,25 @@ describe('UsersService', () => {
         password: 'hashed_password123',
       });
     });
+
+    it('should store a role given by a trusted caller and return it', async () => {
+      mockUserRepository.findOne.mockResolvedValue(null);
+      mockUserRepository.create.mockImplementation((u: object) => u);
+      mockUserRepository.save.mockImplementation(async (u: object) => u);
+
+      const result = await service.create({
+        email: 'analyst@example.com',
+        password: 'password123',
+        role: 'ANALYST',
+      });
+
+      expect(mockUserRepository.create).toHaveBeenCalledWith({
+        email: 'analyst@example.com',
+        password: 'hashed_password123',
+        role: 'ANALYST',
+      });
+      expect(result.role).toBe('ANALYST');
+    });
   });
 
   describe('findById', () => {

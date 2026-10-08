@@ -1,4 +1,5 @@
 import { Injectable, computed, signal } from '@angular/core';
+import { REPORTING_ROLE } from './reporting-access';
 
 export interface AuthTokens {
   accessToken: string;
@@ -49,6 +50,9 @@ export class TokenStorageService {
       return { email: null, roles: [] };
     }
   });
+
+  // Whether the signed-in account may use this app at all.
+  readonly isAnalyst = computed(() => this.identity().roles.includes(REPORTING_ROLE));
 
   get accessToken(): string | null {
     return this._session()?.accessToken ?? null;

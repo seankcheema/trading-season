@@ -6,6 +6,7 @@ import { AuthService } from './auth.service.js';
 import { buildJwtOptions } from './auth.module.js';
 import { UsersService } from '../users/users.service.js';
 import { RefreshTokensService } from '../refresh-tokens/refresh-tokens.service.js';
+import type { UserRole } from '../users/user-role.js';
 
 /**
  * Signs through the service's real signing configuration.
@@ -23,6 +24,7 @@ import { RefreshTokensService } from '../refresh-tokens/refresh-tokens.service.j
 describe('token issuance through the real signing configuration', () => {
   let service: AuthService;
   let publicPem: string;
+  let user: { id: string; email: string; password: string; role: UserRole };
 
   beforeAll(() => {
     const { privateKey, publicKey } = generateKeyPairSync('rsa', {
@@ -38,11 +40,11 @@ describe('token issuance through the real signing configuration', () => {
   });
 
   beforeEach(async () => {
-    const user = {
+    user = {
       id: '11111111-1111-1111-1111-111111111111',
       email: 'joanna@example.com',
       password: 'hashed',
-      role: 'TRADER' as const,
+      role: 'TRADER',
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -115,6 +117,20 @@ describe('token issuance through the real signing configuration', () => {
     expect(claims.roles).toEqual(['TRADER']);
     expect(claims.iss).toBe('https://auth.dualeapa.test');
     expect(claims.exp - claims.iat).toBe(900);
+  });
+
+  it("should carry an analyst's role, which the reporting service authorizes on", async () => {
+    user.role = 'ANALYST';
+
+    const { accessToken } = await service.login(
+      'joanna@example.com',
+      'correct-horse',
+    );
+    const claims = JSON.parse(
+      Buffer.from(accessToken.split('.')[1], 'base64url').toString(),
+    );
+
+    expect(claims.roles).toEqual(['ANALYST']);
   });
 
   it('should reject signOptions that duplicate a payload claim', () => {

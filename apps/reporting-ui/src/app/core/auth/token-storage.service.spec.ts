@@ -17,6 +17,29 @@ describe('TokenStorageService', () => {
     expect(storage.refreshToken).toBeNull();
     expect(storage.isAccessTokenValid()).toBe(false);
     expect(storage.identity()).toEqual({ email: null, roles: [] });
+    expect(storage.isAnalyst()).toBe(false);
+  });
+
+  it('knows an analyst from any other role', () => {
+    const storage = create();
+    const save = (roles: unknown) =>
+      storage.save({ accessToken: accessToken({ roles }), refreshToken: 'r', expiresIn: 900 });
+
+    save(['ANALYST']);
+    expect(storage.isAnalyst()).toBe(true);
+    save(['TRADER', 'ANALYST']);
+    expect(storage.isAnalyst()).toBe(true);
+    save(['TRADER']);
+    expect(storage.isAnalyst()).toBe(false);
+    save(['ADMIN']);
+    expect(storage.isAnalyst()).toBe(false);
+    // A claim that is not a list of roles grants nothing.
+    save('ANALYST');
+    expect(storage.isAnalyst()).toBe(false);
+
+    save(['ANALYST']);
+    storage.clear();
+    expect(storage.isAnalyst()).toBe(false);
   });
 
   it('saves tokens, persists them and exposes the display claims', () => {

@@ -7,6 +7,10 @@ info:
     runs that the reporting consumer produces from the trade-events Kafka topic,
     plus the caller's trader profile. Trade data is never read from the
     trading_season database; only users and accounts are, for names.
+
+    The run endpoints cover every account on the platform and require the
+    ANALYST role in the access token's roles claim. A valid token without it
+    is answered 403. The profile endpoint needs only a valid token.
 servers:
   - url: http://localhost:8083
     description: Local development
@@ -67,6 +71,7 @@ paths:
     get:
       tags: [Runs]
       summary: List every complete report run, newest first
+      description: Requires the ANALYST role.
       security:
         - bearerAuth: []
       responses:
@@ -78,12 +83,15 @@ paths:
                 $ref: '#/components/schemas/RunListResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalError'
   /api/reporting/runs/latest:
     get:
       tags: [Runs]
       summary: Get the latest run's report
+      description: Requires the ANALYST role.
       security:
         - bearerAuth: []
       responses:
@@ -95,6 +103,8 @@ paths:
                 $ref: '#/components/schemas/Report'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           description: No report has been generated yet
           content:
@@ -107,6 +117,7 @@ paths:
     get:
       tags: [Runs]
       summary: Get one chart image of a run
+      description: Requires the ANALYST role.
       security:
         - bearerAuth: []
       parameters:
@@ -134,6 +145,8 @@ paths:
                 format: binary
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -161,6 +174,12 @@ components:
   responses:
     Unauthorized:
       description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: The token is valid but does not carry the ANALYST role
       content:
         application/json:
           schema:

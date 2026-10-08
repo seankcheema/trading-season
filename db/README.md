@@ -8,6 +8,7 @@ One PostgreSQL database, `trading_season`, shared by every service. The schema i
 | [V002__Add_watchlist.sql](migrations/V002__Add_watchlist.sql) | `user_watchlist` |
 | [V003__Order_status_accepted.sql](migrations/V003__Order_status_accepted.sql) | Allows `ACCEPTED` in `orders.status`: an order is committed as accepted before it executes, then becomes `FILLED` or `REJECTED` |
 | [V008__Drop_account_status.sql](migrations/V008__Drop_account_status.sql) | Removes `user_accounts.account_status` |
+| [V009__Analyst_role.sql](migrations/V009__Analyst_role.sql) | Allows `ANALYST` in `user_accounts.user_role`, the role the Reporting Service serves report runs to |
 
 In Docker, `db-init` runs [infrastructure/docker/init-db.sh](../infrastructure/docker/init-db.sh), which applies each file once and records it in `public.schema_migrations`. For a local PostgreSQL, apply the files in order with `psql -v ON_ERROR_STOP=1 -f`. Never edit an applied migration; add a new one.
 

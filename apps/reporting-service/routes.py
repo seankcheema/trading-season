@@ -1,6 +1,9 @@
 """
 Reporting API routes: the caller's profile, and the report runs produced
 from the trade-events files. Trade data is never read from the database here.
+
+The profile is the caller's own and needs only a valid token. The report runs
+cover every account on the platform, so they are served to analysts only.
 """
 
 import logging
@@ -8,7 +11,7 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, g, jsonify, send_from_directory
 
-from app import require_auth
+from app import REPORT_READER_ROLE, require_auth, require_role
 from db_service import UserRepository
 import run_store
 
@@ -44,6 +47,7 @@ def get_user_profile():
 
 @api_bp.route('/runs', methods=['GET'])
 @require_auth
+@require_role(REPORT_READER_ROLE)
 def list_runs():
     """GET /api/reporting/runs: every complete report run, newest first."""
     files_dir = _files_dir()
@@ -56,6 +60,7 @@ def list_runs():
 
 @api_bp.route('/runs/latest', methods=['GET'])
 @require_auth
+@require_role(REPORT_READER_ROLE)
 def latest_report():
     """GET /api/reporting/runs/latest: the latest run's report.json."""
     files_dir = _files_dir()
@@ -68,6 +73,7 @@ def latest_report():
 
 @api_bp.route('/runs/<run_id>/files/<name>', methods=['GET'])
 @require_auth
+@require_role(REPORT_READER_ROLE)
 def run_file(run_id, name):
     """GET /api/reporting/runs/<run_id>/files/<name>: one PNG chart of a run."""
     if not run_store.is_safe_run_id(run_id) or not run_store.is_safe_file_name(name):

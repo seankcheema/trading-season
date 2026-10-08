@@ -16,6 +16,7 @@ order, and then verifies what each consumer did with the two messages
   portfolio-valuation-capture  a portfolio valuation row exists for the account
   reporting-ingester           both events are in the event files, a report run
                                counts the fill, and the web service serves it
+                               to an analyst and refuses it to the trader
 
 Every finding is printed as a "[KAFKA-E2E] step: result" line so the Jenkins
 console and the archived evidence file read as a plain checklist. The exit
@@ -36,6 +37,12 @@ ORDERS = 'http://order-and-sell-service:8081'
 HOLDINGS = 'http://holdings-and-trade-service:8082'
 REPORTING = 'http://reporting-service:8083'
 WAIT_SECONDS = 45
+
+# Report runs are served to the ANALYST role only, and registration only ever
+# creates traders. This is the development analyst the auth service seeds when
+# NODE_ENV is not production, which is how the Compose stack runs it.
+ANALYST_EMAIL = 'analyst@example.com'
+ANALYST_PASSWORD = 'analyst123'
 
 # The chart library comments on string axis labels at INFO level; keep the
 # checklist readable.
@@ -188,13 +195,24 @@ def main():
                       f"{report['statusCounts']['FILLED']} filled, {report['statusCounts']['REJECTED']} rejected, "
                       f"charts {', '.join(report['files'])}")
 
-    status, served = call('GET', f'{REPORTING}/api/reporting/runs/latest', token=token)
+    status, refused = call('GET', f'{REPORTING}/api/reporting/runs/latest', token=token)
+    if status != 403:
+        fail('report refused to a trader', f'reporting-service answered {status} to a TRADER token: {refused}')
+    say('report refused to a trader', 'GET /api/reporting/runs/latest answers 403 to the trader who placed the order')
+
+    status, body = call('POST', f'{AUTH}/auth/login', {'email': ANALYST_EMAIL, 'password': ANALYST_PASSWORD})
+    if status != 201 or 'accessToken' not in body:
+        fail('analyst sign-in', f'auth-service answered {status} for the seeded analyst {ANALYST_EMAIL}: {body}')
+    analyst_token = body['accessToken']
+    say('analyst sign-in', f'{ANALYST_EMAIL} signed in with the ANALYST role')
+
+    status, served = call('GET', f'{REPORTING}/api/reporting/runs/latest', token=analyst_token)
     if status != 200 or served.get('runId') != report['runId']:
         fail('report served', f'reporting-service answered {status}: {served}')
     symbols = [row['symbol'] for row in served['volumeBySymbol']]
     if instrument['ticker'] not in symbols:
         fail('report served', f'{instrument["ticker"]} missing from volumeBySymbol {symbols}')
-    say('report served', f"GET /api/reporting/runs/latest returns run {served['runId']} with {instrument['ticker']} in its volume table")
+    say('report served', f"GET /api/reporting/runs/latest returns run {served['runId']} to the analyst with {instrument['ticker']} in its volume table")
     say('result', 'one order, two messages, three consumers: all verified')
 
 

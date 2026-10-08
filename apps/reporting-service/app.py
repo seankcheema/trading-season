@@ -161,6 +161,31 @@ def require_auth(f):
     return decorated_function
 
 
+# The role that may read report runs. The auth service puts the account's
+# role in the token's `roles` claim; registration only ever issues TRADER.
+REPORT_READER_ROLE = 'ANALYST'
+
+
+def require_role(role):
+    """
+    Decorator to require a role in the verified token's `roles` claim.
+    Place it under @require_auth, which verifies the token and sets g.user.
+    A valid token without the role is 403, not 401: the caller is known,
+    just not allowed.
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            roles = g.user.get('roles')
+            if not isinstance(roles, list) or role not in roles:
+                return jsonify({'error': f'The {role} role is required'}), 403
+            return f(*args, **kwargs)
+
+        return decorated_function
+
+    return decorator
+
+
 # ============================================================================
 # Health Check
 # ============================================================================

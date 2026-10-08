@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import type { UserRole } from './user-role.js';
 
 /**
  * A credential record, in the shared business database.
@@ -37,7 +38,7 @@ export class User {
   password: string;
 
   @Column({ name: 'user_role', type: 'text', default: 'TRADER' })
-  role: 'ADMIN' | 'TRADER';
+  role: UserRole;
 
   /** Failed login counter for the lockout rule (KAN-46). */
   @Column({ name: 'failed_login_attempts', type: 'int', default: 0 })

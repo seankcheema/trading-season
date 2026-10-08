@@ -112,8 +112,15 @@ def test_account(db_session, test_user):
 
 @pytest.fixture
 def authenticated(mocker, test_user):
-    """Make every request look like it carries test_user's token."""
-    mocker.patch('app.verify_token', return_value={'sub': str(test_user.user_id)})
+    """Make every request look like it carries test_user's token, as an analyst."""
+    mocker.patch('app.verify_token', return_value={'sub': str(test_user.user_id), 'roles': ['ANALYST']})
+    return {'Authorization': 'Bearer test-token'}
+
+
+@pytest.fixture
+def authenticated_trader(mocker, test_user):
+    """Make every request look like it carries test_user's token, as a trader."""
+    mocker.patch('app.verify_token', return_value={'sub': str(test_user.user_id), 'roles': ['TRADER']})
     return {'Authorization': 'Bearer test-token'}
 
 

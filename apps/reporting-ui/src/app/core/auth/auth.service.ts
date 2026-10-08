@@ -1,10 +1,23 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, catchError, defer, finalize, map, of, shareReplay, tap, throwError } from 'rxjs';
+import {
+  Observable,
+  catchError,
+  defer,
+  finalize,
+  map,
+  of,
+  shareReplay,
+  switchMap,
+  tap,
+  throwError,
+} from 'rxjs';
 import { AUTH_API_URL } from '../api.config';
+import { ReportingAccessError } from './reporting-access';
 import { AuthTokens, TokenStorageService } from './token-storage.service';
 
-// Sign-in against the auth service. Accounts are created in the client UI, not here.
+// Sign-in against the auth service, for analysts only. Accounts are created in the client UI,
+// not here, and an account becomes an analyst outside both apps.
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly _http = inject(HttpClient);
@@ -14,10 +27,16 @@ export class AuthService {
   readonly isAuthenticated = this._storage.hasSession;
   private refresh?: { revision: number; result: Observable<boolean> };
 
+  // Fails with ReportingAccessError when the credentials are right but the account is not an
+  // analyst. That session is revoked straight away, so no token for it stays in this browser.
   login(email: string, password: string): Observable<void> {
     return this._http.post<AuthTokens>(`${this._authApiUrl}/login`, { email, password }).pipe(
       tap((tokens) => this._storage.save(tokens)),
-      map(() => undefined),
+      switchMap(() =>
+        this._storage.isAnalyst()
+          ? of(undefined)
+          : this.logout().pipe(switchMap(() => throwError(() => new ReportingAccessError()))),
+      ),
     );
   }
 

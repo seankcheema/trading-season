@@ -11,7 +11,7 @@ A trading simulation platform: an Angular client, two Spring Boot services for t
 | Order and Sell Service | [apps/order-and-sell-service](apps/order-and-sell-service/README.md) | 8081 | Order submission, validation, execution, instruments |
 | Holdings and Trade Service | [apps/holdings-and-trade-service](apps/holdings-and-trade-service/README.md) | 8082 | Profiles, accounts, holdings, cash, watchlist, market data |
 | Reporting Service | [apps/reporting-service](apps/reporting-service/README.md) | 8083 | Kafka consumer storing trade events as files, scheduled report runs with charts, endpoints serving the runs |
-| Reporting UI | [apps/reporting-ui](apps/reporting-ui/README.md) | 4300 | Sign-in, activity overview and report runs, read from the Reporting Service |
+| Reporting UI | [apps/reporting-ui](apps/reporting-ui/README.md) | 4300 | Sign-in for analysts, activity overview and report runs, read from the Reporting Service |
 | Market Data | [apps/market-data](apps/market-data/README.md) | - | Synthetic market data generation and import |
 | Database | [db](db/README.md) | 5432 | Migrations and schema for the shared `trading_season` database |
 
@@ -45,7 +45,7 @@ flowchart LR
     RUI -- "/api/reporting" --> RS
 ```
 
-The UI reaches both Java services through one relative `/api` prefix that the dev proxy and the Nginx image split by path. The Java services never call the Auth Service per request: they verify tokens locally against its cached public keys. The Reporting UI calls the Auth Service and the Reporting Service through a proxy on its own origin. It shows only what the reporting consumer has built from the topic; it never reads Kafka or the database itself.
+The UI reaches both Java services through one relative `/api` prefix that the dev proxy and the Nginx image split by path. The Java services never call the Auth Service per request: they verify tokens locally against its cached public keys. The Reporting UI calls the Auth Service and the Reporting Service through a proxy on its own origin. It shows only what the reporting consumer has built from the topic; it never reads Kafka or the database itself. Report runs are served to accounts with the `ANALYST` role only, so traders cannot use it; see [roles](apps/auth-service/README.md#roles).
 
 The Order and Sell Service publishes one `trade-events` message after each committed order status change (ACCEPTED, FILLED or REJECTED), keyed by account id. Three consumer groups read the topic independently:
 
@@ -186,6 +186,7 @@ The UI is at http://localhost:4200 and the Reporting UI at http://localhost:4300
 
 ```powershell
 npm --prefix apps/client-ui ci
+npm --prefix apps/reporting-ui ci
 npm --prefix apps/auth-service ci
 Copy-Item apps/auth-service/.env.example apps/auth-service/.env
 node apps/auth-service/scripts/generate-dev-keys.mjs | Add-Content apps/auth-service/.env
@@ -193,13 +194,18 @@ $env:SPRING_DATASOURCE_PASSWORD = 'password'
 .\scripts\start-local.ps1
 ```
 
-The script starts the Client UI, the Auth Service and both Java services. The Reporting Service, its consumer and the Reporting UI are started separately; see [apps/reporting-service](apps/reporting-service/README.md) and [apps/reporting-ui](apps/reporting-ui/README.md).
+The script starts the Client UI on 4200, the Reporting UI on 4300, the Auth Service and both Java services, and stops with an instruction if any npm project has no installed dependencies. It does not start the Reporting Service or its consumer; until they run, the Reporting UI signs in but has no report to show. See [apps/reporting-service](apps/reporting-service/README.md).
 
 This needs a running `trading_season` database; see [db/README.md](db/README.md) to create and migrate one, and [apps/market-data](apps/market-data/README.md) to load synthetic market data. On Linux, `scripts/setup-local.sh` does the equivalent setup. The Java services also expect the Kafka broker from the Compose file on `localhost:29092`; start only the `kafka` and `kafka-init` services from it, or set `app.events.enabled=false` on both Java services to run without a broker.
 
 ### Development login
 
-In development the auth service seeds `admin@example.com` / `admin123`. Production never seeds it.
+In development the auth service seeds two sign-ins. Production never seeds either.
+
+| Sign-in | Role | Use it for |
+| --- | --- | --- |
+| `admin@example.com` / `admin123` | `TRADER` | Client UI |
+| `analyst@example.com` / `analyst123` | `ANALYST` | Reporting UI |
 
 ## Checks
 

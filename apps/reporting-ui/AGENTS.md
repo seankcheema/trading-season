@@ -1,6 +1,7 @@
 # Reporting UI instructions
 
-- Follow the existing standalone components, OnPush change detection, and signal patterns. The auth code under `src/app/core/auth` mirrors the Client UI's; keep the two behaving the same when either changes.
+- Follow the existing standalone components, OnPush change detection, and signal patterns. The auth code under `src/app/core/auth` mirrors the Client UI's token handling; keep the two behaving the same when either changes. The analyst checks are this app's own.
+- Only analysts use this app. The role name and the no-access message live in [reporting-access.ts](src/app/core/auth/reporting-access.ts); the Reporting Service enforces the rule, and the UI checks only decide what to show. Do not treat a UI check as the access control.
 - Show only what the [Reporting Service](../reporting-service/README.md) serves. Do not add demo or mock data to a screen. A screen that needs data the service does not expose needs the endpoint first.
 - [openapi.yaml](../reporting-service/openapi.yaml) is the contract. Keep [report.models.ts](src/app/reporting/report.models.ts) and [ReportingApiService](src/app/reporting/reporting-api.service.ts) in step with it.
 - Both backends are reached on the UI's own origin. A new backend path needs the same entry in both [proxy.conf.json](proxy.conf.json) and [nginx.conf](nginx.conf).

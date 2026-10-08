@@ -128,7 +128,7 @@ public class SecurityConfig {
     }
 
     /**
-     * Maps the token's {@code roles} claim (ADMIN or TRADER) to {@code ROLE_}
+     * Maps the token's {@code roles} claim (ADMIN, TRADER or ANALYST) to {@code ROLE_}
      * authorities so endpoints can use role-based rules.
      *
      * @return the authentication converter

@@ -10,7 +10,7 @@ Python Flask service that turns the `trade-events` Kafka topic into reports. It 
 1. Order and Sell publishes one message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`), keyed by account id. The run counts only final statuses as trades.
 2. `consumer.py`, consumer group `reporting-ingester`, appends each message as one JSON line to `events/trade-events-p<partition>.jsonl` under `REPORTING_FILES_DIR`, then commits the offset. Offsets already on disk are skipped, so redelivery never duplicates a line.
 3. Every `SCHEDULER_INTERVAL_MINUTES` the same process runs `report_run.py`: reads the event files, joins account and trader names from PostgreSQL (`users` and `accounts`, read only), and writes `runs/<UTC timestamp>/report.json` plus three PNG charts. `runs/latest` points at the new run; older runs are deleted.
-4. The web service (`wsgi.py` under gunicorn) serves the runs behind the same RS256 tokens the Java services accept.
+4. The web service (`wsgi.py` under gunicorn) serves the runs behind the same RS256 tokens the Java services accept, to accounts with the `ANALYST` role only.
 
 ## Technology
 
@@ -35,18 +35,18 @@ On the host the broker is `localhost:29092` and the files land in `./data/report
 
 ## Endpoints
 
-Authenticated endpoints need an RS256 bearer token from the [Auth Service](../auth-service/README.md).
+Authenticated endpoints need an RS256 bearer token from the [Auth Service](../auth-service/README.md). The run endpoints also need the `ANALYST` role in the token's `roles` claim: the runs cover every account on the platform, so a valid token without the role is answered 403. The profile is the caller's own and needs only a valid token.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/` | Service information and entry points (public) |
-| GET | `/health` | Liveness and database check (public) |
-| GET | `/docs`, `/openapi.yaml` | Swagger UI and the OpenAPI contract (public) |
-| GET | `/api/reporting/profile` | The caller's trader profile |
-| GET | `/api/reporting/runs` | Every complete report run, newest first, with the latest run id |
-| GET | `/api/reporting/runs/latest` | The latest run's `report.json`; 404 until the first run |
-| GET | `/api/reporting/runs/{runId}/files/{name}` | One PNG chart of a run |
-| GET | `/api/reporting/scheduler/status` | Latest run id, when it was generated, and the interval (public) |
+| Method | Path | Access | Purpose |
+| --- | --- | --- | --- |
+| GET | `/` | public | Service information and entry points |
+| GET | `/health` | public | Liveness and database check |
+| GET | `/docs`, `/openapi.yaml` | public | Swagger UI and the OpenAPI contract |
+| GET | `/api/reporting/profile` | any token | The caller's trader profile |
+| GET | `/api/reporting/runs` | `ANALYST` | Every complete report run, newest first, with the latest run id |
+| GET | `/api/reporting/runs/latest` | `ANALYST` | The latest run's `report.json`; 404 until the first run |
+| GET | `/api/reporting/runs/{runId}/files/{name}` | `ANALYST` | One PNG chart of a run |
+| GET | `/api/reporting/scheduler/status` | public | Latest run id, when it was generated, and the interval |
 
 [openapi.yaml](openapi.yaml) is the canonical contract. Keep it, [routes.py](routes.py), [app.py](app.py), and the tests in step.
 
@@ -58,7 +58,7 @@ flowchart LR
     C --> E["events/*.jsonl"]
     C --> R["runs/<id>/report.json + PNG"]
     C -. "account and trader names" .-> DB[("trading_season<br/>users, accounts")]
-    Client --> App["app.py<br/>Flask, /health, /docs, require_auth"]
+    Client --> App["app.py<br/>Flask, /health, /docs, require_auth, require_role"]
     App --> Routes["routes.py<br/>/api/reporting blueprint"]
     Routes --> R
     Routes -. "profile" .-> DB
@@ -108,4 +108,3 @@ The image runs gunicorn by default; Compose starts a second container from the s
 ## Known limitations
 
 - Portfolio performance measures (returns, drawdown, Sharpe) are not computed yet; the run produces volume, activity and fill/rejection insights.
-- Admin role authorization is not enforced; any valid token can read the runs.

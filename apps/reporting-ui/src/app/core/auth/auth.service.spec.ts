@@ -4,10 +4,11 @@ import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import { accessToken } from '../../../testing/fixtures';
 import { AuthService } from './auth.service';
+import { ReportingAccessError } from './reporting-access';
 import { AuthTokens, TokenStorageService } from './token-storage.service';
 
 const tokens = (overrides: Partial<AuthTokens> = {}): AuthTokens => ({
-  accessToken: accessToken({ email: 'ada@example.com' }),
+  accessToken: accessToken({ email: 'ada@example.com', roles: ['ANALYST'] }),
   refreshToken: 'refresh-1',
   expiresIn: 900,
   ...overrides,
@@ -43,6 +44,21 @@ describe('AuthService', () => {
     await done;
     expect(service.isAuthenticated()).toBe(true);
     expect(storage.refreshToken).toBe('refresh-1');
+  });
+
+  it('turns away an account that is not an analyst and revokes its session', async () => {
+    const done = firstValueFrom(service.login('trader@example.com', 'secret'));
+
+    http.expectOne('/auth/login').flush(
+      tokens({ accessToken: accessToken({ roles: ['TRADER'] }), refreshToken: 'trader-refresh' }),
+    );
+    const revoke = http.expectOne('/auth/logout');
+    expect(revoke.request.body).toEqual({ refreshToken: 'trader-refresh' });
+    revoke.flush({});
+
+    await expect(done).rejects.toBeInstanceOf(ReportingAccessError);
+    expect(service.isAuthenticated()).toBe(false);
+    expect(localStorage.length).toBe(0);
   });
 
   it('signs out locally and revokes the refresh token', async () => {

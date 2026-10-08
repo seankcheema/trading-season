@@ -38,7 +38,7 @@ public class UserAccount {
     @Column(name = "email", nullable = false)
     private String email;
 
-    /** ADMIN or TRADER. */
+    /** ADMIN, TRADER or ANALYST. */
     @Column(name = "user_role", nullable = false)
     private String userRole;
 
@@ -56,7 +56,7 @@ public class UserAccount {
      *
      * @param userId   the account id
      * @param email    the login email
-     * @param userRole ADMIN or TRADER
+     * @param userRole ADMIN, TRADER or ANALYST
      */
     public UserAccount(UUID userId, String email, String userRole) {
         this.userId = userId;
@@ -85,7 +85,7 @@ public class UserAccount {
     /**
      * Returns the account role.
      *
-     * @return ADMIN or TRADER
+     * @return ADMIN, TRADER or ANALYST
      */
     public String getUserRole() {
         return userRole;

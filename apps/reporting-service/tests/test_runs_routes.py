@@ -33,6 +33,44 @@ class TestAuthentication:
         assert response.get_json()['interval_minutes'] == 15
 
 
+class TestAnalystRole:
+
+    RUN_PATHS = (
+        '/api/reporting/runs',
+        '/api/reporting/runs/latest',
+        '/api/reporting/runs/20261006T120000Z/files/volume_by_symbol.png',
+    )
+
+    def test_a_trader_is_refused_every_run_endpoint(self, client, files_dir, authenticated_trader):
+        write_run(files_dir, '20261006T120000Z')
+
+        for path in self.RUN_PATHS:
+            response = client.get(path, headers=authenticated_trader)
+            assert response.status_code == 403, path
+            assert response.get_json() == {'error': 'The ANALYST role is required'}
+
+    def test_an_analyst_is_served_every_run_endpoint(self, client, files_dir, authenticated):
+        write_run(files_dir, '20261006T120000Z')
+
+        for path in self.RUN_PATHS:
+            assert client.get(path, headers=authenticated).status_code == 200, path
+
+    def test_a_token_without_a_usable_roles_claim_is_refused(self, client, files_dir, mocker, test_user):
+        write_run(files_dir, '20261006T120000Z')
+        headers = {'Authorization': 'Bearer test-token'}
+
+        # No claim at all, an admin, and a claim that merely contains the word.
+        for claims in ({}, {'roles': ['ADMIN']}, {'roles': 'ANALYST'}, {'roles': None}):
+            mocker.patch('app.verify_token', return_value={'sub': str(test_user.user_id), **claims})
+            assert client.get('/api/reporting/runs/latest', headers=headers).status_code == 403, claims
+
+    def test_a_trader_still_reads_their_own_profile(self, client, authenticated_trader, test_user):
+        response = client.get('/api/reporting/profile', headers=authenticated_trader)
+
+        assert response.status_code == 200
+        assert response.get_json()['user_id'] == str(test_user.user_id)
+
+
 class TestListAndLatest:
 
     def test_empty_when_no_run_exists(self, client, files_dir, authenticated):
