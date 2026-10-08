@@ -14,20 +14,26 @@ public class WatchlistController {
     private final WatchlistService service;
 
     /**
+     * Creates the controller.
+     *
      * @param service saved stock business logic
      */
-<span class="fc" id="L19">    public WatchlistController(WatchlistService service) { this.service = service; }</span>
+<span class="fc" id="L21">    public WatchlistController(WatchlistService service) { this.service = service; }</span>
 
     /**
+     * Lists the caller's saved stocks.
+     *
      * @param jwt verified access token
      * @return caller's saved stocks
      */
     @GetMapping
     public List&lt;WatchlistRepository.Entry&gt; list(@AuthenticationPrincipal Jwt jwt) {
-<span class="fc" id="L27">        return service.list(AuthenticatedUser.from(jwt).userId());</span>
+<span class="fc" id="L31">        return service.list(AuthenticatedUser.from(jwt).userId());</span>
     }
 
     /**
+     * Saves a stock to the caller's watchlist.
+     *
      * @param jwt verified access token
      * @param symbol seeded stock symbol
      * @return saved stock, preserving its original timestamp on duplicate requests
@@ -36,17 +42,19 @@ public class WatchlistController {
      */
     @PutMapping(&quot;/{symbol}&quot;)
     public WatchlistRepository.Entry add(@AuthenticationPrincipal Jwt jwt, @PathVariable String symbol) {
-<span class="fc" id="L39">        return service.add(AuthenticatedUser.from(jwt).userId(), symbol);</span>
+<span class="fc" id="L45">        return service.add(AuthenticatedUser.from(jwt).userId(), symbol);</span>
     }
 
     /**
+     * Removes a stock from the caller's watchlist.
+     *
      * @param jwt verified access token
      * @param symbol stock symbol; missing entries succeed
      */
     @DeleteMapping(&quot;/{symbol}&quot;)
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void remove(@AuthenticationPrincipal Jwt jwt, @PathVariable String symbol) {
-<span class="fc" id="L49">        service.remove(AuthenticatedUser.from(jwt).userId(), symbol);</span>
-<span class="fc" id="L50">    }</span>
+<span class="fc" id="L57">        service.remove(AuthenticatedUser.from(jwt).userId(), symbol);</span>
+<span class="fc" id="L58">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

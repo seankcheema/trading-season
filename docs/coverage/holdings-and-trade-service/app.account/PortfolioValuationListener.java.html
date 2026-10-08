@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioValuationListener.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.account</a> &gt; <span class="el_source">PortfolioValuationListener.java</span></div><h1>PortfolioValuationListener.java</h1><pre class="source lang-java linenums">package app.account;
+
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+import java.util.Optional;
+
+/**
+ * Consumer group {@value #GROUP_ID}: records a portfolio valuation the moment
+ * an order fills, so the portfolio chart gets a point at the time of the
+ * trade whether or not a dashboard is open.
+ *
+ * &lt;p&gt;Order and Sell publishes one message to {@value #TOPIC} per committed
+ * order status, keyed by account id. Only {@code FILLED} changes what an
+ * account holds, so only that status triggers a capture; accepted and
+ * rejected orders are ignored. The capture itself is
+ * {@link PortfolioValuationService#capture}, the same call the dashboard makes
+ * after placing an order, with the owner resolved from the account row
+ * because there is no caller token here.
+ *
+ * &lt;p&gt;This is derived data, not part of the fill (BR-09): the fill, cash and
+ * holdings are already committed before the message exists. A capture that
+ * fails is logged and the offset still commits, exactly as the minute
+ * scheduler treats a failed account, and a redelivered message only records
+ * another observation.
+ *
+ * &lt;p&gt;Absent when {@code app.events.enabled} is {@code false}.
+ */
+@Component
+@ConditionalOnProperty(name = &quot;app.events.enabled&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)
+public class PortfolioValuationListener {
+
+    /** The topic Order and Sell publishes order status changes to. */
+    public static final String TOPIC = &quot;trade-events&quot;;
+
+    /** The consumer group this listener commits offsets under. */
+    public static final String GROUP_ID = &quot;portfolio-valuation-capture&quot;;
+
+    static final String STATUS_FILLED = &quot;FILLED&quot;;
+
+<span class="fc" id="L48">    private static final Logger LOG = LoggerFactory.getLogger(PortfolioValuationListener.class);</span>
+
+    private final AccountRepository accounts;
+    private final PortfolioValuationService valuations;
+    private final ObjectMapper objectMapper;
+
+    /**
+     * Creates the listener.
+     *
+     * @param accounts     resolves the account in the message key to its owner
+     * @param valuations   the capture logic shared with the scheduler and the controller
+     * @param objectMapper reads the status out of the message body
+     */
+    public PortfolioValuationListener(AccountRepository accounts,
+                                      PortfolioValuationService valuations,
+<span class="fc" id="L63">                                      ObjectMapper objectMapper) {</span>
+<span class="fc" id="L64">        this.accounts = accounts;</span>
+<span class="fc" id="L65">        this.valuations = valuations;</span>
+<span class="fc" id="L66">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L67">    }</span>
+
+    /**
+     * Records a valuation for the account of a filled order. Never throws.
+     *
+     * @param record the message, keyed by account id with the JSON event as value
+     */
+    @KafkaListener(topics = TOPIC, groupId = GROUP_ID)
+    public void onTradeEvent(ConsumerRecord&lt;String, String&gt; record) {
+<span class="fc" id="L76">        LOG.info(&quot;Consumer group {} received key={} partition={} offset={}&quot;,</span>
+<span class="fc" id="L77">                GROUP_ID, record.key(), record.partition(), record.offset());</span>
+
+        Integer accountId;
+        String status;
+        try {
+<span class="fc" id="L82">            accountId = Integer.valueOf(record.key());</span>
+<span class="fc" id="L83">            JsonNode statusNode = objectMapper.readTree(record.value()).get(&quot;status&quot;);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            status = statusNode == null ? null : statusNode.stringValue();</span>
+<span class="fc" id="L85">        } catch (NumberFormatException | JacksonException ex) {</span>
+<span class="fc" id="L86">            LOG.warn(&quot;Skipping trade event at partition={} offset={}: {}&quot;,</span>
+<span class="fc" id="L87">                    record.partition(), record.offset(), ex.toString());</span>
+<span class="fc" id="L88">            return;</span>
+<span class="fc" id="L89">        }</span>
+
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (!STATUS_FILLED.equals(status)) {</span>
+<span class="fc" id="L92">            LOG.debug(&quot;Ignoring {} event for account {}: holdings unchanged&quot;, status, accountId);</span>
+<span class="fc" id="L93">            return;</span>
+        }
+
+<span class="fc" id="L96">        Optional&lt;Account&gt; account = accounts.findById(accountId);</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (account.isEmpty()) {</span>
+<span class="fc" id="L98">            LOG.warn(&quot;Skipping fill for unknown account {} at partition={} offset={}&quot;,</span>
+<span class="fc" id="L99">                    accountId, record.partition(), record.offset());</span>
+<span class="fc" id="L100">            return;</span>
+        }
+
+        try {
+<span class="fc" id="L104">            PortfolioValuationService.Point point = valuations.capture(accountId, account.get().getUserId(), false);</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (point == null) {</span>
+<span class="fc" id="L106">                LOG.info(&quot;No valuation recorded for account {}: it has no acquisitions yet&quot;, accountId);</span>
+            } else {
+<span class="fc" id="L108">                LOG.info(&quot;Captured portfolio valuation for account {}: {} at {}&quot;,</span>
+<span class="fc" id="L109">                        accountId, point.value(), point.timestamp());</span>
+            }
+<span class="fc" id="L111">        } catch (RuntimeException failure) {</span>
+<span class="fc" id="L112">            LOG.warn(&quot;Portfolio capture after fill failed for account {}&quot;, accountId, failure);</span>
+<span class="fc" id="L113">        }</span>
+<span class="fc" id="L114">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

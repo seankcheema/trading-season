@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AccountService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.account</a> &gt; <span class="el_source">AccountService.java</span></div><h1>AccountService.java</h1><pre class="source lang-java linenums">package app.account;
 
 import app.auth.ForbiddenException;
+import app.holding.CostBasis;
 import app.holding.Holding;
 import app.holding.HoldingMovementRepository;
 import app.holding.HoldingRepository;
@@ -12,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -167,45 +167,15 @@ public class AccountService {
 <span class="fc" id="L167">                .findByInstrumentIdIn(holdings.stream().map(Holding::getInstrumentId).toList())</span>
 <span class="fc" id="L168">                .stream()</span>
 <span class="fc" id="L169">                .collect(Collectors.toMap(Instrument::getInstrumentId, Function.identity()));</span>
-<span class="fc" id="L170">        Map&lt;Integer, BigDecimal&gt; averageCosts = averageCostsFor(accountId);</span>
+<span class="fc" id="L170">        Map&lt;Integer, BigDecimal&gt; averageCosts =</span>
+<span class="fc" id="L171">                CostBasis.averageCosts(holdingMovementRepository.pricedMovements(accountId));</span>
 
-<span class="fc" id="L172">        return holdings.stream()</span>
-<span class="fc" id="L173">                .map(holding -&gt; new HoldingWithCost(</span>
+<span class="fc" id="L173">        return holdings.stream()</span>
+<span class="fc" id="L174">                .map(holding -&gt; new HoldingWithCost(</span>
                         holding,
-<span class="fc" id="L175">                        instruments.get(holding.getInstrumentId()),</span>
-<span class="fc" id="L176">                        averageCosts.get(holding.getInstrumentId())))</span>
-<span class="fc" id="L177">                .toList();</span>
-    }
-
-    /**
-     * Average price paid per share for each instrument this account has acquired,
-     * keyed by instrument id.
-     *
-     * @param accountId the account whose positions to price
-     * @return the average acquisition cost per instrument; an instrument with no
-     *         recorded acquisitions is absent
-     */
-    private Map&lt;Integer, BigDecimal&gt; averageCostsFor(Integer accountId) {
-<span class="fc" id="L189">        Map&lt;Integer, BigDecimal&gt; costs = new HashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L190" title="All 2 branches covered.">        for (Object[] row : holdingMovementRepository.averageAcquisitionCostByInstrument(accountId)) {</span>
-<span class="fc bfc" id="L191" title="All 4 branches covered.">            if (row[0] != null &amp;&amp; row[1] != null) {</span>
-<span class="fc" id="L192">                costs.put((Integer) row[0], toBigDecimal(row[1]));</span>
-            }
-<span class="fc" id="L194">        }</span>
-<span class="fc" id="L195">        return costs;</span>
-    }
-
-    /**
-     * Normalises the numeric type the aggregate query returns, which differs
-     * between Postgres and the in-memory database tests run against.
-     *
-     * @param value the aggregate value
-     * @return the value as a BigDecimal
-     */
-    private static BigDecimal toBigDecimal(Object value) {
-<span class="fc bfc" id="L206" title="All 2 branches covered.">        return value instanceof BigDecimal decimal</span>
-<span class="fc" id="L207">                ? decimal</span>
-<span class="fc" id="L208">                : BigDecimal.valueOf(((Number) value).doubleValue());</span>
+<span class="fc" id="L176">                        instruments.get(holding.getInstrumentId()),</span>
+<span class="fc" id="L177">                        averageCosts.get(holding.getInstrumentId())))</span>
+<span class="fc" id="L178">                .toList();</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

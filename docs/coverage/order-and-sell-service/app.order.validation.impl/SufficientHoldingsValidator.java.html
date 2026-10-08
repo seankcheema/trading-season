@@ -26,23 +26,28 @@ public class SufficientHoldingsValidator implements OrderValidator {
 
     private final HoldingRepository holdingRepository;
 
-<span class="fc" id="L29">    public SufficientHoldingsValidator(HoldingRepository holdingRepository) {</span>
-<span class="fc" id="L30">        this.holdingRepository = holdingRepository;</span>
-<span class="fc" id="L31">    }</span>
+    /**
+     * Creates the validator.
+     *
+     * @param holdingRepository source of the account's current holdings
+     */
+<span class="fc" id="L34">    public SufficientHoldingsValidator(HoldingRepository holdingRepository) {</span>
+<span class="fc" id="L35">        this.holdingRepository = holdingRepository;</span>
+<span class="fc" id="L36">    }</span>
 
     @Override
     public ValidationResult validate(OrderRequest request, User user, Account account, Instrument instrument) {
-<span class="fc bfc" id="L35" title="All 2 branches covered.">        if (!Order.TYPE_SELL.equals(request.orderType())) {</span>
-<span class="fc" id="L36">            return ValidationResult.pass();</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (!Order.TYPE_SELL.equals(request.orderType())) {</span>
+<span class="fc" id="L41">            return ValidationResult.pass();</span>
         }
-<span class="fc" id="L38">        BigDecimal currentQuantity = holdingRepository</span>
-<span class="fc" id="L39">                .findByAccountIdAndInstrumentId(account.getAccountId(), instrument.getInstrumentId())</span>
-<span class="fc" id="L40">                .map(Holding::getQuantity)</span>
-<span class="fc" id="L41">                .orElse(BigDecimal.ZERO);</span>
-<span class="fc bfc" id="L42" title="All 2 branches covered.">        if (request.quantity().compareTo(currentQuantity) &gt; 0) {</span>
-<span class="fc" id="L43">            return ValidationResult.reject(&quot;Insufficient holdings for this SELL order&quot;);</span>
+<span class="fc" id="L43">        BigDecimal currentQuantity = holdingRepository</span>
+<span class="fc" id="L44">                .findByAccountIdAndInstrumentId(account.getAccountId(), instrument.getInstrumentId())</span>
+<span class="fc" id="L45">                .map(Holding::getQuantity)</span>
+<span class="fc" id="L46">                .orElse(BigDecimal.ZERO);</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        if (request.quantity().compareTo(currentQuantity) &gt; 0) {</span>
+<span class="fc" id="L48">            return ValidationResult.reject(&quot;Insufficient holdings for this SELL order&quot;);</span>
         }
-<span class="fc" id="L45">        return ValidationResult.pass();</span>
+<span class="fc" id="L50">        return ValidationResult.pass();</span>
     }
 }
 

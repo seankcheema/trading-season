@@ -14,25 +14,30 @@ public class AuditTrailService {
 
     private final AuditTrailRepository auditTrailRepository;
 
-<span class="fc" id="L17">    public AuditTrailService(AuditTrailRepository auditTrailRepository) {</span>
-<span class="fc" id="L18">        this.auditTrailRepository = auditTrailRepository;</span>
-<span class="fc" id="L19">    }</span>
+    /**
+     * Creates the service.
+     *
+     * @param auditTrailRepository persistence for audit rows
+     */
+<span class="fc" id="L22">    public AuditTrailService(AuditTrailRepository auditTrailRepository) {</span>
+<span class="fc" id="L23">        this.auditTrailRepository = auditTrailRepository;</span>
+<span class="fc" id="L24">    }</span>
 
     /**
      * Records one lifecycle event.
      *
      * @param orderId   the order the event belongs to
-        * @param eventType one of {@link app.order.Order}'s STATUS_* constants
+     * @param eventType one of {@link app.order.Order}'s STATUS_* constants
      * @param detail    optional human-readable context, e.g. a rejection reason
      */
     public void record(Integer orderId, String eventType, String detail) {
-<span class="fc" id="L29">        AuditTrail entry = new AuditTrail();</span>
-<span class="fc" id="L30">        entry.setOrderId(orderId);</span>
-<span class="fc" id="L31">        entry.setEventType(eventType);</span>
-<span class="fc" id="L32">        entry.setDetail(detail);</span>
-<span class="fc" id="L33">        entry.setRecordedAt(OffsetDateTime.now());</span>
-<span class="fc" id="L34">        auditTrailRepository.save(entry);</span>
-<span class="fc" id="L35">    }</span>
+<span class="fc" id="L34">        AuditTrail entry = new AuditTrail();</span>
+<span class="fc" id="L35">        entry.setOrderId(orderId);</span>
+<span class="fc" id="L36">        entry.setEventType(eventType);</span>
+<span class="fc" id="L37">        entry.setDetail(detail);</span>
+<span class="fc" id="L38">        entry.setRecordedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L39">        auditTrailRepository.save(entry);</span>
+<span class="fc" id="L40">    }</span>
 }
 
 
