@@ -76,7 +76,7 @@ class UserControllerIntegrationTest {
             "dateOfBirth", LocalDate.of(1990, 1, 1).toString(),
             "traderLevel", "ADVANCED",
             "availableFunds", new BigDecimal("10000.00"));
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/api/registration")
                 .with(tokenFor(userId, email))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(body)))
