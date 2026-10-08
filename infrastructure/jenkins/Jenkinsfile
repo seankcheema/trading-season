@@ -539,6 +539,100 @@ pipeline {
                 '''
             }
         }
+
+        stage('Kafka End-to-End Flow') {
+            when {
+                expression { currentBuild.currentResult == 'SUCCESS' }
+            }
+            steps {
+                sh '''
+                    set -eu
+                    COMPOSE_FILE="infrastructure/docker-compose/docker-compose.local.yml"
+                    COMPOSE_ENV_FILE="infrastructure/docker-compose/.env"
+                    PROJECT_NAME="trading-season-local"
+                    compose() {
+                        sh infrastructure/docker/run-compose.sh --project-name "$PROJECT_NAME" --env-file "$COMPOSE_ENV_FILE" -f "$COMPOSE_FILE" "$@"
+                    }
+                    EVIDENCE_DIR="reports/kafka-end-to-end"
+                    EVIDENCE="$EVIDENCE_DIR/evidence.txt"
+                    mkdir -p "$EVIDENCE_DIR"
+                    : > "$EVIDENCE"
+                    note() {
+                        echo "$1"
+                        echo "$1" >> "$EVIDENCE"
+                    }
+
+                    note "===== Kafka end-to-end: one order through trade-events and its three consumers ====="
+
+                    # The build database is empty, so give the order something to buy.
+                    compose exec -T db psql -U trading_season -d trading_season -v ON_ERROR_STOP=1 -q -c \
+                        "INSERT INTO instruments (ticker, name, asset_class, market, currency, is_tradable) VALUES ('CIEQ', 'CI Equity', 'Equity', 'US', 'USD', true);"
+                    note "[KAFKA-E2E] instrument: CIEQ inserted for this build"
+
+                    # Registers a trader, opens the order stream, places the order and checks
+                    # each consumer's effect from inside the stack network.
+                    status=0
+                    compose exec -T reporting-consumer python - < infrastructure/jenkins/kafka-end-to-end.py > "$EVIDENCE_DIR/flow.txt" 2>&1 || status=$?
+                    cat "$EVIDENCE_DIR/flow.txt"
+                    cat "$EVIDENCE_DIR/flow.txt" >> "$EVIDENCE"
+                    if [ "$status" -ne 0 ]; then
+                        echo "Kafka end-to-end flow failed (exit $status); service logs follow." >&2
+                        for service in order-and-sell-service holdings-and-trade-service reporting-consumer; do
+                            echo "===== $service logs =====" >&2
+                            compose logs --no-color --tail 100 "$service" >&2 || true
+                        done
+                        exit 1
+                    fi
+                    IDS="$(grep '^.KAFKA-E2E. orderId=' "$EVIDENCE_DIR/flow.txt" | tr '=' ' ')"
+                    ORDER_ID="$(echo "$IDS" | awk '{print $3}')"
+                    ACCOUNT_ID="$(echo "$IDS" | awk '{print $5}')"
+
+                    # The producer and each consumer announce what they did in their own logs.
+                    log_line() {
+                        attempt=1
+                        while [ "$attempt" -le 45 ]; do
+                            LINE="$(compose logs --no-color "$1" 2>/dev/null | grep -F "$2" | tail -1 || true)"
+                            if [ -n "$LINE" ]; then
+                                note "[KAFKA-E2E] $3: ${LINE#*| }"
+                                return 0
+                            fi
+                            attempt=$((attempt + 1))
+                            sleep 1
+                        done
+                        echo "No log line matching '$2' from $1 within 45 seconds." >&2
+                        return 1
+                    }
+                    log_line order-and-sell-service "Published trade event orderId=$ORDER_ID status=ACCEPTED" "producer log, ACCEPTED"
+                    log_line order-and-sell-service "Published trade event orderId=$ORDER_ID status=FILLED" "producer log, FILLED"
+                    log_line order-and-sell-service "Pushed order status for account $ACCOUNT_ID to 1 open stream(s)" "order-status-pusher log"
+                    log_line holdings-and-trade-service "Captured portfolio valuation for account $ACCOUNT_ID" "portfolio-valuation-capture log"
+                    log_line reporting-consumer "Stored trade event orderId=$ORDER_ID status=FILLED" "reporting-ingester log"
+
+                    # Finally every group must have consumed everything the order published.
+                    attempt=1
+                    while [ "$attempt" -le 30 ]; do
+                        DESCRIBE="$(compose exec -T kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --all-groups 2>/dev/null || true)"
+                        if echo "$DESCRIBE" | awk '$2 == "trade-events" && $6 != "0" && $6 != "-" {bad = 1} END {exit bad}'; then
+                            break
+                        fi
+                        attempt=$((attempt + 1))
+                        sleep 1
+                    done
+                    echo "$DESCRIBE" | tee -a "$EVIDENCE"
+                    if [ "$attempt" -gt 30 ]; then
+                        echo "A consumer group still has lag on trade-events after 30 seconds." >&2
+                        exit 1
+                    fi
+                    note "[KAFKA-E2E] consumer groups: every group has consumed everything on trade-events (lag 0)"
+                    note "===== Kafka end-to-end: PASSED ====="
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/kafka-end-to-end/**/*', allowEmptyArchive: true
+                }
+            }
+        }
     }
 
     post {
