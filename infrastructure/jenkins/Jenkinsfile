@@ -242,16 +242,18 @@ pipeline {
                             dir('apps/reporting-service') {
                                 // python:3.14-slim: the full image pulls large -dev
                                 // libraries and has exhausted agent disk before.
+                                // Mounted at the agent's own path so the source path
+                                // recorded in coverage.xml resolves for SonarQube.
                                 sh '''
                                     set -eu
                                     docker run --rm \
                                       -e PYTHONDONTWRITEBYTECODE=1 \
-                                      -v "$(pwd)":/app \
-                                      -w /app \
+                                      -v "$(pwd)":"$(pwd)" \
+                                      -w "$(pwd)" \
                                       python:3.14-slim \
                                       bash -c "
                                         # Runs as root: hand the output back to the jenkins user on any exit.
-                                        trap 'chmod -R a+rwX /app' EXIT
+                                        trap 'chmod -R a+rwX .' EXIT
                                         set -eu
                                         mkdir -p reports/junit coverage
                                         python -m pip install -q -r requirements.txt
@@ -325,24 +327,18 @@ pipeline {
                 script {
                     def scannerHome = tool(env.SONAR_SCANNER_TOOL ?: 'SonarScanner')
 
+                    // The server URL and analysis token come from the 'SonarQube'
+                    // server under Manage Jenkins > System; the project key and
+                    // name are in sonar-project.properties.
                     withSonarQubeEnv('SonarQube') {
-                        withCredentials([
-                            string(
-                                credentialsId: 'SonarQube-Token',
-                                variable: 'SQ_TOKEN'
-                            )
-                        ]) {
-                            sh """
-                                set -eu
-                                "${scannerHome}/bin/sonar-scanner" \
-                                  -Dproject.settings=infrastructure/jenkins/sonar-project.properties \
-                                  -Dsonar.host.url="http://localhost:9000" \
-                                  -Dsonar.token="\$SQ_TOKEN" \
-                                  -Dsonar.projectKey="trading-season" \
-                                  -Dsonar.projectName="Trading Season" \
-                                  -Dsonar.projectVersion="\$BUILD_NUMBER"
-                            """
-                        }
+                        sh """
+                            set -eu
+                            node infrastructure/jenkins/jacoco-to-sonar-coverage.mjs \
+                              apps/holdings-and-trade-service apps/order-and-sell-service
+                            "${scannerHome}/bin/sonar-scanner" \
+                              -Dproject.settings=infrastructure/jenkins/sonar-project.properties \
+                              -Dsonar.projectVersion="\$BUILD_NUMBER"
+                        """
                     }
                 }
             }
