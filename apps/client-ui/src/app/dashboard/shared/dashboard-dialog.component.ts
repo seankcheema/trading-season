@@ -24,7 +24,7 @@ let nextDialogId = 0;
   template: `
     <div
       class="dashboard-dialog-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-12 backdrop-blur-sm md:items-center"
-      (click)="closed.emit()"
+      (click)="dismissOnBackdrop() && closed.emit()"
     >
       <section
         #dialog
@@ -38,14 +38,16 @@ let nextDialogId = 0;
       >
         <header class="border-border flex items-center justify-between gap-4 border-b px-5 py-3">
           <h2 [id]="titleId" class="text-sm font-semibold">{{ dialogTitle() }}</h2>
-          <button
-            type="button"
-            class="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 cursor-pointer items-center justify-center rounded-lg transition-colors"
-            [attr.aria-label]="closeLabel()"
-            (click)="closed.emit()"
-          >
-            <ng-icon name="lucideX" class="text-[18px]" />
-          </button>
+          @if (showClose()) {
+            <button
+              type="button"
+              class="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 cursor-pointer items-center justify-center rounded-lg transition-colors"
+              [attr.aria-label]="closeLabel()"
+              (click)="closed.emit()"
+            >
+              <ng-icon name="lucideX" class="text-[18px]" />
+            </button>
+          }
         </header>
         <div class="p-5">
           <ng-content />
@@ -87,6 +89,10 @@ export class DashboardDialogComponent {
 
   readonly dialogTitle = input.required<string>();
   readonly closeLabel = input('Close dialog');
+  // Dialogs that offer their own explicit actions can hide the header close button.
+  readonly showClose = input(true);
+  // Dialogs that must not be dismissed by a stray click can ignore clicks on the backdrop.
+  readonly dismissOnBackdrop = input(true);
   // Form dialogs are narrow; tables need room, and the full assets table needs the most.
   readonly size = input<'narrow' | 'wide' | 'xwide'>('narrow');
   readonly closed = output<void>();
