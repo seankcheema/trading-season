@@ -48,18 +48,11 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ../../db/migrations/V001__Initialize_database.sql:/V001__Initialize_database.sql:ro
-      - ../../db/migrations/V002__Add_watchlist.sql:/V002__Add_watchlist.sql:ro
+      - ../../db/migrations:/workspace/db/migrations:ro
+      - ../docker/init-db.sh:/init-db.sh:ro
     environment:
       PGPASSWORD: ${DB_PASSWORD:-changeme}
-    command: >
-      sh -c 'if [ "$$(psql -h db -U trading_season -d trading_season -t -c
-      "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='"'"'public'"'"';" 2>/dev/null || echo 0)" = "0" ]; then
-      echo "[DB-INIT] Applying migrations...";
-      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 -f /V001__Initialize_database.sql &&
-      psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 -f /V002__Add_watchlist.sql
-      && echo "[DB-INIT] Migrations complete";
-      else echo "[DB-INIT] Database already initialized, skipping migrations"; fi'
+    command: ["sh", "/init-db.sh", "postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season", "/workspace"]
     networks:
       - ci-network
 
@@ -90,8 +83,10 @@ services:
     networks:
       - ci-network
 
-  # Event broker for the trade-events topic. Nothing publishes or consumes
-  # yet.
+  # Event broker for the trade-events topic. Order and Sell publishes one
+  # message per committed order status change; three consumer groups read it:
+  # order-status-pusher (Order and Sell), portfolio-valuation-capture (Holdings
+  # and Trade) and reporting-ingester (reporting-consumer).
   kafka:
     # Single-node KRaft: no ZooKeeper, and the controller quorum is this same
     # node. Sized for a developer machine, not durability -- one replica of
@@ -200,6 +195,10 @@ services:
     depends_on:
       db-init:
         condition: service_completed_successfully
+      # Consumer group portfolio-valuation-capture reads trade-events, so the
+      # topic must exist before the first poll.
+      kafka-init:
+        condition: service_completed_successfully
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
       SPRING_DATASOURCE_USERNAME: trading_season
@@ -207,6 +206,8 @@ services:
       AUTH_JWK_SET_URI: http://auth-service:3001/.well-known/jwks.json
       AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
+      # In-network listener; the host-facing localhost:29092 does not resolve here.
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     networks:
       - ci-network
 
@@ -221,6 +222,10 @@ services:
     depends_on:
       db-init:
         condition: service_completed_successfully
+      # The service publishes to trade-events and auto-creation is off, so the
+      # topic must exist before the first order resolves.
+      kafka-init:
+        condition: service_completed_successfully
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
       SPRING_DATASOURCE_USERNAME: trading_season
@@ -228,6 +233,8 @@ services:
       AUTH_JWK_SET_URI: http://auth-service:3001/.well-known/jwks.json
       AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
+      # In-network listener; the host-facing localhost:29092 does not resolve here.
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     networks:
       - ci-network
 
@@ -252,8 +259,41 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200,http://localhost:4300}
       REPORTING_SERVICE_PORT: 8083
       REPORTING_SERVICE_HOST: 0.0.0.0
+      # The web service only serves; the consumer below runs the report job.
+      SCHEDULER_ENABLED: "false"
+      SCHEDULER_INTERVAL_MINUTES: 15
+      REPORTING_FILES_DIR: /data/reporting
+    volumes:
+      - reporting_files:/data/reporting:ro
+    networks:
+      - ci-network
+
+  # Reporting consumer: consumer group reporting-ingester. Same image as
+  # reporting-service, different process; see docker-compose.local.yml.
+  reporting-consumer:
+    build:
+      context: ../../apps/reporting-service
+      dockerfile: Dockerfile
+    command: ["python", "consumer.py"]
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      FLASK_ENV: production
+      DATABASE_URL: postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TRADE_EVENTS_TOPIC: trade-events
+      REPORTING_CONSUMER_GROUP: reporting-ingester
+      REPORTING_FILES_DIR: /data/reporting
       SCHEDULER_ENABLED: "true"
       SCHEDULER_INTERVAL_MINUTES: 15
+    volumes:
+      - reporting_files:/data/reporting
+    healthcheck:
+      disable: true
+    stop_grace_period: 20s
     networks:
       - ci-network
 
@@ -261,6 +301,7 @@ volumes:
   jenkins_home:
   db_data:
   kafka_data:
+  reporting_files:
 
 networks:
   ci-network:

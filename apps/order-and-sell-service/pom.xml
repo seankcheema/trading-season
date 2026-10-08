@@ -41,6 +41,12 @@
             <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
         </dependency>
         <dependency>
+            <!-- Boot 4 moved Kafka auto-configuration out of spring-boot-autoconfigure;
+                 the bare spring-kafka artifact would give no KafkaTemplate bean. -->
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-kafka</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
@@ -71,6 +77,25 @@
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- @EmbeddedKafka for the trade-events flow test. -->
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-kafka-test</artifactId>
+            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <!-- Unused, and it drags in kafka-streams and rocksdbjni. -->
+                    <groupId>org.apache.kafka</groupId>
+                    <artifactId>kafka-streams-test-utils</artifactId>
+                </exclusion>
+                <exclusion>
+                    <!-- Logback is the only logging backend; Boot's log4j-to-slf4j already
+                         bridges the Log4j2 API the Kafka server classes log through. -->
+                    <groupId>org.apache.logging.log4j</groupId>
+                    <artifactId>log4j-core</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.springdoc</groupId>

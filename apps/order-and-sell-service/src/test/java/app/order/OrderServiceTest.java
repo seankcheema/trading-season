@@ -167,7 +167,7 @@ class OrderServiceTest {
         assertNull(order.getRejectionReason());
         assertNotNull(order.getAcceptedAt());
         assertNotNull(order.getResolvedAt());
-        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_FILLED), auditEventsFor(order));
+        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_ACCEPTED, Order.STATUS_FILLED), auditEventsFor(order));
     }
 
     @Test
@@ -230,7 +230,7 @@ class OrderServiceTest {
                 .findByAccountIdAndInstrumentId(account.getAccountId(), instrument.getInstrumentId())
                 .orElseThrow();
         assertEquals(0, BigDecimal.ZERO.compareTo(holding.getQuantity()));
-        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_FILLED), auditEventsFor(order));
+        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_ACCEPTED, Order.STATUS_FILLED), auditEventsFor(order));
     }
 
     @Test

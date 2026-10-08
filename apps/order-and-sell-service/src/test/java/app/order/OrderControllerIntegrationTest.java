@@ -199,7 +199,7 @@ class OrderControllerIntegrationTest {
         List<String> events = auditTrailRepository.findAll().stream()
                 .sorted(Comparator.comparing(AuditTrail::getAuditId))
                 .map(AuditTrail::getEventType).toList();
-        assertEquals(List.of("PENDING", "FILLED", "PENDING", "FILLED"), events);
+        assertEquals(List.of("PENDING", "ACCEPTED", "FILLED", "PENDING", "ACCEPTED", "FILLED"), events);
     }
 
     @Test
@@ -215,7 +215,7 @@ class OrderControllerIntegrationTest {
         assertEquals(3, fillRepository.count());
         assertEquals(3, cashTransactionRepository.count());
         assertEquals(3, holdingMovementRepository.count());
-        assertEquals(6, auditTrailRepository.count());
+        assertEquals(9, auditTrailRepository.count(), "PENDING, ACCEPTED and FILLED for each of the three orders");
     }
 
     @Test
@@ -231,20 +231,28 @@ class OrderControllerIntegrationTest {
     }
 
     @Test
-    void persistenceFailureRollsBackTheWholeOrderAndItsLedger() throws Exception {
-        // Fail after fill and cash writes, exercising the real transaction boundary.
+    void persistenceFailureRollsBackTheExecutionButKeepsTheAcceptedOrder() throws Exception {
+        // Fail after fill and cash writes, exercising the real transaction boundaries (BR-06, BR-09):
+        // the execution transaction rolls back as a unit, the acceptance transaction already committed.
         jdbcTemplate.execute("ALTER TABLE holding_movements ADD CONSTRAINT test_reject_movement CHECK (quantity_delta = 0)");
         try {
-            submit("BUY", "1", "20.00").andExpect(status().isConflict());
+            submit("BUY", "1", "20.00")
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.status").value("ACCEPTED"))
+                    .andExpect(jsonPath("$.resolvedAt").value(nullValue()));
         } finally {
             jdbcTemplate.execute("ALTER TABLE holding_movements DROP CONSTRAINT test_reject_movement");
         }
-        assertEquals(0, orderRepository.count());
+        assertEquals(1, orderRepository.count(), "the record of intent survives the failed execution");
+        assertEquals("ACCEPTED", orderRepository.findAll().get(0).getStatus());
         assertEquals(0, fillRepository.count());
         assertEquals(0, cashTransactionRepository.count());
         assertEquals(0, holdingMovementRepository.count());
-        assertEquals(0, auditTrailRepository.count());
         assertEquals(0, holdingRepository.count());
+        List<String> events = auditTrailRepository.findAll().stream()
+                .sorted(Comparator.comparing(AuditTrail::getAuditId))
+                .map(AuditTrail::getEventType).toList();
+        assertEquals(List.of("PENDING", "ACCEPTED", "EXECUTION_FAILED"), events);
         assertEquals(0, new BigDecimal("1000.00").compareTo(
                 userRepository.findById(userId).orElseThrow().getAvailableFunds()));
     }
