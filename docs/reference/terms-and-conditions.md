@@ -1,73 +1,88 @@
-# Terms and Conditions
+# TradingSeason Platform Terms and Conditions
 
-This document is the canonical TradingSeason terms and conditions text currently shown in the dashboard acceptance modal. It is written for the platform as implemented today: a simulated trading environment with authentication, profile registration, market replay, holdings, cash movements, and educational order workflows.
+> Draft for business-client circulation. Effective date: 8 October 2026.
 
-## Research basis
+> This document reflects TradingSeason as currently implemented. It is intended to support business review of the platform terms presented to authorised users in the dashboard. It is not legal advice and should be reviewed by counsel before external issue or contractual use.
 
-The current draft emphasizes plain-language disclosure, user acknowledgement, and risk visibility based on publicly available investor guidance:
+## 1. Parties and acceptance
 
-- SEC Investor.gov explains that investors should understand the risks of securities trading before using a platform and that risk can include substantial losses and forced liquidations in margin contexts.
-- SEC Investor.gov's Form CRS bulletin stresses concise, plain-English disclosure of services, fees, conflicts, and relationship scope.
-- These sources support clear disclosure even for a simulation product: users should understand what the platform is, what it is not, and what responsibilities remain with them.
+These terms govern access to and use of TradingSeason by a business client and each individual user whom that client authorises to access the platform.
 
-This document is product documentation, not legal advice. Final production language should still be reviewed by legal counsel before external release.
+By accepting these terms in the TradingSeason dashboard, the user confirms that the user is acting on the user's own behalf and, where applicable, on behalf of the user's employer or client organisation to the extent the user is authorised to do so.
 
-## Current platform terms
+## 2. Service description
 
-### 1. Educational simulation only
+TradingSeason is a browser-based simulated trading environment intended for training, product familiarisation, workflow rehearsal, and internal evaluation.
 
-TradingSeason provides a simulated environment for learning and practicing investment decisions. It does not provide brokerage, custody, clearing, settlement, investment advisory, or execution services.
+As implemented today, the platform provides authenticated user access, profile registration, dashboard views, account summaries, holdings, watchlists, cash movements, market replay, recent transaction views, and educational order-entry workflows.
 
-Prices, portfolio values, fills, account balances, and market events displayed in the platform are generated or replayed for simulation and training purposes only. They must not be relied on as live market data, official statements, or books and records for any real account.
+## 3. Simulation-only environment
 
-### 2. No financial, legal, or tax advice
+TradingSeason is not a brokerage, dealer, custodian, exchange, execution venue, clearing platform, settlement platform, portfolio management system, or investment advisory service.
 
-Nothing in TradingSeason constitutes financial, investment, legal, accounting, compliance, or tax advice. The platform does not recommend that a user buy, sell, hold, or avoid any security, strategy, or market sector.
+Orders submitted in TradingSeason are simulated platform actions only. They do not route to a live market, do not create a real trading instruction, and do not create any live settlement, custody, or payment obligation.
 
-You remain solely responsible for any real-world investment or financial decision you make outside this simulated environment.
+Prices, account balances, portfolio values, fills, performance views, and market events displayed in the platform are generated or replayed for simulation purposes. They must not be treated as live market quotations, executable prices, official valuations, confirmations, statements, or books and records for any real account.
 
-### 3. Risk acknowledgement
+## 4. No financial, legal, tax, or compliance advice
 
-You acknowledge that securities trading involves risk, including volatility, illiquidity, price gaps, model error, delayed data, system interruption, and the possibility of loss.
+Nothing in TradingSeason constitutes financial, investment, legal, tax, accounting, regulatory, or compliance advice.
 
-Examples involving gains, losses, margin-style scenarios, order execution, historical replay, or account growth are educational illustrations only. Simulated outcomes may differ materially from live-market behavior, actual execution quality, tax treatment, slippage, fees, or capital at risk.
+TradingSeason does not recommend that any person buy, sell, hold, or avoid any security, instrument, strategy, or market exposure. Any examples of gains, losses, leverage, execution, or account performance are educational illustrations only.
 
-### 4. User account responsibilities
+The client and each user remain solely responsible for any real-world investment, treasury, legal, regulatory, or tax decision made outside the platform.
 
-You agree to provide accurate registration information, maintain the confidentiality of your credentials, and notify the platform operator promptly if you suspect unauthorized use of your account.
+## 5. Client and user responsibilities
 
-You are responsible for all activity performed through your authenticated session unless and until access is revoked.
+The client is responsible for determining which personnel are authorised to access TradingSeason and for ensuring those users use the platform only for legitimate business, training, or evaluation purposes.
 
-### 5. Acceptable use
+Each user must provide accurate registration details, protect authentication credentials, and promptly report any suspected unauthorised access, misuse, or security incident affecting that user's account.
 
-You may use TradingSeason only for lawful, authorized, and non-abusive purposes. You must not:
+The client and its users are responsible for independently reviewing any concepts, calculations, workflows, or reports before applying them in any live operational, investment, brokerage, finance, or compliance setting.
 
-- attempt to interfere with system integrity, availability, or security;
-- scrape or exfiltrate protected data;
-- impersonate another user;
-- reverse engineer restricted service behavior beyond what applicable law permits; or
-- use the platform to rehearse fraudulent, manipulative, or abusive trading conduct.
+## 6. Acceptable use restrictions
 
-The platform operator may suspend access, invalidate sessions, or restrict features to protect users, data integrity, or service operations.
+The client and its users must not:
 
-### 6. Records and feature controls
+- interfere with platform security, integrity, availability, or performance;
+- attempt to gain unauthorised access to accounts, services, APIs, or data;
+- scrape, bulk export, or exfiltrate protected information except as expressly permitted;
+- impersonate another person or misrepresent authority to act for the client;
+- reverse engineer restricted service behaviour except where non-excludable law permits; or
+- use the platform to test, rehearse, or facilitate fraudulent, manipulative, abusive, or unlawful trading conduct.
 
-TradingSeason records whether a signed-in user has accepted these terms and the timestamp of that acceptance. The current implementation records acceptance once per user profile and does not prompt again after acceptance has been stored successfully.
+The platform operator may suspend sessions, invalidate tokens, restrict features, or block access where reasonably necessary to protect users, data, or service operations.
 
-The operator may update these terms in the future. If the terms change materially, the platform should version the document and require renewed acceptance before further use.
+## 7. Records, acknowledgements, and document control
 
-### 7. Limitation of platform reliance
+TradingSeason records whether a signed-in user has accepted these terms and stores the corresponding acceptance timestamp against that user's profile.
 
-TradingSeason is provided on an educational and developmental basis. Availability, continuity, historical data completeness, and simulation accuracy are not guaranteed.
+The current implementation writes the acceptance timestamp once and preserves the original acceptance record on later sign-ins. The platform therefore treats acceptance as a standing acknowledgement for that user unless and until a new version of the terms is deployed with a renewed acceptance workflow.
 
-Users should independently verify any concept, calculation, or workflow before relying on it in a live investing, brokerage, treasury, or compliance setting.
+The current implementation does not maintain a separate in-product document version history for accepted terms. If materially revised wording is introduced, the operator should release the revised document together with a renewed acceptance requirement before relying on the updated text.
 
-## Current UX placement
+## 8. Data, records, and reliance limitations
 
-The acceptance prompt appears after successful authentication and after the dashboard loads the signed-in user's profile from `GET /api/users/me`, but before the user can place orders, move cash, create accounts, rename accounts, or open settings.
+TradingSeason keeps a permanent record of every simulated order, the price it was filled at, and the resulting cash and holding changes, attributed to the user and the time they occurred. That record is the platform's authoritative record of activity within the simulation. It is not a record of any live-market transaction, and it is not the client's ledger, regulatory archive, trade blotter, tax record, or valuation source for any real account or live business process.
 
-That position was chosen because:
+Although the platform stores and returns profile, account, holdings, cash, order, and simulation data through authenticated application flows, that information is provided for platform operation, training, and evaluation only.
 
-- it applies equally to returning users and newly registered users;
-- it relies on the existing authenticated profile bootstrap instead of a parallel identity check; and
-- it allows the backend to persist acceptance on the shared user profile once and stop prompting thereafter.
+The client must maintain its own controls, books and records, supervisory procedures, and evidentiary records for any live business process.
+
+## 9. Availability and change control
+
+TradingSeason is provided on an educational and development-oriented basis. Continuous availability, historical completeness, uninterrupted replay fidelity, and simulation accuracy are not guaranteed.
+
+Features, workflows, and supporting data may change as the platform evolves. The client should not assume that a simulated workflow, timing model, or result set will match production-market behaviour or any external provider's systems.
+
+## 10. Risk acknowledgement
+
+The client and its users acknowledge that securities-related workflows involve risk, including volatility, illiquidity, delayed or incomplete data, model limitations, operational interruption, and user error.
+
+Simulated outcomes may differ materially from live execution quality, slippage, fees, taxes, counterparty behaviour, exchange controls, settlement timing, or capital at risk in a real environment.
+
+## 11. Current in-product presentation
+
+In the current implementation, the acceptance dialog appears after successful authentication and after the dashboard has loaded the signed-in user's profile from `GET /api/users/me`, but before the user can place orders, move cash, create accounts, rename accounts, or open settings.
+
+When the user provides a matching typed signature, the client application records acceptance through `PUT /api/users/me/terms-acceptance`. The backend stores the first successful acceptance timestamp and returns the updated profile without prompting the same user again on later sign-ins.
