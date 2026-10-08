@@ -56,7 +56,7 @@ The analysis stage runs after the test suites so it can import their coverage re
 | --- | --- |
 | Jenkins plugin | SonarQube Scanner |
 | Manage Jenkins > Tools | A SonarQube Scanner installation named `SonarScanner` |
-| Manage Jenkins > System | A SonarQube server named `SonarQube` with the server URL and a Secret text credential holding the project analysis token |
+| Manage Jenkins > System | A SonarQube server named `SonarQube` with the server URL typed in and a Secret text credential holding the project analysis token. A blank URL field still lets the scan run against the `http://localhost:9000` default, but the quality gate stage then fails with `Expected URL scheme 'http' or 'https'` |
 | SonarQube > Administration > Webhooks | A webhook to `<jenkins-url>/sonarqube-webhook/`; without it the quality gate stage waits until it times out |
 | SonarQube project | Key and name `DuaLeapa-Project`, as set in [sonar-project.properties](jenkins/sonar-project.properties) |
 
