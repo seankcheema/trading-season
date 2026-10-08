@@ -12,7 +12,7 @@ The Jenkins and SonarQube settings the pipeline needs are in the [infrastructure
 
 ### Connect
 
-- SonarQube (Community Build 26.7) and Jenkins run on the same Linux host. Last known address, 2026-10-07: SonarQube `http://10.14.143.233:9000`, Jenkins `http://10.14.143.233:8080`. Jenkins itself reaches SonarQube as `http://localhost:9000`.
+- SonarQube (Community Build 26.7) and Jenkins run on the same Linux host. Last known address, 2026-10-07: SonarQube `http://<linux_IP>:9000`, Jenkins `http://<linux_IP>:8080`. Jenkins itself reaches SonarQube as `http://localhost:9000`.
 - Confirm the address before anything else: `curl -s -m 10 <url>/api/system/status` must return `"status":"UP"`. The address has been given wrongly before. If nothing answers, ask the user for the current one; do not probe the subnet or install a substitute server unasked.
 - Ask the user for the SonarQube login each session. Never write a password or token into the repository, the Jenkinsfile, or documentation.
 - For scans, create a project analysis token and revoke it when finished: `POST /api/user_tokens/generate` with `name`, `type=PROJECT_ANALYSIS_TOKEN`, `projectKey=DuaLeapa-Project`, then `POST /api/user_tokens/revoke` with `name`. Leave the existing `jenkins` tokens alone; the Jenkins server entry uses them.

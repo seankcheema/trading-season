@@ -3,7 +3,7 @@ pipeline {
 
     tools {
         // Names must match the installations under Manage Jenkins > Tools.
-        maven 'Maven'
+        maven 'maven'
         nodejs 'NodeJS'
     }
 
