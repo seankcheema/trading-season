@@ -1,5 +1,6 @@
 Flask==3.0.0
 Flask-CORS==4.0.0
+Flask-WTF==1.2.2
 Flask-SQLAlchemy==3.1.1
 SQLAlchemy==2.0.43
 # 3.2.3 ships no Python 3.14 wheel; 3.2.13 is the first 3.2.x that does.

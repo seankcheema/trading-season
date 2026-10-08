@@ -3,7 +3,7 @@ pipeline {
 
     tools {
         // Names must match the installations under Manage Jenkins > Tools.
-        maven 'Maven'
+        maven 'maven'
         nodejs 'NodeJS'
     }
 
@@ -86,9 +86,8 @@ pipeline {
                 '''
             }
         }
-
-        // Each Java suite uses its own Maven repository. E2E runs afterwards
-        // to avoid browser CPU contention.
+        // Each suite runs once. Java branches use separate Maven repositories.
+        // E2E follows the parallel group to avoid browser CPU contention.
         stage('Test Suites') {
             failFast true
             parallel {
@@ -155,6 +154,8 @@ pipeline {
                             DATABASE_URL="postgresql://trading_season:test-password@${DB_CONTAINER}:5432/trading_season"
                             SCRIPTS=apps/market-data/db/scripts/python
                             SEEDS=/workspace/apps/market-data/db/seeds
+                            # Each script run records coverage beside the other reports for the SonarQube stage.
+                            COVERAGE="-m coverage run --parallel-mode"
 
                             start_db() {
                                 docker run -d --name "$DB_CONTAINER" --network "$TEST_NETWORK" -e POSTGRES_DB=trading_season -e POSTGRES_USER=trading_season -e POSTGRES_PASSWORD=test-password -v "$DB_VOLUME:/var/lib/postgresql/data" postgres:16-alpine
@@ -169,7 +170,7 @@ pipeline {
 
                             # Initialize, then restart the database to prove the schema persists.
                             start_db
-                            docker run --rm --network "$TEST_NETWORK" "$TEST_TAG" $SCRIPTS/0001-initialize-database.py --database-url "$DATABASE_URL" --disposable-database
+                            docker run --rm --network "$TEST_NETWORK" -e COVERAGE_FILE=/reports/.coverage -v "$PWD/reports/market-data:/reports" "$TEST_TAG" $COVERAGE $SCRIPTS/0001-initialize-database.py --database-url "$DATABASE_URL" --disposable-database
                             docker rm -f "$DB_CONTAINER"
                             start_db
                             docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select count(*) from information_schema.tables where table_schema='public';" | grep -Eq '^[1-9][0-9]*$'
@@ -178,10 +179,12 @@ pipeline {
                             AVAILABLE_DISK_GB="$(docker exec "$DB_CONTAINER" df -Pk /var/lib/postgresql/data | awk 'NR==2 {print $4/1048576}')"
 
                             # Generate two days of data, validate, then import twice (the second import must be a no-op).
-                            docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:$SEEDS" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/generation-resources.txt python $SCRIPTS/0002-generate-synthetic-market-data.py --start-date 2026-01-05 --end-date 2026-01-06
-                            docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:$SEEDS" "$TEST_TAG" $SCRIPTS/0003-validate-synthetic-market-data.py
-                            docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:$SEEDS" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/import-resources.txt python $SCRIPTS/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
-                            docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:$SEEDS" "$TEST_TAG" $SCRIPTS/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
+                            docker run --rm --network "$TEST_NETWORK" -e COVERAGE_FILE=/reports/.coverage -v "$ARCHIVE_VOLUME:$SEEDS" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/generation-resources.txt python $COVERAGE $SCRIPTS/0002-generate-synthetic-market-data.py --start-date 2026-01-05 --end-date 2026-01-06
+                            docker run --rm --network "$TEST_NETWORK" -e COVERAGE_FILE=/reports/.coverage -v "$ARCHIVE_VOLUME:$SEEDS" -v "$PWD/reports/market-data:/reports" "$TEST_TAG" $COVERAGE $SCRIPTS/0003-validate-synthetic-market-data.py
+                            docker run --rm --network "$TEST_NETWORK" -e COVERAGE_FILE=/reports/.coverage -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:$SEEDS" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/import-resources.txt python $COVERAGE $SCRIPTS/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
+                            docker run --rm --network "$TEST_NETWORK" -e COVERAGE_FILE=/reports/.coverage -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:$SEEDS" -v "$PWD/reports/market-data:/reports" "$TEST_TAG" $COVERAGE $SCRIPTS/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
+                            # Merge the per-run coverage data into the report the SonarQube stage imports.
+                            docker run --rm -e COVERAGE_FILE=/reports/.coverage -v "$PWD/reports/market-data:/reports" --entrypoint sh "$TEST_TAG" -c 'python -m coverage combine && python -m coverage xml -o /reports/coverage.xml && rm -f /reports/.coverage'
 
                             docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select count(*) from market_ticks; select count(*) from candles; select pg_database_size(current_database()); select coalesce(sum(pg_indexes_size(quote_ident(schemaname)||'.'||quote_ident(tablename))),0) from pg_tables where schemaname='public';" > reports/market-data/database-after.txt
                             docker exec "$DB_CONTAINER" du -sb /var/lib/postgresql/data > reports/market-data/disk-after.txt
@@ -189,6 +192,7 @@ pipeline {
                             test -s reports/market-data/generation-resources.txt
                             test -s reports/market-data/import-resources.txt
                             test -s reports/market-data/database-after.txt
+                            test -s reports/market-data/coverage.xml
                         '''
                     }
                     post {
@@ -243,16 +247,18 @@ pipeline {
                             dir('apps/reporting-service') {
                                 // python:3.14-slim: the full image pulls large -dev
                                 // libraries and has exhausted agent disk before.
+                                // Mounted at the agent's own path so the source path
+                                // recorded in coverage.xml resolves for SonarQube.
                                 sh '''
                                     set -eu
                                     docker run --rm \
                                       -e PYTHONDONTWRITEBYTECODE=1 \
-                                      -v "$(pwd)":/app \
-                                      -w /app \
+                                      -v "$(pwd)":"$(pwd)" \
+                                      -w "$(pwd)" \
                                       python:3.14-slim \
                                       bash -c "
                                         # Runs as root: hand the output back to the jenkins user on any exit.
-                                        trap 'chmod -R a+rwX /app' EXIT
+                                        trap 'chmod -R a+rwX .' EXIT
                                         set -eu
                                         mkdir -p reports/junit coverage
                                         python -m pip install -q -r requirements.txt
@@ -319,6 +325,40 @@ pipeline {
                 }
             }
         }
+
+        stage('SonarQube Analysis') {
+            when { expression { currentBuild.currentResult == 'SUCCESS' } }
+            steps {
+                script {
+                    def scannerHome = tool(env.SONAR_SCANNER_TOOL ?: 'SonarScanner')
+
+                    // The server URL and analysis token come from the 'SonarQube'
+                    // server under Manage Jenkins > System; the project key and
+                    // name are in sonar-project.properties.
+                    withSonarQubeEnv('SonarQube') {
+                        sh """
+                            set -eu
+                            node infrastructure/jenkins/jacoco-to-sonar-coverage.mjs \
+                              apps/holdings-and-trade-service apps/order-and-sell-service
+                            "${scannerHome}/bin/sonar-scanner" \
+                              -Dproject.settings=infrastructure/jenkins/sonar-project.properties \
+                              -Dsonar.projectVersion="\$BUILD_NUMBER"
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            when { expression { currentBuild.currentResult == 'SUCCESS' } }
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+
 
         stage('Pre-E2E Disk Cleanup') {
             steps {
@@ -536,6 +576,13 @@ pipeline {
                         --bootstrap-server localhost:9092 --describe --all-groups
 
                     docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Image}}\\t{{.Ports}}'
+
+                    # The rebuild leaves the previous build's images untagged, so
+                    # drop them and trim the build cache now that the stack is
+                    # verified. Stopped containers, networks, and volumes are left
+                    # alone: the agent's Docker daemon also serves other workloads.
+                    docker image prune -f || echo "Dangling image prune failed; continuing." >&2
+                    docker builder prune -f --keep-storage=2gb 2>/dev/null || docker builder prune -af || echo "Build cache prune failed; continuing." >&2
                 '''
             }
         }

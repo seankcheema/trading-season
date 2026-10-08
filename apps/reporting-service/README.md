@@ -35,7 +35,7 @@ On the host the broker is `localhost:29092` and the files land in `./data/report
 
 ## Endpoints
 
-Authenticated endpoints need an RS256 bearer token from the [Auth Service](../auth-service/README.md).
+Authenticated endpoints need an RS256 bearer token from the [Auth Service](../auth-service/README.md). Data is always scoped to the token's `sub`. Every endpoint is a `GET`. Flask-WTF CSRF protection is enabled app-wide; it checks only `POST`, `PUT`, `PATCH`, and `DELETE`, so it does not affect these requests.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
