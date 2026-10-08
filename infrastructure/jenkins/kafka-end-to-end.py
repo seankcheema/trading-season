@@ -23,6 +23,7 @@ code is non-zero on the first failed step.
 """
 
 import json
+import logging
 import sys
 import threading
 import time
@@ -35,6 +36,10 @@ ORDERS = 'http://order-and-sell-service:8081'
 HOLDINGS = 'http://holdings-and-trade-service:8082'
 REPORTING = 'http://reporting-service:8083'
 WAIT_SECONDS = 45
+
+# The chart library comments on string axis labels at INFO level; keep the
+# checklist readable.
+logging.getLogger('matplotlib.category').setLevel(logging.WARNING)
 
 
 def say(step, result):
