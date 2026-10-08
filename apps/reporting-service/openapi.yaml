@@ -3,17 +3,17 @@ info:
   title: Trading Season Reporting Service API
   version: 0.1.0
   description: |
-    OpenAPI contract for the Reporting Service. The service provides portfolio,
-    trade-history, performance, profile, and scheduler-status endpoints over the
-    shared trading_season business database.
+    OpenAPI contract for the Reporting Service. The service serves the report
+    runs that the reporting consumer produces from the trade-events Kafka topic,
+    plus the caller's trader profile. Trade data is never read from the
+    trading_season database; only users and accounts are, for names.
 servers:
   - url: http://localhost:8083
     description: Local development
 tags:
   - name: Service
-  - name: Portfolio
-  - name: Trades
   - name: Profile
+  - name: Runs
   - name: Scheduler
 paths:
   /:
@@ -44,200 +44,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthFailureResponse'
-  /api/reporting/portfolio:
-    get:
-      tags: [Portfolio]
-      summary: Get portfolio summary across all caller accounts
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Portfolio summary returned
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PortfolioSummaryResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalError'
-  /api/reporting/portfolio/{accountId}:
-    get:
-      tags: [Portfolio]
-      summary: Get a single account portfolio
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/AccountId'
-      responses:
-        '200':
-          description: Account portfolio returned
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccountPortfolioResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
-  /api/reporting/portfolio/{accountId}/performance:
-    get:
-      tags: [Portfolio]
-      summary: Get detailed performance metrics for an account
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/AccountId'
-        - $ref: '#/components/parameters/StartDate'
-        - $ref: '#/components/parameters/EndDate'
-      responses:
-        '200':
-          description: Account performance returned
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccountPerformanceResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
-  /api/reporting/portfolio/performance:
-    get:
-      tags: [Portfolio]
-      summary: Get aggregated performance across all caller accounts
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/StartDate'
-        - $ref: '#/components/parameters/EndDate'
-      responses:
-        '200':
-          description: Aggregate portfolio performance returned
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PortfolioPerformanceResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
-  /api/reporting/trades:
-    get:
-      tags: [Trades]
-      summary: Get trade history across one or all caller accounts
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/AccountIdQuery'
-        - $ref: '#/components/parameters/Symbol'
-        - $ref: '#/components/parameters/OrderType'
-        - $ref: '#/components/parameters/Status'
-        - $ref: '#/components/parameters/StartDate'
-        - $ref: '#/components/parameters/EndDate'
-        - $ref: '#/components/parameters/MinProfit'
-        - $ref: '#/components/parameters/MaxProfit'
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Offset'
-      responses:
-        '200':
-          description: Trade list returned
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TradesResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
-  /api/reporting/trades/{orderId}:
-    get:
-      tags: [Trades]
-      summary: Get one trade or order detail
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: orderId
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Trade detail returned
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TradeDetailResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
-  /api/reporting/trades/statistics:
-    get:
-      tags: [Trades]
-      summary: Get trade statistics and performance metrics
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/AccountIdQuery'
-        - $ref: '#/components/parameters/StartDate'
-        - $ref: '#/components/parameters/EndDate'
-      responses:
-        '200':
-          description: Trade statistics returned
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TradeStatisticsResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
-  /api/reporting/trades/drill-down:
-    get:
-      tags: [Trades]
-      summary: Get grouped trade drill-down analytics
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/AccountIdQuery'
-        - $ref: '#/components/parameters/StartDate'
-        - $ref: '#/components/parameters/EndDate'
-      responses:
-        '200':
-          description: Drill-down analytics returned
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TradeDrillDownResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
   /api/reporting/profile:
     get:
       tags: [Profile]
@@ -257,10 +63,86 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/reporting/runs:
+    get:
+      tags: [Runs]
+      summary: List every complete report run, newest first
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Run list returned; empty before the first run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/reporting/runs/latest:
+    get:
+      tags: [Runs]
+      summary: Get the latest run's report
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The latest report.json
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No report has been generated yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/reporting/runs/{runId}/files/{name}:
+    get:
+      tags: [Runs]
+      summary: Get one chart image of a run
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: Run id as listed by /api/reporting/runs, a UTC timestamp such as 20260107T120000Z.
+          schema:
+            type: string
+            pattern: '^[0-9]{8}T[0-9]{6}Z$'
+        - name: name
+          in: path
+          required: true
+          description: One of the file names in the run's files list.
+          schema:
+            type: string
+            enum: [volume_by_symbol.png, daily_trades.png, trades_per_account.png]
+      responses:
+        '200':
+          description: The PNG chart
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /api/reporting/scheduler/status:
     get:
       tags: [Scheduler]
-      summary: Get scheduler refresh status
+      summary: Get the report scheduler status
+      description: Public, for monitoring. Reports the latest run on disk and the configured interval.
       responses:
         '200':
           description: Scheduler status returned
@@ -276,90 +158,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-  parameters:
-    AccountId:
-      name: accountId
-      in: path
-      required: true
-      schema:
-        type: integer
-    AccountIdQuery:
-      name: account_id
-      in: query
-      required: false
-      schema:
-        type: integer
-    StartDate:
-      name: start_date
-      in: query
-      required: false
-      schema:
-        type: string
-        format: date-time
-      description: ISO-8601 timestamp or date accepted by Python datetime.fromisoformat.
-    EndDate:
-      name: end_date
-      in: query
-      required: false
-      schema:
-        type: string
-        format: date-time
-      description: ISO-8601 timestamp or date accepted by Python datetime.fromisoformat.
-    Symbol:
-      name: symbol
-      in: query
-      required: false
-      schema:
-        type: string
-    OrderType:
-      name: order_type
-      in: query
-      required: false
-      schema:
-        type: string
-        enum: [BUY, SELL]
-    Status:
-      name: status
-      in: query
-      required: false
-      schema:
-        type: string
-    MinProfit:
-      name: min_profit
-      in: query
-      required: false
-      schema:
-        type: number
-    MaxProfit:
-      name: max_profit
-      in: query
-      required: false
-      schema:
-        type: number
-    Limit:
-      name: limit
-      in: query
-      required: false
-      schema:
-        type: integer
-        default: 100
-        minimum: 1
-        maximum: 500
-    Offset:
-      name: offset
-      in: query
-      required: false
-      schema:
-        type: integer
-        default: 0
-        minimum: 0
   responses:
-    BadRequest:
-      description: Invalid request data or query parameters
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
     Unauthorized:
       description: Missing or invalid bearer token
       content:
@@ -367,7 +166,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     NotFound:
-      description: Requested resource is missing or inaccessible
+      description: Requested resource is missing
       content:
         application/json:
           schema:
@@ -422,347 +221,173 @@ components:
           type: string
         documentation:
           type: string
+          example: /docs
         openapi:
           type: string
+          example: /openapi.yaml
         health:
           type: string
+          example: /health
         api_endpoints:
           type: object
           additionalProperties:
             type: string
       required: [service, status, version, documentation, openapi, health, api_endpoints]
-    Holding:
-      type: object
-      properties:
-        holding_id:
-          type: integer
-        instrument_id:
-          type: integer
-        symbol:
-          type: string
-        name:
-          type: string
-        quantity:
-          type: number
-        average_cost:
-          type: number
-        total_value:
-          type: number
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-    AccountSummary:
-      type: object
-      properties:
-        account_id:
-          type: integer
-        account_name:
-          type: string
-        account_type:
-          type: string
-        status:
-          type: string
-        cash_balance:
-          type: number
-        holdings_count:
-          type: integer
-        holdings_value:
-          type: number
-        holdings:
-          type: array
-          items:
-            $ref: '#/components/schemas/Holding'
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-    PortfolioSummary:
-      type: object
-      properties:
-        total_accounts:
-          type: integer
-        total_cash:
-          type: number
-        total_holdings_value:
-          type: number
-        total_portfolio_value:
-          type: number
-        available_funds:
-          type: number
-    PortfolioSummaryResponse:
-      type: object
-      properties:
-        user_id:
-          type: string
-          format: uuid
-        accounts:
-          type: array
-          items:
-            $ref: '#/components/schemas/AccountSummary'
-        summary:
-          $ref: '#/components/schemas/PortfolioSummary'
-        timestamp:
-          type: string
-          format: date-time
-    AccountPortfolioResponse:
-      type: object
-      properties:
-        account:
-          $ref: '#/components/schemas/AccountSummary'
-        holdings:
-          type: array
-          items:
-            $ref: '#/components/schemas/Holding'
-        portfolio_value:
-          type: number
-        timestamp:
-          type: string
-          format: date-time
-    Fill:
-      type: object
-      properties:
-        fill_id:
-          type: integer
-        filled_quantity:
-          type: number
-        filled_price:
-          type: number
-        commission:
-          type: number
-        fill_timestamp:
-          type: string
-          format: date-time
-    Trade:
-      type: object
-      properties:
-        order_id:
-          type: integer
-        account_id:
-          type: integer
-        instrument_id:
-          type: integer
-        symbol:
-          type: string
-        order_type:
-          type: string
-        quantity:
-          type: number
-        entry_price:
-          type: number
-        indicative_price:
-          type: number
-        filled_quantity:
-          type: number
-        filled_price:
-          type: number
-        commission:
-          type: number
-        realized_pl:
-          type: number
-        status:
-          type: string
-        rejection_reason:
-          type: string
-          nullable: true
-        submitted_at:
-          type: string
-          format: date-time
-        resolved_at:
-          type: string
-          format: date-time
-          nullable: true
-        executed_at:
-          type: string
-          format: date-time
-        fill:
-          $ref: '#/components/schemas/Fill'
-    TradeStatistics:
-      type: object
-      properties:
-        total_trades:
-          type: integer
-        filled_trades:
-          type: integer
-        win_count:
-          type: integer
-        loss_count:
-          type: integer
-        break_even_count:
-          type: integer
-        win_rate:
-          type: number
-        profit_factor:
-          type: number
-        total_realized_pl:
-          type: number
-        average_profit:
-          type: number
-        average_loss:
-          type: number
-        gross_profit:
-          type: number
-        gross_loss:
-          type: number
-    TradesResponse:
-      type: object
-      properties:
-        user_id:
-          type: string
-          format: uuid
-        trades:
-          type: array
-          items:
-            $ref: '#/components/schemas/Trade'
-        statistics:
-          $ref: '#/components/schemas/TradeStatistics'
-        pagination:
-          type: object
-          additionalProperties: true
-        filters:
-          type: object
-          additionalProperties: true
-        timestamp:
-          type: string
-          format: date-time
-    TradeDetailResponse:
-      type: object
-      properties:
-        trade:
-          $ref: '#/components/schemas/Trade'
-        timestamp:
-          type: string
-          format: date-time
-    TradeStatisticsResponse:
-      type: object
-      properties:
-        user_id:
-          type: string
-          format: uuid
-        statistics:
-          $ref: '#/components/schemas/TradeStatistics'
-        filters:
-          type: object
-          additionalProperties: true
-        timestamp:
-          type: string
-          format: date-time
-    GroupedTradeMetrics:
-      type: object
-      properties:
-        symbol:
-          type: string
-        order_type:
-          type: string
-        count:
-          type: integer
-        filled_trades:
-          type: integer
-        total_realized_pl:
-          type: number
-        win_rate:
-          type: number
-        average_profit:
-          type: number
-        average_loss:
-          type: number
-    TradeDrillDownResponse:
-      type: object
-      properties:
-        user_id:
-          type: string
-          format: uuid
-        by_symbol:
-          type: array
-          items:
-            $ref: '#/components/schemas/GroupedTradeMetrics'
-        by_order_type:
-          type: array
-          items:
-            $ref: '#/components/schemas/GroupedTradeMetrics'
-        best_trades:
-          type: array
-          items:
-            $ref: '#/components/schemas/Trade'
-        worst_trades:
-          type: array
-          items:
-            $ref: '#/components/schemas/Trade'
-        filters:
-          type: object
-          additionalProperties: true
-        timestamp:
-          type: string
-          format: date-time
-    PerformanceMetrics:
-      type: object
-      additionalProperties: true
-      description: Calculated performance metrics returned by the reporting helpers.
-    AccountPerformanceResponse:
-      type: object
-      properties:
-        account_id:
-          type: integer
-        performance:
-          $ref: '#/components/schemas/PerformanceMetrics'
-        current_position:
-          type: object
-          additionalProperties: true
-        filters:
-          type: object
-          additionalProperties: true
-        timestamp:
-          type: string
-          format: date-time
-    PortfolioPerformanceResponse:
-      type: object
-      properties:
-        user_id:
-          type: string
-          format: uuid
-        accounts_count:
-          type: integer
-        performance:
-          $ref: '#/components/schemas/PerformanceMetrics'
-        current_position:
-          type: object
-          additionalProperties: true
-        filters:
-          type: object
-          additionalProperties: true
-        timestamp:
-          type: string
-          format: date-time
     UserProfileResponse:
       type: object
       properties:
         user_id:
           type: string
           format: uuid
-        email:
-          type: string
-          format: email
         first_name:
           type: string
         last_name:
           type: string
         trader_level:
           type: string
+          enum: [BEGINNER, INTERMEDIATE, ADVANCED]
         available_funds:
           type: number
         timestamp:
           type: string
           format: date-time
-    SchedulerStatusResponse:
+      required: [user_id, first_name, last_name, trader_level, available_funds, timestamp]
+    RunSummary:
       type: object
       properties:
-        scheduler_status:
-          type: object
-          additionalProperties: true
+        runId:
+          type: string
+          example: 20260107T120000Z
+        generatedAt:
+          type: string
+          format: date-time
+        eventCount:
+          type: integer
+          description: Trade-event lines read for this run, every status included.
+        files:
+          type: array
+          items:
+            type: string
+          example: [volume_by_symbol.png, daily_trades.png, trades_per_account.png]
+      required: [runId, generatedAt, eventCount, files]
+    RunListResponse:
+      type: object
+      properties:
+        latest:
+          type: string
+          nullable: true
+          description: The run id that /runs/latest serves, or null before the first run.
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunSummary'
         timestamp:
           type: string
           format: date-time
+      required: [latest, runs, timestamp]
+    StatusCounts:
+      type: object
+      description: Final order statuses counted as trades. ACCEPTED events are not counted.
+      properties:
+        FILLED:
+          type: integer
+        REJECTED:
+          type: integer
+      required: [FILLED, REJECTED]
+    VolumeBySymbol:
+      type: object
+      properties:
+        symbol:
+          type: string
+        fills:
+          type: integer
+        shares:
+          type: string
+          description: Decimal as a string.
+        notional:
+          type: string
+          description: Shares times fill price, as a decimal string with two places.
+      required: [symbol, fills, shares, notional]
+    TradesPerAccount:
+      type: object
+      properties:
+        accountId:
+          type: integer
+        total:
+          type: integer
+        filled:
+          type: integer
+        rejected:
+          type: integer
+        accountName:
+          type: string
+          nullable: true
+        userName:
+          type: string
+          nullable: true
+        label:
+          type: string
+          description: Account name and trader name, or the account id when the account is unknown.
+      required: [accountId, total, filled, rejected, label]
+    DailyCount:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          description: UTC day.
+        filled:
+          type: integer
+        rejected:
+          type: integer
+      required: [date, filled, rejected]
+    Report:
+      type: object
+      description: The report.json of one run.
+      properties:
+        runId:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+          example: UTC
+        eventCount:
+          type: integer
+        statusCounts:
+          $ref: '#/components/schemas/StatusCounts'
+        volumeBySymbol:
+          type: array
+          items:
+            $ref: '#/components/schemas/VolumeBySymbol'
+        tradesPerAccount:
+          type: array
+          items:
+            $ref: '#/components/schemas/TradesPerAccount'
+        dailyCounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/DailyCount'
+        files:
+          type: array
+          items:
+            type: string
+          description: Chart file names served by /api/reporting/runs/{runId}/files/{name}.
+      required: [runId, generatedAt, timezone, eventCount, statusCounts, volumeBySymbol, tradesPerAccount, dailyCounts, files]
+    SchedulerStatusResponse:
+      type: object
+      properties:
+        latest_run:
+          type: string
+          nullable: true
+        generated_at:
+          type: string
+          format: date-time
+          nullable: true
+        interval_minutes:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+      required: [latest_run, generated_at, interval_minutes, timestamp]

@@ -1,0 +1,14 @@
+# Keep local artifacts out of the image; COPY . . would otherwise include them.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage*
+coverage/
+coverage.xml
+htmlcov/
+reports/
+tests/
+venv/
+.venv/
+.env
+data/

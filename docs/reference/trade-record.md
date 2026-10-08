@@ -66,8 +66,8 @@ PostgreSQL makes committed rows durable across restarts. Because each order is o
 
 Neither migration adds tables or columns or changes existing rows, and both may be reapplied. V011 reuses a function V010 creates, so apply them in order.
 
-- Local Compose applies them through [init-db.sh](../../infrastructure/docker/init-db.sh), which runs every file in `db/migrations` once.
-- The Jenkins Compose file, [setup-local.sh](../../scripts/setup-local.sh), and the [Python initializer](../../apps/market-data/db/scripts/python/0001-initialize-database.py) name them explicitly after V009.
+- Local Compose and the Jenkins Compose file apply them through [init-db.sh](../../infrastructure/docker/init-db.sh), which runs every file in `db/migrations` once.
+- [setup-local.sh](../../scripts/setup-local.sh) and the [Python initializer](../../apps/market-data/db/scripts/python/0001-initialize-database.py) name them explicitly after V009.
 - For a database managed by hand, take a backup, then apply them as the database owner after V009:
 
 ```powershell

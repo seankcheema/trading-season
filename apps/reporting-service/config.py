@@ -33,9 +33,20 @@ class Config:
     REPORTING_SERVICE_PORT = int(os.getenv('REPORTING_SERVICE_PORT', 8083))
     REPORTING_SERVICE_HOST = os.getenv('REPORTING_SERVICE_HOST', '0.0.0.0')
     
-    # Scheduler
+    # Report runs. The scheduler runs in the consumer process only (consumer.py);
+    # the web service leaves SCHEDULER_ENABLED false.
     SCHEDULER_ENABLED = os.getenv('SCHEDULER_ENABLED', 'True').lower() == 'true'
     SCHEDULER_INTERVAL_MINUTES = int(os.getenv('SCHEDULER_INTERVAL_MINUTES', 15))
+
+    # Where the consumer writes trade events and the runs it generates. The web
+    # service reads this directory; in Compose it is the shared reporting_files volume.
+    REPORTING_FILES_DIR = os.getenv('REPORTING_FILES_DIR', os.path.join(os.getcwd(), 'data', 'reporting'))
+
+    # Kafka: the trade-events topic Order and Sell publishes to. On the host the
+    # broker is localhost:29092; inside Compose it is kafka:9092.
+    KAFKA_BOOTSTRAP_SERVERS = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:29092')
+    KAFKA_TRADE_EVENTS_TOPIC = os.getenv('KAFKA_TRADE_EVENTS_TOPIC', 'trade-events')
+    REPORTING_CONSUMER_GROUP = os.getenv('REPORTING_CONSUMER_GROUP', 'reporting-ingester')
     
     # JWT
     JWT_EXPIRATION_SECONDS = 900  # 15 minutes

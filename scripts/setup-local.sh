@@ -344,7 +344,7 @@ validate_or_initialize_docker_business() {
 # the same way as a fresh one.
 apply_docker_incremental_migrations() {
     local migration
-    for migration in V002__Add_watchlist.sql V009__Add_terms_acceptance_to_users.sql V010__Protect_trade_records.sql V011__Protect_client_identity.sql; do
+    for migration in V002__Add_watchlist.sql V003__Order_status_accepted.sql V008__Drop_account_status.sql V009__Add_terms_acceptance_to_users.sql V010__Protect_trade_records.sql V011__Protect_client_identity.sql; do
         docker_compose exec -T db psql -q -v ON_ERROR_STOP=1 -U trading_season -d trading_season < "db/migrations/$migration" || \
             fail "Database migration $migration failed."
     done
@@ -416,7 +416,7 @@ select_databases() {
     export DB_NAME=trading_season
     # The broker is published on the host as localhost:29092; inside Compose it
     # is kafka:9092. These applications run on the VM, so they take the former.
-    # Nothing reads this yet -- no service publishes or consumes.
+    # Order and Sell reads it to publish trade-events and run its consumers.
     export KAFKA_BOOTSTRAP_SERVERS=localhost:29092
 }
 

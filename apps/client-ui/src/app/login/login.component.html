@@ -16,7 +16,7 @@
           You were signed out after a period of inactivity. Sign in again to continue.
         </p>
       }
-      <form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate class="flex flex-col gap-5">
+      <form method="post" [formGroup]="form" (ngSubmit)="onSubmit()" novalidate class="flex flex-col gap-5">
         <div hlmField>
           <label hlmFieldLabel for="email" class="text-foreground">Email</label>
           <div class="relative">

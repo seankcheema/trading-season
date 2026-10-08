@@ -63,6 +63,8 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityErrorHandler errorHandler)
             throws Exception {
         http
+                // CSRF disabled: API uses stateless JWT authentication with Bearer tokens in Authorization header.
+                // CSRF attacks cannot occur because tokens are not automatically sent by browsers. NOSONAR java:S4502
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

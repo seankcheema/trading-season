@@ -63,6 +63,8 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityErrorHandler errorHandler)
             throws Exception {
         http
+                // CSRF disabled: API uses stateless JWT authentication with Bearer tokens in Authorization header.
+                // CSRF attacks cannot occur because tokens are not automatically sent by browsers. NOSONAR java:S4502
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -70,7 +72,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/account-exists").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/market/**").permitAll()
                         .requestMatchers("/error").permitAll()
-                        .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**").permitAll()
+                        // Swagger/OpenAPI documentation paths
+                        .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**", "/webjars/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))

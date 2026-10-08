@@ -34,6 +34,55 @@ def _events(config: dict[str, Any]) -> list[dict[str, Any]]:
 def _file_record(path: Path, day: date) -> dict[str, Any]:
     return {"name":path.name,"day":str(day),"bytes":path.stat().st_size,"sha256":sha256(path)}
 
+def _condition_params(entries: list[dict[str, Any]], conditions: dict[str, Any], day_text: str) -> dict[str, Any]:
+    event=next(entry for entry in entries if entry["start"]<=day_text<entry["end"])
+    return conditions[event["condition"]]
+
+def _market_factors(config: dict[str, Any], stock: Any, day_text: str) -> tuple[dict[str, Any], float, float]:
+    params=_condition_params(config["schedule"],config["conditions"],day_text)
+    sigma=float(stock.base_volatility)*params["volatility_multiplier"]
+    volume_factor=params["volume_multiplier"]
+    for overlay in config["overlays"]:
+        if overlay["start"]<=day_text<overlay["end"]:
+            overlay_params=config["conditions"][overlay["condition"]]
+            sigma*=overlay_params["volatility_multiplier"]
+            volume_factor*=overlay_params["volume_multiplier"]
+    return params,sigma,volume_factor
+
+def _decimals(values: np.ndarray) -> list[Decimal]:
+    return [Decimal(f"{value:.6f}") for value in values]
+
+def _build_stock_tables(config: dict[str, Any], day: date, day_index: int, stock_index: int,
+                        stock: Any, session_start: int, previous_price: float) -> tuple[pa.Table, pa.Table, float]:
+    day_text=str(day)
+    rng=np.random.default_rng(np.random.SeedSequence([config["seed"],day.toordinal(),stock_index]))
+    params,sigma,volume_factor=_market_factors(config,stock,day_text)
+    shocks=rng.normal(params["drift"]/(252*SESSION_SECONDS),sigma/np.sqrt(252*SESSION_SECONDS),SESSION_SECONDS)
+    prices=np.round(previous_price*np.exp(np.cumsum(shocks)),6)
+    prices=np.maximum(prices,0.000002)
+    spread=np.maximum(0.000002,np.round(prices*0.0001,6))
+    bid=np.round(prices-spread/2,6)
+    ask=np.round(prices+spread/2,6)
+    bid=np.minimum(bid,prices)
+    ask=np.maximum(ask,prices)
+    ask=np.where(ask<=bid,bid+0.000001,ask)
+    volumes=np.maximum(1,rng.poisson((stock.average_volume/SESSION_SECONDS)*volume_factor,SESSION_SECONDS)).astype(np.int32)
+    times=np.arange(session_start,session_start+SESSION_SECONDS,dtype=np.int64)
+    sequences=(day_index*SESSION_SECONDS*len(STOCKS))+np.arange(SESSION_SECONDS,dtype=np.int64)*len(STOCKS)+stock_index+1
+    tick_table=pa.table({"symbol":[stock.symbol]*SESSION_SECONDS,"t":times,"session_start":[session_start]*SESSION_SECONDS,
+                         "price":_decimals(prices),"bid":_decimals(bid),"ask":_decimals(ask),
+                         "bid_size":rng.integers(1,5001,SESSION_SECONDS,dtype=np.int32),
+                         "ask_size":rng.integers(1,5001,SESSION_SECONDS,dtype=np.int32),"trade_volume":volumes,
+                         "sequence_number":sequences},schema=TICK_SCHEMA)
+    per_minute_prices=prices.reshape(390,60)
+    per_minute_volumes=volumes.reshape(390,60)
+    candle_table=pa.table({"symbol":[stock.symbol]*390,"t":np.arange(session_start,session_start+SESSION_SECONDS,60,dtype=np.int64),
+                           "session_start":[session_start]*390,"open":_decimals(per_minute_prices[:,0]),
+                           "high":_decimals(per_minute_prices.max(axis=1)),"low":_decimals(per_minute_prices.min(axis=1)),
+                           "close":_decimals(per_minute_prices[:,-1]),"volume":per_minute_volumes.sum(axis=1,dtype=np.int64),
+                           "trade_count":np.full(390,60,dtype=np.int32)},schema=CANDLE_SCHEMA)
+    return tick_table,candle_table,float(prices[-1])
+
 def generate(root: Path=DEFAULT_DATASET, config_path: Path=DEFAULT_CONFIG, start_date: date|None=None,
              end_date: date|None=None, regenerate: bool=False,
              progress: Callable[[int, int, str], None] | None=None) -> dict[str, Any]:
@@ -57,26 +106,10 @@ def generate(root: Path=DEFAULT_DATASET, config_path: Path=DEFAULT_CONFIG, start
             candle_tables=[]
             with pq.ParquetWriter(tick_path,TICK_SCHEMA,compression="zstd") as writer:
                 for index,stock in enumerate(STOCKS):
-                    rng=np.random.default_rng(np.random.SeedSequence([config["seed"],day.toordinal(),index]))
-                    event=next(e for e in config["schedule"] if e["start"]<=str(day)<e["end"]); params=config["conditions"][event["condition"]]
-                    sigma=float(stock.base_volatility)*params["volatility_multiplier"]
-                    volume_factor=params["volume_multiplier"]
-                    for overlay in config["overlays"]:
-                        if overlay["start"]<=str(day)<overlay["end"]:
-                            overlay_params=config["conditions"][overlay["condition"]]
-                            sigma*=overlay_params["volatility_multiplier"]; volume_factor*=overlay_params["volume_multiplier"]
-                    shocks=rng.normal(params["drift"]/(252*SESSION_SECONDS),sigma/np.sqrt(252*SESSION_SECONDS),SESSION_SECONDS)
-                    prices=np.round(previous[stock.symbol]*np.exp(np.cumsum(shocks)),6); prices=np.maximum(prices,0.000002); previous[stock.symbol]=float(prices[-1])
-                    spread=np.maximum(0.000002,np.round(prices*0.0001,6)); bid=np.round(prices-spread/2,6); ask=np.round(prices+spread/2,6)
-                    bid=np.minimum(bid,prices); ask=np.maximum(ask,prices); ask=np.where(ask<=bid,bid+0.000001,ask)
-                    volumes=np.maximum(1,rng.poisson((stock.average_volume/SESSION_SECONDS)*volume_factor,SESSION_SECONDS)).astype(np.int32)
-                    times=np.arange(start,start+SESSION_SECONDS,dtype=np.int64)
-                    sequences=(day_index*SESSION_SECONDS*len(STOCKS))+np.arange(SESSION_SECONDS,dtype=np.int64)*len(STOCKS)+index+1
-                    def dec(values): return [Decimal(f"{v:.6f}") for v in values]
-                    table=pa.table({"symbol":[stock.symbol]*SESSION_SECONDS,"t":times,"session_start":[start]*SESSION_SECONDS,"price":dec(prices),"bid":dec(bid),"ask":dec(ask),"bid_size":rng.integers(1,5001,SESSION_SECONDS,dtype=np.int32),"ask_size":rng.integers(1,5001,SESSION_SECONDS,dtype=np.int32),"trade_volume":volumes,"sequence_number":sequences},schema=TICK_SCHEMA)
-                    writer.write_table(table,row_group_size=60000)
-                    p=prices.reshape(390,60); v=volumes.reshape(390,60)
-                    candle_tables.append(pa.table({"symbol":[stock.symbol]*390,"t":np.arange(start,start+SESSION_SECONDS,60,dtype=np.int64),"session_start":[start]*390,"open":dec(p[:,0]),"high":dec(p.max(axis=1)),"low":dec(p.min(axis=1)),"close":dec(p[:,-1]),"volume":v.sum(axis=1,dtype=np.int64),"trade_count":np.full(390,60,dtype=np.int32)},schema=CANDLE_SCHEMA))
+                    tick_table,candle_table,closing_price=_build_stock_tables(config,day,day_index,index,stock,start,previous[stock.symbol])
+                    previous[stock.symbol]=closing_price
+                    writer.write_table(tick_table,row_group_size=60000)
+                    candle_tables.append(candle_table)
             pq.write_table(pa.concat_tables(candle_tables),candle_path,compression="zstd",row_group_size=3900)
             tick_files.append(_file_record(tick_path,day)); candle_files.append(_file_record(candle_path,day))
         report(len(days), len(days), "archive generated")
