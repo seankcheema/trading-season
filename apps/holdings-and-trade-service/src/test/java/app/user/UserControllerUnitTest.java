@@ -10,6 +10,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -91,6 +92,41 @@ class UserControllerUnitTest {
         UserProfileResponse result = controller.me(jwt);
 
         assertEquals("TRADER", result.userRole());
+    }
+
+    @Test
+    void meReturnsTermsAcceptanceState() {
+        User user = createTestUser(USER_ID);
+        OffsetDateTime acceptedAt = OffsetDateTime.parse("2026-10-05T20:00:00Z");
+        user.setTermsAcceptedAt(acceptedAt);
+        UserAccount account = createTestAccount("test@example.com", "TRADER");
+
+        when(jwt.getSubject()).thenReturn(USER_ID.toString());
+        when(userService.getOwnAccount(USER_ID)).thenReturn(user);
+        when(userService.getUserAccount(USER_ID)).thenReturn(account);
+
+        UserProfileResponse result = controller.me(jwt);
+
+        assertEquals(true, result.termsAccepted());
+        assertEquals(acceptedAt, result.termsAcceptedAt());
+    }
+
+    @Test
+    void acceptTermsReturnsUpdatedProfile() {
+        User user = createTestUser(USER_ID);
+        OffsetDateTime acceptedAt = OffsetDateTime.parse("2026-10-05T20:00:00Z");
+        user.setTermsAcceptedAt(acceptedAt);
+        UserAccount account = createTestAccount("test@example.com", "TRADER");
+
+        when(jwt.getSubject()).thenReturn(USER_ID.toString());
+        when(userService.acceptTerms(USER_ID)).thenReturn(user);
+        when(userService.getUserAccount(USER_ID)).thenReturn(account);
+
+        UserProfileResponse result = controller.acceptTerms(jwt);
+
+        assertEquals(true, result.termsAccepted());
+        assertEquals(acceptedAt, result.termsAcceptedAt());
+        verify(userService).acceptTerms(USER_ID);
     }
 
     @Test

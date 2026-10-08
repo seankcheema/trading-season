@@ -37,7 +37,12 @@ const HOLDINGS: Record<number, unknown[]> = {
 const CASH = 10_000;
 
 // The signed-in user, as GET /api/users/me reports them.
-const PROFILE = { firstName: 'Ada', lastName: 'Lovelace' };
+const PROFILE = {
+  firstName: 'Ada',
+  lastName: 'Lovelace',
+  termsAccepted: true,
+  termsAcceptedAt: '2026-10-05T20:00:00Z',
+};
 
 // An order as POST /api/orders answers it.
 function filledOrder(overrides: Partial<OrderResult> = {}): OrderResult {
@@ -68,7 +73,12 @@ function flushAccounts(
     holdings?: Record<number, unknown[]>;
     cash?: number;
     transactions?: unknown[];
-    profile?: { firstName: string; lastName: string };
+    profile?: {
+      firstName: string;
+      lastName: string;
+      termsAccepted?: boolean;
+      termsAcceptedAt?: string | null;
+    };
     orders?: OrderResult[];
   } = {},
 ): HttpTestingController {
@@ -80,7 +90,12 @@ function flushAccounts(
       .expectOne(`/api/accounts/${account.accountId}/holdings`)
       .flush(holdings[account.accountId] ?? []);
   }
-  http.expectOne('/api/users/me').flush({ ...profile, availableFunds: cash });
+  http.expectOne('/api/users/me').flush({
+    ...profile,
+    availableFunds: cash,
+    termsAccepted: profile.termsAccepted ?? true,
+    termsAcceptedAt: profile.termsAcceptedAt ?? '2026-10-05T20:00:00Z',
+  });
   http.expectOne((request) => request.url === '/api/me/cash-transactions').flush(transactions);
   for (const request of http.match('/api/orders')) request.flush(orders);
   for (const request of http.match('/api/instruments'))
@@ -453,6 +468,57 @@ describe('DashboardComponent', () => {
     const fixture = createDashboard();
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('app-order-submission')).toBeNull();
+  });
+
+  it('should block the dashboard behind terms acceptance until the user signs', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+    flushAccounts(fixture, ACCOUNTS, {
+      profile: { firstName: 'Ada', lastName: 'Lovelace', termsAccepted: false, termsAcceptedAt: null },
+    });
+
+    const dialog = fixture.nativeElement.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialog?.textContent).toContain('Terms and Conditions');
+    expect(dialog?.textContent).toContain('Ada Lovelace');
+  });
+
+  it('should keep trade actions closed while terms are still pending', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+    flushAccounts(fixture, ACCOUNTS, {
+      profile: { firstName: 'Ada', lastName: 'Lovelace', termsAccepted: false, termsAcceptedAt: null },
+    });
+
+    fixture.componentInstance['openOrder'](MOCK_INSTRUMENTS[0]);
+    fixture.componentInstance['onDeposit']();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-order-submission')).toBeNull();
+    expect(fixture.componentInstance['accountDialog']()).toBeNull();
+  });
+
+  it('should save terms acceptance once the typed signature matches', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+    const http = flushAccounts(fixture, ACCOUNTS, {
+      profile: { firstName: 'Ada', lastName: 'Lovelace', termsAccepted: false, termsAcceptedAt: null },
+    });
+
+    fixture.componentInstance['termsSignature'].set('Ada Lovelace');
+    fixture.componentInstance['acceptTerms']();
+
+    const request = http.expectOne('/api/users/me/terms-acceptance');
+    expect(request.request.method).toBe('PUT');
+    request.flush({
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      availableFunds: CASH,
+      termsAccepted: true,
+      termsAcceptedAt: '2026-10-05T20:00:00Z',
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-terms-and-conditions-dialog')).toBeNull();
   });
 
   it('should open the order submission dialog when an instrument is selected', async () => {
@@ -872,6 +938,8 @@ describe('DashboardComponent', () => {
         ],
       });
     }
+
+    expect(component['assetCandlePoints']().size).toBe(5);
   });
 
   it('should submit the current typed market time when applying the clock', () => {
@@ -1054,7 +1122,6 @@ describe('DashboardComponent', () => {
 
   it('updates ticker prices immediately and animates the movement for 500 to 1000 ms', () => {
     vi.useFakeTimers();
-    vi.spyOn(Math, 'random').mockReturnValue(0);
     const fixture = createDashboard();
     const component = fixture.componentInstance;
     const instrument: Instrument = {
@@ -1083,11 +1150,9 @@ describe('DashboardComponent', () => {
     vi.advanceTimersByTime(500);
     expect(component['tickAnimations']().has('AAPL')).toBe(false);
     vi.useRealTimers();
-    vi.restoreAllMocks();
   });
 
   it('applies a tick timestamp and prices synchronously without queued price updates', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.999999);
     const fixture = createDashboard();
     const component = fixture.componentInstance;
     component['instruments'].set([{ ...MOCK_INSTRUMENTS[0], price: 100 }]);
@@ -1103,8 +1168,7 @@ describe('DashboardComponent', () => {
     expect(component['marketClockLabel']()).toBe('Jan 5, 8:30:01 AM CT');
     expect(component['instruments']()[0].price).toBe(99);
     expect(component['tickAnimations']().get(MOCK_INSTRUMENTS[0].symbol)?.direction).toBe('loss');
-    expect(component['tickAnimations']().get(MOCK_INSTRUMENTS[0].symbol)?.durationMs).toBe(1000);
-    vi.restoreAllMocks();
+    expect(component['tickAnimations']().get(MOCK_INSTRUMENTS[0].symbol)?.durationMs).toBe(500);
   });
 
   describe('assets dialog and search bar', () => {

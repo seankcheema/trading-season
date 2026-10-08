@@ -10,7 +10,7 @@ async def run(url: str) -> None:
     connection = await asyncpg.connect(url)
     try:
         async with connection.transaction():
-            for name in ('V001__Initialize_database.sql', 'V002__Add_watchlist.sql'):
+            for name in ('V001__Initialize_database.sql', 'V002__Add_watchlist.sql', 'V008_Drop_account_status.sql', 'V009__Add_terms_acceptance_to_users.sql'):
                 sql = (Path(__file__).parents[5] / 'db' / 'migrations' / name).read_text(encoding='utf-8-sig')
                 sql = re.sub(r'^\s*(?:BEGIN|COMMIT);\s*$', '', sql, flags=re.MULTILINE)
                 await connection.execute(sql)

@@ -27,7 +27,7 @@ public final class UserAccountFixture {
      */
     public static void createActiveAccount(JdbcTemplate jdbc, UUID userId, String email) {
         jdbc.update("insert into user_accounts (user_id, email, user_role) "
-                + "values (?, ?, 'TRADER')", userId, email);
+            + "values (?, ?, 'TRADER')", userId, email);
     }
 
     /**

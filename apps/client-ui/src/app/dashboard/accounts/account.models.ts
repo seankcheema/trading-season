@@ -36,6 +36,8 @@ export interface UserProfile {
   firstName: string;
   lastName: string;
   availableFunds: number;
+  termsAccepted: boolean;
+  termsAcceptedAt: string | null;
 }
 
 // Creating and renaming an account take the same details. A new account starts empty.

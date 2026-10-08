@@ -127,6 +127,8 @@ export class AccountStore {
   // The selected account's portfolio.
   readonly selectedHoldings = computed(() => this.holdingsOf(this.selectedAccountId()));
 
+  readonly termsAccepted = computed(() => this._profile()?.termsAccepted ?? false);
+
   // Every owned account's portfolio, keyed by account id.
   readonly holdingsByAccount = computed(
     () =>
@@ -229,6 +231,19 @@ export class AccountStore {
 
   withdraw(amount: number): Observable<void> {
     return this.postCashTransaction(amount, 'WITHDRAWAL');
+  }
+
+  acceptTerms(): Observable<UserProfile> {
+    return this._http.put<UserProfile>(`${this._apiUrl}/users/me/terms-acceptance`, {}).pipe(
+      tap((profile) => {
+        this._profile.set(profile);
+        this._cashBalance.set(Number(profile.availableFunds) || 0);
+      }),
+      tap(() => {
+        this.stale = false;
+        this.refreshError.set('');
+      }),
+    );
   }
 
   // Reloads what a filled order changed: the user's cash, which every account shares, and

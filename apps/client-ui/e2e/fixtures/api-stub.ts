@@ -49,6 +49,14 @@ export interface SeedAccount {
   hasProfile?: boolean;
   /** Cash the user holds, shared by all of their trading accounts. Defaults to 5000. */
   availableFunds?: number;
+  /** Name on the profile, which the terms dialog asks the user to type as a signature. */
+  firstName?: string;
+  lastName?: string;
+  /**
+   * Whether the user already accepted the platform terms. Defaults to true so the dashboard is
+   * usable; pass false to start behind the terms dialog, as a newly registered user does.
+   */
+  termsAccepted?: boolean;
   /** Trading accounts the business backend holds for this user. */
   tradingAccounts?: SeedTradingAccount[];
   /** Executed orders for the first seeded trading account. */
@@ -85,6 +93,8 @@ interface StoredAccount {
    */
   passwordDigest: string;
   profile: Record<string, unknown> | null;
+  /** When the user accepted the platform terms; null until they do, as users.terms_accepted_at is. */
+  termsAcceptedAt: string | null;
 }
 
 export interface StubOptions {
@@ -106,6 +116,7 @@ const HOLDINGS_PATH = /\/api\/accounts\/(\d+)\/holdings$/;
 const NAME_MAX_LENGTH = 60;
 const MAX_CASH_AMOUNT = 1_000_000;
 const DEFAULT_FUNDS = 5000;
+const SEEDED_TERMS_ACCEPTED_AT = '2026-01-02T15:00:00Z';
 
 function base64url(value: string): string {
   return Buffer.from(value, 'utf8').toString('base64url');
@@ -192,8 +203,14 @@ export class ApiStub {
         email: seed.email,
         passwordDigest: digest(seed.password),
         profile: seed.hasProfile
-          ? { email: seed.email, availableFunds: seed.availableFunds ?? DEFAULT_FUNDS }
+          ? {
+              email: seed.email,
+              availableFunds: seed.availableFunds ?? DEFAULT_FUNDS,
+              ...(seed.firstName === undefined ? {} : { firstName: seed.firstName }),
+              ...(seed.lastName === undefined ? {} : { lastName: seed.lastName }),
+            }
           : null,
+        termsAcceptedAt: seed.termsAccepted === false ? null : SEEDED_TERMS_ACCEPTED_AT,
       };
       this.accounts.set(seed.email.toLowerCase(), account);
       for (const trading of seed.tradingAccounts ?? []) {
@@ -268,6 +285,7 @@ export class ApiStub {
         ]);
     });
     await page.route('**/api/users/me', (route) => this.ownProfile(route));
+    await page.route('**/api/users/me/terms-acceptance', (route) => this.ownProfile(route));
     await page.route('**/api/market/**', (route) => this.market(route));
     await page.route('**/api/me/accounts', (route) => this.meAccounts(route));
     await page.route(ACCOUNT_PATH, (route) => this.renameAccount(route));
@@ -495,6 +513,8 @@ export class ApiStub {
       email: String(body['email']),
       passwordDigest: digest(String(body['password'])),
       profile: null,
+      // A newly registered user has not accepted the terms yet.
+      termsAcceptedAt: null,
     };
     this.accounts.set(key, account);
     await this.json(route, 201, this.tokenResponse(account));
@@ -588,6 +608,11 @@ export class ApiStub {
       return;
     }
 
+    // PUT /api/users/me/terms-acceptance keeps the first acceptance, as UserService does.
+    if (route.request().method() === 'PUT') {
+      account.termsAcceptedAt ??= new Date().toISOString();
+    }
+
     // Mirrors UserProfileResponse, which deliberately omits the SSN.
     const { ssn: _ssn, ...withoutSsn } = account.profile;
     await this.json(route, 200, {
@@ -595,6 +620,8 @@ export class ApiStub {
       userRole: 'TRADER',
       createdAt: new Date().toISOString(),
       ...withoutSsn,
+      termsAccepted: account.termsAcceptedAt !== null,
+      termsAcceptedAt: account.termsAcceptedAt,
     });
   }
 

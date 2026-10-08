@@ -5,11 +5,14 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Tag("unit")
 class UserProfileResponseTest {
@@ -19,6 +22,7 @@ class UserProfileResponseTest {
     @Test
     void userProfileResponseFromEntity() {
         User user = new User();
+        OffsetDateTime acceptedAt = OffsetDateTime.parse("2026-10-05T20:00:00Z");
         user.setUserId(USER_ID);
         user.setFirstName("John");
         user.setMiddleName("Q");
@@ -28,6 +32,7 @@ class UserProfileResponseTest {
         user.setDateOfBirth(LocalDate.of(1990, 1, 1));
         user.setTraderLevel("ADVANCED");
         user.setAvailableFunds(new BigDecimal("50000.00"));
+        user.setTermsAcceptedAt(acceptedAt);
         
         UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER");
 
@@ -43,6 +48,27 @@ class UserProfileResponseTest {
         assertEquals("ADVANCED", response.traderLevel());
         assertEquals(new BigDecimal("50000.00"), response.availableFunds());
         assertEquals("TRADER", response.userRole());
+        assertTrue(response.termsAccepted());
+        assertEquals(acceptedAt, response.termsAcceptedAt());
+    }
+
+    @Test
+    void userProfileResponseMarksTermsUnacceptedWhenNoTimestampExists() {
+        User user = new User();
+        user.setUserId(USER_ID);
+        user.setFirstName("John");
+        user.setLastName("Doe");
+        user.setAddress("123 Main St");
+        user.setDateOfBirth(LocalDate.of(1990, 1, 1));
+        user.setTraderLevel("ADVANCED");
+        user.setAvailableFunds(new BigDecimal("50000.00"));
+
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER");
+
+        UserProfileResponse response = UserProfileResponse.from(user, account);
+
+        assertFalse(response.termsAccepted());
+        assertNull(response.termsAcceptedAt());
     }
 
     @Test

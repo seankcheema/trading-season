@@ -65,6 +65,9 @@ public class User {
     @Column(name = "last_activity_at")
     private OffsetDateTime lastActivityAt;
 
+    @Column(name = "terms_accepted_at")
+    private OffsetDateTime termsAcceptedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -287,11 +290,14 @@ public class User {
         this.lastActivityAt = lastActivityAt;
     }
 
-    /**
-     * Returns the created at.
-     *
-     * @return the created at
-     */
+    public OffsetDateTime getTermsAcceptedAt() {
+        return termsAcceptedAt;
+    }
+
+    public void setTermsAcceptedAt(OffsetDateTime termsAcceptedAt) {
+        this.termsAcceptedAt = termsAcceptedAt;
+    }
+
     public OffsetDateTime getCreatedAt() {
         return createdAt;
     }

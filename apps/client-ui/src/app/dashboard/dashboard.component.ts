@@ -51,6 +51,7 @@ import { OrderSubmissionComponent } from './order-submission/order-submission.co
 import { OrderResult } from './orders/order.models';
 import { OrderService } from './orders/order.service';
 import { SettingsDialogComponent } from './settings-dialog/settings-dialog.component';
+import { TermsAndConditionsDialogComponent } from './terms-and-conditions-dialog.component';
 import { DashboardHeaderDropdownComponent } from './shared/dashboard-header-dropdown.component';
 import { DailySparklineComponent } from './shared/daily-sparkline.component';
 import { PricedHolding } from './shared/assets';
@@ -95,6 +96,7 @@ type AccountDialog =
     OrderSubmissionComponent,
     PriceChartComponent,
     SettingsDialogComponent,
+    TermsAndConditionsDialogComponent,
     SignedPercentPipe,
     TimeframeToggleComponent,
   ],
@@ -210,6 +212,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly clockUpdating = this.clock.clockUpdating;
   protected readonly marketClockLabel = this.clock.marketClockLabel;
   protected readonly settingsOpen = signal(false);
+  protected readonly termsSignature = signal('');
+  protected readonly termsSubmitting = signal(false);
+  protected readonly termsError = signal<string | null>(null);
+  protected readonly termsDialogOpen = computed(
+    () => this.accountStore.status() === 'ready' && !this.accountStore.termsAccepted(),
+  );
+  protected readonly termsSignatureName = computed(() => {
+    const profile = this.accountStore.profile();
+    return [profile?.firstName ?? '', profile?.lastName ?? ''].join(' ').trim();
+  });
   protected readonly historyDialog = signal<'transactions' | null>(null);
   protected readonly assetsDialogOpen = signal(false);
   private readonly recentInstruments = inject(RecentInstrumentsService);
@@ -271,7 +283,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         ...this.watchlist.entries().map((entry) => entry.symbol),
       ]),
     ]
-      .sort()
+      .sort((left, right) => left.localeCompare(right))
       .join(','),
   );
 
@@ -334,11 +346,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
       [...prices].map(([symbol, price]) => {
         const candles = candlesBySymbol.get(symbol);
         if (candles?.length) {
-          if (marketTime !== null && marketTime < candles[candles.length - 1].time.getTime())
+          const latestCandle = candles.at(-1);
+          if (marketTime !== null && latestCandle && marketTime < latestCandle.time.getTime())
             return [symbol, candles];
           const points = [...candles];
+          const latestPoint = points.at(-1);
           points[points.length - 1] = {
-            time: new Date(marketTime ?? points[points.length - 1].time.getTime()),
+            time: new Date(marketTime ?? latestPoint?.time.getTime() ?? Date.now()),
             value: price,
           };
           return [symbol, points];
@@ -503,11 +517,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   protected openCreateAccount(): void {
+    if (this.termsDialogOpen()) {
+      return;
+    }
     this.openHeaderDropdown.set(null);
     this.accountDialog.set({ kind: 'account', account: null });
   }
 
   protected openRenameAccount(account: Account): void {
+    if (this.termsDialogOpen()) {
+      return;
+    }
     // Only accounts the store lists for the caller can be renamed.
     if (!this.accountStore.isOwnedAccount(account.accountId)) {
       return;
@@ -543,6 +563,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   protected openOrder(instrument: Instrument): void {
+    if (this.termsDialogOpen()) {
+      return;
+    }
     this.recentInstruments.record(instrument.symbol);
     this.orderSymbol.set(instrument.symbol);
   }
@@ -571,10 +594,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   protected onDeposit(): void {
+    if (this.termsDialogOpen()) {
+      return;
+    }
     this.openCashDialog('deposit');
   }
 
   protected onWithdraw(): void {
+    if (this.termsDialogOpen()) {
+      return;
+    }
     this.openCashDialog('withdraw');
   }
 
@@ -732,7 +761,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private animateTick(symbol: string, direction: TickAnimation['direction']): void {
     const existingTimer = this.tickAnimationTimers.get(symbol);
     if (existingTimer) clearTimeout(existingTimer);
-    const durationMs = 500 + Math.floor(Math.random() * 501);
+    const durationMs = 500;
     this.tickAnimations.update((animations) => {
       const next = new Map(animations);
       const revision = (next.get(symbol)?.revision ?? 0) + 1;
@@ -751,6 +780,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   protected onSettings(): void {
+    if (this.termsDialogOpen()) {
+      return;
+    }
     this.openHeaderDropdown.set(null);
     this.settingsOpen.set(true);
   }
@@ -762,6 +794,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected onSignOut(): void {
     this.openHeaderDropdown.set(null);
     this._authService.logout().subscribe(() => void this._router.navigateByUrl('/login'));
+  }
+
+  protected acceptTerms(): void {
+    if (this.termsSubmitting()) {
+      return;
+    }
+    this.termsSubmitting.set(true);
+    this.termsError.set(null);
+    this.accountStore.acceptTerms().subscribe({
+      next: () => {
+        this.termsSubmitting.set(false);
+        this.termsSignature.set('');
+      },
+      error: () => {
+        this.termsSubmitting.set(false);
+        this.termsError.set('We could not save your acceptance. Please try again.');
+      },
+    });
   }
 }
 

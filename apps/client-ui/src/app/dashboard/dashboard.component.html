@@ -1,10 +1,10 @@
 <div class="bg-background min-h-screen px-4 pb-4 md:px-6 lg:h-dvh lg:min-h-0 lg:overflow-hidden">
   <div class="mx-auto flex h-full max-w-[1600px] flex-col">
     @if (accountStore.refreshError()) {
-      <p role="status" class="text-loss text-xs">
-        {{ accountStore.refreshError() }}
+      <div class="text-loss text-xs">
+        <output aria-live="polite">{{ accountStore.refreshError() }}</output>
         <button type="button" class="underline" (click)="retryAccounts()">Retry</button>
-      </p>
+      </div>
     }
     <!-- Header -->
     <header
@@ -90,16 +90,15 @@
               >{{ allocationPercent().toFixed(0) }}% invested</span
             >
           </div>
-          <div
+          <meter
             class="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10"
-            role="meter"
             aria-label="Invested share of net worth"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            [attr.aria-valuenow]="allocationPercent().toFixed(0)"
+            min="0"
+            max="100"
+            [value]="allocationPercent()"
           >
-            <div class="bg-primary h-full rounded-full" [style.width.%]="allocationPercent()"></div>
-          </div>
+            {{ allocationPercent().toFixed(0) }}
+          </meter>
           <p class="text-muted-foreground mt-2 flex justify-between text-xs tabular-nums">
             <span>Invested {{ investedValue() | currency: 'USD' }}</span>
             <span>Cash {{ cashBalance() | currency: 'USD' }}</span>
@@ -150,10 +149,9 @@
             @if (orderService.historyStatus() === 'error' || orderService.historyError()) {
               <li
                 class="text-muted-foreground px-2 py-2 text-sm"
-                role="status"
                 data-testid="order-history-error"
               >
-                Unable to load orders.
+                <output aria-live="polite">Unable to load executed orders.</output>
                 <button type="button" class="text-primary underline" (click)="loadRecentOrders()">
                   Retry
                 </button>
@@ -228,10 +226,10 @@
               <app-timeframe-toggle [(value)]="portfolioTimeframe" />
             </div>
             @if (portfolioHistory.status() === 'error') {
-              <p
+              <output
                 class="text-muted-foreground mt-2 text-sm"
-                role="status"
                 data-testid="portfolio-history-error"
+                aria-live="polite"
               >
                 Unable to refresh portfolio history. Your completed trades are unaffected.
                 <button
@@ -241,7 +239,7 @@
                 >
                   Retry
                 </button>
-              </p>
+              </output>
             }
             @if (hasChartablePortfolioValue()) {
               <app-price-chart
@@ -257,27 +255,26 @@
                 timezone="America/Chicago"
               />
             } @else if (portfolioHistory.status() === 'loading') {
-              <p
+              <output
                 class="text-muted-foreground flex min-h-32 flex-1 items-center justify-center text-sm"
-                role="status"
+                aria-live="polite"
               >
                 Loading portfolio history…
-              </p>
+              </output>
             } @else if (portfolioHistory.status() !== 'error') {
-              <p
+              <output
                 class="text-muted-foreground flex min-h-32 flex-1 items-center justify-center text-center text-sm"
                 data-testid="portfolio-chart-empty-state"
-                role="status"
+                aria-live="polite"
               >
                 No portfolio history in this range yet.
-              </p>
+              </output>
             }
           } @else {
             @if (accountStore.status() === 'error') {
               <div
                 class="flex min-h-32 flex-1 flex-col items-center justify-center px-4 text-center"
                 data-testid="portfolio-chart-status"
-                role="status"
               >
                 <span
                   class="bg-primary/10 text-primary mb-3 flex size-14 items-center justify-center rounded-full"
@@ -291,13 +288,13 @@
                 </p>
               </div>
             } @else {
-              <p
+              <output
                 class="text-muted-foreground flex min-h-32 flex-1 items-center justify-center text-center text-sm"
                 data-testid="portfolio-chart-status"
-                role="status"
+                aria-live="polite"
               >
                 Loading portfolio…
-              </p>
+              </output>
             }
           }
         </section>
@@ -357,16 +354,16 @@
 
                 <ul>
                   @if (watchlist.error()) {
-                    <li role="status" class="text-loss px-2 py-2 text-xs">
-                      {{ watchlist.error() }}
+                    <li class="text-loss px-2 py-2 text-xs">
+                      <output aria-live="polite">{{ watchlist.error() }}</output>
                       <button type="button" class="underline" (click)="refreshWatchlist()">
                         Retry
                       </button>
                     </li>
                   }
                   @if (watchlist.status() === 'loading') {
-                    <li role="status" class="text-muted-foreground px-2 py-6 text-center text-sm">
-                      Loading watchlist…
+                    <li class="text-muted-foreground px-2 py-6 text-center text-sm">
+                      <output aria-live="polite">Loading watchlist…</output>
                     </li>
                   }
                   @for (watched of watchedInstruments(); track watched.symbol) {
@@ -501,6 +498,17 @@
     </main>
   </div>
 </div>
+
+@if (termsDialogOpen()) {
+  <app-terms-and-conditions-dialog
+    [signatureName]="termsSignatureName()"
+    [signature]="termsSignature"
+    [submitting]="termsSubmitting()"
+    [errorMessage]="termsError()"
+    (accepted)="acceptTerms()"
+    (declined)="onSignOut()"
+  />
+}
 
 @if (orderInstrument(); as instrument) {
   <app-order-submission

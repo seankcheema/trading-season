@@ -18,6 +18,8 @@ import java.util.UUID;
  * @param traderLevel    BEGINNER, INTERMEDIATE or ADVANCED
  * @param availableFunds cash available for trading
  * @param userRole       ADMIN or TRADER
+ * @param termsAccepted  whether the caller has accepted the platform terms
+ * @param termsAcceptedAt when the caller accepted the platform terms, or {@code null}
  * @param createdAt      when the account was registered
  */
 public record UserProfileResponse(
@@ -31,6 +33,8 @@ public record UserProfileResponse(
         String traderLevel,
         BigDecimal availableFunds,
         String userRole,
+        boolean termsAccepted,
+        OffsetDateTime termsAcceptedAt,
         OffsetDateTime createdAt
 ) {
 
@@ -50,6 +54,7 @@ public record UserProfileResponse(
         return new UserProfileResponse(user.getUserId(), account.getEmail(),
                 user.getFirstName(), user.getMiddleName(), user.getLastName(), user.getAddress(),
                 user.getDateOfBirth(), user.getTraderLevel(), user.getAvailableFunds(),
-                account.getUserRole(), user.getCreatedAt());
+                account.getUserRole(), user.getTermsAcceptedAt() != null,
+                user.getTermsAcceptedAt(), user.getCreatedAt());
     }
 }

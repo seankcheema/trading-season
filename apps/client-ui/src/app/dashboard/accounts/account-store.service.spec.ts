@@ -47,7 +47,12 @@ describe('AccountStore', () => {
     for (const account of accounts) {
       http.expectOne(holdingsUrl(account.accountId)).flush(HOLDINGS[account.accountId] ?? []);
     }
-    http.expectOne('/api/users/me').flush({ ...profile, availableFunds: funds });
+    http.expectOne('/api/users/me').flush({
+      ...profile,
+      availableFunds: funds,
+      termsAccepted: true,
+      termsAcceptedAt: '2026-10-05T20:00:00Z',
+    });
     http.expectOne(isCashTransactions).flush([]);
   }
 
@@ -65,7 +70,11 @@ describe('AccountStore', () => {
       http.expectOne('/api/me/accounts').flush(ACCOUNTS);
       http.expectOne(holdingsUrl(1)).flush(HOLDINGS[1]);
       http.expectOne(holdingsUrl(2)).flush(HOLDINGS[2]);
-      http.expectOne('/api/users/me').flush({ availableFunds: '7500.50' });
+      http.expectOne('/api/users/me').flush({
+        availableFunds: '7500.50',
+        termsAccepted: true,
+        termsAcceptedAt: '2026-10-05T20:00:00Z',
+      });
       const transactions = http.expectOne(isCashTransactions);
       expect(transactions.request.params.get('limit')).toBe('20');
       transactions.flush([cash(1, 'DEPOSIT')]);
@@ -89,7 +98,11 @@ describe('AccountStore', () => {
 
     it('reports an error when holdings or cash fail to load', () => {
       store.load();
-      http.expectOne('/api/users/me').flush({ availableFunds: 1 });
+      http.expectOne('/api/users/me').flush({
+        availableFunds: 1,
+        termsAccepted: false,
+        termsAcceptedAt: null,
+      });
       http.expectOne('/api/me/accounts').flush(ACCOUNTS);
       http.expectOne(holdingsUrl(1)).flush(HOLDINGS[1]);
       http.expectOne(holdingsUrl(2)).flush(null, { status: 500, statusText: 'Error' });
@@ -100,7 +113,11 @@ describe('AccountStore', () => {
     it('stays ready when only the transaction list fails', () => {
       store.load();
       http.expectOne('/api/me/accounts').flush([]);
-      http.expectOne('/api/users/me').flush({ availableFunds: 1 });
+      http.expectOne('/api/users/me').flush({
+        availableFunds: 1,
+        termsAccepted: true,
+        termsAcceptedAt: '2026-10-05T20:00:00Z',
+      });
       http.expectOne(isCashTransactions).flush(null, { status: 500, statusText: 'Error' });
 
       expect(store.status()).toBe('ready');
@@ -207,7 +224,11 @@ describe('AccountStore', () => {
       const post = http.expectOne({ method: 'POST', url: '/api/me/cash-transactions' });
       expect(post.request.body).toEqual({ amount: 125.5, reason: 'DEPOSIT' });
       post.flush({});
-      http.expectOne('/api/users/me').flush({ availableFunds: 5_125.5 });
+      http.expectOne('/api/users/me').flush({
+        availableFunds: 5_125.5,
+        termsAccepted: true,
+        termsAcceptedAt: '2026-10-05T20:00:00Z',
+      });
       http.expectOne(isCashTransactions).flush([cash(9, 'DEPOSIT')]);
 
       expect(done).toBe(true);
@@ -222,7 +243,11 @@ describe('AccountStore', () => {
       const post = http.expectOne({ method: 'POST', url: '/api/me/cash-transactions' });
       expect(post.request.body).toEqual({ amount: 50, reason: 'WITHDRAWAL' });
       post.flush({});
-      http.expectOne('/api/users/me').flush({ availableFunds: 4_950 });
+      http.expectOne('/api/users/me').flush({
+        availableFunds: 4_950,
+        termsAccepted: true,
+        termsAcceptedAt: '2026-10-05T20:00:00Z',
+      });
       http.expectOne(isCashTransactions).flush([cash(10, 'WITHDRAWAL')]);
 
       expect(store.cashBalance()).toBe(4_950);
@@ -307,6 +332,35 @@ describe('AccountStore', () => {
       load(ACCOUNTS, 5_000, { firstName: 'Prince', lastName: '   ' });
 
       expect(store.initials()).toBe('P');
+    });
+
+    it('exposes whether the platform terms have been accepted', () => {
+      load();
+
+      expect(store.termsAccepted()).toBe(true);
+    });
+
+    it('records terms acceptance and updates the cached profile', () => {
+      load();
+
+      let acceptedAt: string | null = null;
+      store.acceptTerms().subscribe((profile) => {
+        acceptedAt = profile.termsAcceptedAt;
+      });
+
+      const request = http.expectOne('/api/users/me/terms-acceptance');
+      expect(request.request.method).toBe('PUT');
+      expect(request.request.body).toEqual({});
+      request.flush({
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        availableFunds: 5000,
+        termsAccepted: true,
+        termsAcceptedAt: '2026-10-05T20:00:00Z',
+      });
+
+      expect(acceptedAt).toBe('2026-10-05T20:00:00Z');
+      expect(store.termsAccepted()).toBe(true);
     });
   });
   it('keeps current balances while refreshing and rejects profile responses predating a fill', () => {
