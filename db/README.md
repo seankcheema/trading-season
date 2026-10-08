@@ -72,6 +72,7 @@ erDiagram
         NUMERIC execution_buffer_percent
         TIMESTAMPTZ last_activity_at
         TIMESTAMPTZ created_at
+        TIMESTAMPTZ terms_accepted_at
     }
     portfolio_valuations {
         BIGINT valuation_id PK
