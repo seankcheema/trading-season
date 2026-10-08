@@ -60,7 +60,7 @@ export class AuthService {
         );
       }),
       switchMap(() =>
-        this._http.post<unknown>(`${this._backendApiUrl}/auth/register`, toProfile(details)).pipe(
+        this._http.post<unknown>(`${this._backendApiUrl}/registration`, toProfile(details)).pipe(
           catchError((error: unknown) => {
             // Without a profile the account can't use the dashboard, so don't leave it signed in.
             this._storage.clear();
