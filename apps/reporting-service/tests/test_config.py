@@ -110,6 +110,16 @@ class TestAppInitialization:
         response = client.get('/', headers={'Origin': 'http://localhost:4200'})
         assert response.headers.get('Access-Control-Allow-Origin') == 'http://localhost:4200'
 
+    def test_csrf_protection_enabled(self, app):
+        """Test CSRF protection is registered on the app."""
+        assert 'csrf' in app.extensions
+        assert app.config['WTF_CSRF_ENABLED'] is True
+
+    def test_csrf_protection_keeps_read_only_contract(self, client):
+        """Test CSRF protection does not change responses on the read-only API."""
+        assert client.get('/').status_code == 200
+        assert client.post('/').status_code == 405
+
 
 class TestHealthCheckEndpoint:
     """Test health check endpoint"""

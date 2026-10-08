@@ -34,6 +34,14 @@ def _events(config: dict[str, Any]) -> list[dict[str, Any]]:
 def _file_record(path: Path, day: date) -> dict[str, Any]:
     return {"name":path.name,"day":str(day),"bytes":path.stat().st_size,"sha256":sha256(path)}
 
+def _apply_overlays(config: dict[str, Any], day: date, sigma: float, volume_factor: float) -> tuple[float, float]:
+    # Multiplies in schedule order, so results are bit-identical for a given config.
+    for overlay in config["overlays"]:
+        if overlay["start"]<=str(day)<overlay["end"]:
+            overlay_params=config["conditions"][overlay["condition"]]
+            sigma*=overlay_params["volatility_multiplier"]; volume_factor*=overlay_params["volume_multiplier"]
+    return sigma,volume_factor
+
 def generate(root: Path=DEFAULT_DATASET, config_path: Path=DEFAULT_CONFIG, start_date: date|None=None,
              end_date: date|None=None, regenerate: bool=False,
              progress: Callable[[int, int, str], None] | None=None) -> dict[str, Any]:
@@ -59,12 +67,7 @@ def generate(root: Path=DEFAULT_DATASET, config_path: Path=DEFAULT_CONFIG, start
                 for index,stock in enumerate(STOCKS):
                     rng=np.random.default_rng(np.random.SeedSequence([config["seed"],day.toordinal(),index]))
                     event=next(e for e in config["schedule"] if e["start"]<=str(day)<e["end"]); params=config["conditions"][event["condition"]]
-                    sigma=float(stock.base_volatility)*params["volatility_multiplier"]
-                    volume_factor=params["volume_multiplier"]
-                    for overlay in config["overlays"]:
-                        if overlay["start"]<=str(day)<overlay["end"]:
-                            overlay_params=config["conditions"][overlay["condition"]]
-                            sigma*=overlay_params["volatility_multiplier"]; volume_factor*=overlay_params["volume_multiplier"]
+                    sigma,volume_factor=_apply_overlays(config,day,float(stock.base_volatility)*params["volatility_multiplier"],params["volume_multiplier"])
                     shocks=rng.normal(params["drift"]/(252*SESSION_SECONDS),sigma/np.sqrt(252*SESSION_SECONDS),SESSION_SECONDS)
                     prices=np.round(previous[stock.symbol]*np.exp(np.cumsum(shocks)),6); prices=np.maximum(prices,0.000002); previous[stock.symbol]=float(prices[-1])
                     spread=np.maximum(0.000002,np.round(prices*0.0001,6)); bid=np.round(prices-spread/2,6); ask=np.round(prices+spread/2,6)

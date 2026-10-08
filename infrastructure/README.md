@@ -7,6 +7,7 @@ Container and CI configuration. None of it is a production deployment.
 | [docker-compose.local.yml](docker-compose/docker-compose.local.yml) | Full local stack: UI, services, database, Kafka, reporting |
 | [docker-compose.jenkins.yml](docker-compose/docker-compose.jenkins.yml) | Optional Jenkins container (UI on host port 8888) |
 | [Jenkinsfile](jenkins/Jenkinsfile) | CI pipeline |
+| [sonar-project.properties](jenkins/sonar-project.properties), [jacoco-to-sonar-coverage.mjs](jenkins/jacoco-to-sonar-coverage.mjs) | SonarQube analysis settings and the Java coverage conversion it depends on |
 | [docker/init-db.sh](docker/init-db.sh) | `db-init`: applies every `db/migrations/V*.sql` once, recorded in `public.schema_migrations` |
 | [docker/Dockerfile.market-data](docker/Dockerfile.market-data) | Image for the market-data scripts and the Jenkins integration stage |
 | [docker/Dockerfile.playwright](docker/Dockerfile.playwright) | Slim Chromium-only image for the Playwright E2E stage |
@@ -43,9 +44,32 @@ docker compose --project-name trading-season-local -f infrastructure/docker-comp
 
 The pipeline needs a Linux agent with Docker and Compose, JDK 21 at `/usr/lib/jvm/java-21-amazon-corretto`, a Maven tool named `Maven`, and a NodeJS tool named `NodeJS` running 24.8 or later. It requires 5 GiB of free workspace storage.
 
-Stages: toolchain and preflight checks, depth-1 checkout, `npm ci`, parallel test suites (both Java services, auth, reporting, frontend, synthetic market data), Javadocs, Playwright E2E, then a build of the local stack with build-scoped JWT keys and smoke checks. A failing test stage skips everything after it. Reports are archived per stage, missing JUnit reports fail the build, and each tier enforces its own coverage floor (UI 90, Holdings and Trade 85, Order and Sell 70, auth 70).
+Stages: toolchain and preflight checks, depth-1 checkout, `npm ci`, parallel test suites (both Java services, auth, reporting, frontend, synthetic market data), Javadocs, SonarQube analysis and quality gate, Playwright E2E, then a build of the local stack with build-scoped JWT keys and smoke checks. A failing test stage skips everything after it. Reports are archived per stage, missing JUnit reports fail the build, and each tier enforces its own coverage floor (UI 90, Holdings and Trade 85, Order and Sell 70, auth 70).
 
 Cleanup always removes the build-scoped test containers, volumes, and images, tears down the local stack only if this build started it and failed, trims Docker caches, and deletes the workspace. Playwright images and Maven and npm caches are kept only when at least 6 GiB will remain free.
+
+### SonarQube
+
+The analysis stage runs after the test suites so it can import their coverage reports, and the quality gate stage aborts the build when the gate fails.
+
+| Where | Setting |
+| --- | --- |
+| Jenkins plugin | SonarQube Scanner |
+| Manage Jenkins > Tools | A SonarQube Scanner installation named `SonarScanner` |
+| Manage Jenkins > System | A SonarQube server named `SonarQube` with the server URL and a Secret text credential holding the project analysis token |
+| SonarQube > Administration > Webhooks | A webhook to `<jenkins-url>/sonarqube-webhook/`; without it the quality gate stage waits until it times out |
+| SonarQube project | Key and name `DuaLeapa-Project`, as set in [sonar-project.properties](jenkins/sonar-project.properties) |
+
+The Jenkinsfile holds no server URL or token; both come from the `SonarQube` server entry. Language rules come from the quality profiles assigned to the project in SonarQube, not from this repository.
+
+Coverage reaches SonarQube from the reports the test stages write: LCOV for the UI and auth service, Cobertura XML for the reporting service, and JaCoCo for the Java services. [jacoco-to-sonar-coverage.mjs](jenkins/jacoco-to-sonar-coverage.mjs) first rewrites each JaCoCo report with full file paths, because both services use the same Java packages and SonarQube's JaCoCo importer would otherwise credit one service's coverage to the other. The reporting tests mount the workspace at its own path inside the container so the source path in `coverage.xml` exists on the agent.
+
+To scan from a workstation, run the test suites, then from the repository root:
+
+```sh
+node infrastructure/jenkins/jacoco-to-sonar-coverage.mjs apps/holdings-and-trade-service apps/order-and-sell-service
+SONAR_HOST_URL=<server-url> SONAR_TOKEN=<token> sonar-scanner -Dproject.settings=infrastructure/jenkins/sonar-project.properties
+```
 
 ### Disk space failures
 
