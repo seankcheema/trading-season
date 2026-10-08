@@ -68,7 +68,7 @@ describe('AuthService', () => {
     expect(authReq.request.body).toEqual({ email: DETAILS.email, password: DETAILS.password });
     authReq.flush(TOKENS);
 
-    const profileReq = http.expectOne('/api/auth/register');
+    const profileReq = http.expectOne('/api/registration');
     expect(profileReq.request.body).toEqual({
       email: 'jane@example.com',
       firstName: 'Jane',
@@ -96,7 +96,7 @@ describe('AuthService', () => {
     const loginReq = http.expectOne('http://localhost:3001/auth/login');
     expect(loginReq.request.body).toEqual({ email: DETAILS.email, password: DETAILS.password });
     loginReq.flush(TOKENS);
-    http.expectOne('/api/auth/register').flush({}, { status: 201, statusText: 'Created' });
+    http.expectOne('/api/registration').flush({}, { status: 201, statusText: 'Created' });
 
     await result;
     expect(service.isAuthenticated()).toBe(true);
@@ -121,7 +121,7 @@ describe('AuthService', () => {
 
     http.expectOne('http://localhost:3001/auth/register').flush(TOKENS);
     http
-      .expectOne('/api/auth/register')
+      .expectOne('/api/registration')
       .flush({ error: 'username: must not be blank' }, { status: 400, statusText: 'Bad Request' });
 
     const error = await result.catch((e: unknown) => e);

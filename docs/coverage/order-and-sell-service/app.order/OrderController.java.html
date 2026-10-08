@@ -3,6 +3,8 @@
 import app.auth.AuthenticatedUser;
 import app.order.dto.OrderRequest;
 import app.order.dto.OrderResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -28,13 +30,19 @@ import java.util.List;
  */
 @RestController
 @RequestMapping(&quot;/api/orders&quot;)
+@Tag(name = &quot;Orders&quot;, description = &quot;Order submission and retrieval endpoints&quot;)
 public class OrderController {
 
     private final OrderService orderService;
 
-<span class="fc" id="L35">    public OrderController(OrderService orderService) {</span>
-<span class="fc" id="L36">        this.orderService = orderService;</span>
-<span class="fc" id="L37">    }</span>
+    /**
+     * Creates the controller.
+     *
+     * @param orderService order submission and history logic
+     */
+<span class="fc" id="L43">    public OrderController(OrderService orderService) {</span>
+<span class="fc" id="L44">        this.orderService = orderService;</span>
+<span class="fc" id="L45">    }</span>
 
     /**
      * Submits a buy or sell order (KAN-93). Returns 201 with the order's
@@ -49,10 +57,14 @@ public class OrderController {
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = &quot;Submit an order&quot;, description = &quot;Submits a buy or sell order and returns its outcome: &quot;
+            + &quot;FILLED, REJECTED, or ACCEPTED when the order was accepted but its execution failed and it stays on record. &quot;
+            + &quot;Each committed status change is also published to the Kafka topic trade-events and pushed to the caller's &quot;
+            + &quot;open GET /api/orders/stream connections.&quot;)
     public OrderResponse submitOrder(@Valid @RequestBody OrderRequest request,
                                      @AuthenticationPrincipal Jwt jwt) {
-<span class="fc" id="L54">        Order order = orderService.submitOrder(request, AuthenticatedUser.from(jwt).userId());</span>
-<span class="fc" id="L55">        return OrderResponse.from(order);</span>
+<span class="fc" id="L66">        Order order = orderService.submitOrder(request, AuthenticatedUser.from(jwt).userId());</span>
+<span class="fc" id="L67">        return OrderResponse.from(order);</span>
     }
 
     /**
@@ -65,10 +77,11 @@ public class OrderController {
      * @return the caller's orders across every account they own
      */
     @GetMapping
+    @Operation(summary = &quot;List user orders&quot;, description = &quot;Retrieves all orders submitted by the authenticated user, newest first&quot;)
     public List&lt;OrderResponse&gt; listOwnOrders(@AuthenticationPrincipal Jwt jwt) {
-<span class="fc" id="L69">        return orderService.getOwnOrders(AuthenticatedUser.from(jwt).userId()).stream()</span>
-<span class="fc" id="L70">                .map(OrderResponse::from)</span>
-<span class="fc" id="L71">                .toList();</span>
+<span class="fc" id="L82">        return orderService.getOwnOrders(AuthenticatedUser.from(jwt).userId()).stream()</span>
+<span class="fc" id="L83">                .map(OrderResponse::from)</span>
+<span class="fc" id="L84">                .toList();</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

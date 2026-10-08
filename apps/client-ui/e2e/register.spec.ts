@@ -2,6 +2,10 @@ import { newAccount } from './fixtures/accounts';
 import { readStoredSession } from './fixtures/pages';
 import { expect, test } from './fixtures/test';
 
+/** Either registration call: credentials at the auth service or the profile at the business backend. */
+const isRegistrationRequest = (request: { url: string }): boolean =>
+  request.url.includes('/auth/register') || request.url.includes('/api/registration');
+
 test.describe('registering', () => {
   test('signs the new user in automatically and lands on the dashboard', async ({
     page,
@@ -37,11 +41,11 @@ test.describe('registering', () => {
 
     const calls = api.requests.filter(
       (request) =>
-        request.url.endsWith('/auth/register') || request.url.endsWith('/api/auth/register'),
+        request.url.endsWith('/auth/register') || request.url.endsWith('/api/registration'),
     );
     expect(calls.map((call) => new URL(call.url).pathname)).toEqual([
       '/auth/register',
-      '/api/auth/register',
+      '/api/registration',
     ]);
 
     const credentials = JSON.parse(calls[0].body ?? '{}');
@@ -177,9 +181,7 @@ test.describe('registration form validation', () => {
 
     await expect(registerPage.ssn).toHaveValue('123-45');
     await expect(registerPage.page.getByText('Enter SSN as XXX-XX-XXXX.')).toBeVisible();
-    expect(api.requests.filter((request) => request.url.includes('/auth/register'))).toHaveLength(
-      0,
-    );
+    expect(api.requests.filter(isRegistrationRequest)).toHaveLength(0);
   });
 
   test('rejects a password that misses a rule and sends nothing', async ({ registerPage, api }) => {
@@ -190,9 +192,7 @@ test.describe('registration form validation', () => {
     await registerPage.submit.click();
 
     await expect(registerPage.page).toHaveURL(/\/register$/);
-    expect(api.requests.filter((request) => request.url.includes('/auth/register'))).toHaveLength(
-      0,
-    );
+    expect(api.requests.filter(isRegistrationRequest)).toHaveLength(0);
   });
 
   test('requires the confirmation to match', async ({ registerPage, api }) => {
@@ -204,9 +204,7 @@ test.describe('registration form validation', () => {
     await registerPage.submit.click();
 
     await expect(registerPage.page.getByText('Passwords do not match.')).toBeVisible();
-    expect(api.requests.filter((request) => request.url.includes('/auth/register'))).toHaveLength(
-      0,
-    );
+    expect(api.requests.filter(isRegistrationRequest)).toHaveLength(0);
   });
 
   test('rejects funds below the 5000 minimum and sends nothing', async ({ registerPage, api }) => {
@@ -217,8 +215,6 @@ test.describe('registration form validation', () => {
     await registerPage.submit.click();
 
     await expect(registerPage.page.getByText('Enter at least $5,000.')).toBeVisible();
-    expect(api.requests.filter((request) => request.url.includes('/auth/register'))).toHaveLength(
-      0,
-    );
+    expect(api.requests.filter(isRegistrationRequest)).toHaveLength(0);
   });
 });

@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MarketController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.market</a> &gt; <span class="el_source">MarketController.java</span></div><h1>MarketController.java</h1><pre class="source lang-java linenums">package app.market;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
@@ -18,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 /** Public simulated market reads and authenticated shared replay clock control. */
 @RestController
 @RequestMapping(&quot;/api/market&quot;)
+@Tag(name = &quot;Market Data&quot;, description = &quot;Market data and trading simulation endpoints&quot;)
 public class MarketController {
     private final MarketReplayService service;
 
@@ -25,7 +28,7 @@ public class MarketController {
      * Creates the controller backed by the shared replay service.
      * @param service market replay service
      */
-<span class="fc" id="L28">    public MarketController(MarketReplayService service) { this.service = service; }</span>
+<span class="fc" id="L31">    public MarketController(MarketReplayService service) { this.service = service; }</span>
 
     /**
      * Returns current prices for every stock at the shared replay cursor.
@@ -33,10 +36,11 @@ public class MarketController {
      * @return the current synchronized stock snapshot
      */
     @GetMapping(&quot;/snapshot&quot;)
+    @Operation(summary = &quot;Get current market snapshot&quot;, description = &quot;Returns current prices for all stocks at the current market time&quot;)
     public ResponseEntity&lt;MarketResponses.Snapshot&gt; snapshot(
             @RequestParam(required = false) Long sessionId) {
-<span class="fc" id="L38">        return ResponseEntity.ok().cacheControl(CacheControl.maxAge(1, TimeUnit.SECONDS).cachePrivate())</span>
-<span class="fc" id="L39">                .body(service.snapshot(sessionId));</span>
+<span class="fc" id="L42">        return ResponseEntity.ok().cacheControl(CacheControl.maxAge(1, TimeUnit.SECONDS).cachePrivate())</span>
+<span class="fc" id="L43">                .body(service.snapshot(sessionId));</span>
     }
 
     /**
@@ -47,12 +51,13 @@ public class MarketController {
      * @return the aggregated candle series
      */
     @GetMapping(&quot;/candles&quot;)
+    @Operation(summary = &quot;Get OHLCV candle data&quot;, description = &quot;Retrieves Open-High-Low-Close-Volume (OHLCV) data for a stock in the specified timeframe&quot;)
     public ResponseEntity&lt;MarketResponses.CandleSeries&gt; candles(
             @RequestParam(required = false) Long sessionId,
             @RequestParam String symbol,
             @RequestParam String timeframe) {
-<span class="fc" id="L54">        return ResponseEntity.ok().cacheControl(CacheControl.maxAge(5, TimeUnit.SECONDS).cachePrivate())</span>
-<span class="fc" id="L55">                .body(service.candles(sessionId, symbol, timeframe));</span>
+<span class="fc" id="L59">        return ResponseEntity.ok().cacheControl(CacheControl.maxAge(5, TimeUnit.SECONDS).cachePrivate())</span>
+<span class="fc" id="L60">                .body(service.candles(sessionId, symbol, timeframe));</span>
     }
 
     /**
@@ -63,14 +68,15 @@ public class MarketController {
      * @return a synchronized snapshot at the selected timestamp
      */
     @PutMapping(&quot;/clock&quot;)
+    @Operation(summary = &quot;Set market clock&quot;, description = &quot;Moves the simulated market clock to a specific trading timestamp (authenticated users only)&quot;)
     public ResponseEntity&lt;MarketResponses.Snapshot&gt; setClock(
             @RequestParam(required = false) Long sessionId,
             @RequestBody MarketResponses.ClockRequest request) {
-<span class="pc bpc" id="L69" title="1 of 4 branches missed.">        if (request == null || request.timestamp() == null) {</span>
-<span class="fc" id="L70">            throw new MarketRequestException(&quot;timestamp is required&quot;);</span>
+<span class="pc bpc" id="L75" title="1 of 4 branches missed.">        if (request == null || request.timestamp() == null) {</span>
+<span class="fc" id="L76">            throw new MarketRequestException(&quot;timestamp is required&quot;);</span>
         }
-<span class="fc" id="L72">        return ResponseEntity.ok().cacheControl(CacheControl.noStore())</span>
-<span class="fc" id="L73">                .body(service.setClock(sessionId, request.timestamp()));</span>
+<span class="fc" id="L78">        return ResponseEntity.ok().cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L79">                .body(service.setClock(sessionId, request.timestamp()));</span>
     }
 
     /**
@@ -81,10 +87,11 @@ public class MarketController {
      * @return the open event emitter
      */
     @GetMapping(value = &quot;/stream&quot;, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @Operation(summary = &quot;Subscribe to market data stream&quot;, description = &quot;Opens a server-sent event stream for real-time synchronized market data updates&quot;)
     public SseEmitter stream(@RequestParam(required = false) Long sessionId,
             @RequestHeader(value = &quot;Last-Event-ID&quot;, required = false) Long lastEventId,
             HttpServletRequest request) {
-<span class="fc" id="L87">        return service.subscribe(sessionId, request.getRemoteAddr(), lastEventId);</span>
+<span class="fc" id="L94">        return service.subscribe(sessionId, request.getRemoteAddr(), lastEventId);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

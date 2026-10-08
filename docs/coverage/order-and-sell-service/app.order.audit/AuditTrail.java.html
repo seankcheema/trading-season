@@ -17,7 +17,11 @@ import java.time.OffsetDateTime;
  */
 @Entity
 @Table(name = &quot;audit_trail&quot;)
-<span class="fc" id="L20">public class AuditTrail {</span>
+public class AuditTrail {
+
+    /** Creates an instance of this class. */
+<span class="fc" id="L23">    public AuditTrail() {</span>
+<span class="fc" id="L24">    }</span>
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -36,45 +40,95 @@ import java.time.OffsetDateTime;
     @Column(name = &quot;recorded_at&quot;, nullable = false, updatable = false)
     private OffsetDateTime recordedAt;
 
+    /**
+     * Returns the audit ID.
+     *
+     * @return the audit ID
+     */
     public Integer getAuditId() {
-<span class="fc" id="L40">        return auditId;</span>
+<span class="fc" id="L49">        return auditId;</span>
     }
 
+    /**
+     * Sets the audit ID.
+     *
+     * @param auditId the audit ID
+     */
     public void setAuditId(Integer auditId) {
-<span class="fc" id="L44">        this.auditId = auditId;</span>
-<span class="fc" id="L45">    }</span>
+<span class="fc" id="L58">        this.auditId = auditId;</span>
+<span class="fc" id="L59">    }</span>
 
+    /**
+     * Returns the order ID.
+     *
+     * @return the order ID
+     */
     public Integer getOrderId() {
-<span class="fc" id="L48">        return orderId;</span>
+<span class="fc" id="L67">        return orderId;</span>
     }
 
+    /**
+     * Sets the order ID.
+     *
+     * @param orderId the order ID
+     */
     public void setOrderId(Integer orderId) {
-<span class="fc" id="L52">        this.orderId = orderId;</span>
-<span class="fc" id="L53">    }</span>
-
-    public String getEventType() {
-<span class="fc" id="L56">        return eventType;</span>
-    }
-
-    public void setEventType(String eventType) {
-<span class="fc" id="L60">        this.eventType = eventType;</span>
-<span class="fc" id="L61">    }</span>
-
-    public String getDetail() {
-<span class="fc" id="L64">        return detail;</span>
-    }
-
-    public void setDetail(String detail) {
-<span class="fc" id="L68">        this.detail = detail;</span>
-<span class="fc" id="L69">    }</span>
-
-    public OffsetDateTime getRecordedAt() {
-<span class="fc" id="L72">        return recordedAt;</span>
-    }
-
-    public void setRecordedAt(OffsetDateTime recordedAt) {
-<span class="fc" id="L76">        this.recordedAt = recordedAt;</span>
+<span class="fc" id="L76">        this.orderId = orderId;</span>
 <span class="fc" id="L77">    }</span>
+
+    /**
+     * Returns the event type.
+     *
+     * @return the event type
+     */
+    public String getEventType() {
+<span class="fc" id="L85">        return eventType;</span>
+    }
+
+    /**
+     * Sets the event type.
+     *
+     * @param eventType the event type
+     */
+    public void setEventType(String eventType) {
+<span class="fc" id="L94">        this.eventType = eventType;</span>
+<span class="fc" id="L95">    }</span>
+
+    /**
+     * Returns the detail.
+     *
+     * @return the detail
+     */
+    public String getDetail() {
+<span class="fc" id="L103">        return detail;</span>
+    }
+
+    /**
+     * Sets the detail.
+     *
+     * @param detail the detail
+     */
+    public void setDetail(String detail) {
+<span class="fc" id="L112">        this.detail = detail;</span>
+<span class="fc" id="L113">    }</span>
+
+    /**
+     * Returns the recorded at.
+     *
+     * @return the recorded at
+     */
+    public OffsetDateTime getRecordedAt() {
+<span class="fc" id="L121">        return recordedAt;</span>
+    }
+
+    /**
+     * Sets the recorded at.
+     *
+     * @param recordedAt the recorded at
+     */
+    public void setRecordedAt(OffsetDateTime recordedAt) {
+<span class="fc" id="L130">        this.recordedAt = recordedAt;</span>
+<span class="fc" id="L131">    }</span>
 }
 
 

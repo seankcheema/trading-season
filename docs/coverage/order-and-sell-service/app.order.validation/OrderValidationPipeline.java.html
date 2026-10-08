@@ -27,22 +27,33 @@ public class OrderValidationPipeline {
 
     private final List&lt;OrderValidator&gt; validators;
 
-<span class="fc" id="L30">    public OrderValidationPipeline(List&lt;OrderValidator&gt; validators) {</span>
-<span class="fc" id="L31">        this.validators = validators;</span>
-<span class="fc" id="L32">    }</span>
+    /**
+     * Creates the pipeline.
+     *
+     * @param validators every {@link OrderValidator} rule, discovered by Spring
+     */
+<span class="fc" id="L35">    public OrderValidationPipeline(List&lt;OrderValidator&gt; validators) {</span>
+<span class="fc" id="L36">        this.validators = validators;</span>
+<span class="fc" id="L37">    }</span>
 
     /**
      * Runs the order through every validator, returning the first rejection
      * encountered, or {@link ValidationResult#pass()} if none rejects it.
+     *
+     * @param request the order being validated
+     * @param user the order owner
+     * @param account the account the order is placed against
+     * @param instrument the instrument being traded
+     * @return the first rejection, or a pass when every rule is satisfied
      */
     public ValidationResult run(OrderRequest request, User user, Account account, Instrument instrument) {
-<span class="fc bfc" id="L39" title="All 2 branches covered.">        for (OrderValidator validator : validators) {</span>
-<span class="fc" id="L40">            ValidationResult result = validator.validate(request, user, account, instrument);</span>
-<span class="fc bfc" id="L41" title="All 2 branches covered.">            if (!result.passed()) {</span>
-<span class="fc" id="L42">                return result;</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        for (OrderValidator validator : validators) {</span>
+<span class="fc" id="L51">            ValidationResult result = validator.validate(request, user, account, instrument);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            if (!result.passed()) {</span>
+<span class="fc" id="L53">                return result;</span>
             }
-<span class="fc" id="L44">        }</span>
-<span class="fc" id="L45">        return ValidationResult.pass();</span>
+<span class="fc" id="L55">        }</span>
+<span class="fc" id="L56">        return ValidationResult.pass();</span>
     }
 }
 

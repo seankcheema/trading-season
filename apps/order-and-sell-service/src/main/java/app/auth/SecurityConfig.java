@@ -38,9 +38,9 @@ import java.util.List;
  * {@code sub} claim is the user's UUID and is the only identifier shared between
  * the auth and business databases.
  *
- * <p>Every endpoint requires a valid bearer token except the account existence
- * check and the read-only simulated market endpoints. Market mutations and all
- * user-specific operations remain authenticated.
+ * <p>Every endpoint requires a valid bearer token except the read-only
+ * simulated market endpoints. Market mutations and all user-specific
+ * operations remain authenticated.
  */
 @Configuration
 public class SecurityConfig {
@@ -69,7 +69,6 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.POST, "/api/auth/account-exists").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/market/**").permitAll()
                         .requestMatchers("/error").permitAll()
                         // Swagger/OpenAPI documentation paths

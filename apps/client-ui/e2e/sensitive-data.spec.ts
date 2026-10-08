@@ -145,7 +145,7 @@ test.describe('where the secrets travel', () => {
     const carryingSsn = api.requestsContaining(account.ssn);
     expect(carryingSsn.length).toBeGreaterThan(0);
     for (const request of carryingSsn) {
-      expect(new URL(request.url).pathname).toBe('/api/auth/register');
+      expect(new URL(request.url).pathname).toBe('/api/registration');
       expect(request.url.startsWith('http://localhost:3001/')).toBe(false);
     }
   });

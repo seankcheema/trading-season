@@ -12,58 +12,70 @@ public class WatchlistRepository {
     private final JdbcTemplate jdbc;
 
     /**
+     * Creates the repository.
+     *
      * @param jdbc database query helper
      */
-<span class="fc" id="L17">    public WatchlistRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }</span>
+<span class="fc" id="L19">    public WatchlistRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }</span>
 
     /**
      * A saved stock, without mutable market prices.
+     *
      * @param symbol seeded stock symbol
      * @param createdAt time the stock was first saved
      */
-<span class="fc" id="L24">    public record Entry(String symbol, Instant createdAt) { }</span>
+<span class="fc" id="L27">    public record Entry(String symbol, Instant createdAt) { }</span>
 
     /**
+     * Lists the owner's saved stocks.
+     *
      * @param owner verified caller UUID
      * @return saved stocks in addition order
      */
     public List&lt;Entry&gt; list(UUID owner) {
-<span class="fc" id="L31">        return jdbc.query(&quot;SELECT symbol, created_at FROM user_watchlist WHERE user_id = ? ORDER BY created_at, symbol&quot;,</span>
-<span class="fc" id="L32">                (row, index) -&gt; new Entry(row.getString(&quot;symbol&quot;), row.getTimestamp(&quot;created_at&quot;).toInstant()), owner);</span>
+<span class="fc" id="L36">        return jdbc.query(&quot;SELECT symbol, created_at FROM user_watchlist WHERE user_id = ? ORDER BY created_at, symbol&quot;,</span>
+<span class="fc" id="L37">                (row, index) -&gt; new Entry(row.getString(&quot;symbol&quot;), row.getTimestamp(&quot;created_at&quot;).toInstant()), owner);</span>
     }
 
     /**
+     * Checks whether a seeded stock exists.
+     *
      * @param symbol normalized symbol
      * @return whether a seeded stock exists
      */
     public boolean stockExists(String symbol) {
-<span class="fc" id="L40">        return Boolean.TRUE.equals(jdbc.queryForObject(&quot;SELECT EXISTS (SELECT 1 FROM stocks WHERE symbol = ?)&quot;, Boolean.class, symbol));</span>
+<span class="fc" id="L47">        return Boolean.TRUE.equals(jdbc.queryForObject(&quot;SELECT EXISTS (SELECT 1 FROM stocks WHERE symbol = ?)&quot;, Boolean.class, symbol));</span>
     }
 
     /**
      * Locks the owner's profile to serialize concurrent additions.
+     *
      * @param owner verified caller UUID
      * @return whether the business profile exists
      */
     public boolean lockOwner(UUID owner) {
-<span class="fc bfc" id="L49" title="All 2 branches covered.">        return !jdbc.queryForList(&quot;SELECT user_id FROM users WHERE user_id = ? FOR UPDATE&quot;, owner).isEmpty();</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        return !jdbc.queryForList(&quot;SELECT user_id FROM users WHERE user_id = ? FOR UPDATE&quot;, owner).isEmpty();</span>
     }
 
     /**
+     * Saves a stock for the owner unless it is already saved.
+     *
      * @param owner verified caller UUID
      * @param symbol normalized existing stock symbol
      */
     public void add(UUID owner, String symbol) {
-<span class="fc" id="L57">        jdbc.update(&quot;INSERT INTO user_watchlist (user_id, symbol) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM user_watchlist WHERE user_id = ? AND symbol = ?)&quot;,</span>
+<span class="fc" id="L67">        jdbc.update(&quot;INSERT INTO user_watchlist (user_id, symbol) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM user_watchlist WHERE user_id = ? AND symbol = ?)&quot;,</span>
                 owner, symbol, owner, symbol);
-<span class="fc" id="L59">    }</span>
+<span class="fc" id="L69">    }</span>
 
     /**
+     * Removes a saved stock for the owner.
+     *
      * @param owner verified caller UUID
      * @param symbol normalized symbol; absent entries are ignored
      */
     public void remove(UUID owner, String symbol) {
-<span class="fc" id="L66">        jdbc.update(&quot;DELETE FROM user_watchlist WHERE user_id = ? AND symbol = ?&quot;, owner, symbol);</span>
-<span class="fc" id="L67">    }</span>
+<span class="fc" id="L78">        jdbc.update(&quot;DELETE FROM user_watchlist WHERE user_id = ? AND symbol = ?&quot;, owner, symbol);</span>
+<span class="fc" id="L79">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

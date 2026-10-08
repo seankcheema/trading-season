@@ -23,7 +23,11 @@ import java.util.UUID;
 @Entity
 @Table(name = &quot;accounts&quot;)
 
-<span class="fc" id="L26">public class Account {</span>
+public class Account {
+
+    /** Creates an instance of this class. */
+<span class="fc" id="L29">    public Account() {</span>
+<span class="fc" id="L30">    }</span>
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -32,7 +36,7 @@ import java.util.UUID;
 @Column(name = &quot;user_id&quot;, nullable = false, updatable = false)
     private UUID userId;
 
-<span class="fc" id="L35">    @Column(name = &quot;cash_balance&quot;, nullable = false)</span>
+<span class="fc" id="L39">    @Column(name = &quot;cash_balance&quot;, nullable = false)</span>
     private BigDecimal cashBalance = BigDecimal.ZERO;
 
     @Column(name = &quot;opened_date&quot;, nullable = false)
@@ -41,60 +45,125 @@ import java.util.UUID;
     @Column(nullable = false)
     private String name;
 
-<span class="fc" id="L44">    @Column(nullable = false)</span>
+<span class="fc" id="L48">    @Column(nullable = false)</span>
     private String currency = &quot;USD&quot;;
 
+    /**
+     * Returns the ID.
+     *
+     * @return the ID
+     */
     public Integer getId() {
-<span class="fc" id="L48">        return id;</span>
+<span class="fc" id="L57">        return id;</span>
     }
 
+    /**
+     * Sets the ID.
+     *
+     * @param id the ID
+     */
     public void setId(Integer id) {
-<span class="fc" id="L52">        this.id = id;</span>
-<span class="fc" id="L53">    }</span>
+<span class="fc" id="L66">        this.id = id;</span>
+<span class="fc" id="L67">    }</span>
 
+    /**
+     * Returns the account ID.
+     *
+     * @return the account ID
+     */
     public Integer getAccountId() {
-<span class="fc" id="L56">        return id;</span>
+<span class="fc" id="L75">        return id;</span>
     }
 
+    /**
+     * Returns the user ID.
+     *
+     * @return the user ID
+     */
     public UUID getUserId() {
-<span class="fc" id="L60">        return userId;</span>
+<span class="fc" id="L84">        return userId;</span>
     }
 
+    /**
+     * Sets the user ID.
+     *
+     * @param userId the user ID
+     */
     public void setUserId(UUID userId) {
-<span class="fc" id="L64">        this.userId = userId;</span>
-<span class="fc" id="L65">    }</span>
+<span class="fc" id="L93">        this.userId = userId;</span>
+<span class="fc" id="L94">    }</span>
 
+    /**
+     * Returns the cash balance.
+     *
+     * @return the cash balance
+     */
     public BigDecimal getCashBalance() {
-<span class="fc" id="L68">        return cashBalance;</span>
+<span class="fc" id="L102">        return cashBalance;</span>
     }
 
+    /**
+     * Sets the cash balance.
+     *
+     * @param cashBalance the cash balance
+     */
     public void setCashBalance(BigDecimal cashBalance) {
-<span class="fc" id="L72">        this.cashBalance = cashBalance;</span>
-<span class="fc" id="L73">    }</span>
+<span class="fc" id="L111">        this.cashBalance = cashBalance;</span>
+<span class="fc" id="L112">    }</span>
 
+    /**
+     * Returns the opened date.
+     *
+     * @return the opened date
+     */
     public LocalDate getOpenedDate() {
-<span class="fc" id="L76">        return openedDate;</span>
+<span class="fc" id="L120">        return openedDate;</span>
     }
 
+    /**
+     * Sets the opened date.
+     *
+     * @param openedDate the opened date
+     */
     public void setOpenedDate(LocalDate openedDate) {
-<span class="fc" id="L80">        this.openedDate = openedDate;</span>
-<span class="fc" id="L81">    }</span>
+<span class="fc" id="L129">        this.openedDate = openedDate;</span>
+<span class="fc" id="L130">    }</span>
 
+    /**
+     * Returns the name.
+     *
+     * @return the name
+     */
     public String getName() {
-<span class="fc" id="L84">        return name;</span>
+<span class="fc" id="L138">        return name;</span>
     }
 
+    /**
+     * Sets the name.
+     *
+     * @param name the name
+     */
     public void setName(String name) {
-<span class="fc" id="L88">        this.name = name;</span>
-<span class="fc" id="L89">    }</span>
+<span class="fc" id="L147">        this.name = name;</span>
+<span class="fc" id="L148">    }</span>
 
+    /**
+     * Returns the currency.
+     *
+     * @return the currency
+     */
     public String getCurrency() {
-<span class="fc" id="L92">        return currency;</span>
+<span class="fc" id="L156">        return currency;</span>
     }
 
+    /**
+     * Sets the currency.
+     *
+     * @param currency the currency
+     */
     public void setCurrency(String currency) {
-<span class="fc" id="L96">        this.currency = currency;</span>
-<span class="fc" id="L97">    }</span>
+<span class="fc" id="L165">        this.currency = currency;</span>
+<span class="fc" id="L166">    }</span>
 }
 
 

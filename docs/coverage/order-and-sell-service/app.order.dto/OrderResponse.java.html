@@ -36,20 +36,25 @@ import java.time.OffsetDateTime;
         OffsetDateTime resolvedAt,
         OffsetDateTime simulatedAt
 ) {
-    /** Builds a response from a persisted order. */
+    /**
+     * Builds a response from a persisted order.
+     *
+     * @param order the persisted order
+     * @return the response describing the order
+     */
     public static OrderResponse from(Order order) {
-<span class="fc" id="L41">        return new OrderResponse(</span>
-<span class="fc" id="L42">                order.getOrderId(),</span>
-<span class="fc" id="L43">                order.getInstrumentId(),</span>
-<span class="fc" id="L44">                order.getAccountId(),</span>
-<span class="fc" id="L45">                order.getStatus(),</span>
-<span class="fc" id="L46">                order.getOrderType(),</span>
-<span class="fc" id="L47">                order.getQuantity(),</span>
-<span class="fc" id="L48">                order.getIndicativePrice(),</span>
-<span class="fc" id="L49">                order.getRejectionReason(),</span>
-<span class="fc" id="L50">                order.getSubmittedAt(),</span>
-<span class="fc" id="L51">                order.getResolvedAt(),</span>
-<span class="fc" id="L52">                order.getSimulatedAt()</span>
+<span class="fc" id="L46">        return new OrderResponse(</span>
+<span class="fc" id="L47">                order.getOrderId(),</span>
+<span class="fc" id="L48">                order.getInstrumentId(),</span>
+<span class="fc" id="L49">                order.getAccountId(),</span>
+<span class="fc" id="L50">                order.getStatus(),</span>
+<span class="fc" id="L51">                order.getOrderType(),</span>
+<span class="fc" id="L52">                order.getQuantity(),</span>
+<span class="fc" id="L53">                order.getIndicativePrice(),</span>
+<span class="fc" id="L54">                order.getRejectionReason(),</span>
+<span class="fc" id="L55">                order.getSubmittedAt(),</span>
+<span class="fc" id="L56">                order.getResolvedAt(),</span>
+<span class="fc" id="L57">                order.getSimulatedAt()</span>
         );
     }
 }

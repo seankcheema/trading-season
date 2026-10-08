@@ -88,6 +88,8 @@ sequenceDiagram
     Auth-->>UI: New access token and rotated refresh token
 ```
 
+Registration is two calls: the UI creates credentials with `POST /auth/register` on the Auth Service, then posts the profile with the returned token to `POST /api/registration` on the Holdings and Trade Service, which also opens the default account. Order and Sell exposes no registration endpoint.
+
 ## Order flow
 
 ```mermaid
