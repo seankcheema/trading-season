@@ -1,6 +1,8 @@
 package app.order.event;
 
 import app.auth.AuthenticatedUser;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -23,6 +25,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  */
 @RestController
 @RequestMapping("/api/orders")
+@Tag(name = "Orders", description = "Order submission and retrieval endpoints")
 public class OrderStatusStreamController {
 
     private final OrderStatusStreamRegistry registry;
@@ -42,6 +45,12 @@ public class OrderStatusStreamController {
      * @param jwt the verified access token identifying the caller
      * @return the open emitter; stays open until the client disconnects
      */
+    @Operation(summary = "Stream order status changes",
+            description = "Server-sent events for the caller's own orders, fed by the order-status-pusher consumer of the "
+                    + "Kafka topic trade-events. Each committed status change (ACCEPTED, FILLED, REJECTED) arrives as an "
+                    + "order-status event whose JSON data holds orderId, status, symbol, side, quantity, price, rejectionReason "
+                    + "and occurredAt; a heartbeat event is sent every 15 seconds. The bearer header is required, which a "
+                    + "browser's native EventSource cannot send.")
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@AuthenticationPrincipal Jwt jwt) {
         return registry.subscribe(AuthenticatedUser.from(jwt).userId());
