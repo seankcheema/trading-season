@@ -19,7 +19,7 @@ Follow nested AGENTS.md instructions for the area being changed. The reporting s
 
 - Keep deployable applications in apps and operational configuration in infrastructure. Keep Angular components that only one app uses inside that app (see apps/client-ui/shared-ui-components); extract a component into a top-level packages directory only once a second app actually consumes it, since that is the point npm workspace tooling becomes worth the added complexity.
 - Inspect source, manifests, tests, and configuration before relying on documentation. Resolve disagreements by correcting docs to match implemented behavior.
-- The Java session API and NestJS token API are separate implementations. Do not assume they share users or credentials.
+- Authentication (sign-up credentials, login, refresh, token issuing) is the NestJS auth service alone. The Java services only verify its RS256 tokens. Profile registration lives only in Holdings and Trade (`POST /api/registration`); do not add it to Order and Sell, and do not assume the two stores share users or credentials beyond the token `sub`.
 - Preserve unrelated working changes. Use git mv for tracked file moves.
 - Do not commit secrets, dependencies, temporary build output, or test reports.
 - Do not edit applied database migrations in db/migrations; add a new migration. The Java bootstrap SQL is destructive and requires an explicitly disposable database.
