@@ -576,6 +576,13 @@ pipeline {
                         --bootstrap-server localhost:9092 --describe --all-groups
 
                     docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Image}}\\t{{.Ports}}'
+
+                    # The rebuild leaves the previous build's images untagged, so
+                    # drop them and trim the build cache now that the stack is
+                    # verified. Stopped containers, networks, and volumes are left
+                    # alone: the agent's Docker daemon also serves other workloads.
+                    docker image prune -f || echo "Dangling image prune failed; continuing." >&2
+                    docker builder prune -f --keep-storage=2gb 2>/dev/null || docker builder prune -af || echo "Build cache prune failed; continuing." >&2
                 '''
             }
         }
