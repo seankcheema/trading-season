@@ -408,7 +408,7 @@ pipeline {
                     # Disposable stack: always start from an empty database.
                     compose down -v --remove-orphans
 
-                    if ! compose up -d --build auth-service client-ui db db-init holdings-and-trade-service kafka order-and-sell-service reporting-service reporting-ui; then
+                    if ! compose up -d --build auth-service client-ui db db-init holdings-and-trade-service kafka order-and-sell-service reporting-consumer reporting-service reporting-ui; then
                         compose logs --no-color db-init >&2 || true
                         exit 1
                     fi

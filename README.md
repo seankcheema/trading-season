@@ -53,6 +53,8 @@ The Order and Sell Service publishes one `trade-events` message after each commi
 
 A consumer that is down simply resumes from its committed offset when it returns. The producer never waits for a consumer, and an unreachable broker delays the order response but never changes the order outcome.
 
+The two Java consumers run inside their services, because a Spring Boot service is one process and a listener in it is naturally the only one. The reporting consumer is the same code and the same image as the Reporting Service but runs as its own container, because the web side is served by gunicorn with several worker processes and a Kafka consumer that writes files must exist exactly once; a second process from the same image gives that without a second codebase.
+
 ### Tracing the event flow
 
 Each part of the flow can be followed from its description here to the code that implements it, the tests that prove it, and where a Jenkins build shows it. Test classes appear by name under a build's Test Result. The "Build Local Docker Stack" stage proves the topic and the three consumer groups exist, and the "Kafka End-to-End Flow" stage then places a real order against the built stack and shows, step by step, the two messages it published and what each consumer did with them; that checklist is archived with the build as `reports/kafka-end-to-end/evidence.txt`. Requirement numbers refer to the LEAP Business Requirements Specification.
