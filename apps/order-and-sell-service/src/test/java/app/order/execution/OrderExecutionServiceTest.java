@@ -13,6 +13,7 @@ import app.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.util.Optional;
@@ -46,6 +47,7 @@ class OrderExecutionServiceTest {
     private final CashTransactionRepository cashTransactionRepository = mock(CashTransactionRepository.class);
     private final HoldingMovementRepository holdingMovementRepository = mock(HoldingMovementRepository.class);
     private final AuditTrailService auditTrailService = mock(AuditTrailService.class);
+    private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
 
     private OrderExecutionService service;
     private Account account;
@@ -54,7 +56,7 @@ class OrderExecutionServiceTest {
     @BeforeEach
     void setUp() {
         service = new OrderExecutionService(accountRepository, userRepository, holdingRepository, orderRepository,
-                fillRepository, cashTransactionRepository, holdingMovementRepository, auditTrailService);
+                fillRepository, cashTransactionRepository, holdingMovementRepository, auditTrailService, events);
         account = new Account();
         account.setId(ACCOUNT_ID);
         account.setUserId(USER_ID);

@@ -27,7 +27,9 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("Order and Sell Service API")
-                        .description("Manages order placement, validation, and execution for the DuaLEAPa platform")
+                        .description("Manages order placement, validation, and execution for the DuaLEAPa platform. "
+                                + "Publishes one message per committed order status change to the Kafka topic trade-events "
+                                + "and streams those changes to the owning trader over GET /api/orders/stream.")
                         .version("1.0"))
                 .addSecurityItem(new SecurityRequirement().addList("bearerAuth"))
                 .components(new io.swagger.v3.oas.models.Components()

@@ -16,7 +16,7 @@ Order creation, validation and execution live in [Order and Sell Service](../ord
 
 - `auth/` - Registration, token wiring, security configuration, and error mapping
 - `user/` - The caller's profile and the shared cash balance it carries
-- `account/` - The caller's accounts and the assembled view of their holdings
+- `account/` - The caller's accounts, the assembled view of their holdings, and portfolio valuation history: `PortfolioValuationService.capture` is called by the minute scheduler, by the dashboard's request, and by `PortfolioValuationListener`, the `portfolio-valuation-capture` Kafka consumer that fires on every `FILLED` trade event. The listener is gated by `app.events.enabled`.
 - `cash/` - Deposits, withdrawals, and the append-only cash ledger
 - `holding/` - Cached positions, plus the movement and fill rows a position's cost is derived from
 - `instrument/` - Read access to tradable asset definitions, for naming a holding
@@ -31,7 +31,7 @@ Order creation, validation and execution live in [Order and Sell Service](../ord
 
 ## Data scope
 
-Every user-specific endpoint resolves the owner from the verified token's `sub` claim. An account id in a path is checked against that owner before anything is read or written: another user's account is 403, a nonexistent one is 404. Cash endpoints take no account at all. Do not add an endpoint that accepts a user or owner id from the request.
+Every user-specific endpoint resolves the owner from the verified token's `sub` claim. An account id in a path is checked against that owner before anything is read or written: another user's account is 403, a nonexistent one is 404. Cash endpoints take no account at all. Do not add an endpoint that accepts a user or owner id from the request. The one non-HTTP path, the `portfolio-valuation-capture` Kafka consumer, has no caller: it takes the account id from the message key, resolves the owner from the account row, and only ever appends a valuation for that account.
 
 ## Development
 

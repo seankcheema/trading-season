@@ -27,7 +27,9 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("Holdings and Trade Service API")
-                        .description("Manages user holdings, trading history, and market data retrieval for the DuaLEAPa platform")
+                        .description("Manages user holdings, trading history, and market data retrieval for the DuaLEAPa platform. "
+                                + "Consumes the Kafka topic trade-events (group portfolio-valuation-capture) to record a "
+                                + "portfolio valuation the moment an order fills.")
                         .version("1.0"))
                 .addSecurityItem(new SecurityRequirement().addList("bearerAuth"))
                 .components(new io.swagger.v3.oas.models.Components()
