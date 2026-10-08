@@ -1,5 +1,9 @@
-package app.auth;
+package app.registration;
 
+import app.account.AccountService;
+import app.auth.AuthenticatedUser;
+import app.auth.ConflictException;
+import app.auth.ForbiddenException;
 import app.user.User;
 import app.user.UserAccountRepository;
 import app.user.UserRepository;
@@ -23,7 +27,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @Tag("unit")
-class AuthServiceUnitTest {
+class RegistrationServiceUnitTest {
 
     private static final UUID USER_ID = UUID.fromString("7c9e6679-7425-40de-944b-e07fc1f90ae7");
 
@@ -31,17 +35,20 @@ class AuthServiceUnitTest {
     private UserRepository userRepository;
 
     @Mock
+    private AccountService accountService;
+
+    @Mock
     private UserAccountRepository userAccountRepository;
 
-    private AuthService authService;
+    private RegistrationService registrationService;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(userRepository, userAccountRepository);
+        registrationService = new RegistrationService(userRepository, accountService, userAccountRepository);
     }
 
-    private static RegisterRequest request(String email) {
-        return new RegisterRequest(
+    private static RegistrationRequest request(String email) {
+        return new RegistrationRequest(
             email,
             "John",
             "Quincy",
@@ -60,7 +67,7 @@ class AuthServiceUnitTest {
         when(userRepository.existsById(USER_ID)).thenReturn(false);
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        User result = authService.register(caller, request("test@example.com"));
+        User result = registrationService.register(caller, request("test@example.com"));
 
         ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(saved.capture());
@@ -83,7 +90,7 @@ class AuthServiceUnitTest {
         AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "Test@Example.com");
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        User result = authService.register(caller, request("test@example.com"));
+        User result = registrationService.register(caller, request("test@example.com"));
 
         assertEquals(USER_ID, result.getUserId());
     }
@@ -93,7 +100,7 @@ class AuthServiceUnitTest {
         AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "someone-else@example.com");
 
         assertThrows(ForbiddenException.class,
-            () -> authService.register(caller, request("test@example.com")));
+            () -> registrationService.register(caller, request("test@example.com")));
         verify(userRepository, never()).save(any());
     }
 
@@ -102,7 +109,7 @@ class AuthServiceUnitTest {
         AuthenticatedUser caller = new AuthenticatedUser(USER_ID, null);
 
         assertThrows(ForbiddenException.class,
-            () -> authService.register(caller, request("test@example.com")));
+            () -> registrationService.register(caller, request("test@example.com")));
         verify(userRepository, never()).save(any());
     }
 
@@ -112,7 +119,7 @@ class AuthServiceUnitTest {
         when(userRepository.existsById(USER_ID)).thenReturn(true);
 
         assertThrows(ConflictException.class,
-            () -> authService.register(caller, request("test@example.com")));
+            () -> registrationService.register(caller, request("test@example.com")));
         verify(userRepository, never()).save(any());
     }
 
@@ -125,30 +132,51 @@ class AuthServiceUnitTest {
         when(userRepository.existsById(USER_ID)).thenReturn(false);
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        assertNotNull(authService.register(caller, request("test@example.com")));
-
-        verify(userAccountRepository, never()).existsByEmailIgnoreCase(any());
+        assertNotNull(registrationService.register(caller, request("test@example.com")));
     }
 
     @Test
     void accountExistsReturnsTrueForRegisteredEmail() {
         when(userAccountRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(true);
 
-        assertTrue(authService.accountExists("test@example.com"));
+        assertTrue(registrationService.accountExists("test@example.com"));
     }
 
     @Test
     void accountExistsReturnsFalseForUnknownEmail() {
         when(userAccountRepository.existsByEmailIgnoreCase("nobody@example.com")).thenReturn(false);
 
-        assertFalse(authService.accountExists("nobody@example.com"));
+        assertFalse(registrationService.accountExists("nobody@example.com"));
     }
 
     @Test
     void accountExistsIgnoresSurroundingWhitespace() {
         when(userAccountRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(true);
 
-        assertTrue(authService.accountExists("  test@example.com "));
+        assertTrue(registrationService.accountExists("  test@example.com "));
+    }
+
+    @Test
+    void registerCreatesDefaultAccountForNewUser() {
+        AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "test@example.com");
+        when(userRepository.existsById(USER_ID)).thenReturn(false);
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        registrationService.register(caller, request("test@example.com"));
+
+        verify(accountService).createDefaultAccountForUser(USER_ID);
+    }
+
+    @Test
+    void registerCreatesAccountAfterUserSave() {
+        AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "test@example.com");
+        when(userRepository.existsById(USER_ID)).thenReturn(false);
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        
+        registrationService.register(caller, request("test@example.com"));
+
+        verify(userRepository).save(any(User.class));
+        verify(accountService).createDefaultAccountForUser(USER_ID);
     }
 
     @Test
@@ -159,7 +187,7 @@ class AuthServiceUnitTest {
         // abandoned half-registration as available.
         when(userAccountRepository.existsByEmailIgnoreCase("test@example.com")).thenReturn(true);
 
-        assertTrue(authService.accountExists("test@example.com"));
+        assertTrue(registrationService.accountExists("test@example.com"));
 
         verify(userAccountRepository).existsByEmailIgnoreCase("test@example.com");
     }

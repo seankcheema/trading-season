@@ -1,4 +1,4 @@
-package app.auth;
+package app.registration;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;

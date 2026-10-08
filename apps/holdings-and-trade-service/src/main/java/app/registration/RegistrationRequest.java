@@ -1,4 +1,4 @@
-package app.auth;
+package app.registration;
 
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -30,7 +30,7 @@ import java.time.LocalDate;
  * @param traderLevel    self-assessed experience: BEGINNER, INTERMEDIATE or ADVANCED
  * @param availableFunds opening funds, at least 5000.00 with at most two decimal places
  */
-public record RegisterRequest(
+public record RegistrationRequest(
         @NotBlank @Email @Size(max = 100) String email,
         @NotBlank String firstName,
         String middleName,

@@ -1,13 +1,11 @@
 package app.user;
 
 import app.support.UserAccountFixture;
-import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -16,13 +14,12 @@ import org.springframework.web.context.WebApplicationContext;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -37,9 +34,6 @@ class UserControllerIntegrationTest {
 
     @Autowired
     private WebApplicationContext webApplicationContext;
-
-    @Autowired
-    private ObjectMapper objectMapper;
 
     @Autowired
     private UserRepository userRepository;
@@ -61,26 +55,25 @@ class UserControllerIntegrationTest {
             .claim("roles", List.of("TRADER")));
     }
 
-    private void registerUser(UUID userId, String firstName, String email) throws Exception {
+    private void registerUser(UUID userId, String firstName, String email) {
         // These tests mint their own tokens, so they must also create the
         // account row the auth service would have created first. /me now
         // reports role and status from it rather than from the profile copy.
+        // The profile row is saved directly: registration belongs to Holdings
+        // and Trade, so this service has no endpoint that creates it.
         UserAccountFixture.createActiveAccount(jdbcTemplate, userId, email);
 
-        Map<String, Object> body = Map.of(
-            "email", email,
-            "firstName", firstName,
-            "lastName", "Tester",
-            "ssn", "123-45-6789",
-            "address", "1 Main St",
-            "dateOfBirth", LocalDate.of(1990, 1, 1).toString(),
-            "traderLevel", "ADVANCED",
-            "availableFunds", new BigDecimal("10000.00"));
-        mockMvc.perform(post("/api/auth/register")
-                .with(tokenFor(userId, email))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(body)))
-            .andExpect(status().isCreated());
+        User user = new User();
+        user.setUserId(userId);
+        user.setFirstName(firstName);
+        user.setLastName("Tester");
+        user.setSsn("123-45-6789");
+        user.setAddress("1 Main St");
+        user.setDateOfBirth(LocalDate.of(1990, 1, 1));
+        user.setTraderLevel("ADVANCED");
+        user.setAvailableFunds(new BigDecimal("10000.00"));
+        user.setCreatedAt(OffsetDateTime.now());
+        userRepository.save(user);
     }
 
     @Test

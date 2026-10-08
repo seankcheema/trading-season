@@ -1,4 +1,4 @@
-package app.auth;
+package app.registration;
 
 /**
  * Result of the soft account existence check.

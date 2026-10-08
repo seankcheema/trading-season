@@ -1,5 +1,9 @@
-package app.auth;
+package app.registration;
 
+import app.account.AccountService;
+import app.auth.AuthenticatedUser;
+import app.auth.ConflictException;
+import app.auth.ForbiddenException;
 import app.user.User;
 import app.user.UserAccountRepository;
 import app.user.UserRepository;
@@ -17,26 +21,30 @@ import java.time.OffsetDateTime;
  * taken from the verified token.
  */
 @Service
-public class AuthService {
+public class RegistrationService {
 
     private final UserRepository userRepository;
+    private final AccountService accountService;
     private final UserAccountRepository userAccountRepository;
 
     /**
      * Creates the service.
      *
-     * @param userRepository        persistence for business accounts
+     * @param userRepository         persistence for business accounts
+     * @param accountService  service for managing user accounts
      * @param userAccountRepository read-only access to the credential records
      *                              the auth service owns
      */
-    public AuthService(UserRepository userRepository, UserAccountRepository userAccountRepository) {
+    public RegistrationService(UserRepository userRepository, AccountService accountService, UserAccountRepository userAccountRepository) {
         this.userRepository = userRepository;
+        this.accountService = accountService;
         this.userAccountRepository = userAccountRepository;
     }
 
     /**
      * Creates the business account for the authenticated caller from the
-     * registration form's profile details.
+     * registration form's profile details. Also creates a default "Main Account"
+     * for the new user.
      *
      * @param caller  the user identified by the verified access token
      * @param request the profile details
@@ -45,7 +53,7 @@ public class AuthService {
      * @throws ConflictException  if the caller already has an account
      */
     @Transactional
-    public User register(AuthenticatedUser caller, RegisterRequest request) {
+    public User register(AuthenticatedUser caller, RegistrationRequest request) {
         if (caller.email() == null || !caller.email().equalsIgnoreCase(request.email())) {
             throw new ForbiddenException("Email does not match the signed-in account");
         }
@@ -64,7 +72,12 @@ public class AuthService {
         user.setTraderLevel(request.traderLevel());
         user.setAvailableFunds(request.availableFunds());
         user.setCreatedAt(OffsetDateTime.now());
-        return userRepository.save(user);
+        userRepository.save(user);
+
+        // Create a default "Main Account" for the new user
+        accountService.createDefaultAccountForUser(caller.userId());
+
+        return user;
     }
 
     /**

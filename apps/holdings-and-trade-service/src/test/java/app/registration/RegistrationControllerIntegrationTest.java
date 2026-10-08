@@ -1,4 +1,4 @@
-package app.auth;
+package app.registration;
 
 import app.support.UserAccountFixture;
 import app.user.UserRepository;
@@ -37,7 +37,7 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppC
 @SpringBootTest
 @ActiveProfiles("test")
 @Tag("integration")
-class AuthControllerIntegrationTest {
+class RegistrationControllerIntegrationTest {
 
     private MockMvc mockMvc;
 
@@ -68,8 +68,8 @@ class AuthControllerIntegrationTest {
             .claim("roles", List.of("TRADER")));
     }
 
-    static RegisterRequest registration(String email) {
-        return new RegisterRequest(
+    static RegistrationRequest registration(String email) {
+        return new RegistrationRequest(
             email,
             "Alice",
             null,
@@ -83,7 +83,7 @@ class AuthControllerIntegrationTest {
     }
 
     private ResultActions register(RequestPostProcessor token, Object body) throws Exception {
-        var request = post("/api/auth/register")
+        var request = post("/api/registration")
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(body));
         if (token != null) {
@@ -103,7 +103,7 @@ class AuthControllerIntegrationTest {
     }
 
     private ResultActions accountExists(Object body) throws Exception {
-        return mockMvc.perform(post("/api/auth/account-exists")
+        return mockMvc.perform(post("/api/registration/account-exists")
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(body)));
     }
@@ -137,7 +137,7 @@ class AuthControllerIntegrationTest {
 
     @Test
     void registerRejectsMalformedAccessToken() throws Exception {
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/api/registration")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer not-a-jwt")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(registration("alice@example.com"))))
@@ -183,7 +183,7 @@ class AuthControllerIntegrationTest {
     @Test
     void registerFailsWithInvalidPayload() throws Exception {
         String email = "dave@example.com";
-        RegisterRequest invalid = new RegisterRequest(
+        RegistrationRequest invalid = new RegistrationRequest(
             email,
             "Dave",
             null,
@@ -222,6 +222,19 @@ class AuthControllerIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\":\"frank@example.com\",\"password\":\"Password123!\"}"))
             .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void formerAuthRegistrationPathsNoLongerExist() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                .with(tokenFor(UUID.randomUUID(), "gina@example.com"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
+            .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/auth/account-exists")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"gina@example.com\"}"))
+            .andExpect(status().isUnauthorized());
     }
 
     // Soft account existence check
