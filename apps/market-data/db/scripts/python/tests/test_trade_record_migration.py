@@ -1,4 +1,4 @@
-"""Verify V010 against disposable PostgreSQL, never a developer database.
+"""Verify V010 and V011 against disposable PostgreSQL, never a developer database.
 
 Run directly with Python. PostgreSQL binaries must be on PATH.
 """
@@ -169,6 +169,43 @@ class TradeRecordMigrationTest(unittest.TestCase):
         self.assertEqual("14", self.sql(db, """
             SELECT count(*) FROM pg_trigger
             WHERE NOT tgisinternal AND tgname LIKE ANY (ARRAY['%append_only','%no_truncate','%no_delete','%guard%'])
+        """))
+
+
+    def test_client_identity_is_fixed_and_users_are_never_removed(self):
+        db = "trade_record_identity"
+        self.create_database(db)
+        self.migrate(db, "V010__Protect_trade_records.sql")
+        self.migrate(db, "V011__Protect_client_identity.sql")
+        self.migrate(db, "V011__Protect_client_identity.sql")
+
+        # Profile details, settings and the cached balance stay writable.
+        self.sql(db, f"UPDATE users SET address = 'Moved', available_funds = 5 WHERE user_id = '{OWNER}'")
+        for change in ("first_name = 'Changed'", "middle_name = 'Changed'", "last_name = 'Changed'",
+                       "ssn = 'changed'", "date_of_birth = '1999-01-01'", f"user_id = '{OTHER}'"):
+            with self.subTest(change=change):
+                self.assertIn("identity",
+                              self.assertRejected(db, f"UPDATE users SET {change} WHERE user_id = '{OWNER}'"))
+
+        self.sql(db, f"UPDATE users SET terms_accepted_at = '2026-10-08T12:00:00Z' WHERE user_id = '{OWNER}'")
+        self.assertIn("terms acceptance",
+                      self.assertRejected(db, f"UPDATE users SET terms_accepted_at = now() WHERE user_id = '{OWNER}'"))
+        self.assertRejected(db, f"UPDATE users SET terms_accepted_at = NULL WHERE user_id = '{OWNER}'")
+
+        # OTHER owns no account, so only the trigger stands between it and removal.
+        self.assertIn("permanent", self.assertRejected(db, f"DELETE FROM users WHERE user_id = '{OTHER}'"))
+        self.assertIn("permanent", self.assertRejected(db, "TRUNCATE users CASCADE"))
+
+        self.sql(db, f"UPDATE user_accounts SET failed_login_attempts = 1, password_hash = 'rotated' WHERE user_id = '{OWNER}'")
+        self.assertIn("sign-in identity", self.assertRejected(
+            db, f"UPDATE user_accounts SET email = 'changed@example.test' WHERE user_id = '{OWNER}'"))
+        self.assertIn("permanent", self.assertRejected(db, f"DELETE FROM user_accounts WHERE user_id = '{OTHER}'"))
+        self.assertIn("permanent", self.assertRejected(db, "TRUNCATE user_accounts CASCADE"))
+
+        self.assertEqual("Test|Trader|Moved|owner@example.test|2", self.sql(db, f"""
+            SELECT first_name, last_name, address,
+                   (SELECT email FROM user_accounts WHERE user_id = '{OWNER}'), (SELECT count(*) FROM users)
+            FROM users WHERE user_id = '{OWNER}'
         """))
 
 

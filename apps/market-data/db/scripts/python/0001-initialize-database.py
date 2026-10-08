@@ -11,7 +11,8 @@ async def run(url: str) -> None:
     try:
         async with connection.transaction():
             for name in ('V001__Initialize_database.sql', 'V002__Add_watchlist.sql', 'V008__Drop_account_status.sql',
-                         'V009__Add_terms_acceptance_to_users.sql', 'V010__Protect_trade_records.sql'):
+                         'V009__Add_terms_acceptance_to_users.sql', 'V010__Protect_trade_records.sql',
+                         'V011__Protect_client_identity.sql'):
                 sql = (Path(__file__).parents[5] / 'db' / 'migrations' / name).read_text(encoding='utf-8-sig')
                 sql = re.sub(r'^\s*(?:BEGIN|COMMIT);\s*$', '', sql, flags=re.MULTILINE)
                 await connection.execute(sql)

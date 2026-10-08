@@ -344,7 +344,7 @@ validate_or_initialize_docker_business() {
 # the same way as a fresh one.
 apply_docker_incremental_migrations() {
     local migration
-    for migration in V002__Add_watchlist.sql V009__Add_terms_acceptance_to_users.sql V010__Protect_trade_records.sql; do
+    for migration in V002__Add_watchlist.sql V009__Add_terms_acceptance_to_users.sql V010__Protect_trade_records.sql V011__Protect_client_identity.sql; do
         docker_compose exec -T db psql -q -v ON_ERROR_STOP=1 -U trading_season -d trading_season < "db/migrations/$migration" || \
             fail "Database migration $migration failed."
     done

@@ -52,6 +52,7 @@ services:
       - ../../db/migrations/V002__Add_watchlist.sql:/V002__Add_watchlist.sql:ro
       - ../../db/migrations/V009__Add_terms_acceptance_to_users.sql:/V009__Add_terms_acceptance_to_users.sql:ro
       - ../../db/migrations/V010__Protect_trade_records.sql:/V010__Protect_trade_records.sql:ro
+      - ../../db/migrations/V011__Protect_client_identity.sql:/V011__Protect_client_identity.sql:ro
     environment:
       PGPASSWORD: ${DB_PASSWORD:-changeme}
     command: >
@@ -61,7 +62,7 @@ services:
       psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 -f /V001__Initialize_database.sql || exit 1;
       else echo "[DB-INIT] Baseline schema already present"; fi;
       echo "[DB-INIT] Applying incremental migrations...";
-      for migration in /V002__Add_watchlist.sql /V009__Add_terms_acceptance_to_users.sql /V010__Protect_trade_records.sql; do
+      for migration in /V002__Add_watchlist.sql /V009__Add_terms_acceptance_to_users.sql /V010__Protect_trade_records.sql /V011__Protect_client_identity.sql; do
       psql -h db -U trading_season -d trading_season -v ON_ERROR_STOP=1 -f "$$migration" || exit 1; done;
       echo "[DB-INIT] Migrations complete"'
     networks:

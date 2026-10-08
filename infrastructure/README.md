@@ -12,6 +12,7 @@ Container and CI configuration. None of it is a production deployment.
 | [docker/Dockerfile.playwright](docker/Dockerfile.playwright) | Slim Chromium-only image for the Playwright E2E stage |
 | [docker/Dockerfile.jenkins](docker/Dockerfile.jenkins), [setup-jenkins.sh](docker/setup-jenkins.sh) | Optional Jenkins image with Node 24, JDK 21, Docker CLI, and Compose |
 | [docker/run-compose.sh](docker/run-compose.sh) | Uses `docker compose`, falling back to `docker-compose` |
+| [backup-database.sh](../scripts/backup-database.sh), [restore-database.sh](../scripts/restore-database.sh) | Manual database backup and restore |
 
 ## Local stack
 
@@ -38,6 +39,22 @@ docker compose --project-name trading-season-local -f infrastructure/docker-comp
 - A one-shot `kafka-init` creates the `trade-events` topic with three partitions. Auto-creation is disabled. No service produces or consumes yet.
 - Opt-in profiles: `initialize` (first-time empty database) and `seed` (market data steps 0002 to 0004; see [apps/market-data](../apps/market-data/README.md)).
 - For Linux VMs, `scripts/setup-local.sh` at the repository root reuses a local PostgreSQL or starts the database from this Compose file.
+
+## Database backup and restore
+
+The database holds the permanent [trade record](../docs/reference/trade-record.md), which must survive a failed deployment. Triggers stop rows being changed or removed, but not a dropped table, a dropped database, or a deleted `db_data` volume. A backup is the only recovery from those, and nothing takes one automatically: take one before every deployment, manual migration, or `down -v`.
+
+Both scripts need the PostgreSQL client tools on PATH, at the server's major version or newer, and run from the repository root in Bash (Git Bash on Windows). They read the password from `PGPASSWORD`, then `SPRING_DATASOURCE_PASSWORD`, and connect to `localhost:5432` as `trading_season` unless `PGHOST`, `PGPORT`, `PGUSER`, or `PGDATABASE` say otherwise. The Compose database is reachable that way through its published port.
+
+```sh
+./scripts/backup-database.sh
+./scripts/restore-database.sh backups/trading_season-20261008T120000Z.dump trading_season_restored
+```
+
+- `backup-database.sh` writes a compressed, timestamped dump to `backups/`, which git ignores, and fails without leaving a file if the dump cannot be read back. `--exclude-market-data` skips the replay rows, which the market-data scripts can regenerate, and keeps the dump small; `--output-dir` changes the destination.
+- `restore-database.sh` restores only into a database that does not exist yet, in one transaction, then prints the trade record row counts and the number of protection triggers (20 once V011 is applied). It never restores over an existing database.
+- To recover, restore into a new database, check the counts, then point every service at it (`SPRING_DATASOURCE_URL`, `DB_NAME`, `DATABASE_URL`) and restart them. Keep the damaged database until the restored one is confirmed.
+- Dumps contain personal data and password hashes. Store them off the database host and never commit them. There is no schedule, rotation, or off-site copy; those remain to be set up for any real deployment.
 
 ## Jenkins
 
