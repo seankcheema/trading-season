@@ -57,8 +57,14 @@ else:
 # Initialize database
 db.init_app(app)
 
-# Enable CORS
-CORS(app, origins=app.config['CORS_ORIGINS'])
+# Enable CORS for the SPA's bearer-token requests only. This service does not
+# use cookie-based auth, so cross-origin credentials stay disabled.
+CORS(
+    app,
+    origins=app.config['CORS_ORIGINS'],
+    supports_credentials=False,
+    allow_headers=['Authorization', 'Content-Type'],
+)
 
 
 # ============================================================================
