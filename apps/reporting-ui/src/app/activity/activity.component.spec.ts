@@ -1,192 +1,222 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { fakeReportStore, report } from '../../testing/fixtures';
-import { ReportState, ReportStore } from '../reporting/report-store.service';
-import { ActivityComponent } from './activity.component';
+import { Observable, of, throwError } from 'rxjs';
+import { activity } from '../../testing/console-fixtures';
+import { text } from '../../testing/dom';
+import { Activity, ActivityRange } from '../reporting/console.models';
+import { ReportingApiService } from '../reporting/reporting-api.service';
+import { ACTIVITY_REFRESH_MS, ActivityComponent } from './activity.component';
 
 describe('ActivityComponent', () => {
   let fixture: ComponentFixture<ActivityComponent>;
-  let store: ReturnType<typeof fakeReportStore>;
+  let load: ReturnType<typeof vi.fn<(range: ActivityRange) => Observable<Activity>>>;
 
-  const render = (state: ReportState = 'ready') => {
-    store = fakeReportStore(state);
+  beforeEach(() => {
+    vi.useFakeTimers();
+    load = vi.fn((range: ActivityRange) => of(activity({ range })));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const settle = (ms = 0) => {
+    vi.advanceTimersByTime(ms);
+    fixture.detectChanges();
+  };
+
+  const render = () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter([]), { provide: ReportStore, useValue: store }],
+      providers: [
+        provideRouter([]),
+        { provide: ReportingApiService, useValue: { activity: (range: ActivityRange) => load(range) } },
+      ],
     });
     fixture = TestBed.createComponent(ActivityComponent);
     fixture.detectChanges();
+    settle();
     return fixture.nativeElement as HTMLElement;
   };
 
-  const text = (element: Element) => element.textContent!.replace(/\s+/g, ' ').trim();
   const card = (root: HTMLElement, heading: string) =>
     Array.from(root.querySelectorAll('section')).find(
-      (section) => section.querySelector('h2')?.textContent?.trim() === heading,
+      (section) => text(section.querySelector('h2')!) === heading,
     )!;
-  // Cells are read one by one: the compiled template drops the whitespace between them.
-  const cells = (element: Element) => Array.from(element.children).map(text);
-  const tableRows = (section: HTMLElement) => Array.from(section.querySelectorAll('li')).map(cells);
-  const firstColumn = (section: HTMLElement) => tableRows(section).map((row) => row[0]);
-  const figures = (section: HTMLElement) => Array.from(section.querySelectorAll('p')).map(text);
-  const sortBy = (section: HTMLElement, label: string) => {
-    section.querySelector<HTMLButtonElement>(`button[aria-label="Sort by ${label}"]`)!.click();
-    fixture.detectChanges();
-  };
+  const rows = (section: HTMLElement) =>
+    Array.from(section.querySelectorAll('li')).map((row) => text(row));
 
-  it('shows the headline figures of the latest run', () => {
+  it('shows the headline figures against the prior period', () => {
     const root = render();
 
-    expect(text(root)).toContain('From the trade-events topic · run generated');
-    expect(text(root)).toContain('days in UTC');
-    expect(figures(card(root, 'Orders resolved'))).toEqual(['8', '14 events ingested']);
-    expect(figures(card(root, 'Fill rate'))).toEqual(['75.0%', '6 filled']);
-    expect(figures(card(root, 'Rejected'))).toEqual(['2', '25.0% of resolved']);
-    expect(figures(card(root, 'Notional traded'))).toEqual(['$6,044', '29.5 shares · 2 symbols']);
-    expect(figures(card(root, 'Active accounts'))).toEqual(['2', 'at least one resolved order']);
-  });
-
-  it('splits resolved orders by status', () => {
-    const section = card(render(), 'Orders by status');
-    const pills = Array.from(section.querySelectorAll('.status-pill')).map(text);
-    expect(pills).toEqual(['Filled', 'Rejected']);
-    expect(text(section)).toContain('75.0%');
-    expect(text(section)).toContain('25.0%');
-    const meters = section.querySelectorAll<HTMLElement>('.h-full');
-    expect(meters[0].style.width).toBe('75%');
-    expect(meters[1].style.width).toBe('25%');
-  });
-
-  it('lists symbols by notional and re-sorts on a column heading', () => {
-    const section = card(render(), 'Most traded');
-    expect(tableRows(section)).toEqual([
-      ['NVDA', '4', '25', '$4,619.25'],
-      ['AAPL', '2', '4.5', '$1,424.66'],
-    ]);
-
-    sortBy(section, 'Asset');
-    expect(firstColumn(section)).toEqual(['NVDA', 'AAPL']);
-    sortBy(section, 'Asset');
-    expect(firstColumn(section)).toEqual(['AAPL', 'NVDA']);
-
-    sortBy(section, 'Fills');
-    expect(firstColumn(section)).toEqual(['NVDA', 'AAPL']);
-    sortBy(section, 'Shares');
-    sortBy(section, 'Shares');
-    expect(firstColumn(section)).toEqual(['AAPL', 'NVDA']);
-    sortBy(section, 'Notional');
-    expect(firstColumn(section)).toEqual(['NVDA', 'AAPL']);
-  });
-
-  it('lists accounts, naming unknown ones by id, and re-sorts them', () => {
-    const section = card(render(), 'Accounts');
-    expect(tableRows(section)).toEqual([
-      ['Growth', 'Sean Cheema', '5', '4', '1'],
-      ['Account 12', 'Unknown', '3', '2', '1'],
-    ]);
-
-    sortBy(section, 'Account');
-    expect(firstColumn(section)).toEqual(['Growth', 'Account 12']);
-    sortBy(section, 'Trader');
-    sortBy(section, 'Trader');
-    expect(firstColumn(section)).toEqual(['Account 12', 'Growth']);
-    sortBy(section, 'Filled');
-    expect(firstColumn(section)).toEqual(['Growth', 'Account 12']);
-    sortBy(section, 'Orders');
-    sortBy(section, 'Orders');
-    expect(firstColumn(section)).toEqual(['Account 12', 'Growth']);
-    sortBy(section, 'Rejected');
-    expect(firstColumn(section)).toHaveLength(2);
-  });
-
-  it('describes the report pipeline and its schedule', () => {
-    const root = render();
-    const section = card(root, 'Report pipeline');
-    const facts = () => cells(section.querySelector('dl')!);
-
-    expect(text(section)).toContain('On schedule');
-    expect(facts().slice(0, 7)).toEqual([
-      'Events ingested',
-      '14',
-      'Latest run',
-      '20261008T194500Z',
-      'Runs every',
-      '15 min',
-      'Next run',
-    ]);
-    expect(facts()[7]).toMatch(/^\d{1,2}:00 [AP]M/);
-    expect(section.querySelector('a')!.getAttribute('href')).toBe('/runs');
-
-    store.overdue.set(true);
-    fixture.detectChanges();
-    expect(text(section)).toContain('Run overdue');
-
-    store.overdue.set(false);
-    store.scheduler.set(null);
-    store.nextRunAt.set(null);
-    fixture.detectChanges();
-    expect(text(section)).toContain('Waiting');
-    expect(facts().slice(4)).toEqual(['Runs every', '—', 'Next run', '—']);
-  });
-
-  it('refreshes on demand and shows when a refresh is running or failed', () => {
-    const root = render();
-    const button = root.querySelector<HTMLButtonElement>('app-page-header button')!;
-
-    button.click();
-    expect(store.refresh).toHaveBeenCalledTimes(1);
-
-    store.refreshing.set(true);
-    store.refreshFailed.set(true);
-    fixture.detectChanges();
-    expect(button.disabled).toBe(true);
-    expect(text(button)).toBe('Refreshing…');
-    expect(text(root.querySelector('[role="status"]')!)).toContain(
-      "We couldn't refresh the report. Showing the run generated",
+    expect(text(card(root, 'Orders'))).toBe('Orders 1,424 +8.40% vs prior period');
+    expect(text(card(root, 'Fill rate'))).toBe('Fill rate 90.2% -1.10% 1,284 filled');
+    expect(text(card(root, 'Rejected'))).toBe('Rejected 67 41 insufficient funds for this order');
+    expect(text(card(root, 'Net cash flow'))).toBe(
+      'Net cash flow +$84,210 +3.20% deposits – withdrawals',
+    );
+    // No pill when the prior period has nothing to compare with.
+    expect(text(card(root, 'Active traders'))).toBe('Active traders 312 placed ≥ 1 order');
+    expect(card(root, 'Fill rate').querySelector('app-change-pill')!.className).toContain('text-loss');
+    expect(text(root.querySelector('app-page-header p')!)).toMatch(
+      /^Derived from order and cash ledgers · updated \d{1,2}:\d{2} [AP]M · simulation session #12$/,
     );
   });
 
-  it('says a single symbol in the singular and copes with nothing resolved', () => {
+  it('charts notional traded by the hour, in the color of the change', () => {
     const root = render();
-    store.report.set(
-      report({
-        statusCounts: { FILLED: 0, REJECTED: 0 },
-        volumeBySymbol: [{ symbol: 'SPY', fills: 0, shares: '0', notional: '0' }],
-        tradesPerAccount: [],
-        dailyCounts: [],
-      }),
+    const notional = card(root, 'Notional traded');
+
+    expect(text(notional.querySelector('p')!)).toBe('$6,044 +8.40%');
+    expect(notional.querySelector('[role="img"]')!.getAttribute('aria-label')).toBe(
+      'Notional traded, Today: $6,044',
     );
+    expect(notional.querySelector('[data-line]')!.getAttribute('class')).toContain('stroke-gain');
+    const hours = Array.from(notional.querySelectorAll('[data-axis="x"] > span')).map(text);
+    expect(hours).toHaveLength(3);
+    expect(hours.every((label) => /^\d{1,2} [AP]M$/.test(label))).toBe(true);
+  });
+
+  it('turns the chart red for a period that fell and leaves out a change it cannot work out', () => {
+    load.mockReturnValue(
+      of(activity({ notional: { total: 10, change: -5, points: [{ at: '2026-10-08T13:00:00Z', value: 10 }] } })),
+    );
+    let notional = card(render(), 'Notional traded');
+    expect(notional.querySelector('[data-line]')!.getAttribute('class')).toContain('stroke-loss');
+
+    TestBed.resetTestingModule();
+    load.mockReturnValue(of(activity({ notional: { total: 10, change: null, points: [] } })));
+    notional = card(render(), 'Notional traded');
+    expect(text(notional.querySelector('p')!)).toBe('$10');
+    expect(notional.querySelector('[data-line]')!.getAttribute('class')).toContain('stroke-gain');
+  });
+
+  it('splits orders by status and links to the orders', () => {
+    const root = render();
+    const statuses = card(root, 'Orders by status');
+
+    expect(Array.from(statuses.querySelectorAll('.mt-5 > div')).map(text)).toEqual([
+      'filled 6 60.0%',
+      'pending 1 10.0%',
+      'accepted 1 10.0%',
+      'rejected 2 20.0%',
+    ]);
+    const bars = Array.from(statuses.querySelectorAll<HTMLElement>('.h-full'));
+    expect(bars.map((bar) => bar.style.width)).toEqual(['60%', '10%', '10%', '20%']);
+    expect(bars.map((bar) => bar.className.match(/bg-\w+/)![0])).toEqual([
+      'bg-gain',
+      'bg-primary',
+      'bg-primary',
+      'bg-loss',
+    ]);
+    expect(statuses.querySelector('a')!.getAttribute('href')).toBe('/orders');
+  });
+
+  it('describes each kind of event in the live feed', () => {
+    const feed = rows(card(render(), 'Live activity'));
+
+    expect(feed).toHaveLength(7);
+    expect(feed[0]).toMatch(/^Sean Cheema bought 4 AAPL .* \$1,266\.36$/);
+    expect(feed[1]).toMatch(/^Priya Natarajan sold 25 NVDA .* \$4,619\.25$/);
+    expect(feed[2]).toMatch(/^Order #10480 rejected — insufficient funds for this order .* TSLA$/);
+    expect(feed[3]).toMatch(/^Order #10479 rejected (?!—).* SPY$/);
+    expect(feed[4]).toMatch(/^Marcus Lee deposited cash .* \+\$2,500\.00$/);
+    expect(feed[5]).toMatch(/^Priya Natarajan withdrew cash .* -\$800\.00$/);
+    expect(feed[6]).toMatch(/^Jane Doe locked after 5 failed sign-ins .* Security$/);
+  });
+
+  it('lists the most traded symbols under the chosen range', () => {
+    const traded = card(render(), 'Most traded');
+
+    expect(text(traded.querySelector('.dash-table-head')!)).toBe('Asset Today Orders Notional');
+    expect(rows(traded)).toEqual(['NVDA 312 $1,840,220', 'AAPL 268 $1,210,450']);
+    expect(traded.querySelectorAll('app-sparkline path')).toHaveLength(2);
+  });
+
+  it('says so when nothing happened', () => {
+    load.mockReturnValue(
+      of(
+        activity({
+          sessionId: null,
+          feed: [],
+          mostTraded: [],
+          statuses: [{ status: 'FILLED', count: 0 }],
+          kpis: {
+            ...activity().kpis,
+            fillRate: { value: null, change: null, filled: 0 },
+            rejected: { value: 0, topReason: null, topReasonCount: 0 },
+          },
+        }),
+      ),
+    );
+    const root = render();
+
+    expect(text(card(root, 'Live activity'))).toContain('Nothing has happened yet.');
+    expect(text(card(root, 'Most traded'))).toContain('No orders were placed in this period.');
+    expect(text(card(root, 'Fill rate'))).toBe('Fill rate — 0 filled');
+    expect(text(card(root, 'Rejected'))).toBe('Rejected 0 none in this period');
+    expect(text(card(root, 'Orders by status'))).toContain('filled 0 0.0%');
+    expect(text(root.querySelector('app-page-header p')!)).not.toContain('session');
+  });
+
+  it('loads another range when one is chosen and plots it by the day', () => {
+    const root = render();
+    expect(load).toHaveBeenLastCalledWith('today');
+
+    const week = Array.from(root.querySelectorAll('app-timeframe-toggle button')).find(
+      (button) => text(button) === '7D',
+    ) as HTMLButtonElement;
+    week.click();
+    settle();
+
+    expect(load).toHaveBeenLastCalledWith('7d');
+    expect(week.getAttribute('aria-pressed')).toBe('true');
+    const traded = card(root, 'Most traded');
+    expect(text(traded.querySelector('.dash-table-head')!)).toBe('Asset 7D Orders Notional');
+    const days = Array.from(root.querySelectorAll('[data-axis="x"] > span')).map(text);
+    expect(days.every((label) => /^[A-Z][a-z]{2} \d{1,2}$/.test(label))).toBe(true);
+  });
+
+  it('reads the ledgers again on its own', () => {
+    render();
+    expect(load).toHaveBeenCalledTimes(1);
+
+    settle(ACTIVITY_REFRESH_MS);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows a loading state, and offers a retry when the load fails', () => {
+    load.mockReturnValue(throwError(() => new Error('down')));
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([]),
+        { provide: ReportingApiService, useValue: { activity: (range: ActivityRange) => load(range) } },
+      ],
+    });
+    fixture = TestBed.createComponent(ActivityComponent);
     fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(text(root)).toContain('Loading activity…');
+    expect(text(root.querySelector('app-page-header p')!)).toBe('Derived from order and cash ledgers');
 
-    expect(figures(card(root, 'Notional traded'))).toEqual(['$0', '0 shares · 1 symbol']);
-    expect(figures(card(root, 'Fill rate'))).toEqual(['—', '0 filled']);
-    expect(figures(card(root, 'Rejected'))).toEqual(['0', 'none resolved yet']);
-    expect(text(card(root, 'Accounts'))).toContain('No account has a resolved order yet.');
-    expect(text(card(root, 'Trades per day'))).toContain('No orders have resolved yet.');
+    settle();
+    expect(text(root.querySelector('[role="alert"]')!)).toContain("We couldn't load the activity.");
 
-    store.report.set(report({ volumeBySymbol: [] }));
+    load.mockReturnValue(of(activity()));
+    root.querySelector<HTMLButtonElement>('[role="alert"] button')!.click();
     fixture.detectChanges();
-    expect(text(card(root, 'Most traded'))).toContain('No orders have filled yet.');
+    expect(text(card(root, 'Orders'))).toContain('1,424');
   });
 
-  it('shows a loading state before the first report arrives', () => {
-    const root = render('loading');
-    expect(text(root)).toContain('Loading the latest report…');
-    expect(text(root)).toContain('From the trade-events topic');
-  });
+  it('exports the status split of the chosen range as csv', () => {
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const blobs: Blob[] = [];
+    URL.createObjectURL = ((blob: Blob) => (blobs.push(blob), 'blob:csv')) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = vi.fn();
+    const root = render();
 
-  it('says what to start while there is no report', () => {
-    const root = render('empty');
-    expect(text(root)).toContain('No report yet');
-    expect(text(root)).toContain('Start the reporting consumer to write the first run.');
-  });
+    root.querySelector<HTMLButtonElement>('app-export-menu button')!.click();
+    fixture.detectChanges();
+    root.querySelector<HTMLButtonElement>('[role="menuitem"]')!.click();
 
-  it('offers a retry when the report cannot be loaded', () => {
-    const root = render('error');
-    expect(text(root.querySelector('[role="alert"]')!)).toContain("We couldn't load the report.");
-
-    Array.from(root.querySelectorAll('button'))
-      .find((button) => button.textContent!.includes('Try again'))!
-      .click();
-    expect(store.refresh).toHaveBeenCalledTimes(1);
+    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('activity-today.csv');
+    expect(blobs[0].size).toBeGreaterThan(0);
+    click.mockRestore();
   });
 });

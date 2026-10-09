@@ -1,18 +1,22 @@
 """
-Reporting API routes: the caller's profile, and the report runs produced
-from the trade-events files. Trade data is never read from the database here.
+Reporting API routes: the caller's profile, the report runs produced from the
+trade-events files, and the analyst console's views of activity, orders and
+customers, which are read from the trading database (console.py).
 
-The profile is the caller's own and needs only a valid token. The report runs
-cover every account on the platform, so they are served to analysts only.
+The profile is the caller's own and needs only a valid token. Everything else
+covers every account on the platform, so it is served to analysts only.
 """
 
 import logging
+import uuid
 from datetime import datetime, timezone
 
-from flask import Blueprint, current_app, g, jsonify, send_from_directory
+from flask import Blueprint, current_app, g, jsonify, request, send_from_directory
 
 from app import REPORT_READER_ROLE, require_auth, require_role
 from db_service import UserRepository
+from models import db
+import console
 import run_store
 
 logger = logging.getLogger(__name__)
@@ -96,6 +100,81 @@ def get_scheduler_status():
         'interval_minutes': current_app.config['SCHEDULER_INTERVAL_MINUTES'],
         'timestamp': _now(),
     }), 200
+
+
+# The furthest a time zone sits from UTC, in minutes.
+MAX_TZ_OFFSET_MINUTES = 14 * 60
+
+
+def _whole_number(name, default, low, high):
+    """A query parameter as an integer inside [low, high], or None when it is not one."""
+    raw = request.args.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if low <= value <= high else None
+
+
+@api_bp.route('/activity', methods=['GET'])
+@require_auth
+@require_role(REPORT_READER_ROLE)
+def get_activity():
+    """GET /api/reporting/activity: platform activity over a range, in the viewer's days."""
+    range_key = request.args.get('range', 'today')
+    if range_key not in console.RANGE_DAYS:
+        return jsonify({'error': 'range must be one of today, 7d, 30d, 90d'}), 400
+    tz_offset = _whole_number('tzOffset', 0, -MAX_TZ_OFFSET_MINUTES, MAX_TZ_OFFSET_MINUTES)
+    if tz_offset is None:
+        return jsonify({'error': 'tzOffset must be minutes east of UTC, between -840 and 840'}), 400
+    return jsonify(console.activity(db.session, range_key, datetime.now(timezone.utc), tz_offset)), 200
+
+
+@api_bp.route('/orders', methods=['GET'])
+@require_auth
+@require_role(REPORT_READER_ROLE)
+def list_orders():
+    """GET /api/reporting/orders: the newest orders across every account."""
+    limit = _whole_number('limit', console.DEFAULT_ORDER_LIMIT, 1, console.MAX_ORDER_LIMIT)
+    if limit is None:
+        return jsonify({'error': f'limit must be between 1 and {console.MAX_ORDER_LIMIT}'}), 400
+    return jsonify(console.orders(db.session, limit)), 200
+
+
+@api_bp.route('/orders/<int:order_id>', methods=['GET'])
+@require_auth
+@require_role(REPORT_READER_ROLE)
+def get_order(order_id):
+    """GET /api/reporting/orders/<order_id>: one order with its ledger impact and audit trail."""
+    order = console.order_detail(db.session, order_id)
+    if order is None:
+        return jsonify({'error': 'Order not found'}), 404
+    return jsonify(order), 200
+
+
+@api_bp.route('/customers', methods=['GET'])
+@require_auth
+@require_role(REPORT_READER_ROLE)
+def list_customers():
+    """GET /api/reporting/customers: every sign-in with its balances and lock status."""
+    return jsonify(console.customers(db.session, datetime.now(timezone.utc))), 200
+
+
+@api_bp.route('/customers/<user_id>', methods=['GET'])
+@require_auth
+@require_role(REPORT_READER_ROLE)
+def get_customer(user_id):
+    """GET /api/reporting/customers/<user_id>: one customer with their accounts and orders."""
+    try:
+        parsed = uuid.UUID(user_id)
+    except ValueError:
+        return jsonify({'error': 'Customer not found'}), 404
+    found = console.customer(db.session, parsed, datetime.now(timezone.utc))
+    if found is None:
+        return jsonify({'error': 'Customer not found'}), 404
+    return jsonify(found), 200
 
 
 def init_routes(app):

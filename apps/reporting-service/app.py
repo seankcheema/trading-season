@@ -238,7 +238,7 @@ def root():
         'service': 'Trading Season Reporting Service',
         'status': 'initialized',
         'version': '0.1.0',
-        'description': 'Portfolio performance, trade history, and risk summaries',
+        'description': 'Report runs built from trade events, and the analyst console',
         'documentation': '/docs',
         'openapi': '/openapi.yaml',
         'health': '/health',
@@ -247,7 +247,12 @@ def root():
             'runs': 'GET /api/reporting/runs',
             'latest_report': 'GET /api/reporting/runs/latest',
             'run_file': 'GET /api/reporting/runs/{runId}/files/{name}',
-            'scheduler_status': 'GET /api/reporting/scheduler/status'
+            'scheduler_status': 'GET /api/reporting/scheduler/status',
+            'activity': 'GET /api/reporting/activity',
+            'orders': 'GET /api/reporting/orders',
+            'order': 'GET /api/reporting/orders/{orderId}',
+            'customers': 'GET /api/reporting/customers',
+            'customer': 'GET /api/reporting/customers/{userId}'
         }
     }), 200
 

@@ -2,6 +2,7 @@
   class="bg-background grid h-dvh grid-cols-1 grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[232px_minmax(0,1fr)] md:grid-rows-1"
 >
   <aside
+    data-print-hide="true"
     class="bg-sidebar border-sidebar-border flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-3 pb-2 md:flex-col md:flex-nowrap md:items-stretch md:gap-1 md:border-r md:border-b-0 md:pb-4"
   >
     <a routerLink="/" class="flex h-16 items-center gap-2.5 px-1.5" aria-label="TradingSeason Reporting home">
@@ -12,13 +13,16 @@
       </span>
     </a>
 
-    <nav aria-label="Reporting" class="order-last flex w-full gap-1 md:order-none md:flex-col">
+    <nav
+      aria-label="Reporting"
+      class="order-last flex w-full flex-wrap gap-1 md:order-none md:flex-col md:flex-nowrap"
+    >
       @for (item of nav; track item.path) {
         <a
           [routerLink]="item.path"
           routerLinkActive
           #link="routerLinkActive"
-          [routerLinkActiveOptions]="{ exact: true }"
+          [routerLinkActiveOptions]="{ exact: item.exact }"
           ariaCurrentWhenActive="page"
           class="flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors"
           [class]="

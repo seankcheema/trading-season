@@ -5,6 +5,9 @@ import { App } from './app';
 import { appConfig } from './app.config';
 import { routes } from './app.routes';
 import { authGuard, guestGuard } from './core/auth/auth.guard';
+import { CustomerDetailComponent } from './customers/customer-detail.component';
+import { CustomersComponent } from './customers/customers.component';
+import { OrdersComponent } from './orders/orders.component';
 import { RunsComponent } from './runs/runs.component';
 import { ShellComponent } from './shell/shell.component';
 
@@ -32,16 +35,27 @@ describe('routes', () => {
     expect(fallback).toEqual({ path: '**', redirectTo: '' });
   });
 
-  it('loads the shell with the activity and runs screens inside it', async () => {
-    const [activity, runs] = shell.children!;
-    expect(activity.path).toBe('');
-    expect(runs.path).toBe('runs');
+  it('loads the shell with every reporting screen inside it', async () => {
+    const screens = shell.children!;
+    expect(screens.map((screen) => screen.path)).toEqual([
+      '',
+      'customers',
+      'customers/:userId',
+      'orders',
+      'runs',
+    ]);
 
     const loaded = await Promise.all([
       shell.loadComponent!(),
-      activity.loadComponent!(),
-      runs.loadComponent!(),
+      ...screens.map((screen) => screen.loadComponent!()),
     ]);
-    expect(loaded).toEqual([ShellComponent, ActivityComponent, RunsComponent]);
+    expect(loaded).toEqual([
+      ShellComponent,
+      ActivityComponent,
+      CustomersComponent,
+      CustomerDetailComponent,
+      OrdersComponent,
+      RunsComponent,
+    ]);
   });
 });

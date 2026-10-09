@@ -1,6 +1,13 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import {
+  activity,
+  customerDetail,
+  customers,
+  orderDetail,
+  orderRows,
+} from '../../testing/console-fixtures';
 import { profile, report, run, schedulerStatus } from '../../testing/fixtures';
 import { ReportingApiService } from './reporting-api.service';
 
@@ -32,6 +39,27 @@ describe('ReportingApiService', () => {
 
     expect(seen).toHaveLength(4);
     expect(seen[2]).toEqual(report());
+  });
+
+  it('reads the analyst console, telling the service how far the viewer is from UTC', () => {
+    const seen: unknown[] = [];
+    service.activity('7d').subscribe((value) => seen.push(value));
+    service.orders().subscribe((value) => seen.push(value));
+    service.order(10482).subscribe((value) => seen.push(value));
+    service.customers().subscribe((value) => seen.push(value));
+    service.customer('6f1c/0a52').subscribe((value) => seen.push(value));
+
+    const request = http.expectOne((candidate) => candidate.url === '/api/reporting/activity');
+    expect(request.request.params.get('range')).toBe('7d');
+    expect(request.request.params.get('tzOffset')).toBe(String(-new Date().getTimezoneOffset()));
+    request.flush(activity({ range: '7d' }));
+    http.expectOne('/api/reporting/orders').flush({ orders: orderRows(), total: 3, sessionId: 12 });
+    http.expectOne('/api/reporting/orders/10482').flush(orderDetail());
+    http.expectOne('/api/reporting/customers').flush({ customers: customers() });
+    http.expectOne('/api/reporting/customers/6f1c%2F0a52').flush(customerDetail());
+
+    expect(seen).toHaveLength(5);
+    expect(seen[2]).toEqual(orderDetail());
   });
 
   it('fetches a chart as a blob', () => {

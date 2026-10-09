@@ -16,6 +16,20 @@ export const routes: Routes = [
           import('./activity/activity.component').then((m) => m.ActivityComponent),
       },
       {
+        path: 'customers',
+        loadComponent: () =>
+          import('./customers/customers.component').then((m) => m.CustomersComponent),
+      },
+      {
+        path: 'customers/:userId',
+        loadComponent: () =>
+          import('./customers/customer-detail.component').then((m) => m.CustomerDetailComponent),
+      },
+      {
+        path: 'orders',
+        loadComponent: () => import('./orders/orders.component').then((m) => m.OrdersComponent),
+      },
+      {
         path: 'runs',
         loadComponent: () => import('./runs/runs.component').then((m) => m.RunsComponent),
       },

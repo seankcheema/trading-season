@@ -2,7 +2,13 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject } from
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideActivity, lucideFileChartColumn, lucideLogOut } from '@ng-icons/lucide';
+import {
+  lucideActivity,
+  lucideFileChartColumn,
+  lucideListOrdered,
+  lucideLogOut,
+  lucideUsers,
+} from '@ng-icons/lucide';
 import { AuthService } from '../core/auth/auth.service';
 import { TokenStorageService } from '../core/auth/token-storage.service';
 import { ReportStore } from '../reporting/report-store.service';
@@ -11,6 +17,8 @@ interface NavItem {
   path: string;
   label: string;
   icon: string;
+  // Whether only the path itself marks the item current, not the pages under it.
+  exact: boolean;
 }
 
 // The signed-in frame: sidebar navigation, the signed-in user, and the routed screen.
@@ -19,7 +27,16 @@ interface NavItem {
   selector: 'app-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink, RouterLinkActive, RouterOutlet, NgIcon],
-  providers: [ReportStore, provideIcons({ lucideActivity, lucideFileChartColumn, lucideLogOut })],
+  providers: [
+    ReportStore,
+    provideIcons({
+      lucideActivity,
+      lucideFileChartColumn,
+      lucideListOrdered,
+      lucideLogOut,
+      lucideUsers,
+    }),
+  ],
   templateUrl: './shell.component.html',
 })
 export class ShellComponent {
@@ -30,8 +47,10 @@ export class ShellComponent {
   private readonly _store = inject(ReportStore);
 
   protected readonly nav: NavItem[] = [
-    { path: '/', label: 'Activity', icon: 'lucideActivity' },
-    { path: '/runs', label: 'Report runs', icon: 'lucideFileChartColumn' },
+    { path: '/', label: 'Activity', icon: 'lucideActivity', exact: true },
+    { path: '/customers', label: 'Customers', icon: 'lucideUsers', exact: false },
+    { path: '/orders', label: 'Orders', icon: 'lucideListOrdered', exact: true },
+    { path: '/runs', label: 'Report runs', icon: 'lucideFileChartColumn', exact: true },
   ];
 
   // The trading profile's name when there is one, otherwise the sign-in email.

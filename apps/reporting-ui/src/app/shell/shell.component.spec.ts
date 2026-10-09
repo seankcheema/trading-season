@@ -62,8 +62,18 @@ describe('ShellComponent', () => {
     fixture.detectChanges();
 
     const links = Array.from(root.querySelectorAll('nav a'));
-    expect(links.map((link) => link.textContent!.trim())).toEqual(['Activity', 'Report runs']);
-    expect(links.map((link) => link.getAttribute('href'))).toEqual(['/', '/runs']);
+    expect(links.map((link) => link.textContent!.trim())).toEqual([
+      'Activity',
+      'Customers',
+      'Orders',
+      'Report runs',
+    ]);
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      '/',
+      '/customers',
+      '/orders',
+      '/runs',
+    ]);
     expect(links[0].getAttribute('aria-current')).toBe('page');
     expect(links[1].hasAttribute('aria-current')).toBe(false);
     expect(root.querySelector('router-outlet')).not.toBeNull();

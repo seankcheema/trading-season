@@ -69,6 +69,15 @@
   --font-sans:
     'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
     'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  /* The design system sets text at the font's own line height, not Tailwind's
+     per-size ones. A template that needs another says so with a leading class. */
+  --text-xs--line-height: normal;
+  --text-sm--line-height: normal;
+  --text-base--line-height: normal;
+  --text-lg--line-height: normal;
+  --text-xl--line-height: normal;
+  --text-2xl--line-height: normal;
+  --text-3xl--line-height: normal;
 }
 
 /* Keep global element rules inside `@layer base`: unlayered CSS beats every
@@ -101,7 +110,26 @@
   }
   body {
     @apply bg-background text-foreground;
+    line-height: normal;
   }
+  /* Floating layers: the scrim fades in, the panel pops up into place. */
+  @keyframes ts-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes ts-pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation-duration: 1ms !important;
+    }
+  }
+
   /* Focus: a 3px ring at half strength, in place of the browser outline. */
   :where(a, button):focus-visible {
     outline: none;
@@ -138,6 +166,56 @@
 
   .dash-link:hover {
     color: var(--primary);
+  }
+
+  /* The one hero card of a screen: a cyan glow over a deep-sea gradient. */
+  .net-worth-card {
+    min-width: 0;
+    border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
+    border-radius: 0.875rem;
+    background:
+      radial-gradient(100% 120% at 100% 100%, rgba(0, 187, 255, 0.28) 0%, transparent 60%),
+      linear-gradient(135deg, #10161a 0%, #0b2f3e 100%);
+  }
+
+  /* A whole table row that opens something. */
+  .row-button {
+    width: 100%;
+    cursor: pointer;
+    border-radius: 0.5rem;
+    padding: 0.625rem 0.5rem;
+    text-align: left;
+    font-size: 0.875rem;
+    transition: background-color 150ms;
+  }
+
+  .row-button:hover {
+    background: var(--muted);
+  }
+
+  /* Text inputs and select triggers outside the sign-in card: 32px, 8px radius. */
+  .ds-control {
+    height: 2rem;
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--input);
+    border-radius: 0.5rem;
+    background: color-mix(in srgb, var(--input) 30%, transparent);
+    font-size: 0.875rem;
+    outline: none;
+    transition:
+      border-color 150ms,
+      box-shadow 150ms;
+  }
+
+  .ds-control::placeholder {
+    color: var(--muted-foreground);
+  }
+
+  .ds-control:focus-visible,
+  .ds-control[aria-expanded='true'] {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent);
   }
 
   .dash-table-head {
@@ -254,5 +332,65 @@
   .ghost-button:disabled {
     cursor: not-allowed;
     opacity: 0.5;
+  }
+
+  /* The same button without its outline, for a quiet action such as clearing filters. */
+  .ghost-button.is-plain {
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .ghost-button.is-plain:hover {
+    background: color-mix(in srgb, var(--muted) 50%, transparent);
+  }
+
+  /* 28px, for actions inside a dialog section. */
+  .ghost-button.is-small {
+    height: 1.75rem;
+    gap: 4px;
+    border-radius: 0.375rem;
+    font-size: 0.8rem;
+  }
+
+  /* 36px square, icon only. */
+  .ghost-button.is-icon {
+    height: 2.25rem;
+    width: 2.25rem;
+    justify-content: center;
+    padding: 0;
+  }
+}
+
+/* Export PDF prints the screen: everything that clips or scrolls is opened up,
+   and controls that mean nothing on paper are dropped. */
+@media print {
+  @page {
+    size: landscape;
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  app-shell > div {
+    display: block !important;
+    height: auto !important;
+  }
+
+  app-shell * {
+    overflow: visible !important;
+    max-height: none !important;
+    mask-image: none !important;
+  }
+
+  [role='dialog'] {
+    position: static !important;
   }
 }

@@ -6,6 +6,9 @@
 - [openapi.yaml](../reporting-service/openapi.yaml) is the contract. Keep [report.models.ts](src/app/reporting/report.models.ts) and [ReportingApiService](src/app/reporting/reporting-api.service.ts) in step with it.
 - Both backends are reached on the UI's own origin. A new backend path needs the same entry in both [proxy.conf.json](proxy.conf.json) and [nginx.conf](nginx.conf).
 - Style from the design tokens in [src/styles.css](src/styles.css). Keep their values identical to the dark theme in the Client UI's `src/styles.css`. Filled orders use the gain color and rejected orders the loss color.
+- The screens reproduce the TradingSeason design system's reporting kit: same layout, spacing, copy and components. Build new UI from the pieces in [src/app/shared](src/app/shared), which port the kit's components, and check a change against the kit before calling it done. The [README](README.md#design-system) lists the few places the app departs from the kit and why.
+- Text takes the font's own line height, as the kit does; [src/styles.css](src/styles.css) sets that for every Tailwind text size. Add a `leading-*` class only where the kit sets a line height.
+- Reporting only reads. Do not add an action that changes an account or an order.
 - This app does not import the Client UI's shared-ui-components. Using one here makes it a second consumer, which the root [AGENTS.md](../../AGENTS.md) says is the point to extract it into a top-level package first.
 - Preserve accessible labels, validation feedback, keyboard interactions, and the narrow-viewport layout.
 - Validate changes with the app build and the Angular tests. Use --no-watch; see the [README](README.md#commands). Keep test data in `src/testing`, which the application build excludes.

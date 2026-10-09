@@ -1,17 +1,21 @@
 # Reporting UI
 
-Angular 21 single-page app that presents the [Reporting Service](../reporting-service/README.md) output: the report runs the reporting consumer builds from the `trade-events` Kafka topic. Standalone components, signals, reactive forms, and OnPush change detection, with no server-side rendering.
+Angular 21 single-page app for analysts who watch platform activity and support customers. It presents what the [Reporting Service](../reporting-service/README.md) serves: activity, customers and orders read from the trading database, and the report runs the reporting consumer builds from the `trade-events` Kafka topic. Standalone components, signals, reactive forms, and OnPush change detection, with no server-side rendering.
 
 - Port 4300, for both `ng serve` and the Compose container
 - For analysts only. It signs in against the [Auth Service](../auth-service/README.md) and admits an account only if its token carries the `ANALYST` [role](../auth-service/README.md#roles). It has no registration screen. In development, sign in as `analyst@example.com` / `analyst123`.
+- Read only. Nothing in it changes an account or an order.
 
 | Route | Guard | Screen |
 | --- | --- | --- |
 | `/login` | anyone not signed in as an analyst | Sign in |
-| `/` | signed-in analyst | Activity: headline figures, filled and rejected orders per day, orders by status, report pipeline, most traded symbols, accounts |
+| `/` | signed-in analyst | Activity: a range toggle, five headline figures against the prior period, notional traded over time, orders by status, the newest events, most traded symbols |
+| `/customers` | signed-in analyst | Customers: every sign-in with status, accounts, cash, portfolio, failed sign-ins and last activity; search and filters |
+| `/customers/:userId` | signed-in analyst | One customer: profile, sign-in security, balances, and their orders |
+| `/orders` | signed-in analyst | Orders: every order with search and filters; a row opens the order with its execution, ledger impact and audit trail |
 | `/runs` | signed-in analyst | Report runs: the runs on disk and the PNG charts of the selected run, with download |
 
-Every figure on screen comes from the Reporting Service. Nothing is demo data. Days are UTC days, as the report job buckets them; the time a run was generated is shown in the viewer's time zone with the zone named.
+Every figure on screen comes from the Reporting Service. Nothing is demo data. Times are shown in the viewer's time zone, and a range such as Today is the viewer's own day. The days inside a report run are UTC days, as the report job buckets them.
 
 ## How the data reaches the screen
 
@@ -21,18 +25,24 @@ flowchart LR
     K -- "group reporting-ingester" --> C["Reporting consumer<br/>events files, scheduled report run"]
     C --> F[("reporting_files<br/>report.json and PNG charts")]
     F --> RS["Reporting Service :8083"]
+    DB[("trading_season<br/>orders, fills, cash, locks, audit trail")] -. "read only" .-> RS
     RS -- "/api/reporting" --> UI["Reporting UI :4300"]
 ```
 
-The UI never talks to Kafka. The consumer writes a run when it starts and a new one every `SCHEDULER_INTERVAL_MINUTES`; the UI asks `GET /api/reporting/scheduler/status` every 30 seconds and reloads the report when the latest run id changes, so a new run appears without a page reload. The Activity screen shows the run interval, when the next run is due, and whether it is overdue by the service's own clock.
+The UI never talks to Kafka or the database. Two kinds of data reach it, both through the Reporting Service:
 
-| Screen element | Endpoint |
-| --- | --- |
-| Activity figures, chart and tables | `GET /api/reporting/runs/latest` |
-| Run list | `GET /api/reporting/runs` |
-| Chart images | `GET /api/reporting/runs/{runId}/files/{name}`, fetched as a blob because an image tag cannot send the bearer token |
-| Run interval, next run, new-run check | `GET /api/reporting/scheduler/status` |
-| Signed-in user's name and trader level | `GET /api/reporting/profile`; a sign-in without a trading profile (404) shows its email instead |
+| Screen | Source | Endpoint | Kept fresh by |
+| --- | --- | --- | --- |
+| Activity | Database | `GET /api/reporting/activity?range=&tzOffset=` | Reading again every 15 seconds, and when the range changes |
+| Customers | Database | `GET /api/reporting/customers` | Reading again every 30 seconds |
+| One customer | Database | `GET /api/reporting/customers/{userId}` | Reading again every 30 seconds |
+| Orders | Database | `GET /api/reporting/orders` | Reading again every 30 seconds |
+| One order | Database | `GET /api/reporting/orders/{orderId}` | Read when the order is opened |
+| Report runs | `trade-events` files | `GET /api/reporting/runs`, `GET /api/reporting/runs/latest`, `GET /api/reporting/scheduler/status` | Asking the scheduler status every 30 seconds and reloading when the latest run id changes |
+| Chart images of a run | `trade-events` files | `GET /api/reporting/runs/{runId}/files/{name}`, fetched as a blob because an image tag cannot send the bearer token | Loaded with the run |
+| Signed-in user's name and trader level | Database | `GET /api/reporting/profile`; a sign-in without a trading profile (404) shows its email instead | Read once |
+
+A refresh that fails leaves the last good data on screen. The database screens show orders whether or not a Kafka broker was running when they were placed; the report runs show only orders placed while one was.
 
 ## Architecture
 
@@ -42,7 +52,13 @@ flowchart TB
         Login
         Shell["Shell<br/>sidebar, signed-in user"]
         Activity
+        Customers["Customers,<br/>customer detail"]
+        Orders["Orders,<br/>order detail dialog"]
         Runs["Report runs"]
+    end
+    subgraph Shared["shared/"]
+        Kit["change pill, range toggle, export menu,<br/>filter select, line chart, sparkline, dialog"]
+        Live["live()<br/>load, reload on an interval"]
     end
     subgraph Core["core/auth"]
         Guard["authGuard / guestGuard"]
@@ -51,17 +67,24 @@ flowchart TB
         Storage["TokenStorageService"]
     end
     subgraph Reporting["reporting/"]
-        Store["ReportStore<br/>report, runs, scheduler status, polling"]
+        Store["ReportStore<br/>report runs, scheduler status, profile"]
         Api["ReportingApiService"]
     end
 
     Login --> AuthSvc
     Shell --> Activity
+    Shell --> Customers
+    Shell --> Orders
     Shell --> Runs
     Shell --> Store
-    Activity --> Store
+    Activity --> Live
+    Customers --> Live
+    Orders --> Live
+    Activity --> Kit
+    Customers --> Kit
+    Orders --> Kit
     Runs --> Store
-    Runs --> Api
+    Live --> Api
     Store --> Api
     Api --> Interceptor
     Interceptor --> AuthSvc
@@ -70,7 +93,7 @@ flowchart TB
     Guard --> AuthSvc
 ```
 
-`ReportStore` is provided by the shell component, so it exists only while a signed-in screen is shown and its polling stops on sign-out.
+`ReportStore` is provided by the shell component, so it exists only while a signed-in screen is shown and its polling stops on sign-out. Each database screen owns its data through `live()`, which stops with the screen.
 
 ### Request routing
 
@@ -88,7 +111,7 @@ Token handling matches the Client UI: the interceptor adds the bearer token to `
 
 ### Analyst access
 
-The Reporting Service is what enforces the rule: it answers 403 on every run endpoint to a token without the `ANALYST` role. The UI checks the same claim so that nobody else gets a screen that could only show errors:
+The Reporting Service is what enforces the rule: it answers 403 on every run and console endpoint to a token without the `ANALYST` role. The UI checks the same claim so that nobody else gets a screen that could only show errors:
 
 | Moment | What happens to an account that is not an analyst |
 | --- | --- |
@@ -100,15 +123,34 @@ A role change takes effect at the account's next sign-in or token refresh. See [
 
 ## Design system
 
-The screens follow the TradingSeason design system: dark only, Archivo, the cyan accent, filled orders in the gain color and rejected orders in the loss color, dashboard cards with quiet uppercase labels, Lucide icons through `@ng-icons/lucide`. The tokens are declared in [src/styles.css](src/styles.css) with the same values as the Client UI's dark theme, and Tailwind v4 maps them to utilities. The design system export itself is not checked in.
+The screens reproduce the TradingSeason design system's reporting console: the sidebar shell, Activity, Customers, the customer page, Orders and the order dialog, with the kit's layout, spacing, type and copy. The design system export itself is not checked in.
 
-The layout adapts the design system's proposed reporting console. Its Customers and Orders screens are not built: the Reporting Service has no endpoints for customer lookup, per-order history, or audit trails. Its range toggle and export menu are not built either: a run covers every event on disk, and the service has no export.
+The tokens are declared in [src/styles.css](src/styles.css) with the same values as the Client UI's dark theme, and Tailwind v4 maps them to utilities. Text takes the font's own line height, as the kit does. The kit's components are ported once, in [src/app/shared](src/app/shared):
 
-| Design system rule | Where it is applied |
+| Kit component | Here |
 | --- | --- |
-| The dashboard fills the viewport; lists clip inside their cards with a bottom fade and no scrollbar | Activity from 1024px wide, while the window is tall enough; below that, and on a short window, the page scrolls. `.dash-scroll` in [src/styles.css](src/styles.css) |
-| Charts are 2px lines over hairline gridlines, with a right-hand axis, a ringed marker, and a hover crosshair with a label row | [daily-trades-chart.component.ts](src/app/activity/daily-trades-chart.component.ts): filled orders as a line over a faded area, rejected orders as a second line, both on one count axis |
-| Focus is a 3px ring at half strength | Every link and button, from the base layer of [src/styles.css](src/styles.css) |
+| ChangePill, status tags | [change-pill.component.ts](src/app/shared/change-pill.component.ts) |
+| TimeframeToggle | [timeframe-toggle.component.ts](src/app/shared/timeframe-toggle.component.ts) |
+| HeaderDropdown with the export menu | [export-menu.component.ts](src/app/shared/export-menu.component.ts): CSV of the rows on screen, or PDF through the print dialog |
+| Select with a caption | [filter-select.component.ts](src/app/shared/filter-select.component.ts) |
+| PriceChart | [line-chart.component.ts](src/app/shared/line-chart.component.ts) |
+| Sparkline | [sparkline.component.ts](src/app/shared/sparkline.component.ts) |
+| Dialog | [dialog.component.ts](src/app/shared/dialog.component.ts) |
+| DashCard, DashLabel, DashLink, Button, Input, table head and rows | Classes in [src/styles.css](src/styles.css): `dash-card`, `net-worth-card`, `dash-label`, `dash-link`, `ghost-button`, `ds-control`, `dash-table-head`, `row-button` |
+
+From 1024px wide a screen fills the window and its lists scroll inside their cards, with a bottom fade and no scrollbar, as the kit draws it. Narrower, or on a short window, the page scrolls.
+
+The kit is a proposal drawn on sample data. Where the product has no such data, or the screen must stay read only, the app departs from it:
+
+| Kit | Here | Why |
+| --- | --- | --- |
+| "Unlock now" on a locked customer, "Email customer" | Left out; the lock banner says when the account unlocks | Reporting only reads |
+| Statuses FILLED, PENDING, REJECTED, CANCELLED, and customer status SUSPENDED | FILLED, PENDING, ACCEPTED, REJECTED; ACTIVE and LOCKED | These are the statuses the product has |
+| Order execution: bid and ask at submit, spread, market price now, session | Indicative price, price buffer, slippage, submitted, resolved, market time | The quote an order executed against is not kept in the database |
+| "Streaming" beside Live activity | "Live" | The feed is read again every 15 seconds, not streamed |
+| Three sidebar entries | A fourth, Report runs | The scheduled reports built from the Kafka topic are a product requirement the kit predates |
+| No way to sign out | A log out button beside the signed-in user | The kit does not draw one |
+| Most traded shows a price sparkline under "Today" whatever the range | The column is named after the chosen range and plots the symbol's fill prices in it | The label follows what is plotted |
 
 The chart images on the Report runs screen are drawn by the Reporting Service, in the same surface and colors.
 
@@ -129,23 +171,24 @@ npm --prefix apps/reporting-ui test -- --no-watch
 
 What the screens show depends on what is running:
 
-| Situation | Activity and Report runs show |
-| --- | --- |
-| Reporting Service not reachable | "We couldn't load the report." with a retry |
-| Reporting Service up, consumer never started | "No report yet" |
-| Consumer running, no trade event stored yet | A report of zeros |
-| Orders placed while the broker and consumer run | Those orders, from the next run on |
+| Situation | Activity, Customers and Orders | Report runs |
+| --- | --- | --- |
+| Reporting Service not reachable | A load error with a retry | A load error with a retry |
+| Reporting Service up, consumer never started | Everything in the database | "No report runs yet" |
+| Consumer running, no trade event stored yet | Everything in the database | A report of zeros |
+| Orders placed while the broker and consumer run | Everything in the database | Those orders, from the next run on |
 
-Trade events exist only for orders placed while a Kafka broker is running. Orders already in the database are never replayed, so a stack that was started without a broker has nothing to report until new orders are placed.
+Trade events exist only for orders placed while a Kafka broker is running. Orders already in the database are never replayed into the report runs.
 
 The production [Dockerfile](Dockerfile) builds the app and serves it through unprivileged Nginx, with SPA fallback and the two proxies. In [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) the container starts after `reporting-service` and `auth-service`, because Nginx resolves both upstream names when it starts.
 
 ## Tests
 
-`*.spec.ts` beside the code under `src`, on the Angular unit-test builder with Vitest. The run fails below 90 percent on statements, branches, functions, or lines (`coverageThresholds` in [angular.json](angular.json)). Add `--coverage` for the report. Shared test data lives in [src/testing](src/testing) and is excluded from the application build. There is no end-to-end suite for this app.
+`*.spec.ts` beside the code under `src`, on the Angular unit-test builder with Vitest. The run fails below 90 percent on statements, branches, functions, or lines (`coverageThresholds` in [angular.json](angular.json)). Add `--coverage` for the report. Shared test data and DOM helpers live in [src/testing](src/testing) and are excluded from the application build. There is no end-to-end suite for this app.
 
 ## Known limitations
 
-- The service keeps only the newest run, so the run list normally has one entry.
-- There is no time-range filter: a run covers every event on disk.
+- The Orders screen shows the newest 500 orders; the count beside the filters is of those.
+- The Activity ranges are fixed at today, 7, 30 and 90 days.
+- The service keeps only the newest report run, so the run list normally has one entry, and a run covers every event on disk.
 - Users are not signed out for inactivity, unlike the Client UI.

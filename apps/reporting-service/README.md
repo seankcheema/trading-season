@@ -1,6 +1,6 @@
 # Reporting Service
 
-Python Flask service that turns the `trade-events` Kafka topic into reports. It never reads trade data from the trading database.
+Python Flask service with two jobs, both for analysts. It turns the `trade-events` Kafka topic into scheduled reports, and it serves read-only views of platform activity, orders and customers for the [Reporting UI](../reporting-ui/README.md)'s console.
 
 - Port 8083, Swagger UI at http://localhost:8083/docs, OpenAPI at `/openapi.yaml`
 - Served by Gunicorn in Docker. The [Reporting UI](../reporting-ui/README.md) presents the runs; it calls this service through its own origin, so it needs no entry in `CORS_ORIGINS`.
@@ -11,6 +11,23 @@ Python Flask service that turns the `trade-events` Kafka topic into reports. It 
 2. `consumer.py`, consumer group `reporting-ingester`, appends each message as one JSON line to `events/trade-events-p<partition>.jsonl` under `REPORTING_FILES_DIR`, then commits the offset. Offsets already on disk are skipped, so redelivery never duplicates a line.
 3. When it starts, and then every `SCHEDULER_INTERVAL_MINUTES`, the same process runs `report_run.py`: reads the event files, joins account and trader names from PostgreSQL (`users` and `accounts`, read only), and writes `runs/<UTC timestamp>/report.json` plus three PNG charts. `runs/latest` points at the new run; older runs are deleted. The first run reports the events already on disk, so a restart serves a report at once; a run that comes due while the process is busy runs late instead of being skipped. The charts use the Reporting UI's dark surface and colors, filled orders in the gain color and rejected orders in the loss color.
 4. The web service (`wsgi.py` under gunicorn) serves the runs behind the same RS256 tokens the Java services accept, to accounts with the `ANALYST` role only.
+
+The report runs never read trade data from the database: the topic is their only source, and PostgreSQL gives them names.
+
+### Analyst console
+
+The console endpoints are the other half, and they do read the database, because they show what the topic does not carry: cash movements, sign-in locks, ledger postings and the audit trail. [console.py](console.py) only reads, and aggregates in Python over plainly filtered rows, so the same code runs on PostgreSQL and on the SQLite database the tests use.
+
+| View | Tables read |
+| --- | --- |
+| Activity: figures against the prior period, notional over time, status split, newest events, most traded symbols | `orders`, `fills`, `cash_transactions`, `user_accounts`, `users`, `accounts`, `instruments`, `simulation_sessions` |
+| Orders, and one order with its ledger impact and audit trail | the above, plus `holdings`, `holding_movements`, `audit_trail` |
+| Customers, and one customer with balances and orders | `user_accounts`, `users`, `accounts`, `portfolio_valuations`, and the order tables |
+
+- A range is the viewer's own days: the UI sends its offset from UTC, and "today" starts at the viewer's midnight. Each figure is compared with the period of equal length just before the range.
+- Cash and holdings before and after an order are not stored per order. They are worked back from today's balance by removing every posting made after the order's own.
+- A customer is `LOCKED` while `user_accounts.locked_until` is in the future. The password hash column is not mapped in [models.py](models.py), so it cannot be selected; SSNs, addresses and dates of birth are never returned.
+- Nothing here writes. An analyst cannot unlock an account from reporting.
 
 ## Technology
 
@@ -49,6 +66,11 @@ Authenticated endpoints need an RS256 bearer token from the [Auth Service](../au
 | GET | `/api/reporting/runs/latest` | `ANALYST` | The latest run's `report.json`; 404 until the first run |
 | GET | `/api/reporting/runs/{runId}/files/{name}` | `ANALYST` | One PNG chart of a run |
 | GET | `/api/reporting/scheduler/status` | public | Latest run id, when it was generated, and the interval |
+| GET | `/api/reporting/activity?range=&tzOffset=` | `ANALYST` | Platform activity over `today`, `7d`, `30d` or `90d`, in the viewer's days |
+| GET | `/api/reporting/orders?limit=` | `ANALYST` | The newest orders across every account, 500 unless `limit` says otherwise (1 to 1000) |
+| GET | `/api/reporting/orders/{orderId}` | `ANALYST` | One order with its execution, ledger impact and audit trail |
+| GET | `/api/reporting/customers` | `ANALYST` | Every sign-in with its balances and lock status |
+| GET | `/api/reporting/customers/{userId}` | `ANALYST` | One customer with their accounts and orders |
 
 [openapi.yaml](openapi.yaml) is the canonical contract. Keep it, [routes.py](routes.py), [app.py](app.py), and the tests in step.
 
@@ -64,6 +86,8 @@ flowchart LR
     App --> Routes["routes.py<br/>/api/reporting blueprint"]
     Routes --> R
     Routes -. "profile" .-> DB
+    Routes --> Console["console.py<br/>activity, orders, customers"]
+    Console -. "read only" .-> Ledger[("trading_season<br/>orders, fills, cash, locks, audit trail")]
     App -. "JWKS, cached 1 h" .-> Auth["Auth Service"]
 ```
 
@@ -110,3 +134,5 @@ The image runs gunicorn by default; Compose starts a second container from the s
 ## Known limitations
 
 - Portfolio performance measures (returns, drawdown, Sharpe) are not computed yet; the run produces volume, activity and fill/rejection insights.
+- The console aggregates in Python, which suits a simulation's order volume. It loads the orders of twice the chosen range per request and would need SQL aggregation for a large one.
+- The quote an order executed against is not in the database, so an order shows its indicative price, price buffer and slippage in place of bid, ask and spread.
