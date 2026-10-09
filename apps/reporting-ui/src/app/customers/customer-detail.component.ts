@@ -6,8 +6,8 @@ import { lucideChevronLeft, lucideCircleAlert, lucideLock } from '@ng-icons/luci
 import { first, switchMap } from 'rxjs';
 import { dayClock, dollars, longDay, recent, wholeDollars } from '../reporting/format';
 import { ReportingApiService } from '../reporting/reporting-api.service';
+import { OrderBrowserComponent } from '../orders/order-browser.component';
 import { OrderDetailComponent } from '../orders/order-detail.component';
-import { OrderTableComponent } from '../orders/order-table.component';
 import { ChangePillComponent, statusTone } from '../shared/change-pill.component';
 import { ExportMenuComponent } from '../shared/export-menu.component';
 import { live } from '../shared/live';
@@ -16,8 +16,9 @@ import { FAILED_SIGN_IN_WARNING, initials, titleCase } from './customers.compone
 // How often the customer is read again.
 export const CUSTOMER_REFRESH_MS = 30_000;
 
-// One customer: profile, sign-in security, balances, and their orders. Read
-// only: a locked account is shown as locked, with when it unlocks.
+// One customer: profile, sign-in security, balances, and their orders and cash
+// transfers, searchable and filterable as on the Orders screen. Read only: a
+// locked account is shown as locked, with when it unlocks.
 @Component({
   selector: 'app-customer-detail',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -26,11 +27,11 @@ export const CUSTOMER_REFRESH_MS = 30_000;
     NgIcon,
     ChangePillComponent,
     ExportMenuComponent,
-    OrderTableComponent,
+    OrderBrowserComponent,
     OrderDetailComponent,
   ],
   providers: [provideIcons({ lucideChevronLeft, lucideCircleAlert, lucideLock })],
-  host: { class: 'flex flex-1 basis-0 flex-col gap-3 lg:min-h-[44rem]' },
+  host: { class: 'flex flex-1 basis-0 flex-col gap-3 lg:min-h-[40rem]' },
   template: `
     @switch (detail.state()) {
       @case ('loading') {
@@ -131,22 +132,18 @@ export const CUSTOMER_REFRESH_MS = 30_000;
           </section>
         </div>
 
-        <section class="dash-card flex min-h-64 flex-1 flex-col p-5">
+        <section class="dash-card flex min-h-80 flex-1 flex-col p-5">
           <div class="mb-4 flex items-center justify-between gap-2">
             <h2 class="text-sm font-semibold">Orders</h2>
             <span class="text-muted-foreground text-xs">Select an order to see its audit trail</span>
           </div>
-          @if (customer.orders.length) {
-            <app-order-table
-              [orders]="customer.orders"
-              [showUser]="false"
-              (opened)="open.set($event.orderId)"
-            />
-          } @else {
-            <p class="text-muted-foreground px-2 py-6 text-center text-sm">
-              This customer hasn't placed any orders yet.
-            </p>
-          }
+          <app-order-browser
+            [orders]="customer.orders"
+            [transfers]="customer.transfers"
+            [showUser]="false"
+            emptyMessage="This customer hasn't placed any orders yet."
+            (opened)="open.set($event.orderId)"
+          />
         </section>
 
         @if (open(); as orderId) {

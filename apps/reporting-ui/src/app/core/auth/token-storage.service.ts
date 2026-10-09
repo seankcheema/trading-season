@@ -1,5 +1,5 @@
 import { Injectable, computed, signal } from '@angular/core';
-import { REPORTING_ROLE } from './reporting-access';
+import { ADMIN_ROLE, REPORTING_ROLES } from './reporting-access';
 
 export interface AuthTokens {
   accessToken: string;
@@ -52,7 +52,12 @@ export class TokenStorageService {
   });
 
   // Whether the signed-in account may use this app at all.
-  readonly isAnalyst = computed(() => this.identity().roles.includes(REPORTING_ROLE));
+  readonly hasReportingRole = computed(() =>
+    this.identity().roles.some((role) => REPORTING_ROLES.includes(role)),
+  );
+
+  // Whether it sees every screen, not only the report runs.
+  readonly isAdmin = computed(() => this.identity().roles.includes(ADMIN_ROLE));
 
   get accessToken(): string | null {
     return this._session()?.accessToken ?? null;

@@ -17,11 +17,12 @@ const TONES: Record<PillTone, { change: string; tag: string }> = {
   muted: { change: 'text-muted-foreground bg-muted', tag: 'text-muted-foreground bg-muted' },
 };
 
-// What each order and account status looks like as a tag.
+// What each order, transfer and account status looks like as a tag.
 const STATUS_TONES: Record<string, PillTone> = {
   ACTIVE: 'gain',
   LOCKED: 'loss',
   FILLED: 'gain',
+  COMPLETED: 'gain',
   PENDING: 'primary',
   ACCEPTED: 'primary',
   REJECTED: 'loss',

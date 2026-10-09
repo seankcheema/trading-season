@@ -17,29 +17,31 @@ describe('TokenStorageService', () => {
     expect(storage.refreshToken).toBeNull();
     expect(storage.isAccessTokenValid()).toBe(false);
     expect(storage.identity()).toEqual({ email: null, roles: [] });
-    expect(storage.isAnalyst()).toBe(false);
+    expect(storage.hasReportingRole()).toBe(false);
+    expect(storage.isAdmin()).toBe(false);
   });
 
-  it('knows an analyst from any other role', () => {
+  it('knows an analyst and an admin from any other role, and an admin from an analyst', () => {
     const storage = create();
     const save = (roles: unknown) =>
       storage.save({ accessToken: accessToken({ roles }), refreshToken: 'r', expiresIn: 900 });
+    const access = () => [storage.hasReportingRole(), storage.isAdmin()];
 
     save(['ANALYST']);
-    expect(storage.isAnalyst()).toBe(true);
+    expect(access()).toEqual([true, false]);
     save(['TRADER', 'ANALYST']);
-    expect(storage.isAnalyst()).toBe(true);
-    save(['TRADER']);
-    expect(storage.isAnalyst()).toBe(false);
+    expect(access()).toEqual([true, false]);
     save(['ADMIN']);
-    expect(storage.isAnalyst()).toBe(false);
+    expect(access()).toEqual([true, true]);
+    save(['TRADER']);
+    expect(access()).toEqual([false, false]);
     // A claim that is not a list of roles grants nothing.
-    save('ANALYST');
-    expect(storage.isAnalyst()).toBe(false);
+    save('ADMIN');
+    expect(access()).toEqual([false, false]);
 
-    save(['ANALYST']);
+    save(['ADMIN']);
     storage.clear();
-    expect(storage.isAnalyst()).toBe(false);
+    expect(access()).toEqual([false, false]);
   });
 
   it('saves tokens, persists them and exposes the display claims', () => {

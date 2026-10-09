@@ -23,8 +23,9 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       () => new HttpErrorResponse({ status: 401, statusText: 'Session expired', url: req.url }),
     );
   };
-  // A 403 means the service no longer sees the analyst role on this account, for example
-  // after a refresh issued a token for a changed role. Nothing here can be shown without it.
+  // A 403 means the service no longer sees the role this screen needs on the account, for
+  // example after a refresh issued a token for a changed role. The guards keep an analyst off
+  // the admin screens, so the sign-in is no longer what this app took it for.
   const send = (token: string) =>
     next(req.clone({ setHeaders: { Authorization: `Bearer ${token}` } })).pipe(
       catchError((error: unknown) => {

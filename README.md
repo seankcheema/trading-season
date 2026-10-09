@@ -10,8 +10,8 @@ A trading simulation platform: an Angular client, two Spring Boot services for t
 | Auth Service | [apps/auth-service](apps/auth-service/README.md) | 3001 | Credentials, RS256 access tokens, refresh token rotation |
 | Order and Sell Service | [apps/order-and-sell-service](apps/order-and-sell-service/README.md) | 8081 | Order submission, validation, execution, instruments |
 | Holdings and Trade Service | [apps/holdings-and-trade-service](apps/holdings-and-trade-service/README.md) | 8082 | Profiles, accounts, holdings, cash, watchlist, market data |
-| Reporting Service | [apps/reporting-service](apps/reporting-service/README.md) | 8083 | Kafka consumer storing trade events as files, scheduled report runs with charts, endpoints serving the runs, and read-only analyst views of activity, orders and customers |
-| Reporting UI | [apps/reporting-ui](apps/reporting-ui/README.md) | 4300 | Sign-in for analysts; activity, customers, orders and report runs, read from the Reporting Service |
+| Reporting Service | [apps/reporting-service](apps/reporting-service/README.md) | 8083 | Kafka consumer storing trade events as files, scheduled report runs with charts, endpoints serving the runs to analysts and admins, and read-only views of activity, orders and customers for admins |
+| Reporting UI | [apps/reporting-ui](apps/reporting-ui/README.md) | 4300 | Sign-in for analysts and admins; report runs for both, and activity, customers and orders for admins, read from the Reporting Service |
 | Market Data | [apps/market-data](apps/market-data/README.md) | - | Synthetic market data generation and import |
 | Database | [db](db/README.md) | 5432 | Migrations and schema for the shared `trading_season` database |
 
@@ -40,12 +40,12 @@ flowchart LR
     RC --> Files[("reporting_files volume")]
     RS --> Files
 
-    Analyst([Analyst]) --> RUI["Reporting UI<br/>Angular :4300"]
+    Analyst(["Analyst or admin"]) --> RUI["Reporting UI<br/>Angular :4300"]
     RUI -- "/auth: login, refresh" --> Auth
     RUI -- "/api/reporting" --> RS
 ```
 
-The UI reaches both Java services through one relative `/api` prefix that the dev proxy and the Nginx image split by path. The Java services never call the Auth Service per request: they verify tokens locally against its cached public keys. The Reporting UI calls the Auth Service and the Reporting Service through a proxy on its own origin. It never reads Kafka or the database itself: its report runs are what the reporting consumer has built from the topic, and its activity, customers and orders screens are what the Reporting Service reads from the database for it. All of it is served to accounts with the `ANALYST` role only, so traders cannot use it; see [roles](apps/auth-service/README.md#roles).
+The UI reaches both Java services through one relative `/api` prefix that the dev proxy and the Nginx image split by path. The Java services never call the Auth Service per request: they verify tokens locally against its cached public keys. The Reporting UI calls the Auth Service and the Reporting Service through a proxy on its own origin. It never reads Kafka or the database itself: its report runs are what the reporting consumer has built from the topic, and its activity, customers and orders screens are what the Reporting Service reads from the database for it. The report runs are served to accounts with the `ANALYST` or `ADMIN` role and the other screens to `ADMIN` only, so traders cannot use any of it; see [roles](apps/auth-service/README.md#roles).
 
 The Order and Sell Service publishes one `trade-events` message after each committed order status change (ACCEPTED, FILLED or REJECTED), keyed by account id. Three consumer groups read the topic independently:
 
@@ -137,7 +137,7 @@ flowchart TB
         M1["simulation_sessions<br/>market_states<br/>market_behaviors<br/>quotes<br/>market_ticks<br/>candles"]
     end
     subgraph RS["Reporting Service"]
-        R1["reads only, for the analyst console:<br/>users, accounts, orders, fills,<br/>cash and holding ledgers, valuations,<br/>audit trail, sign-in locks<br/>trade events and report runs<br/>live in the reporting_files volume"]
+        R1["reads only, for the admin console:<br/>users, accounts, orders, fills,<br/>cash and holding ledgers, valuations,<br/>audit trail, sign-in locks<br/>trade events and report runs<br/>live in the reporting_files volume"]
     end
     DB[("trading_season")]
     A1 --> DB
@@ -147,7 +147,7 @@ flowchart TB
     R1 -.-> DB
 ```
 
-The Reporting Service writes no database tables. Its report runs take their trade data from the `trade-events` topic and keep it as files. Its analyst console reads orders, fills, cash, sign-in locks and the audit trail from the database, without the password hash column; see [apps/reporting-service](apps/reporting-service/README.md).
+The Reporting Service writes no database tables. Its report runs take their trade data from the `trade-events` topic and keep it as files. Its console, for admins, reads orders, fills, cash, sign-in locks and the audit trail from the database, without the password hash column; see [apps/reporting-service](apps/reporting-service/README.md).
 
 ## CI pipeline
 
@@ -214,12 +214,13 @@ Only orders placed while a broker is running become trade events; orders already
 
 ### Development login
 
-In development the auth service seeds two sign-ins. Production never seeds either.
+In development the auth service seeds three sign-ins. Production never seeds any of them.
 
 | Sign-in | Role | Use it for |
 | --- | --- | --- |
 | `admin@example.com` / `admin123` | `TRADER` | Client UI |
-| `analyst@example.com` / `analyst123` | `ANALYST` | Reporting UI |
+| `analyst@example.com` / `analyst123` | `ANALYST` | Reporting UI, report runs only |
+| `reporting-admin@example.com` / `admin123` | `ADMIN` | Reporting UI, every screen |
 
 ## Checks
 

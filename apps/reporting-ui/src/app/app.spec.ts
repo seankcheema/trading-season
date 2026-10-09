@@ -4,7 +4,7 @@ import { ActivityComponent } from './activity/activity.component';
 import { App } from './app';
 import { appConfig } from './app.config';
 import { routes } from './app.routes';
-import { authGuard, guestGuard } from './core/auth/auth.guard';
+import { adminGuard, authGuard, guestGuard } from './core/auth/auth.guard';
 import { CustomerDetailComponent } from './customers/customer-detail.component';
 import { CustomersComponent } from './customers/customers.component';
 import { OrdersComponent } from './orders/orders.component';
@@ -43,6 +43,15 @@ describe('routes', () => {
       'customers/:userId',
       'orders',
       'runs',
+    ]);
+
+    // Every screen but the report runs is an admin's.
+    expect(screens.map((screen) => screen.canActivate)).toEqual([
+      [adminGuard],
+      [adminGuard],
+      [adminGuard],
+      [adminGuard],
+      undefined,
     ]);
 
     const loaded = await Promise.all([

@@ -16,6 +16,8 @@ const HEIGHT = 40;
 // Room above the highest and below the lowest point, in SVG units.
 const PAD = 2;
 const AXIS_LABELS = 5;
+// How many steps the value axis aims for; rounding the step can add or drop one.
+const AXIS_STEPS = 4;
 
 let nextChartId = 0;
 
@@ -28,6 +30,45 @@ export interface ChartPoint {
 interface Coordinate {
   x: number;
   y: number;
+}
+
+export interface AxisScale {
+  min: number;
+  max: number;
+  // The labelled values, highest first.
+  ticks: number[];
+}
+
+// Rounds a step up to 1, 2, 2.5 or 5 times a power of ten.
+function roundStep(rough: number): number {
+  const power = 10 ** Math.floor(Math.log10(rough));
+  const unit = rough / power;
+  return (unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 2.5 ? 2.5 : unit <= 5 ? 5 : 10) * power;
+}
+
+// Round bounds that hold every value, and the round steps between them, so the
+// axis reads $80,000, $60,000 and not $75,542, $56,657. A series that never
+// moves has one tick, its value: there is no range to divide.
+export function axisScale(values: readonly number[], fromZero = false): AxisScale {
+  let min = values.length ? Math.min(...values) : 0;
+  let max = values.length ? Math.max(...values) : 0;
+  if (fromZero) {
+    min = Math.min(min, 0);
+    max = Math.max(max, 0);
+  }
+  if (max === min) {
+    return { min, max, ticks: [max] };
+  }
+  const step = roundStep((max - min) / AXIS_STEPS);
+  const low = Math.floor(min / step);
+  const high = Math.ceil(max / step);
+  // From whole multiples of the step, so 0.1 steps do not drift into 0.30000000000000004.
+  const at = (index: number) => Number((index * step).toPrecision(12));
+  return {
+    min: at(low),
+    max: at(high),
+    ticks: Array.from({ length: high - low + 1 }, (_, index) => at(high - index)),
+  };
 }
 
 // A smooth path through the points, in SVG units. Control points stay inside the
@@ -53,15 +94,16 @@ export function smoothPath(points: readonly Coordinate[]): string {
 }
 
 // The design system's line chart: a smooth 2px line in the gain or loss color,
-// an optional faded area, hairline gridlines, the value axis on the right, a
-// ringed marker on the newest point, and a crosshair with a label row on hover.
+// an optional faded area, hairline gridlines, the value axis on the right in
+// round steps, a ringed marker on the newest point, and a crosshair with a
+// label row on hover.
 @Component({
   selector: 'app-line-chart',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'block min-h-0' },
   template: `
     <div
-      class="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_4.75rem] grid-rows-[1.25rem_minmax(8rem,1fr)_1rem] gap-x-3 gap-y-2"
+      class="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_4.75rem] grid-rows-[1.25rem_minmax(4rem,1fr)_1rem] gap-x-3 gap-y-2"
     >
       <div class="relative min-w-0" aria-hidden="true">
         @if (hovered(); as point) {
@@ -195,6 +237,9 @@ export class LineChartComponent {
   // Which way the period went, which colors the line.
   readonly tone = input<'gain' | 'loss'>('gain');
   readonly area = input(false, { transform: booleanAttribute });
+  // Starts the value axis at zero, for a quantity such as volume where the
+  // height above zero is the point. Without it the axis fits the values.
+  readonly fromZero = input(false, { transform: booleanAttribute });
   readonly format = input<(value: number) => string>(wholeDollars);
   // What a screen reader is told the chart shows.
   readonly description = input('');
@@ -210,10 +255,11 @@ export class LineChartComponent {
   protected readonly text = computed(() => (this.tone() === 'gain' ? 'text-gain' : 'text-loss'));
 
   private readonly _scale = computed(() => {
-    const values = this.points().map((point) => point.value);
-    const min = values.length ? Math.min(...values) : 0;
-    const max = values.length ? Math.max(...values) : 0;
-    return { min, max, range: max - min || 1 };
+    const scale = axisScale(
+      this.points().map((point) => point.value),
+      this.fromZero(),
+    );
+    return { ...scale, range: scale.max - scale.min || 1 };
   });
 
   // Distance from the top of the plot, in percent, for a value.
@@ -241,14 +287,12 @@ export class LineChartComponent {
     ),
   );
 
-  protected readonly yTicks = computed(() => {
-    const { max, range } = this._scale();
-    return [0, 1, 2, 3, 4].map((step) => {
-      const value = max - (range / 4) * step;
+  protected readonly yTicks = computed(() =>
+    this._scale().ticks.map((value) => {
       const y = this.top(value);
       return { value, y, svgY: (y / 100) * HEIGHT };
-    });
-  });
+    }),
+  );
 
   // A handful of the point labels, evenly spread and always ending on the newest.
   protected readonly xTicks = computed(() => {

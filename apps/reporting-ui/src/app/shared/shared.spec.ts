@@ -3,10 +3,11 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Observable, Subject, of, throwError } from 'rxjs';
 import { text } from '../../testing/dom';
 import { ChangePillComponent, statusTone } from './change-pill.component';
+import { copyText } from './clipboard';
 import { DialogComponent } from './dialog.component';
 import { ExportMenuComponent, downloadCsv, toCsv } from './export-menu.component';
 import { FilterSelectComponent } from './filter-select.component';
-import { LineChartComponent, smoothPath } from './line-chart.component';
+import { LineChartComponent, axisScale, smoothPath } from './line-chart.component';
 import { Live, live } from './live';
 import { SparklineComponent } from './sparkline.component';
 import { TimeframeToggleComponent } from './timeframe-toggle.component';
@@ -47,7 +48,7 @@ describe('ChangePillComponent', () => {
   });
 
   it('knows the tone of each status and is quiet about one it does not know', () => {
-    expect(['ACTIVE', 'FILLED'].map(statusTone)).toEqual(['gain', 'gain']);
+    expect(['ACTIVE', 'FILLED', 'COMPLETED'].map(statusTone)).toEqual(['gain', 'gain', 'gain']);
     expect(['LOCKED', 'REJECTED'].map(statusTone)).toEqual(['loss', 'loss']);
     expect(['PENDING', 'ACCEPTED'].map(statusTone)).toEqual(['primary', 'primary']);
     expect(statusTone('CANCELLED')).toBe('muted');
@@ -246,6 +247,78 @@ describe('FilterSelectComponent', () => {
   });
 });
 
+describe('copyText', () => {
+  const clipboard = (value: unknown) =>
+    Object.defineProperty(navigator, 'clipboard', { value, configurable: true });
+  const original = document.execCommand;
+  afterEach(() => {
+    document.execCommand = original;
+  });
+
+  it('writes to the clipboard and says whether it got there', async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    clipboard({ writeText });
+    expect(await copyText('abc')).toBe(true);
+    expect(writeText).toHaveBeenCalledWith('abc');
+
+    clipboard({ writeText: () => Promise.reject(new Error('denied')) });
+    expect(await copyText('abc')).toBe(false);
+  });
+
+  it('copies through a selection where the page is not on a secure origin', async () => {
+    clipboard(undefined);
+    let selected = '';
+    document.execCommand = vi.fn((command: string) => {
+      selected = `${command}:${document.querySelector('textarea')!.value}`;
+      return true;
+    });
+
+    expect(await copyText('abc')).toBe(true);
+    expect(selected).toBe('copy:abc');
+    // The field it selected from is gone again.
+    expect(document.querySelector('textarea')).toBeNull();
+  });
+
+  it('reports a copy that could not be made at all', async () => {
+    clipboard(undefined);
+    document.execCommand = vi.fn(() => {
+      throw new Error('unsupported');
+    });
+
+    expect(await copyText('abc')).toBe(false);
+    expect(document.querySelector('textarea')).toBeNull();
+  });
+});
+
+describe('axisScale', () => {
+  it('rounds the bounds and the steps between them', () => {
+    expect(axisScale([0, 75542.05, 52508.04, 18612.48])).toEqual({
+      min: 0,
+      max: 80000,
+      ticks: [80000, 60000, 40000, 20000, 0],
+    });
+    expect(axisScale([100, 300, 200]).ticks).toEqual([300, 250, 200, 150, 100]);
+    expect(axisScale([3, 11]).ticks).toEqual([12, 10, 8, 6, 4, 2]);
+    expect(axisScale([0, 1000]).ticks).toEqual([1000, 750, 500, 250, 0]);
+    expect(axisScale([0, 45]).ticks).toEqual([60, 40, 20, 0]);
+    // Steps under one stay exact.
+    expect(axisScale([0.1, 0.5]).ticks).toEqual([0.5, 0.4, 0.3, 0.2, 0.1]);
+    expect(axisScale([-40, 90]).ticks).toEqual([100, 50, 0, -50]);
+  });
+
+  it('starts at zero when asked, whichever side of zero the values are', () => {
+    expect(axisScale([52000, 75000], true).ticks).toEqual([80000, 60000, 40000, 20000, 0]);
+    expect(axisScale([52000, 75000]).ticks).toEqual([80000, 70000, 60000, 50000]);
+    expect(axisScale([-30, -10], true)).toMatchObject({ min: -30, max: 0 });
+  });
+
+  it('has one tick for a series that never moves, and for none at all', () => {
+    expect(axisScale([0, 0, 0], true)).toEqual({ min: 0, max: 0, ticks: [0] });
+    expect(axisScale([250, 250])).toEqual({ min: 250, max: 250, ticks: [250] });
+    expect(axisScale([])).toEqual({ min: 0, max: 0, ticks: [0] });
+  });
+});
+
 describe('smoothPath', () => {
   it('is empty without points and a single move for one', () => {
     expect(smoothPath([])).toBe('');
@@ -302,6 +375,28 @@ describe('LineChartComponent', () => {
     expect(texts('[data-axis="x"] > span')).toEqual(['1 PM', '2 PM', '3 PM']);
     expect(plot().getAttribute('aria-label')).toBe('Notional traded');
     expect(root().querySelector('path[fill^="url("]')).toBeNull();
+  });
+
+  it('labels round values, from zero when asked, and never below a flat line', () => {
+    const week = [0, 75542.05, 52508.04, 18612.48].map((value, index) => ({ value, label: `Day ${index}` }));
+    fixture = render(LineChartComponent, { points: week, fromZero: true });
+    expect(texts('[aria-hidden="true"] > span.right-0')).toEqual([
+      '$80,000',
+      '$60,000',
+      '$40,000',
+      '$20,000',
+      '$0',
+    ]);
+    // 75,542 of 80,000 is short of the top of the plot.
+    expect(root().querySelector('[data-line]')!.getAttribute('d')).toContain(' 33.33,4.01 ');
+
+    // A day without a trade is one $0 on the baseline, not a ladder of negative dollars.
+    const quiet = [0, 0, 0].map((value, index) => ({ value, label: `${index} AM` }));
+    fixture = render(LineChartComponent, { points: quiet, fromZero: true });
+    expect(texts('[aria-hidden="true"] > span.right-0')).toEqual(['$0']);
+    const ticks = Array.from(root().querySelectorAll<HTMLElement>('[aria-hidden="true"] > span.right-0'));
+    expect(ticks.every((tick) => parseFloat(tick.style.top) <= 100)).toBe(true);
+    expect(root().querySelector('[data-line]')!.getAttribute('d')).toMatch(/^M 0\.00,38\.00 C .* 100\.00,38\.00$/);
   });
 
   it('fills the area and takes the loss color for a period that fell', () => {

@@ -68,6 +68,13 @@ describe('ActivityComponent', () => {
       'Notional traded, Today: $6,044',
     );
     expect(notional.querySelector('[data-line]')!.getAttribute('class')).toContain('stroke-gain');
+    // The value axis starts at zero and climbs in round steps.
+    expect(Array.from(notional.querySelectorAll('span.right-0')).map(text)).toEqual([
+      '$3,000',
+      '$2,000',
+      '$1,000',
+      '$0',
+    ]);
     const hours = Array.from(notional.querySelectorAll('[data-axis="x"] > span')).map(text);
     expect(hours).toHaveLength(3);
     expect(hours.every((label) => /^\d{1,2} [AP]M$/.test(label))).toBe(true);
@@ -91,7 +98,7 @@ describe('ActivityComponent', () => {
     const root = render();
     const statuses = card(root, 'Orders by status');
 
-    expect(Array.from(statuses.querySelectorAll('.mt-5 > div')).map(text)).toEqual([
+    expect(Array.from(statuses.querySelectorAll('[data-statuses] > div')).map(text)).toEqual([
       'filled 6 60.0%',
       'pending 1 10.0%',
       'accepted 1 10.0%',

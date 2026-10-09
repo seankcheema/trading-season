@@ -16,8 +16,8 @@ import { AUTH_API_URL } from '../api.config';
 import { ReportingAccessError } from './reporting-access';
 import { AuthTokens, TokenStorageService } from './token-storage.service';
 
-// Sign-in against the auth service, for analysts only. Accounts are created in the client UI,
-// not here, and an account becomes an analyst outside both apps.
+// Sign-in against the auth service, for analysts and admins only. Accounts are created in the
+// client UI, not here, and an account is given either role outside both apps.
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly _http = inject(HttpClient);
@@ -27,13 +27,13 @@ export class AuthService {
   readonly isAuthenticated = this._storage.hasSession;
   private refresh?: { revision: number; result: Observable<boolean> };
 
-  // Fails with ReportingAccessError when the credentials are right but the account is not an
-  // analyst. That session is revoked straight away, so no token for it stays in this browser.
+  // Fails with ReportingAccessError when the credentials are right but the account has no
+  // reporting role. That session is revoked straight away, so no token for it stays in this browser.
   login(email: string, password: string): Observable<void> {
     return this._http.post<AuthTokens>(`${this._authApiUrl}/login`, { email, password }).pipe(
       tap((tokens) => this._storage.save(tokens)),
       switchMap(() =>
-        this._storage.isAnalyst()
+        this._storage.hasReportingRole()
           ? of(undefined)
           : this.logout().pipe(switchMap(() => throwError(() => new ReportingAccessError()))),
       ),

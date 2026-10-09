@@ -54,8 +54,8 @@ describe('ShellComponent', () => {
       .filter((part) => !part.querySelector('span'))
       .map((part) => part.textContent!.trim());
 
-  it('frames the reporting screens with navigation', async () => {
-    signIn({ email: 'sean@example.com', roles: ['ANALYST'] });
+  it('frames every reporting screen with navigation for an admin', async () => {
+    signIn({ email: 'sean@example.com', roles: ['ADMIN'] });
     await TestBed.inject(Router).navigateByUrl('/');
     const root = render();
     await fixture.whenStable();
@@ -77,6 +77,73 @@ describe('ShellComponent', () => {
     expect(links[0].getAttribute('aria-current')).toBe('page');
     expect(links[1].hasAttribute('aria-current')).toBe(false);
     expect(root.querySelector('router-outlet')).not.toBeNull();
+  });
+
+  it('offers an analyst the report runs and nothing else', () => {
+    signIn({ email: 'analyst@example.com', roles: ['ANALYST'] });
+    const links = Array.from(render().querySelectorAll('nav a'));
+
+    expect(links.map((link) => link.textContent!.trim())).toEqual(['Report runs']);
+    expect(links[0].getAttribute('href')).toBe('/runs');
+  });
+
+  it('collapses to its icons, keeps the names for assistive tech, and remembers the choice', () => {
+    signIn({ email: 'sean@example.com', roles: ['ADMIN'] });
+    const root = render();
+    const grid = root.firstElementChild!;
+    const toggle = () => root.querySelector<HTMLButtonElement>('aside button[aria-controls="reporting-nav"]')!;
+    const labels = () => Array.from(root.querySelectorAll('nav a span')).map((label) => label.className);
+
+    expect(toggle().getAttribute('aria-label')).toBe('Collapse sidebar');
+    expect(toggle().getAttribute('aria-expanded')).toBe('true');
+    expect(grid.className).toContain('md:grid-cols-[232px_minmax(0,1fr)]');
+    expect(labels().every((name) => !name.includes('sr-only'))).toBe(true);
+    expect(root.querySelector('nav a')!.hasAttribute('title')).toBe(false);
+
+    toggle().click();
+    fixture.detectChanges();
+    expect(toggle().getAttribute('aria-label')).toBe('Expand sidebar');
+    expect(toggle().getAttribute('aria-expanded')).toBe('false');
+    expect(grid.className).toContain('md:grid-cols-[60px_minmax(0,1fr)]');
+    // Hidden from the wide layout only; the names stay in the accessibility tree and as tooltips.
+    expect(labels().every((name) => name.includes('md:sr-only'))).toBe(true);
+    expect(Array.from(root.querySelectorAll('nav a')).map((link) => link.getAttribute('title'))).toEqual([
+      'Activity',
+      'Customers',
+      'Orders',
+      'Report runs',
+    ]);
+    expect(root.querySelector('aside a[aria-label="TradingSeason Reporting home"] > span')!.className).toContain(
+      'md:hidden',
+    );
+    expect(root.querySelector('button[aria-label="Log out"]')).not.toBeNull();
+    expect(localStorage.getItem('ts.reporting.sidebar-collapsed')).toBe('true');
+
+    // A new visit starts collapsed, and opening it is remembered too.
+    fixture.destroy();
+    const again = render();
+    expect(again.querySelector('button[aria-label="Expand sidebar"]')).not.toBeNull();
+    again.querySelector<HTMLButtonElement>('button[aria-label="Expand sidebar"]')!.click();
+    expect(localStorage.getItem('ts.reporting.sidebar-collapsed')).toBe('false');
+  });
+
+  it('still collapses when the browser refuses to store the choice', () => {
+    signIn({ email: 'sean@example.com', roles: ['ADMIN'] });
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation((key) => {
+      if (key === 'ts.reporting.sidebar-collapsed') throw new Error('blocked');
+      return null;
+    });
+    const root = render();
+    getItem.mockRestore();
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+
+    root.querySelector<HTMLButtonElement>('button[aria-label="Collapse sidebar"]')!.click();
+    fixture.detectChanges();
+
+    expect(root.querySelector('button[aria-label="Expand sidebar"]')).not.toBeNull();
+    setItem.mockRestore();
   });
 
   it("shows the signed-in analyst's name, role and trader level", () => {

@@ -129,8 +129,9 @@ function feedRow(item: FeedItem): FeedRow {
     }),
   ],
   // From 1024px wide the screen fills the window and its lists scroll inside their
-  // cards; a window shorter than the minimum scrolls the page instead.
-  host: { class: 'flex flex-col gap-3 lg:min-h-[50rem] lg:flex-1 lg:basis-0' },
+  // cards; a window shorter than the minimum scrolls the page instead. The minimum
+  // is low enough for a short wide display, such as 1920x828 less the browser's bars.
+  host: { class: 'flex flex-col gap-3 lg:min-h-[37.5rem] lg:flex-1 lg:basis-0' },
   styles: `
     .traded-grid {
       display: grid;
@@ -184,8 +185,9 @@ function feedRow(item: FeedItem): FeedRow {
           }
         </div>
 
+        <!-- The chart row takes the smaller share and never less than the four statuses need. -->
         <div
-          class="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]"
+          class="grid gap-3 lg:min-h-[15rem] lg:flex-[4] lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]"
         >
           <section class="dash-card flex min-h-0 flex-col p-5">
             <h2 class="dash-label">Notional traded</h2>
@@ -200,6 +202,7 @@ function feedRow(item: FeedItem): FeedRow {
             <app-line-chart
               class="mt-1 flex-1"
               area
+              fromZero
               [points]="chart()"
               [tone]="(data.notional.change ?? 0) < 0 ? 'loss' : 'gain'"
               [description]="chartDescription()"
@@ -211,7 +214,7 @@ function feedRow(item: FeedItem): FeedRow {
               <h2 class="text-sm font-semibold">Orders by status</h2>
               <a routerLink="/orders" class="dash-link" data-print-hide="true">Open orders</a>
             </div>
-            <div class="mt-5 flex flex-col gap-4">
+            <div class="mt-4 flex flex-col gap-3" data-statuses>
               @for (row of statuses(); track row.status) {
                 <div>
                   <div class="flex items-center justify-between text-sm">
@@ -221,7 +224,7 @@ function feedRow(item: FeedItem): FeedRow {
                       <span class="text-muted-foreground text-xs">{{ percent(row.share) }}</span>
                     </span>
                   </div>
-                  <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
                     <div class="h-full rounded-full" [class]="row.bar" [style.width.%]="row.share"></div>
                   </div>
                 </div>
@@ -230,7 +233,7 @@ function feedRow(item: FeedItem): FeedRow {
           </section>
         </div>
 
-        <div class="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]">
+        <div class="grid gap-3 lg:min-h-0 lg:flex-[5] lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]">
           <section class="dash-card flex min-h-0 flex-col p-5">
             <div class="flex items-center justify-between gap-2">
               <h2 class="text-sm font-semibold">Live activity</h2>

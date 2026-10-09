@@ -40,12 +40,12 @@ describe('SeedService', () => {
     vi.restoreAllMocks();
   });
 
-  it('should create a trader and an analyst sign-in in development', async () => {
+  it('should create a trader, an analyst and an admin sign-in in development', async () => {
     process.env.NODE_ENV = 'development';
 
     await service.seedTestUser();
 
-    expect(repository.save).toHaveBeenCalledTimes(2);
+    expect(repository.save).toHaveBeenCalledTimes(3);
     expect(repository.create).toHaveBeenCalledWith({
       email: 'admin@example.com',
       password: 'hashed_admin123',
@@ -56,10 +56,16 @@ describe('SeedService', () => {
       password: 'hashed_analyst123',
       role: 'ANALYST',
     });
+    expect(repository.create).toHaveBeenCalledWith({
+      email: 'reporting-admin@example.com',
+      password: 'hashed_admin123',
+      role: 'ADMIN',
+    });
   });
 
-  it('should seed exactly one analyst, since registration cannot create one', () => {
+  it('should seed exactly one analyst and one admin, since registration cannot create either', () => {
     expect(SEED_USERS.filter((seed) => seed.role === 'ANALYST')).toHaveLength(1);
+    expect(SEED_USERS.filter((seed) => seed.role === 'ADMIN')).toHaveLength(1);
   });
 
   it('should leave an existing account as it is, role included', async () => {
@@ -73,9 +79,12 @@ describe('SeedService', () => {
 
     await service.seedTestUser();
 
-    expect(repository.save).toHaveBeenCalledTimes(1);
+    expect(repository.save).toHaveBeenCalledTimes(2);
     expect(repository.create).toHaveBeenCalledWith(
       expect.objectContaining({ email: 'admin@example.com' }),
+    );
+    expect(repository.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'analyst@example.com' }),
     );
   });
 

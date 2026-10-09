@@ -4,7 +4,7 @@ reads. All of them are owned by other services and are read only here.
 
 Two groups. users and accounts put names on account ids in the report runs,
 whose trade data comes from the Kafka topic trade-events and is kept as files
-(event_store.py). The rest back the analyst console (console.py), which shows
+(event_store.py). The rest back the console (console.py), which shows
 orders, fills, cash, sign-in locks and the audit trail as the database records
 them. Columns mirror db/migrations; only the columns the service uses are
 mapped, so a secret such as a password hash can never be selected.

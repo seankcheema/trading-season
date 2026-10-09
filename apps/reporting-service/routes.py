@@ -1,10 +1,12 @@
 """
 Reporting API routes: the caller's profile, the report runs produced from the
-trade-events files, and the analyst console's views of activity, orders and
+trade-events files, and the console's views of activity, orders and
 customers, which are read from the trading database (console.py).
 
 The profile is the caller's own and needs only a valid token. Everything else
-covers every account on the platform, so it is served to analysts only.
+covers every account on the platform. The report runs are served to analysts
+and admins; the console, which shows individual customers and their orders,
+to admins only.
 """
 
 import logging
@@ -13,7 +15,7 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, g, jsonify, request, send_from_directory
 
-from app import REPORT_READER_ROLE, require_auth, require_role
+from app import ADMIN_ROLE, REPORT_READER_ROLES, require_auth, require_role
 from db_service import UserRepository
 from models import db
 import console
@@ -51,7 +53,7 @@ def get_user_profile():
 
 @api_bp.route('/runs', methods=['GET'])
 @require_auth
-@require_role(REPORT_READER_ROLE)
+@require_role(*REPORT_READER_ROLES)
 def list_runs():
     """GET /api/reporting/runs: every complete report run, newest first."""
     files_dir = _files_dir()
@@ -64,7 +66,7 @@ def list_runs():
 
 @api_bp.route('/runs/latest', methods=['GET'])
 @require_auth
-@require_role(REPORT_READER_ROLE)
+@require_role(*REPORT_READER_ROLES)
 def latest_report():
     """GET /api/reporting/runs/latest: the latest run's report.json."""
     files_dir = _files_dir()
@@ -77,7 +79,7 @@ def latest_report():
 
 @api_bp.route('/runs/<run_id>/files/<name>', methods=['GET'])
 @require_auth
-@require_role(REPORT_READER_ROLE)
+@require_role(*REPORT_READER_ROLES)
 def run_file(run_id, name):
     """GET /api/reporting/runs/<run_id>/files/<name>: one PNG chart of a run."""
     if not run_store.is_safe_run_id(run_id) or not run_store.is_safe_file_name(name):
@@ -120,7 +122,7 @@ def _whole_number(name, default, low, high):
 
 @api_bp.route('/activity', methods=['GET'])
 @require_auth
-@require_role(REPORT_READER_ROLE)
+@require_role(ADMIN_ROLE)
 def get_activity():
     """GET /api/reporting/activity: platform activity over a range, in the viewer's days."""
     range_key = request.args.get('range', 'today')
@@ -134,9 +136,9 @@ def get_activity():
 
 @api_bp.route('/orders', methods=['GET'])
 @require_auth
-@require_role(REPORT_READER_ROLE)
+@require_role(ADMIN_ROLE)
 def list_orders():
-    """GET /api/reporting/orders: the newest orders across every account."""
+    """GET /api/reporting/orders: the newest orders and cash transfers across every account."""
     limit = _whole_number('limit', console.DEFAULT_ORDER_LIMIT, 1, console.MAX_ORDER_LIMIT)
     if limit is None:
         return jsonify({'error': f'limit must be between 1 and {console.MAX_ORDER_LIMIT}'}), 400
@@ -145,7 +147,7 @@ def list_orders():
 
 @api_bp.route('/orders/<int:order_id>', methods=['GET'])
 @require_auth
-@require_role(REPORT_READER_ROLE)
+@require_role(ADMIN_ROLE)
 def get_order(order_id):
     """GET /api/reporting/orders/<order_id>: one order with its ledger impact and audit trail."""
     order = console.order_detail(db.session, order_id)
@@ -156,17 +158,17 @@ def get_order(order_id):
 
 @api_bp.route('/customers', methods=['GET'])
 @require_auth
-@require_role(REPORT_READER_ROLE)
+@require_role(ADMIN_ROLE)
 def list_customers():
-    """GET /api/reporting/customers: every sign-in with its balances and lock status."""
+    """GET /api/reporting/customers: every trader with their balances and lock status."""
     return jsonify(console.customers(db.session, datetime.now(timezone.utc))), 200
 
 
 @api_bp.route('/customers/<user_id>', methods=['GET'])
 @require_auth
-@require_role(REPORT_READER_ROLE)
+@require_role(ADMIN_ROLE)
 def get_customer(user_id):
-    """GET /api/reporting/customers/<user_id>: one customer with their accounts and orders."""
+    """GET /api/reporting/customers/<user_id>: one customer with their accounts, orders and transfers."""
     try:
         parsed = uuid.UUID(user_id)
     except ValueError:

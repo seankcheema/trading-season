@@ -2,11 +2,11 @@ import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
 import { catchError, map, of, switchMap } from 'rxjs';
 import { AuthService } from './auth.service';
-import { NO_ACCESS_REASON } from './reporting-access';
+import { HOME_FOR_EVERY_ROLE, NO_ACCESS_REASON } from './reporting-access';
 import { TokenStorageService } from './token-storage.service';
 
-// Only signed-in analysts may enter. Everyone else is sent to the login page; an account
-// that is signed in without the role is signed out first and told why.
+// Only signed-in analysts and admins may enter. Everyone else is sent to the login page; an
+// account that is signed in without either role is signed out first and told why.
 export const authGuard: CanActivateFn = () => {
   const router = inject(Router);
   const auth = inject(AuthService);
@@ -15,7 +15,7 @@ export const authGuard: CanActivateFn = () => {
   return auth.ensureValidSession().pipe(
     switchMap((valid) => {
       if (!valid) return of(login);
-      if (storage.isAnalyst()) return of(true);
+      if (storage.hasReportingRole()) return of(true);
       return auth
         .logout()
         .pipe(
@@ -23,19 +23,25 @@ export const authGuard: CanActivateFn = () => {
         );
     }),
     // The auth service is unreachable but the refresh token may still be good:
-    // let an analyst's screen load and show its own error rather than a blank page.
-    catchError(() => of(storage.isAnalyst() || login)),
+    // let the screen load and show its own error rather than a blank page.
+    catchError(() => of(storage.hasReportingRole() || login)),
   );
 };
 
-// Keeps signed-in analysts off the login page.
+// The screens that show individual customers and their orders are an admin's. An analyst
+// who asks for one, by a link or by signing in, is taken to the report runs instead. Runs
+// under authGuard, which has already settled the session.
+export const adminGuard: CanActivateFn = () =>
+  inject(TokenStorageService).isAdmin() || inject(Router).createUrlTree([HOME_FOR_EVERY_ROLE]);
+
+// Keeps signed-in analysts and admins off the login page.
 export const guestGuard: CanActivateFn = () => {
   const router = inject(Router);
   const storage = inject(TokenStorageService);
   return inject(AuthService)
     .ensureValidSession()
     .pipe(
-      map((valid) => (valid && storage.isAnalyst() ? router.createUrlTree(['/']) : true)),
+      map((valid) => (valid && storage.hasReportingRole() ? router.createUrlTree(['/']) : true)),
       catchError(() => of(true)),
     );
 };

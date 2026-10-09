@@ -3,8 +3,9 @@ info:
   title: Trading Season Reporting Service API
   version: 0.1.0
   description: |
-    OpenAPI contract for the Reporting Service. The service serves two things
-    to analysts, plus the caller's own trader profile.
+    OpenAPI contract for the Reporting Service. The service serves report runs
+    to analysts and admins, a console to admins, and the caller's own trader
+    profile to anyone signed in.
 
     The report runs are produced by the reporting consumer from the
     trade-events Kafka topic; for them the trading_season database is read
@@ -16,9 +17,11 @@ info:
     They only read. Password hashes, SSNs, addresses and dates of birth are
     never returned.
 
-    Run and console endpoints cover every account on the platform and require
-    the ANALYST role in the access token's roles claim. A valid token without
-    it is answered 403. The profile endpoint needs only a valid token.
+    Run and console endpoints cover every account on the platform, so each
+    requires a role in the access token's roles claim: ANALYST or ADMIN for
+    the report runs, ADMIN for the console, which shows individual customers
+    and their orders. A valid token without the role is answered 403. The
+    profile endpoint needs only a valid token.
 servers:
   - url: http://localhost:8083
     description: Local development
@@ -80,7 +83,7 @@ paths:
     get:
       tags: [Runs]
       summary: List every complete report run, newest first
-      description: Requires the ANALYST role.
+      description: Requires the ANALYST or ADMIN role.
       security:
         - bearerAuth: []
       responses:
@@ -100,7 +103,7 @@ paths:
     get:
       tags: [Runs]
       summary: Get the latest run's report
-      description: Requires the ANALYST role.
+      description: Requires the ANALYST or ADMIN role.
       security:
         - bearerAuth: []
       responses:
@@ -126,7 +129,7 @@ paths:
     get:
       tags: [Runs]
       summary: Get one chart image of a run
-      description: Requires the ANALYST role.
+      description: Requires the ANALYST or ADMIN role.
       security:
         - bearerAuth: []
       parameters:
@@ -179,7 +182,7 @@ paths:
       tags: [Console]
       summary: Platform activity over a range
       description: |
-        Requires the ANALYST role. Headline figures with their change against
+        Requires the ADMIN role. Headline figures with their change against
         the period of equal length before the range, notional traded in hourly
         (today) or daily buckets, the status split, the newest events, and the
         most traded symbols. Days are the viewer's own, by tzOffset.
@@ -218,8 +221,10 @@ paths:
   /api/reporting/orders:
     get:
       tags: [Console]
-      summary: The newest orders across every account
-      description: Requires the ANALYST role.
+      summary: The newest orders and cash transfers across every account
+      description: |
+        Requires the ADMIN role. The newest deposits and withdrawals are
+        returned beside the orders, under the same limit.
       security:
         - bearerAuth: []
       parameters:
@@ -232,7 +237,7 @@ paths:
             default: 500
       responses:
         '200':
-          description: Orders returned, newest first
+          description: Orders and transfers returned, each newest first
           content:
             application/json:
               schema:
@@ -249,7 +254,7 @@ paths:
     get:
       tags: [Console]
       summary: One order with its execution, ledger impact and audit trail
-      description: Requires the ANALYST role.
+      description: Requires the ADMIN role.
       security:
         - bearerAuth: []
       parameters:
@@ -276,8 +281,10 @@ paths:
   /api/reporting/customers:
     get:
       tags: [Console]
-      summary: Every sign-in with its balances and lock status
-      description: Requires the ANALYST role. A sign-in without a trading profile is listed by its email.
+      summary: Every trader with their balances and lock status
+      description: |
+        Requires the ADMIN role. Analysts and admins are not customers and are
+        left out. A trader without a trading profile is listed by their email.
       security:
         - bearerAuth: []
       responses:
@@ -302,8 +309,8 @@ paths:
   /api/reporting/customers/{userId}:
     get:
       tags: [Console]
-      summary: One customer with their accounts and orders
-      description: Requires the ANALYST role.
+      summary: One customer with their accounts, orders and transfers
+      description: Requires the ADMIN role. An analyst or admin is not a customer and is answered 404.
       security:
         - bearerAuth: []
       parameters:
@@ -342,7 +349,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Forbidden:
-      description: The token is valid but does not carry the ANALYST role
+      description: The token is valid but does not carry a role the endpoint accepts
       content:
         application/json:
           schema:
@@ -787,6 +794,32 @@ components:
           type: string
           nullable: true
       required: [orderId, clientReference, submittedAt, userId, userName, accountId, accountName, symbol, instrumentName, side, type, quantity, price, indicativePrice, status, rejectionReason]
+    TransferRow:
+      type: object
+      description: A deposit or withdrawal a trader made, as the cash ledger recorded it.
+      properties:
+        transferId:
+          type: integer
+          description: The cash transaction id.
+        at:
+          type: string
+          format: date-time
+        userId:
+          type: string
+          format: uuid
+        userName:
+          type: string
+        accountId:
+          type: integer
+        accountName:
+          type: string
+        kind:
+          type: string
+          enum: [DEPOSIT, WITHDRAWAL]
+        amount:
+          type: number
+          description: Signed; a withdrawal is negative.
+      required: [transferId, at, userId, userName, accountId, accountName, kind, amount]
     OrderList:
       type: object
       properties:
@@ -794,13 +827,18 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/OrderRow'
+        transfers:
+          type: array
+          description: The newest deposits and withdrawals, newest first, at most as many as the order limit.
+          items:
+            $ref: '#/components/schemas/TransferRow'
         total:
           type: integer
-          description: Every matching order, which can exceed the rows returned.
+          description: Every matching order, which can exceed the rows returned. Transfers are not counted.
         sessionId:
           type: integer
           nullable: true
-      required: [orders, total, sessionId]
+      required: [orders, transfers, total, sessionId]
     OrderDetail:
       allOf:
         - $ref: '#/components/schemas/OrderRow'
@@ -892,12 +930,13 @@ components:
           format: uuid
         name:
           type: string
-          description: First and last name, or the email of a sign-in without a trading profile.
+          description: First and last name, or the email of a trader without a trading profile.
         email:
           type: string
         role:
           type: string
-          enum: [TRADER, ANALYST, ADMIN]
+          enum: [TRADER]
+          description: Always TRADER; analysts and admins are not customers.
         status:
           type: string
           enum: [ACTIVE, LOCKED]

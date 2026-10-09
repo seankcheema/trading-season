@@ -1,5 +1,5 @@
 """
-The analyst console's read side: platform activity, orders and customers.
+The console's read side: platform activity, orders and customers.
 
 Unlike the report runs, which are built from the trade-events topic, these
 views read the trading database directly, because they show what the topic
@@ -31,6 +31,10 @@ MOST_TRADED_LIMIT = 8
 SPARKLINE_POINTS = 30
 DEFAULT_ORDER_LIMIT = 500
 MAX_ORDER_LIMIT = 1000
+# Cash a trader moved in or out themselves, as opposed to what an order posted.
+TRANSFER_REASONS = ('DEPOSIT', 'WITHDRAWAL')
+# Sign-ins that work on the platform instead of trading on it. They are not customers.
+STAFF_ROLES = ('ANALYST', 'ADMIN')
 
 
 def _utc(value):
@@ -169,7 +173,7 @@ def _feed(session, now):
     cash = (session.query(CashTransaction, User)
             .join(Account, Account.account_id == CashTransaction.account_id)
             .join(User, User.user_id == Account.user_id)
-            .filter(CashTransaction.reason.in_(('DEPOSIT', 'WITHDRAWAL')))
+            .filter(CashTransaction.reason.in_(TRANSFER_REASONS))
             .order_by(CashTransaction.cash_transaction_id.desc()).limit(FEED_LIMIT).all())
     for transaction, user in cash:
         items.append({'kind': 'cash', 'at': _utc(transaction.created_at),
@@ -206,7 +210,7 @@ def activity(session, range_key, now, tz_offset_minutes=0):
 
     flow, prior_flow = Decimal(0), Decimal(0)
     transfers = (session.query(CashTransaction)
-                 .filter(CashTransaction.reason.in_(('DEPOSIT', 'WITHDRAWAL')))
+                 .filter(CashTransaction.reason.in_(TRANSFER_REASONS))
                  .filter(CashTransaction.created_at >= prior_start).all())
     for transaction in transfers:
         if _utc(transaction.created_at) >= start:
@@ -256,14 +260,47 @@ def activity(session, range_key, now, tz_offset_minutes=0):
     }
 
 
+def _transfer_row(transaction, account, user):
+    return {
+        'transferId': transaction.cash_transaction_id,
+        'at': _iso(transaction.created_at),
+        'userId': str(user.user_id),
+        'userName': _full_name(user, str(user.user_id)),
+        'accountId': account.account_id,
+        'accountName': account.name,
+        'kind': transaction.reason,
+        'amount': _number(transaction.amount),
+    }
+
+
+def _transfers(session, limit, user_id=None):
+    """The newest deposits and withdrawals across every account, or one customer's."""
+    query = (session.query(CashTransaction, Account, User)
+             .join(Account, Account.account_id == CashTransaction.account_id)
+             .join(User, User.user_id == Account.user_id)
+             .filter(CashTransaction.reason.in_(TRANSFER_REASONS)))
+    if user_id is not None:
+        query = query.filter(User.user_id == user_id)
+    rows = query.order_by(CashTransaction.cash_transaction_id.desc()).limit(limit).all()
+    return [_transfer_row(*row) for row in rows]
+
+
 def orders(session, limit=DEFAULT_ORDER_LIMIT, user_id=None):
-    """The newest orders across every account, or one customer's."""
+    """
+    The newest orders across every account, or one customer's, and beside
+    them the newest deposits and withdrawals, under the same limit.
+    """
     query = _order_query(session)
     if user_id is not None:
         query = query.filter(User.user_id == user_id)
     total = query.count()
     rows = query.order_by(Order.order_id.desc()).limit(limit).all()
-    return {'orders': [_order_row(*row) for row in rows], 'total': total, 'sessionId': _session_id(session)}
+    return {
+        'orders': [_order_row(*row) for row in rows],
+        'transfers': _transfers(session, limit, user_id),
+        'total': total,
+        'sessionId': _session_id(session),
+    }
 
 
 def _sum(query, column):
@@ -374,23 +411,25 @@ def _customer_row(sign_in, user, accounts, valuations, now):
 
 
 def customers(session, now):
-    """Every sign-in on the platform with its trading profile, when it has one."""
+    """Every trader's sign-in with its trading profile, when it has one. Analysts and admins are left out."""
     by_user = defaultdict(list)
     for account in session.query(Account).order_by(Account.account_id).all():
         by_user[account.user_id].append(account)
     valuations = _latest_valuations(session)
     rows = (session.query(UserAccount, User)
             .outerjoin(User, User.user_id == UserAccount.user_id)
+            .filter(UserAccount.user_role.notin_(STAFF_ROLES))
             .order_by(UserAccount.email).all())
     return {'customers': [_customer_row(sign_in, user, by_user.get(sign_in.user_id, []), valuations, now)
                           for sign_in, user in rows]}
 
 
 def customer(session, user_id, now):
-    """One customer with their accounts and orders, or None."""
+    """One customer with their accounts, orders and transfers, or None. An analyst or admin is not one."""
     row = (session.query(UserAccount, User)
            .outerjoin(User, User.user_id == UserAccount.user_id)
-           .filter(UserAccount.user_id == user_id).first())
+           .filter(UserAccount.user_id == user_id)
+           .filter(UserAccount.user_role.notin_(STAFF_ROLES)).first())
     if row is None:
         return None
     sign_in, user = row

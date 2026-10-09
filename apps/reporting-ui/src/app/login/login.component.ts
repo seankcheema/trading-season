@@ -50,7 +50,7 @@ export class LoginComponent {
   private readonly _router = inject(Router);
   private readonly _destroyRef = inject(DestroyRef);
 
-  // Set when a signed-in account was sent here because it is not an analyst.
+  // Set when a signed-in account was sent here because it has no reporting role.
   protected readonly turnedAway =
     inject(ActivatedRoute).snapshot.queryParamMap.get('reason') === NO_ACCESS_REASON;
   protected readonly noAccessMessage = NO_ACCESS_MESSAGE;

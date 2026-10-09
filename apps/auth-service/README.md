@@ -33,14 +33,17 @@ Each account has one role, stored in `user_accounts.user_role` and carried in th
 | Role | Assigned | Used by |
 | --- | --- | --- |
 | `TRADER` | Every registration | The default; the trading services do not check roles |
-| `ANALYST` | Never by registration | The [Reporting Service](../reporting-service/README.md) serves report runs to this role only, so it is the only role that can use the [Reporting UI](../reporting-ui/README.md) |
-| `ADMIN` | Never by registration | Reserved; nothing grants it anything today |
+| `ANALYST` | Never by registration | The [Reporting Service](../reporting-service/README.md) serves its report runs to this role, and nothing else, so an analyst sees only Report runs in the [Reporting UI](../reporting-ui/README.md) |
+| `ADMIN` | Never by registration | The [Reporting Service](../reporting-service/README.md) serves this role everything: the report runs and the console's activity, customers and orders. An admin sees every screen of the [Reporting UI](../reporting-ui/README.md) |
 
-`POST /auth/register` takes no role and rejects a body that carries one, so a caller cannot choose their own. To make an existing account an analyst, update it in the database:
+`POST /auth/register` takes no role and rejects a body that carries one, so a caller cannot choose their own. To make an existing account an analyst or an admin, update it in the database:
 
 ```sql
 UPDATE user_accounts SET user_role = 'ANALYST' WHERE email = 'someone@example.com';
+UPDATE user_accounts SET user_role = 'ADMIN' WHERE email = 'someone-else@example.com';
 ```
+
+Neither role is a customer: the Reporting Service leaves both out of its customer list.
 
 The change reaches the account's tokens at its next sign-in or refresh, so within 15 minutes for a session that is already open. The allowed values are fixed by a check constraint in [db/migrations](../../db/migrations) and by [user-role.ts](src/users/user-role.ts); a new role needs a migration and an entry there.
 
@@ -207,7 +210,7 @@ node scripts/generate-dev-keys.mjs >> .env
 
 Keep `DB_HOST=localhost`, `DB_PORT=5432`, `DB_NAME=trading_season` and the matching `DB_USER` and `DB_PASSWORD`. Start a migrated database first (see [db/README.md](../../db/README.md)), then run `npm run start:dev`. The service refuses to start without both JWT keys. The Java services must use the same issuer as `JWT_ISSUER`.
 
-In development the service seeds two sign-ins, each only if its email is not already there: `admin@example.com` / `admin123`, a `TRADER` for the Client UI, and `analyst@example.com` / `analyst123`, an `ANALYST` for the Reporting UI. Production never seeds either.
+In development the service seeds three sign-ins, each only if its email is not already there: `admin@example.com` / `admin123`, a `TRADER` for the Client UI despite its name; `analyst@example.com` / `analyst123`, an `ANALYST` for the Reporting UI's report runs; and `reporting-admin@example.com` / `admin123`, an `ADMIN` for every screen of the Reporting UI. Production never seeds any of them.
 
 | Variable | Purpose |
 | --- | --- |

@@ -162,24 +162,26 @@ def require_auth(f):
     return decorated_function
 
 
-# The role that may read report runs. The auth service puts the account's
-# role in the token's `roles` claim; registration only ever issues TRADER.
-REPORT_READER_ROLE = 'ANALYST'
+# Who may read what. The auth service puts the account's role in the token's
+# `roles` claim; registration only ever issues TRADER. An admin reads
+# everything; an analyst reads the report runs and nothing else.
+ADMIN_ROLE = 'ADMIN'
+REPORT_READER_ROLES = ('ANALYST', ADMIN_ROLE)
 
 
-def require_role(role):
+def require_role(*allowed):
     """
-    Decorator to require a role in the verified token's `roles` claim.
-    Place it under @require_auth, which verifies the token and sets g.user.
-    A valid token without the role is 403, not 401: the caller is known,
-    just not allowed.
+    Decorator to require one of the given roles in the verified token's
+    `roles` claim. Place it under @require_auth, which verifies the token and
+    sets g.user. A valid token without any of them is 403, not 401: the caller
+    is known, just not allowed.
     """
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
             roles = g.user.get('roles')
-            if not isinstance(roles, list) or role not in roles:
-                return jsonify({'error': f'The {role} role is required'}), 403
+            if not isinstance(roles, list) or not any(role in roles for role in allowed):
+                return jsonify({'error': f'The {" or ".join(allowed)} role is required'}), 403
             return f(*args, **kwargs)
 
         return decorated_function
@@ -238,7 +240,7 @@ def root():
         'service': 'Trading Season Reporting Service',
         'status': 'initialized',
         'version': '0.1.0',
-        'description': 'Report runs built from trade events, and the analyst console',
+        'description': 'Report runs built from trade events, and the admin console',
         'documentation': '/docs',
         'openapi': '/openapi.yaml',
         'health': '/health',

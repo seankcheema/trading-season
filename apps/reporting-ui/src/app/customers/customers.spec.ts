@@ -6,6 +6,8 @@ import {
   customerDetail,
   customers,
   orderDetail,
+  orderRows,
+  transferRows,
 } from '../../testing/console-fixtures';
 import { cells, text } from '../../testing/dom';
 import { CustomerDetail, CustomerList, OrderDetail } from '../reporting/console.models';
@@ -16,7 +18,7 @@ import { CUSTOMERS_REFRESH_MS, CustomersComponent, initials, titleCase } from '.
 describe('customer helpers', () => {
   it('makes initials from a name or from an email', () => {
     expect(initials('Sean Cheema')).toBe('SC');
-    expect(initials('analyst@example.com')).toBe('AE');
+    expect(initials('newcomer@example.com')).toBe('NE');
     expect(initials('Cher')).toBe('C');
     expect(initials('')).toBe('?');
   });
@@ -75,10 +77,10 @@ describe('CustomersComponent', () => {
     fixture.detectChanges();
   };
 
-  it('lists every sign-in, most recently active first', () => {
+  it('lists every trader, most recently active first', () => {
     render();
 
-    expect(names()).toEqual(['Sean Cheema', 'Jane Doe', 'analyst@example.com']);
+    expect(names()).toEqual(['Sean Cheema', 'Jane Doe', 'newcomer@example.com']);
     expect(counter()).toBe('3 of 3 customers');
     const [who, status, accounts, cash, portfolio, failed, last] = cells(rows()[0]);
     expect([who, status, accounts, cash, portfolio, failed]).toEqual([
@@ -103,17 +105,18 @@ describe('CustomersComponent', () => {
     expect(rows()[0].children[5].className).not.toContain('text-loss');
   });
 
-  it('filters by status, role, level and flag', () => {
+  it('filters by status, level and flag, and not by role, since every customer is a trader', () => {
     render();
+    expect(Array.from(root().querySelectorAll('app-filter-select .dash-label')).map(text)).toEqual([
+      'Status',
+      'Trader level',
+      'Flags',
+    ]);
 
     choose('Status', 'LOCKED');
     expect(names()).toEqual(['Jane Doe']);
     expect(counter()).toBe('1 of 3 customers');
     choose('Status', 'All statuses');
-
-    choose('Role', 'ANALYST');
-    expect(names()).toEqual(['analyst@example.com']);
-    choose('Role', 'All roles');
 
     choose('Trader level', 'Advanced');
     expect(names()).toEqual(['Sean Cheema']);
@@ -122,9 +125,9 @@ describe('CustomersComponent', () => {
     choose('Flags', 'Failed sign-ins');
     expect(names()).toEqual(['Jane Doe']);
     choose('Flags', 'No cash');
-    expect(names()).toEqual(['Jane Doe', 'analyst@example.com']);
+    expect(names()).toEqual(['Jane Doe', 'newcomer@example.com']);
     choose('Flags', 'No accounts');
-    expect(names()).toEqual(['analyst@example.com']);
+    expect(names()).toEqual(['newcomer@example.com']);
     choose('Flags', 'No flag filter');
     expect(root().querySelector('.is-plain')).toBeNull();
   });
@@ -135,7 +138,7 @@ describe('CustomersComponent', () => {
     search('jane.doe@');
     expect(names()).toEqual(['Jane Doe']);
     search('3b5f0a52');
-    expect(names()).toEqual(['analyst@example.com']);
+    expect(names()).toEqual(['newcomer@example.com']);
     search('nobody');
     expect(text(root())).toContain('No customers match these filters.');
 
@@ -154,10 +157,10 @@ describe('CustomersComponent', () => {
 
     root().querySelector<HTMLButtonElement>('button[aria-label="Sort by Customer"]')!.click();
     fixture.detectChanges();
-    expect(names()).toEqual(['Sean Cheema', 'Jane Doe', 'analyst@example.com']);
+    expect(names()).toEqual(['Sean Cheema', 'newcomer@example.com', 'Jane Doe']);
     root().querySelector<HTMLButtonElement>('button[aria-label="Sort by Customer"]')!.click();
     fixture.detectChanges();
-    expect(names()).toEqual(['analyst@example.com', 'Jane Doe', 'Sean Cheema']);
+    expect(names()).toEqual(['Jane Doe', 'newcomer@example.com', 'Sean Cheema']);
   });
 
   it('exports the rows on screen as csv', async () => {
@@ -175,7 +178,8 @@ describe('CustomersComponent', () => {
     expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('customers.csv');
     const csv = await blobs[0].text();
     expect(csv.split('\n')).toHaveLength(2);
-    expect(csv).toContain('"Jane Doe","jane.doe@example.com","TRADER","LOCKED","BEGINNER","1","0","0","5"');
+    expect(csv.split('\n')[0]).not.toContain('Role');
+    expect(csv).toContain('"Jane Doe","jane.doe@example.com","LOCKED","BEGINNER","1","0","0","5"');
     click.mockRestore();
   });
 
@@ -311,6 +315,50 @@ describe('CustomerDetailComponent', () => {
     ]);
   });
 
+  it("searches and filters the customer's orders and transfers", () => {
+    load.mockReturnValue(of(customerDetail({ orders: orderRows(), transfers: transferRows() })));
+    render();
+    const orders = card('Orders');
+    const assets = () =>
+      Array.from(orders.querySelectorAll('app-order-table li > *')).map((row) => cells(row)[3]);
+    const choose = (label: string, option: string) => {
+      const select = Array.from(orders.querySelectorAll('app-filter-select')).find(
+        (candidate) => text(candidate.querySelector('.dash-label')!) === label,
+      )!;
+      select.querySelector<HTMLButtonElement>('button')!.click();
+      fixture.detectChanges();
+      Array.from(select.querySelectorAll<HTMLButtonElement>('[role="option"]'))
+        .find((candidate) => text(candidate) === option)!
+        .click();
+      fixture.detectChanges();
+    };
+
+    expect(assets()).toEqual(['AAPL', 'NVDA', 'Cash', 'TSLA', 'Cash']);
+    expect(text(orders.querySelector('[data-count]')!)).toBe('5 of 5 rows');
+    // Every row is theirs, so the rows are told apart by account, not by customer.
+    expect(Array.from(orders.querySelectorAll('app-filter-select .dash-label')).map(text)).toEqual([
+      'Status',
+      'Side',
+      'Asset',
+      'Account',
+      'Fill',
+    ]);
+
+    choose('Status', 'REJECTED');
+    expect(assets()).toEqual(['TSLA']);
+    choose('Status', 'All statuses');
+    choose('Side', 'Deposit');
+    expect(assets()).toEqual(['Cash']);
+    choose('Side', 'All sides');
+
+    const input = orders.querySelector<HTMLInputElement>('input[type="search"]')!;
+    input.value = 'nvda';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(assets()).toEqual(['NVDA']);
+    expect(text(orders.querySelector('[data-count]')!)).toBe('1 of 5 rows');
+  });
+
   it("lists the customer's orders by account and opens one", () => {
     render();
     const orders = card('Orders');
@@ -328,17 +376,17 @@ describe('CustomerDetailComponent', () => {
     expect(root().querySelector('app-order-detail')).toBeNull();
   });
 
-  it('copes with a sign-in that has no trading profile and no orders', () => {
+  it('copes with a trader who has no trading profile and no orders', () => {
     load.mockReturnValue(
       of(
         customerDetail({
-          name: 'analyst@example.com',
-          role: 'ANALYST',
+          name: 'newcomer@example.com',
           traderLevel: null,
           sessionTimeoutMinutes: null,
           lastActiveAt: null,
           accountBalances: [],
           orders: [],
+          transfers: [],
         }),
       ),
     );
@@ -347,6 +395,7 @@ describe('CustomerDetailComponent', () => {
     expect(facts('Profile')).toMatchObject({ 'Trader level': '—', 'Last active': '—' });
     expect(facts('Security')['Idle timeout']).toBe('—');
     expect(text(card('Orders'))).toContain("This customer hasn't placed any orders yet.");
+    expect(card('Orders').querySelector('input')).toBeNull();
     expect(card('Total balance').querySelectorAll('li')).toHaveLength(1);
   });
 

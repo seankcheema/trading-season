@@ -4,9 +4,10 @@ import {
   CustomerDetail,
   OrderDetail,
   OrderRow,
+  TransferRow,
 } from '../app/reporting/console.models';
 
-// Test data shaped like the Reporting Service's analyst console responses. Not part of
+// Test data shaped like the Reporting Service's console responses. Not part of
 // the application build.
 
 export function activity(overrides: Partial<Activity> = {}): Activity {
@@ -147,6 +148,35 @@ export function orderRows(): OrderRow[] {
   ];
 }
 
+export function transferRow(overrides: Partial<TransferRow> = {}): TransferRow {
+  return {
+    transferId: 92590,
+    at: '2026-10-08T20:43:00+00:00',
+    userId: '6f1c0a52-9d1e-4b62-8a51-0d6f6f3f6f10',
+    userName: 'Sean Cheema',
+    accountId: 7,
+    accountName: 'Growth',
+    kind: 'DEPOSIT',
+    amount: 2500,
+    ...overrides,
+  };
+}
+
+// A deposit that falls between the first two orders, and a withdrawal older than all three.
+export function transferRows(): TransferRow[] {
+  return [
+    transferRow(),
+    transferRow({
+      transferId: 92570,
+      at: '2026-10-08T20:12:00+00:00',
+      userName: 'Priya Natarajan',
+      accountName: 'Core',
+      kind: 'WITHDRAWAL',
+      amount: -800,
+    }),
+  ];
+}
+
 export function orderDetail(overrides: Partial<OrderDetail> = {}): OrderDetail {
   return {
     ...orderRow(),
@@ -194,7 +224,8 @@ export function customer(overrides: Partial<Customer> = {}): Customer {
   };
 }
 
-// A trader, a locked-out beginner with nothing, and a sign-in without a trading profile.
+// A trader, a locked-out beginner with nothing, and a trader who has signed up but
+// has no trading profile yet.
 export function customers(): Customer[] {
   return [
     customer(),
@@ -213,9 +244,8 @@ export function customers(): Customer[] {
     }),
     customer({
       userId: '3b5f0a52-9d1e-4b62-8a51-0d6f6f3f3b5f',
-      name: 'analyst@example.com',
-      email: 'analyst@example.com',
-      role: 'ANALYST',
+      name: 'newcomer@example.com',
+      email: 'newcomer@example.com',
       traderLevel: null,
       accounts: 0,
       cash: 0,
@@ -234,6 +264,7 @@ export function customerDetail(overrides: Partial<CustomerDetail> = {}): Custome
       { accountId: 8, name: 'Retirement', value: 21380.4 },
     ],
     orders: [orderRow()],
+    transfers: [transferRow()],
     total: 1,
     sessionId: 12,
     ...overrides,

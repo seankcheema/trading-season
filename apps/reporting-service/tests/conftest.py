@@ -118,6 +118,13 @@ def authenticated(mocker, test_user):
 
 
 @pytest.fixture
+def authenticated_admin(mocker, test_user):
+    """Make every request look like it carries test_user's token, as an admin."""
+    mocker.patch('app.verify_token', return_value={'sub': str(test_user.user_id), 'roles': ['ADMIN']})
+    return {'Authorization': 'Bearer test-token'}
+
+
+@pytest.fixture
 def authenticated_trader(mocker, test_user):
     """Make every request look like it carries test_user's token, as a trader."""
     mocker.patch('app.verify_token', return_value={'sub': str(test_user.user_id), 'roles': ['TRADER']})

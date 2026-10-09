@@ -1,19 +1,21 @@
 # Reporting UI
 
-Angular 21 single-page app for analysts who watch platform activity and support customers. It presents what the [Reporting Service](../reporting-service/README.md) serves: activity, customers and orders read from the trading database, and the report runs the reporting consumer builds from the `trade-events` Kafka topic. Standalone components, signals, reactive forms, and OnPush change detection, with no server-side rendering.
+Angular 21 single-page app for the analysts who read the scheduled reports and the admins who also watch platform activity and support customers. It presents what the [Reporting Service](../reporting-service/README.md) serves: activity, customers and orders read from the trading database, and the report runs the reporting consumer builds from the `trade-events` Kafka topic. Standalone components, signals, reactive forms, and OnPush change detection, with no server-side rendering.
 
 - Port 4300, for both `ng serve` and the Compose container
-- For analysts only. It signs in against the [Auth Service](../auth-service/README.md) and admits an account only if its token carries the `ANALYST` [role](../auth-service/README.md#roles). It has no registration screen. In development, sign in as `analyst@example.com` / `analyst123`.
+- For analysts and admins only. It signs in against the [Auth Service](../auth-service/README.md) and admits an account only if its token carries the `ANALYST` or `ADMIN` [role](../auth-service/README.md#roles). An admin sees every screen; an analyst sees the report runs and nothing else. It has no registration screen. In development, sign in as `reporting-admin@example.com` / `admin123` or `analyst@example.com` / `analyst123`.
 - Read only. Nothing in it changes an account or an order.
 
-| Route | Guard | Screen |
+| Route | Open to | Screen |
 | --- | --- | --- |
-| `/login` | anyone not signed in as an analyst | Sign in |
-| `/` | signed-in analyst | Activity: a range toggle, five headline figures against the prior period, notional traded over time, orders by status, the newest events, most traded symbols |
-| `/customers` | signed-in analyst | Customers: every sign-in with status, accounts, cash, portfolio, failed sign-ins and last activity; search and filters |
-| `/customers/:userId` | signed-in analyst | One customer: profile, sign-in security, balances, and their orders |
-| `/orders` | signed-in analyst | Orders: every order with search and filters; a row opens the order with its execution, ledger impact and audit trail |
-| `/runs` | signed-in analyst | Report runs: the runs on disk and the PNG charts of the selected run, with download |
+| `/login` | anyone not signed in as an analyst or admin | Sign in |
+| `/` | admin | Activity: a range toggle, five headline figures against the prior period, notional traded over time, orders by status, the newest events, most traded symbols |
+| `/customers` | admin | Customers: every trader with status, accounts, cash, portfolio, failed sign-ins and last activity; search and filters. Analysts and admins are not customers and are not listed |
+| `/customers/:userId` | admin | One customer: profile, sign-in security, balances, and their orders and cash transfers, with the same search and filters as Orders |
+| `/orders` | admin | Orders: every order, and the deposits and withdrawals among them, with search and filters; an order's row opens the order with its execution, ledger impact, audit trail and references |
+| `/runs` | analyst, admin | Report runs: the runs on disk and the PNG charts of the selected run, with download |
+
+An analyst who asks for an admin's screen, by a link or by signing in, is taken to `/runs`, and the sidebar offers an analyst only that entry.
 
 Every figure on screen comes from the Reporting Service. Nothing is demo data. Times are shown in the viewer's time zone, and a range such as Today is the viewer's own day. The days inside a report run are UTC days, as the report job buckets them.
 
@@ -35,8 +37,8 @@ The UI never talks to Kafka or the database. Two kinds of data reach it, both th
 | --- | --- | --- | --- |
 | Activity | Database | `GET /api/reporting/activity?range=&tzOffset=` | Reading again every 15 seconds, and when the range changes |
 | Customers | Database | `GET /api/reporting/customers` | Reading again every 30 seconds |
-| One customer | Database | `GET /api/reporting/customers/{userId}` | Reading again every 30 seconds |
-| Orders | Database | `GET /api/reporting/orders` | Reading again every 30 seconds |
+| One customer, with their orders and transfers | Database | `GET /api/reporting/customers/{userId}` | Reading again every 30 seconds |
+| Orders and cash transfers | Database | `GET /api/reporting/orders` | Reading again every 30 seconds |
 | One order | Database | `GET /api/reporting/orders/{orderId}` | Read when the order is opened |
 | Report runs | `trade-events` files | `GET /api/reporting/runs`, `GET /api/reporting/runs/latest`, `GET /api/reporting/scheduler/status` | Asking the scheduler status every 30 seconds and reloading when the latest run id changes |
 | Chart images of a run | `trade-events` files | `GET /api/reporting/runs/{runId}/files/{name}`, fetched as a blob because an image tag cannot send the bearer token | Loaded with the run |
@@ -50,7 +52,7 @@ A refresh that fails leaves the last good data on screen. The database screens s
 flowchart TB
     subgraph Routes
         Login
-        Shell["Shell<br/>sidebar, signed-in user"]
+        Shell["Shell<br/>collapsible sidebar, signed-in user"]
         Activity
         Customers["Customers,<br/>customer detail"]
         Orders["Orders,<br/>order detail dialog"]
@@ -61,7 +63,7 @@ flowchart TB
         Live["live()<br/>load, reload on an interval"]
     end
     subgraph Core["core/auth"]
-        Guard["authGuard / guestGuard"]
+        Guard["authGuard / adminGuard / guestGuard"]
         Interceptor["authInterceptor"]
         AuthSvc["AuthService"]
         Storage["TokenStorageService"]
@@ -109,17 +111,17 @@ Both backends are called on the UI's own origin, so neither needs a CORS entry f
 
 Token handling matches the Client UI: the interceptor adds the bearer token to `/api/reporting` calls, refreshes an expired access token through `POST /auth/refresh`, retries once after a 401, and sends the user to `/login` when the refresh token is missing or rejected. The session is kept in `localStorage` under its own key, separate from the Client UI's because the two apps are different origins.
 
-### Analyst access
+### Who sees what
 
-The Reporting Service is what enforces the rule: it answers 403 on every run and console endpoint to a token without the `ANALYST` role. The UI checks the same claim so that nobody else gets a screen that could only show errors:
+The Reporting Service is what enforces the rules: it answers 403 on the run endpoints to a token with neither the `ANALYST` nor the `ADMIN` role, and on the console endpoints (activity, customers, orders) to a token without `ADMIN`. The UI checks the same claim so that nobody gets a screen that could only show errors:
 
-| Moment | What happens to an account that is not an analyst |
-| --- | --- |
-| Sign-in | The credentials are accepted by the Auth Service, the UI revokes that session at once, keeps no token, and says the account has no access to reporting |
-| Opening a screen with a stored session | The route guard signs it out and returns to `/login` with the same message |
-| A 403 from the Reporting Service, for example after a refresh issued a token for a changed role | The interceptor signs it out and returns to `/login` with the same message |
+| Moment | An account that is neither an analyst nor an admin | An analyst |
+| --- | --- | --- |
+| Sign-in | The credentials are accepted by the Auth Service, the UI revokes that session at once, keeps no token, and says the account has no access to reporting | Signed in and taken to Report runs |
+| Opening a screen with a stored session | `authGuard` signs it out and returns to `/login` with the same message | `adminGuard` takes it from Activity, Customers or Orders to Report runs |
+| A 403 from the Reporting Service, for example after a refresh issued a token for a changed role | The interceptor signs it out and returns to `/login` with the same message | The same: the guards keep an analyst off the console, so a 403 means the role changed |
 
-A role change takes effect at the account's next sign-in or token refresh. See [roles](../auth-service/README.md#roles) for how an account becomes an analyst.
+A role change takes effect at the account's next sign-in or token refresh. See [roles](../auth-service/README.md#roles) for how an account becomes an analyst or an admin.
 
 ## Design system
 
@@ -136,9 +138,12 @@ The tokens are declared in [src/styles.css](src/styles.css) with the same values
 | PriceChart | [line-chart.component.ts](src/app/shared/line-chart.component.ts) |
 | Sparkline | [sparkline.component.ts](src/app/shared/sparkline.component.ts) |
 | Dialog | [dialog.component.ts](src/app/shared/dialog.component.ts) |
+| Orders table with its search and filter row | [order-table.component.ts](src/app/orders/order-table.component.ts) inside [order-browser.component.ts](src/app/orders/order-browser.component.ts), shared by Orders and the customer page |
 | DashCard, DashLabel, DashLink, Button, Input, table head and rows | Classes in [src/styles.css](src/styles.css): `dash-card`, `net-worth-card`, `dash-label`, `dash-link`, `ghost-button`, `ds-control`, `dash-table-head`, `row-button` |
 
-From 1024px wide a screen fills the window and its lists scroll inside their cards, with a bottom fade and no scrollbar, as the kit draws it. Narrower, or on a short window, the page scrolls.
+From 1024px wide a screen fills the window and its lists scroll inside their cards, with a bottom fade and no scrollbar, as the kit draws it. Activity does so down to a window 616px high, so it fits a short wide display such as 1920x828 with the browser's own bars: its chart row takes four ninths of the room under the headline figures and never less than the four statuses need, and the two lists take the rest. Narrower, or on a shorter window, the page scrolls.
+
+From 768px wide the sidebar stands beside the screen and can be collapsed to 60px with the button beside the logo: the logo mark, the navigation icons, the button itself and log out stay, and the names remain as tooltips and for assistive technology. The choice is kept in this browser's `localStorage`. Narrower, the sidebar is a bar across the top and does not collapse.
 
 The kit is a proposal drawn on sample data. Where the product has no such data, or the screen must stay read only, the app departs from it:
 
@@ -147,8 +152,14 @@ The kit is a proposal drawn on sample data. Where the product has no such data, 
 | "Unlock now" on a locked customer, "Email customer" | Left out; the lock banner says when the account unlocks | Reporting only reads |
 | Statuses FILLED, PENDING, REJECTED, CANCELLED, and customer status SUSPENDED | FILLED, PENDING, ACCEPTED, REJECTED; ACTIVE and LOCKED | These are the statuses the product has |
 | Order execution: bid and ask at submit, spread, market price now, session | Indicative price, price buffer, slippage, submitted, resolved, market time | The quote an order executed against is not kept in the database |
+| The orders table has a Type column | An Amount column in its place: shares at the fill price | Every order is a market order, so the column said the same on every row |
+| The orders table lists orders only | Deposits and withdrawals are rows among the orders: asset Cash, side Deposit or Withdrawal, status Completed, the cash moved under Amount, no order number and nothing to open | A customer's cash movements belong beside their orders when supporting them |
+| The order dialog puts References last in the left column, the client reference cut to its cell | References sits under the audit trail, with the client reference shown whole on a row of its own and a copy button | On a short window the references were below the fold, and a cut reference cannot be read or selected |
+| The customers screen has a Role filter | No Role filter, and no analysts or admins in the list | Staff are not customers, so every row is a trader |
+| The chart's value axis divides the range between the lowest and highest value into four | It rounds to steps of 1, 2, 2.5 or 5 times a power of ten, from zero for notional traded, and a flat series has one label | The even division read $75,542, $56,657, and on a day without a trade ran below zero and out of the card |
+| The sidebar is fixed at 232px | It collapses to its icons | Asked for, to give the screens the width |
 | "Streaming" beside Live activity | "Live" | The feed is read again every 15 seconds, not streamed |
-| Three sidebar entries | A fourth, Report runs | The scheduled reports built from the Kafka topic are a product requirement the kit predates |
+| Three sidebar entries | A fourth, Report runs, and for an analyst only that one | The scheduled reports built from the Kafka topic are a product requirement the kit predates |
 | No way to sign out | A log out button beside the signed-in user | The kit does not draw one |
 | Most traded shows a price sparkline under "Today" whatever the range | The column is named after the chosen range and plots the symbol's fill prices in it | The label follows what is plotted |
 
@@ -188,7 +199,9 @@ The production [Dockerfile](Dockerfile) builds the app and serves it through unp
 
 ## Known limitations
 
-- The Orders screen shows the newest 500 orders; the count beside the filters is of those.
+- The Orders screen shows the newest 500 orders and the newest 500 transfers; the count beside the filters is of those rows. A customer's page shows their newest 1000 of each.
+- Activity opens on Today, so it is mostly zeros until the day's first order; the longer ranges show the days before. A figure has no change pill when the period before the range has nothing to compare with.
+- A transfer row opens nothing: the service has no endpoint for a single cash transaction.
 - The Activity ranges are fixed at today, 7, 30 and 90 days.
 - The service keeps only the newest report run, so the run list normally has one entry, and a run covers every event on disk.
 - Users are not signed out for inactivity, unlike the Client UI.

@@ -1,6 +1,6 @@
 # Reporting Service
 
-Python Flask service with two jobs, both for analysts. It turns the `trade-events` Kafka topic into scheduled reports, and it serves read-only views of platform activity, orders and customers for the [Reporting UI](../reporting-ui/README.md)'s console.
+Python Flask service with two jobs. It turns the `trade-events` Kafka topic into scheduled reports, for analysts and admins, and it serves read-only views of platform activity, orders and customers for the [Reporting UI](../reporting-ui/README.md)'s console, for admins only.
 
 - Port 8083, Swagger UI at http://localhost:8083/docs, OpenAPI at `/openapi.yaml`
 - Served by Gunicorn in Docker. The [Reporting UI](../reporting-ui/README.md) presents the runs; it calls this service through its own origin, so it needs no entry in `CORS_ORIGINS`.
@@ -10,24 +10,26 @@ Python Flask service with two jobs, both for analysts. It turns the `trade-event
 1. Order and Sell publishes one message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`), keyed by account id. The run counts only final statuses as trades.
 2. `consumer.py`, consumer group `reporting-ingester`, appends each message as one JSON line to `events/trade-events-p<partition>.jsonl` under `REPORTING_FILES_DIR`, then commits the offset. Offsets already on disk are skipped, so redelivery never duplicates a line.
 3. When it starts, and then every `SCHEDULER_INTERVAL_MINUTES`, the same process runs `report_run.py`: reads the event files, joins account and trader names from PostgreSQL (`users` and `accounts`, read only), and writes `runs/<UTC timestamp>/report.json` plus three PNG charts. `runs/latest` points at the new run; older runs are deleted. The first run reports the events already on disk, so a restart serves a report at once; a run that comes due while the process is busy runs late instead of being skipped. The charts use the Reporting UI's dark surface and colors, filled orders in the gain color and rejected orders in the loss color.
-4. The web service (`wsgi.py` under gunicorn) serves the runs behind the same RS256 tokens the Java services accept, to accounts with the `ANALYST` role only.
+4. The web service (`wsgi.py` under gunicorn) serves the runs behind the same RS256 tokens the Java services accept, to accounts with the `ANALYST` or `ADMIN` role only.
 
 The report runs never read trade data from the database: the topic is their only source, and PostgreSQL gives them names.
 
-### Analyst console
+### Console
 
-The console endpoints are the other half, and they do read the database, because they show what the topic does not carry: cash movements, sign-in locks, ledger postings and the audit trail. [console.py](console.py) only reads, and aggregates in Python over plainly filtered rows, so the same code runs on PostgreSQL and on the SQLite database the tests use.
+The console endpoints are the other half, served to admins only because they show individual customers and their orders. They do read the database, because they show what the topic does not carry: cash movements, sign-in locks, ledger postings and the audit trail. [console.py](console.py) only reads, and aggregates in Python over plainly filtered rows, so the same code runs on PostgreSQL and on the SQLite database the tests use.
 
 | View | Tables read |
 | --- | --- |
 | Activity: figures against the prior period, notional over time, status split, newest events, most traded symbols | `orders`, `fills`, `cash_transactions`, `user_accounts`, `users`, `accounts`, `instruments`, `simulation_sessions` |
-| Orders, and one order with its ledger impact and audit trail | the above, plus `holdings`, `holding_movements`, `audit_trail` |
-| Customers, and one customer with balances and orders | `user_accounts`, `users`, `accounts`, `portfolio_valuations`, and the order tables |
+| Orders with the deposits and withdrawals beside them, and one order with its ledger impact and audit trail | the above, plus `holdings`, `holding_movements`, `audit_trail` |
+| Customers, and one customer with balances, orders and transfers | `user_accounts`, `users`, `accounts`, `portfolio_valuations`, and the order tables |
 
 - A range is the viewer's own days: the UI sends its offset from UTC, and "today" starts at the viewer's midnight. Each figure is compared with the period of equal length just before the range.
 - Cash and holdings before and after an order are not stored per order. They are worked back from today's balance by removing every posting made after the order's own.
+- A customer is a sign-in with the `TRADER` role. Analysts and admins are staff: they are left out of the customer list and answered 404 as a customer.
+- A transfer is a `cash_transactions` row whose reason is `DEPOSIT` or `WITHDRAWAL`. What an order's fill posted to cash is part of that order, not a transfer.
 - A customer is `LOCKED` while `user_accounts.locked_until` is in the future. The password hash column is not mapped in [models.py](models.py), so it cannot be selected; SSNs, addresses and dates of birth are never returned.
-- Nothing here writes. An analyst cannot unlock an account from reporting.
+- Nothing here writes. An admin cannot unlock an account from reporting.
 
 ## Technology
 
@@ -54,7 +56,7 @@ On Windows, [scripts/start-local.ps1](../../scripts/start-local.ps1) starts both
 
 ## Endpoints
 
-Authenticated endpoints need an RS256 bearer token from the [Auth Service](../auth-service/README.md). The run endpoints also need the `ANALYST` role in the token's `roles` claim: the runs cover every account on the platform, so a valid token without the role is answered 403. The profile is the caller's own and needs only a valid token.
+Authenticated endpoints need an RS256 bearer token from the [Auth Service](../auth-service/README.md). The run and console endpoints cover every account on the platform, so they also need a role in the token's `roles` claim, and a valid token without it is answered 403. The run endpoints accept `ANALYST` or `ADMIN`. The console endpoints accept `ADMIN` only, because they show individual customers and their orders. The profile is the caller's own and needs only a valid token.
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
@@ -62,15 +64,15 @@ Authenticated endpoints need an RS256 bearer token from the [Auth Service](../au
 | GET | `/health` | public | Liveness and database check |
 | GET | `/docs`, `/openapi.yaml` | public | Swagger UI and the OpenAPI contract |
 | GET | `/api/reporting/profile` | any token | The caller's trader profile |
-| GET | `/api/reporting/runs` | `ANALYST` | Every complete report run, newest first, with the latest run id |
-| GET | `/api/reporting/runs/latest` | `ANALYST` | The latest run's `report.json`; 404 until the first run |
-| GET | `/api/reporting/runs/{runId}/files/{name}` | `ANALYST` | One PNG chart of a run |
+| GET | `/api/reporting/runs` | `ANALYST`, `ADMIN` | Every complete report run, newest first, with the latest run id |
+| GET | `/api/reporting/runs/latest` | `ANALYST`, `ADMIN` | The latest run's `report.json`; 404 until the first run |
+| GET | `/api/reporting/runs/{runId}/files/{name}` | `ANALYST`, `ADMIN` | One PNG chart of a run |
 | GET | `/api/reporting/scheduler/status` | public | Latest run id, when it was generated, and the interval |
-| GET | `/api/reporting/activity?range=&tzOffset=` | `ANALYST` | Platform activity over `today`, `7d`, `30d` or `90d`, in the viewer's days |
-| GET | `/api/reporting/orders?limit=` | `ANALYST` | The newest orders across every account, 500 unless `limit` says otherwise (1 to 1000) |
-| GET | `/api/reporting/orders/{orderId}` | `ANALYST` | One order with its execution, ledger impact and audit trail |
-| GET | `/api/reporting/customers` | `ANALYST` | Every sign-in with its balances and lock status |
-| GET | `/api/reporting/customers/{userId}` | `ANALYST` | One customer with their accounts and orders |
+| GET | `/api/reporting/activity?range=&tzOffset=` | `ADMIN` | Platform activity over `today`, `7d`, `30d` or `90d`, in the viewer's days |
+| GET | `/api/reporting/orders?limit=` | `ADMIN` | The newest orders across every account, 500 unless `limit` says otherwise (1 to 1000), and the newest deposits and withdrawals under the same limit |
+| GET | `/api/reporting/orders/{orderId}` | `ADMIN` | One order with its execution, ledger impact and audit trail |
+| GET | `/api/reporting/customers` | `ADMIN` | Every trader with their balances and lock status; analysts and admins are left out |
+| GET | `/api/reporting/customers/{userId}` | `ADMIN` | One customer with their accounts, orders and transfers; 404 for an analyst or admin |
 
 [openapi.yaml](openapi.yaml) is the canonical contract. Keep it, [routes.py](routes.py), [app.py](app.py), and the tests in step.
 

@@ -46,7 +46,17 @@ describe('AuthService', () => {
     expect(storage.refreshToken).toBe('refresh-1');
   });
 
-  it('turns away an account that is not an analyst and revokes its session', async () => {
+  it('signs an admin in just as it does an analyst', async () => {
+    const done = firstValueFrom(service.login('admin@example.com', 'secret'));
+
+    http.expectOne('/auth/login').flush(tokens({ accessToken: accessToken({ roles: ['ADMIN'] }) }));
+
+    await done;
+    expect(service.isAuthenticated()).toBe(true);
+    expect(storage.isAdmin()).toBe(true);
+  });
+
+  it('turns away an account that is neither an analyst nor an admin and revokes its session', async () => {
     const done = firstValueFrom(service.login('trader@example.com', 'secret'));
 
     http.expectOne('/auth/login').flush(

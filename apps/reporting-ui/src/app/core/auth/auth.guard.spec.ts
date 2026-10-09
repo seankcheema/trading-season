@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRouteSnapshot, Router, RouterStateSnapshot, UrlTree } from '@angular/router';
 import { Observable, firstValueFrom, of, throwError } from 'rxjs';
 import { accessToken } from '../../../testing/fixtures';
-import { authGuard, guestGuard } from './auth.guard';
+import { adminGuard, authGuard, guestGuard } from './auth.guard';
 import { AuthService } from './auth.service';
 import { TokenStorageService } from './token-storage.service';
 
@@ -36,11 +36,24 @@ describe('auth guards', () => {
       expiresIn: 900,
     });
 
-  it('lets a signed-in analyst into the reporting screens', async () => {
-    signInAs('ANALYST');
+  it('lets a signed-in analyst and a signed-in admin into the reporting screens', async () => {
     ensureValidSession.mockReturnValue(of(true));
-    expect(await run(authGuard)).toBe(true);
+    for (const role of ['ANALYST', 'ADMIN']) {
+      signInAs(role);
+      expect(await run(authGuard)).toBe(true);
+    }
     expect(logout).not.toHaveBeenCalled();
+  });
+
+  it('keeps the admin screens for an admin and takes an analyst to the report runs', () => {
+    const admit = () => serialize(TestBed.runInInjectionContext(() =>
+      adminGuard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot),
+    ) as boolean | UrlTree);
+
+    signInAs('ADMIN');
+    expect(admit()).toBe(true);
+    signInAs('ANALYST');
+    expect(admit()).toBe('/runs');
   });
 
   it('signs a trader out and sends them to the login page with the reason', async () => {
@@ -55,10 +68,12 @@ describe('auth guards', () => {
     expect(serialize(await run(authGuard))).toBe('/login');
   });
 
-  it('sends a signed-in analyst from the login page to the reporting screens', async () => {
-    signInAs('ANALYST');
+  it('sends a signed-in analyst or admin from the login page to the reporting screens', async () => {
     ensureValidSession.mockReturnValue(of(true));
-    expect(serialize(await run(guestGuard))).toBe('/');
+    for (const role of ['ANALYST', 'ADMIN']) {
+      signInAs(role);
+      expect(serialize(await run(guestGuard))).toBe('/');
+    }
   });
 
   it('lets a signed-out user and a signed-in trader see the login page', async () => {

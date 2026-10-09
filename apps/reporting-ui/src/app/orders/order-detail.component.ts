@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   inject,
   input,
@@ -9,12 +10,13 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideCopy } from '@ng-icons/lucide';
+import { lucideCheck, lucideCopy } from '@ng-icons/lucide';
 import { catchError, map, of, startWith, switchMap } from 'rxjs';
 import { OrderDetail, OrderStatus } from '../reporting/console.models';
 import { count, daySeconds, dollars, fullStamp, signedDollars } from '../reporting/format';
 import { ReportingApiService } from '../reporting/reporting-api.service';
 import { ChangePillComponent, statusTone } from '../shared/change-pill.component';
+import { copyText } from '../shared/clipboard';
 import { DialogComponent } from '../shared/dialog.component';
 
 // What each status means for the ledger.
@@ -37,6 +39,12 @@ interface Loaded {
   order?: OrderDetail;
 }
 
+// The two ids the dialog offers to copy.
+type Copied = 'reference' | 'order';
+
+// How long a copy button says it copied.
+export const COPIED_NOTE_MS = 2000;
+
 // "BR-09: insufficient funds for this order" reads better without its rule number.
 export function plainReason(reason: string | null): string {
   return (reason ?? '').replace(/^BR-\d+:\s*/, '');
@@ -46,13 +54,14 @@ function signedShares(value: number): string {
   return `${value >= 0 ? '+' : '-'}${count(Math.abs(value))} sh`;
 }
 
-// One order in full: who placed it, how it executed, what it did to cash and
-// holdings, the ids that tie it to the ledger, and its audit trail.
+// One order in full: who placed it, how it executed and what it did to cash and
+// holdings on the left; its audit trail, and under it the ids that tie it to
+// the ledger, on the right.
 @Component({
   selector: 'app-order-detail',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgIcon, ChangePillComponent, DialogComponent],
-  providers: [provideIcons({ lucideCopy })],
+  providers: [provideIcons({ lucideCheck, lucideCopy })],
   styles: `
     .section {
       border: 1px solid var(--border);
@@ -121,10 +130,7 @@ function signedShares(value: number): string {
                       <span class="text-muted-foreground text-xs">{{ section.aside }}</span>
                     }
                   </div>
-                  <dl
-                    class="grid gap-x-4 gap-y-3 text-sm"
-                    [class]="section.columns === 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'"
-                  >
+                  <dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
                     @for (fact of section.facts; track fact.label) {
                       <div class="min-w-0">
                         <dt class="dash-label text-[11px]">{{ fact.label }}</dt>
@@ -139,58 +145,81 @@ function signedShares(value: number): string {
                       </div>
                     }
                   </dl>
-                  @if (section.title === 'References') {
-                    <div class="mt-3 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        class="ghost-button is-small"
-                        (click)="copy(order.clientReference)"
-                      >
-                        <ng-icon name="lucideCopy" size="14" />Copy reference
-                      </button>
-                      <button
-                        type="button"
-                        class="ghost-button is-small"
-                        (click)="copy(order.orderId.toString())"
-                      >
-                        <ng-icon name="lucideCopy" size="14" />Copy order ID
-                      </button>
-                    </div>
-                  }
                 </div>
               }
             </div>
 
-            <div class="section self-start">
-              <div class="mb-3 flex items-center justify-between">
-                <h3 class="dash-label">Audit trail</h3>
-                <span class="text-muted-foreground text-xs">audit_trail</span>
+            <div class="flex min-w-0 flex-col gap-3 self-start">
+              <div class="section">
+                <div class="mb-3 flex items-center justify-between">
+                  <h3 class="dash-label">Audit trail</h3>
+                  <span class="text-muted-foreground text-xs">audit_trail</span>
+                </div>
+                @if (order.audit.length) {
+                  <ol>
+                    @for (event of order.audit; track $index; let last = $last) {
+                      <li class="relative grid grid-cols-[16px_1fr] gap-3" [class]="last ? '' : 'pb-3.5'">
+                        @if (!last) {
+                          <span class="bg-border absolute top-3.5 bottom-0 left-[7px] w-px"></span>
+                        }
+                        <span
+                          class="ring-card mt-1 ml-[3px] size-[9px] rounded-full ring-[3px]"
+                          [class]="eventColor(event.eventType)"
+                        ></span>
+                        <span>
+                          <span class="block text-[13px] font-medium tracking-[0.02em]">
+                            {{ event.eventType }}
+                          </span>
+                          <span class="text-muted-foreground block text-xs tabular-nums">
+                            {{ daySeconds(event.recordedAt) }}{{ event.detail ? ' · ' + event.detail : '' }}
+                          </span>
+                        </span>
+                      </li>
+                    }
+                  </ol>
+                } @else {
+                  <p class="text-muted-foreground text-sm">No audit events were recorded.</p>
+                }
               </div>
-              @if (order.audit.length) {
-                <ol>
-                  @for (event of order.audit; track $index; let last = $last) {
-                    <li class="relative grid grid-cols-[16px_1fr] gap-3" [class]="last ? '' : 'pb-3.5'">
-                      @if (!last) {
-                        <span class="bg-border absolute top-3.5 bottom-0 left-[7px] w-px"></span>
-                      }
-                      <span
-                        class="ring-card mt-1 ml-[3px] size-[9px] rounded-full ring-[3px]"
-                        [class]="eventColor(event.eventType)"
-                      ></span>
-                      <span>
-                        <span class="block text-[13px] font-medium tracking-[0.02em]">
-                          {{ event.eventType }}
-                        </span>
-                        <span class="text-muted-foreground block text-xs tabular-nums">
-                          {{ daySeconds(event.recordedAt) }}{{ event.detail ? ' · ' + event.detail : '' }}
-                        </span>
-                      </span>
-                    </li>
+
+              <div class="section">
+                <h3 class="dash-label mb-3">References</h3>
+                <dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                  <!-- The reference has a row to itself, so a UUID is shown whole. -->
+                  <div class="col-span-2 min-w-0">
+                    <dt class="flex items-center justify-between gap-2">
+                      <span class="dash-label text-[11px]">Client reference</span>
+                      <button
+                        type="button"
+                        class="ghost-button is-small shrink-0"
+                        aria-label="Copy client reference"
+                        (click)="copy('reference', order.clientReference)"
+                      >
+                        <ng-icon [name]="copied() === 'reference' ? 'lucideCheck' : 'lucideCopy'" size="14" />
+                        {{ copied() === 'reference' ? 'Copied' : 'Copy' }}
+                      </button>
+                    </dt>
+                    <dd class="mt-1 break-all tabular-nums select-all" data-reference>
+                      {{ order.clientReference }}
+                    </dd>
+                  </div>
+                  @for (fact of references(); track fact.label) {
+                    <div class="min-w-0">
+                      <dt class="dash-label text-[11px]">{{ fact.label }}</dt>
+                      <dd class="mt-1 truncate tabular-nums" [title]="fact.value">{{ fact.value }}</dd>
+                    </div>
                   }
-                </ol>
-              } @else {
-                <p class="text-muted-foreground text-sm">No audit events were recorded.</p>
-              }
+                </dl>
+                <button
+                  type="button"
+                  class="ghost-button is-small mt-3"
+                  (click)="copy('order', order.orderId.toString())"
+                >
+                  <ng-icon [name]="copied() === 'order' ? 'lucideCheck' : 'lucideCopy'" size="14" />
+                  {{ copied() === 'order' ? 'Copied' : 'Copy order ID' }}
+                </button>
+                <span class="sr-only" aria-live="polite">{{ copied() ? 'Copied to the clipboard' : '' }}</span>
+              </div>
             </div>
           </div>
         }
@@ -205,6 +234,9 @@ export class OrderDetailComponent {
   readonly closed = output<void>();
 
   protected readonly loaded = signal<Loaded>({ state: 'loading' });
+  // Which id was just copied, for as long as its button says so.
+  protected readonly copied = signal<Copied | null>(null);
+  private _copiedTimer?: ReturnType<typeof setTimeout>;
 
   constructor() {
     toObservable(this.orderId)
@@ -219,6 +251,7 @@ export class OrderDetailComponent {
         takeUntilDestroyed(),
       )
       .subscribe((loaded) => this.loaded.set(loaded));
+    inject(DestroyRef).onDestroy(() => clearTimeout(this._copiedTimer));
   }
 
   // What the order was worth: at its fill price, or at the price it asked for.
@@ -248,19 +281,14 @@ export class OrderDetailComponent {
     const money = (value: number | null) => (value === null ? '—' : dollars(value));
     const slippage =
       fill && order.indicativePrice !== null ? fill.price - order.indicativePrice : null;
-    const facts = (title: string, columns: 2 | 3, list: Fact[], aside = '') => ({
-      title,
-      columns,
-      facts: list,
-      aside,
-    });
+    const facts = (title: string, list: Fact[], aside = '') => ({ title, facts: list, aside });
     return [
-      facts('Customer', 3, [
+      facts('Customer', [
         { label: 'Name', value: order.userName },
         { label: 'Email', value: order.userEmail ?? '—' },
         { label: 'Account', value: order.accountName },
       ]),
-      facts('Execution', 3, [
+      facts('Execution', [
         { label: 'Quantity', value: count(order.quantity) },
         { label: 'Fill price', value: money(order.price) },
         { label: 'Fill ID', value: fill ? `#${fill.fillId}` : '—' },
@@ -276,7 +304,6 @@ export class OrderDetailComponent {
       ]),
       facts(
         'Ledger impact',
-        3,
         [
           { label: 'Cash before', value: dollars(ledger.cashBefore) },
           {
@@ -294,18 +321,22 @@ export class OrderDetailComponent {
         ],
         fill ? '' : 'Nothing posted',
       ),
-      facts('References', 2, [
-        { label: 'Client reference', value: order.clientReference },
-        { label: 'Order type', value: order.type },
-        {
-          label: 'Cash transaction',
-          value: ledger.cashTransactionId === null ? '—' : `#${ledger.cashTransactionId}`,
-        },
-        {
-          label: 'Holding movement',
-          value: ledger.holdingMovementId === null ? '—' : `#${ledger.holdingMovementId}`,
-        },
-      ]),
+    ];
+  });
+
+  // The ids beside the client reference, which is shown whole with its own copy button.
+  protected readonly references = computed<Fact[]>(() => {
+    const { type, ledger } = this.loaded().order!;
+    return [
+      { label: 'Order type', value: type },
+      {
+        label: 'Cash transaction',
+        value: ledger.cashTransactionId === null ? '—' : `#${ledger.cashTransactionId}`,
+      },
+      {
+        label: 'Holding movement',
+        value: ledger.holdingMovementId === null ? '—' : `#${ledger.holdingMovementId}`,
+      },
     ];
   });
 
@@ -322,7 +353,14 @@ export class OrderDetailComponent {
     return eventType === 'FILLED' ? 'bg-gain' : 'bg-primary';
   }
 
-  protected copy(text: string): void {
-    void navigator.clipboard?.writeText(text);
+  protected copy(what: Copied, text: string): void {
+    void copyText(text).then((done) => {
+      if (!done) {
+        return;
+      }
+      this.copied.set(what);
+      clearTimeout(this._copiedTimer);
+      this._copiedTimer = setTimeout(() => this.copied.set(null), COPIED_NOTE_MS);
+    });
   }
 }

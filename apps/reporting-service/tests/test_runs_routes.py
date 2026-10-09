@@ -33,7 +33,7 @@ class TestAuthentication:
         assert response.get_json()['interval_minutes'] == 15
 
 
-class TestAnalystRole:
+class TestReportReaderRoles:
 
     RUN_PATHS = (
         '/api/reporting/runs',
@@ -47,7 +47,7 @@ class TestAnalystRole:
         for path in self.RUN_PATHS:
             response = client.get(path, headers=authenticated_trader)
             assert response.status_code == 403, path
-            assert response.get_json() == {'error': 'The ANALYST role is required'}
+            assert response.get_json() == {'error': 'The ANALYST or ADMIN role is required'}
 
     def test_an_analyst_is_served_every_run_endpoint(self, client, files_dir, authenticated):
         write_run(files_dir, '20261006T120000Z')
@@ -55,12 +55,18 @@ class TestAnalystRole:
         for path in self.RUN_PATHS:
             assert client.get(path, headers=authenticated).status_code == 200, path
 
+    def test_an_admin_is_served_every_run_endpoint(self, client, files_dir, authenticated_admin):
+        write_run(files_dir, '20261006T120000Z')
+
+        for path in self.RUN_PATHS:
+            assert client.get(path, headers=authenticated_admin).status_code == 200, path
+
     def test_a_token_without_a_usable_roles_claim_is_refused(self, client, files_dir, mocker, test_user):
         write_run(files_dir, '20261006T120000Z')
         headers = {'Authorization': 'Bearer test-token'}
 
-        # No claim at all, an admin, and a claim that merely contains the word.
-        for claims in ({}, {'roles': ['ADMIN']}, {'roles': 'ANALYST'}, {'roles': None}):
+        # No claim at all, a claim that is not a list, and a role that merely contains the word.
+        for claims in ({}, {'roles': 'ANALYST'}, {'roles': None}, {'roles': ['ANALYSTS']}):
             mocker.patch('app.verify_token', return_value={'sub': str(test_user.user_id), **claims})
             assert client.get('/api/reporting/runs/latest', headers=headers).status_code == 403, claims
 

@@ -118,7 +118,7 @@ describe('LoginComponent', () => {
     expect(button.textContent).toContain('Sign in');
   });
 
-  it('tells an account that is not an analyst that it has no access', () => {
+  it('tells an account that is neither an analyst nor an admin that it has no access', () => {
     render();
     login.mockReturnValue(throwError(() => new ReportingAccessError()));
     fill();
@@ -143,7 +143,7 @@ describe('LoginComponent', () => {
   it('shows no notice on a plain visit or for an unrelated reason', () => {
     render('inactive');
     expect(root.querySelector('[role="status"]')).toBeNull();
-    expect(root.textContent).toContain('Reporting is open to analyst accounts only.');
+    expect(root.textContent).toContain('Reporting is open to analyst and admin accounts only.');
   });
 
   it('reveals and hides the password', () => {

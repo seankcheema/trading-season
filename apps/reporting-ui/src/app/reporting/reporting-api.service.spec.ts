@@ -41,7 +41,7 @@ describe('ReportingApiService', () => {
     expect(seen[2]).toEqual(report());
   });
 
-  it('reads the analyst console, telling the service how far the viewer is from UTC', () => {
+  it('reads the console, telling the service how far the viewer is from UTC', () => {
     const seen: unknown[] = [];
     service.activity('7d').subscribe((value) => seen.push(value));
     service.orders().subscribe((value) => seen.push(value));
@@ -53,7 +53,7 @@ describe('ReportingApiService', () => {
     expect(request.request.params.get('range')).toBe('7d');
     expect(request.request.params.get('tzOffset')).toBe(String(-new Date().getTimezoneOffset()));
     request.flush(activity({ range: '7d' }));
-    http.expectOne('/api/reporting/orders').flush({ orders: orderRows(), total: 3, sessionId: 12 });
+    http.expectOne('/api/reporting/orders').flush({ orders: orderRows(), transfers: [], total: 3, sessionId: 12 });
     http.expectOne('/api/reporting/orders/10482').flush(orderDetail());
     http.expectOne('/api/reporting/customers').flush({ customers: customers() });
     http.expectOne('/api/reporting/customers/6f1c%2F0a52').flush(customerDetail());

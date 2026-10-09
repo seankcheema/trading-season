@@ -21,10 +21,10 @@ export const FAILED_SIGN_IN_WARNING = 3;
 type CustomerSortKey = 'name' | 'status' | 'accounts' | 'cash' | 'portfolio' | 'failed' | 'last';
 
 const ALL = 'ALL';
-const NO_FILTERS = { query: '', status: ALL, role: ALL, level: ALL, flag: ALL };
+const NO_FILTERS = { query: '', status: ALL, level: ALL, flag: ALL };
 type Filters = typeof NO_FILTERS;
 
-// "Sean Cheema" is SC; a sign-in known only by its email takes its first two letters.
+// "Sean Cheema" is SC; a trader known only by their email takes its first two letters.
 export function initials(name: string): string {
   const parts = name.split(/[\s@._-]+/).filter(Boolean);
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?';
@@ -46,8 +46,9 @@ function sortValue(customer: Customer, key: CustomerSortKey): string | number {
   }
 }
 
-// Every sign-in on the platform: who they are, whether they are locked out, and
-// what they hold. A row opens the customer.
+// Every trader on the platform: who they are, whether they are locked out, and
+// what they hold. Analysts and admins are not customers, so the service leaves
+// them out. A row opens the customer.
 @Component({
   selector: 'app-customers',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -115,13 +116,6 @@ function sortValue(customer: Customer, key: CustomerSortKey): string | number {
               [options]="statusOptions"
               [value]="filters().status"
               (valueChange)="set('status', $event)"
-            />
-            <app-filter-select
-              label="Role"
-              [width]="120"
-              [options]="roleOptions"
-              [value]="filters().role"
-              (valueChange)="set('role', $event)"
             />
             <app-filter-select
               label="Trader level"
@@ -242,12 +236,6 @@ export class CustomersComponent {
     'ACTIVE',
     'LOCKED',
   ];
-  protected readonly roleOptions: (string | SelectOption)[] = [
-    { value: ALL, label: 'All roles' },
-    'TRADER',
-    'ANALYST',
-    'ADMIN',
-  ];
   protected readonly levelOptions: SelectOption[] = [
     { value: ALL, label: 'All levels' },
     { value: 'BEGINNER', label: 'Beginner' },
@@ -264,7 +252,7 @@ export class CustomersComponent {
   protected readonly filtered = computed(() => this.filters() !== NO_FILTERS);
 
   protected readonly visible = computed(() => {
-    const { query, status, role, level, flag } = this.filters();
+    const { query, status, level, flag } = this.filters();
     const needle = query.trim().toLowerCase();
     const flagged: Record<string, (customer: Customer) => boolean> = {
       [ALL]: () => true,
@@ -275,7 +263,6 @@ export class CustomersComponent {
     const matches = this.customers().filter(
       (customer) =>
         (status === ALL || customer.status === status) &&
-        (role === ALL || customer.role === role) &&
         (level === ALL || customer.traderLevel === level) &&
         flagged[flag](customer) &&
         (!needle ||
@@ -307,12 +294,11 @@ export class CustomersComponent {
   protected exportCsv(): void {
     downloadCsv(
       'customers',
-      ['User ID', 'Name', 'Email', 'Role', 'Status', 'Trader level', 'Accounts', 'Cash', 'Portfolio', 'Failed sign-ins', 'Last active'],
+      ['User ID', 'Name', 'Email', 'Status', 'Trader level', 'Accounts', 'Cash', 'Portfolio', 'Failed sign-ins', 'Last active'],
       this.visible().map((customer) => [
         customer.userId,
         customer.name,
         customer.email,
-        customer.role,
         customer.status,
         customer.traderLevel,
         customer.accounts,

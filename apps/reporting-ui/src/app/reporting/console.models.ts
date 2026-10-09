@@ -1,4 +1,4 @@
-// Response shapes of the Reporting Service's analyst console endpoints. The canonical
+// Response shapes of the Reporting Service's console endpoints. The canonical
 // contract is apps/reporting-service/openapi.yaml; keep these in step with it.
 
 export type ActivityRange = 'today' | '7d' | '30d' | '90d';
@@ -80,9 +80,27 @@ export interface OrderRow {
   rejectionReason: string | null;
 }
 
+export type TransferKind = 'DEPOSIT' | 'WITHDRAWAL';
+
+// Cash a trader moved in or out themselves, as the cash ledger recorded it.
+export interface TransferRow {
+  // The cash transaction id.
+  transferId: number;
+  at: string;
+  userId: string;
+  userName: string;
+  accountId: number;
+  accountName: string;
+  kind: TransferKind;
+  // Signed: a withdrawal is negative.
+  amount: number;
+}
+
 export interface OrderList {
   orders: OrderRow[];
-  // Every matching order, which can exceed the rows returned.
+  // The newest deposits and withdrawals, under the same limit as the orders.
+  transfers: TransferRow[];
+  // Every matching order, which can exceed the rows returned. Transfers are not counted.
   total: number;
   sessionId: number | null;
 }
@@ -117,13 +135,15 @@ export interface OrderDetail extends OrderRow {
 
 export type CustomerStatus = 'ACTIVE' | 'LOCKED';
 
+// A trader. Analysts and admins are not customers and the service leaves them out.
 export interface Customer {
   userId: string;
   name: string;
   email: string;
+  // Always TRADER.
   role: string;
   status: CustomerStatus;
-  // Null for a sign-in without a trading profile.
+  // Null for a trader without a trading profile.
   traderLevel: string | null;
   accounts: number;
   cash: number;
