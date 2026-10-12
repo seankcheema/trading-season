@@ -15,6 +15,7 @@ are never published, and the read model has no column to hold them.
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from math import ceil
 
 from sqlalchemy import func
 
@@ -23,6 +24,12 @@ from models import (Account, AuditTrail, CashTransaction, Fill, Holding, Holding
 
 # Days each range covers, counting today.
 RANGE_DAYS = {'today': 1, '7d': 7, '30d': 30, '90d': 90}
+# The range that starts with the first order or transfer the read model holds.
+ALL_TIME = 'all'
+# Every range the activity endpoint takes.
+RANGES = (*RANGE_DAYS, ALL_TIME)
+# The most points all time is charted in; a longer history gets buckets of more days.
+ALL_TIME_POINTS = 366
 ORDER_STATUSES = ('FILLED', 'PENDING', 'ACCEPTED', 'REJECTED')
 # The product has no limit or stop orders: every order executes at the market quote.
 ORDER_KIND = 'MARKET'
@@ -77,17 +84,25 @@ def _full_name(user, fallback):
     return f'{user.first_name} {user.last_name}'.strip() or fallback
 
 
-def window(range_key, now, tz_offset_minutes=0):
+def window(range_key, now, tz_offset_minutes=0, first=None):
     """
     Where a range starts, in UTC, and how its chart is bucketed. Days are the
     viewer's own: tz_offset_minutes is their offset east of UTC. Today is cut
-    into hours up to the current one, the longer ranges into days.
+    into hours up to the current one, the longer ranges into days. All time
+    starts on the day of first, the earliest activity there is, or today when
+    there is none; its buckets are a day wide until that would take more than
+    ALL_TIME_POINTS of them, then as many whole days as keep it within that.
     """
     zone = timezone(timedelta(minutes=tz_offset_minutes))
     local = now.astimezone(zone)
     midnight = local.replace(hour=0, minute=0, second=0, microsecond=0)
     if range_key == 'today':
         start, step, count = midnight, timedelta(hours=1), local.hour + 1
+    elif range_key == ALL_TIME:
+        opened = min(first or now, now).astimezone(zone).replace(hour=0, minute=0, second=0, microsecond=0)
+        days = (midnight - opened).days + 1
+        width = ceil(days / ALL_TIME_POINTS)
+        start, step, count = opened, timedelta(days=width), ceil(days / width)
     else:
         days = RANGE_DAYS[range_key]
         start, step, count = midnight - timedelta(days=days - 1), timedelta(days=1), days
@@ -217,12 +232,24 @@ def _feed(session, now):
     return [{**item, 'at': item['at'].isoformat()} for item in items[:FEED_LIMIT]]
 
 
+def _first_activity(session):
+    """When the first order was placed or the first cash was moved, or None when neither has happened."""
+    moments = (
+        session.query(func.min(Order.submitted_at)).scalar(),
+        session.query(func.min(CashTransaction.created_at))
+        .filter(CashTransaction.reason.in_(TRANSFER_REASONS)).scalar(),
+    )
+    return min((_utc(moment) for moment in moments if moment is not None), default=None)
+
+
 def activity(session, range_key, now, tz_offset_minutes=0):
     """
     Headline figures, the notional chart, the status split, the split by
-    client segment, the feed and the most traded symbols.
+    client segment, the feed and the most traded symbols. Nothing comes
+    before all time, so there every change against the prior period is None.
     """
-    start, step, count = window(range_key, now, tz_offset_minutes)
+    first = _first_activity(session) if range_key == ALL_TIME else None
+    start, step, count = window(range_key, now, tz_offset_minutes, first)
     prior_start = start - (now - start)
 
     current, previous = [], []

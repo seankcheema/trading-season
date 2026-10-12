@@ -221,6 +221,84 @@ describe('ActivityComponent', () => {
     expect(toggle(again, '30D').getAttribute('aria-pressed')).toBe('true');
   });
 
+  it('shows all time from its first day, with nothing to compare against', () => {
+    load.mockImplementation((range: ActivityRange) =>
+      of(
+        activity({
+          range,
+          from: '2026-04-15T12:00:00Z',
+          to: '2026-10-08T20:45:00Z',
+          kpis: {
+            ...activity().kpis,
+            orders: { value: 1031, change: null },
+            fillRate: { value: 94, change: null, filled: 969 },
+            netCashFlow: { value: 84210, change: null },
+          },
+          notional: {
+            total: 2500,
+            change: null,
+            points: [
+              { at: '2026-04-15T12:00:00Z', value: 1000 },
+              { at: '2026-04-16T12:00:00Z', value: 1500 },
+            ],
+          },
+        }),
+      ),
+    );
+    const root = render();
+
+    toggle(root, 'All').click();
+    settle();
+
+    expect(load).toHaveBeenLastCalledWith('all');
+    expect(toggle(root, 'All').getAttribute('aria-pressed')).toBe('true');
+    expect(localStorage.getItem(RANGE_KEY)).toBe('all');
+    expect(text(card(root, 'Orders'))).toBe('Orders 1,031 since Apr 15, 2026');
+    expect(text(card(root, 'Fill rate'))).toBe('Fill rate 94.0% 969 filled');
+    expect(root.querySelectorAll('app-change-pill:not([tag])')).toHaveLength(0);
+    const notional = card(root, 'Notional traded');
+    expect(text(notional.querySelector('p')!)).toBe('$2,500');
+    expect(notional.querySelector('[role="img"]')!.getAttribute('aria-label')).toBe(
+      'Notional traded, All time: $2,500',
+    );
+    // Inside one year a day needs no year.
+    expect(Array.from(notional.querySelectorAll('[data-axis="x"] > span')).map(text)).toEqual([
+      'Apr 15',
+      'Apr 16',
+    ]);
+    expect(text(card(root, 'Most traded').querySelector('.dash-table-head')!)).toBe(
+      'Asset All time Orders Notional',
+    );
+  });
+
+  it('names the year on the all time chart once it reaches back into an earlier one', () => {
+    localStorage.setItem(RANGE_KEY, 'all');
+    load.mockReturnValue(
+      of(
+        activity({
+          range: 'all',
+          from: '2025-11-03T12:00:00Z',
+          to: '2026-10-08T20:45:00Z',
+          notional: {
+            total: 30,
+            change: null,
+            points: [
+              { at: '2025-11-03T12:00:00Z', value: 10 },
+              { at: '2026-10-08T12:00:00Z', value: 20 },
+            ],
+          },
+        }),
+      ),
+    );
+    const root = render();
+
+    expect(load).toHaveBeenLastCalledWith('all');
+    expect(Array.from(root.querySelectorAll('[data-axis="x"] > span')).map(text)).toEqual([
+      'Nov 3, 2025',
+      'Oct 8, 2026',
+    ]);
+  });
+
   it('opens on seven days when what the browser remembers is not a range', () => {
     localStorage.setItem(RANGE_KEY, '1y');
     render();

@@ -1,13 +1,14 @@
 // Response shapes of the Reporting Service's console endpoints. The canonical
 // contract is apps/reporting-service/openapi.yaml; keep these in step with it.
 
-export type ActivityRange = 'today' | '7d' | '30d' | '90d';
+// all starts on the day of the first order or cash transfer.
+export type ActivityRange = 'today' | '7d' | '30d' | '90d' | 'all';
 export type OrderStatus = 'FILLED' | 'PENDING' | 'ACCEPTED' | 'REJECTED';
 export type OrderSide = 'BUY' | 'SELL';
 export type TraderLevel = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
 
 // A figure with its change against the period before, in percent; null when
-// that period has nothing to compare with.
+// that period has nothing to compare with, as it always is for all time.
 export interface Compared {
   value: number;
   change: number | null;
@@ -23,7 +24,8 @@ export interface ActivityKpis {
 }
 
 export interface NotionalPoint {
-  // Start of the hour or day the value covers.
+  // Start of the hour or day the value covers. All time covers a span of days
+  // per point once it reaches back more than 366 days.
   at: string;
   value: number;
 }

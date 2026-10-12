@@ -193,6 +193,12 @@ paths:
         (today) or daily buckets, the status split, the split by client
         segment, the newest events, and the most traded symbols. Days are the
         viewer's own, by tzOffset.
+
+        The range all starts on the day of the first order or cash transfer,
+        or today when there is none. Nothing comes before it, so every change
+        is null. Its buckets are a day wide for a history of up to 366 days
+        and a whole number of days wider beyond that, so it never returns more
+        than 366 points.
       security:
         - bearerAuth: []
       parameters:
@@ -200,7 +206,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [today, 7d, 30d, 90d]
+            enum: [today, 7d, 30d, 90d, all]
             default: today
         - name: tzOffset
           in: query
@@ -631,17 +637,20 @@ components:
         change:
           type: number
           nullable: true
-          description: Percent; null when the prior period has nothing to compare with.
+          description: |
+            Percent; null when the prior period has nothing to compare with,
+            and always null for the range all.
       required: [value, change]
     Activity:
       type: object
       properties:
         range:
           type: string
-          enum: [today, 7d, 30d, 90d]
+          enum: [today, 7d, 30d, 90d, all]
         from:
           type: string
           format: date-time
+          description: Where the range starts. For all, the start of the day of the first order or cash transfer.
         to:
           type: string
           format: date-time
@@ -701,14 +710,17 @@ components:
               nullable: true
             points:
               type: array
-              description: One per hour of today so far, or one per day of a longer range.
+              description: |
+                One per hour of today so far, or one per day of a longer range.
+                For all, one per day, or per span of days once the history is
+                longer than 366 days.
               items:
                 type: object
                 properties:
                   at:
                     type: string
                     format: date-time
-                    description: Start of the hour or day.
+                    description: Start of the hour, day or span of days.
                   value:
                     type: number
                 required: [at, value]

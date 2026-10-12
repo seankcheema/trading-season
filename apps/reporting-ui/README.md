@@ -28,7 +28,7 @@ The reporting requirements of the LEAP business requirements specification, and 
 | Requirement | Where |
 | --- | --- |
 | BR-16, by instrument | Most traded on Activity; traded value by symbol in a report run |
-| BR-16, by period | The Today, 7D, 30D and 90D ranges on Activity, each figure against the period before; trades per day in a report run |
+| BR-16, by period | The Today, 7D, 30D, 90D and All ranges on Activity, each figure but all time's against the period before; trades per day in a report run |
 | BR-16, by client segment | Client segments on Activity; traded value by client segment in a report run. A segment is a trader's level, the only classification of clients the product keeps |
 | BR-16, without competing with live trading | Every screen is answered from Kafka: the Reporting Service has no connection to the trading database. The report runs are built from the `trade-events` topic; Activity, Customers and Orders from a read model of `trade-events` and `platform-records`; see [How the data reaches the screen](#how-the-data-reaches-the-screen) |
 | BR-17, trading volumes, most active instruments, client activity trends | On Activity: Notional traded, Most traded, and Active traders against the prior period beside Client segments |
@@ -182,6 +182,7 @@ The kit is a proposal drawn on sample data. Where the product has no such data, 
 | The sidebar is fixed at 232px | It collapses to its icons | Asked for, to give the screens the width |
 | "Streaming" beside Live activity | "Live" | The feed is read again every 15 seconds, not streamed |
 | Activity opens on Today | It opens on 7D, and afterwards on the range last chosen in this browser | Asked for: Today is mostly zeros until the day's first order |
+| The range toggle offers Today, 7D, 30D and 90D | A fifth range, All: all time, from the day of the first order or cash transfer. It has no change pills, and Orders says "since" that day in place of "vs prior period" | Asked for. Nothing comes before all time to compare it with |
 | The chart row holds Notional traded and Orders by status | A third card, Client segments: each trader level's notional and its share, traders and orders in the range | The business requirements ask for activity by client segment, which the kit predates |
 | Three sidebar entries | A fourth, Report runs, and for an analyst only that one | The scheduled reports built from the Kafka topic are a product requirement the kit predates |
 | No way to sign out | A log out button beside the signed-in user | The kit does not draw one |
@@ -236,12 +237,12 @@ The production [Dockerfile](Dockerfile) builds the app and serves it through unp
 ## Known limitations
 
 - The Orders screen shows the newest 500 orders and the newest 500 transfers; the count beside the filters is of those rows. A customer's page shows their newest 1000 of each.
-- A figure on Activity has no change pill when the period before the range has nothing to compare with. Today is mostly zeros until the day's first order.
+- A figure on Activity has no change pill when the period before the range has nothing to compare with, which is always so for all time. Today is mostly zeros until the day's first order.
 - A client segment is the level a trader holds now. The level a trader held when an order was placed is not kept, so a promoted trader takes their earlier orders into the new segment.
 - Activity, Customers and Orders are as current as the topics. A customer's portfolio value can be up to 15 minutes old, because scheduled valuations are published at most that often; everything else is on screen at the next refresh.
 - An analyst's "Orders per account" card names each account and its trader. Whether an analyst's work needs clients by name is a decision for the business; the other three cards name nobody.
 - A transfer row opens nothing: the service has no endpoint for a single cash transaction.
-- The Activity ranges are fixed at today, 7, 30 and 90 days.
+- The Activity ranges are fixed at today, 7, 30 and 90 days, and all time; there is no custom range. All time plots a point per day for a history of up to 366 days. Beyond that a point covers several days and is labelled with the day it starts.
 - The service keeps only the newest report run, and a run covers every event on disk. Report runs shows that run; a run still on disk beside it is listed under Earlier runs with its PNG charts only, because the service serves the figures of the latest run alone.
 - Trades per day plots the days that have a resolved order, side by side. A day without one is left out, not drawn as a gap.
 - Users are not signed out for inactivity, unlike the Client UI.

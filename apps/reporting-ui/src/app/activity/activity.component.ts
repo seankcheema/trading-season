@@ -15,6 +15,7 @@ import {
   day,
   dollars,
   hour,
+  longDay,
   percent,
   plural,
   recent,
@@ -35,11 +36,17 @@ import { TimeframeToggleComponent, ToggleOption } from '../shared/timeframe-togg
 // How often the screen reads the ledgers again.
 export const ACTIVITY_REFRESH_MS = 15_000;
 
-const RANGES: ToggleOption<ActivityRange>[] = [
+interface RangeOption extends ToggleOption<ActivityRange> {
+  // What the range is called away from the toggle, where its label alone would not say.
+  name?: string;
+}
+
+const RANGES: RangeOption[] = [
   { value: 'today', label: 'Today' },
   { value: '7d', label: '7D' },
   { value: '30d', label: '30D' },
   { value: '90d', label: '90D' },
+  { value: 'all', label: 'All', name: 'All time' },
 ];
 
 // Where this browser remembers the range Activity was last showing.
@@ -120,7 +127,7 @@ function feedRow(item: FeedItem): FeedRow {
 }
 
 // What is happening on the platform over a chosen range: headline figures against
-// the period before, notional traded, the status split, the split by client
+// the period before, which all time does not have, notional traded, the status split, the split by client
 // segment, the newest events, and the most traded symbols. It opens on the range
 // this browser last chose.
 @Component({
@@ -344,9 +351,10 @@ export class ActivityComponent {
   protected readonly range = signal<ActivityRange>(readRange());
   protected readonly activity = live(() => this._api.activity(this.range()), ACTIVITY_REFRESH_MS);
 
-  protected readonly rangeLabel = computed(
-    () => RANGES.find((option) => option.value === this.range())!.label,
-  );
+  protected readonly rangeLabel = computed(() => {
+    const option = RANGES.find((range) => range.value === this.range())!;
+    return option.name ?? option.label;
+  });
 
   protected readonly subtitle = computed(() => {
     const data = this.activity.data();
@@ -358,9 +366,16 @@ export class ActivityComponent {
   });
 
   protected readonly kpis = computed<Kpi[]>(() => {
-    const { orders, fillRate, rejected, netCashFlow, activeTraders } = this.activity.data()!.kpis;
+    const data = this.activity.data()!;
+    const { orders, fillRate, rejected, netCashFlow, activeTraders } = data.kpis;
     return [
-      { label: 'Orders', value: count(orders.value), change: orders.change, note: 'vs prior period' },
+      {
+        label: 'Orders',
+        value: count(orders.value),
+        change: orders.change,
+        // Nothing comes before all time, so it says where it starts instead.
+        note: data.range === 'all' ? `since ${longDay(data.from)}` : 'vs prior period',
+      },
       {
         label: 'Fill rate',
         value: percent(fillRate.value),
@@ -390,10 +405,13 @@ export class ActivityComponent {
     ];
   });
 
-  // Today is plotted by the hour, the longer ranges by the day.
+  // Today is plotted by the hour, the longer ranges by the day. All time names
+  // the year too once it reaches back into an earlier one.
   protected readonly chart = computed<ChartPoint[]>(() => {
     const data = this.activity.data()!;
-    const label = data.range === 'today' ? hour : day;
+    const years =
+      data.range === 'all' && new Date(data.from).getFullYear() !== new Date(data.to).getFullYear();
+    const label = data.range === 'today' ? hour : years ? longDay : day;
     return data.notional.points.map((point) => ({ value: point.value, label: label(point.at) }));
   });
 

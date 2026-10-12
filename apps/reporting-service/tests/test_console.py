@@ -109,6 +109,32 @@ class TestWindow:
         assert start == datetime(2026, 10, 2, tzinfo=timezone.utc)
         assert (step, count) == (timedelta(days=1), 7)
 
+    def test_all_time_is_whole_days_from_the_viewers_day_of_the_first_activity(self):
+        # 02:00 UTC on October 6 is still October 5 at UTC-5, a day that began at 05:00 UTC.
+        first = datetime(2026, 10, 6, 2, 0, tzinfo=timezone.utc)
+
+        start, step, count = console.window('all', NOW, -300, first)
+
+        assert start == datetime(2026, 10, 5, 5, 0, tzinfo=timezone.utc)
+        assert (step, count) == (timedelta(days=1), 4)
+
+    def test_all_time_is_today_alone_when_nothing_has_happened(self):
+        start, step, count = console.window('all', NOW)
+
+        assert start == datetime(2026, 10, 8, tzinfo=timezone.utc)
+        assert (step, count) == (timedelta(days=1), 1)
+
+    def test_all_time_widens_its_buckets_instead_of_adding_points_without_end(self):
+        year = console.window('all', NOW, first=NOW - timedelta(days=365))
+        longer = console.window('all', NOW, first=NOW - timedelta(days=366))
+        decade = console.window('all', NOW, first=NOW - timedelta(days=3660))
+
+        assert year[1:] == (timedelta(days=1), 366)
+        assert longer[1:] == (timedelta(days=2), 184)
+        assert decade[1:] == (timedelta(days=11), 333)
+        # The last bucket still reaches today.
+        assert decade[0] + decade[1] * decade[2] > NOW
+
 
 class TestActivity:
 
@@ -197,7 +223,40 @@ class TestActivity:
         week = console.activity(platform, '7d', NOW)['segments']
         assert week[2] == {'segment': 'ADVANCED', 'traders': 1, 'orders': 2, 'notional': 640.0}
 
+    def test_all_time_starts_with_the_first_activity_and_compares_with_nothing(self, platform):
+        # The first thing that happened is a deposit, nine days before any order.
+        platform.add(CashTransaction(cash_transaction_id=9, account_id=1, amount=Decimal('120.00'),
+                                     reason='DEPOSIT', created_at=hours_ago(24 * 10)))
+        platform.commit()
+
+        report = console.activity(platform, 'all', NOW)
+
+        assert report['range'] == 'all'
+        assert report['from'] == '2026-09-28T00:00:00+00:00'
+        assert report['kpis']['orders'] == {'value': 4, 'change': None}
+        assert report['kpis']['fillRate'] == {'value': 66.67, 'change': None, 'filled': 2}
+        assert report['kpis']['netCashFlow'] == {'value': 360.0, 'change': None}
+        assert report['kpis']['activeTraders'] == {'value': 2, 'change': None}
+        assert report['notional']['change'] is None
+        points = report['notional']['points']
+        assert len(points) == 11, 'one point per day since the first'
+        assert points[0] == {'at': '2026-09-28T00:00:00+00:00', 'value': 0.0}
+        assert [point['value'] for point in points[-2:]] == [200.0, 440.0]
+        assert report['notional']['total'] == 640.0
+
+    def test_all_time_ignores_cash_an_order_posted_when_finding_its_start(self, platform):
+        # An order's own posting is not a transfer; without the order itself it starts nothing.
+        platform.add(CashTransaction(cash_transaction_id=9, account_id=1, amount=Decimal('-5.00'),
+                                     reason='ORDER_FILL', created_at=hours_ago(24 * 10)))
+        platform.commit()
+
+        assert console.activity(platform, 'all', NOW)['from'] == '2026-10-07T00:00:00+00:00'
+
     def test_an_empty_platform_reports_zeros(self, db_session):
+        everything = console.activity(db_session, 'all', NOW)
+        assert everything['from'] == '2026-10-08T00:00:00+00:00'
+        assert everything['notional']['points'] == [{'at': '2026-10-08T00:00:00+00:00', 'value': 0.0}]
+
         report = console.activity(db_session, '30d', NOW)
 
         assert [row['segment'] for row in report['segments']] == ['BEGINNER', 'INTERMEDIATE', 'ADVANCED']
@@ -382,11 +441,21 @@ class TestConsoleRoutes:
         assert body['range'] == '7d'
         assert len(body['notional']['points']) == 7
 
+    def test_activity_takes_all_time(self, client, platform, authenticated_admin):
+        response = client.get('/api/reporting/activity?range=all', headers=authenticated_admin)
+
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body['range'] == 'all'
+        assert body['kpis']['orders'] == {'value': 4, 'change': None}
+
     def test_activity_refuses_a_range_or_offset_it_does_not_know(self, client, platform, authenticated_admin):
         for query in ('range=1y', 'tzOffset=abc', 'tzOffset=9000'):
             response = client.get(f'/api/reporting/activity?{query}', headers=authenticated_admin)
             assert response.status_code == 400, query
             assert 'error' in response.get_json()
+        response = client.get('/api/reporting/activity?range=1y', headers=authenticated_admin)
+        assert response.get_json() == {'error': 'range must be one of today, 7d, 30d, 90d, all'}
 
     def test_orders_take_a_limit_inside_bounds(self, client, platform, authenticated_admin):
         response = client.get('/api/reporting/orders?limit=1', headers=authenticated_admin)

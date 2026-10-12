@@ -73,6 +73,7 @@ The console endpoints are the other half, served to admins only because they sho
 | Customers, and one customer with balances, orders and transfers | `user_accounts`, `users`, `accounts`, `portfolio_valuations`, and the order tables |
 
 - A range is the viewer's own days: the UI sends its offset from UTC, and "today" starts at the viewer's midnight. Each figure is compared with the period of equal length just before the range.
+- The range `all` starts on the day of the first order or cash transfer in the read model, or today when there is none. Nothing comes before it, so every change is null. Its chart has a point per day for a history of up to 366 days; beyond that each point covers a whole number of days, enough of them to stay within 366 points.
 - Activity is split by client segment the same way a run is: by trader level, as each trader holds it now. It counts the traders of a level who placed an order in the range, their orders and the notional filled.
 - Orders, transfers and the feed are newest first by when they happened, not by id, so history loaded late sorts where it belongs.
 - Cash and holdings before and after an order are worked back from today's balance by removing every posting made after the order's own.
@@ -118,7 +119,7 @@ Authenticated endpoints need an RS256 bearer token from the [Auth Service](../au
 | GET | `/api/reporting/runs/latest` | `ANALYST`, `ADMIN` | The latest run's `report.json`; 404 until the first run |
 | GET | `/api/reporting/runs/{runId}/files/{name}` | `ANALYST`, `ADMIN` | One PNG chart of a run |
 | GET | `/api/reporting/scheduler/status` | public | Latest run id, when it was generated, and the interval |
-| GET | `/api/reporting/activity?range=&tzOffset=` | `ADMIN` | Platform activity over `today`, `7d`, `30d` or `90d`, in the viewer's days |
+| GET | `/api/reporting/activity?range=&tzOffset=` | `ADMIN` | Platform activity over `today`, `7d`, `30d`, `90d` or `all`, in the viewer's days |
 | GET | `/api/reporting/orders?limit=` | `ADMIN` | The newest orders across every account, 500 unless `limit` says otherwise (1 to 1000), and the newest deposits and withdrawals under the same limit |
 | GET | `/api/reporting/orders/{orderId}` | `ADMIN` | One order with its execution, ledger impact and audit trail |
 | GET | `/api/reporting/customers` | `ADMIN` | Every trader with their balances and lock status; analysts and admins are left out |

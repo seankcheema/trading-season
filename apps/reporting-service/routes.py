@@ -151,8 +151,8 @@ def _whole_number(name, default, low, high):
 def get_activity():
     """GET /api/reporting/activity: platform activity over a range, in the viewer's days."""
     range_key = request.args.get('range', 'today')
-    if range_key not in console.RANGE_DAYS:
-        return jsonify({'error': 'range must be one of today, 7d, 30d, 90d'}), 400
+    if range_key not in console.RANGES:
+        return jsonify({'error': f"range must be one of {', '.join(console.RANGES)}"}), 400
     tz_offset = _whole_number('tzOffset', 0, -MAX_TZ_OFFSET_MINUTES, MAX_TZ_OFFSET_MINUTES)
     if tz_offset is None:
         return jsonify({'error': 'tzOffset must be minutes east of UTC, between -840 and 840'}), 400
