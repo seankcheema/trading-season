@@ -34,7 +34,9 @@ export function live<T>(load: () => Observable<T>, intervalMs: number): Live<T> 
       if (result) {
         data.set(result.value);
         state.set('ready');
-      } else if (data() === null) {
+        return;
+      }
+      if (data() === null) {
         state.set('error');
       }
     });

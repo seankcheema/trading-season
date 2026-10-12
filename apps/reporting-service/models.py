@@ -24,6 +24,10 @@ from sqlalchemy.dialects.postgresql import UUID
 
 db = SQLAlchemy()
 
+# The two keys most tables point at.
+ACCOUNT_KEY = 'accounts.account_id'
+INSTRUMENT_KEY = 'instruments.instrument_id'
+
 
 def _now():
     return datetime.now(timezone.utc)
@@ -107,8 +111,8 @@ class Order(db.Model):
     __tablename__ = 'orders'
 
     order_id = Column(Integer, primary_key=True, autoincrement=True)
-    account_id = Column(Integer, ForeignKey('accounts.account_id'), nullable=False, index=True)
-    instrument_id = Column(Integer, ForeignKey('instruments.instrument_id'), nullable=False)
+    account_id = Column(Integer, ForeignKey(ACCOUNT_KEY), nullable=False, index=True)
+    instrument_id = Column(Integer, ForeignKey(INSTRUMENT_KEY), nullable=False)
     client_reference = Column(UUID(as_uuid=True), nullable=False, default=uuid.uuid4)
     order_type = Column(Text, nullable=False)
     status = Column(Text, nullable=False)
@@ -141,7 +145,7 @@ class CashTransaction(db.Model):
     __tablename__ = 'cash_transactions'
 
     cash_transaction_id = Column(Integer, primary_key=True, autoincrement=True)
-    account_id = Column(Integer, ForeignKey('accounts.account_id'), nullable=False, index=True)
+    account_id = Column(Integer, ForeignKey(ACCOUNT_KEY), nullable=False, index=True)
     fill_id = Column(Integer, ForeignKey('fills.fill_id'), nullable=True)
     amount = Column(Numeric(14, 2), nullable=False)
     reason = Column(Text, nullable=False)
@@ -153,8 +157,8 @@ class HoldingMovement(db.Model):
     __tablename__ = 'holding_movements'
 
     holding_movement_id = Column(Integer, primary_key=True, autoincrement=True)
-    account_id = Column(Integer, ForeignKey('accounts.account_id'), nullable=False, index=True)
-    instrument_id = Column(Integer, ForeignKey('instruments.instrument_id'), nullable=False)
+    account_id = Column(Integer, ForeignKey(ACCOUNT_KEY), nullable=False, index=True)
+    instrument_id = Column(Integer, ForeignKey(INSTRUMENT_KEY), nullable=False)
     fill_id = Column(Integer, ForeignKey('fills.fill_id'), nullable=False)
     quantity_delta = Column(Numeric(18, 4), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
@@ -170,8 +174,8 @@ class Holding(db.Model):
     __table_args__ = (UniqueConstraint('account_id', 'instrument_id', name='uq_holdings_account_instrument'),)
 
     holding_id = Column(Integer, primary_key=True, autoincrement=True)
-    account_id = Column(Integer, ForeignKey('accounts.account_id'), nullable=False, index=True)
-    instrument_id = Column(Integer, ForeignKey('instruments.instrument_id'), nullable=False)
+    account_id = Column(Integer, ForeignKey(ACCOUNT_KEY), nullable=False, index=True)
+    instrument_id = Column(Integer, ForeignKey(INSTRUMENT_KEY), nullable=False)
     quantity = Column(Numeric(18, 4), nullable=False)
     last_movement_id = Column(Integer, nullable=False, default=0)
 
@@ -196,7 +200,7 @@ class PortfolioValuation(db.Model):
     __tablename__ = 'portfolio_valuations'
 
     valuation_id = Column(Integer, primary_key=True, autoincrement=True)
-    account_id = Column(Integer, ForeignKey('accounts.account_id'), nullable=False, index=True)
+    account_id = Column(Integer, ForeignKey(ACCOUNT_KEY), nullable=False, index=True)
     observed_at = Column(DateTime(timezone=True), nullable=False, default=_now)
     portfolio_value = Column(Numeric(18, 6), nullable=False)
 

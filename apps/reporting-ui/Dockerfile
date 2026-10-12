@@ -12,6 +12,7 @@ COPY . .
 RUN npm run build
 
 FROM nginxinc/nginx-unprivileged:1.27-alpine
+LABEL maintainer="DuaLEAPa Team"
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist/reporting-ui/browser /usr/share/nginx/html

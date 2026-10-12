@@ -19,6 +19,7 @@ RUN --mount=type=cache,target=/root/.m2,sharing=locked     mvn -B package -Dskip
 # and build cache from Stage 1 are NOT copied here — they never exist in the
 # final image. That's why the multi-stage image is significantly smaller.
 FROM eclipse-temurin:21-jre-alpine
+LABEL maintainer="DuaLEAPa Team"
 
 WORKDIR /app
 

@@ -22,6 +22,11 @@ type CustomerSortKey = 'name' | 'status' | 'accounts' | 'cash' | 'portfolio' | '
 
 const ALL = 'ALL';
 const NO_FILTERS = { query: '', status: ALL, level: ALL, flag: ALL };
+
+// Whether a filter lets a value through: it is off, or it names that value.
+function picked(choice: string, value: string | null): boolean {
+  return choice === ALL || choice === value;
+}
 type Filters = typeof NO_FILTERS;
 
 // "Sean Cheema" is SC; a trader known only by their email takes its first two letters.
@@ -260,13 +265,15 @@ export class CustomersComponent {
       nocash: (customer) => customer.cash === 0,
       noaccounts: (customer) => customer.accounts === 0,
     };
+    const named = (customer: Customer) =>
+      !needle ||
+      `${customer.name} ${customer.email} ${customer.userId}`.toLowerCase().includes(needle);
     const matches = this.customers().filter(
       (customer) =>
-        (status === ALL || customer.status === status) &&
-        (level === ALL || customer.traderLevel === level) &&
+        picked(status, customer.status) &&
+        picked(level, customer.traderLevel) &&
         flagged[flag](customer) &&
-        (!needle ||
-          `${customer.name} ${customer.email} ${customer.userId}`.toLowerCase().includes(needle)),
+        named(customer),
     );
     return sortRows(matches, this.sort(), sortValue);
   });

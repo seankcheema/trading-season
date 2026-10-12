@@ -85,8 +85,8 @@ class JWKSCache:
                 self.keys = response.json()['keys']
                 self.cached_at = now
                 logger.info("JWKS cache refreshed")
-            except Exception as e:
-                logger.error(f"Failed to fetch JWKS: {e}")
+            except Exception:
+                logger.exception("Failed to fetch JWKS")
                 raise
         return self.keys
 
@@ -139,7 +139,7 @@ def verify_token(token):
     except jwt.InvalidTokenError as e:
         raise ValueError(f"Invalid token: {e}")
     except Exception as e:
-        logger.error(f"Token verification error: {e}")
+        logger.exception("Token verification error")
         raise ValueError(f"Token verification failed: {e}")
 
 
@@ -220,7 +220,7 @@ def health():
         }), 200
     
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        logger.exception("Health check failed")
         return jsonify({
             'status': 'unhealthy',
             'service': 'reporting-service',
@@ -343,8 +343,8 @@ def init_app():
             register_routes()
             logger.info("Application initialized successfully")
 
-    except Exception as e:
-        logger.error(f"Failed to initialize application: {e}")
+    except Exception:
+        logger.exception("Failed to initialize application")
         raise
 
 

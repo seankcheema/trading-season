@@ -18,7 +18,9 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
   const router = inject(Router);
   const expired = () => {
-    if (!storage.hasSession()) void router.navigate(['/login']);
+    if (!storage.hasSession()) {
+      void router.navigate(['/login']);
+    }
     return throwError(
       () => new HttpErrorResponse({ status: 401, statusText: 'Session expired', url: req.url }),
     );
@@ -39,7 +41,9 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   return auth.ensureValidSession().pipe(
     switchMap((valid) => {
       const token = storage.accessToken;
-      if (!valid || !token) return expired();
+      if (!valid || !token) {
+        return expired();
+      }
       return send(token).pipe(
         catchError((error: unknown) => {
           if (!(error instanceof HttpErrorResponse) || error.status !== 401) {
@@ -48,7 +52,9 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
           return auth.ensureValidSession(token).pipe(
             switchMap((renewed) => {
               const renewedToken = storage.accessToken;
-              if (!renewed || !renewedToken) return expired();
+              if (!renewed || !renewedToken) {
+                return expired();
+              }
               // This retry is outside the catch above, so another 401 cannot loop.
               return send(renewedToken);
             }),

@@ -59,7 +59,9 @@ export class AuthService {
       return of(true);
     }
     const revision = this._storage.revision;
-    if (this.refresh?.revision === revision) return this.refresh.result;
+    if (this.refresh?.revision === revision) {
+      return this.refresh.result;
+    }
     const refreshToken = this._storage.refreshToken;
     if (!refreshToken) {
       return of(false);
@@ -69,12 +71,16 @@ export class AuthService {
       this._http.post<AuthTokens>(`${this._authApiUrl}/refresh`, { refreshToken }),
     ).pipe(
       map((tokens) => {
-        if (!current()) return false;
+        if (!current()) {
+          return false;
+        }
         this._storage.save(tokens);
         return true;
       }),
       catchError((error: unknown) => {
-        if (!current()) return of(false);
+        if (!current()) {
+          return of(false);
+        }
         if (error instanceof HttpErrorResponse && [400, 401, 403].includes(error.status)) {
           this._storage.clear();
           return of(false);
@@ -82,7 +88,9 @@ export class AuthService {
         return throwError(() => error);
       }),
       finalize(() => {
-        if (this.refresh?.result === result) this.refresh = undefined;
+        if (this.refresh?.result === result) {
+          this.refresh = undefined;
+        }
       }),
       // Refresh tokens rotate on use, so every waiting request must share one refresh call.
       shareReplay({ bufferSize: 1, refCount: false }),

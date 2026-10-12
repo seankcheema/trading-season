@@ -39,11 +39,13 @@ export interface AxisScale {
   ticks: number[];
 }
 
+const ROUND_STEPS = [1, 2, 2.5, 5];
+
 // Rounds a step up to 1, 2, 2.5 or 5 times a power of ten.
 export function roundStep(rough: number): number {
   const power = 10 ** Math.floor(Math.log10(rough));
   const unit = rough / power;
-  return (unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 2.5 ? 2.5 : unit <= 5 ? 5 : 10) * power;
+  return (ROUND_STEPS.find((step) => unit <= step) ?? 10) * power;
 }
 
 // Round bounds that hold every value, and the round steps between them, so the

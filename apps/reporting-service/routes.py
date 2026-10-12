@@ -152,25 +152,29 @@ def latest_report():
     return jsonify(report), 200
 
 
+def _not_found():
+    return jsonify({'error': 'Not found'}), 404
+
+
 @api_bp.route('/runs/<run_id>/files/<name>', methods=['GET'])
 @require_auth
 @require_role(*REPORT_READER_ROLES)
 def run_file(run_id, name):
     """GET /api/reporting/runs/<run_id>/files/<name>: one PNG chart of a run, over all of it or a range."""
     if not run_store.is_safe_run_id(run_id) or not run_store.is_safe_file_name(name):
-        return jsonify({'error': 'Not found'}), 404
+        return _not_found()
     range_key, tz_offset, refusal = _range_query(console.ALL_TIME)
     if refusal:
         return refusal
     directory = run_store.runs_dir(_files_dir()) / run_id
     if not (directory / name).is_file():
-        return jsonify({'error': 'Not found'}), 404
+        return _not_found()
     if range_key == console.ALL_TIME:
         return send_from_directory(directory, name, mimetype='image/png', max_age=0)
     # The file on disk is the run over all time. A narrower range is drawn when it is asked for.
     report = run_store.read_report(_files_dir(), run_id)
     if report is None or name not in report_run.CHARTS:
-        return jsonify({'error': 'Not found'}), 404
+        return _not_found()
     chart = report_run.draw_chart(_cut_to_range(report, range_key, tz_offset), name)
     response = current_app.response_class(chart, mimetype='image/png')
     response.cache_control.no_cache = True

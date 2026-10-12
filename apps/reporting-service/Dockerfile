@@ -18,6 +18,7 @@ RUN pip wheel --no-cache-dir --no-deps --wheel-dir /build/wheels -r requirements
 
 # Stage 2: Runtime
 FROM python:3.14-slim
+LABEL maintainer="DuaLEAPa Team"
 
 WORKDIR /app
 

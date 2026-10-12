@@ -154,9 +154,13 @@ export class MarketClockService {
     const month = value.slice(0, 7);
     const dates = calendar.tradingDates.filter((date) => date.startsWith(month));
     const next = dates.find((date) => date >= value);
-    if (next) return next;
+    if (next) {
+      return next;
+    }
     for (let index = dates.length - 1; index >= 0; index--) {
-      if (dates[index] <= value) return dates[index];
+      if (dates[index] <= value) {
+        return dates[index];
+      }
     }
     return '';
   }

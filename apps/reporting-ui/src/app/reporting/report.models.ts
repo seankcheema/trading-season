@@ -35,7 +35,7 @@ export interface DailyCount {
 }
 
 // The resolved orders of one client segment, which is a trader level. UNKNOWN
-// collects accounts the database does not know.
+// collects accounts no published record names.
 export interface SegmentReport {
   segment: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'UNKNOWN';
   // Accounts that resolved at least one order.

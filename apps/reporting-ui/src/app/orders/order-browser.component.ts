@@ -9,6 +9,11 @@ import { OrderTableComponent } from './order-table.component';
 
 const ALL = 'ALL';
 const NO_FILTERS = { query: '', status: ALL, side: ALL, symbol: ALL, owner: ALL, fill: ALL };
+
+// Whether a filter lets a value through: it is off, or it names that value.
+function picked(choice: string, value: string | null): boolean {
+  return choice === ALL || choice === value;
+}
 type Filters = typeof NO_FILTERS;
 
 function distinct(rows: readonly LedgerRow[], pick: (row: LedgerRow) => string): string[] {
@@ -162,18 +167,19 @@ export class OrderBrowserComponent {
     const { query, status, side, symbol, owner, fill } = this.filters();
     const needle = query.trim().toLowerCase();
     const ownerOf = this._ownerOf();
-    return this.rows().filter(
-      (row) =>
-        (status === ALL || row.status === status) &&
-        (side === ALL || row.side === side) &&
-        (symbol === ALL || row.symbol === symbol) &&
-        (owner === ALL || ownerOf(row) === owner) &&
-        (fill === ALL || (row.order !== null && (fill === 'priced') === (row.price !== null))) &&
-        (!needle ||
-          `${row.userName} ${row.accountName} ${row.symbol} ${row.side} ${row.order ? row.id : ''} ${row.reference}`
-            .toLowerCase()
-            .includes(needle)),
-    );
+    const chosen = (row: LedgerRow) =>
+      picked(status, row.status) &&
+      picked(side, row.side) &&
+      picked(symbol, row.symbol) &&
+      picked(owner, ownerOf(row));
+    const priced = (row: LedgerRow) =>
+      fill === ALL || (row.order !== null && (fill === 'priced') === (row.price !== null));
+    const named = (row: LedgerRow) =>
+      !needle ||
+      `${row.userName} ${row.accountName} ${row.symbol} ${row.side} ${row.order ? row.id : ''} ${row.reference}`
+        .toLowerCase()
+        .includes(needle);
+    return this.rows().filter((row) => chosen(row) && priced(row) && named(row));
   });
 
   // The rows on screen, in the order they are shown, for an export.

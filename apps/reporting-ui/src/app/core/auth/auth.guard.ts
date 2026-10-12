@@ -14,8 +14,12 @@ export const authGuard: CanActivateFn = () => {
   const login = router.createUrlTree(['/login']);
   return auth.ensureValidSession().pipe(
     switchMap((valid) => {
-      if (!valid) return of(login);
-      if (storage.hasReportingRole()) return of(true);
+      if (!valid) {
+        return of(login);
+      }
+      if (storage.hasReportingRole()) {
+        return of(true);
+      }
       return auth
         .logout()
         .pipe(
