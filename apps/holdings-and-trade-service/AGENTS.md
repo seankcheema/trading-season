@@ -19,7 +19,7 @@ Order creation, validation and execution live in [Order and Sell Service](../ord
 - `user/` - The caller's profile and the shared cash balance it carries
 - `account/` - The caller's accounts, the assembled view of their holdings, and portfolio valuation history: `PortfolioValuationService.capture` is called by the minute scheduler, by the dashboard's request, and by `PortfolioValuationListener`, the `portfolio-valuation-capture` Kafka consumer that fires on every `FILLED` trade event. The listener is gated by `app.events.enabled`.
 - `cash/` - Deposits, withdrawals, and the append-only cash ledger
-- `record/` - What the reporting service is told: a `PlatformRecord` per profile, account, transfer and valuation written, sent to the `platform-records` topic by `PlatformRecordPublisher` after the commit. The reporting service has no database connection, so a service method that writes a row it shows must raise the record in the same transaction. Never put an SSN, address or date of birth in one.
+- `record/` - What the reporting service is told: a `PlatformRecord` per profile, account, transfer and valuation written, sent to the `platform-records` topic by `PlatformRecordPublisher` after the commit, and the current simulation session, which `market/MarketSessionAnnouncer` raises once at start. The reporting service has no database connection, so a service method that writes a row it shows must raise the record in the same transaction. Never put an SSN, address or date of birth in one.
 - `holding/` - Cached positions, plus the movement and fill rows a position's cost is derived from
 - `instrument/` - Read access to tradable asset definitions, for naming a holding
 - `market/` - Shared market data services

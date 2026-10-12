@@ -58,6 +58,7 @@ Additive, and for a development database only: nothing that exists is changed or
 - Orders that filled and orders the trading rules rejected, with the reasons the Order and Sell Service gives, on weekdays; deposits and withdrawals; and the fills, cash and holding ledgers, holdings, audit trail and portfolio valuations that go with them. Cash never goes below zero and nothing is sold that is not held.
 - Prices follow a seeded random walk from each instrument's starting price. They are plausible and repeatable, and they are not the simulated market's prices.
 - The same trader on the same day always does the same things. Run again later, it adds only the days since it last ran; run twice on one day, the second run adds nothing.
+- `--days` sets how far back the history starts on a first run (default 180).
 - `--dry-run` writes everything, prints the summary and rolls it all back. It still advances the id sequences.
 - It publishes nothing. Run `republish_history.py` afterwards for reporting to see the history.
 

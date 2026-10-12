@@ -6,7 +6,7 @@ Spring Boot (Java 21) service for the signed-in user's own data: profile, accoun
 - Shares the `trading_season` database. The schema comes from [db/migrations](../../db/migrations); Hibernate never alters it.
 - Authenticates callers by verifying RS256 tokens from the [Auth Service](../auth-service/README.md) against its cached JWKS. Every user-specific endpoint resolves the owner from the token's `sub`; no path or body field can name another user. An account that belongs to someone else is 403 and a missing one is 404.
 - Runs the `portfolio-valuation-capture` Kafka consumer group on `trade-events`: when an order fills, it records a portfolio valuation for that account, so the portfolio chart gets a point at the moment of the trade even with no dashboard open.
-- Publishes every profile, account, deposit, withdrawal and portfolio valuation it writes to the Kafka `platform-records` topic. The Reporting Service has no database connection: that topic is how it knows who the customers are.
+- Publishes each profile, account, deposit and withdrawal it writes, the portfolio valuations reporting needs, and the current simulation session to the Kafka `platform-records` topic. The Reporting Service has no database connection: that topic is how it knows who the customers are. See [What reporting receives](#what-reporting-receives).
 
 ## Endpoints
 
@@ -60,6 +60,7 @@ flowchart TB
         CS[CashTransactionService]
         WS[WatchlistService]
         MR[MarketReplayService]
+        MSA[MarketSessionAnnouncer]
     end
     subgraph Data["Persistence"]
         T1["users, accounts"]
@@ -78,10 +79,11 @@ flowchart TB
     K[["Kafka trade-events"]] -- "group portfolio-valuation-capture" --> PVL
     PVL --> PVS
     PR["record<br/>PlatformRecordPublisher"] --> R[["Kafka platform-records"]]
-    AuS -- "profile" --> PR
+    RS -- "profile" --> PR
     AcS -- "account" --> PR
     CS -- "transfer" --> PR
     PVS -- "valuation" --> PR
+    MSA -- "session, at start" --> PR
     PVS --> T2
     PVS --> T4
     PVS --> MR
@@ -207,7 +209,7 @@ Environment variables override [application.properties](src/main/resources/appli
 | `MARKET_REPLAY_ARCHIVE_LOCATION` | empty | Absolute path to the Parquet archive |
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:29092` | Broker for the `trade-events` consumer and the `platform-records` publisher; Compose sets `kafka:9092` |
 
-The property `app.events.enabled` (default `true`) registers the `portfolio-valuation-capture` consumer and the `platform-records` publisher; the test profile sets it to `false` so contexts without a broker never contact one. Without a broker the service still starts, but a write that publishes then waits up to five seconds (`max.block.ms`) before responding.
+The property `app.events.enabled` (default `true`) registers the `portfolio-valuation-capture` consumer and the `platform-records` publisher; the test profile sets it to `false` so contexts without a broker never contact one. `app.events.valuation-interval-minutes` (default 15) is the least time between two scheduled valuations of one account that are published. Without a broker the service still starts, but a write that publishes then waits up to five seconds (`max.block.ms`) before responding.
 
 ## Run and test
 

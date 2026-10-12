@@ -1,6 +1,6 @@
 # Reporting UI
 
-Angular 21 single-page app for the analysts who read the scheduled reports and the admins who also watch platform activity and support customers. It presents what the [Reporting Service](../reporting-service/README.md) serves: activity, customers and orders read from the trading database, and the report runs the reporting consumer builds from the `trade-events` Kafka topic. Standalone components, signals, reactive forms, and OnPush change detection, with no server-side rendering.
+Angular 21 single-page app for the analysts who read the scheduled reports and the admins who also watch platform activity and support customers. It presents what the [Reporting Service](../reporting-service/README.md) serves: activity, customers and orders from the read model it builds out of the `trade-events` and `platform-records` Kafka topics, and the report runs the reporting consumer builds from `trade-events`. Nothing it shows is read from the trading database. Standalone components, signals, reactive forms, and OnPush change detection, with no server-side rendering.
 
 - Port 4300, for both `ng serve` and the Compose container
 - For analysts and admins only. It signs in against the [Auth Service](../auth-service/README.md) and admits an account only if its token carries the `ANALYST` or `ADMIN` [role](../auth-service/README.md#roles). An admin sees every screen; an analyst sees the report runs and nothing else. It has no registration screen. In development, sign in as `reporting-admin@example.com` / `admin123` or `analyst@example.com` / `analyst123`.

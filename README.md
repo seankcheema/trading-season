@@ -221,7 +221,9 @@ $env:SPRING_DATASOURCE_PASSWORD = 'password'
 .\scripts\start-local.ps1
 ```
 
-The script starts the Client UI on 4200, the Reporting UI on 4300, the Auth Service, both Java services, the Reporting Service on 8083 and its consumer, and stops with an instruction if a project's dependencies are not installed. This needs a running `trading_season` database; see [db/README.md](db/README.md) to create and migrate one, and [apps/market-data](apps/market-data/README.md) to load synthetic market data. On Linux, `scripts/setup-local.sh` does the equivalent setup.
+The script starts the Client UI on 4200, the Reporting UI on 4300, the Auth Service, both Java services, the Reporting Service on 8083 and its consumer, and stops with an instruction if a project's dependencies are not installed. This needs a running `trading_season` database; see [db/README.md](db/README.md) to create and migrate one, and [apps/market-data](apps/market-data/README.md) to load synthetic market data.
+
+On Linux, `scripts/setup-local.sh` installs the dependencies and starts both UIs, the Auth Service and both Java services. When it starts the database from the Compose file it also starts the Compose broker and creates both topics; when it finds a local PostgreSQL it starts no broker, so start the Compose `kafka` and `kafka-init` services first. It does not start the Reporting Service or its consumer; start them as [apps/reporting-service](apps/reporting-service/README.md#local-development) describes.
 
 Reporting reads Kafka and nothing else, so everything the Reporting UI shows needs a Kafka broker on `localhost:29092`. The script handles the three cases:
 
