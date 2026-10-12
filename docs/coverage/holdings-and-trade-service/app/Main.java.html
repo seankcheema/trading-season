@@ -7,13 +7,17 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 /** Starts the Holdings and Trade Service API and enables scheduled market replay ticks. */
 @SpringBootApplication
 @EnableScheduling
-<span class="fc" id="L10">public class Main {</span>
+public class Main {
+
+    /** Creates an instance of this class. */
+<span class="fc" id="L13">    public Main() {</span>
+<span class="fc" id="L14">    }</span>
     /**
      * Starts the Spring Boot application.
      * @param args command-line arguments passed to Spring Boot
      */
     public static void main(String[] args) {
-<span class="fc" id="L16">        SpringApplication.run(Main.class, args);</span>
-<span class="fc" id="L17">    }</span>
+<span class="fc" id="L20">        SpringApplication.run(Main.class, args);</span>
+<span class="fc" id="L21">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

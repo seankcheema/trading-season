@@ -14,7 +14,8 @@ Order creation, validation and execution live in [Order and Sell Service](../ord
 
 ## Key Packages
 
-- `auth/` - Registration, token wiring, security configuration, and error mapping
+- `auth/` - Token verification wiring, security configuration, the authenticated caller, and error mapping
+- `registration/` - Profile registration and the account-existence check; never handles passwords or sign-in
 - `user/` - The caller's profile and the shared cash balance it carries
 - `account/` - The caller's accounts, the assembled view of their holdings, and portfolio valuation history: `PortfolioValuationService.capture` is called by the minute scheduler, by the dashboard's request, and by `PortfolioValuationListener`, the `portfolio-valuation-capture` Kafka consumer that fires on every `FILLED` trade event. The listener is gated by `app.events.enabled`.
 - `cash/` - Deposits, withdrawals, and the append-only cash ledger
@@ -46,10 +47,10 @@ Configuration lives in [application.properties](src/main/resources/application.p
 
 ## HTTP Endpoints
 
-All endpoints require an RS256 access token issued by the auth service, except `POST /api/auth/account-exists` and the public market GET endpoints.
+All endpoints require an RS256 access token issued by the auth service, except `POST /api/registration/account-exists` and the public market GET endpoints.
 
-- `POST /api/auth/account-exists` - Whether an email is registered (public)
-- `POST /api/auth/register` - Create the caller's profile and default account
+- `POST /api/registration/account-exists` - Whether an email is registered (public)
+- `POST /api/registration` - Create the caller's profile and default account
 - `GET /api/users/me` - The caller's profile, without the SSN
 - `GET/PUT/DELETE /api/me/watchlist` - The caller's saved stocks (PUT/DELETE take `/{symbol}`)
 - `GET /api/me/accounts` - The caller's accounts

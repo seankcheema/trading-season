@@ -115,7 +115,7 @@ def main():
     token = body['accessToken']
     say('register credentials', f'{email} registered with the auth service')
 
-    status, body = call('POST', f'{HOLDINGS}/api/auth/register', {
+    status, body = call('POST', f'{HOLDINGS}/api/registration', {
         'email': email, 'firstName': 'Jenkins', 'lastName': 'Pipeline', 'ssn': '123-45-6789',
         'address': '1 Build Street', 'dateOfBirth': '1990-01-01', 'traderLevel': 'INTERMEDIATE',
         'availableFunds': 50000.00}, token)

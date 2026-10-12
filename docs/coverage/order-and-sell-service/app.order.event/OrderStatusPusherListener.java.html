@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OrderStatusPusherListener.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.order.event</a> &gt; <span class="el_source">OrderStatusPusherListener.java</span></div><h1>OrderStatusPusherListener.java</h1><pre class="source lang-java linenums">package app.order.event;
+
+import app.account.Account;
+import app.account.AccountRepository;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+
+import java.util.Optional;
+
+/**
+ * Consumer group {@value #GROUP_ID}: forwards each committed order status
+ * change to the browser sessions of the account's owner, so an order is seen
+ * as accepted and then filled or rejected without a refresh (BR-07).
+ *
+ * &lt;p&gt;For every message it resolves the account id in the key to the owning
+ * user and hands the JSON body to {@link OrderStatusStreamRegistry#push}.
+ * Nothing is stored: a user with no open stream simply receives nothing.
+ * A message whose key is not an account id, whose body is not JSON, or
+ * whose account no longer exists is logged and skipped, never rethrown, so
+ * the group keeps consuming and commits its offset.
+ *
+ * &lt;p&gt;Absent when {@code app.events.enabled} is {@code false}.
+ */
+@Component
+@ConditionalOnProperty(name = &quot;app.events.enabled&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)
+public class OrderStatusPusherListener {
+
+    /** The consumer group this listener commits offsets under. */
+    public static final String GROUP_ID = &quot;order-status-pusher&quot;;
+
+<span class="fc" id="L37">    private static final Logger log = LoggerFactory.getLogger(OrderStatusPusherListener.class);</span>
+
+    private final AccountRepository accountRepository;
+    private final OrderStatusStreamRegistry registry;
+    private final ObjectMapper objectMapper;
+
+    /**
+     * Creates the listener.
+     *
+     * @param accountRepository resolves the account in the message key to its owner
+     * @param registry          the open order-status streams
+     * @param objectMapper      checks that the body is JSON before it is forwarded
+     */
+    public OrderStatusPusherListener(AccountRepository accountRepository,
+                                     OrderStatusStreamRegistry registry,
+<span class="fc" id="L52">                                     ObjectMapper objectMapper) {</span>
+<span class="fc" id="L53">        this.accountRepository = accountRepository;</span>
+<span class="fc" id="L54">        this.registry = registry;</span>
+<span class="fc" id="L55">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L56">    }</span>
+
+    /**
+     * Forwards one trade event to its owner's open streams.
+     *
+     * @param record the message, keyed by account id with the JSON event as value
+     */
+    @KafkaListener(topics = TradeEventPublisher.TOPIC, groupId = GROUP_ID)
+    public void onTradeEvent(ConsumerRecord&lt;String, String&gt; record) {
+<span class="fc" id="L65">        log.info(&quot;Consumer group {} received key={} partition={} offset={} value={}&quot;,</span>
+<span class="fc" id="L66">                GROUP_ID, record.key(), record.partition(), record.offset(), record.value());</span>
+
+        Integer accountId;
+        try {
+<span class="fc" id="L70">            accountId = Integer.valueOf(record.key());</span>
+<span class="fc" id="L71">            objectMapper.readTree(record.value());</span>
+<span class="fc" id="L72">        } catch (NumberFormatException | JacksonException ex) {</span>
+<span class="fc" id="L73">            log.warn(&quot;Skipping trade event at partition={} offset={}: {}&quot;,</span>
+<span class="fc" id="L74">                    record.partition(), record.offset(), ex.toString());</span>
+<span class="fc" id="L75">            return;</span>
+<span class="fc" id="L76">        }</span>
+
+<span class="fc" id="L78">        Optional&lt;Account&gt; account = accountRepository.findById(accountId);</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        if (account.isEmpty()) {</span>
+<span class="fc" id="L80">            log.warn(&quot;Skipping trade event for unknown account {} at partition={} offset={}&quot;,</span>
+<span class="fc" id="L81">                    accountId, record.partition(), record.offset());</span>
+<span class="fc" id="L82">            return;</span>
+        }
+
+<span class="fc" id="L85">        int delivered = registry.push(account.get().getUserId(), record.value());</span>
+<span class="fc" id="L86">        log.info(&quot;Pushed order status for account {} to {} open stream(s)&quot;, accountId, delivered);</span>
+<span class="fc" id="L87">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -238,8 +238,8 @@ export class ApiStub {
     await page.route(AUTH_ORIGIN + '/auth/login', (route) => this.login(route));
     await page.route(AUTH_ORIGIN + '/auth/refresh', (route) => this.refresh(route));
     await page.route(AUTH_ORIGIN + '/auth/logout', (route) => this.logout(route));
-    await page.route('**/api/auth/register', (route) => this.registerProfile(route));
-    await page.route('**/api/auth/account-exists', (route) => this.accountExists(route));
+    await page.route('**/api/registration', (route) => this.registerProfile(route));
+    await page.route('**/api/registration/account-exists', (route) => this.accountExists(route));
     await page.route(/\/api\/me\/watchlist(?:\/[^/?]+)?$/, (route) => this.watchlist(route));
     await page.route('**/api/orders', (route) => this.orderRequest(route));
     await page.route('**/api/instruments', async (route) => {

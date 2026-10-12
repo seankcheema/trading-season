@@ -20,29 +20,22 @@ import java.util.stream.Collectors;
  * earlier, by {@link SecurityErrorHandler}.
  */
 @RestControllerAdvice
-<span class="fc" id="L23">public class GlobalExceptionHandler {</span>
+public class GlobalExceptionHandler {
+
+    /** Creates an instance of this class. */
+<span class="fc" id="L26">    public GlobalExceptionHandler() {</span>
+<span class="fc" id="L27">    }</span>
 
     /**
-     * Handles duplicate account or email registration attempts.
-     *
-     * @param ex the conflict
-     * @return 409 with the conflict message
-     */
-    @ExceptionHandler(ConflictException.class)
-    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleConflict(ConflictException ex) {
-<span class="fc" id="L33">        return error(HttpStatus.CONFLICT, ex.getMessage());</span>
-    }
-
-    /**
-     * Handles a concurrent registration that passed the service checks but hit a
-     * unique constraint on insert.
+     * Handles a write that passed the service checks but hit a unique constraint
+     * on insert, such as two concurrent submissions of the same client reference.
      *
      * @param ex the constraint violation
      * @return 409 without database details
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleDataIntegrity(DataIntegrityViolationException ex) {
-<span class="fc" id="L45">        return error(HttpStatus.CONFLICT, &quot;Account or email is already registered&quot;);</span>
+<span class="nc" id="L38">        return error(HttpStatus.CONFLICT, &quot;Request conflicts with existing data&quot;);</span>
     }
 
     /**
@@ -53,7 +46,7 @@ import java.util.stream.Collectors;
      */
     @ExceptionHandler(ForbiddenException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleForbidden(ForbiddenException ex) {
-<span class="fc" id="L56">        return error(HttpStatus.FORBIDDEN, ex.getMessage());</span>
+<span class="fc" id="L49">        return error(HttpStatus.FORBIDDEN, ex.getMessage());</span>
     }
 
     /**
@@ -64,7 +57,7 @@ import java.util.stream.Collectors;
      */
     @ExceptionHandler(UserNotFoundException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleNotFound(UserNotFoundException ex) {
-<span class="fc" id="L67">        return error(HttpStatus.NOT_FOUND, ex.getMessage());</span>
+<span class="fc" id="L60">        return error(HttpStatus.NOT_FOUND, ex.getMessage());</span>
     }
 
     /**
@@ -75,7 +68,7 @@ import java.util.stream.Collectors;
      */
     @ExceptionHandler(AccountNotFoundException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleAccountNotFound(AccountNotFoundException ex) {
-<span class="fc" id="L78">        return error(HttpStatus.NOT_FOUND, ex.getMessage());</span>
+<span class="fc" id="L71">        return error(HttpStatus.NOT_FOUND, ex.getMessage());</span>
     }
 
     /**
@@ -88,7 +81,7 @@ import java.util.stream.Collectors;
      */
     @ExceptionHandler(InstrumentNotFoundException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleInstrumentNotFound(InstrumentNotFoundException ex) {
-<span class="fc" id="L91">        return error(HttpStatus.BAD_REQUEST, ex.getMessage());</span>
+<span class="fc" id="L84">        return error(HttpStatus.BAD_REQUEST, ex.getMessage());</span>
     }
 
     /**
@@ -99,14 +92,14 @@ import java.util.stream.Collectors;
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity&lt;Map&lt;String, String&gt;&gt; handleValidation(MethodArgumentNotValidException ex) {
-<span class="fc" id="L102">        String message = ex.getBindingResult().getFieldErrors().stream()</span>
-<span class="fc" id="L103">                .map(fieldError -&gt; fieldError.getField() + &quot;: &quot; + fieldError.getDefaultMessage())</span>
-<span class="fc" id="L104">                .collect(Collectors.joining(&quot;; &quot;));</span>
-<span class="fc" id="L105">        return error(HttpStatus.BAD_REQUEST, message);</span>
+<span class="fc" id="L95">        String message = ex.getBindingResult().getFieldErrors().stream()</span>
+<span class="fc" id="L96">                .map(fieldError -&gt; fieldError.getField() + &quot;: &quot; + fieldError.getDefaultMessage())</span>
+<span class="fc" id="L97">                .collect(Collectors.joining(&quot;; &quot;));</span>
+<span class="fc" id="L98">        return error(HttpStatus.BAD_REQUEST, message);</span>
     }
 
     private static ResponseEntity&lt;Map&lt;String, String&gt;&gt; error(HttpStatus status, String message) {
-<span class="fc" id="L109">        return ResponseEntity.status(status).body(Map.of(&quot;error&quot;, message));</span>
+<span class="fc" id="L102">        return ResponseEntity.status(status).body(Map.of(&quot;error&quot;, message));</span>
     }
 }
 

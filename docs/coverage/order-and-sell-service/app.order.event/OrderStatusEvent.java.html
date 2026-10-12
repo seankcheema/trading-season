@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OrderStatusEvent.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.order.event</a> &gt; <span class="el_source">OrderStatusEvent.java</span></div><h1>OrderStatusEvent.java</h1><pre class="source lang-java linenums">package app.order.event;
+
+import app.instrument.Instrument;
+import app.order.Order;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+
+/**
+ * One order reaching a committed status: {@code ACCEPTED} when the trading
+ * rules passed and the order was recorded as a firm commitment (BR-06), then
+ * {@code FILLED} or {@code REJECTED} when execution resolved it. An order the
+ * rules reject goes straight to {@code REJECTED}. {@code OrderService} and
+ * {@code OrderExecutionService} raise it inside the transaction that made the
+ * change, and {@link TradeEventPublisher} sends it to Kafka once that
+ * transaction has committed, so a consumer never sees a status the database
+ * does not.
+ *
+ * &lt;p&gt;The record is the message body as well: serialised as JSON it carries
+ * every component except {@code accountId}, which travels as the message
+ * key so that one account's events share a partition and keep their order.
+ * It holds plain values, not entities, because it is handled after the
+ * transaction and outside any persistence context.
+ *
+ * @param accountId       the account the order was placed against; the message key, not part of the body
+ * @param orderId         the order
+ * @param status          {@code ACCEPTED}, {@code FILLED} or {@code REJECTED}
+ * @param symbol          the instrument's ticker
+ * @param side            {@code BUY} or {@code SELL}
+ * @param quantity        units ordered
+ * @param price           the price the order was filled at, or would be; currently the indicative price
+ * @param rejectionReason why the order was rejected, or {@code null} otherwise
+ * @param occurredAt      when the order reached this status
+ */
+<span class="fc" id="L36">public record OrderStatusEvent(</span>
+        @JsonIgnore Integer accountId,
+        Integer orderId,
+        String status,
+        String symbol,
+        String side,
+        BigDecimal quantity,
+        BigDecimal price,
+        String rejectionReason,
+        OffsetDateTime occurredAt) {
+
+    /**
+     * Captures an order's current status.
+     *
+     * @param order      the order after its status change was saved
+     * @param instrument the instrument the order trades, for its ticker
+     * @return the event describing that status
+     */
+    public static OrderStatusEvent from(Order order, Instrument instrument) {
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        OffsetDateTime occurredAt = order.getResolvedAt() != null ? order.getResolvedAt()</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">                : order.getAcceptedAt() != null ? order.getAcceptedAt()</span>
+<span class="pc" id="L57">                : order.getSubmittedAt();</span>
+<span class="fc" id="L58">        return new OrderStatusEvent(</span>
+<span class="fc" id="L59">                order.getAccountId(),</span>
+<span class="fc" id="L60">                order.getOrderId(),</span>
+<span class="fc" id="L61">                order.getStatus(),</span>
+<span class="fc" id="L62">                instrument.getTicker(),</span>
+<span class="fc" id="L63">                order.getOrderType(),</span>
+<span class="fc" id="L64">                order.getQuantity(),</span>
+<span class="fc" id="L65">                order.getIndicativePrice(),</span>
+<span class="fc" id="L66">                order.getRejectionReason(),</span>
+                occurredAt);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

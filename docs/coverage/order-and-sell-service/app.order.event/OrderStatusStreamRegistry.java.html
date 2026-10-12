@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OrderStatusStreamRegistry.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.order.event</a> &gt; <span class="el_source">OrderStatusStreamRegistry.java</span></div><h1>OrderStatusStreamRegistry.java</h1><pre class="source lang-java linenums">package app.order.event;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+/**
+ * The open order-status streams, one list of server-sent event emitters per
+ * signed-in user. {@link OrderStatusStreamController} adds a connection when
+ * a client opens {@code GET /api/orders/stream}; {@link OrderStatusPusherListener}
+ * sends each committed status change to the owner's connections (BR-07).
+ *
+ * &lt;p&gt;Nothing is stored. A user with no open connection receives nothing, and
+ * reconnecting clients read the order list to catch up. A connection that
+ * fails on send is dropped; the servlet container's completion, timeout and
+ * error callbacks remove the rest. A heartbeat every
+ * {@code app.events.stream.heartbeat-millis} keeps idle connections alive
+ * through proxies.
+ */
+@Component
+public class OrderStatusStreamRegistry {
+
+    /** Event name carrying an order status change's JSON body. */
+    public static final String EVENT_NAME = &quot;order-status&quot;;
+
+    /** Event name of the periodic keep-alive. */
+    public static final String HEARTBEAT_NAME = &quot;heartbeat&quot;;
+
+<span class="fc" id="L38">    private static final Logger log = LoggerFactory.getLogger(OrderStatusStreamRegistry.class);</span>
+
+<span class="fc" id="L40">    private final Map&lt;UUID, List&lt;SseEmitter&gt;&gt; emitters = new ConcurrentHashMap&lt;&gt;();</span>
+
+    /** Creates an empty registry; Spring instantiates it. */
+<span class="fc" id="L43">    public OrderStatusStreamRegistry() {</span>
+<span class="fc" id="L44">    }</span>
+
+    /**
+     * Opens a stream for a user. The emitter never times out on its own; the
+     * client closes it, or a failed send does.
+     *
+     * @param userId the signed-in user's id from the token's {@code sub} claim
+     * @return the emitter to return from the controller
+     */
+    public SseEmitter subscribe(UUID userId) {
+<span class="fc" id="L54">        return register(userId, new SseEmitter(0L));</span>
+    }
+
+    /**
+     * Registers an existing emitter for a user. {@link #subscribe(UUID)} is the
+     * production entry point; this one lets tests observe what is sent.
+     *
+     * @param userId  the user the emitter belongs to
+     * @param emitter the emitter to register
+     * @return the same emitter
+     */
+    SseEmitter register(UUID userId, SseEmitter emitter) {
+<span class="fc" id="L66">        emitters.computeIfAbsent(userId, ignored -&gt; new CopyOnWriteArrayList&lt;&gt;()).add(emitter);</span>
+<span class="pc" id="L67">        Runnable cleanup = () -&gt; remove(userId, emitter);</span>
+<span class="fc" id="L68">        emitter.onCompletion(cleanup);</span>
+<span class="fc" id="L69">        emitter.onTimeout(cleanup);</span>
+<span class="pc" id="L70">        emitter.onError(ignored -&gt; cleanup.run());</span>
+<span class="fc" id="L71">        log.debug(&quot;Order status stream opened for user {} ({} open)&quot;, userId, openConnections(userId));</span>
+<span class="fc" id="L72">        return emitter;</span>
+    }
+
+    /**
+     * Sends one order status change to every open connection of its owner.
+     *
+     * @param userId      the owner of the account the order was placed on
+     * @param payloadJson the trade event body exactly as published to Kafka
+     * @return how many connections received it; zero when the user has none open
+     */
+    public int push(UUID userId, String payloadJson) {
+<span class="fc" id="L83">        List&lt;SseEmitter&gt; open = emitters.get(userId);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (open == null) {</span>
+<span class="fc" id="L85">            return 0;</span>
+        }
+<span class="fc" id="L87">        int delivered = 0;</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        for (SseEmitter emitter : open) {</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">            if (send(userId, emitter, EVENT_NAME, payloadJson)) {</span>
+<span class="fc" id="L90">                delivered++;</span>
+            }
+<span class="fc" id="L92">        }</span>
+<span class="fc" id="L93">        return delivered;</span>
+    }
+
+    /**
+     * Sends a keep-alive to every open connection so idle streams are not
+     * closed by proxies. Runs on the application scheduler.
+     */
+    @Scheduled(fixedRateString = &quot;${app.events.stream.heartbeat-millis:15000}&quot;)
+    public void heartbeat() {
+<span class="fc" id="L102">        emitters.forEach((userId, open) -&gt; open.forEach(emitter -&gt; send(userId, emitter, HEARTBEAT_NAME, &quot;{}&quot;)));</span>
+<span class="fc" id="L103">    }</span>
+
+    /**
+     * Counts a user's open connections.
+     *
+     * @param userId the user
+     * @return the number of registered emitters, zero when none
+     */
+    public int openConnections(UUID userId) {
+<span class="fc" id="L112">        List&lt;SseEmitter&gt; open = emitters.get(userId);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        return open == null ? 0 : open.size();</span>
+    }
+
+    private boolean send(UUID userId, SseEmitter emitter, String name, String json) {
+        try {
+<span class="fc" id="L118">            emitter.send(SseEmitter.event().name(name).data(json));</span>
+<span class="fc" id="L119">            return true;</span>
+<span class="fc" id="L120">        } catch (IOException | RuntimeException ex) {</span>
+<span class="fc" id="L121">            log.debug(&quot;Dropping order status stream for user {}: {}&quot;, userId, ex.toString());</span>
+<span class="fc" id="L122">            remove(userId, emitter);</span>
+            try {
+<span class="fc" id="L124">                emitter.completeWithError(ex);</span>
+<span class="nc" id="L125">            } catch (RuntimeException ignored) {</span>
+                // Already completed by the container; nothing left to close.
+<span class="fc" id="L127">            }</span>
+<span class="fc" id="L128">            return false;</span>
+        }
+    }
+
+    private void remove(UUID userId, SseEmitter emitter) {
+<span class="fc" id="L133">        emitters.computeIfPresent(userId, (ignored, open) -&gt; {</span>
+<span class="fc" id="L134">            open.remove(emitter);</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">            return open.isEmpty() ? null : open;</span>
+        });
+<span class="fc" id="L137">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

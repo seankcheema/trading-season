@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TradeEventPublisher.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.order.event</a> &gt; <span class="el_source">TradeEventPublisher.java</span></div><h1>TradeEventPublisher.java</h1><pre class="source lang-java linenums">package app.order.event;
+
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
+import tools.jackson.databind.ObjectMapper;
+
+/**
+ * Publishes each {@link OrderStatusEvent} to the {@value #TOPIC} topic
+ * after the transaction that committed the status change.
+ *
+ * &lt;p&gt;The message key is the account id, so Kafka places all of one account's
+ * events on the same partition in submission order. The body is the event
+ * serialised as JSON.
+ *
+ * &lt;p&gt;Publishing can never change the outcome of an order. Spring rethrows an
+ * exception from an after-commit listener to the caller even though the
+ * transaction is already committed, so this method catches everything the
+ * send can throw synchronously and logs it; an asynchronous failure arrives
+ * in the completion callback and is logged there. A broker that is down
+ * delays the response by at most the producer's {@code max.block.ms}. The
+ * order, its fill and its audit trail are already durable by then (BR-09).
+ *
+ * &lt;p&gt;Absent when {@code app.events.enabled} is {@code false}, which the test
+ * profile sets so that contexts without a broker never try to reach one.
+ */
+@Component
+@ConditionalOnProperty(name = &quot;app.events.enabled&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)
+public class TradeEventPublisher {
+
+    /** The topic every committed order status change is published to. */
+    public static final String TOPIC = &quot;trade-events&quot;;
+
+<span class="fc" id="L39">    private static final Logger log = LoggerFactory.getLogger(TradeEventPublisher.class);</span>
+
+    private final KafkaTemplate&lt;String, String&gt; kafkaTemplate;
+    private final ObjectMapper objectMapper;
+
+    /**
+     * Creates the publisher.
+     *
+     * @param kafkaTemplate sends to the broker named by {@code spring.kafka.bootstrap-servers}
+     * @param objectMapper  serialises the event body
+     */
+<span class="fc" id="L50">    public TradeEventPublisher(KafkaTemplate&lt;String, String&gt; kafkaTemplate, ObjectMapper objectMapper) {</span>
+<span class="fc" id="L51">        this.kafkaTemplate = kafkaTemplate;</span>
+<span class="fc" id="L52">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L53">    }</span>
+
+    /**
+     * Sends one message for an order status change once its transaction has
+     * committed. Logs the partition and offset the broker assigned, or the
+     * failure. Never throws.
+     *
+     * @param event the order status that was committed
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onOrderStatus(OrderStatusEvent event) {
+<span class="fc" id="L64">        String key = String.valueOf(event.accountId());</span>
+        try {
+<span class="fc" id="L66">            String value = objectMapper.writeValueAsString(event);</span>
+<span class="fc" id="L67">            kafkaTemplate.send(TOPIC, key, value).whenComplete((result, failure) -&gt; {</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                if (failure == null) {</span>
+<span class="fc" id="L69">                    RecordMetadata metadata = result.getRecordMetadata();</span>
+<span class="fc" id="L70">                    log.info(&quot;Published trade event orderId={} status={} key={} partition={} offset={}&quot;,</span>
+<span class="fc" id="L71">                            event.orderId(), event.status(), key, metadata.partition(), metadata.offset());</span>
+<span class="fc" id="L72">                } else {</span>
+<span class="fc" id="L73">                    log.error(&quot;Failed to publish trade event orderId={} key={}&quot;, event.orderId(), key, failure);</span>
+                }
+<span class="fc" id="L75">            });</span>
+<span class="fc" id="L76">        } catch (RuntimeException ex) {</span>
+<span class="fc" id="L77">            log.error(&quot;Failed to publish trade event orderId={} key={}&quot;, event.orderId(), key, ex);</span>
+<span class="fc" id="L78">        }</span>
+<span class="fc" id="L79">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

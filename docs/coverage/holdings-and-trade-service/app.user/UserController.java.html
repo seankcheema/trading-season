@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UserController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.user</a> &gt; <span class="el_source">UserController.java</span></div><h1>UserController.java</h1><pre class="source lang-java linenums">package app.user;
 
 import app.auth.AuthenticatedUser;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +18,7 @@ import java.util.UUID;
  */
 @RestController
 @RequestMapping(&quot;/api/users&quot;)
+@Tag(name = &quot;Users&quot;, description = &quot;User profile information endpoints&quot;)
 public class UserController {
 
     private final UserService userService;
@@ -25,9 +28,9 @@ public class UserController {
      *
      * @param userService account lookup logic
      */
-<span class="fc" id="L28">    public UserController(UserService userService) {</span>
-<span class="fc" id="L29">        this.userService = userService;</span>
-<span class="fc" id="L30">    }</span>
+<span class="fc" id="L31">    public UserController(UserService userService) {</span>
+<span class="fc" id="L32">        this.userService = userService;</span>
+<span class="fc" id="L33">    }</span>
 
     /**
      * Returns the caller's business account.
@@ -37,10 +40,11 @@ public class UserController {
      * @throws UserNotFoundException if the caller has not registered
      */
     @GetMapping(&quot;/me&quot;)
+    @Operation(summary = &quot;Get authenticated user profile&quot;, description = &quot;Returns the profile of the authenticated user, including personal and account information&quot;)
     public UserProfileResponse me(@AuthenticationPrincipal Jwt jwt) {
-<span class="fc" id="L41">        UUID userId = AuthenticatedUser.from(jwt).userId();</span>
-<span class="fc" id="L42">        return UserProfileResponse.from(userService.getOwnAccount(userId),</span>
-<span class="fc" id="L43">                userService.getUserAccount(userId));</span>
+<span class="fc" id="L45">        UUID userId = AuthenticatedUser.from(jwt).userId();</span>
+<span class="fc" id="L46">        return UserProfileResponse.from(userService.getOwnAccount(userId),</span>
+<span class="fc" id="L47">                userService.getUserAccount(userId));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

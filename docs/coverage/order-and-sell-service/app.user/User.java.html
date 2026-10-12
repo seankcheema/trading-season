@@ -19,7 +19,11 @@ import java.util.UUID;
  */
 @Entity
 @Table(name = &quot;users&quot;)
-<span class="fc" id="L22">public class User {</span>
+public class User {
+
+    /** Creates an instance of this class. */
+<span class="fc" id="L25">    public User() {</span>
+<span class="fc" id="L26">    }</span>
 
     @Id
     @Column(name = &quot;user_id&quot;, updatable = false, nullable = false)
@@ -44,18 +48,18 @@ import java.util.UUID;
     @Column(name = &quot;date_of_birth&quot;, nullable = false)
     private LocalDate dateOfBirth;
 
-<span class="fc" id="L47">    @Column(name = &quot;trader_level&quot;, nullable = false)</span>
+<span class="fc" id="L51">    @Column(name = &quot;trader_level&quot;, nullable = false)</span>
     private String traderLevel = &quot;BEGINNER&quot;;
 
-<span class="fc" id="L50">    @Column(name = &quot;available_funds&quot;, nullable = false)</span>
+<span class="fc" id="L54">    @Column(name = &quot;available_funds&quot;, nullable = false)</span>
     private BigDecimal availableFunds = BigDecimal.ZERO;
 
 
 
-<span class="fc" id="L55">    @Column(name = &quot;session_timeout_minutes&quot;, nullable = false)</span>
-<span class="fc" id="L56">    private Integer sessionTimeoutMinutes = 10;</span>
+<span class="fc" id="L59">    @Column(name = &quot;session_timeout_minutes&quot;, nullable = false)</span>
+<span class="fc" id="L60">    private Integer sessionTimeoutMinutes = 10;</span>
 
-<span class="fc" id="L58">    @Column(name = &quot;execution_buffer_percent&quot;, nullable = false)</span>
+<span class="fc" id="L62">    @Column(name = &quot;execution_buffer_percent&quot;, nullable = false)</span>
     private BigDecimal executionBufferPercent = BigDecimal.ZERO;
 
     @Column(name = &quot;last_activity_at&quot;)
@@ -64,112 +68,242 @@ import java.util.UUID;
     @Column(name = &quot;created_at&quot;, nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
+    /**
+     * Returns the user ID.
+     *
+     * @return the user ID
+     */
     public UUID getUserId() {
-<span class="fc" id="L68">        return userId;</span>
+<span class="fc" id="L77">        return userId;</span>
     }
 
+    /**
+     * Sets the user ID.
+     *
+     * @param userId the user ID
+     */
     public void setUserId(UUID userId) {
-<span class="fc" id="L72">        this.userId = userId;</span>
-<span class="fc" id="L73">    }</span>
+<span class="fc" id="L86">        this.userId = userId;</span>
+<span class="fc" id="L87">    }</span>
 
+    /**
+     * Returns the first name.
+     *
+     * @return the first name
+     */
     public String getFirstName() {
-<span class="fc" id="L76">        return firstName;</span>
+<span class="fc" id="L95">        return firstName;</span>
     }
 
+    /**
+     * Sets the first name.
+     *
+     * @param firstName the first name
+     */
     public void setFirstName(String firstName) {
-<span class="fc" id="L80">        this.firstName = firstName;</span>
-<span class="fc" id="L81">    }</span>
+<span class="fc" id="L104">        this.firstName = firstName;</span>
+<span class="fc" id="L105">    }</span>
 
+    /**
+     * Returns the middle name.
+     *
+     * @return the middle name
+     */
     public String getMiddleName() {
-<span class="fc" id="L84">        return middleName;</span>
+<span class="fc" id="L113">        return middleName;</span>
     }
 
+    /**
+     * Sets the middle name.
+     *
+     * @param middleName the middle name
+     */
     public void setMiddleName(String middleName) {
-<span class="fc" id="L88">        this.middleName = middleName;</span>
-<span class="fc" id="L89">    }</span>
+<span class="fc" id="L122">        this.middleName = middleName;</span>
+<span class="fc" id="L123">    }</span>
 
+    /**
+     * Returns the last name.
+     *
+     * @return the last name
+     */
     public String getLastName() {
-<span class="fc" id="L92">        return lastName;</span>
+<span class="fc" id="L131">        return lastName;</span>
     }
 
+    /**
+     * Sets the last name.
+     *
+     * @param lastName the last name
+     */
     public void setLastName(String lastName) {
-<span class="fc" id="L96">        this.lastName = lastName;</span>
-<span class="fc" id="L97">    }</span>
+<span class="fc" id="L140">        this.lastName = lastName;</span>
+<span class="fc" id="L141">    }</span>
 
 
+    /**
+     * Returns the SSN.
+     *
+     * @return the SSN
+     */
     public String getSsn() {
-<span class="fc" id="L101">        return ssn;</span>
+<span class="fc" id="L150">        return ssn;</span>
     }
 
+    /**
+     * Sets the SSN.
+     *
+     * @param ssn the SSN
+     */
     public void setSsn(String ssn) {
-<span class="fc" id="L105">        this.ssn = ssn;</span>
-<span class="fc" id="L106">    }</span>
+<span class="fc" id="L159">        this.ssn = ssn;</span>
+<span class="fc" id="L160">    }</span>
 
+    /**
+     * Returns the address.
+     *
+     * @return the address
+     */
     public String getAddress() {
-<span class="fc" id="L109">        return address;</span>
+<span class="fc" id="L168">        return address;</span>
     }
 
+    /**
+     * Sets the address.
+     *
+     * @param address the address
+     */
     public void setAddress(String address) {
-<span class="fc" id="L113">        this.address = address;</span>
-<span class="fc" id="L114">    }</span>
+<span class="fc" id="L177">        this.address = address;</span>
+<span class="fc" id="L178">    }</span>
 
+    /**
+     * Returns the date of birth.
+     *
+     * @return the date of birth
+     */
     public LocalDate getDateOfBirth() {
-<span class="fc" id="L117">        return dateOfBirth;</span>
+<span class="fc" id="L186">        return dateOfBirth;</span>
     }
 
+    /**
+     * Sets the date of birth.
+     *
+     * @param dateOfBirth the date of birth
+     */
     public void setDateOfBirth(LocalDate dateOfBirth) {
-<span class="fc" id="L121">        this.dateOfBirth = dateOfBirth;</span>
-<span class="fc" id="L122">    }</span>
+<span class="fc" id="L195">        this.dateOfBirth = dateOfBirth;</span>
+<span class="fc" id="L196">    }</span>
 
+    /**
+     * Returns the trader level.
+     *
+     * @return the trader level
+     */
     public String getTraderLevel() {
-<span class="fc" id="L125">        return traderLevel;</span>
+<span class="fc" id="L204">        return traderLevel;</span>
     }
 
+    /**
+     * Sets the trader level.
+     *
+     * @param traderLevel the trader level
+     */
     public void setTraderLevel(String traderLevel) {
-<span class="fc" id="L129">        this.traderLevel = traderLevel;</span>
-<span class="fc" id="L130">    }</span>
+<span class="fc" id="L213">        this.traderLevel = traderLevel;</span>
+<span class="fc" id="L214">    }</span>
 
+    /**
+     * Returns the available funds.
+     *
+     * @return the available funds
+     */
     public BigDecimal getAvailableFunds() {
-<span class="fc" id="L133">        return availableFunds;</span>
+<span class="fc" id="L222">        return availableFunds;</span>
     }
 
+    /**
+     * Sets the available funds.
+     *
+     * @param availableFunds the available funds
+     */
     public void setAvailableFunds(BigDecimal availableFunds) {
-<span class="fc" id="L137">        this.availableFunds = availableFunds;</span>
-<span class="fc" id="L138">    }</span>
+<span class="fc" id="L231">        this.availableFunds = availableFunds;</span>
+<span class="fc" id="L232">    }</span>
 
 
 
+    /**
+     * Returns the session timeout minutes.
+     *
+     * @return the session timeout minutes
+     */
     public Integer getSessionTimeoutMinutes() {
-<span class="nc" id="L143">        return sessionTimeoutMinutes;</span>
+<span class="nc" id="L242">        return sessionTimeoutMinutes;</span>
     }
 
+    /**
+     * Sets the session timeout minutes.
+     *
+     * @param sessionTimeoutMinutes the session timeout minutes
+     */
     public void setSessionTimeoutMinutes(Integer sessionTimeoutMinutes) {
-<span class="nc" id="L147">        this.sessionTimeoutMinutes = sessionTimeoutMinutes;</span>
-<span class="nc" id="L148">    }</span>
+<span class="nc" id="L251">        this.sessionTimeoutMinutes = sessionTimeoutMinutes;</span>
+<span class="nc" id="L252">    }</span>
 
+    /**
+     * Returns the execution buffer percent.
+     *
+     * @return the execution buffer percent
+     */
     public BigDecimal getExecutionBufferPercent() {
-<span class="fc" id="L151">        return executionBufferPercent;</span>
+<span class="fc" id="L260">        return executionBufferPercent;</span>
     }
 
+    /**
+     * Sets the execution buffer percent.
+     *
+     * @param executionBufferPercent the execution buffer percent
+     */
     public void setExecutionBufferPercent(BigDecimal executionBufferPercent) {
-<span class="fc" id="L155">        this.executionBufferPercent = executionBufferPercent;</span>
-<span class="fc" id="L156">    }</span>
+<span class="fc" id="L269">        this.executionBufferPercent = executionBufferPercent;</span>
+<span class="fc" id="L270">    }</span>
 
+    /**
+     * Returns the last activity at.
+     *
+     * @return the last activity at
+     */
     public OffsetDateTime getLastActivityAt() {
-<span class="nc" id="L159">        return lastActivityAt;</span>
+<span class="nc" id="L278">        return lastActivityAt;</span>
     }
 
+    /**
+     * Sets the last activity at.
+     *
+     * @param lastActivityAt the last activity at
+     */
     public void setLastActivityAt(OffsetDateTime lastActivityAt) {
-<span class="nc" id="L163">        this.lastActivityAt = lastActivityAt;</span>
-<span class="nc" id="L164">    }</span>
+<span class="nc" id="L287">        this.lastActivityAt = lastActivityAt;</span>
+<span class="nc" id="L288">    }</span>
 
+    /**
+     * Returns the created at.
+     *
+     * @return the created at
+     */
     public OffsetDateTime getCreatedAt() {
-<span class="fc" id="L167">        return createdAt;</span>
+<span class="fc" id="L296">        return createdAt;</span>
     }
 
+    /**
+     * Sets the created at.
+     *
+     * @param createdAt the created at
+     */
     public void setCreatedAt(OffsetDateTime createdAt) {
-<span class="fc" id="L171">        this.createdAt = createdAt;</span>
-<span class="fc" id="L172">    }</span>
+<span class="fc" id="L305">        this.createdAt = createdAt;</span>
+<span class="fc" id="L306">    }</span>
 }
 
 

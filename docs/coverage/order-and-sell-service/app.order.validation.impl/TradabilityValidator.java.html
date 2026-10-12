@@ -10,14 +10,18 @@ import org.springframework.stereotype.Component;
 
 /** BR-05: an order against an instrument that isn't open for trading is rejected. */
 @Component
-<span class="fc" id="L13">public class TradabilityValidator implements OrderValidator {</span>
+public class TradabilityValidator implements OrderValidator {
+
+    /** Creates an instance of this class. */
+<span class="fc" id="L16">    public TradabilityValidator() {</span>
+<span class="fc" id="L17">    }</span>
 
     @Override
     public ValidationResult validate(OrderRequest request, User user, Account account, Instrument instrument) {
-<span class="fc bfc" id="L17" title="All 2 branches covered.">        if (!Boolean.TRUE.equals(instrument.isTradable())) {</span>
-<span class="fc" id="L18">            return ValidationResult.reject(&quot;BR-05: &quot; + instrument.getTicker() + &quot; is not currently tradable&quot;);</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        if (!Boolean.TRUE.equals(instrument.isTradable())) {</span>
+<span class="fc" id="L22">            return ValidationResult.reject(&quot;BR-05: &quot; + instrument.getTicker() + &quot; is not currently tradable&quot;);</span>
         }
-<span class="fc" id="L20">        return ValidationResult.pass();</span>
+<span class="fc" id="L24">        return ValidationResult.pass();</span>
     }
 }
 

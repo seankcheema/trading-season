@@ -13,8 +13,8 @@ All require a bearer token except where marked public.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| POST | `/api/auth/account-exists` | Whether an email is registered (public) |
-| POST | `/api/auth/register` | Create the caller's profile and a default account |
+| POST | `/api/registration/account-exists` | Whether an email is registered (public) |
+| POST | `/api/registration` | Create the caller's profile and a default account |
 | GET | `/api/users/me` | The caller's profile, without the SSN |
 | GET, POST | `/api/me/accounts` | List (newest first) or open an account |
 | PUT | `/api/me/accounts/{accountId}` | Rename an owned account |
@@ -42,7 +42,7 @@ Behavior worth knowing:
 ```mermaid
 flowchart TB
     subgraph Web["Web layer"]
-        AuC[auth.AuthController]
+        RC[registration.RegistrationController]
         UC[user.UserController]
         AcC[AccountController]
         PVC[PortfolioValuationController]
@@ -51,7 +51,7 @@ flowchart TB
         MC[MarketController]
     end
     subgraph Services["Services"]
-        AuS[auth.AuthService]
+        RS[registration.RegistrationService]
         AcS[AccountService]
         PVS[PortfolioValuationService]
         PVJ[PortfolioValuationScheduler]
@@ -68,7 +68,7 @@ flowchart TB
         T5["user_watchlist"]
         T6["simulation_sessions, candles,<br/>Parquet tick archive"]
     end
-    AuC --> AuS --> T1
+    RC --> RS --> T1
     UC --> T1
     AcC --> AcS --> T1
     AcS --> T2
@@ -91,12 +91,12 @@ flowchart TB
 sequenceDiagram
     actor Client
     participant Auth as Auth Service
-    participant H as AuthController
+    participant H as RegistrationController
     participant DB as PostgreSQL
 
     Client->>Auth: POST /auth/register
     Auth-->>Client: Access token
-    Client->>H: POST /api/auth/register + profile
+    Client->>H: POST /api/registration + profile
     H->>H: Token email must equal profile email (else 403)
     H->>DB: Insert users row with token sub as user_id
     H->>DB: Insert default account "Main Account"
