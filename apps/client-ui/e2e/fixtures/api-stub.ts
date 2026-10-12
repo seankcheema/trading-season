@@ -348,6 +348,11 @@ export class ApiStub {
       await this.json(route, 201, existing);
       return;
     }
+    const caller = [...this.accounts.values()].find((candidate) => candidate.id === owner);
+    if (!caller?.acceptedTerms.has(this.termsVersion)) {
+      await this.json(route, 403, { error: 'Accept the platform terms before placing an order' });
+      return;
+    }
     const quantity = Number(body['quantity']),
       price = Number(body['indicativePrice']);
     const side = body['orderType'];
