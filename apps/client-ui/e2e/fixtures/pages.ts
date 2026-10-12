@@ -133,6 +133,31 @@ export async function readAllBrowserStorage(page: Page): Promise<string> {
 }
 
 /** The dashboard's account and cash controls. */
+/** The platform terms dialog shown over the dashboard and the market page. */
+export class TermsDialog {
+  readonly dialog: Locator;
+  readonly text: Locator;
+  readonly signature: Locator;
+  readonly accept: Locator;
+  readonly signOut: Locator;
+  readonly error: Locator;
+
+  constructor(readonly page: Page) {
+    this.dialog = page.getByRole('dialog', { name: 'Terms and Conditions' });
+    this.text = this.dialog.getByRole('region', { name: 'Terms and Conditions text' });
+    this.signature = this.dialog.getByLabel('Type your full name to sign');
+    this.accept = this.dialog.getByRole('button', { name: 'Accept' });
+    this.signOut = this.dialog.getByRole('button', { name: 'Sign out' });
+    this.error = this.dialog.getByRole('alert');
+  }
+
+  /** Signs with the given name and accepts. */
+  async signAndAccept(name: string): Promise<void> {
+    await this.signature.fill(name);
+    await this.accept.click();
+  }
+}
+
 export class DashboardPage {
   readonly accountMenu: Locator;
   readonly accountMenuTrigger: Locator;

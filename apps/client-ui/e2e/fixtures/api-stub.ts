@@ -1,4 +1,5 @@
 import type { OrderResult } from '../../src/app/dashboard/orders/order.models';
+import { TERMS_VERSION } from '../../src/app/dashboard/terms/terms-content';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import type { Page, Route } from '@playwright/test';
 
@@ -47,6 +48,15 @@ export interface SeedAccount {
   password: string;
   /** Whether the business-backend profile step also completed for this account. */
   hasProfile?: boolean;
+  /** Name on the profile, which the user types to sign the terms. */
+  firstName?: string;
+  lastName?: string;
+  /**
+   * Whether the user has accepted the platform terms in force. Defaults to true: a seeded
+   * account stands for an established user, so journeys about other things are not stopped
+   * by the terms dialog. An account registered through the UI starts without an acceptance.
+   */
+  termsAccepted?: boolean;
   /** Cash the user holds, shared by all of their trading accounts. Defaults to 5000. */
   availableFunds?: number;
   /** Trading accounts the business backend holds for this user. */
@@ -85,6 +95,8 @@ interface StoredAccount {
    */
   passwordDigest: string;
   profile: Record<string, unknown> | null;
+  /** Versions of the platform terms this user has accepted. */
+  acceptedTerms: Set<string>;
 }
 
 export interface StubOptions {
@@ -99,6 +111,12 @@ export interface StubOptions {
   failProfileWith?: number;
   /** Forces POST /api/me/accounts to fail with this status. */
   failAccountCreationWith?: number;
+  /**
+   * The version of the platform terms the business backend has in force. Defaults to the
+   * version the application displays; set another to reach the refusal the backend gives
+   * when the two have drifted apart.
+   */
+  termsVersion?: string;
 }
 
 const ACCOUNT_PATH = /\/api\/me\/accounts\/(\d+)$/;
@@ -170,6 +188,7 @@ export class ApiStub {
   private readonly accessTokenTtl: number;
   private readonly failProfileWith: number | null;
   private readonly failAccountCreationWith: number | null;
+  private readonly termsVersion: string;
 
   // Business backend trading data. Account ids are sequential across users, as database keys
   // are, so a test can aim a request at another user's id. Cash lives on each user's profile
@@ -186,14 +205,21 @@ export class ApiStub {
     this.accessTokenTtl = options.accessTokenTtlSeconds ?? ACCESS_TOKEN_TTL;
     this.failProfileWith = options.failProfileWith ?? null;
     this.failAccountCreationWith = options.failAccountCreationWith ?? null;
+    this.termsVersion = options.termsVersion ?? TERMS_VERSION;
     for (const seed of options.accounts ?? []) {
       const account: StoredAccount = {
         id: randomUUID(),
         email: seed.email,
         passwordDigest: digest(seed.password),
         profile: seed.hasProfile
-          ? { email: seed.email, availableFunds: seed.availableFunds ?? DEFAULT_FUNDS }
+          ? {
+              email: seed.email,
+              firstName: seed.firstName ?? '',
+              lastName: seed.lastName ?? '',
+              availableFunds: seed.availableFunds ?? DEFAULT_FUNDS,
+            }
           : null,
+        acceptedTerms: new Set((seed.termsAccepted ?? true) ? [this.termsVersion] : []),
       };
       this.accounts.set(seed.email.toLowerCase(), account);
       for (const trading of seed.tradingAccounts ?? []) {
@@ -268,6 +294,7 @@ export class ApiStub {
         ]);
     });
     await page.route('**/api/users/me', (route) => this.ownProfile(route));
+    await page.route('**/api/users/me/terms-acceptance', (route) => this.acceptTerms(route));
     await page.route('**/api/market/**', (route) => this.market(route));
     await page.route('**/api/me/accounts', (route) => this.meAccounts(route));
     await page.route(ACCOUNT_PATH, (route) => this.renameAccount(route));
@@ -460,6 +487,11 @@ export class ApiStub {
     return Promise.all(this.pendingResponses);
   }
 
+  /** Whether the user has accepted the platform terms the backend has in force. */
+  termsAcceptedBy(email: string): boolean {
+    return this.accounts.get(email.toLowerCase())?.acceptedTerms.has(this.termsVersion) ?? false;
+  }
+
   /** The profile the business backend received, or null if it was never called. */
   storedProfile(email: string): Record<string, unknown> | null {
     return this.accounts.get(email.toLowerCase())?.profile ?? null;
@@ -495,6 +527,7 @@ export class ApiStub {
       email: String(body['email']),
       passwordDigest: digest(String(body['password'])),
       profile: null,
+      acceptedTerms: new Set(),
     };
     this.accounts.set(key, account);
     await this.json(route, 201, this.tokenResponse(account));
@@ -588,14 +621,46 @@ export class ApiStub {
       return;
     }
 
-    // Mirrors UserProfileResponse, which deliberately omits the SSN.
-    const { ssn: _ssn, ...withoutSsn } = account.profile;
-    await this.json(route, 200, {
+    await this.json(route, 200, this.profileResponse(account));
+  }
+
+  /** Mirrors UserProfileResponse, which deliberately omits the SSN. */
+  private profileResponse(account: StoredAccount): Record<string, unknown> {
+    const { ssn: _ssn, ...withoutSsn } = account.profile!;
+    return {
       userId: account.id,
       userRole: 'TRADER',
       createdAt: new Date().toISOString(),
       ...withoutSsn,
-    });
+      termsAccepted: account.acceptedTerms.has(this.termsVersion),
+    };
+  }
+
+  /**
+   * PUT /api/users/me/terms-acceptance: 400 without a version, 409 for a version that is not
+   * in force, otherwise the acceptance is recorded once and the updated profile returned.
+   */
+  private async acceptTerms(route: Route): Promise<void> {
+    const owner = await this.caller(route);
+    if (!owner) return;
+    const account = [...this.accounts.values()].find((candidate) => candidate.id === owner);
+    const termsVersion = this.body(route)['termsVersion'];
+    if (typeof termsVersion !== 'string' || !termsVersion.trim()) {
+      await this.json(route, 400, { error: 'termsVersion: must not be blank' });
+      return;
+    }
+    if (termsVersion !== this.termsVersion) {
+      await this.json(route, 409, {
+        error: 'The terms have changed. Reload to read the current version.',
+      });
+      return;
+    }
+    if (!account?.profile) {
+      await this.json(route, 404, { error: 'Account is not registered' });
+      return;
+    }
+    account.acceptedTerms.add(termsVersion);
+    await this.json(route, 200, this.profileResponse(account));
   }
 
   /**
