@@ -18,8 +18,6 @@ All require a bearer token except the public market reads.
 | GET | `/api/orders` | The caller's orders across all their accounts, newest first |
 | GET | `/api/orders/stream` | Server-Sent Events: an `order-status` event with each committed status change's JSON body, and a `heartbeat` every 15 seconds |
 | GET | `/api/instruments` | Every instrument with `tradable` and `simulatedStockSymbol` |
-| POST | `/api/auth/account-exists` | Whether an email is registered (public) |
-| POST | `/api/auth/register` | Create the caller's profile from the bearer token |
 | GET | `/api/users/me` | The caller's profile, without the SSN |
 | GET | `/api/market/snapshot`, `/candles`, `/stream` | Public market data (snapshot, OHLCV candles, SSE ticks) |
 | PUT | `/api/market/clock` | Move the shared replay cursor |
@@ -44,7 +42,6 @@ flowchart TB
         OC[OrderController]
         IC[InstrumentController]
         UC[UserController]
-        AC[auth.AuthController]
         MC[market.MarketController]
     end
     subgraph Domain["Order domain"]
@@ -153,7 +150,7 @@ The Reporting Service reads Kafka, not the database, so everything it shows of a
 
 The frames on `GET /api/orders/stream` are these same bodies.
 
-The audit trail holds more than statuses, an execution failure for one, so it travels on its own: `AuditTrailService` raises an `AuditEntryRecord` for every entry, and `PlatformRecordPublisher` sends it to `platform-records` after the commit, keyed `ORDER_AUDIT:<auditId>`, with `type`, `auditId`, `orderId`, `eventType`, `detail` and `recordedAt`. A profile created through this service's own `POST /api/auth/register` is published the same way as `CUSTOMER_PROFILE`. The topic is compacted and shared with the Holdings and Trade and auth services; the record types are listed in the [Reporting Service README](../reporting-service/README.md#what-arrives).
+The audit trail holds more than statuses, an execution failure for one, so it travels on its own: `AuditTrailService` raises an `AuditEntryRecord` for every entry, and `PlatformRecordPublisher` sends it to `platform-records` after the commit, keyed `ORDER_AUDIT:<auditId>`, with `type`, `auditId`, `orderId`, `eventType`, `detail` and `recordedAt`. The topic is compacted and shared with the Holdings and Trade and auth services; the record types are listed in the [Reporting Service README](../reporting-service/README.md#what-arrives).
 
 A message carrying a `replay` header is history published again for reporting by [db/tools/republish_history.py](../../db/README.md#reporting-feed-tools), not a status that just changed. `order-status-pusher` skips it, so nothing is pushed to a browser for an old order.
 

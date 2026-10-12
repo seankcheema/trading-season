@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CashTransactionController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.cash</a> &gt; <span class="el_source">CashTransactionController.java</span></div><h1>CashTransactionController.java</h1><pre class="source lang-java linenums">package app.cash;
 
 import app.auth.AuthenticatedUser;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -25,6 +27,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping(&quot;/api/me/cash-transactions&quot;)
+@Tag(name = &quot;Cash Transactions&quot;, description = &quot;User cash deposit and withdrawal endpoints&quot;)
 public class CashTransactionController {
 
     private final CashTransactionService cashTransactionService;
@@ -34,9 +37,9 @@ public class CashTransactionController {
      *
      * @param cashTransactionService cash movement and history logic
      */
-<span class="fc" id="L37">    public CashTransactionController(CashTransactionService cashTransactionService) {</span>
-<span class="fc" id="L38">        this.cashTransactionService = cashTransactionService;</span>
-<span class="fc" id="L39">    }</span>
+<span class="fc" id="L40">    public CashTransactionController(CashTransactionService cashTransactionService) {</span>
+<span class="fc" id="L41">        this.cashTransactionService = cashTransactionService;</span>
+<span class="fc" id="L42">    }</span>
 
     /**
      * Lists the caller's deposits and withdrawals, newest first.
@@ -46,15 +49,16 @@ public class CashTransactionController {
      * @return the caller's funding history
      */
     @GetMapping
+    @Operation(summary = &quot;List cash transactions&quot;, description = &quot;Retrieves the user's deposit and withdrawal history&quot;)
     public List&lt;CashTransactionResponse&gt; listFunding(
             @RequestParam(required = false) Integer limit,
             @AuthenticationPrincipal Jwt jwt
     ) {
-<span class="fc" id="L53">        AuthenticatedUser caller = AuthenticatedUser.from(jwt);</span>
-<span class="fc" id="L54">        return cashTransactionService.getFundingHistory(caller.userId(), limit)</span>
-<span class="fc" id="L55">                .stream()</span>
-<span class="fc" id="L56">                .map(CashTransactionResponse::from)</span>
-<span class="fc" id="L57">                .toList();</span>
+<span class="fc" id="L57">        AuthenticatedUser caller = AuthenticatedUser.from(jwt);</span>
+<span class="fc" id="L58">        return cashTransactionService.getFundingHistory(caller.userId(), limit)</span>
+<span class="fc" id="L59">                .stream()</span>
+<span class="fc" id="L60">                .map(CashTransactionResponse::from)</span>
+<span class="fc" id="L61">                .toList();</span>
     }
 
     /**
@@ -68,13 +72,14 @@ public class CashTransactionController {
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = &quot;Deposit or withdraw cash&quot;, description = &quot;Records a cash deposit or withdrawal for the authenticated user&quot;)
     public CashTransactionResponse postFunding(
             @Valid @RequestBody CashTransactionRequest request,
             @AuthenticationPrincipal Jwt jwt
     ) {
-<span class="fc" id="L75">        AuthenticatedUser caller = AuthenticatedUser.from(jwt);</span>
-<span class="fc" id="L76">        return CashTransactionResponse.from(</span>
-<span class="fc" id="L77">                cashTransactionService.move(caller.userId(), request.amount(), request.reason()));</span>
+<span class="fc" id="L80">        AuthenticatedUser caller = AuthenticatedUser.from(jwt);</span>
+<span class="fc" id="L81">        return CashTransactionResponse.from(</span>
+<span class="fc" id="L82">                cashTransactionService.move(caller.userId(), request.amount(), request.reason()));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

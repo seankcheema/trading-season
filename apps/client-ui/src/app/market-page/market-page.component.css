@@ -409,13 +409,13 @@
 .tool-button:hover,
 .tool-icon:hover {
   border-color: rgba(0, 187, 255, 0.55);
-  background: rgba(0, 187, 255, 0.1);
-  color: #eefaff;
+  background: #8ae5ff;
+  color: #08131a;
 }
 .tool-button-active {
   border-color: rgba(0, 187, 255, 0.45);
-  background: rgba(0, 187, 255, 0.12);
-  color: #00bbff;
+  background: #57d7ff;
+  color: #08131a;
 }
 .tool-icon {
   width: 1.875rem;
@@ -588,8 +588,8 @@
   justify-content: center;
   border: 1px solid rgba(238, 250, 255, 0.1);
   border-radius: 0.45rem;
-  background: rgba(238, 250, 255, 0.025);
-  color: rgba(238, 250, 255, 0.58);
+  background: #27323a;
+  color: #eefaff;
   font-size: 0.82rem;
 }
 .overview-card-heading {
@@ -602,7 +602,7 @@
 .overview-card-heading > span {
   display: flex;
   align-items: center;
-  color: rgba(238, 250, 255, 0.55);
+  color: rgba(238, 250, 255, 0.8);
   font-size: 0.56rem;
   font-weight: 600;
   letter-spacing: 0.035em;
@@ -640,9 +640,9 @@
   gap: 0.7rem;
   border: 1px solid rgba(238, 250, 255, 0.1);
   border-radius: 0.55rem;
-  background: rgba(238, 250, 255, 0.018);
+  background: #1d232c;
   padding: 0.42rem 0.65rem;
-  color: rgba(238, 250, 255, 0.5);
+  color: #eefaff;
 }
 .overview-summary-content {
   padding: 0 0.15rem;

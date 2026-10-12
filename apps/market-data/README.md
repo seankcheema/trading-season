@@ -55,5 +55,5 @@ On Linux, run the numbered scripts directly with Python 3 after `pip install -r 
 ## Docker and CI
 
 - Local Compose runs `db-init` (all migrations) automatically; its opt-in `initialize` and `seed` profiles run the steps above. Set `MARKET_DATA_AVAILABLE_DISK_GB` before using `seed`.
-- Jenkins builds [Dockerfile.market-data](../../infrastructure/docker/Dockerfile.market-data) and runs a two-day integration: initialize, restart the database, generate, validate, then import twice.
+- Jenkins builds [Dockerfile.market-data](../../infrastructure/docker/Dockerfile.market-data) and runs a two-day integration: initialize, restart the database, generate, validate, then import twice. Each script runs under coverage.py, and the merged report is the coverage SonarQube shows for these scripts.
 - `python apps/market-data/db/scripts/python/tests/test_watchlist_migration.py` validates the watchlist migration against a disposable cluster when PostgreSQL binaries are on `PATH`.

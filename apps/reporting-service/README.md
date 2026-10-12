@@ -107,7 +107,7 @@ On Windows, [scripts/start-local.ps1](../../scripts/start-local.ps1) starts both
 
 ## Endpoints
 
-Authenticated endpoints need an RS256 bearer token from the [Auth Service](../auth-service/README.md). The run and console endpoints cover every account on the platform, so they also need a role in the token's `roles` claim, and a valid token without it is answered 403. The run endpoints accept `ANALYST` or `ADMIN`. The console endpoints accept `ADMIN` only, because they show individual customers and their orders. The profile is the caller's own and needs only a valid token.
+Authenticated endpoints need an RS256 bearer token from the [Auth Service](../auth-service/README.md). The run and console endpoints cover every account on the platform, so they also need a role in the token's `roles` claim, and a valid token without it is answered 403. The run endpoints accept `ANALYST` or `ADMIN`. The console endpoints accept `ADMIN` only, because they show individual customers and their orders. The profile is the caller's own and needs only a valid token. Every endpoint is a `GET`. Flask-WTF CSRF protection is enabled app-wide; it checks only `POST`, `PUT`, `PATCH`, and `DELETE`, so it does not affect these requests.
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |

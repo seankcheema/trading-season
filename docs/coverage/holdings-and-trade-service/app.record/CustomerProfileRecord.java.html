@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CustomerProfileRecord.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.record</a> &gt; <span class="el_source">CustomerProfileRecord.java</span></div><h1>CustomerProfileRecord.java</h1><pre class="source lang-java linenums">package app.record;
+
+import app.user.User;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+/**
+ * A trader's profile, published as {@value #TYPE} when the profile is
+ * created. It carries the name, the level reporting segments clients by and
+ * the cash balance; the SSN, address, date of birth and middle name stay in
+ * the database.
+ *
+ * @param userId                the trader, the auth service's user id
+ * @param firstName             given name
+ * @param lastName              family name
+ * @param traderLevel           {@code BEGINNER}, {@code INTERMEDIATE} or {@code ADVANCED}
+ * @param availableFunds        the trader's cash as of {@code asOf}
+ * @param sessionTimeoutMinutes minutes of inactivity before the trader is signed out
+ * @param lastActivityAt        when the trader was last active, or {@code null}
+ * @param createdAt             when the profile was created
+ * @param asOf                  when this state was read; a consumer keeps the funds of the newest state it has seen
+ */
+<span class="fc" id="L25">public record CustomerProfileRecord(</span>
+        UUID userId,
+        String firstName,
+        String lastName,
+        String traderLevel,
+        BigDecimal availableFunds,
+        Integer sessionTimeoutMinutes,
+        OffsetDateTime lastActivityAt,
+        OffsetDateTime createdAt,
+        OffsetDateTime asOf) implements PlatformRecord {
+
+    /** The record type profiles are published under. */
+    public static final String TYPE = &quot;CUSTOMER_PROFILE&quot;;
+
+    /**
+     * Captures a profile as it stands now.
+     *
+     * @param user the saved profile
+     * @return the record describing it
+     */
+    public static CustomerProfileRecord from(User user) {
+<span class="fc" id="L46">        return new CustomerProfileRecord(user.getUserId(), user.getFirstName(), user.getLastName(),</span>
+<span class="fc" id="L47">                user.getTraderLevel(), user.getAvailableFunds(), user.getSessionTimeoutMinutes(),</span>
+<span class="fc" id="L48">                user.getLastActivityAt(), user.getCreatedAt(), OffsetDateTime.now());</span>
+    }
+
+    @Override
+    public String recordType() {
+<span class="fc" id="L53">        return TYPE;</span>
+    }
+
+    @Override
+    public String recordId() {
+<span class="fc" id="L58">        return String.valueOf(userId);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CostBasis.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.holding</a> &gt; <span class="el_source">CostBasis.java</span></div><h1>CostBasis.java</h1><pre class="source lang-java linenums">package app.holding;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Derives the average price paid for each open position by replaying its movements.
+ *
+ * &lt;p&gt;This is the moving weighted-average method. A buy blends its price into the
+ * average in proportion to quantity. A sell leaves the average of what remains
+ * unchanged, because it disposes of shares at the market price rather than
+ * changing what the rest cost. Once a sell takes the quantity to zero the position
+ * is closed and its history is forgotten, so buying the instrument again starts a
+ * fresh average instead of being blended with positions long since sold.
+ */
+public final class CostBasis {
+
+    private static final int SCALE = 8;
+
+    private CostBasis() {
+    }
+
+    /**
+     * Replays a ledger into the average price of each position that is still open.
+     *
+     * @param movements one account's movements, oldest first
+     * @return average price paid per share keyed by instrument id; an instrument that
+     *         was never bought, or whose position has been sold back to zero, is absent
+     */
+    public static Map&lt;Integer, BigDecimal&gt; averageCosts(List&lt;PricedMovement&gt; movements) {
+<span class="fc" id="L34">        Map&lt;Integer, BigDecimal&gt; quantities = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L35">        Map&lt;Integer, BigDecimal&gt; averages = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        for (PricedMovement movement : movements) {</span>
+<span class="fc bfc" id="L37" title="All 4 branches covered.">            if (movement.instrumentId() == null || movement.quantityDelta() == null) {</span>
+<span class="fc" id="L38">                continue;</span>
+            }
+<span class="fc" id="L40">            Integer instrumentId = movement.instrumentId();</span>
+<span class="fc" id="L41">            BigDecimal held = quantities.getOrDefault(instrumentId, BigDecimal.ZERO);</span>
+<span class="fc" id="L42">            BigDecimal delta = movement.quantityDelta();</span>
+<span class="fc bfc" id="L43" title="All 4 branches covered.">            if (delta.signum() &gt; 0 &amp;&amp; movement.quotePrice() != null) {</span>
+<span class="fc" id="L44">                BigDecimal average = averages.getOrDefault(instrumentId, BigDecimal.ZERO);</span>
+<span class="fc" id="L45">                BigDecimal newQuantity = held.add(delta);</span>
+<span class="fc" id="L46">                averages.put(instrumentId, held.multiply(average)</span>
+<span class="fc" id="L47">                        .add(delta.multiply(movement.quotePrice()))</span>
+<span class="fc" id="L48">                        .divide(newQuantity, SCALE, RoundingMode.HALF_UP));</span>
+<span class="fc" id="L49">                quantities.put(instrumentId, newQuantity);</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            } else if (delta.signum() &lt; 0) {</span>
+<span class="fc" id="L51">                BigDecimal remaining = held.add(delta);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">                if (remaining.signum() &lt;= 0) {</span>
+<span class="fc" id="L53">                    quantities.remove(instrumentId);</span>
+<span class="fc" id="L54">                    averages.remove(instrumentId);</span>
+                } else {
+<span class="fc" id="L56">                    quantities.put(instrumentId, remaining);</span>
+                }
+            }
+<span class="fc" id="L59">        }</span>
+<span class="fc" id="L60">        return averages;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

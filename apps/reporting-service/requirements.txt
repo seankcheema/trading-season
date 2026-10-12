@@ -1,5 +1,6 @@
 Flask==3.0.0
 Flask-CORS==4.0.0
+Flask-WTF==1.2.2
 Flask-SQLAlchemy==3.1.1
 SQLAlchemy==2.0.43
 # No database driver on purpose. SQLAlchemy only runs the in-memory SQLite read

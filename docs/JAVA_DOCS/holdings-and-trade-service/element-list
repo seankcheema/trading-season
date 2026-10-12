@@ -7,5 +7,6 @@ app.holding
 app.instrument
 app.market
 app.record
+app.registration
 app.user
 app.watchlist

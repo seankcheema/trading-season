@@ -11,6 +11,9 @@ node_modules/
 # Logs
 *.log
 
+# SonarScanner working directory
+.scannerwork/
+
 # Local/generated market-data archives
 apps/market-data/db/seeds/synthetic-market-data-2026-v1/
 apps/business-backend/db/seeds/synthetic-market-data-2026-v1/

@@ -1,6 +1,5 @@
 package app.record;
 
-import app.user.User;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.KafkaException;
@@ -17,11 +16,8 @@ import org.springframework.kafka.support.SendResult;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -40,7 +36,6 @@ class PlatformRecordPublisherTest {
     private static final String TOPIC = PlatformRecordPublisher.TOPIC;
     private static final OffsetDateTime RECORDED_AT =
             OffsetDateTime.of(2026, 10, 5, 9, 30, 0, 0, ZoneOffset.UTC);
-    private static final UUID USER_ID = UUID.fromString("7c9e6679-7425-40de-944b-e07fc1f90ae7");
 
     @Mock
     private KafkaTemplate<String, String> kafkaTemplate;
@@ -86,38 +81,6 @@ class PlatformRecordPublisherTest {
         // The key parts are not repeated in the body under their accessor names.
         assertFalse(json.has("recordType"), json.toString());
         assertFalse(json.has("recordId"), json.toString());
-    }
-
-    @Test
-    void aProfileCarriesTheNameLevelAndFundsButNothingPrivate() {
-        when(kafkaTemplate.send(eq(TOPIC), eq("CUSTOMER_PROFILE:" + USER_ID), anyString()))
-                .thenReturn(acknowledged("CUSTOMER_PROFILE:" + USER_ID));
-        User user = new User();
-        user.setUserId(USER_ID);
-        user.setFirstName("John");
-        user.setMiddleName("Quincy");
-        user.setLastName("Doe");
-        user.setSsn("123-45-6789");
-        user.setAddress("123 Main St");
-        user.setDateOfBirth(LocalDate.of(1990, 1, 1));
-        user.setTraderLevel("INTERMEDIATE");
-        user.setAvailableFunds(new BigDecimal("7500.00"));
-        user.setCreatedAt(RECORDED_AT);
-
-        publisher.onRecord(CustomerProfileRecord.from(user));
-
-        JsonNode json = sentBody("CUSTOMER_PROFILE:" + USER_ID);
-        assertEquals("CUSTOMER_PROFILE", json.get("type").stringValue());
-        assertEquals(USER_ID.toString(), json.get("userId").stringValue());
-        assertEquals("John", json.get("firstName").stringValue());
-        assertEquals("Doe", json.get("lastName").stringValue());
-        assertEquals("INTERMEDIATE", json.get("traderLevel").stringValue());
-        assertEquals(0, new BigDecimal("7500.00").compareTo(json.get("availableFunds").decimalValue()));
-        String body = json.toString();
-        assertFalse(body.contains("123-45-6789"), body);
-        assertFalse(body.contains("123 Main St"), body);
-        assertFalse(body.contains("1990"), body);
-        assertFalse(body.contains("Quincy"), body);
     }
 
     @Test

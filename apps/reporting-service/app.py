@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 from flask import Flask, jsonify, request, g, send_from_directory
 from flask_cors import CORS
+from flask_wtf.csrf import CSRFProtect
 from datetime import datetime, UTC
 import jwt
 import requests
@@ -45,8 +46,19 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
 # Initialize the read model
 db.init_app(app)
 
-# Enable CORS
-CORS(app, origins=app.config['CORS_ORIGINS'])
+# Enable CORS for the SPA's bearer-token requests only. This service does not
+# use cookie-based auth, so cross-origin credentials stay disabled.
+CORS(
+    app,
+    origins=app.config['CORS_ORIGINS'],
+    supports_credentials=False,
+    allow_headers=['Authorization', 'Content-Type'],
+)
+
+# Enable CSRF protection. It only checks POST, PUT, PATCH and DELETE, so the
+# read-only API is unaffected; a state-changing route added later is protected
+# by default.
+csrf = CSRFProtect(app)
 
 
 # ============================================================================

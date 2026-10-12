@@ -3,12 +3,23 @@
 /** No account exists for the given account id. */
 public class AccountNotFoundException extends RuntimeException {
 
+    /**
+     * Creates the exception for an account id that does not exist.
+     *
+     * @param accountId the missing account id
+     */
     public AccountNotFoundException(Integer accountId) {
-<span class="fc" id="L7">        super(&quot;No account exists for the given account id: &quot; + accountId);</span>
-<span class="fc" id="L8">    }</span>
+<span class="fc" id="L12">        super(&quot;No account exists for the given account id: &quot; + accountId);</span>
+<span class="fc" id="L13">    }</span>
+
+    /**
+     * Creates the exception with a custom message.
+     *
+     * @param message the detail message
+     */
     public AccountNotFoundException(String message) {
-<span class="fc" id="L10">        super(message);</span>
-<span class="fc" id="L11">    }</span>
+<span class="fc" id="L21">        super(message);</span>
+<span class="fc" id="L22">    }</span>
 
 }
 
