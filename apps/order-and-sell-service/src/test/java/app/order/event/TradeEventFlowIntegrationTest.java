@@ -131,6 +131,7 @@ class TradeEventFlowIntegrationTest {
 
         UUID userId = UUID.randomUUID();
         UserAccountFixture.createActiveAccount(jdbcTemplate, userId, "trader@example.com");
+        UserAccountFixture.acceptCurrentTerms(jdbcTemplate, userId);
 
         user = new User();
         user.setUserId(userId);
