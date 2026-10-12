@@ -9,15 +9,30 @@ Angular 21 single-page app for the analysts who read the scheduled reports and t
 | Route | Open to | Screen |
 | --- | --- | --- |
 | `/login` | anyone not signed in as an analyst or admin | Sign in |
-| `/` | admin | Activity: a range toggle, five headline figures against the prior period, notional traded over time, orders by status, the newest events, most traded symbols |
+| `/` | admin | Activity: a range toggle, five headline figures against the prior period, notional traded over time, orders by status, activity by client segment, the newest events, most traded symbols |
 | `/customers` | admin | Customers: every trader with status, accounts, cash, portfolio, failed sign-ins and last activity; search and filters. Analysts and admins are not customers and are not listed |
 | `/customers/:userId` | admin | One customer: profile, sign-in security, balances, and their orders and cash transfers, with the same search and filters as Orders |
 | `/orders` | admin | Orders: every order, and the deposits and withdrawals among them, with search and filters; an order's row opens the order with its execution, ledger impact, audit trail and references |
-| `/runs` | analyst, admin | Report runs: the runs on disk and the PNG charts of the selected run, with download |
+| `/runs` | analyst, admin | Report runs: the runs on disk and the PNG charts of the selected run, with download: traded value by symbol, trades per day, traded value by client segment, orders per account |
 
 An analyst who asks for an admin's screen, by a link or by signing in, is taken to `/runs`, and the sidebar offers an analyst only that entry.
 
 Every figure on screen comes from the Reporting Service. Nothing is demo data. Times are shown in the viewer's time zone, and a range such as Today is the viewer's own day. The days inside a report run are UTC days, as the report job buckets them.
+
+Activity opens on the last seven days. The range chosen there is kept in this browser's `localStorage`, so leaving for another screen, reloading or signing in again comes back to it; a browser that refuses storage opens on seven days each time.
+
+## Business requirements covered
+
+The reporting requirements of the LEAP business requirements specification, and where each is met:
+
+| Requirement | Where |
+| --- | --- |
+| BR-16, by instrument | Most traded on Activity; traded value by symbol in a report run |
+| BR-16, by period | The Today, 7D, 30D and 90D ranges on Activity, each figure against the period before; trades per day in a report run |
+| BR-16, by client segment | Client segments on Activity; traded value by client segment in a report run. A segment is a trader's level, the only classification of clients the product keeps |
+| BR-16, without competing with live trading | The report runs are built from the `trade-events` topic and read the database only for names and trader levels. Activity, Customers and Orders read the trading database, read only; see [Known limitations](#known-limitations) |
+| BR-17, trading volumes, most active instruments, client activity trends | On Activity: Notional traded, Most traded, and Active traders against the prior period beside Client segments |
+| Section 9.3, internal access limited to what a role requires | An analyst sees the report runs only; the screens that show individual customers are an admin's. See [Who sees what](#who-sees-what) |
 
 ## How the data reaches the screen
 
@@ -141,7 +156,7 @@ The tokens are declared in [src/styles.css](src/styles.css) with the same values
 | Orders table with its search and filter row | [order-table.component.ts](src/app/orders/order-table.component.ts) inside [order-browser.component.ts](src/app/orders/order-browser.component.ts), shared by Orders and the customer page |
 | DashCard, DashLabel, DashLink, Button, Input, table head and rows | Classes in [src/styles.css](src/styles.css): `dash-card`, `net-worth-card`, `dash-label`, `dash-link`, `ghost-button`, `ds-control`, `dash-table-head`, `row-button` |
 
-From 1024px wide a screen fills the window and its lists scroll inside their cards, with a bottom fade and no scrollbar, as the kit draws it. Activity does so down to a window 616px high, so it fits a short wide display such as 1920x828 with the browser's own bars: its chart row takes four ninths of the room under the headline figures and never less than the four statuses need, and the two lists take the rest. Narrower, or on a shorter window, the page scrolls.
+From 1024px wide a screen fills the window and its lists scroll inside their cards, with a bottom fade and no scrollbar, as the kit draws it. From 1280px wide Activity does so down to a window 616px high, so it fits a short wide display such as 1920x828 with the browser's own bars: its chart row, with the chart and the two splits side by side, takes four ninths of the room under the headline figures and never less than the four statuses need, and the two lists take the rest. Between 1024px and 1279px the two splits stack beside the chart so that it keeps its width, and the screen fills a window from 1032px high. Narrower, or on a shorter window, the page scrolls.
 
 From 768px wide the sidebar stands beside the screen and can be collapsed to 60px with the button beside the logo: the logo mark, the navigation icons, the button itself and log out stay, and the names remain as tooltips and for assistive technology. The choice is kept in this browser's `localStorage`. Narrower, the sidebar is a bar across the top and does not collapse.
 
@@ -159,6 +174,8 @@ The kit is a proposal drawn on sample data. Where the product has no such data, 
 | The chart's value axis divides the range between the lowest and highest value into four | It rounds to steps of 1, 2, 2.5 or 5 times a power of ten, from zero for notional traded, and a flat series has one label | The even division read $75,542, $56,657, and on a day without a trade ran below zero and out of the card |
 | The sidebar is fixed at 232px | It collapses to its icons | Asked for, to give the screens the width |
 | "Streaming" beside Live activity | "Live" | The feed is read again every 15 seconds, not streamed |
+| Activity opens on Today | It opens on 7D, and afterwards on the range last chosen in this browser | Asked for: Today is mostly zeros until the day's first order |
+| The chart row holds Notional traded and Orders by status | A third card, Client segments: each trader level's notional and its share, traders and orders in the range | The business requirements ask for activity by client segment, which the kit predates |
 | Three sidebar entries | A fourth, Report runs, and for an analyst only that one | The scheduled reports built from the Kafka topic are a product requirement the kit predates |
 | No way to sign out | A log out button beside the signed-in user | The kit does not draw one |
 | Most traded shows a price sparkline under "Today" whatever the range | The column is named after the chosen range and plots the symbol's fill prices in it | The label follows what is plotted |
@@ -200,7 +217,10 @@ The production [Dockerfile](Dockerfile) builds the app and serves it through unp
 ## Known limitations
 
 - The Orders screen shows the newest 500 orders and the newest 500 transfers; the count beside the filters is of those rows. A customer's page shows their newest 1000 of each.
-- Activity opens on Today, so it is mostly zeros until the day's first order; the longer ranges show the days before. A figure has no change pill when the period before the range has nothing to compare with.
+- A figure on Activity has no change pill when the period before the range has nothing to compare with. Today is mostly zeros until the day's first order.
+- A client segment is the level a trader holds now. The level a trader held when an order was placed is not kept, so a promoted trader takes their earlier orders into the new segment.
+- Activity, Customers and Orders read the trading database that live trading writes to. They only read, and each open screen asks every 15 or 30 seconds, but only the report runs are independent of the live trading path.
+- An analyst's "Orders per account" chart names each account and its trader. Whether an analyst's work needs clients by name is a decision for the business; the other three charts name nobody.
 - A transfer row opens nothing: the service has no endpoint for a single cash transaction.
 - The Activity ranges are fixed at today, 7, 30 and 90 days.
 - The service keeps only the newest report run, so the run list normally has one entry, and a run covers every event on disk.

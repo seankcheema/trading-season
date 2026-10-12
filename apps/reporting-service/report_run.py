@@ -2,8 +2,9 @@
 One report run: read the event files, add names from the database, write
 report.json and PNG charts into a dated run directory, replace the previous run.
 
-The run is the only place reporting touches PostgreSQL, and only to read
-users and accounts. Trade data comes from the files the consumer wrote.
+The run reads PostgreSQL only for users and accounts: the names it labels
+accounts with and the trader level it segments them by. Trade data comes from
+the files the consumer wrote.
 """
 
 import json
@@ -28,6 +29,10 @@ from run_store import LATEST_FILE, REPORT_FILE, runs_dir  # noqa: E402
 logger = logging.getLogger(__name__)
 
 RUN_ID_FORMAT = '%Y%m%dT%H%M%SZ'
+# The client segments a run splits activity by: the trader levels, lowest first.
+SEGMENTS = ('BEGINNER', 'INTERMEDIATE', 'ADVANCED')
+# Where the orders of an account the database does not know are counted.
+UNKNOWN_SEGMENT = 'UNKNOWN'
 _FRACTION = re.compile(r'(\.\d{6})\d+')
 
 
@@ -125,8 +130,42 @@ def build_insights(events):
     }
 
 
+def build_segment_insights(events, segments):
+    """
+    The BR-16 view by client segment: the accounts that resolved an order,
+    their fills and rejections and the value filled, per trader level.
+    segments maps an account id to its trader's level. Every level is listed,
+    lowest first; UNKNOWN follows only when an account the database does not
+    know resolved an order.
+    """
+    def empty():
+        return {'accounts': set(), 'total': 0, 'filled': 0, 'rejected': 0, 'notional': Decimal(0)}
+
+    by_segment = {segment: empty() for segment in SEGMENTS}
+    for event in events:
+        status = event.get('status')
+        if status not in ('FILLED', 'REJECTED'):
+            continue
+        account_id = event.get('accountId')
+        entry = by_segment.setdefault(segments.get(account_id, UNKNOWN_SEGMENT), empty())
+        entry['accounts'].add(account_id)
+        entry['total'] += 1
+        if status == 'FILLED':
+            entry['filled'] += 1
+            entry['notional'] += _decimal(event.get('quantity')) * _decimal(event.get('price'))
+        else:
+            entry['rejected'] += 1
+
+    return [
+        {'segment': segment, 'accounts': len(entry['accounts']), 'total': entry['total'],
+         'filled': entry['filled'], 'rejected': entry['rejected'],
+         'notional': str(entry['notional'].quantize(Decimal('0.01')))}
+        for segment, entry in by_segment.items()
+    ]
+
+
 def load_account_names(session, account_ids):
-    """account_id -> {'accountName', 'userName'} for the ids that exist; others are absent."""
+    """account_id -> {'accountName', 'userName', 'segment'} for the ids that exist; others are absent."""
     ids = [account_id for account_id in account_ids if isinstance(account_id, int)]
     if not ids:
         return {}
@@ -138,6 +177,7 @@ def load_account_names(session, account_ids):
         account.account_id: {
             'accountName': account.name,
             'userName': f'{user.first_name} {user.last_name}'.strip(),
+            'segment': user.trader_level,
         }
         for account, user in rows
     }
@@ -235,7 +275,7 @@ def _save_daily_chart(path, daily_counts):
 
 
 def render_charts(insights, run_dir):
-    """Write the three PNG charts into run_dir and return their file names."""
+    """Write the four PNG charts into run_dir and return their file names."""
     run_dir = Path(run_dir)
     volume = insights['volumeBySymbol']
     _save_bar_chart(run_dir / 'volume_by_symbol.png',
@@ -243,12 +283,20 @@ def render_charts(insights, run_dir):
                     [float(row['notional']) for row in volume],
                     'Traded value by symbol (filled orders)', 'Notional', money=True)
     _save_daily_chart(run_dir / 'daily_trades.png', insights['dailyCounts'])
+    # Every level is drawn once any order has resolved, so a level that traded nothing shows as nothing.
+    segments = insights['activityBySegment']
+    if not any(row['total'] for row in segments):
+        segments = []
+    _save_bar_chart(run_dir / 'volume_by_segment.png',
+                    [row['segment'].capitalize() for row in segments],
+                    [float(row['notional']) for row in segments],
+                    'Traded value by client segment (filled orders)', 'Notional', money=True)
     accounts = insights['tradesPerAccount']
     _save_bar_chart(run_dir / 'trades_per_account.png',
                     [row.get('label') or str(row['accountId']) for row in accounts],
                     [row['total'] for row in accounts],
                     'Orders per account', 'Orders resolved')
-    return ['volume_by_symbol.png', 'daily_trades.png', 'trades_per_account.png']
+    return ['volume_by_symbol.png', 'daily_trades.png', 'volume_by_segment.png', 'trades_per_account.png']
 
 
 def run_report(files_dir, session, now=None, keep_runs=1):
@@ -271,6 +319,8 @@ def run_report(files_dir, session, now=None, keep_runs=1):
         row['accountName'] = info.get('accountName')
         row['userName'] = info.get('userName')
         row['label'] = f"{row['accountName']} ({row['userName']})" if info else str(row['accountId'])
+    insights['activityBySegment'] = build_segment_insights(
+        events, {account_id: info['segment'] for account_id, info in names.items()})
 
     base = runs_dir(files_dir)
     base.mkdir(parents=True, exist_ok=True)

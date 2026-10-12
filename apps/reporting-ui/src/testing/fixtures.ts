@@ -46,7 +46,18 @@ export function report(overrides: Partial<Report> = {}): Report {
       { date: '2026-10-07', filled: 2, rejected: 1 },
       { date: '2026-10-08', filled: 4, rejected: 1 },
     ],
-    files: ['volume_by_symbol.png', 'daily_trades.png', 'trades_per_account.png'],
+    activityBySegment: [
+      { segment: 'BEGINNER', accounts: 0, total: 0, filled: 0, rejected: 0, notional: '0.00' },
+      { segment: 'INTERMEDIATE', accounts: 0, total: 0, filled: 0, rejected: 0, notional: '0.00' },
+      { segment: 'ADVANCED', accounts: 1, total: 5, filled: 4, rejected: 1, notional: '4619.25' },
+      { segment: 'UNKNOWN', accounts: 1, total: 3, filled: 2, rejected: 1, notional: '1424.66' },
+    ],
+    files: [
+      'volume_by_symbol.png',
+      'daily_trades.png',
+      'volume_by_segment.png',
+      'trades_per_account.png',
+    ],
     ...overrides,
   };
 }
@@ -56,7 +67,12 @@ export function run(overrides: Partial<RunSummary> = {}): RunSummary {
     runId: '20261008T194500Z',
     generatedAt: '2026-10-08T19:45:00+00:00',
     eventCount: 14,
-    files: ['volume_by_symbol.png', 'daily_trades.png', 'trades_per_account.png'],
+    files: [
+      'volume_by_symbol.png',
+      'daily_trades.png',
+      'volume_by_segment.png',
+      'trades_per_account.png',
+    ],
     ...overrides,
   };
 }

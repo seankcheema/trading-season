@@ -57,17 +57,19 @@ describe('RunsComponent', () => {
     expect(rows(root)[0].getAttribute('aria-pressed')).toBe('true');
 
     expect(runFile).toHaveBeenCalledWith('20261008T194500Z', 'volume_by_symbol.png');
-    expect(runFile).toHaveBeenCalledTimes(3);
+    expect(runFile).toHaveBeenCalledTimes(4);
     const images = Array.from(root.querySelectorAll('img'));
     expect(images.map((image) => image.getAttribute('src'))).toEqual([
       'blob:chart-1',
       'blob:chart-2',
       'blob:chart-3',
+      'blob:chart-4',
     ]);
     expect(images[0].alt).toBe('Traded value by symbol, chart from run 20261008T194500Z');
     const download = root.querySelector<HTMLAnchorElement>('a[download]')!;
     expect(download.download).toBe('20261008T194500Z-volume_by_symbol.png');
     expect(text(root)).toContain('Trades per day');
+    expect(text(root)).toContain('Traded value by client segment');
     expect(text(root)).toContain('Orders per account');
   });
 
@@ -81,7 +83,7 @@ describe('RunsComponent', () => {
     pending.next(new Blob(['png']));
     pending.complete();
     settle();
-    expect(root.querySelectorAll('img')).toHaveLength(3);
+    expect(root.querySelectorAll('img')).toHaveLength(4);
   });
 
   it('says which chart failed and names an unknown file by its file name', () => {
@@ -105,13 +107,13 @@ describe('RunsComponent', () => {
     rows(root)[1].click();
     settle();
 
-    expect(revokeObjectURL).toHaveBeenCalledTimes(3);
+    expect(revokeObjectURL).toHaveBeenCalledTimes(4);
     expect(runFile).toHaveBeenLastCalledWith('20261008T193000Z', 'daily_trades.png');
     expect(rows(root)[1].getAttribute('aria-pressed')).toBe('true');
     expect(root.querySelectorAll('img')).toHaveLength(1);
 
     fixture.destroy();
-    expect(revokeObjectURL).toHaveBeenCalledTimes(4);
+    expect(revokeObjectURL).toHaveBeenCalledTimes(5);
   });
 
   it('shows no charts for a run without files', () => {

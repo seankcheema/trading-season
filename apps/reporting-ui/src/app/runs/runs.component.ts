@@ -27,6 +27,7 @@ export interface ChartImage {
 const CHART_TITLES: Record<string, string> = {
   'volume_by_symbol.png': 'Traded value by symbol',
   'daily_trades.png': 'Trades per day',
+  'volume_by_segment.png': 'Traded value by client segment',
   'trades_per_account.png': 'Orders per account',
 };
 

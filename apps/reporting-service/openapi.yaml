@@ -9,7 +9,8 @@ info:
 
     The report runs are produced by the reporting consumer from the
     trade-events Kafka topic; for them the trading_season database is read
-    only for user and account names.
+    only for user and account names and each trader's level, the client
+    segment a run splits activity by.
 
     The console endpoints (activity, orders, customers) are read straight from
     the trading_season database, because they show what the topic does not
@@ -146,7 +147,7 @@ paths:
           description: One of the file names in the run's files list.
           schema:
             type: string
-            enum: [volume_by_symbol.png, daily_trades.png, trades_per_account.png]
+            enum: [volume_by_symbol.png, daily_trades.png, volume_by_segment.png, trades_per_account.png]
       responses:
         '200':
           description: The PNG chart
@@ -184,8 +185,9 @@ paths:
       description: |
         Requires the ADMIN role. Headline figures with their change against
         the period of equal length before the range, notional traded in hourly
-        (today) or daily buckets, the status split, the newest events, and the
-        most traded symbols. Days are the viewer's own, by tzOffset.
+        (today) or daily buckets, the status split, the split by client
+        segment, the newest events, and the most traded symbols. Days are the
+        viewer's own, by tzOffset.
       security:
         - bearerAuth: []
       parameters:
@@ -463,7 +465,7 @@ components:
           type: array
           items:
             type: string
-          example: [volume_by_symbol.png, daily_trades.png, trades_per_account.png]
+          example: [volume_by_symbol.png, daily_trades.png, volume_by_segment.png, trades_per_account.png]
       required: [runId, generatedAt, eventCount, files]
     RunListResponse:
       type: object
@@ -536,6 +538,30 @@ components:
         rejected:
           type: integer
       required: [date, filled, rejected]
+    SegmentActivity:
+      type: object
+      description: |
+        The resolved orders of one client segment. A segment is a trader
+        level, taken as the trader holds it when the run is made. UNKNOWN
+        collects accounts the database does not know and is listed only when
+        one of them resolved an order.
+      properties:
+        segment:
+          type: string
+          enum: [BEGINNER, INTERMEDIATE, ADVANCED, UNKNOWN]
+        accounts:
+          type: integer
+          description: Accounts that resolved at least one order.
+        total:
+          type: integer
+        filled:
+          type: integer
+        rejected:
+          type: integer
+        notional:
+          type: string
+          description: Shares times fill price over the filled orders, as a decimal string with two places.
+      required: [segment, accounts, total, filled, rejected, notional]
     Report:
       type: object
       description: The report.json of one run.
@@ -564,12 +590,17 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DailyCount'
+        activityBySegment:
+          type: array
+          description: One entry per trader level, lowest first, then UNKNOWN when it has orders.
+          items:
+            $ref: '#/components/schemas/SegmentActivity'
         files:
           type: array
           items:
             type: string
           description: Chart file names served by /api/reporting/runs/{runId}/files/{name}.
-      required: [runId, generatedAt, timezone, eventCount, statusCounts, volumeBySymbol, tradesPerAccount, dailyCounts, files]
+      required: [runId, generatedAt, timezone, eventCount, statusCounts, volumeBySymbol, tradesPerAccount, dailyCounts, activityBySegment, files]
     SchedulerStatusResponse:
       type: object
       properties:
@@ -687,6 +718,26 @@ components:
               count:
                 type: integer
             required: [status, count]
+        segments:
+          type: array
+          description: |
+            The range's orders by client segment: one entry per trader level,
+            lowest first. A trader counts under the level they hold now.
+          items:
+            type: object
+            properties:
+              segment:
+                type: string
+                enum: [BEGINNER, INTERMEDIATE, ADVANCED]
+              traders:
+                type: integer
+                description: Traders of the level who placed at least one order.
+              orders:
+                type: integer
+              notional:
+                type: number
+                description: Shares times fill price over the level's filled orders.
+            required: [segment, traders, orders, notional]
         feed:
           type: array
           description: The newest events on the platform, whatever the range; at most 20.
@@ -710,7 +761,7 @@ components:
                 items:
                   type: number
             required: [symbol, orders, notional, prices]
-      required: [range, from, to, generatedAt, sessionId, kpis, notional, statuses, feed, mostTraded]
+      required: [range, from, to, generatedAt, sessionId, kpis, notional, statuses, segments, feed, mostTraded]
     FeedItem:
       type: object
       description: |

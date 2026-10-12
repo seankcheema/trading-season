@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 
 from event_store import EventStore
-from report_run import build_insights, load_events, parse_occurred_at, run_report
+from report_run import build_insights, build_segment_insights, load_events, parse_occurred_at, run_report
 
 PNG_MAGIC = b'\x89PNG\r\n\x1a\n'
 
@@ -101,6 +101,27 @@ class TestBuildInsights:
         assert len({(e['partition'], e['offset']) for e in events}) == 5
 
 
+class TestBuildSegmentInsights:
+
+    def test_rolls_resolved_orders_up_by_trader_level(self, events_on_disk):
+        segments = build_segment_insights(load_events(events_on_disk), {1: 'BEGINNER', 2: 'ADVANCED'})
+
+        assert segments == [
+            # Account 1: two fills worth 5000 and 2200, and a rejection that is not volume.
+            {'segment': 'BEGINNER', 'accounts': 1, 'total': 3, 'filled': 2, 'rejected': 1, 'notional': '7200.00'},
+            {'segment': 'INTERMEDIATE', 'accounts': 0, 'total': 0, 'filled': 0, 'rejected': 0, 'notional': '0.00'},
+            {'segment': 'ADVANCED', 'accounts': 1, 'total': 1, 'filled': 1, 'rejected': 0, 'notional': '2000.00'},
+            # Account 99 is not in the database.
+            {'segment': 'UNKNOWN', 'accounts': 1, 'total': 1, 'filled': 1, 'rejected': 0, 'notional': '100.00'},
+        ]
+
+    def test_lists_every_level_and_no_unknown_when_nothing_resolved(self):
+        segments = build_segment_insights([event(1, 'ACCEPTED', 'TEST', 'BUY', 1, 1, '2026-10-06T00:00:00Z')], {})
+
+        assert [row['segment'] for row in segments] == ['BEGINNER', 'INTERMEDIATE', 'ADVANCED']
+        assert all(row['total'] == 0 for row in segments)
+
+
 class TestRunReport:
 
     def test_writes_report_and_charts_and_points_latest_at_the_run(self, events_on_disk, db_session,
@@ -119,9 +140,17 @@ class TestRunReport:
         assert on_disk['eventCount'] == 5
         assert on_disk['statusCounts'] == {'FILLED': 4, 'REJECTED': 1}
         assert on_disk['timezone'] == 'UTC'
-        assert on_disk['files'] == ['volume_by_symbol.png', 'daily_trades.png', 'trades_per_account.png']
+        assert on_disk['files'] == ['volume_by_symbol.png', 'daily_trades.png', 'volume_by_segment.png',
+                                    'trades_per_account.png']
         for name in on_disk['files']:
             assert (run_dir / name).read_bytes().startswith(PNG_MAGIC), name
+
+        # The fixture trader is intermediate; accounts 2 and 99 are not in the database.
+        by_segment = {row['segment']: row for row in on_disk['activityBySegment']}
+        assert by_segment['INTERMEDIATE'] == {'segment': 'INTERMEDIATE', 'accounts': 1, 'total': 3, 'filled': 2,
+                                              'rejected': 1, 'notional': '7200.00'}
+        assert by_segment['UNKNOWN']['accounts'] == 2 and by_segment['UNKNOWN']['notional'] == '2100.00'
+        assert 'segment' not in on_disk['tradesPerAccount'][0]
 
         by_account = {row['accountId']: row for row in on_disk['tradesPerAccount']}
         assert by_account[1]['accountName'] == 'Growth Portfolio'
@@ -144,5 +173,6 @@ class TestRunReport:
 
         assert report['eventCount'] == 0
         assert report['statusCounts'] == {'FILLED': 0, 'REJECTED': 0}
+        assert [row['total'] for row in report['activityBySegment']] == [0, 0, 0]
         for name in report['files']:
             assert (tmp_path / 'runs' / report['runId'] / name).read_bytes().startswith(PNG_MAGIC)

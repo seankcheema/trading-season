@@ -5,13 +5,14 @@ import { activity } from '../../testing/console-fixtures';
 import { text } from '../../testing/dom';
 import { Activity, ActivityRange } from '../reporting/console.models';
 import { ReportingApiService } from '../reporting/reporting-api.service';
-import { ACTIVITY_REFRESH_MS, ActivityComponent } from './activity.component';
+import { ACTIVITY_REFRESH_MS, ActivityComponent, RANGE_KEY } from './activity.component';
 
 describe('ActivityComponent', () => {
   let fixture: ComponentFixture<ActivityComponent>;
   let load: ReturnType<typeof vi.fn<(range: ActivityRange) => Observable<Activity>>>;
 
   beforeEach(() => {
+    localStorage.clear();
     vi.useFakeTimers();
     load = vi.fn((range: ActivityRange) => of(activity({ range })));
   });
@@ -60,6 +61,7 @@ describe('ActivityComponent', () => {
   });
 
   it('charts notional traded by the hour, in the color of the change', () => {
+    localStorage.setItem(RANGE_KEY, 'today');
     const root = render();
     const notional = card(root, 'Notional traded');
 
@@ -115,6 +117,19 @@ describe('ActivityComponent', () => {
     expect(statuses.querySelector('a')!.getAttribute('href')).toBe('/orders');
   });
 
+  it('splits the range by client segment, each with its share of the notional', () => {
+    const segments = card(render(), 'Client segments');
+
+    expect(Array.from(segments.querySelectorAll('[data-segments] > div')).map(text)).toEqual([
+      'beginner $1,209 20.0% 120 traders · 310 orders',
+      'intermediate $0 0.0% 1 trader · 1 order',
+      'advanced $4,835 80.0% 52 traders · 714 orders',
+    ]);
+    expect(segments.querySelector('[data-segments] span')!.className).toContain('capitalize');
+    const bars = Array.from(segments.querySelectorAll<HTMLElement>('.h-full'));
+    expect(bars.map((bar) => bar.style.width)).toEqual(['20%', '0%', '80%']);
+  });
+
   it('describes each kind of event in the live feed', () => {
     const feed = rows(card(render(), 'Live activity'));
 
@@ -131,7 +146,7 @@ describe('ActivityComponent', () => {
   it('lists the most traded symbols under the chosen range', () => {
     const traded = card(render(), 'Most traded');
 
-    expect(text(traded.querySelector('.dash-table-head')!)).toBe('Asset Today Orders Notional');
+    expect(text(traded.querySelector('.dash-table-head')!)).toBe('Asset 7D Orders Notional');
     expect(rows(traded)).toEqual(['NVDA 312 $1,840,220', 'AAPL 268 $1,210,450']);
     expect(traded.querySelectorAll('app-sparkline path')).toHaveLength(2);
   });
@@ -144,6 +159,7 @@ describe('ActivityComponent', () => {
           feed: [],
           mostTraded: [],
           statuses: [{ status: 'FILLED', count: 0 }],
+          segments: [{ segment: 'BEGINNER', traders: 0, orders: 0, notional: 0 }],
           kpis: {
             ...activity().kpis,
             fillRate: { value: null, change: null, filled: 0 },
@@ -159,25 +175,74 @@ describe('ActivityComponent', () => {
     expect(text(card(root, 'Fill rate'))).toBe('Fill rate — 0 filled');
     expect(text(card(root, 'Rejected'))).toBe('Rejected 0 none in this period');
     expect(text(card(root, 'Orders by status'))).toContain('filled 0 0.0%');
+    expect(text(card(root, 'Client segments'))).toContain('beginner $0 0.0% 0 traders · 0 orders');
     expect(text(root.querySelector('app-page-header p')!)).not.toContain('session');
   });
 
-  it('loads another range when one is chosen and plots it by the day', () => {
-    const root = render();
-    expect(load).toHaveBeenLastCalledWith('today');
-
-    const week = Array.from(root.querySelectorAll('app-timeframe-toggle button')).find(
-      (button) => text(button) === '7D',
+  const toggle = (root: HTMLElement, label: string) =>
+    Array.from(root.querySelectorAll('app-timeframe-toggle button')).find(
+      (button) => text(button) === label,
     ) as HTMLButtonElement;
-    week.click();
-    settle();
+
+  it('opens on the last seven days, plotted by the day', () => {
+    const root = render();
 
     expect(load).toHaveBeenLastCalledWith('7d');
-    expect(week.getAttribute('aria-pressed')).toBe('true');
-    const traded = card(root, 'Most traded');
-    expect(text(traded.querySelector('.dash-table-head')!)).toBe('Asset 7D Orders Notional');
+    expect(toggle(root, '7D').getAttribute('aria-pressed')).toBe('true');
+    expect(card(root, 'Notional traded').querySelector('[role="img"]')!.getAttribute('aria-label')).toBe(
+      'Notional traded, 7D: $6,044',
+    );
     const days = Array.from(root.querySelectorAll('[data-axis="x"] > span')).map(text);
     expect(days.every((label) => /^[A-Z][a-z]{2} \d{1,2}$/.test(label))).toBe(true);
+  });
+
+  it('loads another range when one is chosen, and comes back to it', () => {
+    const root = render();
+
+    toggle(root, '30D').click();
+    settle();
+
+    expect(load).toHaveBeenLastCalledWith('30d');
+    expect(toggle(root, '30D').getAttribute('aria-pressed')).toBe('true');
+    expect(text(card(root, 'Most traded').querySelector('.dash-table-head')!)).toBe(
+      'Asset 30D Orders Notional',
+    );
+    expect(localStorage.getItem(RANGE_KEY)).toBe('30d');
+
+    // Leaving for another screen destroys this one; coming back opens on the same range.
+    fixture.destroy();
+    TestBed.resetTestingModule();
+    load.mockClear();
+    const again = render();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(load).toHaveBeenLastCalledWith('30d');
+    expect(toggle(again, '30D').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('opens on seven days when what the browser remembers is not a range', () => {
+    localStorage.setItem(RANGE_KEY, '1y');
+    render();
+
+    expect(load).toHaveBeenLastCalledWith('7d');
+  });
+
+  it('still changes range when the browser refuses to store the choice', () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const root = render();
+    getItem.mockRestore();
+    expect(load).toHaveBeenLastCalledWith('7d');
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+
+    toggle(root, '90D').click();
+    settle();
+
+    expect(load).toHaveBeenLastCalledWith('90d');
+    expect(toggle(root, '90D').getAttribute('aria-pressed')).toBe('true');
+    setItem.mockRestore();
   });
 
   it('reads the ledgers again on its own', () => {
@@ -222,7 +287,7 @@ describe('ActivityComponent', () => {
     fixture.detectChanges();
     root.querySelector<HTMLButtonElement>('[role="menuitem"]')!.click();
 
-    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('activity-today.csv');
+    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('activity-7d.csv');
     expect(blobs[0].size).toBeGreaterThan(0);
     click.mockRestore();
   });

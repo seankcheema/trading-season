@@ -32,6 +32,18 @@ export interface DailyCount {
   rejected: number;
 }
 
+// The resolved orders of one client segment, which is a trader level. UNKNOWN
+// collects accounts the database does not know.
+export interface SegmentReport {
+  segment: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'UNKNOWN';
+  // Accounts that resolved at least one order.
+  accounts: number;
+  total: number;
+  filled: number;
+  rejected: number;
+  notional: string;
+}
+
 // The report.json of one run.
 export interface Report {
   runId: string;
@@ -43,6 +55,7 @@ export interface Report {
   volumeBySymbol: VolumeBySymbol[];
   tradesPerAccount: TradesPerAccount[];
   dailyCounts: DailyCount[];
+  activityBySegment: SegmentReport[];
   files: string[];
 }
 

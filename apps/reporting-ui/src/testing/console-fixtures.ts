@@ -43,6 +43,11 @@ export function activity(overrides: Partial<Activity> = {}): Activity {
       { status: 'ACCEPTED', count: 1 },
       { status: 'REJECTED', count: 2 },
     ],
+    segments: [
+      { segment: 'BEGINNER', traders: 120, orders: 310, notional: 1208.7 },
+      { segment: 'INTERMEDIATE', traders: 1, orders: 1, notional: 0 },
+      { segment: 'ADVANCED', traders: 52, orders: 714, notional: 4834.8 },
+    ],
     feed: [
       {
         kind: 'fill',

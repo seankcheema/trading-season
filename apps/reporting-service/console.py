@@ -35,6 +35,8 @@ MAX_ORDER_LIMIT = 1000
 TRANSFER_REASONS = ('DEPOSIT', 'WITHDRAWAL')
 # Sign-ins that work on the platform instead of trading on it. They are not customers.
 STAFF_ROLES = ('ANALYST', 'ADMIN')
+# The client segments activity is split by: the trader levels, lowest first.
+SEGMENTS = ('BEGINNER', 'INTERMEDIATE', 'ADVANCED')
 
 
 def _utc(value):
@@ -154,6 +156,25 @@ def _most_traded(rows):
     ]
 
 
+def _segments(rows):
+    """
+    What each client segment did: the traders who placed an order, their
+    orders and the notional filled. A trader counts under the level they hold
+    now, whatever it was when the order was placed.
+    """
+    by_segment = {segment: {'traders': set(), 'orders': 0, 'notional': Decimal(0)} for segment in SEGMENTS}
+    for _order, _account, user, _instrument, fill in rows:
+        entry = by_segment[user.trader_level]
+        entry['traders'].add(user.user_id)
+        entry['orders'] += 1
+        entry['notional'] += _notional(fill)
+    return [
+        {'segment': segment, 'traders': len(entry['traders']), 'orders': entry['orders'],
+         'notional': _number(entry['notional'])}
+        for segment, entry in by_segment.items()
+    ]
+
+
 def _feed(session, now):
     """The newest things that happened on the platform, whatever the selected range."""
     items = []
@@ -194,7 +215,10 @@ def _feed(session, now):
 
 
 def activity(session, range_key, now, tz_offset_minutes=0):
-    """Headline figures, the notional chart, the status split, the feed and the most traded symbols."""
+    """
+    Headline figures, the notional chart, the status split, the split by
+    client segment, the feed and the most traded symbols.
+    """
     start, step, count = window(range_key, now, tz_offset_minutes)
     prior_start = start - (now - start)
 
@@ -255,6 +279,7 @@ def activity(session, range_key, now, tz_offset_minutes=0):
                        for index, value in enumerate(points)],
         },
         'statuses': [{'status': status, 'count': statuses.get(status, 0)} for status in ORDER_STATUSES],
+        'segments': _segments(current),
         'feed': _feed(session, now),
         'mostTraded': _most_traded(current),
     }

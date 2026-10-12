@@ -41,6 +41,26 @@ const RANGES: ToggleOption<ActivityRange>[] = [
   { value: '90d', label: '90D' },
 ];
 
+// Where this browser remembers the range Activity was last showing.
+export const RANGE_KEY = 'ts.reporting.activity-range';
+// The range a browser with nothing remembered opens on.
+const DEFAULT_RANGE: ActivityRange = '7d';
+
+// Storage can throw in private windows or with blocked site data; Activity then opens on the default.
+function readRange(): ActivityRange {
+  try {
+    const saved = localStorage.getItem(RANGE_KEY);
+    return RANGES.find((option) => option.value === saved)?.value ?? DEFAULT_RANGE;
+  } catch {
+    return DEFAULT_RANGE;
+  }
+}
+
+// "1 trader", "312 traders".
+function plural(value: number, noun: string): string {
+  return `${count(value)} ${noun}${value === 1 ? '' : 's'}`;
+}
+
 interface Kpi {
   label: string;
   value: string;
@@ -104,8 +124,9 @@ function feedRow(item: FeedItem): FeedRow {
 }
 
 // What is happening on the platform over a chosen range: headline figures against
-// the period before, notional traded, the status split, the newest events, and
-// the most traded symbols.
+// the period before, notional traded, the status split, the split by client
+// segment, the newest events, and the most traded symbols. It opens on the range
+// this browser last chose.
 @Component({
   selector: 'app-activity',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -129,9 +150,12 @@ function feedRow(item: FeedItem): FeedRow {
     }),
   ],
   // From 1024px wide the screen fills the window and its lists scroll inside their
-  // cards; a window shorter than the minimum scrolls the page instead. The minimum
-  // is low enough for a short wide display, such as 1920x828 less the browser's bars.
-  host: { class: 'flex flex-col gap-3 lg:min-h-[37.5rem] lg:flex-1 lg:basis-0' },
+  // cards; a window shorter than the minimum scrolls the page instead. From 1280px
+  // the minimum is low enough for a short wide display, such as 1920x828 less the
+  // browser's bars. Narrower, the two splits stack beside the chart and need more.
+  host: {
+    class: 'flex flex-col gap-3 lg:min-h-[63.5rem] lg:flex-1 lg:basis-0 xl:min-h-[37.5rem]',
+  },
   styles: `
     .traded-grid {
       display: grid;
@@ -185,11 +209,13 @@ function feedRow(item: FeedItem): FeedRow {
           }
         </div>
 
-        <!-- The chart row takes the smaller share and never less than the four statuses need. -->
+        <!-- The chart row takes the smaller share and never less than the four statuses need.
+             From 1280px the chart and the two splits stand in one row; narrower, the
+             splits stack beside the chart, which keeps its width. -->
         <div
-          class="grid gap-3 lg:min-h-[15rem] lg:flex-[4] lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]"
+          class="grid gap-3 lg:min-h-[30.75rem] lg:flex-[4] lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:grid-rows-[repeat(2,minmax(0,1fr))] xl:min-h-[15rem] xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] xl:grid-rows-[minmax(0,1fr)]"
         >
-          <section class="dash-card flex min-h-0 flex-col p-5">
+          <section class="dash-card flex min-h-0 flex-col p-5 lg:row-span-2 xl:row-span-1">
             <h2 class="dash-label">Notional traded</h2>
             <p class="mt-1 flex items-center gap-3">
               <span class="text-3xl font-semibold tracking-tight tabular-nums">
@@ -226,6 +252,27 @@ function feedRow(item: FeedItem): FeedRow {
                   </div>
                   <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
                     <div class="h-full rounded-full" [class]="row.bar" [style.width.%]="row.share"></div>
+                  </div>
+                </div>
+              }
+            </div>
+          </section>
+
+          <section class="dash-card min-h-0 overflow-hidden p-5">
+            <h2 class="text-sm font-semibold">Client segments</h2>
+            <div class="mt-4 flex flex-col gap-3" data-segments>
+              @for (row of segments(); track row.segment) {
+                <div>
+                  <div class="flex items-center justify-between gap-2 text-sm">
+                    <span class="capitalize">{{ row.segment.toLowerCase() }}</span>
+                    <span class="tabular-nums">
+                      {{ wholeDollars(row.notional) }}
+                      <span class="text-muted-foreground text-xs">{{ percent(row.share) }}</span>
+                    </span>
+                  </div>
+                  <p class="text-muted-foreground text-xs">{{ row.detail }}</p>
+                  <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
+                    <div class="bg-primary h-full rounded-full" [style.width.%]="row.share"></div>
                   </div>
                 </div>
               }
@@ -299,7 +346,7 @@ export class ActivityComponent {
   private readonly _api = inject(ReportingApiService);
 
   protected readonly ranges = RANGES;
-  protected readonly range = signal<ActivityRange>('today');
+  protected readonly range = signal<ActivityRange>(readRange());
   protected readonly activity = live(() => this._api.activity(this.range()), ACTIVITY_REFRESH_MS);
 
   protected readonly rangeLabel = computed(
@@ -369,6 +416,17 @@ export class ActivityComponent {
     });
   });
 
+  // A segment's share is of the notional traded, the figure the chart beside it plots.
+  protected readonly segments = computed(() => {
+    const rows = this.activity.data()!.segments;
+    const total = rows.reduce((sum, row) => sum + row.notional, 0);
+    return rows.map((row) => ({
+      ...row,
+      detail: `${plural(row.traders, 'trader')} · ${plural(row.orders, 'order')}`,
+      share: total ? (row.notional / total) * 100 : 0,
+    }));
+  });
+
   protected readonly feed = computed(() => this.activity.data()!.feed.map(feedRow));
 
   protected readonly count = count;
@@ -377,6 +435,11 @@ export class ActivityComponent {
 
   protected choose(range: ActivityRange): void {
     this.range.set(range);
+    try {
+      localStorage.setItem(RANGE_KEY, range);
+    } catch {
+      // The choice still holds until the screen is left.
+    }
     this.activity.reload();
   }
 

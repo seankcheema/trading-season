@@ -185,9 +185,24 @@ class TestActivity:
 
         assert 'lock' not in [item['kind'] for item in console.activity(platform, 'today', NOW)['feed']]
 
+    def test_activity_is_split_by_client_segment_with_every_level_listed(self, platform):
+        today = console.activity(platform, 'today', NOW)['segments']
+
+        # Jane, a beginner, had one order rejected and has one in flight; Sean, advanced, filled 4 at 110.
+        assert today == [
+            {'segment': 'BEGINNER', 'traders': 1, 'orders': 2, 'notional': 0.0},
+            {'segment': 'INTERMEDIATE', 'traders': 0, 'orders': 0, 'notional': 0.0},
+            {'segment': 'ADVANCED', 'traders': 1, 'orders': 1, 'notional': 440.0},
+        ]
+        # The week adds yesterday's fill, by the same trader.
+        week = console.activity(platform, '7d', NOW)['segments']
+        assert week[2] == {'segment': 'ADVANCED', 'traders': 1, 'orders': 2, 'notional': 640.0}
+
     def test_an_empty_platform_reports_zeros(self, db_session):
         report = console.activity(db_session, '30d', NOW)
 
+        assert [row['segment'] for row in report['segments']] == ['BEGINNER', 'INTERMEDIATE', 'ADVANCED']
+        assert all((row['traders'], row['orders'], row['notional']) == (0, 0, 0.0) for row in report['segments'])
         assert report['kpis']['orders'] == {'value': 0, 'change': None}
         assert report['kpis']['fillRate'] == {'value': None, 'change': None, 'filled': 0}
         assert report['kpis']['rejected'] == {'value': 0, 'topReason': None, 'topReasonCount': 0}

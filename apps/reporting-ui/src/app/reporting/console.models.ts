@@ -4,6 +4,7 @@
 export type ActivityRange = 'today' | '7d' | '30d' | '90d';
 export type OrderStatus = 'FILLED' | 'PENDING' | 'ACCEPTED' | 'REJECTED';
 export type OrderSide = 'BUY' | 'SELL';
+export type TraderLevel = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
 
 // A figure with its change against the period before, in percent; null when
 // that period has nothing to compare with.
@@ -32,6 +33,15 @@ export interface StatusCount {
   count: number;
 }
 
+// What the traders of one level did in the range. A level is the product's client segment.
+export interface SegmentActivity {
+  segment: TraderLevel;
+  // Traders of the level who placed at least one order.
+  traders: number;
+  orders: number;
+  notional: number;
+}
+
 export type FeedItem =
   | { kind: 'fill'; at: string; userName: string; side: OrderSide; quantity: number; symbol: string; amount: number }
   | { kind: 'reject'; at: string; orderId: number; reason: string | null; symbol: string }
@@ -55,6 +65,8 @@ export interface Activity {
   kpis: ActivityKpis;
   notional: { total: number; change: number | null; points: NotionalPoint[] };
   statuses: StatusCount[];
+  // One entry per trader level, lowest first.
+  segments: SegmentActivity[];
   feed: FeedItem[];
   mostTraded: TradedSymbol[];
 }
