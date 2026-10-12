@@ -26,7 +26,7 @@ function distinct(rows: readonly LedgerRow[], pick: (row: LedgerRow) => string):
   host: { class: 'flex min-h-0 flex-1 flex-col' },
   template: `
     @if (rows().length) {
-      <div class="mb-4 flex flex-wrap items-end gap-2" data-print-hide="true">
+      <div class="mb-4 flex flex-wrap items-end gap-2">
         <label class="flex max-w-[300px] flex-[1_1_240px] flex-col gap-1">
           <span class="dash-label text-[11px]">Search</span>
           <span class="relative">

@@ -24,7 +24,7 @@ import { toNumber } from '../reporting/report-summary';
 import { ReportStore } from '../reporting/report-store.service';
 import { ReportingApiService } from '../reporting/reporting-api.service';
 import { ChangePillComponent } from '../shared/change-pill.component';
-import { saveFile } from '../shared/export-menu.component';
+import { ExportMenuComponent, saveFile } from '../shared/export-menu.component';
 import { roundStep } from '../shared/line-chart.component';
 import { PageHeaderComponent } from '../shared/page-header.component';
 
@@ -76,7 +76,7 @@ function outcome(filled: number, rejected: number): string {
 @Component({
   selector: 'app-runs',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon, NgTemplateOutlet, PageHeaderComponent, ChangePillComponent],
+  imports: [NgIcon, NgTemplateOutlet, PageHeaderComponent, ChangePillComponent, ExportMenuComponent],
   providers: [provideIcons({ lucideCircleAlert, lucideDownload, lucideInbox, lucideRefreshCw })],
   host: { class: 'block' },
   templateUrl: './runs.component.html',

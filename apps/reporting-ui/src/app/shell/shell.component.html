@@ -97,6 +97,18 @@
   </aside>
 
   <main class="flex min-h-0 min-w-0 flex-col overflow-y-auto px-4 pb-4 md:px-6">
+    <!-- An exported PDF has no sidebar; this line says what the document is, when it was made and by whom. -->
+    <div
+      class="text-muted-foreground hidden items-center justify-between gap-4 border-b pb-3 text-xs print:flex"
+      data-print-header
+    >
+      <span class="text-foreground flex items-center gap-2.5">
+        <img src="2b-waves.svg" alt="" class="size-6 shrink-0" />
+        <span class="text-sm font-semibold tracking-tight">TradingSeason</span>
+        <span class="dash-label text-[11px]">Reporting</span>
+      </span>
+      <span>Exported {{ printedAt() }} by {{ userName() }}</span>
+    </div>
     <router-outlet />
   </main>
 </div>

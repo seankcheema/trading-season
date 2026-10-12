@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { Observable, of, throwError } from 'rxjs';
+import { text } from '../../testing/dom';
 import { accessToken, profile, report, run, schedulerStatus } from '../../testing/fixtures';
 import { AuthService } from '../core/auth/auth.service';
 import { TokenStorageService } from '../core/auth/token-storage.service';
@@ -125,6 +126,25 @@ describe('ShellComponent', () => {
     expect(again.querySelector('button[aria-label="Expand sidebar"]')).not.toBeNull();
     again.querySelector<HTMLButtonElement>('button[aria-label="Expand sidebar"]')!.click();
     expect(localStorage.getItem('ts.reporting.sidebar-collapsed')).toBe('false');
+  });
+
+  it('opens an exported PDF with what it is, when it was made and by whom', () => {
+    signIn({ email: 'sean@example.com', roles: ['ADMIN'] });
+    const root = render();
+    const header = root.querySelector('[data-print-header]')!;
+    const line = () => text(header);
+
+    // Hidden on screen, shown only in print.
+    expect(header.className).toContain('hidden');
+    expect(header.className).toContain('print:flex');
+    expect(line()).toMatch(/^TradingSeason Reporting Exported \w{3} \d{1,2}, \d{4}, .+ by Sean Cheema$/);
+
+    // The time is taken again each time the screen goes to print.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2031-03-04T15:06:07Z'));
+    window.dispatchEvent(new Event('beforeprint'));
+    vi.useRealTimers();
+    expect(line()).toContain('Exported Mar 4, 2031');
   });
 
   it('still collapses when the browser refuses to store the choice', () => {

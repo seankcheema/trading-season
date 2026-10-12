@@ -19,6 +19,7 @@
     <ng-icon name="lucideRefreshCw" size="16" />
     {{ store.refreshing() ? 'Refreshing…' : 'Refresh' }}
   </button>
+  <app-export-menu [csv]="false" />
 </app-page-header>
 
 <!-- Which color is which, wherever filled and rejected orders share a chart. -->

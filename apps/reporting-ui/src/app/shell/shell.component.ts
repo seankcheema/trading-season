@@ -1,5 +1,6 @@
 import {
   ChangeDetectionStrategy,
+  ChangeDetectorRef,
   Component,
   DestroyRef,
   computed,
@@ -20,6 +21,7 @@ import {
 } from '@ng-icons/lucide';
 import { AuthService } from '../core/auth/auth.service';
 import { TokenStorageService } from '../core/auth/token-storage.service';
+import { fullStamp } from '../reporting/format';
 import { ReportStore } from '../reporting/report-store.service';
 
 interface NavItem {
@@ -69,6 +71,7 @@ function readCollapsed(): boolean {
       lucideUsers,
     }),
   ],
+  host: { '(window:beforeprint)': 'stampPrint()' },
   templateUrl: './shell.component.html',
 })
 export class ShellComponent {
@@ -78,6 +81,7 @@ export class ShellComponent {
   private readonly _storage = inject(TokenStorageService);
   private readonly _identity = this._storage.identity;
   private readonly _store = inject(ReportStore);
+  private readonly _changes = inject(ChangeDetectorRef);
 
   // The screens this account may open: all of them for an admin, the runs for an analyst.
   protected readonly nav = computed(() =>
@@ -110,6 +114,15 @@ export class ShellComponent {
       .map((part) => part[0] + part.slice(1).toLowerCase())
       .join(' · ');
   });
+
+  // When the screen was last sent to print, for the line an exported PDF opens with.
+  protected readonly printedAt = signal(fullStamp(new Date().toISOString()));
+
+  // The browser lays the page out for print as soon as this returns, so the new time is rendered at once.
+  protected stampPrint(): void {
+    this.printedAt.set(fullStamp(new Date().toISOString()));
+    this._changes.detectChanges();
+  }
 
   protected toggleSidebar(): void {
     const collapsed = !this.collapsed();

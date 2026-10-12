@@ -148,7 +148,7 @@ The tokens are declared in [src/styles.css](src/styles.css) with the same values
 | --- | --- |
 | ChangePill, status tags | [change-pill.component.ts](src/app/shared/change-pill.component.ts) |
 | TimeframeToggle | [timeframe-toggle.component.ts](src/app/shared/timeframe-toggle.component.ts) |
-| HeaderDropdown with the export menu | [export-menu.component.ts](src/app/shared/export-menu.component.ts): CSV of the rows on screen, or PDF through the print dialog |
+| HeaderDropdown with the export menu | [export-menu.component.ts](src/app/shared/export-menu.component.ts): CSV of the rows on screen, or PDF through the print dialog; see [Export PDF](#export-pdf) |
 | Select with a caption | [filter-select.component.ts](src/app/shared/filter-select.component.ts) |
 | PriceChart | [line-chart.component.ts](src/app/shared/line-chart.component.ts) |
 | Sparkline | [sparkline.component.ts](src/app/shared/sparkline.component.ts) |
@@ -183,6 +183,17 @@ The kit is a proposal drawn on sample data. Where the product has no such data, 
 Report runs is not in the kit. It is built from the kit's vocabulary as Activity uses it: the headline tiles, cards, the 6px bars of Orders by status, and filled orders in the gain color with rejected ones in the loss color. Its figures are drawn in the page from the latest run's `report.json`; the days of Trades per day are also given to screen readers as a table, and the column under the pointer is read out above the chart. The PNG charts the Reporting Service renders, in the same surface and colors, are the downloads. When a run is more than a minute late the header says Overdue with the time it was expected, which is how a consumer that is not running shows.
 
 This app does not use the Client UI's [shared-ui-components](../client-ui/shared-ui-components/README.md). Its own markup is styled directly from the tokens, so that library still has one consumer.
+
+### Export PDF
+
+Export PDF, on every screen, prints the screen through the browser's print dialog, and the print rules in [src/styles.css](src/styles.css) make the printout the desktop screen:
+
+- The page is 1376 by 973 CSS pixels, A4's landscape proportions, so the content is as wide as a laptop window and still fits paper. In print every breakpoint counts as reached, because a width query in print answers for the sheet the browser has in mind and not for that page; the breakpoint variants are redefined in the stylesheet to say so.
+- The sidebar, the Export and Refresh buttons and the download links are left out. A line at the top, shown only in print, carries the product name, when the export was made and who made it. The Activity range and the filters of Orders and Customers stay, so the document says what it covers.
+- Nothing scrolls or clips: every list and table is printed whole, over as many pages as it needs. A card stays on one page; a card that holds a list breaks between its rows.
+- The dark theme is kept, and the page margins are covered in the app's background so no frame shows around a page.
+
+In the print dialog choose "Save as PDF". The dialog's own Paper size and Margins are overridden by the page the stylesheet sets. A table that runs over several pages does not repeat its column headings, because the tables are grids and not HTML tables.
 
 ## Commands
 

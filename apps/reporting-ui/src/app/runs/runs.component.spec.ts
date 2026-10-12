@@ -53,6 +53,16 @@ describe('RunsComponent', () => {
       (bar) => `${bar.className.match(/bg-\w+/)![0]} ${Math.round(parseFloat(bar.style.width))}%`,
     );
 
+  it('offers the screen as a PDF, and no CSV', () => {
+    const root = render();
+    const menu = root.querySelector('app-export-menu')!;
+
+    menu.querySelector<HTMLButtonElement>('button')!.click();
+    fixture.detectChanges();
+
+    expect(Array.from(menu.querySelectorAll('[role="menuitem"]')).map(text)).toEqual(['Export PDF']);
+  });
+
   it('names the run on screen and says when the next one is due', () => {
     const root = render();
     const header = root.querySelector('app-page-header')!;

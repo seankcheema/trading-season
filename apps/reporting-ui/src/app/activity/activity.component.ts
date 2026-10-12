@@ -164,7 +164,6 @@ function feedRow(item: FeedItem): FeedRow {
     <app-page-header title="Activity" [subtitle]="subtitle()">
       <app-timeframe-toggle
         label="Activity range"
-        data-print-hide="true"
         [options]="ranges"
         [value]="range()"
         (valueChange)="choose($event)"

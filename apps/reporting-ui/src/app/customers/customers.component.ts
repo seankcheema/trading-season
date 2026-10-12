@@ -92,7 +92,7 @@ function sortValue(customer: Customer, key: CustomerSortKey): string | number {
           </div>
         }
         @case ('ready') {
-          <div class="mb-4 flex flex-wrap items-end gap-2" data-print-hide="true">
+          <div class="mb-4 flex flex-wrap items-end gap-2">
             <label class="flex max-w-[320px] flex-[1_1_240px] flex-col gap-1">
               <span class="dash-label text-[11px]">Search</span>
               <span class="relative">

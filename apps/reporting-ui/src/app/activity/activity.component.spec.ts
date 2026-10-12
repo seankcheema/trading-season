@@ -189,6 +189,8 @@ describe('ActivityComponent', () => {
 
     expect(load).toHaveBeenLastCalledWith('7d');
     expect(toggle(root, '7D').getAttribute('aria-pressed')).toBe('true');
+    // The range stays in an exported PDF, which would not say what it covers without it.
+    expect(root.querySelector('app-timeframe-toggle')!.hasAttribute('data-print-hide')).toBe(false);
     expect(card(root, 'Notional traded').querySelector('[role="img"]')!.getAttribute('aria-label')).toBe(
       'Notional traded, 7D: $6,044',
     );
