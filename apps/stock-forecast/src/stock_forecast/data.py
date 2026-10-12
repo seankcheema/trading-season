@@ -106,6 +106,18 @@ def split_by_date(
     test_start: str = config.TEST_START,
 ) -> Splits:
     """Split by date into train, validation and test. Never shuffles."""
+    # Reject invalid boundaries before slicing so the intended date windows
+    # cannot silently overlap or run backward.
+    boundaries = [pd.Timestamp(value) for value in (train_end, val_start, val_end, test_start)]
+    if not (boundaries[0] < boundaries[1] <= boundaries[2] < boundaries[3]):
+        raise ValueError("Split dates overlap or are out of order")
+    if not dataset.index.is_monotonic_increasing:
+        raise ValueError("Dataset dates must be in chronological order")
+    if dataset.index.has_duplicates:
+        raise ValueError("Dataset contains duplicate dates")
+    if dataset.isna().any().any():
+        raise ValueError("Dataset contains missing values")
+
     train = dataset.loc[:train_end]
     val = dataset.loc[val_start:val_end]
     test = dataset.loc[test_start:]
@@ -115,4 +127,6 @@ def split_by_date(
             raise ValueError(f"The {name} split is empty; check the split dates against the data")
     if not (train.index.max() < val.index.min() and val.index.max() < test.index.min()):
         raise ValueError("Splits overlap or are out of order")
+    if any(part.isna().any().any() for part in (train, val, test)):
+        raise ValueError("A split contains missing values")
     return Splits(train=train, val=val, test=test)

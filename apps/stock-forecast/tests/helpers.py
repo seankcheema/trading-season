@@ -19,9 +19,11 @@ def make_prices(seed: int = 0, start: str = "2014-01-01", end: str = "2026-09-30
     return pd.DataFrame({"Open": open_, "High": high, "Low": low, "Close": close, "Volume": volume}, index=index)
 
 
-def make_dataset(seed: int = 0) -> pd.DataFrame:
+def make_dataset(seed: int = 0, start: str = "2014-01-01") -> pd.DataFrame:
     """A model-ready dataset built from two independent random walks."""
-    return build_dataset(make_prices(seed), make_prices(seed + 1, start_price=300.0))
+    return build_dataset(
+        make_prices(seed, start=start), make_prices(seed + 1, start=start, start_price=300.0)
+    )
 
 
 def simulate_var(coefs: list, intercept: list, n: int, noise: float = 0.5, seed: int = 0,

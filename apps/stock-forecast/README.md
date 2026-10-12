@@ -57,11 +57,12 @@ Run from `apps/stock-forecast` with the virtual environment active.
 | Step | Command | Writes | When |
 | --- | --- | --- | --- |
 | 1 | `python scripts/0001-download-data.py` | `data/*.csv` | Once, week 1; refuses to overwrite either existing snapshot unless `--force` is supplied |
-| 2 | `python scripts/0005-export-scorecard.py --placeholder` | Placeholder `scorecard.json` for the UI | Once, week 1 |
-| 3 | `python scripts/0002-evaluate-baselines.py` | `reports/results.csv`, direction chart | Week 1, again after changes |
-| 4 | `python scripts/0003-train-lstm.py` | `models/`, `reports/results.csv`, loss and lag charts | Week 2 |
-| 5 | `python scripts/0004-walk-forward.py --with-lstm` | `reports/walk_forward.csv`, chart | Week 3 |
-| 6 | `python scripts/0005-export-scorecard.py --model lstm` | `reports/test_results.csv`, real `scorecard.json` | Once, Oct 22 |
+| 2 | `python scripts/plot-data.py` | `reports/aapl_price.png`, `reports/aapl_daily_returns.png` | After downloading or changing the snapshot |
+| 3 | `python scripts/0005-export-scorecard.py --placeholder` | Placeholder `scorecard.json` for the UI | Once, week 1 |
+| 4 | `python scripts/0002-evaluate-baselines.py` | `reports/results.csv`, direction chart | Week 1, again after changes |
+| 5 | `python scripts/0003-train-lstm.py` | `models/`, `reports/results.csv`, loss and lag charts | Week 2 |
+| 6 | `python scripts/0004-walk-forward.py --with-lstm` | `reports/walk_forward.csv`, chart | Week 3 |
+| 7 | `python scripts/0005-export-scorecard.py --model lstm` | `reports/test_results.csv`, real `scorecard.json` | Once, Oct 22 |
 
 `0003-train-lstm.py --features ret spy_ret volume_change` trains on several columns. `0005` accepts `--model lstm`, `var` or `linear`, and refuses to rerun the test unless given `--force`.
 
@@ -72,6 +73,13 @@ the first validation forecast, while fitted targets stop before a label that
 would cross into validation. Each run is appended to `reports/results.csv`
 with a UTC timestamp; failed runs are recorded there before the error is raised.
 The direction chart is saved as `reports/direction_accuracy_validation.png`.
+
+`data.py` builds each row from values known at that date's close. The target
+alone shifts by one row: it is the next trading day's return. The ordered split
+uses 2010-2021 for training, 2022-2023 for validation, and 2024 onward for
+testing; invalid boundaries, unsorted dates, duplicate dates, empty parts, and
+missing values raise errors. `plot-data.py` validates the dataset and saves
+the chronological price and daily-return charts under `reports/`.
 
 ## Tests
 

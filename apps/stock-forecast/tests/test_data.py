@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 
 from stock_forecast.data import add_features, build_dataset, load_prices, save_prices, split_by_date
+from stock_forecast import config
 from tests.helpers import make_dataset, make_prices
 
 
@@ -47,17 +48,46 @@ class BuildDatasetTests(unittest.TestCase):
 class SplitByDateTests(unittest.TestCase):
     # Split boundaries are part of the experiment, not random sampling choices.
     def test_splits_are_in_order_and_cover_every_row(self):
-        dataset = make_dataset()
+        dataset = make_dataset(start="2010-01-01")
         splits = split_by_date(dataset)
         self.assertLess(splits.train.index.max(), splits.val.index.min())
         self.assertLess(splits.val.index.max(), splits.test.index.min())
         self.assertEqual(len(splits.train) + len(splits.val) + len(splits.test), len(dataset))
+        self.assertEqual(splits.train.index.min().year, 2010)
+        self.assertEqual(splits.train.index.max().date().isoformat(), config.TRAIN_END)
         self.assertEqual(splits.val.index.min().year, 2022)
+        self.assertEqual(splits.val.index.max().year, 2023)
         self.assertEqual(splits.test.index.min().year, 2024)
+        for part in (splits.train, splits.val, splits.test):
+            self.assertFalse(part.isna().any().any())
+            self.assertTrue(part.index.is_monotonic_increasing)
 
     def test_empty_split_is_rejected(self):
+        dataset = make_dataset()
+        empty_ranges = (
+            {"train_end": "2000-12-31"},
+            {"val_start": "2030-01-01", "val_end": "2030-12-31", "test_start": "2031-01-01"},
+            {"test_start": "2030-01-01"},
+        )
+        for boundaries in empty_ranges:
+            with self.subTest(boundaries=boundaries), self.assertRaises(ValueError):
+                split_by_date(dataset, **boundaries)
+
+    def test_overlapping_split_boundaries_are_rejected(self):
         with self.assertRaises(ValueError):
-            split_by_date(make_dataset(), test_start="2030-01-01")
+            split_by_date(make_dataset(), train_end="2022-06-30")
+
+    def test_out_of_order_split_boundaries_are_rejected(self):
+        with self.assertRaises(ValueError):
+            split_by_date(make_dataset(), val_start="2023-01-01", val_end="2022-12-31")
+
+    def test_unsorted_or_missing_dataset_is_rejected_without_shuffling(self):
+        dataset = make_dataset()
+        with self.assertRaises(ValueError):
+            split_by_date(dataset.iloc[::-1])
+        dataset.iloc[100, dataset.columns.get_loc("close")] = np.nan
+        with self.assertRaises(ValueError):
+            split_by_date(dataset)
 
 
 class SaveLoadTests(unittest.TestCase):

@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 
 from stock_forecast.evaluate import (append_results, direction_accuracy, mae, plot_actual_vs_predicted,
-                                     failed_run_row, plot_direction_accuracy, plot_loss, plot_walk_forward, predicted_prices,
-                                     rmse, score)
+                                     failed_run_row, plot_daily_returns, plot_direction_accuracy, plot_loss,
+                                     plot_price, plot_walk_forward, predicted_prices, rmse, score)
 
 
 class MetricTests(unittest.TestCase):
@@ -74,6 +74,9 @@ class ReportTests(unittest.TestCase):
             paths = [
                 plot_actual_vs_predicted(dates, np.arange(80.0), np.arange(80.0) + 1, folder / "lag.png", "Lag"),
                 plot_direction_accuracy(table, 0.51, folder / "direction.png", "Direction"),
+                plot_price(pd.Series(np.arange(80.0) + 100, index=dates), folder / "price.png", "Price"),
+                plot_daily_returns(pd.Series(np.sin(np.arange(80.0)) / 100, index=dates),
+                                   folder / "returns.png", "Returns"),
                 plot_loss({"loss": [1.0, 0.8], "val_loss": [1.1, 0.9]}, folder / "loss.png"),
                 plot_walk_forward(walk, folder / "walk.png"),
             ]

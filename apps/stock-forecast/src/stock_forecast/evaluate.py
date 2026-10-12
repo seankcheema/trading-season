@@ -100,6 +100,29 @@ def predicted_prices(close_today: np.ndarray, predicted_returns: np.ndarray) -> 
     return np.asarray(close_today, dtype=float) * (1 + np.asarray(predicted_returns, dtype=float))
 
 
+def plot_price(prices: pd.Series, path: Path, title: str) -> Path:
+    """Save a chronological daily closing-price chart."""
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+    ax.plot(prices.index, prices.to_numpy(dtype=float), linewidth=1)
+    ax.set_title(title)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Price (USD)")
+    fig.autofmt_xdate()
+    return _save(fig, path)
+
+
+def plot_daily_returns(returns: pd.Series, path: Path, title: str) -> Path:
+    """Save a chart of daily returns, expressed in percent."""
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+    ax.plot(returns.index, returns.to_numpy(dtype=float) * 100, linewidth=0.6)
+    ax.axhline(0, color="black", linewidth=0.8)
+    ax.set_title(title)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Daily return (%)")
+    fig.autofmt_xdate()
+    return _save(fig, path)
+
+
 def plot_actual_vs_predicted(
     dates: pd.Index, actual_next: np.ndarray, predicted_next: np.ndarray, path: Path, title: str, last_n: int = 60
 ) -> Path:
