@@ -1,4 +1,8 @@
-<div class="bg-background min-h-screen px-4 pb-4 md:px-6 lg:h-dvh lg:min-h-0 lg:overflow-hidden">
+<div
+  class="bg-background min-h-screen px-4 pb-4 md:px-6 lg:h-dvh lg:min-h-0 lg:overflow-hidden"
+  data-testid="dashboard-content"
+  [attr.inert]="termsRequired() ? '' : null"
+>
   <div class="mx-auto flex h-full max-w-[1600px] flex-col">
     @if (accountStore.refreshError()) {
       <p role="status" class="text-loss text-xs">
@@ -555,4 +559,8 @@
       />
     }
   }
+}
+
+@if (termsRequired()) {
+  <app-terms-dialog [signatureName]="termsSignatureName()" (declined)="onSignOut()" />
 }
