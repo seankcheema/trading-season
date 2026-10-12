@@ -218,10 +218,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // While the platform terms are unaccepted the dashboard is inert behind the terms dialog.
   protected readonly termsRequired = this.accountStore.needsTermsAcceptance;
   // The name the user types to sign the terms.
-  protected readonly termsSignatureName = computed(() => {
-    const profile = this.accountStore.profile();
-    return profile ? `${profile.firstName ?? ''} ${profile.lastName ?? ''}`.trim() : '';
-  });
+  protected readonly termsSignatureName = this.accountStore.fullName;
   // The profile can arrive after the user has already opened something; nothing may stay open
   // beside the terms dialog.
   private readonly closeDialogsForTerms = effect(() => {

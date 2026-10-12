@@ -311,6 +311,22 @@ describe('AccountStore', () => {
 
       expect(store.initials()).toBe('P');
     });
+
+    it('has no full name before the profile loads', () => {
+      expect(store.fullName()).toBe('');
+    });
+
+    it('joins the first and last name into the full name', () => {
+      load(ACCOUNTS, 5_000, { firstName: 'Ada', lastName: 'Lovelace' });
+
+      expect(store.fullName()).toBe('Ada Lovelace');
+    });
+
+    it('gives the one name on file as the full name', () => {
+      load(ACCOUNTS, 5_000, { firstName: 'Prince', lastName: '   ' });
+
+      expect(store.fullName()).toBe('Prince');
+    });
   });
 
   describe('terms', () => {

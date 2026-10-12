@@ -115,6 +115,13 @@ export class AccountStore {
     return `${firstLetter(profile.firstName)}${firstLetter(profile.lastName)}`;
   });
 
+  // The signed-in user's first and last name, which they type to sign the platform terms.
+  // Empty until the profile loads.
+  readonly fullName = computed(() => {
+    const profile = this._profile();
+    return profile ? `${profile.firstName ?? ''} ${profile.lastName ?? ''}`.trim() : '';
+  });
+
   // True only once the profile has loaded and says the terms in force are not accepted, so
   // nothing asks for acceptance while the answer is still unknown.
   readonly needsTermsAcceptance = computed(() => this._profile()?.termsAccepted === false);
