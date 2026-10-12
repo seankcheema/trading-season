@@ -24,6 +24,26 @@ class ClassicalPipelineTests(unittest.TestCase):
                     self.assertEqual(len(values), len(self.splits.val), name)
                     self.assertFalse(np.isnan(np.asarray(values, dtype=float)).any(), name)
 
+    def test_baseline_score_set_is_six_models_on_all_validation_days(self):
+        preds, _ = classical_predictions(
+            self.splits.train, self.splits.val, history=self.splits.train, include_var=False
+        )
+        self.assertEqual(list(preds), [
+            "Naive (return = 0)", "Always up", "Training-average return",
+            "30-day average return", "Linear regression", "Logistic regression",
+        ])
+        for prediction in preds.values():
+            forecasts = prediction.returns if prediction.returns is not None else prediction.up
+            self.assertEqual(len(forecasts), len(self.splits.val))
+
+    def test_training_average_excludes_label_that_crosses_validation_boundary(self):
+        preds, _ = classical_predictions(
+            self.splits.train, self.splits.val, history=self.splits.train, include_var=False
+        )
+        actual_fit_mean = self.splits.train.iloc[:-1]["target"].mean()
+        expected = np.full(len(self.splits.val), actual_fit_mean)
+        np.testing.assert_allclose(preds["Training-average return"].returns, expected)
+
     def test_var_order_is_chosen_within_range(self):
         self.assertIn(self.info["var_order"], range(1, 11))
         self.assertTrue(any(name.startswith("VAR(") for name in self.preds))

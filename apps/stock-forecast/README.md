@@ -65,6 +65,14 @@ Run from `apps/stock-forecast` with the virtual environment active.
 
 `0003-train-lstm.py --features ret spy_ret volume_change` trains on several columns. `0005` accepts `--model lstm`, `var` or `linear`, and refuses to rerun the test unless given `--force`.
 
+`0002-evaluate-baselines.py` scores six forecasts on the same 2022-2023
+validation dates: zero return, always up, 30-day average, training average,
+linear regression and logistic regression. The 2021 rows supply history for
+the first validation forecast, while fitted targets stop before a label that
+would cross into validation. Each run is appended to `reports/results.csv`
+with a UTC timestamp; failed runs are recorded there before the error is raised.
+The direction chart is saved as `reports/direction_accuracy_validation.png`.
+
 ## Tests
 
 ```powershell

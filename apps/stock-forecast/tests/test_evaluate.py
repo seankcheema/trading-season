@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from stock_forecast.evaluate import (append_results, direction_accuracy, mae, plot_actual_vs_predicted,
-                                     plot_direction_accuracy, plot_loss, plot_walk_forward, predicted_prices,
+                                     failed_run_row, plot_direction_accuracy, plot_loss, plot_walk_forward, predicted_prices,
                                      rmse, score)
 
 
@@ -52,6 +52,17 @@ class ReportTests(unittest.TestCase):
             log = pd.read_csv(path)
         self.assertEqual(list(log["run"]), ["first", "second"])
         self.assertIn("logged_at", log.columns)
+
+    def test_failed_baseline_run_is_logged_with_timestamp(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "results.csv"
+            error = ValueError("synthetic failure")
+            append_results([failed_run_row(error)], path, run="baselines")
+            row = pd.read_csv(path).iloc[0]
+        self.assertEqual(row["run"], "baselines")
+        self.assertEqual(row["days"], 0)
+        self.assertTrue(str(row["logged_at"]))
+        self.assertIn("synthetic failure", row["model"])
 
     def test_charts_are_written(self):
         dates = pd.bdate_range("2024-01-01", periods=80)

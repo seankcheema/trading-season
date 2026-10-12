@@ -37,25 +37,32 @@ def load_dataset() -> pd.DataFrame:
 
 
 def classical_predictions(
-    train: pd.DataFrame, part: pd.DataFrame, history: pd.DataFrame
+    train: pd.DataFrame, part: pd.DataFrame, history: pd.DataFrame, include_var: bool = True
 ) -> tuple[dict[str, Prediction], dict]:
     """Fit every non-neural model on train and forecast each day of part."""
     n = len(part)
+    # The final training row's target belongs to the first day in part. Keep
+    # that row as history, but never use its cross-boundary label to fit.
+    fit_train = train.iloc[:-1]
     # Keep simple baselines beside learned models so each score has context.
     preds: dict[str, Prediction] = {
         "Naive (return = 0)": Prediction(naive_returns(n), include_direction=False),
         "Always up": Prediction(None, always_up(n)),
-        "Training-average return": Prediction(mean_returns(train, n)),
+        "Training-average return": Prediction(mean_returns(fit_train, n)),
         f"{config.MA_WINDOW}-day average return": Prediction(moving_average_returns(part, history=history)),
     }
 
     # Training features and labels align after removing rows without a full lookback.
-    X_train = lag_matrix(train)
-    y_train = aligned_rows(train)["target"].to_numpy()
+    X_train = lag_matrix(fit_train)
+    y_train = aligned_rows(fit_train)["target"].to_numpy()
     # Past-split history fills the first window without using future rows.
     X_part = lag_matrix(part, history=history)
     preds["Linear regression"] = Prediction(fit_linear(X_train, y_train).predict(X_part))
     preds["Logistic regression"] = Prediction(None, fit_logistic(X_train, y_train > 0).predict(X_part).astype(bool))
+
+    # Baseline scoring ends here; VAR remains available to the other workflows.
+    if not include_var:
+        return preds, {"var_order": None}
 
     try:
         order = select_order(train[config.VAR_COLUMNS])

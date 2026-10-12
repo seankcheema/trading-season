@@ -72,6 +72,17 @@ def score(
     }
 
 
+def failed_run_row(error: Exception, split: str = "validation") -> dict:
+    """Represent a failed experiment in the same append-only results log."""
+    return {
+        "model": f"Baseline run failed ({type(error).__name__}: {error})",
+        "split": split,
+        "days": 0,
+        "return_rmse": None,
+        "direction_accuracy": None,
+    }
+
+
 def append_results(rows: list[dict], path: Path, run: str) -> pd.DataFrame:
     """Append rows to the results log, so every experiment is kept, good or bad."""
     # Timestamp each run and append instead of replacing history.
