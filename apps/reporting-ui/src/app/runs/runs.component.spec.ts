@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Subject, of, throwError } from 'rxjs';
-import { fakeReportStore, run, schedulerStatus } from '../../testing/fixtures';
+import { of, throwError } from 'rxjs';
+import { text } from '../../testing/dom';
+import { fakeReportStore, report, run, schedulerStatus } from '../../testing/fixtures';
 import { ReportState, ReportStore } from '../reporting/report-store.service';
 import { ReportingApiService } from '../reporting/reporting-api.service';
 import { RunsComponent } from './runs.component';
@@ -9,18 +10,23 @@ describe('RunsComponent', () => {
   let fixture: ComponentFixture<RunsComponent>;
   let store: ReturnType<typeof fakeReportStore>;
   let runFile: ReturnType<typeof vi.fn>;
-  let createObjectURL: ReturnType<typeof vi.fn>;
-  let revokeObjectURL: ReturnType<typeof vi.fn>;
+  let saved: { name: string; file: Blob }[];
+  let click: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    let next = 0;
-    createObjectURL = vi.fn(() => `blob:chart-${++next}`);
-    revokeObjectURL = vi.fn();
-    // jsdom has no object URLs.
-    URL.createObjectURL = createObjectURL as unknown as typeof URL.createObjectURL;
-    URL.revokeObjectURL = revokeObjectURL as unknown as typeof URL.revokeObjectURL;
+    saved = [];
+    // jsdom has no object URLs; the saved file is read back from what the link was given.
+    const files: Blob[] = [];
+    URL.createObjectURL = ((file: Blob) => (files.push(file), 'blob:chart')) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = vi.fn();
+    click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      saved.push({ name: this.download, file: files[files.length - 1] });
+    });
     runFile = vi.fn(() => of(new Blob(['png'], { type: 'image/png' })));
   });
+  afterEach(() => click.mockRestore());
 
   const render = (state: ReportState = 'ready', prepare?: () => void) => {
     store = fakeReportStore(state);
@@ -32,94 +38,246 @@ describe('RunsComponent', () => {
       ],
     });
     fixture = TestBed.createComponent(RunsComponent);
-    settle();
+    fixture.detectChanges();
     return fixture.nativeElement as HTMLElement;
   };
 
-  // The chart request starts from an effect, so render twice: once to run it, once to show it.
-  const settle = () => {
-    fixture.detectChanges();
-    TestBed.tick();
-    fixture.detectChanges();
-  };
+  const card = (root: HTMLElement, heading: string) =>
+    Array.from(root.querySelectorAll('section')).find(
+      (section) => text(section.querySelector('h2')!) === heading,
+    )!;
+  const meters = (section: HTMLElement) =>
+    Array.from(section.querySelectorAll('[data-meters] > li')).map(text);
+  const widths = (section: HTMLElement) =>
+    Array.from(section.querySelectorAll<HTMLElement>('[data-meters] .h-full')).map(
+      (bar) => `${bar.className.match(/bg-\w+/)![0]} ${Math.round(parseFloat(bar.style.width))}%`,
+    );
 
-  const text = (root: HTMLElement) => root.textContent!.replace(/\s+/g, ' ');
-  const rows = (root: HTMLElement) =>
-    Array.from(root.querySelectorAll<HTMLButtonElement>('li > button'));
+  it('names the run on screen and says when the next one is due', () => {
+    const root = render();
+    const header = root.querySelector('app-page-header')!;
 
-  it('lists the runs and shows the charts of the latest one', () => {
+    expect(text(header.querySelector('p')!)).toMatch(
+      /^Run 20261008T194500Z · generated Oct 8, \d{1,2}:45 [AP]M \S+ · replaced every 15 minutes$/,
+    );
+    expect(text(header.querySelector('[data-schedule]')!)).toMatch(/^Next run \d{1,2}:00 [AP]M \S+$/);
+    expect(header.querySelector('app-change-pill')).toBeNull();
+  });
+
+  it('flags a run that is late, which is how a stopped consumer shows', () => {
+    const root = render('ready', () => store.overdue.set(true));
+    const schedule = root.querySelector('[data-schedule]')!;
+
+    expect(text(schedule)).toMatch(/^Overdue expected \d{1,2}:00 [AP]M \S+$/);
+    expect(schedule.querySelector('app-change-pill')!.className).toContain('text-loss');
+
+    // Without a run to count from there is no schedule to show.
+    store.nextRunAt.set(null);
+    fixture.detectChanges();
+    expect(root.querySelector('[data-schedule]')).toBeNull();
+  });
+
+  it('leads with the headline figures of the run', () => {
     const root = render();
 
-    expect(text(root)).toContain('Written by the reporting consumer every 15 minutes');
-    expect(rows(root)).toHaveLength(1);
-    expect(text(rows(root)[0])).toContain('20261008T194500Z');
-    expect(rows(root)[0].querySelector('.status-pill')!.textContent!.trim()).toBe('Latest');
-    expect(rows(root)[0].getAttribute('aria-pressed')).toBe('true');
+    expect(text(card(root, 'Orders resolved'))).toBe('Orders resolved 8 14 events read');
+    expect(text(card(root, 'Fill rate'))).toBe('Fill rate 75.0% 6 filled');
+    expect(text(card(root, 'Rejected'))).toBe('Rejected 2 25.0% of resolved');
+    expect(text(card(root, 'Traded value'))).toBe('Traded value $6,044 29.5 shares filled');
+    expect(text(card(root, 'Active accounts'))).toBe('Active accounts 2 2 symbols traded');
+  });
 
-    expect(runFile).toHaveBeenCalledWith('20261008T194500Z', 'volume_by_symbol.png');
-    expect(runFile).toHaveBeenCalledTimes(4);
-    const images = Array.from(root.querySelectorAll('img'));
-    expect(images.map((image) => image.getAttribute('src'))).toEqual([
-      'blob:chart-1',
-      'blob:chart-2',
-      'blob:chart-3',
-      'blob:chart-4',
+  it('draws filled and rejected orders per day as stacked columns on a whole-number axis', () => {
+    const daily = card(render(), 'Trades per day');
+
+    // The busiest day resolved five orders, so the axis climbs in twos to six.
+    expect(Array.from(daily.querySelectorAll('[data-axis="y"] span')).map(text)).toEqual([
+      '0',
+      '2',
+      '4',
+      '6',
     ]);
-    expect(images[0].alt).toBe('Traded value by symbol, chart from run 20261008T194500Z');
-    const download = root.querySelector<HTMLAnchorElement>('a[download]')!;
-    expect(download.download).toBe('20261008T194500Z-volume_by_symbol.png');
-    expect(text(root)).toContain('Trades per day');
-    expect(text(root)).toContain('Traded value by client segment');
-    expect(text(root)).toContain('Orders per account');
+    const days = Array.from(daily.querySelectorAll<HTMLElement>('[data-day]'));
+    expect(days).toHaveLength(2);
+    // Two days stand in two of eight slots instead of filling the plot.
+    expect(days.map((day) => day.style.width)).toEqual(['12.5%', '12.5%']);
+    const heights = (day: HTMLElement) =>
+      Array.from(day.querySelectorAll<HTMLElement>('span')).map(
+        (part) => `${part.className.match(/bg-\w+/)![0]} ${Math.round(parseFloat(part.style.height))}%`,
+      );
+    expect(heights(days[0])).toEqual(['bg-loss 17%', 'bg-gain 33%']);
+    expect(heights(days[1])).toEqual(['bg-loss 17%', 'bg-gain 67%']);
+    expect(Array.from(daily.querySelectorAll('[data-axis="x"] span')).map(text)).toEqual(['Oct 7', 'Oct 8']);
+    expect(text(daily.querySelector('[data-legend]')!)).toBe('Filled Rejected');
+    // The drawn chart is hidden from a screen reader, which gets the same figures as a table.
+    expect(Array.from(daily.querySelectorAll('table tbody tr')).map(text)).toEqual(['Oct 7 2 1', 'Oct 8 4 1']);
   });
 
-  it('shows each chart as loading until its image arrives', () => {
-    const pending = new Subject<Blob>();
-    runFile.mockReturnValue(pending);
-    const root = render();
-    expect(text(root)).toContain('Loading chart…');
-    expect(root.querySelector('img')).toBeNull();
+  it('reads out the newest day, or the day under the pointer', () => {
+    const daily = card(render(), 'Trades per day');
+    const readout = () => text(daily.querySelector('[data-readout]')!);
+    const days = Array.from(daily.querySelectorAll<HTMLElement>('[data-day]'));
+    expect(readout()).toBe('Oct 8 · 4 filled · 1 rejected');
 
-    pending.next(new Blob(['png']));
-    pending.complete();
-    settle();
-    expect(root.querySelectorAll('img')).toHaveLength(4);
+    days[0].dispatchEvent(new Event('pointerenter'));
+    fixture.detectChanges();
+    expect(readout()).toBe('Oct 7 · 2 filled · 1 rejected');
+    expect(days[1].className).toContain('opacity-40');
+    expect(days[0].className).not.toContain('opacity-40');
+
+    daily.querySelector('[data-plot]')!.dispatchEvent(new Event('pointerleave'));
+    fixture.detectChanges();
+    expect(readout()).toBe('Oct 8 · 4 filled · 1 rejected');
+    expect(days[1].className).not.toContain('opacity-40');
   });
 
-  it('says which chart failed and names an unknown file by its file name', () => {
-    runFile.mockImplementation((_runId: string, name: string) =>
-      name === 'extra.png' ? of(new Blob(['png'])) : throwError(() => new Error('gone')),
+  it('rounds the top of a day that only filled, and spreads a few labels over many days', () => {
+    const dailyCounts = Array.from({ length: 12 }, (_, index) => ({
+      date: `2026-10-${String(index + 1).padStart(2, '0')}`,
+      filled: index + 1,
+      rejected: 0,
+    }));
+    const daily = card(
+      render('ready', () => store.report.set(report({ dailyCounts }))),
+      'Trades per day',
     );
+
+    const first = daily.querySelector<HTMLElement>('[data-day] span')!;
+    expect(first.className).toContain('bg-gain');
+    expect(first.className).toContain('rounded-t');
+    const labels = Array.from(daily.querySelectorAll<HTMLElement>('[data-axis="x"] span'));
+    expect(labels.map(text)).toEqual(['Oct 1', 'Oct 4', 'Oct 7', 'Oct 9', 'Oct 12']);
+    // The first label starts at its column and the last one ends at its own.
+    expect(labels[0].style.transform).toBe('translateX(0)');
+    expect(labels[2].style.transform).toBe('translateX(-50%)');
+    expect(labels[4].style.transform).toBe('translateX(-100%)');
+  });
+
+  it('splits traded value by client segment, each with its share', () => {
+    const segments = card(render(), 'Traded value by client segment');
+
+    expect(meters(segments)).toEqual([
+      'Beginner $0.00 0.0% 0 accounts · 0 filled · 0 rejected',
+      'Intermediate $0.00 0.0% 0 accounts · 0 filled · 0 rejected',
+      'Advanced $4,619.25 76.4% 1 account · 4 filled · 1 rejected',
+      'Unknown $1,424.66 23.6% 1 account · 2 filled · 1 rejected',
+    ]);
+    expect(widths(segments)).toEqual(['bg-primary 76%', 'bg-primary 24%']);
+  });
+
+  it('ranks symbols by traded value against the most traded one', () => {
+    const symbols = card(render(), 'Traded value by symbol');
+
+    expect(meters(symbols)).toEqual([
+      'NVDA $4,619.25 4 fills · 25 shares',
+      'AAPL $1,424.66 2 fills · 4.5 shares',
+    ]);
+    expect(widths(symbols)).toEqual(['bg-primary 100%', 'bg-primary 31%']);
+  });
+
+  it('shows each account with its filled and rejected orders in one bar', () => {
+    const accounts = card(render(), 'Orders per account');
+
+    expect(meters(accounts)).toEqual([
+      'Growth (Sean Cheema) 5 orders 4 filled · 1 rejected',
+      '12 3 orders 2 filled · 1 rejected',
+    ]);
+    expect(widths(accounts)).toEqual(['bg-gain 80%', 'bg-loss 20%', 'bg-gain 40%', 'bg-loss 20%']);
+    expect(text(accounts.querySelector('[data-legend]')!)).toBe('Filled Rejected');
+  });
+
+  it('says so in each card when the run has nothing to show', () => {
     const root = render('ready', () =>
-      store.runs.set([run({ files: ['daily_trades.png', 'extra.png'] })]),
+      store.report.set(
+        report({
+          statusCounts: { FILLED: 0, REJECTED: 0 },
+          volumeBySymbol: [],
+          tradesPerAccount: [],
+          dailyCounts: [],
+          activityBySegment: [],
+        }),
+      ),
     );
 
-    expect(text(root)).toContain("We couldn't load this chart.");
-    expect(text(root)).toContain('extra.png');
-    expect(root.querySelectorAll('img')).toHaveLength(1);
+    expect(text(card(root, 'Rejected'))).toBe('Rejected 0 nothing resolved yet');
+    expect(text(card(root, 'Fill rate'))).toBe('Fill rate — 0 filled');
+    expect(text(card(root, 'Trades per day'))).toContain('No order has resolved yet.');
+    expect(text(card(root, 'Traded value by client segment'))).toContain('This run has no split by segment.');
+    expect(text(card(root, 'Traded value by symbol'))).toContain('No order has filled yet.');
+    expect(text(card(root, 'Orders per account'))).toContain('No order has resolved yet.');
+    expect(root.querySelector('[data-day]')).toBeNull();
   });
 
-  it('switches to another run and releases the previous charts', () => {
-    const older = run({ runId: '20261008T193000Z', files: ['daily_trades.png'] });
-    const root = render('ready', () => store.runs.set([run(), older]));
-    expect(rows(root)).toHaveLength(2);
-
-    rows(root)[1].click();
-    settle();
-
-    expect(revokeObjectURL).toHaveBeenCalledTimes(4);
-    expect(runFile).toHaveBeenLastCalledWith('20261008T193000Z', 'daily_trades.png');
-    expect(rows(root)[1].getAttribute('aria-pressed')).toBe('true');
-    expect(root.querySelectorAll('img')).toHaveLength(1);
-
-    fixture.destroy();
-    expect(revokeObjectURL).toHaveBeenCalledTimes(5);
-  });
-
-  it('shows no charts for a run without files', () => {
-    const root = render('ready', () => store.runs.set([run({ files: [] })]));
+  it("downloads the report job's own chart for a card", () => {
+    const root = render();
+    const button = card(root, 'Trades per day').querySelector<HTMLButtonElement>('button')!;
+    expect(button.getAttribute('aria-label')).toBe('Download Trades per day as PNG');
     expect(runFile).not.toHaveBeenCalled();
-    expect(root.querySelector('img')).toBeNull();
+
+    button.click();
+
+    expect(runFile).toHaveBeenCalledWith('20261008T194500Z', 'daily_trades.png');
+    expect(saved.map((file) => file.name)).toEqual(['20261008T194500Z-daily_trades.png']);
+    expect(saved[0].file.type).toBe('image/png');
+  });
+
+  it('offers no download for a chart the run does not have', () => {
+    const root = render('ready', () => store.report.set(report({ files: ['daily_trades.png'] })));
+
+    expect(card(root, 'Trades per day').querySelector('button')).not.toBeNull();
+    expect(card(root, 'Traded value by symbol').querySelector('button')).toBeNull();
+    expect(card(root, 'Orders per account').querySelector('button')).toBeNull();
+  });
+
+  it('says when a download failed and clears it on the next try', () => {
+    runFile.mockReturnValueOnce(throwError(() => new Error('gone')));
+    const root = render();
+    const button = card(root, 'Traded value by symbol').querySelector<HTMLButtonElement>('button')!;
+
+    button.click();
+    fixture.detectChanges();
+    expect(text(root.querySelector('[role="alert"]')!)).toBe("We couldn't download that chart. Try again.");
+    expect(saved).toHaveLength(0);
+
+    button.click();
+    fixture.detectChanges();
+    expect(root.querySelector('[role="alert"]')).toBeNull();
+    expect(saved.map((file) => file.name)).toEqual(['20261008T194500Z-volume_by_symbol.png']);
+  });
+
+  it('lists a run still on disk beside the one shown, with its charts to download', () => {
+    const older = run({
+      runId: '20261008T193000Z',
+      generatedAt: '2026-10-08T19:30:00+00:00',
+      eventCount: 1,
+      files: ['daily_trades.png', 'extra.png'],
+    });
+    const root = render('ready', () => store.runs.set([run(), older]));
+    const earlier = card(root, 'Earlier runs');
+    const rows = Array.from(earlier.querySelectorAll('[data-earlier] > li'));
+
+    expect(rows).toHaveLength(1);
+    // A file the screen does not know is offered under its own name.
+    expect(text(rows[0])).toMatch(/^20261008T193000Z Oct 8, \d{1,2}:30 [AP]M \S+ · 1 event Trades per day extra\.png$/);
+
+    rows[0].querySelectorAll<HTMLButtonElement>('button')[1].click();
+    expect(runFile).toHaveBeenCalledWith('20261008T193000Z', 'extra.png');
+    expect(saved.map((file) => file.name)).toEqual(['20261008T193000Z-extra.png']);
+  });
+
+  it('shows no earlier runs when the one on screen is the only one', () => {
+    const root = render();
+
+    expect(card(root, 'Earlier runs')).toBeUndefined();
+  });
+
+  it('keeps the last report on screen when a refresh fails, and says so', () => {
+    const root = render('ready', () => store.refreshFailed.set(true));
+
+    expect(text(root.querySelector('[role="status"]')!)).toMatch(
+      /^We couldn't refresh the report\. This is still the run generated Oct 8, \d{1,2}:45 [AP]M \S+\.$/,
+    );
+    expect(text(card(root, 'Orders resolved'))).toContain('8');
   });
 
   it('refreshes on demand', () => {
@@ -131,11 +289,13 @@ describe('RunsComponent', () => {
     store.refreshing.set(true);
     fixture.detectChanges();
     expect(button.textContent).toContain('Refreshing…');
+    expect(button.disabled).toBe(true);
   });
 
   it('shows loading and empty states', () => {
     const root = render('loading');
     expect(text(root)).toContain('Loading report runs…');
+    expect(root.querySelector('[data-meters]')).toBeNull();
 
     store.state.set('empty');
     store.scheduler.set(null);
@@ -148,11 +308,17 @@ describe('RunsComponent', () => {
     expect(text(root)).toContain('Written by the reporting consumer every minute · each run');
   });
 
-  it('offers a retry instead of an empty list when the service cannot be reached', () => {
-    const root = render('error');
-    expect(text(root.querySelector('[role="alert"]')!)).toContain(
-      "We couldn't load the report runs.",
+  it('names the run without an interval until the scheduler has answered', () => {
+    const root = render('ready', () => store.scheduler.set(null));
+
+    expect(text(root.querySelector('app-page-header p')!)).toMatch(
+      /^Run 20261008T194500Z · generated Oct 8, \d{1,2}:45 [AP]M \S+$/,
     );
+  });
+
+  it('offers a retry instead of an empty page when the service cannot be reached', () => {
+    const root = render('error');
+    expect(text(root.querySelector('[role="alert"]')!)).toContain("We couldn't load the report runs.");
     expect(text(root)).not.toContain('No report runs yet');
 
     Array.from(root.querySelectorAll('button'))

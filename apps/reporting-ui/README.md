@@ -13,7 +13,7 @@ Angular 21 single-page app for the analysts who read the scheduled reports and t
 | `/customers` | admin | Customers: every trader with status, accounts, cash, portfolio, failed sign-ins and last activity; search and filters. Analysts and admins are not customers and are not listed |
 | `/customers/:userId` | admin | One customer: profile, sign-in security, balances, and their orders and cash transfers, with the same search and filters as Orders |
 | `/orders` | admin | Orders: every order, and the deposits and withdrawals among them, with search and filters; an order's row opens the order with its execution, ledger impact, audit trail and references |
-| `/runs` | analyst, admin | Report runs: the runs on disk and the PNG charts of the selected run, with download: traded value by symbol, trades per day, traded value by client segment, orders per account |
+| `/runs` | analyst, admin | Report runs: the latest run as a dashboard. Five headline figures, trades per day, and traded value by client segment, by symbol and per account, with when the next run is due. Each card offers the PNG chart the report job rendered as a download |
 
 An analyst who asks for an admin's screen, by a link or by signing in, is taken to `/runs`, and the sidebar offers an analyst only that entry.
 
@@ -56,7 +56,7 @@ The UI never talks to Kafka or the database. Two kinds of data reach it, both th
 | Orders and cash transfers | Database | `GET /api/reporting/orders` | Reading again every 30 seconds |
 | One order | Database | `GET /api/reporting/orders/{orderId}` | Read when the order is opened |
 | Report runs | `trade-events` files | `GET /api/reporting/runs`, `GET /api/reporting/runs/latest`, `GET /api/reporting/scheduler/status` | Asking the scheduler status every 30 seconds and reloading when the latest run id changes |
-| Chart images of a run | `trade-events` files | `GET /api/reporting/runs/{runId}/files/{name}`, fetched as a blob because an image tag cannot send the bearer token | Loaded with the run |
+| A chart PNG of a run | `trade-events` files | `GET /api/reporting/runs/{runId}/files/{name}`, fetched as a blob because a link cannot send the bearer token | Fetched when its download is asked for |
 | Signed-in user's name and trader level | Database | `GET /api/reporting/profile`; a sign-in without a trading profile (404) shows its email instead | Read once |
 
 A refresh that fails leaves the last good data on screen. The database screens show orders whether or not a Kafka broker was running when they were placed; the report runs show only orders placed while one was.
@@ -180,7 +180,7 @@ The kit is a proposal drawn on sample data. Where the product has no such data, 
 | No way to sign out | A log out button beside the signed-in user | The kit does not draw one |
 | Most traded shows a price sparkline under "Today" whatever the range | The column is named after the chosen range and plots the symbol's fill prices in it | The label follows what is plotted |
 
-The chart images on the Report runs screen are drawn by the Reporting Service, in the same surface and colors.
+Report runs is not in the kit. It is built from the kit's vocabulary as Activity uses it: the headline tiles, cards, the 6px bars of Orders by status, and filled orders in the gain color with rejected ones in the loss color. Its figures are drawn in the page from the latest run's `report.json`; the days of Trades per day are also given to screen readers as a table, and the column under the pointer is read out above the chart. The PNG charts the Reporting Service renders, in the same surface and colors, are the downloads. When a run is more than a minute late the header says Overdue with the time it was expected, which is how a consumer that is not running shows.
 
 This app does not use the Client UI's [shared-ui-components](../client-ui/shared-ui-components/README.md). Its own markup is styled directly from the tokens, so that library still has one consumer.
 
@@ -220,8 +220,9 @@ The production [Dockerfile](Dockerfile) builds the app and serves it through unp
 - A figure on Activity has no change pill when the period before the range has nothing to compare with. Today is mostly zeros until the day's first order.
 - A client segment is the level a trader holds now. The level a trader held when an order was placed is not kept, so a promoted trader takes their earlier orders into the new segment.
 - Activity, Customers and Orders read the trading database that live trading writes to. They only read, and each open screen asks every 15 or 30 seconds, but only the report runs are independent of the live trading path.
-- An analyst's "Orders per account" chart names each account and its trader. Whether an analyst's work needs clients by name is a decision for the business; the other three charts name nobody.
+- An analyst's "Orders per account" card names each account and its trader. Whether an analyst's work needs clients by name is a decision for the business; the other three cards name nobody.
 - A transfer row opens nothing: the service has no endpoint for a single cash transaction.
 - The Activity ranges are fixed at today, 7, 30 and 90 days.
-- The service keeps only the newest report run, so the run list normally has one entry, and a run covers every event on disk.
+- The service keeps only the newest report run, and a run covers every event on disk. Report runs shows that run; a run still on disk beside it is listed under Earlier runs with its PNG charts only, because the service serves the figures of the latest run alone.
+- Trades per day plots the days that have a resolved order, side by side. A day without one is left out, not drawn as a gap.
 - Users are not signed out for inactivity, unlike the Client UI.

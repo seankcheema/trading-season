@@ -40,7 +40,7 @@ export interface AxisScale {
 }
 
 // Rounds a step up to 1, 2, 2.5 or 5 times a power of ten.
-function roundStep(rough: number): number {
+export function roundStep(rough: number): number {
   const power = 10 ** Math.floor(Math.log10(rough));
   const unit = rough / power;
   return (unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 2.5 ? 2.5 : unit <= 5 ? 5 : 10) * power;

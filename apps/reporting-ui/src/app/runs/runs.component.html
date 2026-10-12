@@ -1,7 +1,18 @@
 <app-page-header title="Report runs" [subtitle]="subtitle()">
+  @if (schedule(); as next) {
+    <span class="text-muted-foreground flex items-center gap-1.5 text-xs" data-schedule>
+      @if (next.overdue) {
+        <app-change-pill tag tone="loss">Overdue</app-change-pill>
+        <span>expected {{ next.at }}</span>
+      } @else {
+        <span class="bg-gain size-1.5 rounded-full"></span>Next run {{ next.at }}
+      }
+    </span>
+  }
   <button
     type="button"
     class="ghost-button"
+    data-print-hide="true"
     [disabled]="store.refreshing()"
     (click)="store.refresh()"
   >
@@ -10,91 +21,282 @@
   </button>
 </app-page-header>
 
-@if (store.state() === 'loading') {
-  <section class="dash-card p-5" aria-busy="true">
-    <p class="text-muted-foreground text-sm">Loading report runs…</p>
-  </section>
-} @else if (store.state() === 'error') {
-  <section class="dash-card flex flex-col items-center gap-3 px-5 py-14 text-center" role="alert">
-    <ng-icon name="lucideCircleAlert" size="24" class="text-loss" />
-    <p class="text-sm">We couldn't load the report runs.</p>
-    <button type="button" class="ghost-button" (click)="store.refresh()">Try again</button>
-  </section>
-} @else if (!store.runs().length) {
-  <section class="dash-card flex flex-col items-center gap-2 px-5 py-14 text-center">
-    <ng-icon name="lucideInbox" size="24" class="text-muted-foreground" />
-    <h2 class="text-sm font-semibold">No report runs yet</h2>
-    <p class="text-muted-foreground max-w-sm text-sm">
-      Start the reporting consumer to write the first run.
-    </p>
-  </section>
-} @else {
-  <div class="flex flex-col gap-3">
-    <section class="dash-card p-5">
-      <h2 class="text-sm font-semibold">Runs</h2>
-      <div class="dash-table-head run-grid mt-4 grid gap-2 px-2">
-        <span>Run</span>
-        <span>Generated</span>
-        <span class="text-right">Events</span>
-        <span class="text-right">Charts</span>
-      </div>
-      <ul>
-        @for (run of store.runs(); track run.runId) {
-          <li>
-            <button
-              type="button"
-              class="run-grid hover:bg-muted grid w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2.5 text-left text-sm transition-colors"
-              [class.bg-muted]="selectedRun()?.runId === run.runId"
-              [attr.aria-pressed]="selectedRun()?.runId === run.runId"
-              (click)="select(run)"
-            >
-              <span class="flex min-w-0 items-center gap-2">
-                <span class="truncate font-medium tabular-nums">{{ run.runId }}</span>
-                @if (run.runId === store.latestRunId()) {
-                  <span class="status-pill bg-primary/15 text-primary">Latest</span>
-                }
-              </span>
-              <span class="truncate tabular-nums">{{ dateTime(run.generatedAt) }}</span>
-              <span class="text-right tabular-nums">{{ count(run.eventCount) }}</span>
-              <span class="text-right tabular-nums">{{ run.files.length }}</span>
-            </button>
-          </li>
-        }
-      </ul>
-    </section>
+<!-- Which color is which, wherever filled and rejected orders share a chart. -->
+<ng-template #legend>
+  <span class="text-muted-foreground flex items-center gap-3 text-xs" data-legend>
+    <span class="flex items-center gap-1.5"><span class="bg-gain size-2 rounded-xs"></span>Filled</span>
+    <span class="flex items-center gap-1.5"><span class="bg-loss size-2 rounded-xs"></span>Rejected</span>
+  </span>
+</ng-template>
 
-    @if (charts().length) {
-      <div class="grid gap-3 xl:grid-cols-2">
-        @for (chart of charts(); track chart.name) {
-          <section class="dash-card flex flex-col p-5">
-            <div class="flex items-center justify-between gap-2">
-              <h2 class="text-sm font-semibold">{{ chart.title }}</h2>
-              @if (chart.url) {
-                <a
-                  class="dash-link flex items-center gap-1"
-                  [href]="chart.url"
-                  [download]="selectedRun()?.runId + '-' + chart.name"
-                >
-                  <ng-icon name="lucideDownload" size="12" />Download PNG
-                </a>
-              }
-            </div>
-            @if (chart.url) {
-              <img
-                class="mt-4 w-full rounded-lg"
-                [src]="chart.url"
-                [alt]="chart.title + ', chart from run ' + selectedRun()?.runId"
-              />
-            } @else if (chart.url === null) {
-              <p class="text-muted-foreground mt-4 text-sm" role="alert">
-                We couldn't load this chart.
-              </p>
-            } @else {
-              <p class="text-muted-foreground mt-4 text-sm">Loading chart…</p>
+<!-- The report job's own rendering of a card, when the run has it. -->
+<ng-template #png let-name>
+  @if (hasFile(name)) {
+    <button
+      type="button"
+      class="dash-link flex items-center gap-1"
+      data-print-hide="true"
+      [attr.aria-label]="'Download ' + chartTitle(name) + ' as PNG'"
+      (click)="download(name)"
+    >
+      <ng-icon name="lucideDownload" size="12" />PNG
+    </button>
+  }
+</ng-template>
+
+<!-- A breakdown: one row per name, with its figure and a bar. -->
+<ng-template #meters let-rows>
+  <ul class="dash-scroll mt-4 flex max-h-80 flex-col gap-3" data-meters>
+    @for (row of rows; track row.key) {
+      <li>
+        <div class="flex items-baseline justify-between gap-3 text-sm">
+          <span class="truncate">{{ row.label }}</span>
+          <span class="shrink-0 tabular-nums">
+            {{ row.value }}
+            @if (row.aside) {
+              <span class="text-muted-foreground text-xs">{{ row.aside }}</span>
             }
+          </span>
+        </div>
+        <p class="text-muted-foreground text-xs">{{ row.detail }}</p>
+        <div class="mt-1.5 flex h-1.5 gap-0.5 overflow-hidden rounded-full bg-white/10">
+          @for (bar of row.bars; track bar.tone) {
+            @if (bar.width) {
+              <span class="h-full rounded-full" [class]="bar.tone" [style.width.%]="bar.width"></span>
+            }
+          }
+        </div>
+      </li>
+    }
+  </ul>
+</ng-template>
+
+@switch (store.state()) {
+  @case ('loading') {
+    <section class="dash-card p-5" aria-busy="true">
+      <p class="text-muted-foreground text-sm">Loading report runs…</p>
+    </section>
+  }
+  @case ('error') {
+    <section class="dash-card flex flex-col items-center gap-3 px-5 py-14 text-center" role="alert">
+      <ng-icon name="lucideCircleAlert" size="24" class="text-loss" />
+      <p class="text-sm">We couldn't load the report runs.</p>
+      <button type="button" class="ghost-button" (click)="store.refresh()">Try again</button>
+    </section>
+  }
+  @case ('empty') {
+    <section class="dash-card flex flex-col items-center gap-2 px-5 py-14 text-center">
+      <ng-icon name="lucideInbox" size="24" class="text-muted-foreground" />
+      <h2 class="text-sm font-semibold">No report runs yet</h2>
+      <p class="text-muted-foreground max-w-sm text-sm">
+        Start the reporting consumer to write the first run.
+      </p>
+    </section>
+  }
+  @case ('ready') {
+    @let report = store.report()!;
+    <div class="flex flex-col gap-3 pb-6">
+      @if (store.refreshFailed()) {
+        <p class="dash-card text-muted-foreground flex items-center gap-2 px-4 py-2.5 text-xs" role="status">
+          <ng-icon name="lucideCircleAlert" size="14" class="text-loss shrink-0" />
+          We couldn't refresh the report. This is still the run generated
+          {{ dateTime(report.generatedAt) }}.
+        </p>
+      }
+      @if (downloadFailed()) {
+        <p class="dash-card text-muted-foreground flex items-center gap-2 px-4 py-2.5 text-xs" role="alert">
+          <ng-icon name="lucideCircleAlert" size="14" class="text-loss shrink-0" />
+          We couldn't download that chart. Try again.
+        </p>
+      }
+
+      <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        @for (kpi of kpis(); track kpi.label) {
+          <section class="dash-card p-4">
+            <h2 class="dash-label">{{ kpi.label }}</h2>
+            <p class="mt-1.5 text-2xl font-semibold tracking-tight tabular-nums">{{ kpi.value }}</p>
+            <p class="text-muted-foreground mt-2 text-xs">{{ kpi.note }}</p>
           </section>
         }
       </div>
-    }
-  </div>
+
+      <div class="grid gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <section class="dash-card flex flex-col p-5">
+          <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+            <h2 class="text-sm font-semibold">Trades per day</h2>
+            <div class="flex items-center gap-4">
+              <ng-container [ngTemplateOutlet]="legend" />
+              <ng-container
+                [ngTemplateOutlet]="png"
+                [ngTemplateOutletContext]="{ $implicit: 'daily_trades.png' }"
+              />
+            </div>
+          </div>
+          @if (daily(); as chart) {
+            @let shown = shownDay()!;
+            <p class="mt-3 flex gap-1 text-[13px] tabular-nums" data-readout aria-hidden="true">
+              <span class="font-semibold">{{ shown.label }}</span>
+              <span class="text-muted-foreground">· {{ shown.detail }}</span>
+            </p>
+            <div class="mt-3 grid grid-cols-[minmax(0,1fr)_2rem] gap-x-3 gap-y-2" aria-hidden="true">
+              <div class="relative h-52" data-plot (pointerleave)="activeDay.set(null)">
+                @for (tick of chart.ticks; track tick.value) {
+                  <span
+                    class="absolute inset-x-0 border-t"
+                    [class]="tick.value ? 'border-border/60' : 'border-border'"
+                    [style.bottom.%]="tick.at"
+                  ></span>
+                }
+                <div class="absolute inset-0 flex items-end">
+                  @for (day of chart.days; track day.date) {
+                    <div
+                      class="flex h-full flex-col items-center justify-end gap-0.5 transition-opacity"
+                      data-day
+                      [class.opacity-40]="activeDay() !== null && activeDay() !== $index"
+                      [style.width.%]="chart.slot"
+                      (pointerenter)="activeDay.set($index)"
+                    >
+                      @if (day.rejected) {
+                        <span
+                          class="bg-loss w-3/5 max-w-6 rounded-t"
+                          [style.height.%]="day.rejectedHeight"
+                        ></span>
+                      }
+                      @if (day.filled) {
+                        <span
+                          class="bg-gain w-3/5 max-w-6"
+                          [class.rounded-t]="!day.rejected"
+                          [style.height.%]="day.filledHeight"
+                        ></span>
+                      }
+                    </div>
+                  }
+                </div>
+              </div>
+              <div class="text-muted-foreground relative text-right text-[11px] tabular-nums" data-axis="y">
+                @for (tick of chart.ticks; track tick.value) {
+                  <span class="absolute right-0 translate-y-1/2" [style.bottom.%]="tick.at">
+                    {{ tick.value }}
+                  </span>
+                }
+              </div>
+              <div class="text-muted-foreground relative h-4 text-xs" data-axis="x">
+                @for (label of chart.labels; track label.at) {
+                  <span
+                    class="absolute top-0 whitespace-nowrap"
+                    [style.left.%]="label.at"
+                    [style.transform]="anchor(label.at)"
+                  >
+                    {{ label.text }}
+                  </span>
+                }
+              </div>
+              <div></div>
+            </div>
+            <!-- The same figures for a screen reader, which the drawn chart is hidden from. -->
+            <table class="sr-only">
+              <caption>
+                Orders resolved per UTC day
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Day</th>
+                  <th scope="col">Filled</th>
+                  <th scope="col">Rejected</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (day of chart.days; track day.date) {
+                  <tr>
+                    <th scope="row">{{ day.label }}</th>
+                    <td>{{ day.filled }}</td>
+                    <td>{{ day.rejected }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          } @else {
+            <p class="text-muted-foreground mt-4 text-sm">No order has resolved yet.</p>
+          }
+        </section>
+
+        <section class="dash-card flex flex-col p-5">
+          <div class="flex items-center justify-between gap-4">
+            <h2 class="text-sm font-semibold">Traded value by client segment</h2>
+            <ng-container
+              [ngTemplateOutlet]="png"
+              [ngTemplateOutletContext]="{ $implicit: 'volume_by_segment.png' }"
+            />
+          </div>
+          @if (segments().length) {
+            <ng-container [ngTemplateOutlet]="meters" [ngTemplateOutletContext]="{ $implicit: segments() }" />
+          } @else {
+            <p class="text-muted-foreground mt-4 text-sm">This run has no split by segment.</p>
+          }
+        </section>
+      </div>
+
+      <div class="grid gap-3 xl:grid-cols-2">
+        <section class="dash-card flex flex-col p-5">
+          <div class="flex items-center justify-between gap-4">
+            <h2 class="text-sm font-semibold">Traded value by symbol</h2>
+            <ng-container
+              [ngTemplateOutlet]="png"
+              [ngTemplateOutletContext]="{ $implicit: 'volume_by_symbol.png' }"
+            />
+          </div>
+          @if (symbols().length) {
+            <ng-container [ngTemplateOutlet]="meters" [ngTemplateOutletContext]="{ $implicit: symbols() }" />
+          } @else {
+            <p class="text-muted-foreground mt-4 text-sm">No order has filled yet.</p>
+          }
+        </section>
+
+        <section class="dash-card flex flex-col p-5">
+          <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+            <h2 class="text-sm font-semibold">Orders per account</h2>
+            <div class="flex items-center gap-4">
+              <ng-container [ngTemplateOutlet]="legend" />
+              <ng-container
+                [ngTemplateOutlet]="png"
+                [ngTemplateOutletContext]="{ $implicit: 'trades_per_account.png' }"
+              />
+            </div>
+          </div>
+          @if (accounts().length) {
+            <ng-container [ngTemplateOutlet]="meters" [ngTemplateOutletContext]="{ $implicit: accounts() }" />
+          } @else {
+            <p class="text-muted-foreground mt-4 text-sm">No order has resolved yet.</p>
+          }
+        </section>
+      </div>
+
+      @if (earlierRuns().length) {
+        <section class="dash-card p-5" data-print-hide="true">
+          <h2 class="text-sm font-semibold">Earlier runs</h2>
+          <ul class="mt-2" data-earlier>
+            @for (run of earlierRuns(); track run.runId) {
+              <li class="dash-table-row flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                <span class="font-medium tabular-nums">{{ run.runId }}</span>
+                <span class="text-muted-foreground text-xs">
+                  {{ dateTime(run.generatedAt) }} · {{ plural(run.eventCount, 'event') }}
+                </span>
+                <span class="flex flex-wrap gap-x-3 gap-y-1">
+                  @for (name of run.files; track name) {
+                    <button
+                      type="button"
+                      class="dash-link flex items-center gap-1"
+                      (click)="download(name, run.runId)"
+                    >
+                      <ng-icon name="lucideDownload" size="12" />{{ chartTitle(name) }}
+                    </button>
+                  }
+                </span>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+    </div>
+  }
 }

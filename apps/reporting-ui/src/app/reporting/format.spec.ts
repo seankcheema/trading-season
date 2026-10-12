@@ -10,6 +10,7 @@ import {
   hour,
   longDay,
   percent,
+  plural,
   recent,
   signedDollars,
   signedPercent,
@@ -30,6 +31,9 @@ describe('formatting', () => {
     expect(count(4.5)).toBe('4.5');
     expect(percent(90.24)).toBe('90.2%');
     expect(percent(null)).toBe('—');
+    expect(plural(1, 'trader')).toBe('1 trader');
+    expect(plural(1284, 'order')).toBe('1,284 orders');
+    expect(plural(0, 'fill')).toBe('0 fills');
   });
 
   it('shows an instant with its time zone named, and a dash when there is none', () => {

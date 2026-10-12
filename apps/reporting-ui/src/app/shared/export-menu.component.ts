@@ -21,17 +21,22 @@ export function toCsv(header: readonly string[], rows: readonly (readonly unknow
   return [header, ...rows].map((row) => row.map(cell).join(',')).join('\n');
 }
 
+// Hands the browser a file to save under the given name.
+export function saveFile(name: string, file: Blob): void {
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(file);
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
 // Hands the browser a CSV file to save.
 export function downloadCsv(
   name: string,
   header: readonly string[],
   rows: readonly (readonly unknown[])[],
 ): void {
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(new Blob([toCsv(header, rows)], { type: 'text/csv' }));
-  link.download = `${name}.csv`;
-  link.click();
-  URL.revokeObjectURL(link.href);
+  saveFile(`${name}.csv`, new Blob([toCsv(header, rows)], { type: 'text/csv' }));
 }
 
 // The Export control of a page header: the rows on screen as CSV, or the screen

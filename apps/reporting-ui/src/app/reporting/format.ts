@@ -80,6 +80,11 @@ export function signedDollars(value: number): string {
   return `${value >= 0 ? '+' : '-'}${DOLLARS.format(Math.abs(value))}`;
 }
 
+// "1 trader", "312 traders".
+export function plural(value: number, noun: string): string {
+  return `${count(value)} ${noun}${value === 1 ? '' : 's'}`;
+}
+
 export function percent(value: number | null): string {
   return value === null ? '—' : `${value.toFixed(1)}%`;
 }

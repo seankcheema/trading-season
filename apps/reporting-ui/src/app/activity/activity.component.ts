@@ -16,6 +16,7 @@ import {
   dollars,
   hour,
   percent,
+  plural,
   recent,
   signedDollars,
   signedWholeDollars,
@@ -54,11 +55,6 @@ function readRange(): ActivityRange {
   } catch {
     return DEFAULT_RANGE;
   }
-}
-
-// "1 trader", "312 traders".
-function plural(value: number, noun: string): string {
-  return `${count(value)} ${noun}${value === 1 ? '' : 's'}`;
 }
 
 interface Kpi {
