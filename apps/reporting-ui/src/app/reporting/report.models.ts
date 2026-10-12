@@ -1,6 +1,8 @@
 // Response shapes of the Reporting Service. The canonical contract is
 // apps/reporting-service/openapi.yaml; keep these in step with it.
 
+import { ActivityRange } from './console.models';
+
 export interface StatusCounts {
   FILLED: number;
   REJECTED: number;
@@ -26,7 +28,7 @@ export interface TradesPerAccount {
 }
 
 export interface DailyCount {
-  // UTC day, YYYY-MM-DD.
+  // A day of the report's timezone, YYYY-MM-DD.
   date: string;
   filled: number;
   rejected: number;
@@ -44,12 +46,14 @@ export interface SegmentReport {
   notional: string;
 }
 
-// The report.json of one run.
+// The report.json of one run, or the same figures over a part of the run.
 export interface Report {
   runId: string;
   generatedAt: string;
+  // Whose days dailyCounts is cut in: UTC for a run as written, the viewer's
+  // offset, such as UTC-05:00, for a range of it.
   timezone: string;
-  // Trade-event lines read for the run, every status included.
+  // Trade-event lines read, every status included.
   eventCount: number;
   statusCounts: StatusCounts;
   volumeBySymbol: VolumeBySymbol[];
@@ -57,6 +61,11 @@ export interface Report {
   dailyCounts: DailyCount[];
   activityBySegment: SegmentReport[];
   files: string[];
+  // Present when a range narrower than all time was asked for: the range, where
+  // it starts, and the generation time of the run, where it ends.
+  range?: ActivityRange;
+  from?: string;
+  to?: string;
 }
 
 export interface RunSummary {

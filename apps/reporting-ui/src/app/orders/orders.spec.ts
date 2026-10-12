@@ -462,7 +462,13 @@ describe('OrderDetailComponent', () => {
         orderDetail({
           audit: [
             ...orderDetail().audit,
-            { eventType: 'EXECUTION_FAILED', detail: null, recordedAt: '2026-10-08T20:44:13+00:00' },
+            {
+              eventType: 'EXECUTION_FAILED',
+              detail: null,
+              recordedAt: '2026-10-08T20:44:13+00:00',
+              price: null,
+              priceKind: null,
+            },
           ],
         }),
       ),
@@ -482,6 +488,17 @@ describe('OrderDetailComponent', () => {
       'bg-loss',
     ]);
     expect(text(events[2])).toContain('· Filled 4 @ 316.59');
+    // Each stage shows the price the order stood at; one recorded without a price shows none.
+    const stagePrice = (event: Element) => {
+      const price = event.querySelector('[data-stage-price]');
+      return price ? text(price) : '';
+    };
+    expect(events.map(stagePrice)).toEqual([
+      '$316.50 indicative',
+      '$316.50 indicative',
+      '$316.59 fill price',
+      '',
+    ]);
     expect(events[0].className).toContain('pb-3.5');
     expect(events[3].className).not.toContain('pb-3.5');
   });

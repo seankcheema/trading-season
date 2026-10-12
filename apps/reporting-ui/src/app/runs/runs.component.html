@@ -1,14 +1,16 @@
 <app-page-header title="Report runs" [subtitle]="subtitle()">
-  @if (schedule(); as next) {
+  @if (overdue(); as expected) {
     <span class="text-muted-foreground flex items-center gap-1.5 text-xs" data-schedule>
-      @if (next.overdue) {
-        <app-change-pill tag tone="loss">Overdue</app-change-pill>
-        <span>expected {{ next.at }}</span>
-      } @else {
-        <span class="bg-gain size-1.5 rounded-full"></span>Next run {{ next.at }}
-      }
+      <app-change-pill tag tone="loss">Overdue</app-change-pill>
+      <span>expected {{ expected }}</span>
     </span>
   }
+  <app-timeframe-toggle
+    label="Report range"
+    [options]="ranges"
+    [value]="store.range()"
+    (valueChange)="store.setRange($event)"
+  />
   <button
     type="button"
     class="ghost-button"
@@ -209,7 +211,7 @@
             <div class="sr-only">
               <table>
                 <caption>
-                  Orders resolved per UTC day
+                  Orders resolved per {{ report.timezone }} day
                 </caption>
                 <thead>
                   <tr>
@@ -230,7 +232,7 @@
               </table>
             </div>
           } @else {
-            <p class="text-muted-foreground mt-4 text-sm">No order has resolved yet.</p>
+            <p class="text-muted-foreground mt-4 text-sm">{{ nothing().resolved }}</p>
           }
         </section>
 
@@ -262,7 +264,7 @@
           @if (symbols().length) {
             <ng-container [ngTemplateOutlet]="meters" [ngTemplateOutletContext]="{ $implicit: symbols() }" />
           } @else {
-            <p class="text-muted-foreground mt-4 text-sm">No order has filled yet.</p>
+            <p class="text-muted-foreground mt-4 text-sm">{{ nothing().filled }}</p>
           }
         </section>
 
@@ -280,7 +282,7 @@
           @if (accounts().length) {
             <ng-container [ngTemplateOutlet]="meters" [ngTemplateOutletContext]="{ $implicit: accounts() }" />
           } @else {
-            <p class="text-muted-foreground mt-4 text-sm">No order has resolved yet.</p>
+            <p class="text-muted-foreground mt-4 text-sm">{{ nothing().resolved }}</p>
           }
         </section>
       </div>

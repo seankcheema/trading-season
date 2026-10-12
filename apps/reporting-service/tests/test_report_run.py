@@ -1,13 +1,14 @@
 """The report run: files in, report.json and charts out."""
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
 
 from event_store import EventStore
-from report_run import build_insights, build_segment_insights, load_events, parse_occurred_at, run_report
+from report_run import (CHARTS, build_insights, build_segment_insights, draw_chart, load_events, parse_occurred_at,
+                        ranged_report, run_report, zone_name)
 
 PNG_MAGIC = b'\x89PNG\r\n\x1a\n'
 
@@ -217,3 +218,93 @@ class TestRunReport:
         assert [row['total'] for row in report['activityBySegment']] == [0, 0, 0]
         for name in report['files']:
             assert (tmp_path / 'runs' / report['runId'] / name).read_bytes().startswith(PNG_MAGIC)
+
+
+class TestZones:
+
+    def test_names_an_offset_the_way_a_report_does(self):
+        assert zone_name(timezone.utc) == 'UTC'
+        assert zone_name(timezone(timedelta(minutes=-300))) == 'UTC-05:00'
+        assert zone_name(timezone(timedelta(minutes=330))) == 'UTC+05:30'
+
+    def test_days_are_utc_days_unless_another_zone_is_asked_for(self):
+        events = [event(1, 'FILLED', 'TEST', 'BUY', 1, 1.0, '2026-10-06T02:00:00Z'),
+                  event(2, 'REJECTED', 'TEST', 'BUY', 1, 1.0, '2026-10-06T06:00:00Z')]
+
+        assert build_insights(events)['dailyCounts'] == [{'date': '2026-10-06', 'filled': 1, 'rejected': 1}]
+        # Five hours west, the first of them happened the evening before.
+        assert build_insights(events, timezone(timedelta(hours=-5)))['dailyCounts'] == [
+            {'date': '2026-10-05', 'filled': 1, 'rejected': 0},
+            {'date': '2026-10-06', 'filled': 0, 'rejected': 1},
+        ]
+
+
+class TestRangedReport:
+
+    NOON = datetime(2026, 10, 6, 12, 0, tzinfo=timezone.utc)
+
+    def test_cuts_a_run_to_what_occurred_between_the_start_and_its_generation(self, events_on_disk, db_session,
+                                                                              test_user, test_account):
+        test_account.account_id = 1
+        db_session.commit()
+        report = run_report(events_on_disk, db_session, now=self.NOON)
+
+        cut = ranged_report(events_on_disk, db_session, report, datetime(2026, 10, 6, tzinfo=timezone.utc))
+
+        # It is still the same run, with the same files.
+        assert cut['runId'] == report['runId']
+        assert cut['generatedAt'] == report['generatedAt']
+        assert cut['files'] == report['files']
+        # Orders 3 and 4 resolved that morning. Order 5 did so after the run was generated.
+        assert cut['eventCount'] == 2
+        assert cut['statusCounts'] == {'FILLED': 2, 'REJECTED': 0}
+        assert [(row['symbol'], row['notional']) for row in cut['volumeBySymbol']] == [('TEST', '2200.00'),
+                                                                                       ('ACME', '2000.00')]
+        assert cut['dailyCounts'] == [{'date': '2026-10-06', 'filled': 2, 'rejected': 0}]
+        assert cut['timezone'] == 'UTC'
+        by_account = {row['accountId']: row for row in cut['tradesPerAccount']}
+        assert by_account[1]['label'] == 'Growth Portfolio (Joanna Trader)'
+        assert by_account[2]['label'] == '2'
+        by_segment = {row['segment']: row for row in cut['activityBySegment']}
+        assert by_segment['INTERMEDIATE']['notional'] == '2200.00'
+        # The run it was cut from is not changed.
+        assert report['statusCounts'] == {'FILLED': 4, 'REJECTED': 1}
+        assert report['eventCount'] == 5
+
+    def test_cuts_its_days_in_the_viewers_zone_and_says_so(self, events_on_disk, db_session):
+        report = run_report(events_on_disk, db_session, now=self.NOON)
+        west = timezone(timedelta(hours=-10))
+
+        cut = ranged_report(events_on_disk, db_session, report, datetime(2026, 10, 5, tzinfo=timezone.utc), west)
+
+        assert cut['timezone'] == 'UTC-10:00'
+        # 09:30 UTC on the 5th is still the 4th there. 10:00 is midnight, and so the 5th, as are
+        # 08:00 and 09:00 UTC on the 6th.
+        assert cut['dailyCounts'] == [{'date': '2026-10-04', 'filled': 1, 'rejected': 0},
+                                      {'date': '2026-10-05', 'filled': 2, 'rejected': 1}]
+
+    def test_a_range_nothing_occurred_in_is_a_report_of_nothing(self, events_on_disk, db_session):
+        report = run_report(events_on_disk, db_session, now=self.NOON)
+
+        cut = ranged_report(events_on_disk, db_session, report, self.NOON - timedelta(minutes=1))
+
+        assert cut['eventCount'] == 0
+        assert cut['statusCounts'] == {'FILLED': 0, 'REJECTED': 0}
+        assert cut['volumeBySymbol'] == [] and cut['tradesPerAccount'] == [] and cut['dailyCounts'] == []
+        assert [row['total'] for row in cut['activityBySegment']] == [0, 0, 0]
+
+
+class TestDrawChart:
+
+    def test_draws_every_chart_of_a_run_as_png_bytes(self, events_on_disk, db_session):
+        report = run_report(events_on_disk, db_session, now=datetime(2026, 10, 6, 12, 0, tzinfo=timezone.utc))
+
+        assert list(CHARTS) == report['files']
+        for name in CHARTS:
+            assert draw_chart(report, name).startswith(PNG_MAGIC), name
+
+    def test_draws_a_range_nothing_occurred_in(self, tmp_path, db_session):
+        report = run_report(tmp_path, db_session, now=datetime(2026, 10, 6, 12, 0, tzinfo=timezone.utc))
+
+        for name in CHARTS:
+            assert draw_chart(report, name).startswith(PNG_MAGIC), name

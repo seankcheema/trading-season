@@ -329,6 +329,31 @@ class TestOrders:
         assert detail['ledger']['cashAfter'] == 3700.0
         assert detail['ledger']['holdingAfter'] == 6.0
 
+    def test_every_audit_entry_carries_the_price_of_its_stage(self, platform):
+        # Order 2 asked for 109.00 and filled at 110.00.
+        trail = console.order_detail(platform, 2)['audit']
+
+        assert [(event['eventType'], event['price'], event['priceKind']) for event in trail] == [
+            ('PENDING', 109.0, 'INDICATIVE'), ('ACCEPTED', 109.0, 'INDICATIVE'), ('FILLED', 110.0, 'FILL')]
+
+    def test_an_order_that_never_filled_keeps_the_price_it_asked_for_at_every_stage(self, platform):
+        platform.add_all([
+            AuditTrail(audit_id=10, order_id=3, event_type='PENDING', recorded_at=hours_ago(2)),
+            AuditTrail(audit_id=11, order_id=3, event_type='REJECTED',
+                       detail='BR-09: insufficient funds for this order', recorded_at=hours_ago(2)),
+            # Order 4 was accepted without a price and its execution failed.
+            AuditTrail(audit_id=12, order_id=4, event_type='ACCEPTED', recorded_at=hours_ago(1)),
+            AuditTrail(audit_id=13, order_id=4, event_type='EXECUTION_FAILED', recorded_at=hours_ago(1)),
+        ])
+        platform.commit()
+
+        rejected = console.order_detail(platform, 3)['audit']
+        assert [(event['eventType'], event['price'], event['priceKind']) for event in rejected] == [
+            ('PENDING', 180.0, 'INDICATIVE'), ('REJECTED', 180.0, 'INDICATIVE')]
+
+        unpriced = console.order_detail(platform, 4)['audit']
+        assert [(event['price'], event['priceKind']) for event in unpriced] == [(None, None), (None, None)]
+
     def test_an_order_that_did_not_fill_posted_nothing(self, platform):
         detail = console.order_detail(platform, 3)
 
@@ -470,6 +495,8 @@ class TestConsoleRoutes:
 
         assert body['orderId'] == 2
         assert len(body['audit']) == 3
+        assert body['audit'][2] == {'eventType': 'FILLED', 'detail': 'Filled 4 @ 110.0', 'price': 110.0,
+                                    'priceKind': 'FILL', 'recordedAt': body['audit'][2]['recordedAt']}
 
     def test_unknown_orders_and_customers_are_not_found(self, client, platform, authenticated_admin):
         assert client.get('/api/reporting/orders/404', headers=authenticated_admin).status_code == 404

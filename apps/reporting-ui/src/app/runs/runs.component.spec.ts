@@ -80,15 +80,100 @@ describe('RunsComponent', () => {
     expect(plot.className).toContain('print:h-52');
   });
 
-  it('names the run on screen and says when the next one is due', () => {
+  it('names the run on screen and offers the ranges Activity does', () => {
     const root = render();
     const header = root.querySelector('app-page-header')!;
 
     expect(text(header.querySelector('p')!)).toMatch(
       /^Run 20261008T194500Z · generated Oct 8, \d{1,2}:45 [AP]M \S+ · replaced every 15 minutes$/,
     );
-    expect(text(header.querySelector('[data-schedule]')!)).toMatch(/^Next run \d{1,2}:00 [AP]M \S+$/);
+    const toggle = header.querySelector('app-timeframe-toggle')!;
+    expect(toggle.getAttribute('aria-label')).toBe('Report range');
+    const ranges = Array.from(toggle.querySelectorAll('button'));
+    expect(ranges.map(text)).toEqual(['Today', '7D', '30D', '90D', 'All']);
+    expect(ranges.map((button) => button.getAttribute('aria-pressed'))).toEqual([
+      'false',
+      'false',
+      'false',
+      'false',
+      'true',
+    ]);
+    // A run on time says nothing about its schedule.
+    expect(header.querySelector('[data-schedule]')).toBeNull();
     expect(header.querySelector('app-change-pill')).toBeNull();
+  });
+
+  it('asks the store for the range that is chosen and marks it', () => {
+    const root = render();
+    const ranges = Array.from(root.querySelectorAll<HTMLButtonElement>('app-timeframe-toggle button'));
+
+    ranges[2].click();
+    expect(store.setRange).toHaveBeenCalledWith('30d');
+
+    store.range.set('30d');
+    fixture.detectChanges();
+    expect(ranges.map((button) => button.getAttribute('aria-pressed')).indexOf('true')).toBe(2);
+  });
+
+  it('downloads a chart over the range the report on screen covers, and names the file after it', () => {
+    const root = render('ready', () => store.report.set(report({ range: '7d', timezone: 'UTC-05:00' })));
+    // The report trails the choice while the next one loads; the file is of what is on screen.
+    store.range.set('30d');
+
+    card(root, 'Trades per day').querySelector<HTMLButtonElement>('button')!.click();
+
+    expect(runFile).toHaveBeenCalledWith('20261008T194500Z', 'daily_trades.png', '7d');
+    expect(saved.map((file) => file.name)).toEqual(['20261008T194500Z-7d-daily_trades.png']);
+  });
+
+  it('keeps the range when a chart has to come from the newest run', () => {
+    runFile.mockImplementationOnce(() => throwError(() => new HttpErrorResponse({ status: 404 })));
+    runs.mockReturnValue(of({ latest: '20261008T200000Z', runs: [], timestamp: '' }));
+    const root = render('ready', () => store.report.set(report({ range: '90d' })));
+
+    card(root, 'Traded value by symbol').querySelector<HTMLButtonElement>('button')!.click();
+
+    expect(runFile.mock.calls).toEqual([
+      ['20261008T194500Z', 'volume_by_symbol.png', '90d'],
+      ['20261008T200000Z', 'volume_by_symbol.png', '90d'],
+    ]);
+    expect(saved.map((file) => file.name)).toEqual(['20261008T200000Z-90d-volume_by_symbol.png']);
+  });
+
+  it('offers an earlier run whole, whatever range is on screen', () => {
+    const root = render('ready', () => {
+      store.report.set(report({ range: '7d' }));
+      store.runs.set([run(), run({ runId: '20261008T193000Z', files: ['daily_trades.png'] })]);
+    });
+
+    root.querySelector<HTMLButtonElement>('[data-earlier] button')!.click();
+
+    expect(runFile).toHaveBeenCalledWith('20261008T193000Z', 'daily_trades.png', 'all');
+    expect(saved.map((file) => file.name)).toEqual(['20261008T193000Z-daily_trades.png']);
+  });
+
+  it("says whose days the chart is cut in, and that a range rather than the run is empty", () => {
+    const root = render('ready', () =>
+      store.report.set(
+        report({
+          range: 'today',
+          timezone: 'UTC-05:00',
+          statusCounts: { FILLED: 0, REJECTED: 0 },
+          volumeBySymbol: [],
+          tradesPerAccount: [],
+          dailyCounts: [],
+        }),
+      ),
+    );
+
+    expect(text(card(root, 'Rejected'))).toBe('Rejected 0 nothing resolved in this period');
+    expect(text(card(root, 'Trades per day'))).toContain('No order resolved in this period.');
+    expect(text(card(root, 'Traded value by symbol'))).toContain('No order filled in this period.');
+    expect(text(card(root, 'Orders per account'))).toContain('No order resolved in this period.');
+
+    store.report.set(report({ range: 'today', timezone: 'UTC-05:00' }));
+    fixture.detectChanges();
+    expect(text(card(root, 'Trades per day').querySelector('caption')!)).toBe('Orders resolved per UTC-05:00 day');
   });
 
   it('flags a run that is late, which is how a stopped consumer shows', () => {
@@ -137,6 +222,7 @@ describe('RunsComponent', () => {
     expect(Array.from(daily.querySelectorAll('[data-axis="x"] span')).map(text)).toEqual(['Oct 7', 'Oct 8']);
     expect(text(daily.querySelector('[data-legend]')!)).toBe('Filled Rejected');
     // The drawn chart is hidden from a screen reader, which gets the same figures as a table.
+    expect(text(daily.querySelector('caption')!)).toBe('Orders resolved per UTC day');
     expect(Array.from(daily.querySelectorAll('table tbody tr')).map(text)).toEqual(['Oct 7 2 1', 'Oct 8 4 1']);
     // Hidden by a wrapper: a table of its own keeps its height, and a long one scrolled the window.
     const figures = daily.querySelector('table')!;
@@ -247,7 +333,7 @@ describe('RunsComponent', () => {
 
     button.click();
 
-    expect(runFile).toHaveBeenCalledWith('20261008T194500Z', 'daily_trades.png');
+    expect(runFile).toHaveBeenCalledWith('20261008T194500Z', 'daily_trades.png', 'all');
     expect(saved.map((file) => file.name)).toEqual(['20261008T194500Z-daily_trades.png']);
     expect(saved[0].file.type).toBe('image/png');
   });
@@ -285,8 +371,8 @@ describe('RunsComponent', () => {
     fixture.detectChanges();
 
     expect(runFile.mock.calls).toEqual([
-      ['20261008T194500Z', 'daily_trades.png'],
-      ['20261008T200000Z', 'daily_trades.png'],
+      ['20261008T194500Z', 'daily_trades.png', 'all'],
+      ['20261008T200000Z', 'daily_trades.png', 'all'],
     ]);
     expect(saved.map((file) => file.name)).toEqual(['20261008T200000Z-daily_trades.png']);
     // The screen moves to the run the file came from.
@@ -317,7 +403,7 @@ describe('RunsComponent', () => {
     root.querySelector<HTMLButtonElement>('[data-earlier] button')!.click();
     fixture.detectChanges();
 
-    expect(runFile.mock.calls).toEqual([['20261008T193000Z', 'daily_trades.png']]);
+    expect(runFile.mock.calls).toEqual([['20261008T193000Z', 'daily_trades.png', 'all']]);
     expect(runs).not.toHaveBeenCalled();
     expect(text(root.querySelector('[role="alert"]')!)).toBe("We couldn't download that chart. Try again.");
   });
@@ -338,7 +424,7 @@ describe('RunsComponent', () => {
     expect(text(rows[0])).toMatch(/^20261008T193000Z Oct 8, \d{1,2}:30 [AP]M \S+ · 1 event Trades per day extra\.png$/);
 
     rows[0].querySelectorAll<HTMLButtonElement>('button')[1].click();
-    expect(runFile).toHaveBeenCalledWith('20261008T193000Z', 'extra.png');
+    expect(runFile).toHaveBeenCalledWith('20261008T193000Z', 'extra.png', 'all');
     expect(saved.map((file) => file.name)).toEqual(['20261008T193000Z-extra.png']);
   });
 
@@ -359,7 +445,8 @@ describe('RunsComponent', () => {
 
   it('refreshes on demand', () => {
     const root = render();
-    const button = root.querySelector<HTMLButtonElement>('app-page-header button')!;
+    // The range toggle's buttons come first in the header.
+    const button = root.querySelector<HTMLButtonElement>('app-page-header > div > button')!;
     button.click();
     expect(store.refresh).toHaveBeenCalledTimes(1);
 

@@ -1,6 +1,8 @@
 """
 One report run: read the event files, add names from the read model, write
 report.json and PNG charts into a dated run directory, replace the previous run.
+A run covers every event on disk; ranged_report and draw_chart give the same
+figures and charts for a part of it, when one is asked for.
 
 Trade data comes from the trade-events files the consumer wrote. The names
 a run labels accounts with and the trader level it segments them by come
@@ -8,10 +10,12 @@ from the read model, which is built from the platform-records files
 (read_model.py). Nothing is read from the trading database.
 """
 
+import io
 import json
 import logging
 import os
 import shutil
+import threading
 from collections import defaultdict
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -70,10 +74,19 @@ def _decimal(value):
         return Decimal(0)
 
 
-def build_insights(events):
+def zone_name(zone):
+    """A fixed offset as a run names it: UTC, or UTC-05:00."""
+    minutes = int(zone.utcoffset(None).total_seconds() // 60)
+    if not minutes:
+        return 'UTC'
+    return f"UTC{'+' if minutes > 0 else '-'}{abs(minutes) // 60:02d}:{abs(minutes) % 60:02d}"
+
+
+def build_insights(events, zone=timezone.utc):
     """
     The BR-17 insights: fills versus rejections, traded volume per symbol,
-    activity per account, and trades per UTC day.
+    activity per account, and trades per day. A day is a UTC day unless zone
+    names another offset.
     """
     status_counts = {'FILLED': 0, 'REJECTED': 0}
     by_symbol = defaultdict(lambda: {'fills': 0, 'shares': Decimal(0), 'notional': Decimal(0)})
@@ -92,7 +105,8 @@ def build_insights(events):
 
         occurred = parse_occurred_at(event.get('occurredAt'))
         if occurred is not None:
-            by_day[occurred.date().isoformat()]['filled' if status == 'FILLED' else 'rejected'] += 1
+            day = occurred.astimezone(zone).date().isoformat()
+            by_day[day]['filled' if status == 'FILLED' else 'rejected'] += 1
 
         if status == 'FILLED':
             quantity = _decimal(event.get('quantity'))
@@ -246,8 +260,8 @@ def _save_bar_chart(path, labels, values, title, ylabel, money=False):
     _write_chart(fig, path)
 
 
-def _save_daily_chart(path, daily_counts):
-    fig, axis = _new_chart('Trades per day (UTC)', 'Orders resolved')
+def _save_daily_chart(path, daily_counts, zone='UTC'):
+    fig, axis = _new_chart(f'Trades per day ({zone})', 'Orders resolved')
     if daily_counts:
         days = [row['date'] for row in daily_counts]
         filled = [row['filled'] for row in daily_counts]
@@ -266,29 +280,94 @@ def _save_daily_chart(path, daily_counts):
     _write_chart(fig, path)
 
 
-def render_charts(insights, run_dir):
-    """Write the four PNG charts into run_dir and return their file names."""
-    run_dir = Path(run_dir)
+def _draw_volume_by_symbol(insights, target):
     volume = insights['volumeBySymbol']
-    _save_bar_chart(run_dir / 'volume_by_symbol.png',
+    _save_bar_chart(target,
                     [row['symbol'] for row in volume],
                     [float(row['notional']) for row in volume],
                     'Traded value by symbol (filled orders)', 'Notional', money=True)
-    _save_daily_chart(run_dir / 'daily_trades.png', insights['dailyCounts'])
+
+
+def _draw_daily_trades(insights, target):
+    _save_daily_chart(target, insights['dailyCounts'], insights.get('timezone', 'UTC'))
+
+
+def _draw_volume_by_segment(insights, target):
     # Every level is drawn once any order has resolved, so a level that traded nothing shows as nothing.
     segments = insights['activityBySegment']
     if not any(row['total'] for row in segments):
         segments = []
-    _save_bar_chart(run_dir / 'volume_by_segment.png',
+    _save_bar_chart(target,
                     [row['segment'].capitalize() for row in segments],
                     [float(row['notional']) for row in segments],
                     'Traded value by client segment (filled orders)', 'Notional', money=True)
+
+
+def _draw_trades_per_account(insights, target):
     accounts = insights['tradesPerAccount']
-    _save_bar_chart(run_dir / 'trades_per_account.png',
+    _save_bar_chart(target,
                     [row.get('label') or str(row['accountId']) for row in accounts],
                     [row['total'] for row in accounts],
                     'Orders per account', 'Orders resolved')
-    return ['volume_by_symbol.png', 'daily_trades.png', 'volume_by_segment.png', 'trades_per_account.png']
+
+
+# The chart files of a run, in the order a run lists them, and what draws each.
+CHARTS = {
+    'volume_by_symbol.png': _draw_volume_by_symbol,
+    'daily_trades.png': _draw_daily_trades,
+    'volume_by_segment.png': _draw_volume_by_segment,
+    'trades_per_account.png': _draw_trades_per_account,
+}
+# pyplot keeps one registry of figures for the whole process, so the web service,
+# which answers requests on several threads, draws one chart at a time.
+_drawing = threading.Lock()
+
+
+def render_charts(insights, run_dir):
+    """Write the four PNG charts into run_dir and return their file names."""
+    run_dir = Path(run_dir)
+    for name, draw in CHARTS.items():
+        draw(insights, run_dir / name)
+    return list(CHARTS)
+
+
+def draw_chart(insights, name):
+    """One of CHARTS as PNG bytes, for figures that are not a run's own files."""
+    target = io.BytesIO()
+    with _drawing:
+        CHARTS[name](insights, target)
+    return target.getvalue()
+
+
+def collect_insights(events, session, zone=timezone.utc):
+    """Everything a report says about events: build_insights with account names, and the split by segment."""
+    insights = build_insights(events, zone)
+    names = load_account_names(session, [row['accountId'] for row in insights['tradesPerAccount']])
+    for row in insights['tradesPerAccount']:
+        info = names.get(row['accountId'], {})
+        row['accountName'] = info.get('accountName')
+        row['userName'] = info.get('userName')
+        row['label'] = f"{row['accountName']} ({row['userName']})" if info else str(row['accountId'])
+    insights['activityBySegment'] = build_segment_insights(
+        events, {account_id: info['segment'] for account_id, info in names.items()})
+    return insights
+
+
+def ranged_report(files_dir, session, report, start, zone=timezone.utc):
+    """
+    A run's figures for the part of it that begins at start: the shape of its
+    report.json, from the events that occurred between start and the moment
+    the run was generated, with days cut in zone. The run's own report.json
+    covers every event and cuts its days in UTC.
+    """
+    end = parse_occurred_at(report.get('generatedAt'))
+    events = []
+    for event in load_events(files_dir):
+        occurred = parse_occurred_at(event.get('occurredAt'))
+        if occurred is not None and occurred >= start and (end is None or occurred <= end):
+            events.append(event)
+    return {**report, 'timezone': zone_name(zone), 'eventCount': len(events),
+            **collect_insights(events, session, zone)}
 
 
 def run_report(files_dir, session, now=None, keep_runs=1):
@@ -304,15 +383,7 @@ def run_report(files_dir, session, now=None, keep_runs=1):
     run_id = now.strftime(RUN_ID_FORMAT)
 
     events = load_events(files_dir)
-    insights = build_insights(events)
-    names = load_account_names(session, [row['accountId'] for row in insights['tradesPerAccount']])
-    for row in insights['tradesPerAccount']:
-        info = names.get(row['accountId'], {})
-        row['accountName'] = info.get('accountName')
-        row['userName'] = info.get('userName')
-        row['label'] = f"{row['accountName']} ({row['userName']})" if info else str(row['accountId'])
-    insights['activityBySegment'] = build_segment_insights(
-        events, {account_id: info['segment'] for account_id, info in names.items()})
+    insights = collect_insights(events, session)
 
     base = runs_dir(files_dir)
     base.mkdir(parents=True, exist_ok=True)

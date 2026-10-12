@@ -1,3 +1,4 @@
+import { ActivityRange } from '../app/reporting/console.models';
 import { computed, signal } from '@angular/core';
 import { vi } from 'vitest';
 import {
@@ -111,6 +112,8 @@ export function fakeReportStore(state: ReportState = 'ready') {
   const reportSignal = signal<Report | null>(state === 'ready' ? report() : null);
   const store = {
     report: reportSignal,
+    // All time, which is what the fixture report is; a test of a range sets both.
+    range: signal<ActivityRange>('all'),
     state: signal<ReportState>(state),
     runs: signal<RunSummary[]>(state === 'ready' ? [run()] : []),
     latestRunId: signal<string | null>(state === 'ready' ? run().runId : null),
@@ -125,6 +128,7 @@ export function fakeReportStore(state: ReportState = 'ready') {
     nextRunAt: signal<Date | null>(new Date('2026-10-08T20:00:00Z')),
     overdue: signal(false),
     refresh: vi.fn(),
+    setRange: vi.fn(),
   };
   return store as typeof store & ReportStore;
 }

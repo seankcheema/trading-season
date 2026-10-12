@@ -202,9 +202,27 @@ export function orderDetail(overrides: Partial<OrderDetail> = {}): OrderDetail {
       holdingMovementId: 95782,
     },
     audit: [
-      { eventType: 'PENDING', detail: null, recordedAt: '2026-10-08T20:44:12.084+00:00' },
-      { eventType: 'ACCEPTED', detail: null, recordedAt: '2026-10-08T20:44:12.091+00:00' },
-      { eventType: 'FILLED', detail: 'Filled 4 @ 316.59', recordedAt: '2026-10-08T20:44:12.118+00:00' },
+      {
+        eventType: 'PENDING',
+        detail: null,
+        recordedAt: '2026-10-08T20:44:12.084+00:00',
+        price: 316.5,
+        priceKind: 'INDICATIVE',
+      },
+      {
+        eventType: 'ACCEPTED',
+        detail: null,
+        recordedAt: '2026-10-08T20:44:12.091+00:00',
+        price: 316.5,
+        priceKind: 'INDICATIVE',
+      },
+      {
+        eventType: 'FILLED',
+        detail: 'Filled 4 @ 316.59',
+        recordedAt: '2026-10-08T20:44:12.118+00:00',
+        price: 316.59,
+        priceKind: 'FILL',
+      },
     ],
     ...overrides,
   };

@@ -410,6 +410,30 @@ def _ledger(session, order, account, user, fill):
     }
 
 
+# What the price beside an audit entry is: the price the order asked for, or the price it filled at.
+INDICATIVE_PRICE = 'INDICATIVE'
+FILL_PRICE = 'FILL'
+
+
+def _audit_entry(event, order, fill):
+    """
+    One audit entry with the price the order stood at when it was recorded:
+    the fill's price on the entry that records the fill, and the price the
+    order asked for on every other. The trading service takes one price with
+    the order and fills at one quote, so those are the prices there are; an
+    audit row itself holds none.
+    """
+    filled = event.event_type == 'FILLED' and fill is not None
+    price = fill.quote_price if filled else order.indicative_price
+    return {
+        'eventType': event.event_type,
+        'detail': event.detail,
+        'recordedAt': _iso(event.recorded_at),
+        'price': _number(price, 6),
+        'priceKind': None if price is None else FILL_PRICE if filled else INDICATIVE_PRICE,
+    }
+
+
 def order_detail(session, order_id):
     """One order with its customer, execution, ledger impact and audit trail, or None."""
     row = _order_query(session).filter(Order.order_id == order_id).first()
@@ -432,8 +456,7 @@ def order_detail(session, order_id):
             'filledAt': _iso(fill.filled_at),
         } if fill is not None else None,
         'ledger': _ledger(session, order, account, user, fill),
-        'audit': [{'eventType': event.event_type, 'detail': event.detail, 'recordedAt': _iso(event.recorded_at)}
-                  for event in trail],
+        'audit': [_audit_entry(event, order, fill) for event in trail],
     }
 
 

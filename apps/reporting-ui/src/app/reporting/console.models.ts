@@ -134,6 +134,11 @@ export interface AuditEvent {
   eventType: string;
   detail: string | null;
   recordedAt: string;
+  // The price the order stood at when the entry was recorded: its fill price on
+  // the entry that records the fill, the price it asked for on every other.
+  // Null when the order carried no price.
+  price: number | null;
+  priceKind: 'INDICATIVE' | 'FILL' | null;
 }
 
 export interface OrderDetail extends OrderRow {

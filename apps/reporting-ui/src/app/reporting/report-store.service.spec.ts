@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { Subject, of, throwError } from 'rxjs';
 import { profile, report, run, schedulerStatus } from '../../testing/fixtures';
 import { Report } from './report.models';
-import { ReportStore, STATUS_POLL_MS } from './report-store.service';
+import { ReportStore, RUNS_RANGE_KEY, STATUS_POLL_MS } from './report-store.service';
 import { ReportingApiService } from './reporting-api.service';
 
 const httpError = (status: number) => throwError(() => new HttpErrorResponse({ status }));
@@ -17,6 +17,7 @@ describe('ReportStore', () => {
   };
 
   beforeEach(() => {
+    localStorage.clear();
     vi.useFakeTimers();
     api = {
       profile: vi.fn(() => of(profile())),
@@ -45,6 +46,63 @@ describe('ReportStore', () => {
     expect(store.profile()?.first_name).toBe('Sean');
     expect(store.refreshing()).toBe(false);
     expect(store.refreshFailed()).toBe(false);
+  });
+
+  it('asks for the last seven days in a browser that has chosen nothing', () => {
+    const store = create();
+
+    expect(store.range()).toBe('7d');
+    expect(api.latestReport).toHaveBeenCalledWith('7d');
+  });
+
+  it('opens on the range this browser last chose, unless it is not one', () => {
+    localStorage.setItem(RUNS_RANGE_KEY, 'all');
+    expect(create().range()).toBe('all');
+    expect(api.latestReport).toHaveBeenCalledWith('all');
+
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [ReportStore, { provide: ReportingApiService, useValue: api }],
+    });
+    localStorage.setItem(RUNS_RANGE_KEY, '1y');
+    expect(create().range()).toBe('7d');
+  });
+
+  it('loads the run again over a range that is chosen, and remembers it', () => {
+    const store = create();
+    api.latestReport.mockReturnValue(of(report({ range: '30d' })));
+
+    store.setRange('30d');
+
+    expect(api.latestReport).toHaveBeenLastCalledWith('30d');
+    expect(store.range()).toBe('30d');
+    expect(store.report()?.range).toBe('30d');
+    expect(localStorage.getItem(RUNS_RANGE_KEY)).toBe('30d');
+
+    // A newer run is then read over the same range.
+    api.schedulerStatus.mockReturnValue(of(schedulerStatus({ latest_run: '20261008T200000Z' })));
+    api.latestReport.mockReturnValue(of(report({ runId: '20261008T200000Z', range: '30d' })));
+    vi.advanceTimersByTime(STATUS_POLL_MS);
+    expect(api.latestReport).toHaveBeenLastCalledWith('30d');
+    expect(store.report()?.runId).toBe('20261008T200000Z');
+  });
+
+  it('keeps the range for as long as the screen is open when storage refuses it', () => {
+    const refuse = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const read = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+
+    const store = create();
+    expect(store.range()).toBe('7d');
+    store.setRange('today');
+    expect(store.range()).toBe('today');
+    expect(api.latestReport).toHaveBeenLastCalledWith('today');
+
+    refuse.mockRestore();
+    read.mockRestore();
   });
 
   it('is empty until the consumer has written a first run', () => {

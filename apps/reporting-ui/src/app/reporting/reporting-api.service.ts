@@ -26,9 +26,10 @@ export class ReportingApiService {
     return this._http.get<RunList>(`${this._api}/runs`);
   }
 
-  // 404 until the reporting consumer has written its first run.
-  latestReport(): Observable<Report> {
-    return this._http.get<Report>(`${this._api}/runs/latest`);
+  // 404 until the reporting consumer has written its first run. All time is the run
+  // as it was written; a narrower range is cut from it in the viewer's days.
+  latestReport(range: ActivityRange = 'all'): Observable<Report> {
+    return this._http.get<Report>(`${this._api}/runs/latest`, { params: this.rangeOf(range) });
   }
 
   // Public on the service; the token is sent anyway and ignored.
@@ -60,10 +61,16 @@ export class ReportingApiService {
   }
 
   // A chart PNG. Fetched as a blob because an <img src> cannot carry the bearer token.
-  runFile(runId: string, name: string): Observable<Blob> {
+  // All time is the file the report job wrote; a narrower range is drawn by the service.
+  runFile(runId: string, name: string, range: ActivityRange = 'all'): Observable<Blob> {
     return this._http.get(
       `${this._api}/runs/${encodeURIComponent(runId)}/files/${encodeURIComponent(name)}`,
-      { responseType: 'blob' },
+      { params: this.rangeOf(range), responseType: 'blob' },
     );
+  }
+
+  // What asks a run endpoint for a range. All time is what it answers unasked.
+  private rangeOf(range: ActivityRange): Record<string, string | number> {
+    return range === 'all' ? {} : { range, tzOffset: -new Date().getTimezoneOffset() };
   }
 }

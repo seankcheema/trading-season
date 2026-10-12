@@ -23,6 +23,7 @@ import {
   signedWholeDollars,
   wholeDollars,
 } from '../reporting/format';
+import { RANGES, rangeName, readRange, rememberRange } from '../reporting/range';
 import { ReportingApiService } from '../reporting/reporting-api.service';
 import { plainReason } from '../orders/order-detail.component';
 import { ChangePillComponent, PillTone, statusTone } from '../shared/change-pill.component';
@@ -31,38 +32,13 @@ import { ChartPoint, LineChartComponent } from '../shared/line-chart.component';
 import { live } from '../shared/live';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { SparklineComponent } from '../shared/sparkline.component';
-import { TimeframeToggleComponent, ToggleOption } from '../shared/timeframe-toggle.component';
+import { TimeframeToggleComponent } from '../shared/timeframe-toggle.component';
 
 // How often the screen reads the ledgers again.
 export const ACTIVITY_REFRESH_MS = 15_000;
 
-interface RangeOption extends ToggleOption<ActivityRange> {
-  // What the range is called away from the toggle, where its label alone would not say.
-  name?: string;
-}
-
-const RANGES: RangeOption[] = [
-  { value: 'today', label: 'Today' },
-  { value: '7d', label: '7D' },
-  { value: '30d', label: '30D' },
-  { value: '90d', label: '90D' },
-  { value: 'all', label: 'All', name: 'All time' },
-];
-
 // Where this browser remembers the range Activity was last showing.
 export const RANGE_KEY = 'ts.reporting.activity-range';
-// The range a browser with nothing remembered opens on.
-const DEFAULT_RANGE: ActivityRange = '7d';
-
-// Storage can throw in private windows or with blocked site data; Activity then opens on the default.
-function readRange(): ActivityRange {
-  try {
-    const saved = localStorage.getItem(RANGE_KEY);
-    return RANGES.find((option) => option.value === saved)?.value ?? DEFAULT_RANGE;
-  } catch {
-    return DEFAULT_RANGE;
-  }
-}
 
 interface Kpi {
   label: string;
@@ -348,13 +324,10 @@ export class ActivityComponent {
   private readonly _api = inject(ReportingApiService);
 
   protected readonly ranges = RANGES;
-  protected readonly range = signal<ActivityRange>(readRange());
+  protected readonly range = signal<ActivityRange>(readRange(RANGE_KEY));
   protected readonly activity = live(() => this._api.activity(this.range()), ACTIVITY_REFRESH_MS);
 
-  protected readonly rangeLabel = computed(() => {
-    const option = RANGES.find((range) => range.value === this.range())!;
-    return option.name ?? option.label;
-  });
+  protected readonly rangeLabel = computed(() => rangeName(this.range()));
 
   protected readonly subtitle = computed(() => {
     const data = this.activity.data();
@@ -448,11 +421,7 @@ export class ActivityComponent {
 
   protected choose(range: ActivityRange): void {
     this.range.set(range);
-    try {
-      localStorage.setItem(RANGE_KEY, range);
-    } catch {
-      // The choice still holds until the screen is left.
-    }
+    rememberRange(RANGE_KEY, range);
     this.activity.reload();
   }
 

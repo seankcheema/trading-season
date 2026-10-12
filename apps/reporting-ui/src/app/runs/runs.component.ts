@@ -22,6 +22,8 @@ import {
   utcDay,
   wholeDollars,
 } from '../reporting/format';
+import { ActivityRange } from '../reporting/console.models';
+import { RANGES } from '../reporting/range';
 import { toNumber } from '../reporting/report-summary';
 import { ReportStore } from '../reporting/report-store.service';
 import { ReportingApiService } from '../reporting/reporting-api.service';
@@ -29,6 +31,7 @@ import { ChangePillComponent } from '../shared/change-pill.component';
 import { ExportMenuComponent, saveFile } from '../shared/export-menu.component';
 import { roundStep } from '../shared/line-chart.component';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { TimeframeToggleComponent } from '../shared/timeframe-toggle.component';
 
 // What each chart the report job writes shows; an unknown file falls back to its name.
 const CHART_TITLES: Record<string, string> = {
@@ -77,14 +80,22 @@ interface SavedChart {
   file: Blob;
 }
 
-// The latest report run as a dashboard: headline figures, trades per day, and
-// traded value by client segment, symbol and account, all read from the run's
-// report.json. The PNG charts the report job rendered are offered as downloads,
-// for the latest run and for any earlier run still on disk.
+// The latest report run as a dashboard over a chosen range: headline figures,
+// trades per day, and traded value by client segment, symbol and account. The
+// ranges are Activity's. All time is the run's report.json; a narrower range is
+// the service's cut of the same run. The charts are offered as PNG downloads for
+// the range on screen, and whole for any earlier run still on disk.
 @Component({
   selector: 'app-runs',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon, NgTemplateOutlet, PageHeaderComponent, ChangePillComponent, ExportMenuComponent],
+  imports: [
+    NgIcon,
+    NgTemplateOutlet,
+    PageHeaderComponent,
+    TimeframeToggleComponent,
+    ChangePillComponent,
+    ExportMenuComponent,
+  ],
   providers: [provideIcons({ lucideCircleAlert, lucideDownload, lucideInbox, lucideRefreshCw })],
   // From 1280px wide the screen fills the window and its lists scroll inside their
   // cards; a window shorter than the minimum scrolls the page instead. Narrower,
@@ -114,10 +125,25 @@ export class RunsComponent {
     return `Run ${report.runId} · generated ${dateTime(report.generatedAt)}${replaced}`;
   });
 
-  // When the next run is due, and whether it is late, which usually means the consumer is not running.
-  protected readonly schedule = computed(() => {
+  protected readonly ranges = RANGES;
+
+  // When a run that is late was expected. A late run usually means the consumer is not running.
+  protected readonly overdue = computed(() => {
     const next = this.store.nextRunAt();
-    return next ? { at: time(next), overdue: this.store.overdue() } : null;
+    return next && this.store.overdue() ? time(next) : null;
+  });
+
+  // The range of the report on screen, which trails the one chosen while it loads.
+  private readonly _shownRange = computed<ActivityRange>(() => this.store.report()?.range ?? 'all');
+
+  // What a card says when it has nothing to show: nothing at all yet, or nothing in the range.
+  protected readonly nothing = computed(() => {
+    const ranged = this._shownRange() !== 'all';
+    return {
+      resolved: ranged ? 'No order resolved in this period.' : 'No order has resolved yet.',
+      filled: ranged ? 'No order filled in this period.' : 'No order has filled yet.',
+      rejected: ranged ? 'nothing resolved in this period' : 'nothing resolved yet',
+    };
   });
 
   protected readonly kpis = computed<Kpi[]>(() => {
@@ -136,7 +162,10 @@ export class RunsComponent {
       {
         label: 'Rejected',
         value: count(summary.rejected),
-        note: summary.rejectedRate === null ? 'nothing resolved yet' : `${percent(summary.rejectedRate)} of resolved`,
+        note:
+          summary.rejectedRate === null
+            ? this.nothing().rejected
+            : `${percent(summary.rejectedRate)} of resolved`,
       },
       {
         label: 'Traded value',
@@ -151,8 +180,8 @@ export class RunsComponent {
     ];
   });
 
-  // Filled and rejected orders per UTC day as stacked columns, with a count
-  // axis in whole steps. Null when no order has resolved.
+  // Filled and rejected orders per day of the report's timezone as stacked columns,
+  // with a count axis in whole steps. Null when no order has resolved.
   protected readonly daily = computed(() => {
     const counts = this.store.report()?.dailyCounts ?? [];
     if (!counts.length) {
@@ -258,29 +287,32 @@ export class RunsComponent {
   // Saves a chart PNG. Fetched as a blob because a link cannot carry the bearer token.
   // The service keeps only its newest run, so the run on screen can be gone before the
   // next status poll brings the one that replaced it. Its chart then comes from that
-  // newest run, which covers the same events and more.
+  // newest run, which covers the same events and more. The run on screen is drawn
+  // over the range it is shown in, and the file says which; an earlier run is whole.
   protected download(name: string, runId = this.store.report()!.runId): void {
     this.downloadFailed.set(false);
     const onScreen = runId === this.store.report()?.runId;
+    const range = onScreen ? this._shownRange() : 'all';
+    const period = range === 'all' ? '' : `${range}-`;
     this._api
-      .runFile(runId, name)
+      .runFile(runId, name, range)
       .pipe(
         map((file): SavedChart => ({ runId, file })),
         catchError((error: unknown) =>
           onScreen && error instanceof HttpErrorResponse && error.status === 404
-            ? this.fromNewestRun(name, runId)
+            ? this.fromNewestRun(name, runId, range)
             : throwError(() => error),
         ),
         takeUntilDestroyed(this._destroyRef),
       )
       .subscribe({
-        next: (chart) => saveFile(`${chart.runId}-${name}`, chart.file),
+        next: (chart) => saveFile(`${chart.runId}-${period}${name}`, chart.file),
         error: () => this.downloadFailed.set(true),
       });
   }
 
   // The same chart from the run that replaced the one on screen, and the screen with it.
-  private fromNewestRun(name: string, missing: string): Observable<SavedChart> {
+  private fromNewestRun(name: string, missing: string, range: ActivityRange): Observable<SavedChart> {
     return this._api.runs().pipe(
       switchMap(({ latest }) => {
         if (!latest || latest === missing) {
@@ -288,7 +320,7 @@ export class RunsComponent {
         }
         this.store.refresh();
         return this._api
-          .runFile(latest, name)
+          .runFile(latest, name, range)
           .pipe(map((file): SavedChart => ({ runId: latest, file })));
       }),
     );

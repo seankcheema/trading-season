@@ -58,6 +58,8 @@ A run holds the three views the business asked to analyse trading by (BR-16: ins
 | By client segment | `activityBySegment`: active accounts, fills, rejections and notional per trader level | `volume_by_segment.png` |
 | By account | `tradesPerAccount`: resolved orders per account | `trades_per_account.png` |
 
+A run covers every event on disk and cuts its days in UTC. Asked for `range=today`, `7d`, `30d` or `90d`, `/api/reporting/runs/latest` answers with the same views for that part of the run: the range is the one Activity cuts, in the viewer's days from `tzOffset`, but it ends when the run was generated, so the answer stays a reading of that run. It is worked out from the `trade-events` files when it is asked for, and so is a chart asked for with a range; neither is written to the run directory. The web service therefore loads the chart code as well as the consumer does.
+
 The run counts only final statuses as trades, and counts each order's status once: when history is republished, an order already on disk arrives again under a new offset and replaces its earlier message instead of adding to a count.
 
 A client segment is a trader's level: `BEGINNER`, `INTERMEDIATE` or `ADVANCED`, the only classification of clients the product keeps. A trader counts under the level they hold when the run is made, whatever it was when they traded. Orders of an account no published record names are counted under `UNKNOWN`.
@@ -116,12 +118,12 @@ Authenticated endpoints need an RS256 bearer token from the [Auth Service](../au
 | GET | `/docs`, `/openapi.yaml` | public | Swagger UI and the OpenAPI contract |
 | GET | `/api/reporting/profile` | any token | The caller's trader profile |
 | GET | `/api/reporting/runs` | `ANALYST`, `ADMIN` | Every complete report run, newest first, with the latest run id |
-| GET | `/api/reporting/runs/latest` | `ANALYST`, `ADMIN` | The latest run's `report.json`; 404 until the first run |
-| GET | `/api/reporting/runs/{runId}/files/{name}` | `ANALYST`, `ADMIN` | One PNG chart of a run |
+| GET | `/api/reporting/runs/latest?range=&tzOffset=` | `ANALYST`, `ADMIN` | The latest run's `report.json`, or with a range of `today`, `7d`, `30d` or `90d` the same figures for that part of it in the viewer's days; 404 until the first run |
+| GET | `/api/reporting/runs/{runId}/files/{name}?range=&tzOffset=` | `ANALYST`, `ADMIN` | One PNG chart of a run: the file the report job wrote, or with a range the chart drawn for it |
 | GET | `/api/reporting/scheduler/status` | public | Latest run id, when it was generated, and the interval |
 | GET | `/api/reporting/activity?range=&tzOffset=` | `ADMIN` | Platform activity over `today`, `7d`, `30d`, `90d` or `all`, in the viewer's days |
 | GET | `/api/reporting/orders?limit=` | `ADMIN` | The newest orders across every account, 500 unless `limit` says otherwise (1 to 1000), and the newest deposits and withdrawals under the same limit |
-| GET | `/api/reporting/orders/{orderId}` | `ADMIN` | One order with its execution, ledger impact and audit trail |
+| GET | `/api/reporting/orders/{orderId}` | `ADMIN` | One order with its execution, ledger impact and audit trail, each entry with the price the order stood at: the price it asked for, and its fill price on the entry that records the fill |
 | GET | `/api/reporting/customers` | `ADMIN` | Every trader with their balances and lock status; analysts and admins are left out |
 | GET | `/api/reporting/customers/{userId}` | `ADMIN` | One customer with their accounts, orders and transfers; 404 for an analyst or admin |
 

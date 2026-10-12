@@ -12,7 +12,7 @@ import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideCheck, lucideCopy } from '@ng-icons/lucide';
 import { catchError, map, of, startWith, switchMap } from 'rxjs';
-import { OrderDetail, OrderStatus } from '../reporting/console.models';
+import { AuditEvent, OrderDetail, OrderStatus } from '../reporting/console.models';
 import { count, daySeconds, dollars, fullStamp, signedDollars } from '../reporting/format';
 import { ReportingApiService } from '../reporting/reporting-api.service';
 import { ChangePillComponent, statusTone } from '../shared/change-pill.component';
@@ -55,8 +55,8 @@ function signedShares(value: number): string {
 }
 
 // One order in full: who placed it, how it executed and what it did to cash and
-// holdings on the left; its audit trail, and under it the ids that tie it to
-// the ledger, on the right.
+// holdings on the left; its audit trail with the price at each stage, and under
+// it the ids that tie it to the ledger, on the right.
 @Component({
   selector: 'app-order-detail',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -166,13 +166,22 @@ function signedShares(value: number): string {
                           class="ring-card mt-1 ml-[3px] size-[9px] rounded-full ring-[3px]"
                           [class]="eventColor(event.eventType)"
                         ></span>
-                        <span>
-                          <span class="block text-[13px] font-medium tracking-[0.02em]">
-                            {{ event.eventType }}
+                        <!-- The stage and when it was recorded on the left, the price it was recorded at on the right. -->
+                        <span class="flex min-w-0 justify-between gap-3">
+                          <span class="min-w-0">
+                            <span class="block text-[13px] font-medium tracking-[0.02em]">
+                              {{ event.eventType }}
+                            </span>
+                            <span class="text-muted-foreground block text-xs tabular-nums">
+                              {{ daySeconds(event.recordedAt) }}{{ event.detail ? ' · ' + event.detail : '' }}
+                            </span>
                           </span>
-                          <span class="text-muted-foreground block text-xs tabular-nums">
-                            {{ daySeconds(event.recordedAt) }}{{ event.detail ? ' · ' + event.detail : '' }}
-                          </span>
+                          @if (event.price !== null) {
+                            <span class="shrink-0 text-right" data-stage-price>
+                              <span class="block text-[13px] tabular-nums">{{ dollars(event.price) }}</span>
+                              <span class="text-muted-foreground block text-xs">{{ priceKind(event) }}</span>
+                            </span>
+                          }
                         </span>
                       </li>
                     }
@@ -341,9 +350,15 @@ export class OrderDetailComponent {
   });
 
   protected readonly count = count;
+  protected readonly dollars = dollars;
   protected readonly daySeconds = daySeconds;
   protected readonly fullStamp = fullStamp;
   protected readonly statusTone = statusTone;
+
+  // What the price beside an audit entry is.
+  protected priceKind(event: AuditEvent): string {
+    return event.priceKind === 'FILL' ? 'fill price' : 'indicative';
+  }
 
   // Red for a failure, green for a fill, cyan for a step on the way.
   protected eventColor(eventType: string): string {

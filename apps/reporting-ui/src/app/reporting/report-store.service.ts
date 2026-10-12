@@ -2,6 +2,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { EMPTY, Subject, catchError, forkJoin, map, of, switchMap, tap, timer } from 'rxjs';
+import { ActivityRange } from './console.models';
+import { readRange, rememberRange } from './range';
 import { Report, RunSummary, SchedulerStatus, UserProfile } from './report.models';
 import { summarize } from './report-summary';
 import { ReportingApiService } from './reporting-api.service';
@@ -10,6 +12,8 @@ import { ReportingApiService } from './reporting-api.service';
 // error: the load failed and there is nothing older to show.
 export type ReportState = 'loading' | 'ready' | 'empty' | 'error';
 
+// Where this browser remembers the range Report runs was last showing.
+export const RUNS_RANGE_KEY = 'ts.reporting.runs-range';
 // How often the scheduler status is checked for a newer run.
 export const STATUS_POLL_MS = 30_000;
 // A run later than this past its expected time is shown as overdue.
@@ -20,8 +24,8 @@ type ReportOutcome =
   | { kind: 'none' }
   | { kind: 'failed' };
 
-// What the signed-in screens share: the latest report, the run list, the scheduler status
-// and the caller's profile. Provided by the shell, so it lives exactly as long as a
+// What the signed-in screens share: the latest report over the chosen range, the run
+// list, the scheduler status and the caller's profile. Provided by the shell, so it lives exactly as long as a
 // signed-in session is on screen and its polling stops on sign-out.
 @Injectable()
 export class ReportStore {
@@ -29,6 +33,8 @@ export class ReportStore {
   private readonly _reload = new Subject<void>();
 
   readonly report = signal<Report | null>(null);
+  // The range the report is asked for. It opens on the one this browser last chose.
+  readonly range = signal<ActivityRange>(readRange(RUNS_RANGE_KEY));
   readonly state = signal<ReportState>('loading');
   readonly runs = signal<RunSummary[]>([]);
   readonly latestRunId = signal<string | null>(null);
@@ -72,7 +78,7 @@ export class ReportStore {
         tap(() => this.refreshing.set(true)),
         switchMap(() =>
           forkJoin({
-            report: this._api.latestReport().pipe(
+            report: this._api.latestReport(this.range()).pipe(
               map((report): ReportOutcome => ({ kind: 'report', report })),
               catchError((error: unknown) =>
                 of<ReportOutcome>(
@@ -126,6 +132,13 @@ export class ReportStore {
   }
 
   refresh(): void {
+    this._reload.next();
+  }
+
+  // Shows the latest run over another range. The report on screen stays until the new one arrives.
+  setRange(range: ActivityRange): void {
+    this.range.set(range);
+    rememberRange(RUNS_RANGE_KEY, range);
     this._reload.next();
   }
 

@@ -108,17 +108,47 @@ paths:
   /api/reporting/runs/latest:
     get:
       tags: [Runs]
-      summary: Get the latest run's report
-      description: Requires the ANALYST or ADMIN role.
+      summary: Get the latest run's report, over all of it or a range
+      description: |
+        Requires the ANALYST or ADMIN role.
+
+        Without a range, or with the range all, the answer is the run's
+        report.json as the report job wrote it: every event on disk, with
+        days cut in UTC.
+
+        Any other range is the one the activity endpoint cuts, counted in the
+        viewer's days from tzOffset, except that it ends when the run was
+        generated instead of now. The answer has the shape of report.json and
+        the run's id, generation time and files, with the figures taken from
+        the trade events that occurred inside the range, days cut in the
+        viewer's zone, and range, from and to added.
       security:
         - bearerAuth: []
+      parameters:
+        - name: range
+          in: query
+          description: The part of the run to answer for. A range other than all ends when the run was generated.
+          schema:
+            type: string
+            enum: [today, 7d, 30d, 90d, all]
+            default: all
+        - name: tzOffset
+          in: query
+          description: The viewer's offset east of UTC in minutes, such as -300 for UTC-5. Not used by the range all.
+          schema:
+            type: integer
+            minimum: -840
+            maximum: 840
+            default: 0
       responses:
         '200':
-          description: The latest report.json
+          description: The latest run's report
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Report'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -134,8 +164,14 @@ paths:
   /api/reporting/runs/{runId}/files/{name}:
     get:
       tags: [Runs]
-      summary: Get one chart image of a run
-      description: Requires the ANALYST or ADMIN role.
+      summary: Get one chart image of a run, over all of it or a range
+      description: |
+        Requires the ANALYST or ADMIN role.
+
+        Without a range, or with the range all, the answer is the file the
+        report job wrote. Any other range is drawn when it is asked for, from
+        the figures /api/reporting/runs/latest gives for that range of this
+        run, and is not kept.
       security:
         - bearerAuth: []
       parameters:
@@ -153,6 +189,21 @@ paths:
           schema:
             type: string
             enum: [volume_by_symbol.png, daily_trades.png, volume_by_segment.png, trades_per_account.png]
+        - name: range
+          in: query
+          description: The part of the run to answer for. A range other than all ends when the run was generated.
+          schema:
+            type: string
+            enum: [today, 7d, 30d, 90d, all]
+            default: all
+        - name: tzOffset
+          in: query
+          description: The viewer's offset east of UTC in minutes, such as -300 for UTC-5. Not used by the range all.
+          schema:
+            type: integer
+            minimum: -840
+            maximum: 840
+            default: 0
       responses:
         '200':
           description: The PNG chart
@@ -161,6 +212,8 @@ paths:
               schema:
                 type: string
                 format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -543,7 +596,7 @@ components:
         date:
           type: string
           format: date
-          description: UTC day.
+          description: A day of the report's timezone.
         filled:
           type: integer
         rejected:
@@ -575,7 +628,7 @@ components:
       required: [segment, accounts, total, filled, rejected, notional]
     Report:
       type: object
-      description: The report.json of one run.
+      description: The report.json of one run, or the same figures over a range of it.
       properties:
         runId:
           type: string
@@ -584,7 +637,20 @@ components:
           format: date-time
         timezone:
           type: string
+          description: Whose days dailyCounts is cut in. UTC for a run as written; the viewer's offset, such as UTC-05:00, for a range.
           example: UTC
+        range:
+          type: string
+          enum: [today, 7d, 30d, 90d]
+          description: The range asked for. Absent from a run as written.
+        from:
+          type: string
+          format: date-time
+          description: Where the range starts. Absent from a run as written.
+        to:
+          type: string
+          format: date-time
+          description: Where the range ends, which is when the run was generated. Absent from a run as written.
         eventCount:
           type: integer
         statusCounts:
@@ -976,7 +1042,7 @@ components:
               required: [cashBefore, cashChange, cashAfter, holdingBefore, holdingChange, holdingAfter, cashTransactionId, holdingMovementId]
             audit:
               type: array
-              description: The order's audit trail, oldest first.
+              description: The order's audit trail, oldest first, with the price the order stood at when each entry was recorded.
               items:
                 type: object
                 properties:
@@ -988,7 +1054,20 @@ components:
                   recordedAt:
                     type: string
                     format: date-time
-                required: [eventType, detail, recordedAt]
+                  price:
+                    type: number
+                    nullable: true
+                    description: |
+                      The fill's price on the entry that records the fill, and
+                      the price the order asked for on every other entry. Null
+                      when the order carried no price. An audit row holds no
+                      price of its own; this is taken from the order and its fill.
+                  priceKind:
+                    type: string
+                    nullable: true
+                    enum: [INDICATIVE, FILL]
+                    description: Which of the two price is. Null when price is.
+                required: [eventType, detail, recordedAt, price, priceKind]
           required: [userEmail, bufferPercent, acceptedAt, resolvedAt, simulatedAt, fill, ledger, audit]
     Customer:
       type: object

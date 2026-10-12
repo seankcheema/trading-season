@@ -62,6 +62,29 @@ describe('ReportingApiService', () => {
     expect(seen[2]).toEqual(orderDetail());
   });
 
+  it('asks for a run and its charts over a range in the viewer\'s days, and for all time as written', () => {
+    const offset = String(-new Date().getTimezoneOffset());
+    service.latestReport('30d').subscribe();
+    service.runFile('20261008T194500Z', 'daily_trades.png', 'today').subscribe();
+    service.latestReport('all').subscribe();
+    service.runFile('20261008T194500Z', 'daily_trades.png', 'all').subscribe();
+
+    const cut = http.expectOne((request) => request.url === '/api/reporting/runs/latest' && request.params.has('range'));
+    expect(cut.request.params.get('range')).toBe('30d');
+    expect(cut.request.params.get('tzOffset')).toBe(offset);
+    const chart = http.expectOne(
+      (request) => request.url.endsWith('/files/daily_trades.png') && request.params.has('range'),
+    );
+    expect(chart.request.params.get('range')).toBe('today');
+    expect(chart.request.params.get('tzOffset')).toBe(offset);
+    expect(chart.request.responseType).toBe('blob');
+    // All time is what the service answers unasked, so nothing is added.
+    expect(http.expectOne('/api/reporting/runs/latest').request.params.keys()).toEqual([]);
+    expect(
+      http.expectOne('/api/reporting/runs/20261008T194500Z/files/daily_trades.png').request.params.keys(),
+    ).toEqual([]);
+  });
+
   it('fetches a chart as a blob', () => {
     let received: Blob | undefined;
     service.runFile('20261008T194500Z', 'daily_trades.png').subscribe((blob) => (received = blob));
