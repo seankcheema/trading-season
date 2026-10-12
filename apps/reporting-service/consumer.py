@@ -2,10 +2,13 @@
 The reporting consumer process: consumer group reporting-ingester.
 
 Runs as its own container (python consumer.py) beside the gunicorn web
-service. It polls trade-events, appends each message to the event store,
-commits the offset only after the line is on disk, and runs the report job
-on a schedule. Exactly one instance may run at a time: two processes must
-never append to the same partition file.
+service. It polls trade-events and platform-records, appends each message to
+that topic's event store, commits the offset only after the line is on disk,
+and runs the report job on a schedule. Exactly one instance may run at a
+time: two processes must never append to the same partition file.
+
+These two topics are everything the reporting service knows. Neither this
+process nor the web service connects to the trading database.
 """
 
 import json
@@ -16,7 +19,7 @@ from datetime import datetime, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from event_store import EventStore
+from event_store import PLATFORM_RECORDS, TRADE_EVENTS, EventStore
 
 logger = logging.getLogger(__name__)
 
@@ -24,17 +27,18 @@ logger = logging.getLogger(__name__)
 class KafkaSource:
     """Thin wrapper over confluent_kafka.Consumer so the loop can be tested with a fake."""
 
-    def __init__(self, bootstrap_servers, group_id, topic, on_assign=None):
+    def __init__(self, bootstrap_servers, group_id, topics, on_assign=None):
         from confluent_kafka import Consumer  # imported here so tests need no broker library
 
+        topics = [topics] if isinstance(topics, str) else list(topics)
         self._consumer = Consumer({
             'bootstrap.servers': bootstrap_servers,
             'group.id': group_id,
             'enable.auto.commit': False,
             'auto.offset.reset': 'earliest',
         })
-        self._consumer.subscribe([topic], on_assign=lambda consumer, partitions: on_assign() if on_assign else None)
-        logger.info('Subscribed to %s as group %s via %s', topic, group_id, bootstrap_servers)
+        self._consumer.subscribe(topics, on_assign=lambda consumer, partitions: on_assign() if on_assign else None)
+        logger.info('Subscribed to %s as group %s via %s', ', '.join(topics), group_id, bootstrap_servers)
 
     def poll(self, timeout):
         return self._consumer.poll(timeout)
@@ -46,10 +50,34 @@ class KafkaSource:
         self._consumer.close()
 
 
+class TopicStores:
+    """
+    The event store of each consumed topic, so a message lands in its own
+    topic's files. stores maps the name the broker knows a topic by to the
+    store of what it carries.
+    """
+
+    def __init__(self, stores):
+        self._stores = dict(stores)
+
+    def refresh(self):
+        for store in self._stores.values():
+            store.refresh()
+
+    def append(self, message, key, body):
+        """Append to the store of the message's topic. A topic nobody stores is not written."""
+        store = self._stores.get(message.topic())
+        if store is None:
+            logger.warning('Skipping message from unexpected topic %s', message.topic())
+            return False
+        return store.append(message.partition(), message.offset(), key, body)
+
+
 def handle_message(message, store):
     """
     Append one message to the store. Returns True when a line was written,
-    False when it was a duplicate or unreadable. Both outcomes commit.
+    False when it was a duplicate or unreadable. Both outcomes commit. store
+    is one topic's EventStore, or the TopicStores of every consumed topic.
     """
     key = message.key()
     value = message.value()
@@ -60,11 +88,17 @@ def handle_message(message, store):
     except json.JSONDecodeError:
         body = None
     if not isinstance(body, dict):
-        logger.warning('Skipping unreadable trade event partition=%s offset=%s',
+        logger.warning('Skipping unreadable message partition=%s offset=%s',
                        message.partition(), message.offset())
         return False
-    written = store.append(message.partition(), message.offset(), key, body)
-    if written:
+    if isinstance(store, TopicStores):
+        written = store.append(message, key, body)
+    else:
+        written = store.append(message.partition(), message.offset(), key, body)
+    if written and body.get('type') is not None:
+        logger.info('Stored platform record type=%s key=%s partition=%s offset=%s',
+                    body.get('type'), key, message.partition(), message.offset())
+    elif written:
         logger.info('Stored trade event orderId=%s status=%s key=%s partition=%s offset=%s',
                     body.get('orderId'), body.get('status'), key, message.partition(), message.offset())
     return written
@@ -100,13 +134,19 @@ def start_scheduler(app, files_dir, interval_minutes, first_run_at=None):
     """
     Run the report job on an interval inside the Flask app context. The first
     run is one interval away unless first_run_at names an earlier time.
+
+    The job brings this process's read model up to date first: a run takes
+    its trade data from the event files and the names and trader levels it
+    labels them with from the read model built out of those same files.
     """
     from models import db
+    from read_model import read_model
     from report_run import run_report
 
     def job():
-        with app.app_context():
+        with app.app_context(), read_model.lock:
             try:
+                read_model.sync(db.session, files_dir)
                 run_report(files_dir, db.session)
             except Exception:  # noqa: BLE001 - the job must never kill the scheduler
                 logger.exception('Report run failed')
@@ -131,7 +171,12 @@ def main():
 
     config = app.config
     files_dir = config['REPORTING_FILES_DIR']
-    store = EventStore(f'{files_dir}/events')
+    events_dir = f'{files_dir}/events'
+    stores = TopicStores({
+        config['KAFKA_TRADE_EVENTS_TOPIC']: EventStore(events_dir, TRADE_EVENTS),
+        config['KAFKA_PLATFORM_RECORDS_TOPIC']: EventStore(events_dir, PLATFORM_RECORDS),
+    })
+    topics = list(stores._stores)
 
     stop = threading.Event()
     for signum in (signal.SIGTERM, signal.SIGINT):
@@ -145,9 +190,9 @@ def main():
                                     first_run_at=datetime.now(timezone.utc))
 
     source = KafkaSource(config['KAFKA_BOOTSTRAP_SERVERS'], config['REPORTING_CONSUMER_GROUP'],
-                         config['KAFKA_TRADE_EVENTS_TOPIC'], on_assign=store.refresh)
+                         topics, on_assign=stores.refresh)
     try:
-        run_consumer_loop(source, store, stop)
+        run_consumer_loop(source, stores, stop)
     finally:
         if scheduler is not None:
             scheduler.shutdown(wait=True)

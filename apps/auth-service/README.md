@@ -5,6 +5,7 @@ NestJS service that owns credentials and sessions. It issues RS256 access tokens
 - Port 3001, no `/api` prefix
 - Swagger UI at http://localhost:3001/api/docs (spec at `/api-json`)
 - Tables in the shared `trading_season` database: `user_accounts` and `refresh_tokens`. Their schema lives in [db/migrations](../../db/migrations); this service runs no migrations and leaves TypeORM `synchronize` off.
+- Publishes every change to a sign-in to the Kafka `platform-records` topic, because the [Reporting Service](../reporting-service/README.md) shows sign-ins and their locks and has no database connection to read them with; see [What reporting receives](#what-reporting-receives).
 
 ## Endpoints
 
@@ -109,6 +110,7 @@ classDiagram
     WellKnownController --> JwtKeysService
     AuthService --> UsersService
     AuthService --> RefreshTokensService
+    UsersService --> SignInPublisher : publishes each change
     AuthService ..> JwtKeysService : signs with
     UsersService --> User
     RefreshTokensService --> RefreshToken
@@ -195,6 +197,16 @@ sequenceDiagram
     end
 ```
 
+## What reporting receives
+
+`SignInPublisher` sends the current state of a sign-in to `platform-records` whenever this service changes it: a registration, a development sign-in it seeds, each failed attempt, a lock, and the login that clears a counter or a lock. A login that had nothing to clear publishes nothing.
+
+| Key | Body |
+| --- | --- |
+| `SIGN_IN:<userId>` | `type` (`SIGN_IN`), `userId`, `email`, `role`, `failedLoginAttempts`, `lockedUntil`, `createdAt`, `updatedAt` |
+
+The body is built field by field and never includes the password hash. Publishing cannot change the outcome of a login: `publish` returns at once, messages are sent one after another in the background, and a broker that is down is logged, not surfaced to the caller. The topic is compacted and shared with the Java services; see the [Reporting Service README](../reporting-service/README.md#what-arrives).
+
 ## Local setup
 
 ```sh
@@ -219,6 +231,8 @@ In development the service seeds three sign-ins, each only if its email is not a
 | `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY` | RS256 key pair with literal `\n` escapes. Required, no fallback |
 | `JWT_ISSUER` | `iss` claim, must match the Java services' `AUTH_JWT_ISSUER` |
 | `CORS_ORIGINS` | Comma-separated allowed browser origins, default `http://localhost:4200` |
+| `KAFKA_BOOTSTRAP_SERVERS` | Broker for `platform-records`, `localhost:29092` on the host and `kafka:9092` in Compose. Unset, nothing is published |
+| `EVENTS_ENABLED` | `false` turns publishing off whatever the broker setting, for running without a broker. Default `true` |
 
 ## Commands
 

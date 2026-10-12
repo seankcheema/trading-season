@@ -6,5 +6,6 @@ app.config
 app.holding
 app.instrument
 app.market
+app.record
 app.user
 app.watchlist

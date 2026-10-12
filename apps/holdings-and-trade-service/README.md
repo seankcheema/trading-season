@@ -6,6 +6,7 @@ Spring Boot (Java 21) service for the signed-in user's own data: profile, accoun
 - Shares the `trading_season` database. The schema comes from [db/migrations](../../db/migrations); Hibernate never alters it.
 - Authenticates callers by verifying RS256 tokens from the [Auth Service](../auth-service/README.md) against its cached JWKS. Every user-specific endpoint resolves the owner from the token's `sub`; no path or body field can name another user. An account that belongs to someone else is 403 and a missing one is 404.
 - Runs the `portfolio-valuation-capture` Kafka consumer group on `trade-events`: when an order fills, it records a portfolio valuation for that account, so the portfolio chart gets a point at the moment of the trade even with no dashboard open.
+- Publishes every profile, account, deposit, withdrawal and portfolio valuation it writes to the Kafka `platform-records` topic. The Reporting Service has no database connection: that topic is how it knows who the customers are.
 
 ## Endpoints
 
@@ -76,6 +77,11 @@ flowchart TB
     PVJ --> PVS
     K[["Kafka trade-events"]] -- "group portfolio-valuation-capture" --> PVL
     PVL --> PVS
+    PR["record<br/>PlatformRecordPublisher"] --> R[["Kafka platform-records"]]
+    AuS -- "profile" --> PR
+    AcS -- "account" --> PR
+    CS -- "transfer" --> PR
+    PVS -- "valuation" --> PR
     PVS --> T2
     PVS --> T4
     PVS --> MR
@@ -144,6 +150,24 @@ sequenceDiagram
 
 The listener resolves the owner from the account row, not from a token, because there is no caller. A failed capture is logged and the offset is still committed, so one bad message never blocks the group. Replaying offsets only adds chart points.
 
+A message carrying a `replay` header is an old fill published again for reporting by [db/tools/republish_history.py](../../db/README.md#reporting-feed-tools). The holdings did not change when it arrived, so the listener records nothing for it.
+
+### What reporting receives
+
+The Reporting Service reads Kafka, not the database. Each service method that writes a row reporting shows raises a record inside its transaction, and `PlatformRecordPublisher` sends it to the `platform-records` topic once the transaction has committed, keyed by record type and id so the compacted topic keeps the latest state of every row. A send failure is logged and never fails the write.
+
+| Record | Raised when | Key | Body |
+| --- | --- | --- | --- |
+| `CUSTOMER_PROFILE` | A profile is registered | `CUSTOMER_PROFILE:<userId>` | `userId`, `firstName`, `lastName`, `traderLevel`, `availableFunds`, `sessionTimeoutMinutes`, `lastActivityAt`, `createdAt`, `asOf` |
+| `TRADING_ACCOUNT` | An account is opened or renamed | `TRADING_ACCOUNT:<accountId>` | `accountId`, `userId`, `name`, `openedDate`, `currency` |
+| `CASH_TRANSFER` | A deposit or withdrawal is booked | `CASH_TRANSFER:<cashTransactionId>` | `cashTransactionId`, `accountId`, `userId`, `amount`, `reason`, `createdAt`, and the `availableFunds` it left |
+| `PORTFOLIO_VALUATION` | A valuation is captured | `PORTFOLIO_VALUATION:<accountId>` | `valuationId`, `accountId`, `observedAt`, `portfolioValue` |
+| `MARKET_SESSION` | The service has started | `MARKET_SESSION:current` | `sessionId`, the newest completed simulation session |
+
+Every body also carries its `type`. An SSN, address, date of birth or middle name is never part of one.
+
+The scheduler values every account every minute, which is more than reporting needs. A valuation captured for a fill or a dashboard is always published; a scheduled one is published at most once per account per `app.events.valuation-interval-minutes` (default 15). A valuation is keyed by its account, so a newer one replaces an older one in the topic.
+
 ### Market replay
 
 ```mermaid
@@ -181,13 +205,13 @@ Environment variables override [application.properties](src/main/resources/appli
 | `AUTH_JWT_ISSUER` | `https://auth.dualeapa.local` | Required `iss`, must equal the auth service's `JWT_ISSUER` |
 | `CORS_ORIGINS` | `http://localhost:4200` | Allowed browser origins, comma-separated |
 | `MARKET_REPLAY_ARCHIVE_LOCATION` | empty | Absolute path to the Parquet archive |
-| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:29092` | Broker for the `trade-events` consumer; Compose sets `kafka:9092` |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:29092` | Broker for the `trade-events` consumer and the `platform-records` publisher; Compose sets `kafka:9092` |
 
-The property `app.events.enabled` (default `true`) registers the `portfolio-valuation-capture` consumer; the test profile sets it to `false` so contexts without a broker never contact one.
+The property `app.events.enabled` (default `true`) registers the `portfolio-valuation-capture` consumer and the `platform-records` publisher; the test profile sets it to `false` so contexts without a broker never contact one. Without a broker the service still starts, but a write that publishes then waits up to five seconds (`max.block.ms`) before responding.
 
 ## Run and test
 
-Start a migrated database with market data ([db/README.md](../../db/README.md), [apps/market-data](../market-data/README.md)), the auth service, and the Kafka broker with its topic from the Compose file (`docker compose -f infrastructure/docker-compose/docker-compose.local.yml up -d kafka-init`), then:
+Start a migrated database with market data ([db/README.md](../../db/README.md), [apps/market-data](../market-data/README.md)), the auth service, and the Kafka broker with its topics from the Compose file (`docker compose -f infrastructure/docker-compose/docker-compose.local.yml up -d kafka-init`), then:
 
 ```sh
 mvn spring-boot:run

@@ -30,7 +30,7 @@ The reporting requirements of the LEAP business requirements specification, and 
 | BR-16, by instrument | Most traded on Activity; traded value by symbol in a report run |
 | BR-16, by period | The Today, 7D, 30D and 90D ranges on Activity, each figure against the period before; trades per day in a report run |
 | BR-16, by client segment | Client segments on Activity; traded value by client segment in a report run. A segment is a trader's level, the only classification of clients the product keeps |
-| BR-16, without competing with live trading | The report runs are built from the `trade-events` topic and read the database only for names and trader levels. Activity, Customers and Orders read the trading database, read only; see [Known limitations](#known-limitations) |
+| BR-16, without competing with live trading | Every screen is answered from Kafka: the Reporting Service has no connection to the trading database. The report runs are built from the `trade-events` topic; Activity, Customers and Orders from a read model of `trade-events` and `platform-records`; see [How the data reaches the screen](#how-the-data-reaches-the-screen) |
 | BR-17, trading volumes, most active instruments, client activity trends | On Activity: Notional traded, Most traded, and Active traders against the prior period beside Client segments |
 | Section 9.3, internal access limited to what a role requires | An analyst sees the report runs only; the screens that show individual customers are an admin's. See [Who sees what](#who-sees-what) |
 
@@ -39,27 +39,32 @@ The reporting requirements of the LEAP business requirements specification, and 
 ```mermaid
 flowchart LR
     OS["Order and Sell Service"] -- "order status changes" --> K[["Kafka trade-events"]]
-    K -- "group reporting-ingester" --> C["Reporting consumer<br/>events files, scheduled report run"]
-    C --> F[("reporting_files<br/>report.json and PNG charts")]
-    F --> RS["Reporting Service :8083"]
-    DB[("trading_season<br/>orders, fills, cash, locks, audit trail")] -. "read only" .-> RS
+    OS -- "audit trail" --> P[["Kafka platform-records"]]
+    HT["Holdings and Trade Service"] -- "profiles, accounts,<br/>transfers, valuations" --> P
+    AS["Auth Service"] -- "sign-ins and locks" --> P
+    K -- "group reporting-ingester" --> C["Reporting consumer<br/>event files, scheduled report run"]
+    P -- "group reporting-ingester" --> C
+    C --> F[("reporting_files<br/>event files, report.json and PNG charts")]
+    F --> RS["Reporting Service :8083<br/>read model built from the event files"]
     RS -- "/api/reporting" --> UI["Reporting UI :4300"]
 ```
 
-The UI never talks to Kafka or the database. Two kinds of data reach it, both through the Reporting Service:
+The UI never talks to Kafka or the database, and neither it nor the Reporting Service reads the database at all. Two kinds of data reach it, both through the Reporting Service:
 
 | Screen | Source | Endpoint | Kept fresh by |
 | --- | --- | --- | --- |
-| Activity | Database | `GET /api/reporting/activity?range=&tzOffset=` | Reading again every 15 seconds, and when the range changes |
-| Customers | Database | `GET /api/reporting/customers` | Reading again every 30 seconds |
-| One customer, with their orders and transfers | Database | `GET /api/reporting/customers/{userId}` | Reading again every 30 seconds |
-| Orders and cash transfers | Database | `GET /api/reporting/orders` | Reading again every 30 seconds |
-| One order | Database | `GET /api/reporting/orders/{orderId}` | Read when the order is opened |
+| Activity | Read model | `GET /api/reporting/activity?range=&tzOffset=` | Reading again every 15 seconds, and when the range changes |
+| Customers | Read model | `GET /api/reporting/customers` | Reading again every 30 seconds |
+| One customer, with their orders and transfers | Read model | `GET /api/reporting/customers/{userId}` | Reading again every 30 seconds |
+| Orders and cash transfers | Read model | `GET /api/reporting/orders` | Reading again every 30 seconds |
+| One order | Read model | `GET /api/reporting/orders/{orderId}` | Read when the order is opened |
 | Report runs | `trade-events` files | `GET /api/reporting/runs`, `GET /api/reporting/runs/latest`, `GET /api/reporting/scheduler/status` | Asking the scheduler status every 30 seconds and reloading when the latest run id changes |
 | A chart PNG of a run | `trade-events` files | `GET /api/reporting/runs/{runId}/files/{name}`, fetched as a blob because a link cannot send the bearer token | Fetched when its download is asked for |
-| Signed-in user's name and trader level | Database | `GET /api/reporting/profile`; a sign-in without a trading profile (404) shows its email instead | Read once |
+| Signed-in user's name and trader level | Read model | `GET /api/reporting/profile`; a sign-in without a trading profile (404) shows its email instead | Read once |
 
-A refresh that fails leaves the last good data on screen. The database screens show orders whether or not a Kafka broker was running when they were placed; the report runs show only orders placed while one was.
+The read model is the Reporting Service's own tables, built from the `trade-events` and `platform-records` messages its consumer stored; see [the Reporting Service](../reporting-service/README.md#the-read-model). A message is on screen at the next refresh after it is published.
+
+A refresh that fails leaves the last good data on screen. Every screen shows what was published while a Kafka broker was running, and what [republish_history.py](../../db/README.md#reporting-feed-tools) published from the database afterwards.
 
 ## Architecture
 
@@ -110,7 +115,7 @@ flowchart TB
     Guard --> AuthSvc
 ```
 
-`ReportStore` is provided by the shell component, so it exists only while a signed-in screen is shown and its polling stops on sign-out. Each database screen owns its data through `live()`, which stops with the screen.
+`ReportStore` is provided by the shell component, so it exists only while a signed-in screen is shown and its polling stops on sign-out. Each console screen owns its data through `live()`, which stops with the screen.
 
 ### Request routing
 
@@ -168,7 +173,7 @@ The kit is a proposal drawn on sample data. Where the product has no such data, 
 | --- | --- | --- |
 | "Unlock now" on a locked customer, "Email customer" | Left out; the lock banner says when the account unlocks | Reporting only reads |
 | Statuses FILLED, PENDING, REJECTED, CANCELLED, and customer status SUSPENDED | FILLED, PENDING, ACCEPTED, REJECTED; ACTIVE and LOCKED | These are the statuses the product has |
-| Order execution: bid and ask at submit, spread, market price now, session | Indicative price, price buffer, slippage, submitted, resolved, market time | The quote an order executed against is not kept in the database |
+| Order execution: bid and ask at submit, spread, market price now, session | Indicative price, price buffer, slippage, submitted, resolved, market time | The quote an order executed against is not kept, so it is not published |
 | The orders table has a Type column | An Amount column in its place: shares at the fill price | Every order is a market order, so the column said the same on every row |
 | The orders table lists orders only | Deposits and withdrawals are rows among the orders: asset Cash, side Deposit or Withdrawal, status Completed, the cash moved under Amount, no order number and nothing to open | A customer's cash movements belong beside their orders when supporting them |
 | The order dialog puts References last in the left column, the client reference cut to its cell | References sits under the audit trail, with the client reference shown whole on a row of its own and a copy button | On a short window the references were below the fold, and a cut reference cannot be read or selected |
@@ -215,11 +220,12 @@ What the screens show depends on what is running:
 | Situation | Activity, Customers and Orders | Report runs |
 | --- | --- | --- |
 | Reporting Service not reachable | A load error with a retry | A load error with a retry |
-| Reporting Service up, consumer never started | Everything in the database | "No report runs yet" |
-| Consumer running, no trade event stored yet | Everything in the database | A report of zeros |
-| Orders placed while the broker and consumer run | Everything in the database | Those orders, from the next run on |
+| Reporting Service up, consumer never started | Empty: no customers, no orders | "No report runs yet" |
+| Consumer running, nothing published yet | Empty, then each sign-in, customer and order as it is published | A report of zeros |
+| Customers sign up and trade while the broker and consumer run | All of it, within seconds | Their orders, from the next run on |
+| History republished from the database | Everything in the database at that moment | The same, from the next run on |
 
-Trade events exist only for orders placed while a Kafka broker is running. Orders already in the database are never replayed into the report runs.
+Messages exist only for what the services did while a Kafka broker was running. What was already in the database, or was written to it by SQL, reaches every screen once [republish_history.py](../../db/README.md#reporting-feed-tools) has published it. [seed_demo_history.py](../../db/README.md#reporting-feed-tools) gives a development database six months of history to republish.
 
 The production [Dockerfile](Dockerfile) builds the app and serves it through unprivileged Nginx, with SPA fallback and the two proxies. In [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) the container starts after `reporting-service` and `auth-service`, because Nginx resolves both upstream names when it starts.
 
@@ -232,7 +238,7 @@ The production [Dockerfile](Dockerfile) builds the app and serves it through unp
 - The Orders screen shows the newest 500 orders and the newest 500 transfers; the count beside the filters is of those rows. A customer's page shows their newest 1000 of each.
 - A figure on Activity has no change pill when the period before the range has nothing to compare with. Today is mostly zeros until the day's first order.
 - A client segment is the level a trader holds now. The level a trader held when an order was placed is not kept, so a promoted trader takes their earlier orders into the new segment.
-- Activity, Customers and Orders read the trading database that live trading writes to. They only read, and each open screen asks every 15 or 30 seconds, but only the report runs are independent of the live trading path.
+- Activity, Customers and Orders are as current as the topics. A customer's portfolio value can be up to 15 minutes old, because scheduled valuations are published at most that often; everything else is on screen at the next refresh.
 - An analyst's "Orders per account" card names each account and its trader. Whether an analyst's work needs clients by name is a decision for the business; the other three cards name nobody.
 - A transfer row opens nothing: the service has no endpoint for a single cash transaction.
 - The Activity ranges are fixed at today, 7, 30 and 90 days.

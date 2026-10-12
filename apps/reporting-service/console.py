@@ -1,15 +1,15 @@
 """
 The console's read side: platform activity, orders and customers.
 
-Unlike the report runs, which are built from the trade-events topic, these
-views read the trading database directly, because they show what the topic
-does not carry: cash movements, sign-in locks, ledger postings and the audit
-trail. Every function here only reads. Aggregation is done in Python over
-plainly filtered rows, so the same code runs on PostgreSQL and on the SQLite
-database the tests use.
+Every function here queries the read model (models.py): tables this
+process builds from the two Kafka topics the consumer stores, trade-events
+for orders and their fills and platform-records for customers, accounts,
+cash transfers, sign-in locks, valuations and the audit trail. None of it
+touches the trading database. Every function only reads. Rows are filtered
+in SQL and aggregated in Python.
 
-Never returned: password hashes (not even mapped), SSNs, addresses and dates
-of birth.
+Never returned: password hashes, SSNs, addresses and dates of birth. They
+are never published, and the read model has no column to hold them.
 """
 
 from collections import Counter, defaultdict
@@ -54,7 +54,7 @@ def _iso(value):
 
 
 def _number(value, places=2):
-    """A JSON number for a database decimal, or None."""
+    """A JSON number for a stored decimal, or None."""
     if value is None:
         return None
     return round(float(value), places)
@@ -95,7 +95,7 @@ def window(range_key, now, tz_offset_minutes=0):
 
 
 def _session_id(session):
-    """The newest simulation session, which is the one prices are replayed from."""
+    """The simulation session prices are replayed from, as Holdings and Trade last announced it."""
     return session.query(func.max(SimulationSession.id)).scalar()
 
 
@@ -142,7 +142,8 @@ def _fill_rate(rows):
 
 def _most_traded(rows):
     by_symbol = defaultdict(lambda: {'orders': 0, 'notional': Decimal(0), 'prices': []})
-    for order, _account, _user, instrument, fill in sorted(rows, key=lambda row: row[0].order_id):
+    for order, _account, _user, instrument, fill in sorted(
+            rows, key=lambda row: (_utc(row[0].submitted_at), row[0].order_id)):
         entry = by_symbol[instrument.ticker]
         entry['orders'] += 1
         if fill is not None:
@@ -180,7 +181,8 @@ def _feed(session, now):
     items = []
     resolved = (_order_query(session)
                 .filter(Order.status.in_(('FILLED', 'REJECTED')))
-                .order_by(Order.order_id.desc()).limit(FEED_LIMIT).all())
+                .order_by(func.coalesce(Order.resolved_at, Order.submitted_at).desc(), Order.order_id.desc())
+                .limit(FEED_LIMIT).all())
     for order, _account, user, instrument, fill in resolved:
         at = _utc(order.resolved_at or order.submitted_at)
         if order.status == 'FILLED' and fill is not None:
@@ -195,7 +197,8 @@ def _feed(session, now):
             .join(Account, Account.account_id == CashTransaction.account_id)
             .join(User, User.user_id == Account.user_id)
             .filter(CashTransaction.reason.in_(TRANSFER_REASONS))
-            .order_by(CashTransaction.cash_transaction_id.desc()).limit(FEED_LIMIT).all())
+            .order_by(CashTransaction.created_at.desc(), CashTransaction.cash_transaction_id.desc())
+            .limit(FEED_LIMIT).all())
     for transaction, user in cash:
         items.append({'kind': 'cash', 'at': _utc(transaction.created_at),
                       'userName': _full_name(user, str(user.user_id)),
@@ -306,7 +309,8 @@ def _transfers(session, limit, user_id=None):
              .filter(CashTransaction.reason.in_(TRANSFER_REASONS)))
     if user_id is not None:
         query = query.filter(User.user_id == user_id)
-    rows = query.order_by(CashTransaction.cash_transaction_id.desc()).limit(limit).all()
+    rows = (query.order_by(CashTransaction.created_at.desc(), CashTransaction.cash_transaction_id.desc())
+            .limit(limit).all())
     return [_transfer_row(*row) for row in rows]
 
 
@@ -319,7 +323,8 @@ def orders(session, limit=DEFAULT_ORDER_LIMIT, user_id=None):
     if user_id is not None:
         query = query.filter(User.user_id == user_id)
     total = query.count()
-    rows = query.order_by(Order.order_id.desc()).limit(limit).all()
+    # Newest by when it was submitted, not by id: history loaded late has high ids and old dates.
+    rows = query.order_by(Order.submitted_at.desc(), Order.order_id.desc()).limit(limit).all()
     return {
         'orders': [_order_row(*row) for row in rows],
         'transfers': _transfers(session, limit, user_id),
@@ -334,9 +339,9 @@ def _sum(query, column):
 
 def _ledger(session, order, account, user, fill):
     """
-    The cash and holding the order found and left. Neither is stored per
-    order, so both are worked back from today's balance by removing every
-    posting made after this order's own.
+    The cash and holding the order found and left. Both are worked back
+    from today's balance by removing every posting made after this order's
+    own, which also covers an order that posted nothing.
     """
     account_ids = [row.account_id for row in session.query(Account.account_id).filter(Account.user_id == user.user_id)]
     cash_later = session.query(CashTransaction).filter(CashTransaction.account_id.in_(account_ids))

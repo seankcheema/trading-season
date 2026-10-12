@@ -1,6 +1,6 @@
 # Trading Season
 
-A trading simulation platform: an Angular client, two Spring Boot services for trading and holdings, a NestJS authentication service, and a Flask reporting service with its own Angular UI, all sharing one PostgreSQL database. A Kafka topic, `trade-events`, carries every order status change from the Order and Sell Service to three consumers.
+A trading simulation platform: an Angular client, two Spring Boot services for trading and holdings, and a NestJS authentication service, sharing one PostgreSQL database, and a Flask reporting service with its own Angular UI that has no connection to that database. Two Kafka topics feed it: `trade-events` carries every order status change from the Order and Sell Service to three consumers, and `platform-records` carries the current state of everything else reporting shows, from the service that owns each row.
 
 ## Services
 
@@ -10,10 +10,10 @@ A trading simulation platform: an Angular client, two Spring Boot services for t
 | Auth Service | [apps/auth-service](apps/auth-service/README.md) | 3001 | Credentials, RS256 access tokens, refresh token rotation |
 | Order and Sell Service | [apps/order-and-sell-service](apps/order-and-sell-service/README.md) | 8081 | Order submission, validation, execution, instruments |
 | Holdings and Trade Service | [apps/holdings-and-trade-service](apps/holdings-and-trade-service/README.md) | 8082 | Profiles, accounts, holdings, cash, watchlist, market data |
-| Reporting Service | [apps/reporting-service](apps/reporting-service/README.md) | 8083 | Kafka consumer storing trade events as files, scheduled report runs with charts, endpoints serving the runs to analysts and admins, and read-only views of activity, orders and customers for admins |
+| Reporting Service | [apps/reporting-service](apps/reporting-service/README.md) | 8083 | Kafka consumer storing both topics as files, scheduled report runs with charts, endpoints serving the runs to analysts and admins, and views of activity, orders and customers for admins from a read model of those files. No database connection |
 | Reporting UI | [apps/reporting-ui](apps/reporting-ui/README.md) | 4300 | Sign-in for analysts and admins; report runs for both, and activity, customers and orders for admins, read from the Reporting Service |
 | Market Data | [apps/market-data](apps/market-data/README.md) | - | Synthetic market data generation and import |
-| Database | [db](db/README.md) | 5432 | Migrations and schema for the shared `trading_season` database |
+| Database | [db](db/README.md) | 5432 | Migrations and schema for the shared `trading_season` database, and the tools that publish its history to Kafka and seed demo history |
 
 ## Architecture
 
@@ -31,12 +31,17 @@ flowchart LR
     Auth --> DB[("PostgreSQL<br/>trading_season :5432")]
     OS --> DB
     HT --> DB
-    RS --> DB
 
     OS -- "one message per<br/>order status change" --> Kafka[["Kafka :29092<br/>topic trade-events"]]
     Kafka -- "group order-status-pusher" --> OS
     Kafka -- "group portfolio-valuation-capture" --> HT
     Kafka -- "group reporting-ingester" --> RC["Reporting consumer<br/>python consumer.py"]
+
+    OS -- "audit trail" --> Records[["Kafka :29092<br/>topic platform-records"]]
+    HT -- "profiles, accounts,<br/>transfers, valuations" --> Records
+    Auth -- "sign-ins and locks" --> Records
+    Records -- "group reporting-ingester" --> RC
+
     RC --> Files[("reporting_files volume")]
     RS --> Files
 
@@ -45,7 +50,7 @@ flowchart LR
     RUI -- "/api/reporting" --> RS
 ```
 
-The UI reaches both Java services through one relative `/api` prefix that the dev proxy and the Nginx image split by path. The Java services never call the Auth Service per request: they verify tokens locally against its cached public keys. The Reporting UI calls the Auth Service and the Reporting Service through a proxy on its own origin. It never reads Kafka or the database itself: its report runs are what the reporting consumer has built from the topic, and its activity, customers and orders screens are what the Reporting Service reads from the database for it. The report runs are served to accounts with the `ANALYST` or `ADMIN` role and the other screens to `ADMIN` only, so traders cannot use any of it; see [roles](apps/auth-service/README.md#roles).
+The UI reaches both Java services through one relative `/api` prefix that the dev proxy and the Nginx image split by path. The Java services never call the Auth Service per request: they verify tokens locally against its cached public keys. The Reporting UI calls the Auth Service and the Reporting Service through a proxy on its own origin. It never reads Kafka or the database itself, and neither does the Reporting Service read the database: its report runs are what the reporting consumer has built from `trade-events`, and its activity, customers and orders screens are answered from a read model the service builds out of the two topics' files. The report runs are served to accounts with the `ANALYST` or `ADMIN` role and the other screens to `ADMIN` only, so traders cannot use any of it; see [roles](apps/auth-service/README.md#roles).
 
 The Order and Sell Service publishes one `trade-events` message after each committed order status change (ACCEPTED, FILLED or REJECTED), keyed by account id. Three consumer groups read the topic independently:
 
@@ -56,6 +61,21 @@ The Order and Sell Service publishes one `trade-events` message after each commi
 | `reporting-ingester` | Reporting consumer (`reporting-consumer` container) | Appends the event to JSON Lines files in the `reporting_files` volume; a scheduled run turns them into `report.json` and charts that the Reporting Service serves |
 
 A consumer that is down simply resumes from its committed offset when it returns. The producer never waits for a consumer, and an unreachable broker delays the order response but never changes the order outcome.
+
+### Reporting without the database
+
+Reporting must not compete with trading for the database, so the Reporting Service has no connection to it: no driver, no setting, no dependency on the database container. Everything it shows is published to Kafka by the service that owns the row, after the transaction that wrote it has committed:
+
+| Topic | Published by | Carries | Key |
+| --- | --- | --- | --- |
+| `trade-events` | Order and Sell | Each order status change, with the order row and, for a fill, the fill, both ledger postings and the balances they left | Account id |
+| `platform-records` | Auth Service | `SIGN_IN`: email, role, failed attempts and lock, never the password hash | `SIGN_IN:<userId>` |
+| `platform-records` | Holdings and Trade | `CUSTOMER_PROFILE`, `TRADING_ACCOUNT`, `CASH_TRANSFER`, `PORTFOLIO_VALUATION`, `MARKET_SESSION` | `<TYPE>:<id>` |
+| `platform-records` | Order and Sell | `ORDER_AUDIT`: every audit trail entry | `ORDER_AUDIT:<auditId>` |
+
+`platform-records` is a compacted topic: each message is the current state of one row, so it keeps the latest state of every row for good, and `reporting-ingester` is its only reader. The Reporting Service applies both topics to its own in-memory tables as idempotent upserts and answers from those; see [the read model](apps/reporting-service/README.md#the-read-model).
+
+What was in the database before these publishers existed, or was written to it by SQL, is published once by [db/tools/republish_history.py](db/README.md#reporting-feed-tools), which is the only thing that ever reads the database on reporting's behalf. The order events it republishes carry a `replay` header, and the two Java consumers skip them: an old order is not pushed to a browser or valued again.
 
 The two Java consumers run inside their services, because a Spring Boot service is one process and a listener in it is naturally the only one. The reporting consumer is the same code and the same image as the Reporting Service but runs as its own container, because the web side is served by gunicorn with several worker processes and a Kafka consumer that writes files must exist exactly once; a second process from the same image gives that without a second codebase.
 
@@ -70,7 +90,10 @@ Each part of the flow can be followed from its description here to the code that
 | Order status pushed live to the trader (`order-status-pusher`) | BR-07, section 9.2 | [Order and Sell README](apps/order-and-sell-service/README.md) | [OrderStatusPusherListener](apps/order-and-sell-service/src/main/java/app/order/event/OrderStatusPusherListener.java), [OrderStatusStreamRegistry](apps/order-and-sell-service/src/main/java/app/order/event/OrderStatusStreamRegistry.java), [OrderStatusStreamController](apps/order-and-sell-service/src/main/java/app/order/event/OrderStatusStreamController.java) | [OrderStatusPusherListenerTest](apps/order-and-sell-service/src/test/java/app/order/event/OrderStatusPusherListenerTest.java), [OrderStatusStreamRegistryTest](apps/order-and-sell-service/src/test/java/app/order/event/OrderStatusStreamRegistryTest.java), [OrderStatusStreamControllerTest](apps/order-and-sell-service/src/test/java/app/order/event/OrderStatusStreamControllerTest.java), [TradeEventFlowIntegrationTest](apps/order-and-sell-service/src/test/java/app/order/event/TradeEventFlowIntegrationTest.java) | Stage "Order and Sell Service Tests"; stack stage lists `order-status-pusher` as a live consumer group; end-to-end stage shows both status frames arriving on the order stream |
 | Portfolio value captured at the moment of a fill (`portfolio-valuation-capture`) | Section 9.2, BR-18 | [Holdings and Trade: portfolio valuation on fill](apps/holdings-and-trade-service/README.md#portfolio-valuation-on-fill) | [PortfolioValuationListener](apps/holdings-and-trade-service/src/main/java/app/account/PortfolioValuationListener.java) | [PortfolioValuationListenerTest](apps/holdings-and-trade-service/src/test/java/app/account/PortfolioValuationListenerTest.java), [PortfolioValuationCaptureFlowIntegrationTest](apps/holdings-and-trade-service/src/test/java/app/account/PortfolioValuationCaptureFlowIntegrationTest.java) (embedded broker) | Stage "Holdings and Trade Service Tests"; stack stage lists `portfolio-valuation-capture` as a live consumer group; end-to-end stage shows the valuation row captured for the order |
 | Trade events stored as files and turned into scheduled reports with charts (`reporting-ingester`) | BR-14, BR-16, BR-17 | [Reporting README](apps/reporting-service/README.md), [Reporting UI README](apps/reporting-ui/README.md) | [consumer.py](apps/reporting-service/consumer.py), [event_store.py](apps/reporting-service/event_store.py), [report_run.py](apps/reporting-service/report_run.py), [routes.py](apps/reporting-service/routes.py) | [test_consumer.py](apps/reporting-service/tests/test_consumer.py), [test_event_store.py](apps/reporting-service/tests/test_event_store.py), [test_report_run.py](apps/reporting-service/tests/test_report_run.py), [test_runs_routes.py](apps/reporting-service/tests/test_runs_routes.py) | Stage "Reporting Service Tests"; stack stage requires the `reporting-consumer` container to be running and lists `reporting-ingester` as a live consumer group; end-to-end stage shows both events in the files and the report served with the order in it |
-| Broker and topic provisioning | Section 3 | [Infrastructure README](infrastructure/README.md#local-stack) | [docker-compose.local.yml](infrastructure/docker-compose/docker-compose.local.yml) (`kafka`, `kafka-init`, `reporting-consumer`) | Stack stage of the pipeline | Stage "Build Local Docker Stack": every expected container running, topic described, all three groups registered; stage "Kafka End-to-End Flow": lag 0 on every group after the order |
+| Every row reporting shows is published by its owner to `platform-records` | BR-16 (analysis without competing with live trading), section 3 | [Reporting without the database](#reporting-without-the-database) | Order and Sell [record](apps/order-and-sell-service/src/main/java/app/record), Holdings and Trade [record](apps/holdings-and-trade-service/src/main/java/app/record), [sign-in-publisher.service.ts](apps/auth-service/src/events/sign-in-publisher.service.ts) | Order and Sell [PlatformRecordPublisherTest](apps/order-and-sell-service/src/test/java/app/record/PlatformRecordPublisherTest.java) and [TradeEventFlowIntegrationTest](apps/order-and-sell-service/src/test/java/app/order/event/TradeEventFlowIntegrationTest.java), Holdings and Trade [PlatformRecordPublisherTest](apps/holdings-and-trade-service/src/test/java/app/record/PlatformRecordPublisherTest.java) and [PortfolioValuationCaptureFlowIntegrationTest](apps/holdings-and-trade-service/src/test/java/app/account/PortfolioValuationCaptureFlowIntegrationTest.java), [sign-in-publisher.service.spec.ts](apps/auth-service/src/events/sign-in-publisher.service.spec.ts) | Both Java test stages and "Auth Service Tests"; stack stage shows `platform-records` with three partitions, compacted; end-to-end stage shows each service's "Published platform record" log line |
+| The console is answered from Kafka alone, with no database connection | BR-16 | [Reporting README: the read model](apps/reporting-service/README.md#the-read-model) | [read_model.py](apps/reporting-service/read_model.py), [projection.py](apps/reporting-service/projection.py), [console.py](apps/reporting-service/console.py), [models.py](apps/reporting-service/models.py) | [test_read_model.py](apps/reporting-service/tests/test_read_model.py), [test_projection.py](apps/reporting-service/tests/test_projection.py), [test_console.py](apps/reporting-service/tests/test_console.py) | Stage "Reporting Service Tests"; end-to-end stage checks the reporting image has no database setting or driver, then shows the trader, the order, its ledger impact and its audit trail served to an admin |
+| History in the database published to the topics, and demo history seeded | BR-16 | [db/README: reporting feed tools](db/README.md#reporting-feed-tools) | [republish_history.py](db/tools/republish_history.py), [reporting_feed.py](db/tools/reporting_feed.py), [seed_demo_history.py](db/tools/seed_demo_history.py) | [test_reporting_feed.py](db/tools/tests/test_reporting_feed.py), [test_seed_demo_history.py](db/tools/tests/test_seed_demo_history.py) | Stage "Reporting Feed Tools Tests" |
+| Broker and topic provisioning | Section 3 | [Infrastructure README](infrastructure/README.md#local-stack) | [docker-compose.local.yml](infrastructure/docker-compose/docker-compose.local.yml) (`kafka`, `kafka-init`, `reporting-consumer`) | Stack stage of the pipeline | Stage "Build Local Docker Stack": every expected container running, both topics described, all three groups registered; stage "Kafka End-to-End Flow": lag 0 on every group, on both topics, after the order |
 
 ## Authentication and request flow
 
@@ -137,17 +160,16 @@ flowchart TB
         M1["simulation_sessions<br/>market_states<br/>market_behaviors<br/>quotes<br/>market_ticks<br/>candles"]
     end
     subgraph RS["Reporting Service"]
-        R1["reads only, for the admin console:<br/>users, accounts, orders, fills,<br/>cash and holding ledgers, valuations,<br/>audit trail, sign-in locks<br/>trade events and report runs<br/>live in the reporting_files volume"]
+        R1["no tables, and no connection:<br/>what it consumed from Kafka and<br/>its report runs live in the<br/>reporting_files volume"]
     end
     DB[("trading_season")]
     A1 --> DB
     H1 --> DB
     O1 --> DB
     M1 --> DB
-    R1 -.-> DB
 ```
 
-The Reporting Service writes no database tables. Its report runs take their trade data from the `trade-events` topic and keep it as files. Its console, for admins, reads orders, fills, cash, sign-in locks and the audit trail from the database, without the password hash column; see [apps/reporting-service](apps/reporting-service/README.md).
+The Reporting Service neither writes nor reads the database. Its report runs take their trade data from the `trade-events` topic and keep it as files; its console, for admins, is answered from a read model of `trade-events` and `platform-records`, which never carry a password hash, SSN, address or date of birth; see [Reporting without the database](#reporting-without-the-database).
 
 ## CI pipeline
 
@@ -165,6 +187,7 @@ flowchart LR
         T5["Frontend"]
         T6["Market data"]
         T7["Reporting UI"]
+        T8["Reporting feed tools"]
     end
     Tests --> Docs["Javadocs"] --> E2E["Playwright E2E"] --> Stack["Build local<br/>Docker stack"] --> Flow["Kafka end-to-end<br/>flow"]
 ```
@@ -180,7 +203,7 @@ node apps/auth-service/scripts/generate-dev-keys.mjs | Add-Content infrastructur
 docker compose --project-name trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml up -d --build
 ```
 
-The UI is at http://localhost:4200 and the Reporting UI at http://localhost:4300. The database is created and migrated automatically, and a one-shot `kafka-init` container creates the `trade-events` topic before the Java services and the reporting consumer start. See [infrastructure/README.md](infrastructure/README.md) for ports and the broker.
+The UI is at http://localhost:4200 and the Reporting UI at http://localhost:4300. The database is created and migrated automatically, and a one-shot `kafka-init` container creates the `trade-events` and `platform-records` topics before the auth service, the Java services and the reporting consumer start. See [infrastructure/README.md](infrastructure/README.md) for ports and the broker.
 
 ### Local processes (Windows)
 
@@ -198,19 +221,33 @@ $env:SPRING_DATASOURCE_PASSWORD = 'password'
 
 The script starts the Client UI on 4200, the Reporting UI on 4300, the Auth Service, both Java services, the Reporting Service on 8083 and its consumer, and stops with an instruction if a project's dependencies are not installed. This needs a running `trading_season` database; see [db/README.md](db/README.md) to create and migrate one, and [apps/market-data](apps/market-data/README.md) to load synthetic market data. On Linux, `scripts/setup-local.sh` does the equivalent setup.
 
-Trade events, and so everything the Reporting UI shows, need a Kafka broker on `localhost:29092`. The script handles the three cases:
+Reporting reads Kafka and nothing else, so everything the Reporting UI shows needs a Kafka broker on `localhost:29092`. The script handles the three cases:
 
 | Broker | What the script does |
 | --- | --- |
 | Already listening on `localhost:29092`, for example the `kafka` and `kafka-init` services of the Compose file | Uses it |
-| Not running, and `-KafkaHome` or `KAFKA_HOME` names an unpacked [Apache Kafka](https://kafka.apache.org/downloads) distribution | Starts a single-node broker from it with the JDK, keeps its data in `%LOCALAPPDATA%\trading-season\kafka`, and creates `trade-events` with three partitions. For a machine without Docker |
-| Neither | Sets `app.events.enabled=false` on both Java services, does not start the consumer, and warns that the Reporting UI has no trades to report |
+| Not running, and `-KafkaHome` or `KAFKA_HOME` names an unpacked [Apache Kafka](https://kafka.apache.org/downloads) distribution | Starts a single-node broker from it with the JDK, keeps its data in `%LOCALAPPDATA%\trading-season\kafka`, and creates `trade-events` and the compacted `platform-records`, each with three partitions. For a machine without Docker |
+| Neither | Sets `app.events.enabled=false` on both Java services and `EVENTS_ENABLED=false` on the auth service, does not start the consumer, and warns that the Reporting UI shows nothing new |
 
 ```powershell
 .\scripts\start-local.ps1 -KafkaHome C:\tools\kafka_2.13-4.1.1
 ```
 
-Only orders placed while a broker is running become trade events; orders already in the database are never replayed. The consumer writes a report when it starts and then every minute (`-ReportIntervalMinutes`; the Compose stack uses 15), so an order placed in the Client UI appears in the Reporting UI within that time. `-SkipReporting` starts the stack without the Reporting Service and its consumer, for a machine without Python. See [apps/reporting-service](apps/reporting-service/README.md).
+Only what the services do while a broker is running is published. The consumer writes a report when it starts and then every minute (`-ReportIntervalMinutes`; the Compose stack uses 15), so an order placed in the Client UI appears on the Reporting UI's console within seconds and in its report runs within that time. `-SkipReporting` starts the stack without the Reporting Service and its consumer, for a machine without Python. See [apps/reporting-service](apps/reporting-service/README.md).
+
+### History for reporting
+
+What is already in the database, and anything written to it by SQL, is in neither topic until it is published. Two tools in [db/tools](db/README.md#reporting-feed-tools) cover that, with the stack and its broker running:
+
+```powershell
+python -m venv db/tools/.venv
+db/tools/.venv/Scripts/python -m pip install -r db/tools/requirements.txt
+$url = 'postgresql://trading_season:password@localhost:5432/trading_season'
+db/tools/.venv/Scripts/python db/tools/seed_demo_history.py --database-url $url    # optional, development only
+db/tools/.venv/Scripts/python db/tools/republish_history.py --database-url $url
+```
+
+`seed_demo_history.py` gives a development database eight demo traders and six months of orders, fills, rejections, deposits and withdrawals up to the present moment, so every range of the Reporting UI has something to show; run again later, it adds only the days since. `republish_history.py` then publishes the whole database's history to the topics. Run it once when adopting this, and again after any seed. It is safe to repeat: reporting applies every message as an upsert, so nothing is counted twice.
 
 ### Development login
 
@@ -237,6 +274,7 @@ Run from the repository root. There is no root npm project.
 | Order and Sell tests | `mvn -B -f apps/order-and-sell-service/pom.xml test` |
 | Auth tests and lint | `npm --prefix apps/auth-service test` and `npm --prefix apps/auth-service run lint` |
 | Reporting tests | `python -m pytest` in `apps/reporting-service` |
+| Reporting feed tools tests | `python -m pytest tests` in `db/tools` |
 
 ## API documentation
 

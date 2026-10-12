@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { User } from '../users/user.entity.js';
 import type { UserRole } from '../users/user-role.js';
 import * as bcrypt from 'bcrypt';
+import { SignInPublisher } from '../events/sign-in-publisher.service.js';
 
 /**
  * The development sign-ins. One per role a developer needs to exercise:
@@ -36,11 +37,13 @@ export class SeedService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    private signIns: SignInPublisher,
   ) {}
 
   /**
-   * Creates each development sign-in in SEED_USERS that doesn't exist yet.
-   * An existing account is left exactly as it is, role included.
+   * Creates each development sign-in in SEED_USERS that doesn't exist yet,
+   * and publishes it so the reporting service knows it. An existing account
+   * is left exactly as it is, role included, and is not published again.
    */
   async seedTestUser(): Promise<void> {
     if (process.env.NODE_ENV === 'production') {
@@ -59,7 +62,7 @@ export class SeedService {
           password: hashedPassword,
           role: seed.role,
         });
-        await this.userRepository.save(testUser);
+        this.signIns.publish(await this.userRepository.save(testUser));
         console.log(
           `✓ Test user created: ${seed.email} / ${seed.password} (${seed.role})`,
         );

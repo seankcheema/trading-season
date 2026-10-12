@@ -30,6 +30,7 @@ TradingSeason Design System/
 
 # Python
 .venv/
+db/tools/reports/
 __pycache__/
 __pycachee__/
 *.pyc

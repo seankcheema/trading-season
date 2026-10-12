@@ -27,10 +27,11 @@ $holdingsDirectory = Join-Path $repoRoot 'apps/holdings-and-trade-service'
 $orderDirectory = Join-Path $repoRoot 'apps/order-and-sell-service'
 $backendDirectory = Join-Path $repoRoot 'apps/market-data'
 $envFile = Join-Path $authDirectory '.env'
-# The host-facing broker address every service defaults to, and the topic the
+# The host-facing broker address every service defaults to, and the topics the
 # Compose stack's kafka-init creates.
 $brokerPort = 29092
 $tradeEventsTopic = 'trade-events'
+$platformRecordsTopic = 'platform-records'
 
 function Get-RequiredCommand {
     param([Parameter(Mandatory)][string]$Name)
@@ -144,9 +145,10 @@ if (-not $SkipReporting) {
     Assert-PortAvailable -Port 8083
 }
 
-# Trade events need a broker. Use the one already listening, such as the Compose
-# stack's kafka service; otherwise start one from -KafkaHome; otherwise run
-# without events, which leaves the Reporting UI with no trades to report.
+# Events need a broker, and reporting has nothing else: it reads Kafka, not the
+# database. Use the broker already listening, such as the Compose stack's kafka
+# service; otherwise start one from -KafkaHome; otherwise run without events,
+# which leaves the Reporting UI with whatever it had already consumed.
 $brokerRunning = Test-PortOpen -Port $brokerPort
 if ($KafkaHome) {
     if (-not (Test-Path -LiteralPath (Join-Path $KafkaHome 'libs') -PathType Container)) {
@@ -280,14 +282,23 @@ function Start-KafkaBroker {
     return $broker
 }
 
-function Confirm-TradeEventsTopic {
-    # Three partitions, as kafka-init creates it: one account's events share a
-    # partition and keep their order.
-    & $java -cp $kafkaClasspath "-Dlog4j2.configurationFile=$kafkaLogConfig" `
-        org.apache.kafka.tools.TopicCommand --bootstrap-server "127.0.0.1:$brokerPort" `
-        --create --if-not-exists --topic $tradeEventsTopic --partitions 3 --replication-factor 1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Could not create the $tradeEventsTopic topic on localhost:$brokerPort."
+function Confirm-Topics {
+    # As kafka-init creates them. Three partitions each: one key's messages
+    # share a partition and keep their order. platform-records is compacted,
+    # because each message is the current state of one row and only the latest
+    # per key is ever needed.
+    $topics = @(
+        @{ Name = $tradeEventsTopic; Config = @() }
+        @{ Name = $platformRecordsTopic; Config = @('--config', 'cleanup.policy=compact') }
+    )
+    foreach ($topic in $topics) {
+        & $java -cp $kafkaClasspath "-Dlog4j2.configurationFile=$kafkaLogConfig" `
+            org.apache.kafka.tools.TopicCommand --bootstrap-server "127.0.0.1:$brokerPort" `
+            --create --if-not-exists --topic $topic.Name --partitions 3 --replication-factor 1 `
+            @($topic.Config) | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not create the $($topic.Name) topic on localhost:$brokerPort."
+        }
     }
 }
 
@@ -302,11 +313,18 @@ try {
                 throw "The Kafka broker did not start listening on localhost:$brokerPort."
             }
         }
-        Confirm-TradeEventsTopic
+        Confirm-Topics
     }
 
+    # The auth service publishes every sign-in it changes for reporting. By
+    # address: its Kafka client may try IPv6 first for "localhost" and the
+    # broker listens on IPv4 only. Without a broker it must not try at all.
+    $authEnvironment = @{ KAFKA_BOOTSTRAP_SERVERS = "127.0.0.1:$brokerPort" }
+    if (-not $eventsEnabled -and [string]::IsNullOrWhiteSpace($env:EVENTS_ENABLED)) {
+        $authEnvironment.EVENTS_ENABLED = 'false'
+    }
     $processes += Start-LocalService -Name 'auth' -FilePath $npm `
-        -ArgumentList @('run', 'start:dev') -WorkingDirectory $authDirectory
+        -ArgumentList @('run', 'start:dev') -WorkingDirectory $authDirectory -Environment $authEnvironment
 
     $businessEnvironment = @{
         SPRING_DATASOURCE_PASSWORD = $businessPassword
@@ -324,9 +342,8 @@ try {
         -ArgumentList @('spring-boot:run') -WorkingDirectory $orderDirectory -Environment $businessEnvironment
 
     if (-not $SkipReporting) {
-        $businessUser = if ([string]::IsNullOrWhiteSpace($env:SPRING_DATASOURCE_USERNAME)) { 'trading_season' } else { $env:SPRING_DATASOURCE_USERNAME }
+        # No database setting: reporting is given a broker and nothing else.
         $reportingEnvironment = @{
-            DATABASE_URL = "postgresql+psycopg://$([uri]::EscapeDataString($businessUser)):$([uri]::EscapeDataString($businessPassword))@${dbHost}:${parsedDbPort}/trading_season"
             AUTH_SERVICE_URL = 'http://localhost:3001'
             AUTH_JWT_ISSUER = $issuer
             FLASK_ENV = 'development'
@@ -361,10 +378,10 @@ try {
         Write-Host 'Reporting was skipped: the reporting UI signs in but cannot load a report.'
     }
     elseif ($eventsEnabled) {
-        Write-Host "Starting the Reporting Service :8083 and its consumer. Orders placed from now on reach the reporting UI within $ReportIntervalMinutes minute(s)."
+        Write-Host "Starting the Reporting Service :8083 and its consumer. What the services publish from now on reaches the reporting UI's console within seconds and its report runs within $ReportIntervalMinutes minute(s). History written before this, or by SQL, needs db/tools/republish_history.py once (see db/README.md)."
     }
     else {
-        Write-Warning "No Kafka broker on localhost:$brokerPort, so trade events are off and the reporting consumer was not started. The reporting UI shows no report, or the last one written. Start the Compose kafka and kafka-init services, or pass -KafkaHome (see README.md)."
+        Write-Warning "No Kafka broker on localhost:$brokerPort, so events are off and the reporting consumer was not started. Reporting reads Kafka only, so the reporting UI shows nothing new: no report, or the last one written, and the console as it last stood. Start the Compose kafka and kafka-init services, or pass -KafkaHome (see README.md)."
     }
     while ($true) {
         foreach ($service in $processes) {

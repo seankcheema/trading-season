@@ -1,5 +1,5 @@
 """
-Gunicorn entry point. Only registers the API routes: no database probe and
+Gunicorn entry point. Only registers the API routes: no database and
 no scheduler, because gunicorn runs several workers and the report job
 belongs to the single consumer process (consumer.py).
 """

@@ -11,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -55,6 +56,17 @@ class OrderStatusPusherListenerTest {
         listener.onTradeEvent(record("42", BODY));
 
         verify(registry).push(owner, BODY);
+    }
+
+    @Test
+    void doesNotPushHistoryThatIsPublishedAgainForReporting() {
+        ConsumerRecord<String, String> replayed = record("42", BODY);
+        replayed.headers().add(TradeEventPublisher.REPLAY_HEADER, "true".getBytes(StandardCharsets.UTF_8));
+
+        listener.onTradeEvent(replayed);
+
+        verify(accountRepository, never()).findById(any());
+        verify(registry, never()).push(any(), anyString());
     }
 
     @Test

@@ -4,6 +4,8 @@ import app.holding.Fill;
 import app.holding.FillRepository;
 import app.holding.HoldingMovement;
 import app.holding.HoldingMovementRepository;
+import app.record.PlatformRecordPublisher;
+import app.record.PortfolioValuationRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -48,7 +50,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "spring.datasource.url=jdbc:h2:mem:valuation-capture;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE"
 })
 @ActiveProfiles("test")
-@EmbeddedKafka(partitions = 3, topics = PortfolioValuationListener.TOPIC)
+@EmbeddedKafka(partitions = 3, topics = {PortfolioValuationListener.TOPIC, PlatformRecordPublisher.TOPIC})
 @ExtendWith(OutputCaptureExtension.class)
 @Tag("integration")
 class PortfolioValuationCaptureFlowIntegrationTest {
@@ -127,5 +129,10 @@ class PortfolioValuationCaptureFlowIntegrationTest {
                         "all three messages were received"));
         assertEquals(1, valuationsForAccount().size(), "a rejection records nothing");
         assertEquals(0, BigDecimal.ZERO.compareTo(valuationsForAccount().get(0).getValue()));
+
+        // Reporting has no database: the valuation reaches it on platform-records, keyed by account.
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
+                assertTrue(output.getAll().contains("Published platform record key="
+                        + PortfolioValuationRecord.TYPE + ":" + accountId + " partition=")));
     }
 }

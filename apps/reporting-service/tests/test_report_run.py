@@ -33,7 +33,7 @@ def events_on_disk(tmp_path):
     store.append(0, 2, '1', event(3, 'FILLED', 'TEST', 'SELL', 40, 55.0, '2026-10-06T08:00:00Z'))
     # account 2 on partition 2
     store.append(2, 0, '2', event(4, 'FILLED', 'ACME', 'BUY', 10, 200.0, '2026-10-06T09:00:00Z'))
-    # account 99 does not exist in the database
+    # no record names account 99
     store.append(1, 0, '99', event(5, 'FILLED', 'ACME', 'BUY', 1, 100.0, '2026-10-06T23:59:59Z'))
     # the same line again, as if the consumer crashed between append and commit
     with open(tmp_path / 'events' / 'trade-events-p2.jsonl', 'a', encoding='utf-8') as handle:
@@ -101,6 +101,47 @@ class TestBuildInsights:
         assert len({(e['partition'], e['offset']) for e in events}) == 5
 
 
+class TestRepublishedOrders:
+    """The trading services can publish their history again; a run counts each order once."""
+
+    def test_an_order_status_published_twice_is_counted_once(self, events_on_disk):
+        before = build_insights(load_events(events_on_disk))
+        store = EventStore(events_on_disk / 'events')
+        # Orders 1 and 4 again, under new offsets, as a republish delivers them.
+        store.append(0, 3, '1', event(1, 'FILLED', 'TEST', 'BUY', 100, 50.0, '2026-10-05T09:30:00.123456789Z'))
+        store.append(2, 1, '2', event(4, 'FILLED', 'ACME', 'BUY', 10, 200.0, '2026-10-06T09:00:00Z'))
+
+        events = load_events(events_on_disk)
+
+        assert len(events) == 5
+        assert build_insights(events) == before
+
+    def test_the_later_message_of_a_status_is_the_one_kept(self, events_on_disk):
+        store = EventStore(events_on_disk / 'events')
+        corrected = {**event(4, 'FILLED', 'ACME', 'BUY', 10, 200.0, '2026-10-06T09:00:00Z'),
+                     'order': {'instrumentName': 'Acme Corporation'}}
+        store.append(2, 1, '2', corrected)
+
+        kept = [row for row in load_events(events_on_disk) if row['orderId'] == 4]
+
+        assert len(kept) == 1
+        assert kept[0]['order'] == {'instrumentName': 'Acme Corporation'}
+
+    def test_an_accepted_then_filled_order_keeps_both_statuses(self, tmp_path):
+        store = EventStore(tmp_path / 'events')
+        store.append(0, 0, '1', event(1, 'ACCEPTED', 'TEST', 'BUY', 100, 50.0, '2026-10-05T09:30:00Z'))
+        store.append(0, 1, '1', event(1, 'FILLED', 'TEST', 'BUY', 100, 50.0, '2026-10-05T09:30:01Z'))
+
+        assert [row['status'] for row in load_events(tmp_path)] == ['ACCEPTED', 'FILLED']
+
+    def test_events_without_an_order_id_are_never_merged(self, tmp_path):
+        store = EventStore(tmp_path / 'events')
+        store.append(0, 0, '1', {'status': 'FILLED'})
+        store.append(0, 1, '1', {'status': 'FILLED'})
+
+        assert len(load_events(tmp_path)) == 2
+
+
 class TestBuildSegmentInsights:
 
     def test_rolls_resolved_orders_up_by_trader_level(self, events_on_disk):
@@ -111,7 +152,7 @@ class TestBuildSegmentInsights:
             {'segment': 'BEGINNER', 'accounts': 1, 'total': 3, 'filled': 2, 'rejected': 1, 'notional': '7200.00'},
             {'segment': 'INTERMEDIATE', 'accounts': 0, 'total': 0, 'filled': 0, 'rejected': 0, 'notional': '0.00'},
             {'segment': 'ADVANCED', 'accounts': 1, 'total': 1, 'filled': 1, 'rejected': 0, 'notional': '2000.00'},
-            # Account 99 is not in the database.
+            # No record names account 99.
             {'segment': 'UNKNOWN', 'accounts': 1, 'total': 1, 'filled': 1, 'rejected': 0, 'notional': '100.00'},
         ]
 
@@ -145,7 +186,7 @@ class TestRunReport:
         for name in on_disk['files']:
             assert (run_dir / name).read_bytes().startswith(PNG_MAGIC), name
 
-        # The fixture trader is intermediate; accounts 2 and 99 are not in the database.
+        # The fixture trader is intermediate; no record names accounts 2 and 99.
         by_segment = {row['segment']: row for row in on_disk['activityBySegment']}
         assert by_segment['INTERMEDIATE'] == {'segment': 'INTERMEDIATE', 'accounts': 1, 'total': 3, 'filled': 2,
                                               'rejected': 1, 'notional': '7200.00'}
@@ -155,7 +196,7 @@ class TestRunReport:
         by_account = {row['accountId']: row for row in on_disk['tradesPerAccount']}
         assert by_account[1]['accountName'] == 'Growth Portfolio'
         assert by_account[1]['userName'] == 'Joanna Trader'
-        assert by_account[99]['accountName'] is None, 'an account the database does not know gets no name'
+        assert by_account[99]['accountName'] is None, 'an account no record names gets no name'
         assert by_account[99]['userName'] is None
         assert not (events_on_disk / 'runs' / '20261006T120000Z.tmp').exists()
 

@@ -8,6 +8,7 @@ import app.holding.HoldingWithCost;
 import app.holding.PricedMovement;
 import app.instrument.Instrument;
 import app.instrument.InstrumentRepository;
+import app.record.TradingAccountRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -46,12 +48,45 @@ class AccountServiceUnitTest {
     @Mock
     private InstrumentRepository instrumentRepository;
 
+    @Mock
+    private ApplicationEventPublisher events;
+
     private AccountService accountService;
 
     @BeforeEach
     void setUp() {
         accountService = new AccountService(accountRepository, holdingRepository,
-                holdingMovementRepository, instrumentRepository);
+                holdingMovementRepository, instrumentRepository, events);
+    }
+
+    @Test
+    void anOpenedAccountIsRaisedForReportingWithItsOwner() {
+        when(accountRepository.save(any(Account.class))).thenReturn(createAccount(4, USER_ID, "My Account"));
+
+        accountService.createAccount(USER_ID, "My Account");
+
+        ArgumentCaptor<TradingAccountRecord> raised = ArgumentCaptor.forClass(TradingAccountRecord.class);
+        verify(events).publishEvent(raised.capture());
+        TradingAccountRecord record = raised.getValue();
+        assertEquals(4, record.accountId());
+        assertEquals(USER_ID, record.userId());
+        assertEquals("My Account", record.name());
+        assertEquals("TRADING_ACCOUNT", record.recordType());
+        assertEquals("4", record.recordId());
+    }
+
+    @Test
+    void aRenamedAccountIsRaisedForReportingUnderTheSameKey() {
+        Account account = createAccount(4, USER_ID, "Old Name");
+        when(accountRepository.findByIdAndUserId(4, USER_ID)).thenReturn(Optional.of(account));
+        when(accountRepository.save(any(Account.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        accountService.updateAccountName(4, USER_ID, "New Name");
+
+        ArgumentCaptor<TradingAccountRecord> raised = ArgumentCaptor.forClass(TradingAccountRecord.class);
+        verify(events).publishEvent(raised.capture());
+        assertEquals("New Name", raised.getValue().name());
+        assertEquals("4", raised.getValue().recordId());
     }
 
     @Test

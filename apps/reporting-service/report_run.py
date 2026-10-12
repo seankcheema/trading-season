@@ -1,16 +1,16 @@
 """
-One report run: read the event files, add names from the database, write
+One report run: read the event files, add names from the read model, write
 report.json and PNG charts into a dated run directory, replace the previous run.
 
-The run reads PostgreSQL only for users and accounts: the names it labels
-accounts with and the trader level it segments them by. Trade data comes from
-the files the consumer wrote.
+Trade data comes from the trade-events files the consumer wrote. The names
+a run labels accounts with and the trader level it segments them by come
+from the read model, which is built from the platform-records files
+(read_model.py). Nothing is read from the trading database.
 """
 
 import json
 import logging
 import os
-import re
 import shutil
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -22,7 +22,7 @@ matplotlib.use('Agg')  # headless; must precede the pyplot import
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.ticker import FuncFormatter, MaxNLocator  # noqa: E402
 
-from event_store import EventStore  # noqa: E402
+from event_store import EventStore, parse_occurred_at  # noqa: E402,F401 - parse_occurred_at is part of this module's API
 from models import Account, User  # noqa: E402
 from run_store import LATEST_FILE, REPORT_FILE, runs_dir  # noqa: E402
 
@@ -31,42 +31,34 @@ logger = logging.getLogger(__name__)
 RUN_ID_FORMAT = '%Y%m%dT%H%M%SZ'
 # The client segments a run splits activity by: the trader levels, lowest first.
 SEGMENTS = ('BEGINNER', 'INTERMEDIATE', 'ADVANCED')
-# Where the orders of an account the database does not know are counted.
+# Where the orders of an account no published record names are counted.
 UNKNOWN_SEGMENT = 'UNKNOWN'
-_FRACTION = re.compile(r'(\.\d{6})\d+')
-
-
-def parse_occurred_at(value):
-    """
-    Parse the ISO-8601 timestamp Jackson writes. It may end in Z or an offset
-    and may carry more than six fractional digits, which Python rejects.
-    Returns an aware datetime in UTC, or None when unparseable.
-    """
-    if not isinstance(value, str) or not value:
-        return None
-    text = value.strip()
-    if text.endswith('Z'):
-        text = text[:-1] + '+00:00'
-    text = _FRACTION.sub(r'\1', text)
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
 
 
 def load_events(files_dir):
-    """Every event on disk, with exact duplicates by (partition, offset) removed."""
+    """
+    Every order status on disk, once.
+
+    A line written twice, by (partition, offset), is counted once. So is an
+    order's status published twice: when the trading services republish
+    their history, an order already on disk arrives again under a new
+    offset. The later message of an order's status replaces the earlier one,
+    in the earlier one's place, so a replay never changes a count.
+    """
     store = EventStore(Path(files_dir) / 'events')
     seen = set()
+    by_status = {}
     events = []
     for event in store.iter_events():
         identity = (event.get('partition'), event.get('offset'))
         if identity in seen:
             continue
         seen.add(identity)
+        order_status = (event.get('orderId'), event.get('status'))
+        if order_status[0] is not None and order_status in by_status:
+            events[by_status[order_status]] = event
+            continue
+        by_status[order_status] = len(events)
         events.append(event)
     return events
 
@@ -135,8 +127,8 @@ def build_segment_insights(events, segments):
     The BR-16 view by client segment: the accounts that resolved an order,
     their fills and rejections and the value filled, per trader level.
     segments maps an account id to its trader's level. Every level is listed,
-    lowest first; UNKNOWN follows only when an account the database does not
-    know resolved an order.
+    lowest first; UNKNOWN follows only when an account no published record
+    names resolved an order.
     """
     def empty():
         return {'accounts': set(), 'total': 0, 'filled': 0, 'rejected': 0, 'notional': Decimal(0)}

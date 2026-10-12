@@ -1,7 +1,11 @@
 """
 Reporting API routes: the caller's profile, the report runs produced from the
 trade-events files, and the console's views of activity, orders and
-customers, which are read from the trading database (console.py).
+customers (console.py).
+
+Nothing here reaches the trading database. The runs are files the consumer
+wrote; the profile and the console are read from the read model, which this
+process builds from the consumer's event files (read_model.py).
 
 The profile is the caller's own and needs only a valid token. Everything else
 covers every account on the platform. The report runs are served to analysts
@@ -12,12 +16,13 @@ to admins only.
 import logging
 import uuid
 from datetime import datetime, timezone
+from functools import wraps
 
 from flask import Blueprint, current_app, g, jsonify, request, send_from_directory
 
 from app import ADMIN_ROLE, REPORT_READER_ROLES, require_auth, require_role
-from db_service import UserRepository
-from models import db
+from models import User, db
+from read_model import read_model
 import console
 import run_store
 
@@ -34,11 +39,30 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def reads_read_model(f):
+    """
+    Run the endpoint against an up-to-date read model. Place it under the
+    auth decorators, so a refused caller costs nothing. The tables have one
+    connection, so the lock is held until the session has let go of it.
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        with read_model.lock:
+            try:
+                read_model.sync(db.session, _files_dir())
+                return f(*args, **kwargs)
+            finally:
+                db.session.rollback()
+
+    return decorated_function
+
+
 @api_bp.route('/profile', methods=['GET'])
 @require_auth
+@reads_read_model
 def get_user_profile():
     """GET /api/reporting/profile: the caller's trader profile."""
-    user = UserRepository.get_user(g.user_id)
+    user = db.session.get(User, g.user_id)
     if not user:
         return jsonify({'error': 'User not found'}), 404
     return jsonify({
@@ -123,6 +147,7 @@ def _whole_number(name, default, low, high):
 @api_bp.route('/activity', methods=['GET'])
 @require_auth
 @require_role(ADMIN_ROLE)
+@reads_read_model
 def get_activity():
     """GET /api/reporting/activity: platform activity over a range, in the viewer's days."""
     range_key = request.args.get('range', 'today')
@@ -137,6 +162,7 @@ def get_activity():
 @api_bp.route('/orders', methods=['GET'])
 @require_auth
 @require_role(ADMIN_ROLE)
+@reads_read_model
 def list_orders():
     """GET /api/reporting/orders: the newest orders and cash transfers across every account."""
     limit = _whole_number('limit', console.DEFAULT_ORDER_LIMIT, 1, console.MAX_ORDER_LIMIT)
@@ -148,6 +174,7 @@ def list_orders():
 @api_bp.route('/orders/<int:order_id>', methods=['GET'])
 @require_auth
 @require_role(ADMIN_ROLE)
+@reads_read_model
 def get_order(order_id):
     """GET /api/reporting/orders/<order_id>: one order with its ledger impact and audit trail."""
     order = console.order_detail(db.session, order_id)
@@ -159,6 +186,7 @@ def get_order(order_id):
 @api_bp.route('/customers', methods=['GET'])
 @require_auth
 @require_role(ADMIN_ROLE)
+@reads_read_model
 def list_customers():
     """GET /api/reporting/customers: every trader with their balances and lock status."""
     return jsonify(console.customers(db.session, datetime.now(timezone.utc))), 200
@@ -167,6 +195,7 @@ def list_customers():
 @api_bp.route('/customers/<user_id>', methods=['GET'])
 @require_auth
 @require_role(ADMIN_ROLE)
+@reads_read_model
 def get_customer(user_id):
     """GET /api/reporting/customers/<user_id>: one customer with their accounts, orders and transfers."""
     try:

@@ -1,6 +1,11 @@
 """
 Trading Season Reporting Service
-Python Flask microservice for portfolio performance, trade history, and risk summaries.
+Python Flask microservice for report runs and the admin console.
+
+Everything it serves comes from Kafka. The consumer process (consumer.py)
+writes what it consumes to files; this web process reads those files and
+keeps its own read model of them (read_model.py). It has no connection to
+the trading database.
 """
 
 import os
@@ -14,10 +19,8 @@ import requests
 from functools import wraps
 from config import config
 import logging
-from sqlalchemy import text
-from sqlalchemy.engine import make_url
 
-# Database models (users and accounts only; trade data comes from the event files)
+# The read model's tables; filled from the event files, never from the trading database
 from models import db
 
 # Configure logging
@@ -33,21 +36,13 @@ app = Flask(__name__)
 config_name = os.getenv('FLASK_ENV', 'development')
 app.config.from_object(config[config_name])
 
-# Configure SQLAlchemy
-app.config['SQLALCHEMY_DATABASE_URI'] = app.config['DATABASE_URL']
+# Configure SQLAlchemy for the read model: an in-memory SQLite database, for
+# which Flask-SQLAlchemy keeps one connection shared by every thread.
+app.config['SQLALCHEMY_DATABASE_URI'] = app.config['READ_MODEL_URL']
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
 
-# Set engine options only for PostgreSQL (SQLite doesn't support pool options)
-if 'sqlite' not in app.config['DATABASE_URL']:
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'pool_size': 10,
-        'pool_recycle': 3600,
-        'pool_pre_ping': True,
-    }
-else:
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
-
-# Initialize database
+# Initialize the read model
 db.init_app(app)
 
 # Enable CORS
@@ -197,9 +192,14 @@ def require_role(*allowed):
 def health():
     """Service health check endpoint (public, no auth required)"""
     try:
-        # Verify database connectivity
-        db.session.execute(text('SELECT 1'))
-        
+        # Verify the read model can be brought up to date from the event files
+        from read_model import read_model
+        with read_model.lock:
+            try:
+                read_model.sync(db.session, app.config['REPORTING_FILES_DIR'])
+            finally:
+                db.session.rollback()
+
         return jsonify({
             'status': 'healthy',
             'service': 'reporting-service',
@@ -240,7 +240,7 @@ def root():
         'service': 'Trading Season Reporting Service',
         'status': 'initialized',
         'version': '0.1.0',
-        'description': 'Report runs built from trade events, and the admin console',
+        'description': 'Report runs and the admin console, both built from Kafka topics',
         'documentation': '/docs',
         'openapi': '/openapi.yaml',
         'health': '/health',
@@ -317,29 +317,17 @@ def register_routes():
 def init_app():
     """
     Initialize the application for the development server (python app.py).
-    Checks the database and registers the routes. The report scheduler is not
-    started here: it runs in the consumer process (consumer.py).
+    Registers the routes. There is no database to check: the read model is
+    built from the event files on the first request that needs it. The
+    report scheduler is not started here either: it runs in the consumer
+    process (consumer.py).
     """
     logger.info(f"Initializing Reporting Service (env: {app.config['ENV']})")
-    # Never the raw URL: it carries the database password.
-    logger.info(f"Database: {make_url(app.config['DATABASE_URL']).render_as_string(hide_password=True)}")
     logger.info(f"Auth Service: {app.config['AUTH_SERVICE_URL']}")
     logger.info(f"Reporting files: {app.config['REPORTING_FILES_DIR']}")
 
-    # Verify database connectivity
     try:
         with app.app_context():
-            db.session.execute(text('SELECT 1'))
-
-            if db.engine.dialect.name == 'sqlite':
-                version_query = text('SELECT sqlite_version()')
-            else:
-                version_query = text('SELECT version()')
-
-            version = db.session.execute(version_query).scalar()
-            logger.info(f"Database connected: {version}")
-
-            # Register API routes
             register_routes()
             logger.info("Application initialized successfully")
 

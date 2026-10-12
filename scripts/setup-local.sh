@@ -384,8 +384,9 @@ select_databases() {
     wait_for_compose_health db || fail 'Docker database did not become healthy within two minutes.'
     wait_for_compose_health kafka || fail 'Docker Kafka broker did not become healthy within two minutes.'
     # Separate from the broker starting: auto-creation is disabled, so
-    # trade-events exists only once this one-shot container has run.
-    docker_compose up -d kafka-init || fail 'Creating the trade-events topic failed. Review the Compose output above.'
+    # trade-events and platform-records exist only once this one-shot
+    # container has run.
+    docker_compose up -d kafka-init || fail 'Creating the Kafka topics failed. Review the Compose output above.'
     if [[ "$had_database" == true && -n "$existing_broker" ]]; then
         ready 'Docker database and broker — the existing containers are healthy; skipping startup.'
     else
@@ -405,7 +406,8 @@ select_databases() {
     export DB_NAME=trading_season
     # The broker is published on the host as localhost:29092; inside Compose it
     # is kafka:9092. These applications run on the VM, so they take the former.
-    # Order and Sell reads it to publish trade-events and run its consumers.
+    # Order and Sell reads it to publish trade-events and run its consumers; it,
+    # Holdings and Trade and the auth service publish platform-records to it.
     export KAFKA_BOOTSTRAP_SERVERS=localhost:29092
 }
 

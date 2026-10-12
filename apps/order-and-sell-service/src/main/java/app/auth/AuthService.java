@@ -3,6 +3,8 @@ package app.auth;
 import app.user.User;
 import app.user.UserAccountRepository;
 import app.user.UserRepository;
+import app.record.CustomerProfileRecord;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +23,7 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final UserAccountRepository userAccountRepository;
+    private final ApplicationEventPublisher events;
 
     /**
      * Creates the service.
@@ -28,15 +31,20 @@ public class AuthService {
      * @param userRepository        persistence for business accounts
      * @param userAccountRepository read-only access to the credential records
      *                              the auth service owns
+     * @param events                publisher of the {@link CustomerProfileRecord} raised for a new profile
      */
-    public AuthService(UserRepository userRepository, UserAccountRepository userAccountRepository) {
+    public AuthService(UserRepository userRepository, UserAccountRepository userAccountRepository,
+                       ApplicationEventPublisher events) {
         this.userRepository = userRepository;
         this.userAccountRepository = userAccountRepository;
+        this.events = events;
     }
 
     /**
      * Creates the business account for the authenticated caller from the
-     * registration form's profile details.
+     * registration form's profile details, and raises a
+     * {@link CustomerProfileRecord} that is published to Kafka after the
+     * commit.
      *
      * @param caller  the user identified by the verified access token
      * @param request the profile details
@@ -64,7 +72,9 @@ public class AuthService {
         user.setTraderLevel(request.traderLevel());
         user.setAvailableFunds(request.availableFunds());
         user.setCreatedAt(OffsetDateTime.now());
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        events.publishEvent(CustomerProfileRecord.from(saved));
+        return saved;
     }
 
     /**

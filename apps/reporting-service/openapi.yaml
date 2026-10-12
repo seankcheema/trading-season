@@ -7,16 +7,21 @@ info:
     to analysts and admins, a console to admins, and the caller's own trader
     profile to anyone signed in.
 
-    The report runs are produced by the reporting consumer from the
-    trade-events Kafka topic; for them the trading_season database is read
-    only for user and account names and each trader's level, the client
-    segment a run splits activity by.
+    Everything the service serves comes from two Kafka topics. It has no
+    connection to the trading_season database.
 
-    The console endpoints (activity, orders, customers) are read straight from
-    the trading_season database, because they show what the topic does not
-    carry: cash movements, sign-in locks, ledger postings and the audit trail.
-    They only read. Password hashes, SSNs, addresses and dates of birth are
-    never returned.
+    The report runs are produced by the reporting consumer from the
+    trade-events topic, with user and account names and each trader's level,
+    the client segment a run splits activity by, taken from the
+    platform-records topic.
+
+    The console endpoints (activity, orders, customers) are answered from a
+    read model the service builds from both topics: orders and their fills
+    from trade-events; sign-ins and their locks, profiles, accounts, cash
+    transfers, portfolio valuations and the audit trail from platform-records.
+    They are as current as the topics, within seconds of a message being
+    published. Password hashes, SSNs, addresses and dates of birth are never
+    published, so they are never returned.
 
     Run and console endpoints cover every account on the platform, so each
     requires a role in the access token's roles claim: ANALYST or ADMIN for
@@ -50,7 +55,7 @@ paths:
       summary: Reporting service liveness
       responses:
         '200':
-          description: Service is healthy and database is reachable
+          description: Service is healthy and its read model is up to date with the event files
           content:
             application/json:
               schema:
@@ -543,7 +548,7 @@ components:
       description: |
         The resolved orders of one client segment. A segment is a trader
         level, taken as the trader holds it when the run is made. UNKNOWN
-        collects accounts the database does not know and is listed only when
+        collects accounts no published record names and is listed only when
         one of them resolved an order.
       properties:
         segment:

@@ -1,6 +1,7 @@
 package app.auth;
 
 import app.account.AccountService;
+import app.record.CustomerProfileRecord;
 import app.user.User;
 import app.user.UserAccountRepository;
 import app.user.UserRepository;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -37,11 +39,29 @@ class AuthServiceUnitTest {
     @Mock
     private UserAccountRepository userAccountRepository;
 
+    @Mock
+    private ApplicationEventPublisher events;
+
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(userRepository, accountService, userAccountRepository);
+        authService = new AuthService(userRepository, accountService, userAccountRepository, events);
+    }
+
+    @Test
+    void registerRaisesTheNewProfileForReporting() {
+        AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "test@example.com");
+        when(userRepository.existsById(USER_ID)).thenReturn(false);
+
+        authService.register(caller, request("test@example.com"));
+
+        ArgumentCaptor<CustomerProfileRecord> raised = ArgumentCaptor.forClass(CustomerProfileRecord.class);
+        verify(events).publishEvent(raised.capture());
+        CustomerProfileRecord profile = raised.getValue();
+        assertEquals(USER_ID, profile.userId());
+        assertEquals("CUSTOMER_PROFILE", profile.recordType());
+        assertEquals(USER_ID.toString(), profile.recordId());
     }
 
     private static RegisterRequest request(String email) {

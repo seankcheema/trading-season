@@ -2,17 +2,52 @@
 
 Python Flask service with two jobs. It turns the `trade-events` Kafka topic into scheduled reports, for analysts and admins, and it serves read-only views of platform activity, orders and customers for the [Reporting UI](../reporting-ui/README.md)'s console, for admins only.
 
+It reads Kafka and nothing else. It has no connection to the `trading_season` database, no driver to open one with, and no setting that names it, so nothing it does can compete with trading for the database.
+
 - Port 8083, Swagger UI at http://localhost:8083/docs, OpenAPI at `/openapi.yaml`
 - Served by Gunicorn in Docker. The [Reporting UI](../reporting-ui/README.md) presents the runs; it calls this service through its own origin, so it needs no entry in `CORS_ORIGINS`.
 
 ## How it works
 
-1. Order and Sell publishes one message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`), keyed by account id. The run counts only final statuses as trades.
-2. `consumer.py`, consumer group `reporting-ingester`, appends each message as one JSON line to `events/trade-events-p<partition>.jsonl` under `REPORTING_FILES_DIR`, then commits the offset. Offsets already on disk are skipped, so redelivery never duplicates a line.
-3. When it starts, and then every `SCHEDULER_INTERVAL_MINUTES`, the same process runs `report_run.py`: reads the event files, joins account and trader names and each trader's level from PostgreSQL (`users` and `accounts`, read only), and writes `runs/<UTC timestamp>/report.json` plus four PNG charts. `runs/latest` points at the new run; older runs are deleted. The first run reports the events already on disk, so a restart serves a report at once; a run that comes due while the process is busy runs late instead of being skipped. The charts use the Reporting UI's dark surface and colors, filled orders in the gain color and rejected orders in the loss color.
-4. The web service (`wsgi.py` under gunicorn) serves the runs behind the same RS256 tokens the Java services accept, to accounts with the `ANALYST` or `ADMIN` role only.
+1. The trading services publish what they commit to two topics. Order and Sell publishes one `trade-events` message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`), keyed by account id, carrying the order row and, for a fill, the fill and its two ledger postings. The auth service and both Java services publish the current state of every other row reporting shows to `platform-records`; see [what arrives](#what-arrives).
+2. `consumer.py`, consumer group `reporting-ingester`, appends each message of either topic as one JSON line to `events/<topic>-p<partition>.jsonl` under `REPORTING_FILES_DIR`, then commits the offset. Offsets already on disk are skipped, so redelivery never duplicates a line.
+3. When it starts, and then every `SCHEDULER_INTERVAL_MINUTES`, the same process runs `report_run.py`: reads the `trade-events` files, takes account and trader names and each trader's level from the read model, and writes `runs/<UTC timestamp>/report.json` plus four PNG charts. `runs/latest` points at the new run; older runs are deleted. The first run reports the events already on disk, so a restart serves a report at once; a run that comes due while the process is busy runs late instead of being skipped. The charts use the Reporting UI's dark surface and colors, filled orders in the gain color and rejected orders in the loss color.
+4. The web service (`wsgi.py` under gunicorn) serves the runs and the console behind the same RS256 tokens the Java services accept.
 
-The report runs never read trade data from the database: the topic is their only source, and PostgreSQL gives them names and trader levels.
+### The read model
+
+The console's queries need tables, and the service has no database to keep them in, so each process builds its own. [read_model.py](read_model.py) holds the tables of [models.py](models.py) in an in-memory SQLite database and fills them from the event files: the first request reads every line, and each later one reads only what the consumer has appended since, so a message is in the console within seconds of being published. [projection.py](projection.py) turns each message into rows as an upsert keyed by the row's own id, so a message applied twice, or the whole history replayed, leaves the same rows.
+
+The tables are shaped like the trading tables the messages describe, which is why [console.py](console.py) reads the way it would against the real ones. They hold only what was published: there is no column for a password hash, SSN, address or date of birth.
+
+Three values can be reported by more than one message, and a replay or the other topic may deliver an older one later. Each keeps a mark that decides which wins:
+
+| Value | Reported by | Rule |
+| --- | --- | --- |
+| An order's status | Each of its status events | Never moves backwards: `PENDING`, `ACCEPTED`, then `FILLED` or `REJECTED` |
+| A trader's cash | A profile, a transfer, a fill | The balance with the latest timestamp, kept in `funds_balances` |
+| A holding | Each fill of that account and instrument | The quantity the highest movement id left |
+
+Nothing in the read model is the only copy of anything: the files are its source, and if one is replaced or removed the tables are emptied and rebuilt from what is on disk.
+
+### What arrives
+
+| Topic | Message | Published by | Becomes |
+| --- | --- | --- | --- |
+| `trade-events` | An order status, with `order` (the order row) and, when filled, `execution` (the fill, the cash posting, the holding movement, and the balances they left) | Order and Sell | `orders`, `instruments`, `fills`, `cash_transactions`, `holding_movements`, `holdings`, the trader's cash |
+| `platform-records` | `SIGN_IN` | Auth Service | `user_accounts`: email, role, failed attempts, lock |
+| `platform-records` | `CUSTOMER_PROFILE` | Holdings and Trade | `users`: name, trader level, cash |
+| `platform-records` | `TRADING_ACCOUNT` | Holdings and Trade | `accounts`: the account and its owner |
+| `platform-records` | `CASH_TRANSFER` | Holdings and Trade | `cash_transactions`: a deposit or withdrawal, and the trader's cash |
+| `platform-records` | `PORTFOLIO_VALUATION` | Holdings and Trade | `portfolio_valuations`: the newest value per account |
+| `platform-records` | `ORDER_AUDIT` | Order and Sell | `audit_trail` |
+| `platform-records` | `MARKET_SESSION` | Holdings and Trade | `simulation_sessions`: the session prices are replayed from |
+
+A `platform-records` message is the current state of one row, keyed `<TYPE>:<id>`, and the topic is compacted, so it always holds the latest state of every row however old.
+
+History that predates these publishers, or that was written by SQL instead of by a service, never reached the topics. [db/tools/republish_history.py](../../db/README.md#reporting-feed-tools) publishes it, once, from the database; this service still only reads Kafka.
+
+### Report runs
 
 A run holds the three views the business asked to analyse trading by (BR-16: instrument, period and client segment) and a count per account, none of which touches the live trading path:
 
@@ -23,13 +58,15 @@ A run holds the three views the business asked to analyse trading by (BR-16: ins
 | By client segment | `activityBySegment`: active accounts, fills, rejections and notional per trader level | `volume_by_segment.png` |
 | By account | `tradesPerAccount`: resolved orders per account | `trades_per_account.png` |
 
-A client segment is a trader's level: `BEGINNER`, `INTERMEDIATE` or `ADVANCED`, the only classification of clients the product keeps. A trader counts under the level they hold when the run is made, whatever it was when they traded. Orders of an account the database does not know are counted under `UNKNOWN`.
+The run counts only final statuses as trades, and counts each order's status once: when history is republished, an order already on disk arrives again under a new offset and replaces its earlier message instead of adding to a count.
+
+A client segment is a trader's level: `BEGINNER`, `INTERMEDIATE` or `ADVANCED`, the only classification of clients the product keeps. A trader counts under the level they hold when the run is made, whatever it was when they traded. Orders of an account no published record names are counted under `UNKNOWN`.
 
 ### Console
 
-The console endpoints are the other half, served to admins only because they show individual customers and their orders. They do read the database, because they show what the topic does not carry: cash movements, sign-in locks, ledger postings and the audit trail. [console.py](console.py) only reads, and aggregates in Python over plainly filtered rows, so the same code runs on PostgreSQL and on the SQLite database the tests use.
+The console endpoints are the other half, served to admins only because they show individual customers and their orders. [console.py](console.py) queries the read model, filtering in SQL and aggregating in Python.
 
-| View | Tables read |
+| View | Read model tables |
 | --- | --- |
 | Activity: figures against the prior period, notional over time, status split, split by client segment, newest events, most traded symbols | `orders`, `fills`, `cash_transactions`, `user_accounts`, `users`, `accounts`, `instruments`, `simulation_sessions` |
 | Orders with the deposits and withdrawals beside them, and one order with its ledger impact and audit trail | the above, plus `holdings`, `holding_movements`, `audit_trail` |
@@ -37,27 +74,28 @@ The console endpoints are the other half, served to admins only because they sho
 
 - A range is the viewer's own days: the UI sends its offset from UTC, and "today" starts at the viewer's midnight. Each figure is compared with the period of equal length just before the range.
 - Activity is split by client segment the same way a run is: by trader level, as each trader holds it now. It counts the traders of a level who placed an order in the range, their orders and the notional filled.
-- Cash and holdings before and after an order are not stored per order. They are worked back from today's balance by removing every posting made after the order's own.
+- Orders, transfers and the feed are newest first by when they happened, not by id, so history loaded late sorts where it belongs.
+- Cash and holdings before and after an order are worked back from today's balance by removing every posting made after the order's own.
 - A customer is a sign-in with the `TRADER` role. Analysts and admins are staff: they are left out of the customer list and answered 404 as a customer.
 - A transfer is a `cash_transactions` row whose reason is `DEPOSIT` or `WITHDRAWAL`. What an order's fill posted to cash is part of that order, not a transfer.
-- A customer is `LOCKED` while `user_accounts.locked_until` is in the future. The password hash column is not mapped in [models.py](models.py), so it cannot be selected; SSNs, addresses and dates of birth are never returned.
-- Nothing here writes. An admin cannot unlock an account from reporting.
+- A customer is `LOCKED` while their sign-in's `locked_until` is in the future. Password hashes, SSNs, addresses and dates of birth are never published, so they cannot be returned.
+- Nothing here writes anywhere but the service's own files. An admin cannot unlock an account from reporting.
 
 ## Technology
 
-- Python 3.14, Flask 3, Flask-SQLAlchemy over psycopg 3
+- Python 3.14, Flask 3, Flask-SQLAlchemy over the in-memory SQLite that ships with Python; no database driver is installed
 - confluent-kafka for the consumer, APScheduler for the report job, matplotlib (Agg) for charts
 - gunicorn for the web service; one image, two processes
 
 ## Local development
 
-Prerequisites: Python 3.14, the Compose stack's database and Kafka (`docker compose ... up -d db-init kafka-init`), and the auth service for tokens.
+Prerequisites: Python 3.14, the Compose stack's Kafka (`docker compose ... up -d kafka-init`), and the auth service for tokens. No database.
 
 ```sh
 python -m venv venv
 source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env              # adjust DATABASE_URL and KAFKA_BOOTSTRAP_SERVERS if needed
+cp .env.example .env              # adjust KAFKA_BOOTSTRAP_SERVERS if needed
 python consumer.py                # terminal 1: consumer plus report scheduler
 FLASK_ENV=development python app.py   # terminal 2: web service on 8083
 ```
@@ -73,7 +111,7 @@ Authenticated endpoints need an RS256 bearer token from the [Auth Service](../au
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
 | GET | `/` | public | Service information and entry points |
-| GET | `/health` | public | Liveness and database check |
+| GET | `/health` | public | Liveness, and that the read model can be brought up to date from the event files |
 | GET | `/docs`, `/openapi.yaml` | public | Swagger UI and the OpenAPI contract |
 | GET | `/api/reporting/profile` | any token | The caller's trader profile |
 | GET | `/api/reporting/runs` | `ANALYST`, `ADMIN` | Every complete report run, newest first, with the latest run id |
@@ -92,47 +130,57 @@ Authenticated endpoints need an RS256 bearer token from the [Auth Service](../au
 
 ```mermaid
 flowchart LR
-    K[["Kafka trade-events"]] -- "group reporting-ingester" --> C["consumer.py<br/>append events, run the report job"]
-    C --> E["events/*.jsonl"]
+    T[["Kafka trade-events"]] -- "group reporting-ingester" --> C["consumer.py<br/>append messages, run the report job"]
+    P[["Kafka platform-records"]] -- "group reporting-ingester" --> C
+    C --> E["events/trade-events-p*.jsonl<br/>events/platform-records-p*.jsonl"]
     C --> R["runs/<id>/report.json + PNG"]
-    C -. "account and trader names" .-> DB[("trading_season<br/>users, accounts")]
     Client --> App["app.py<br/>Flask, /health, /docs, require_auth, require_role"]
     App --> Routes["routes.py<br/>/api/reporting blueprint"]
     Routes --> R
-    Routes -. "profile" .-> DB
     Routes --> Console["console.py<br/>activity, orders, customers"]
-    Console -. "read only" .-> Ledger[("trading_season<br/>orders, fills, cash, locks, audit trail")]
+    Console --> RM["read_model.py + projection.py<br/>in-memory tables of this process"]
+    E -- "tailed on each request" --> RM
+    E -- "names and levels for a run" --> C
     App -. "JWKS, cached 1 h" .-> Auth["Auth Service"]
 ```
+
+No arrow leaves this diagram for the trading database, because the service has none.
 
 ## Configuration
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `DATABASE_URL` | `postgresql+psycopg://trading_season:password@localhost:5432/trading_season` | Read-only lookups of `users` and `accounts`; plain `postgresql://` is normalised |
 | `AUTH_SERVICE_URL` | `http://localhost:3001` | JWKS source for token verification |
 | `AUTH_JWT_ISSUER` | `http://localhost:3001` | Expected `iss` claim; must equal the auth service's issuer |
 | `CORS_ORIGINS` | `http://localhost:4200` | Allowed browser origins, comma-separated |
-| `REPORTING_FILES_DIR` | `./data/reporting` (host), `/data/reporting` (image) | Event files and report runs |
+| `REPORTING_FILES_DIR` | `./data/reporting` (host), `/data/reporting` (image) | Event files and report runs: all the data the service has |
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:29092` | Broker; Compose sets `kafka:9092` |
-| `KAFKA_TRADE_EVENTS_TOPIC` | `trade-events` | Topic to consume |
+| `KAFKA_TRADE_EVENTS_TOPIC` | `trade-events` | The order status topic to consume |
+| `KAFKA_PLATFORM_RECORDS_TOPIC` | `platform-records` | The records topic to consume |
 | `REPORTING_CONSUMER_GROUP` | `reporting-ingester` | Consumer group; keep it stable so offsets carry across restarts |
 | `SCHEDULER_ENABLED` | `True` | Run the report job; the web service is started with `false` |
 | `SCHEDULER_INTERVAL_MINUTES` | `15` | Report run interval, after the run the consumer makes when it starts |
+
+There is no database variable. A `DATABASE_URL` in the environment is ignored.
 
 ## Files on the volume
 
 ```
 <REPORTING_FILES_DIR>/
-  events/trade-events-p0.jsonl   # one line per message: partition, offset, accountId, orderId, status,
-  events/trade-events-p1.jsonl   #   symbol, side, quantity, price, rejectionReason, occurredAt
+  events/trade-events-p0.jsonl       # one line per order status: partition, offset, accountId, orderId, status,
+  events/trade-events-p1.jsonl       #   symbol, side, quantity, price, rejectionReason, occurredAt, order, execution
   events/trade-events-p2.jsonl
+  events/platform-records-p0.jsonl   # one line per record: partition, offset, key, type, and the record's fields
+  events/platform-records-p1.jsonl
+  events/platform-records-p2.jsonl
   runs/<YYYYMMDDTHHMMSSZ>/report.json, volume_by_symbol.png, daily_trades.png, volume_by_segment.png,
                            trades_per_account.png
-  runs/latest                    # the current run id
+  runs/latest                        # the current run id
 ```
 
-Everything here is derived. To rebuild: stop the consumer, delete the directory contents, reset the group's offset to earliest (`kafka-consumer-groups.sh --group reporting-ingester --topic trade-events --reset-offsets --to-earliest --execute`), start the consumer.
+The files are named for what they hold, whatever name a deployment gives the topics.
+
+Everything here is derived from the topics. To rebuild: stop the consumer, delete the directory contents, reset the group's offsets to earliest for both topics (`kafka-consumer-groups.sh --group reporting-ingester --all-topics --reset-offsets --to-earliest --execute`), start the consumer. `platform-records` is compacted and keeps every row's latest state, so it always replays in full. `trade-events` keeps messages for the broker's retention period only; orders older than that come back by running [republish_history.py](../../db/README.md#reporting-feed-tools) again.
 
 ## Tests
 
@@ -140,16 +188,18 @@ Everything here is derived. To rebuild: stop the consumer, delete the directory 
 pytest
 ```
 
-Tests use in-memory SQLite, a temporary files directory and a fake Kafka source. No broker, database or Docker is needed. Coverage is reported through `pytest-cov` (see `pytest.ini`).
+Tests run on the same in-memory read model the service uses, a temporary files directory and a fake Kafka source. No broker, database or Docker is needed. Coverage is reported through `pytest-cov` (see `pytest.ini`).
 
 ## Docker
 
-The image runs gunicorn by default; Compose starts a second container from the same image with `command: ["python", "consumer.py"]`. Both mount the `reporting_files` volume at `/data/reporting`, the web service read-only. The consumer is a separate container rather than a thread in the web app because gunicorn runs several worker processes, and the consumer must run exactly once: one writer per partition file and one scheduler. Same code, same image, a different command; nothing is duplicated. See [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml).
+The image runs gunicorn by default; Compose starts a second container from the same image with `command: ["python", "consumer.py"]`. Both mount the `reporting_files` volume at `/data/reporting`, the web service read-only. Neither depends on the database container. The consumer is a separate container rather than a thread in the web app because gunicorn runs several worker processes, and the consumer must run exactly once: one writer per partition file and one scheduler. Same code, same image, a different command; nothing is duplicated. See [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml).
 
 ## Known limitations
 
 - Portfolio performance measures (returns, drawdown, Sharpe) are not computed yet; the run produces volume, activity and fill/rejection insights.
 - A trader's level is not kept over time, so a segment is always today's level: a trader who was promoted takes their earlier orders with them into the new segment.
-- The console reads the live trading database, so it is the report runs, built from the topic, that are independent of live trading. The console only reads, and is asked every 15 to 30 seconds per open screen.
-- The console aggregates in Python, which suits a simulation's order volume. It loads the orders of twice the chosen range per request and would need SQL aggregation for a large one.
-- The quote an order executed against is not in the database, so an order shows its indicative price, price buffer and slippage in place of bid, ask and spread.
+- The console is as current as the topics. A message is visible within seconds of being published, but a portfolio value can be up to 15 minutes old: Holdings and Trade values every account each minute and publishes a scheduled valuation at most that often, while a valuation captured for a fill is published at once.
+- Each web worker holds the whole read model in memory and builds it when it first needs it, by reading every stored message: a few thousand a second. That suits a simulation's volume; a much larger history would want a snapshot to start from.
+- The console aggregates in Python, loading the orders of twice the chosen range per request, and one request at a time per worker uses the tables.
+- The quote an order executed against is not published, so an order shows its indicative price, price buffer and slippage in place of bid, ask and spread.
+- An order appears once its account and its owner's profile have been published. Rows written by SQL are in neither topic until they are republished.

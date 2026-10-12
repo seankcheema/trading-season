@@ -1,8 +1,9 @@
 """
 Pytest fixtures for the reporting service.
 
-Tests run on an in-memory SQLite database created from the ORM models, and on
-a temporary reporting files directory. No broker, no PostgreSQL, no Docker.
+Tests run on the same in-memory read model the service uses, created from
+the ORM models, and on a temporary reporting files directory. No broker, no
+database server, no Docker.
 """
 
 import os
@@ -19,7 +20,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 # Set test environment before importing the Flask app
 os.environ['FLASK_ENV'] = 'testing'
-os.environ['TEST_DATABASE_URL'] = 'sqlite:///:memory:'
 os.environ['REPORTING_FILES_DIR'] = tempfile.mkdtemp(prefix='reporting-files-')
 
 
@@ -31,7 +31,6 @@ def app():
     from config import TestingConfig
 
     flask_app.config.from_object(TestingConfig)
-    flask_app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
     flask_app.config['TESTING'] = True
     register_routes()
 
@@ -50,7 +49,7 @@ def client(app):
 
 @pytest.fixture
 def db_session(app):
-    """A clean database for each test"""
+    """An empty read model for each test"""
     from models import db
 
     with app.app_context():
@@ -74,17 +73,13 @@ def files_dir(app, tmp_path):
 
 @pytest.fixture
 def test_user(db_session):
-    """A trader, with the columns the real users table has."""
+    """A trader, as a CUSTOMER_PROFILE record leaves one in the read model."""
     from models import User
 
     user = User(
         user_id=uuid.uuid4(),
         first_name='Joanna',
         last_name='Trader',
-        middle_name='M',
-        address='123 Test St, City, State 12345',
-        ssn='123-45-6789',
-        date_of_birth=date(1990, 1, 1),
         trader_level='INTERMEDIATE',
         available_funds=Decimal('50000.00'),
     )
@@ -95,13 +90,12 @@ def test_user(db_session):
 
 @pytest.fixture
 def test_account(db_session, test_user):
-    """The trader's account, with the columns the real accounts table has."""
+    """The trader's account, as a TRADING_ACCOUNT record leaves one in the read model."""
     from models import Account
 
     account = Account(
         user_id=test_user.user_id,
         name='Growth Portfolio',
-        cash_balance=Decimal('10000.00'),
         opened_date=date(2026, 1, 15),
         currency='USD',
     )

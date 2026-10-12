@@ -1,4 +1,4 @@
-"""The console: activity, orders and customers read from the trading database."""
+"""The console: activity, orders and customers read from the read model."""
 
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -41,11 +41,10 @@ def platform(db_session):
         UserAccount(user_id=ADMIN, email='reporting-admin@example.com', user_role='ADMIN',
                     created_at=hours_ago(600)),
         UserAccount(user_id=NEWCOMER, email='newcomer@example.com', user_role='TRADER', created_at=hours_ago(5)),
-        User(user_id=SEAN, first_name='Sean', last_name='Cheema', ssn='123-45-6789', address='1 Main St',
-             date_of_birth=date(1990, 1, 1), trader_level='ADVANCED', available_funds=Decimal('4000.00'),
-             session_timeout_minutes=15, last_activity_at=hours_ago(2)),
-        User(user_id=JANE, first_name='Jane', last_name='Doe', ssn='987-65-4321', address='2 Side St',
-             date_of_birth=date(1991, 2, 2), trader_level='BEGINNER', available_funds=Decimal('5000.00')),
+        User(user_id=SEAN, first_name='Sean', last_name='Cheema', trader_level='ADVANCED',
+             available_funds=Decimal('4000.00'), session_timeout_minutes=15, last_activity_at=hours_ago(2)),
+        User(user_id=JANE, first_name='Jane', last_name='Doe', trader_level='BEGINNER',
+             available_funds=Decimal('5000.00')),
         Account(account_id=1, user_id=SEAN, name='Growth'),
         Account(account_id=2, user_id=SEAN, name='Retirement'),
         Account(account_id=3, user_id=JANE, name='Primary'),

@@ -9,7 +9,7 @@ Read [README.md](README.md) for the service map and system diagrams, then only t
 | Setup, build, test | [README.md](README.md) and the service's own README |
 | Service boundaries and integration | [README.md](README.md) |
 | HTTP contract changes | The owning service README and its Swagger UI |
-| Schema changes | [Database](db/README.md) |
+| Schema changes, republishing history to Kafka, demo history | [Database](db/README.md) |
 | Deployment and CI | [Infrastructure](infrastructure/README.md) |
 | Documentation-only work | [Documentation instructions](docs/AGENTS.md) |
 
@@ -20,6 +20,7 @@ Follow nested AGENTS.md instructions for the area being changed. The reporting s
 - Keep deployable applications in apps and operational configuration in infrastructure. Keep Angular components that only one app uses inside that app (see apps/client-ui/shared-ui-components); extract a component into a top-level packages directory only once a second app actually consumes it, since that is the point npm workspace tooling becomes worth the added complexity.
 - Inspect source, manifests, tests, and configuration before relying on documentation. Resolve disagreements by correcting docs to match implemented behavior.
 - The Java session API and NestJS token API are separate implementations. Do not assume they share users or credentials.
+- The reporting service reads Kafka only and has no database connection; keep it that way. When reporting needs to show something new, publish it from the service that owns the row (`trade-events` for an order status, `platform-records` for everything else) and extend [db/tools/reporting_feed.py](db/tools/reporting_feed.py) so history can be republished in the same shape.
 - Preserve unrelated working changes. Use git mv for tracked file moves.
 - Do not commit secrets, dependencies, temporary build output, or test reports.
 - Do not edit applied database migrations in db/migrations; add a new migration. The Java bootstrap SQL is destructive and requires an explicitly disposable database.
@@ -42,6 +43,8 @@ Run from repository root unless a working directory is specified:
 | Order and Sell tests | mvn -B -f apps/order-and-sell-service/pom.xml test |
 | Auth tests | npm --prefix apps/auth-service test |
 | Auth lint | npm --prefix apps/auth-service run lint |
+| Reporting tests | python -m pytest (working directory apps/reporting-service) |
+| Reporting feed tools tests | python -m pytest tests (working directory db/tools) |
 | Holdings and Trade Javadocs | mvn -B -f apps/holdings-and-trade-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc |
 | Order and Sell Javadocs | mvn -B -f apps/order-and-sell-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc |
 

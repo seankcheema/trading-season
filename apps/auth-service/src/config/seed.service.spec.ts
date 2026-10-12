@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SEED_USERS, SeedService } from './seed.service.js';
 import { User } from '../users/user.entity.js';
+import { SignInPublisher } from '../events/sign-in-publisher.service.js';
 
 vi.mock('bcrypt', () => ({
   hash: vi.fn(async (password: string, _rounds: number) => `hashed_${password}`),
@@ -15,6 +16,7 @@ describe('SeedService', () => {
     create: ReturnType<typeof vi.fn>;
     save: ReturnType<typeof vi.fn>;
   };
+  let signIns: { publish: ReturnType<typeof vi.fn> };
   const originalEnv = process.env.NODE_ENV;
 
   beforeEach(async () => {
@@ -24,11 +26,13 @@ describe('SeedService', () => {
       save: vi.fn(async (user: object) => user),
     };
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    signIns = { publish: vi.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SeedService,
         { provide: getRepositoryToken(User), useValue: repository },
+        { provide: SignInPublisher, useValue: signIns },
       ],
     }).compile();
 
@@ -46,6 +50,7 @@ describe('SeedService', () => {
     await service.seedTestUser();
 
     expect(repository.save).toHaveBeenCalledTimes(3);
+    expect(signIns.publish).toHaveBeenCalledTimes(3);
     expect(repository.create).toHaveBeenCalledWith({
       email: 'admin@example.com',
       password: 'hashed_admin123',
@@ -80,6 +85,8 @@ describe('SeedService', () => {
     await service.seedTestUser();
 
     expect(repository.save).toHaveBeenCalledTimes(2);
+    // Only the two it created: the existing account is not published again.
+    expect(signIns.publish).toHaveBeenCalledTimes(2);
     expect(repository.create).toHaveBeenCalledWith(
       expect.objectContaining({ email: 'admin@example.com' }),
     );
