@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { text } from '../../testing/dom';
@@ -10,6 +11,7 @@ describe('RunsComponent', () => {
   let fixture: ComponentFixture<RunsComponent>;
   let store: ReturnType<typeof fakeReportStore>;
   let runFile: ReturnType<typeof vi.fn>;
+  let runs: ReturnType<typeof vi.fn>;
   let saved: { name: string; file: Blob }[];
   let click: ReturnType<typeof vi.spyOn>;
 
@@ -25,6 +27,7 @@ describe('RunsComponent', () => {
       saved.push({ name: this.download, file: files[files.length - 1] });
     });
     runFile = vi.fn(() => of(new Blob(['png'], { type: 'image/png' })));
+    runs = vi.fn(() => of({ latest: '20261008T194500Z', runs: [], timestamp: '' }));
   });
   afterEach(() => click.mockRestore());
 
@@ -34,7 +37,7 @@ describe('RunsComponent', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: ReportStore, useValue: store },
-        { provide: ReportingApiService, useValue: { runFile } },
+        { provide: ReportingApiService, useValue: { runFile, runs } },
       ],
     });
     fixture = TestBed.createComponent(RunsComponent);
@@ -135,6 +138,10 @@ describe('RunsComponent', () => {
     expect(text(daily.querySelector('[data-legend]')!)).toBe('Filled Rejected');
     // The drawn chart is hidden from a screen reader, which gets the same figures as a table.
     expect(Array.from(daily.querySelectorAll('table tbody tr')).map(text)).toEqual(['Oct 7 2 1', 'Oct 8 4 1']);
+    // Hidden by a wrapper: a table of its own keeps its height, and a long one scrolled the window.
+    const figures = daily.querySelector('table')!;
+    expect(figures.classList.contains('sr-only')).toBe(false);
+    expect(figures.parentElement!.matches('div.sr-only')).toBe(true);
   });
 
   it('reads out the newest day, or the day under the pointer', () => {
@@ -267,6 +274,52 @@ describe('RunsComponent', () => {
     fixture.detectChanges();
     expect(root.querySelector('[role="alert"]')).toBeNull();
     expect(saved.map((file) => file.name)).toEqual(['20261008T194500Z-volume_by_symbol.png']);
+  });
+
+  it('takes a chart from the newest run when the one on screen has been replaced', () => {
+    runFile.mockImplementationOnce(() => throwError(() => new HttpErrorResponse({ status: 404 })));
+    runs.mockReturnValue(of({ latest: '20261008T200000Z', runs: [], timestamp: '' }));
+    const root = render();
+
+    card(root, 'Trades per day').querySelector<HTMLButtonElement>('button')!.click();
+    fixture.detectChanges();
+
+    expect(runFile.mock.calls).toEqual([
+      ['20261008T194500Z', 'daily_trades.png'],
+      ['20261008T200000Z', 'daily_trades.png'],
+    ]);
+    expect(saved.map((file) => file.name)).toEqual(['20261008T200000Z-daily_trades.png']);
+    // The screen moves to the run the file came from.
+    expect(store.refresh).toHaveBeenCalledTimes(1);
+    expect(root.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('says a download failed when no newer run has the chart either', () => {
+    runFile.mockImplementation(() => throwError(() => new HttpErrorResponse({ status: 404 })));
+    const root = render();
+
+    card(root, 'Trades per day').querySelector<HTMLButtonElement>('button')!.click();
+    fixture.detectChanges();
+
+    // The newest run is the one already asked, so it is not asked again.
+    expect(runFile).toHaveBeenCalledTimes(1);
+    expect(text(root.querySelector('[role="alert"]')!)).toBe("We couldn't download that chart. Try again.");
+    expect(saved).toHaveLength(0);
+  });
+
+  it("does not answer a request for an earlier run with another run's chart", () => {
+    runFile.mockImplementation(() => throwError(() => new HttpErrorResponse({ status: 404 })));
+    runs.mockReturnValue(of({ latest: '20261008T200000Z', runs: [], timestamp: '' }));
+    const root = render('ready', () =>
+      store.runs.set([run(), run({ runId: '20261008T193000Z', files: ['daily_trades.png'] })]),
+    );
+
+    root.querySelector<HTMLButtonElement>('[data-earlier] button')!.click();
+    fixture.detectChanges();
+
+    expect(runFile.mock.calls).toEqual([['20261008T193000Z', 'daily_trades.png']]);
+    expect(runs).not.toHaveBeenCalled();
+    expect(text(root.querySelector('[role="alert"]')!)).toBe("We couldn't download that chart. Try again.");
   });
 
   it('lists a run still on disk beside the one shown, with its charts to download', () => {

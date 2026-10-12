@@ -203,28 +203,32 @@
               </div>
               <div></div>
             </div>
-            <!-- The same figures for a screen reader, which the drawn chart is hidden from. -->
-            <table class="sr-only">
-              <caption>
-                Orders resolved per UTC day
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Day</th>
-                  <th scope="col">Filled</th>
-                  <th scope="col">Rejected</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (day of chart.days; track day.date) {
+            <!-- The same figures for a screen reader, which the drawn chart is hidden from.
+                 The wrapper is what hides them: a table grows past the 1px sr-only gives
+                 it, and at its full height it made the window scroll into nothing. -->
+            <div class="sr-only">
+              <table>
+                <caption>
+                  Orders resolved per UTC day
+                </caption>
+                <thead>
                   <tr>
-                    <th scope="row">{{ day.label }}</th>
-                    <td>{{ day.filled }}</td>
-                    <td>{{ day.rejected }}</td>
+                    <th scope="col">Day</th>
+                    <th scope="col">Filled</th>
+                    <th scope="col">Rejected</th>
                   </tr>
-                }
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  @for (day of chart.days; track day.date) {
+                    <tr>
+                      <th scope="row">{{ day.label }}</th>
+                      <td>{{ day.filled }}</td>
+                      <td>{{ day.rejected }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
           } @else {
             <p class="text-muted-foreground mt-4 text-sm">No order has resolved yet.</p>
           }

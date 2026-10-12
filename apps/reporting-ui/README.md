@@ -243,6 +243,6 @@ The production [Dockerfile](Dockerfile) builds the app and serves it through unp
 - An analyst's "Orders per account" card names each account and its trader. Whether an analyst's work needs clients by name is a decision for the business; the other three cards name nobody.
 - A transfer row opens nothing: the service has no endpoint for a single cash transaction.
 - The Activity ranges are fixed at today, 7, 30 and 90 days, and all time; there is no custom range. All time plots a point per day for a history of up to 366 days. Beyond that a point covers several days and is labelled with the day it starts.
-- The service keeps only the newest report run, and a run covers every event on disk. Report runs shows that run; a run still on disk beside it is listed under Earlier runs with its PNG charts only, because the service serves the figures of the latest run alone.
+- The service keeps only the newest report run, and a run covers every event on disk. Report runs shows that run; a run still on disk beside it is listed under Earlier runs with its PNG charts only, because the service serves the figures of the latest run alone. A new run can replace the one on screen up to 30 seconds before the page learns of it; a chart downloaded in that gap is taken from the new run, and the page moves on to it.
 - Trades per day plots the days that have a resolved order, side by side. A day without one is left out, not drawn as a gap.
 - Users are not signed out for inactivity, unlike the Client UI.

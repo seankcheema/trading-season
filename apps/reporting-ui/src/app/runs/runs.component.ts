@@ -1,4 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -10,6 +11,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideCircleAlert, lucideDownload, lucideInbox, lucideRefreshCw } from '@ng-icons/lucide';
+import { Observable, catchError, map, switchMap, throwError } from 'rxjs';
 import {
   count,
   dateTime,
@@ -67,6 +69,12 @@ interface MeterRow {
 
 function outcome(filled: number, rejected: number): string {
   return `${count(filled)} filled · ${count(rejected)} rejected`;
+}
+
+// A chart file and the run it was read from.
+interface SavedChart {
+  runId: string;
+  file: Blob;
 }
 
 // The latest report run as a dashboard: headline figures, trades per day, and
@@ -248,15 +256,42 @@ export class RunsComponent {
   }
 
   // Saves a chart PNG. Fetched as a blob because a link cannot carry the bearer token.
+  // The service keeps only its newest run, so the run on screen can be gone before the
+  // next status poll brings the one that replaced it. Its chart then comes from that
+  // newest run, which covers the same events and more.
   protected download(name: string, runId = this.store.report()!.runId): void {
     this.downloadFailed.set(false);
+    const onScreen = runId === this.store.report()?.runId;
     this._api
       .runFile(runId, name)
-      .pipe(takeUntilDestroyed(this._destroyRef))
+      .pipe(
+        map((file): SavedChart => ({ runId, file })),
+        catchError((error: unknown) =>
+          onScreen && error instanceof HttpErrorResponse && error.status === 404
+            ? this.fromNewestRun(name, runId)
+            : throwError(() => error),
+        ),
+        takeUntilDestroyed(this._destroyRef),
+      )
       .subscribe({
-        next: (file) => saveFile(`${runId}-${name}`, file),
+        next: (chart) => saveFile(`${chart.runId}-${name}`, chart.file),
         error: () => this.downloadFailed.set(true),
       });
+  }
+
+  // The same chart from the run that replaced the one on screen, and the screen with it.
+  private fromNewestRun(name: string, missing: string): Observable<SavedChart> {
+    return this._api.runs().pipe(
+      switchMap(({ latest }) => {
+        if (!latest || latest === missing) {
+          return throwError(() => new Error(`Run ${missing} has no ${name}`));
+        }
+        this.store.refresh();
+        return this._api
+          .runFile(latest, name)
+          .pipe(map((file): SavedChart => ({ runId: latest, file })));
+      }),
+    );
   }
 
   // Keeps a label that is centered on a column from running off either edge.
