@@ -78,7 +78,10 @@ function outcome(filled: number, rejected: number): string {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgIcon, NgTemplateOutlet, PageHeaderComponent, ChangePillComponent, ExportMenuComponent],
   providers: [provideIcons({ lucideCircleAlert, lucideDownload, lucideInbox, lucideRefreshCw })],
-  host: { class: 'block' },
+  // From 1280px wide the screen fills the window and its lists scroll inside their
+  // cards; a window shorter than the minimum scrolls the page instead. Narrower,
+  // the cards stack and the page scrolls.
+  host: { class: 'flex flex-col xl:min-h-[37.5rem] xl:flex-1 xl:basis-0' },
   templateUrl: './runs.component.html',
 })
 export class RunsComponent {

@@ -63,6 +63,20 @@ describe('RunsComponent', () => {
     expect(Array.from(menu.querySelectorAll('[role="menuitem"]')).map(text)).toEqual(['Export PDF']);
   });
 
+  it('fills the window from 1280px wide, with its lists scrolling inside their cards', () => {
+    const root = render();
+
+    expect(root.className).toContain('xl:flex-1');
+    expect(root.className).toContain('xl:min-h-[37.5rem]');
+    const list = card(root, 'Traded value by symbol').querySelector('[data-meters]')!;
+    expect(list.className).toContain('dash-scroll');
+    expect(list.className).toContain('xl:flex-1');
+    // The chart takes the room its card has left, and keeps a fixed height on paper.
+    const plot = card(root, 'Trades per day').querySelector('[data-plot]')!;
+    expect(plot.className).toContain('xl:h-auto');
+    expect(plot.className).toContain('print:h-52');
+  });
+
   it('names the run on screen and says when the next one is due', () => {
     const root = render();
     const header = root.querySelector('app-page-header')!;

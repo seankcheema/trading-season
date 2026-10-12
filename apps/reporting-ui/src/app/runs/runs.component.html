@@ -47,7 +47,7 @@
 
 <!-- A breakdown: one row per name, with its figure and a bar. -->
 <ng-template #meters let-rows>
-  <ul class="dash-scroll mt-4 flex max-h-80 flex-col gap-3" data-meters>
+  <ul class="dash-scroll mt-4 flex max-h-80 min-h-0 flex-col gap-3 xl:max-h-none xl:flex-1" data-meters>
     @for (row of rows; track row.key) {
       <li>
         <div class="flex items-baseline justify-between gap-3 text-sm">
@@ -96,7 +96,7 @@
   }
   @case ('ready') {
     @let report = store.report()!;
-    <div class="flex flex-col gap-3 pb-6">
+    <div class="flex flex-col gap-3 pb-6 xl:min-h-0 xl:flex-1 xl:pb-0">
       @if (store.refreshFailed()) {
         <p class="dash-card text-muted-foreground flex items-center gap-2 px-4 py-2.5 text-xs" role="status">
           <ng-icon name="lucideCircleAlert" size="14" class="text-loss shrink-0" />
@@ -111,7 +111,7 @@
         </p>
       }
 
-      <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+      <div class="grid shrink-0 grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         @for (kpi of kpis(); track kpi.label) {
           <section class="dash-card p-4">
             <h2 class="dash-label">{{ kpi.label }}</h2>
@@ -121,8 +121,12 @@
         }
       </div>
 
-      <div class="grid gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <section class="dash-card flex flex-col p-5">
+      <!-- From 1280px the two rows share the room under the headline figures, the chart
+           row taking the larger part, and neither less than its cards need to be read. -->
+      <div
+        class="grid gap-3 xl:min-h-[13.5rem] xl:flex-[5] xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] xl:grid-rows-[minmax(0,1fr)]"
+      >
+        <section class="dash-card flex min-h-0 flex-col p-5">
           <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
             <h2 class="text-sm font-semibold">Trades per day</h2>
             <div class="flex items-center gap-4">
@@ -139,8 +143,13 @@
               <span class="font-semibold">{{ shown.label }}</span>
               <span class="text-muted-foreground">· {{ shown.detail }}</span>
             </p>
-            <div class="mt-3 grid grid-cols-[minmax(0,1fr)_2rem] gap-x-3 gap-y-2" aria-hidden="true">
-              <div class="relative h-52" data-plot (pointerleave)="activeDay.set(null)">
+            <!-- The plot is 13rem high where the page scrolls and on paper; where the
+                 screen fills the window it takes what the card has left. -->
+            <div
+              class="mt-3 grid grid-cols-[minmax(0,1fr)_2rem] gap-x-3 gap-y-2 xl:min-h-0 xl:flex-1 xl:grid-rows-[minmax(4rem,1fr)_1rem]"
+              aria-hidden="true"
+            >
+              <div class="relative h-52 xl:h-auto print:h-52" data-plot (pointerleave)="activeDay.set(null)">
                 @for (tick of chart.ticks; track tick.value) {
                   <span
                     class="absolute inset-x-0 border-t"
@@ -221,7 +230,7 @@
           }
         </section>
 
-        <section class="dash-card flex flex-col p-5">
+        <section class="dash-card flex min-h-0 flex-col p-5">
           <div class="flex items-center justify-between gap-4">
             <h2 class="text-sm font-semibold">Traded value by client segment</h2>
             <ng-container
@@ -237,8 +246,8 @@
         </section>
       </div>
 
-      <div class="grid gap-3 xl:grid-cols-2">
-        <section class="dash-card flex flex-col p-5">
+      <div class="grid gap-3 xl:min-h-[11rem] xl:flex-[4] xl:grid-cols-2 xl:grid-rows-[minmax(0,1fr)]">
+        <section class="dash-card flex min-h-0 flex-col p-5">
           <div class="flex items-center justify-between gap-4">
             <h2 class="text-sm font-semibold">Traded value by symbol</h2>
             <ng-container
@@ -253,7 +262,7 @@
           }
         </section>
 
-        <section class="dash-card flex flex-col p-5">
+        <section class="dash-card flex min-h-0 flex-col p-5">
           <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
             <h2 class="text-sm font-semibold">Orders per account</h2>
             <div class="flex items-center gap-4">
@@ -273,7 +282,7 @@
       </div>
 
       @if (earlierRuns().length) {
-        <section class="dash-card p-5" data-print-hide="true">
+        <section class="dash-card shrink-0 p-5" data-print-hide="true">
           <h2 class="text-sm font-semibold">Earlier runs</h2>
           <ul class="mt-2" data-earlier>
             @for (run of earlierRuns(); track run.runId) {

@@ -158,6 +158,8 @@ The tokens are declared in [src/styles.css](src/styles.css) with the same values
 
 From 1024px wide a screen fills the window and its lists scroll inside their cards, with a bottom fade and no scrollbar, as the kit draws it. From 1280px wide Activity does so down to a window 616px high, so it fits a short wide display such as 1920x828 with the browser's own bars: its chart row, with the chart and the two splits side by side, takes four ninths of the room under the headline figures and never less than the four statuses need, and the two lists take the rest. Between 1024px and 1279px the two splits stack beside the chart so that it keeps its width, and the screen fills a window from 1032px high. Narrower, or on a shorter window, the page scrolls.
 
+Report runs fills the window from 1280px wide, down to the same 616px: the row with Trades per day and the client segments takes five ninths of the room under the headline figures and the row with symbols and accounts the rest, the chart grows with its card, and each breakdown scrolls inside its own. Below 1280px its cards stack and the page scrolls.
+
 From 768px wide the sidebar stands beside the screen and can be collapsed to 60px with the button beside the logo: the logo mark, the navigation icons, the button itself and log out stay, and the names remain as tooltips and for assistive technology. The choice is kept in this browser's `localStorage`. Narrower, the sidebar is a bar across the top and does not collapse.
 
 The kit is a proposal drawn on sample data. Where the product has no such data, or the screen must stay read only, the app departs from it:
