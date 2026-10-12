@@ -20,9 +20,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -45,11 +47,15 @@ class UserControllerIntegrationTest {
     private UserRepository userRepository;
 
     @Autowired
+    private TermsAcceptanceRepository termsAcceptanceRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void cleanDatabase() {
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
+        termsAcceptanceRepository.deleteAll();
         userRepository.deleteAll();
         UserAccountFixture.deleteAll(jdbcTemplate);
     }
@@ -113,6 +119,119 @@ class UserControllerIntegrationTest {
     @Test
     void meRequiresAccessToken() throws Exception {
         mockMvc.perform(get("/api/users/me"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.error").exists());
+    }
+
+    private static String acceptance(String termsVersion) {
+        return "{\"termsVersion\":\"" + termsVersion + "\"}";
+    }
+
+    @Test
+    void aNewlyRegisteredUserHasNotAcceptedTheTerms() throws Exception {
+        UUID aliceId = UUID.randomUUID();
+        registerUser(aliceId, "alice", "alice@example.com");
+
+        mockMvc.perform(get("/api/users/me").with(tokenFor(aliceId, "alice@example.com")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.termsAccepted").value(false));
+    }
+
+    @Test
+    void acceptingTheTermsIsRecordedForTheCallerOnly() throws Exception {
+        UUID aliceId = UUID.randomUUID();
+        UUID bobId = UUID.randomUUID();
+        registerUser(aliceId, "alice", "alice@example.com");
+        registerUser(bobId, "bob", "bob@example.com");
+
+        mockMvc.perform(put("/api/users/me/terms-acceptance")
+                .with(tokenFor(aliceId, "alice@example.com"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(acceptance(UserService.CURRENT_TERMS_VERSION)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.userId").value(aliceId.toString()))
+            .andExpect(jsonPath("$.termsAccepted").value(true))
+            .andExpect(jsonPath("$.ssn").doesNotExist());
+
+        mockMvc.perform(get("/api/users/me").with(tokenFor(aliceId, "alice@example.com")))
+            .andExpect(jsonPath("$.termsAccepted").value(true));
+        mockMvc.perform(get("/api/users/me").with(tokenFor(bobId, "bob@example.com")))
+            .andExpect(jsonPath("$.termsAccepted").value(false));
+    }
+
+    @Test
+    void acceptingTheTermsAgainKeepsTheFirstAcceptance() throws Exception {
+        UUID aliceId = UUID.randomUUID();
+        registerUser(aliceId, "alice", "alice@example.com");
+        TermsAcceptanceId id = new TermsAcceptanceId(aliceId, UserService.CURRENT_TERMS_VERSION);
+
+        mockMvc.perform(put("/api/users/me/terms-acceptance")
+                .with(tokenFor(aliceId, "alice@example.com"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(acceptance(UserService.CURRENT_TERMS_VERSION)))
+            .andExpect(status().isOk());
+        var firstAcceptedAt = termsAcceptanceRepository.findById(id).orElseThrow().getAcceptedAt();
+
+        mockMvc.perform(put("/api/users/me/terms-acceptance")
+                .with(tokenFor(aliceId, "alice@example.com"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(acceptance(UserService.CURRENT_TERMS_VERSION)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.termsAccepted").value(true));
+
+        assertEquals(1, termsAcceptanceRepository.count());
+        assertEquals(firstAcceptedAt, termsAcceptanceRepository.findById(id).orElseThrow().getAcceptedAt());
+    }
+
+    @Test
+    void acceptingAVersionThatIsNotInForceIsRefusedAndRecordsNothing() throws Exception {
+        UUID aliceId = UUID.randomUUID();
+        registerUser(aliceId, "alice", "alice@example.com");
+
+        mockMvc.perform(put("/api/users/me/terms-acceptance")
+                .with(tokenFor(aliceId, "alice@example.com"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(acceptance("2020-01-01")))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.error").value("The terms have changed. Reload to read the current version."));
+
+        assertEquals(0, termsAcceptanceRepository.count());
+        mockMvc.perform(get("/api/users/me").with(tokenFor(aliceId, "alice@example.com")))
+            .andExpect(jsonPath("$.termsAccepted").value(false));
+    }
+
+    @Test
+    void acceptingWithoutNamingAVersionIsABadRequest() throws Exception {
+        UUID aliceId = UUID.randomUUID();
+        registerUser(aliceId, "alice", "alice@example.com");
+
+        mockMvc.perform(put("/api/users/me/terms-acceptance")
+                .with(tokenFor(aliceId, "alice@example.com"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").exists());
+
+        assertEquals(0, termsAcceptanceRepository.count());
+    }
+
+    @Test
+    void acceptingTheTermsBeforeRegistrationIsNotFound() throws Exception {
+        mockMvc.perform(put("/api/users/me/terms-acceptance")
+                .with(tokenFor(UUID.randomUUID(), "new@example.com"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(acceptance(UserService.CURRENT_TERMS_VERSION)))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error").exists());
+
+        assertEquals(0, termsAcceptanceRepository.count());
+    }
+
+    @Test
+    void acceptingTheTermsRequiresAccessToken() throws Exception {
+        mockMvc.perform(put("/api/users/me/terms-acceptance")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(acceptance(UserService.CURRENT_TERMS_VERSION)))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.error").exists());
     }

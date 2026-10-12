@@ -15,7 +15,8 @@ All require a bearer token except where marked public.
 | --- | --- | --- |
 | POST | `/api/registration/account-exists` | Whether an email is registered (public) |
 | POST | `/api/registration` | Create the caller's profile and a default account |
-| GET | `/api/users/me` | The caller's profile, without the SSN |
+| GET | `/api/users/me` | The caller's profile, without the SSN; `termsAccepted` reports whether they accepted the platform terms in force |
+| PUT | `/api/users/me/terms-acceptance` | Record that the caller accepts the platform terms; returns the updated profile |
 | GET, POST | `/api/me/accounts` | List (newest first) or open an account |
 | PUT | `/api/me/accounts/{accountId}` | Rename an owned account |
 | GET | `/api/accounts/{accountId}` | An owned account |
@@ -31,6 +32,7 @@ All require a bearer token except where marked public.
 Behavior worth knowing:
 
 - Registration needs a bearer token whose `email` matches the profile email, a nonblank name and address, SSN as `NNN-NN-NNNN`, a past date of birth, `traderLevel` of `BEGINNER`, `INTERMEDIATE`, or `ADVANCED`, and `availableFunds` of at least 5000.00. Credentials are created first with the Auth Service; this service never sees a password.
+- Accepting the terms takes `{"termsVersion": "..."}`, the version the client displayed. A version other than the one in force (`UserService.CURRENT_TERMS_VERSION`) is 409, so an acceptance is never recorded against wording the user did not see. Each acceptance is one `terms_acceptances` row; accepting again keeps the first row and its time. Changing the version makes every profile report `termsAccepted: false` until its owner accepts again.
 - Cash belongs to the user, not the account: every account shares `users.available_funds`. Each deposit or withdrawal updates that balance and appends a `cash_transactions` row in one transaction with the user row locked. A withdrawal above the balance is 422.
 - A holding's `averageCost` is derived by replaying `holding_movements` and `fills` oldest first as a moving weighted average. This service never writes those tables.
 - Portfolio history is recorded once a minute for eligible accounts, by the Kafka consumer when an order fills, and on request from the UI after a fill; captures within the same minute are coalesced. Value is held quantity times replay price, falling back to average cost; cash is excluded.
@@ -67,9 +69,11 @@ flowchart TB
         T4["portfolio_valuations"]
         T5["user_watchlist"]
         T6["simulation_sessions, candles,<br/>Parquet tick archive"]
+        T7["terms_acceptances"]
     end
     RC --> RS --> T1
-    UC --> T1
+    UC --> US[user.UserService] --> T1
+    US --> T7
     AcC --> AcS --> T1
     AcS --> T2
     PVC --> PVS

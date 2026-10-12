@@ -19,6 +19,8 @@ import java.util.UUID;
  * @param availableFunds cash available for trading
  * @param userRole       ADMIN or TRADER
  * @param createdAt      when the account was registered
+ * @param termsAccepted  whether the caller has accepted the platform terms
+ *                       currently in force
  */
 public record UserProfileResponse(
         UUID userId,
@@ -31,7 +33,8 @@ public record UserProfileResponse(
         String traderLevel,
         BigDecimal availableFunds,
         String userRole,
-        OffsetDateTime createdAt
+        OffsetDateTime createdAt,
+        boolean termsAccepted
 ) {
 
     /**
@@ -42,14 +45,16 @@ public record UserProfileResponse(
      * the auth service owns both, and V006 dropped the stale copies the profile
      * row used to carry.
      *
-     * @param user    the profile row
-     * @param account the credential record the auth service owns
+     * @param user          the profile row
+     * @param account       the credential record the auth service owns
+     * @param termsAccepted whether the user has accepted the terms currently in
+     *                      force
      * @return the profile response
      */
-    public static UserProfileResponse from(User user, UserAccount account) {
+    public static UserProfileResponse from(User user, UserAccount account, boolean termsAccepted) {
         return new UserProfileResponse(user.getUserId(), account.getEmail(),
                 user.getFirstName(), user.getMiddleName(), user.getLastName(), user.getAddress(),
                 user.getDateOfBirth(), user.getTraderLevel(), user.getAvailableFunds(),
-                account.getUserRole(), user.getCreatedAt());
+                account.getUserRole(), user.getCreatedAt(), termsAccepted);
     }
 }

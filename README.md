@@ -126,7 +126,7 @@ flowchart TB
         A1["user_accounts<br/>refresh_tokens"]
     end
     subgraph HT["Holdings and Trade Service"]
-        H1["users<br/>accounts<br/>user_watchlist<br/>portfolio_valuations<br/>cash_transactions (deposits and withdrawals)"]
+        H1["users<br/>accounts<br/>user_watchlist<br/>terms_acceptances<br/>portfolio_valuations<br/>cash_transactions (deposits and withdrawals)"]
     end
     subgraph OS["Order and Sell Service"]
         O1["orders<br/>fills<br/>audit_trail<br/>holdings<br/>holding_movements<br/>cash_transactions (order fills)"]
