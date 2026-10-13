@@ -1,7 +1,9 @@
+import type { UserRole } from '../user-role.js';
+
 export class UserDto {
   id: string;
   email: string;
-  role: 'ADMIN' | 'TRADER';
+  role: UserRole;
   createdAt: Date;
   updatedAt: Date;
 }

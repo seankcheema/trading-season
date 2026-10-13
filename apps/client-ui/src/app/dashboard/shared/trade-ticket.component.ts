@@ -223,8 +223,9 @@ export class TradeTicketComponent {
   }
 
   protected submitOrder(): void {
-    if (!this.ready() || this.busy() || !this.quantity() || this.quantity() > this.maxShares())
+    if (!this.ready() || this.busy() || !this.quantity() || this.quantity() > this.maxShares()) {
       return;
+    }
 
     this.submitted.emit(this.draft());
   }

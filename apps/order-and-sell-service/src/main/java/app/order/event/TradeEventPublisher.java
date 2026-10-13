@@ -36,6 +36,16 @@ public class TradeEventPublisher {
     /** The topic every committed order status change is published to. */
     public static final String TOPIC = "trade-events";
 
+    /**
+     * Header carried by a message that repeats history instead of reporting
+     * something that just happened. This publisher never sets it. The
+     * republish tool in {@code db/tools} does, when it publishes the orders
+     * already in the database for a consumer that keeps its own copy of them,
+     * the reporting service. A consumer that reacts to a status change as it
+     * happens must skip a message that has it.
+     */
+    public static final String REPLAY_HEADER = "replay";
+
     private static final Logger log = LoggerFactory.getLogger(TradeEventPublisher.class);
 
     private final KafkaTemplate<String, String> kafkaTemplate;

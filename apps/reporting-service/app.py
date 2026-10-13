@@ -1,6 +1,11 @@
 """
 Trading Season Reporting Service
-Python Flask microservice for portfolio performance, trade history, and risk summaries.
+Python Flask microservice for report runs and the admin console.
+
+Everything it serves comes from Kafka. The consumer process (consumer.py)
+writes what it consumes to files; this web process reads those files and
+keeps its own read model of them (read_model.py). It has no connection to
+the trading database.
 """
 
 import os
@@ -15,9 +20,8 @@ import requests
 from functools import wraps
 from config import config
 import logging
-from sqlalchemy import text
 
-# Database models (users and accounts only; trade data comes from the event files)
+# The read model's tables; filled from the event files, never from the trading database
 from models import db
 
 # Configure logging
@@ -33,21 +37,13 @@ app = Flask(__name__)
 config_name = os.getenv('FLASK_ENV', 'development')
 app.config.from_object(config[config_name])
 
-# Configure SQLAlchemy
-app.config['SQLALCHEMY_DATABASE_URI'] = app.config['DATABASE_URL']
+# Configure SQLAlchemy for the read model: an in-memory SQLite database, for
+# which Flask-SQLAlchemy keeps one connection shared by every thread.
+app.config['SQLALCHEMY_DATABASE_URI'] = app.config['READ_MODEL_URL']
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
 
-# Set engine options only for PostgreSQL (SQLite doesn't support pool options)
-if 'sqlite' not in app.config['DATABASE_URL']:
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'pool_size': 10,
-        'pool_recycle': 3600,
-        'pool_pre_ping': True,
-    }
-else:
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
-
-# Initialize database
+# Initialize the read model
 db.init_app(app)
 
 # Enable CORS for the SPA's bearer-token requests only. This service does not
@@ -89,8 +85,8 @@ class JWKSCache:
                 self.keys = response.json()['keys']
                 self.cached_at = now
                 logger.info("JWKS cache refreshed")
-            except Exception as e:
-                logger.error(f"Failed to fetch JWKS: {e}")
+            except Exception:
+                logger.exception("Failed to fetch JWKS")
                 raise
         return self.keys
 
@@ -143,7 +139,7 @@ def verify_token(token):
     except jwt.InvalidTokenError as e:
         raise ValueError(f"Invalid token: {e}")
     except Exception as e:
-        logger.error(f"Token verification error: {e}")
+        logger.exception("Token verification error")
         raise ValueError(f"Token verification failed: {e}")
 
 
@@ -173,6 +169,33 @@ def require_auth(f):
     return decorated_function
 
 
+# Who may read what. The auth service puts the account's role in the token's
+# `roles` claim; registration only ever issues TRADER. An admin reads
+# everything; an analyst reads the report runs and nothing else.
+ADMIN_ROLE = 'ADMIN'
+REPORT_READER_ROLES = ('ANALYST', ADMIN_ROLE)
+
+
+def require_role(*allowed):
+    """
+    Decorator to require one of the given roles in the verified token's
+    `roles` claim. Place it under @require_auth, which verifies the token and
+    sets g.user. A valid token without any of them is 403, not 401: the caller
+    is known, just not allowed.
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            roles = g.user.get('roles')
+            if not isinstance(roles, list) or not any(role in roles for role in allowed):
+                return jsonify({'error': f'The {" or ".join(allowed)} role is required'}), 403
+            return f(*args, **kwargs)
+
+        return decorated_function
+
+    return decorator
+
+
 # ============================================================================
 # Health Check
 # ============================================================================
@@ -181,9 +204,14 @@ def require_auth(f):
 def health():
     """Service health check endpoint (public, no auth required)"""
     try:
-        # Verify database connectivity
-        db.session.execute(text('SELECT 1'))
-        
+        # Verify the read model can be brought up to date from the event files
+        from read_model import read_model
+        with read_model.lock:
+            try:
+                read_model.sync(db.session, app.config['REPORTING_FILES_DIR'])
+            finally:
+                db.session.rollback()
+
         return jsonify({
             'status': 'healthy',
             'service': 'reporting-service',
@@ -192,7 +220,7 @@ def health():
         }), 200
     
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        logger.exception("Health check failed")
         return jsonify({
             'status': 'unhealthy',
             'service': 'reporting-service',
@@ -224,7 +252,7 @@ def root():
         'service': 'Trading Season Reporting Service',
         'status': 'initialized',
         'version': '0.1.0',
-        'description': 'Portfolio performance, trade history, and risk summaries',
+        'description': 'Report runs and the admin console, both built from Kafka topics',
         'documentation': '/docs',
         'openapi': '/openapi.yaml',
         'health': '/health',
@@ -233,7 +261,12 @@ def root():
             'runs': 'GET /api/reporting/runs',
             'latest_report': 'GET /api/reporting/runs/latest',
             'run_file': 'GET /api/reporting/runs/{runId}/files/{name}',
-            'scheduler_status': 'GET /api/reporting/scheduler/status'
+            'scheduler_status': 'GET /api/reporting/scheduler/status',
+            'activity': 'GET /api/reporting/activity',
+            'orders': 'GET /api/reporting/orders',
+            'order': 'GET /api/reporting/orders/{orderId}',
+            'customers': 'GET /api/reporting/customers',
+            'customer': 'GET /api/reporting/customers/{userId}'
         }
     }), 200
 
@@ -296,33 +329,22 @@ def register_routes():
 def init_app():
     """
     Initialize the application for the development server (python app.py).
-    Checks the database and registers the routes. The report scheduler is not
-    started here: it runs in the consumer process (consumer.py).
+    Registers the routes. There is no database to check: the read model is
+    built from the event files on the first request that needs it. The
+    report scheduler is not started here either: it runs in the consumer
+    process (consumer.py).
     """
     logger.info(f"Initializing Reporting Service (env: {app.config['ENV']})")
-    logger.info(f"Database: {app.config['DATABASE_URL']}")
     logger.info(f"Auth Service: {app.config['AUTH_SERVICE_URL']}")
     logger.info(f"Reporting files: {app.config['REPORTING_FILES_DIR']}")
 
-    # Verify database connectivity
     try:
         with app.app_context():
-            db.session.execute(text('SELECT 1'))
-
-            if db.engine.dialect.name == 'sqlite':
-                version_query = text('SELECT sqlite_version()')
-            else:
-                version_query = text('SELECT version()')
-
-            version = db.session.execute(version_query).scalar()
-            logger.info(f"Database connected: {version}")
-
-            # Register API routes
             register_routes()
             logger.info("Application initialized successfully")
 
-    except Exception as e:
-        logger.error(f"Failed to initialize application: {e}")
+    except Exception:
+        logger.exception("Failed to initialize application")
         raise
 
 

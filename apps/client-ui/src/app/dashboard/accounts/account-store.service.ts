@@ -83,13 +83,17 @@ export class AccountStore {
   // A superseded GET joins the replacement request instead of publishing stale balances.
   private read<T>(key: string, factory: () => Observable<T>): Observable<T> {
     const existing = this.reads.get(key);
-    if (existing) return existing as Observable<T>;
+    if (existing) {
+      return existing as Observable<T>;
+    }
     const revision = this.revision;
     const request = factory().pipe(
       switchMap((value) => (revision === this.revision ? of(value) : this.read(key, factory))),
       takeUntil(this.cancelled),
       finalize(() => {
-        if (this.reads.get(key) === request) this.reads.delete(key);
+        if (this.reads.get(key) === request) {
+          this.reads.delete(key);
+        }
       }),
       shareReplay({ bufferSize: 1, refCount: true }),
     );
@@ -147,7 +151,9 @@ export class AccountStore {
   );
 
   load(refresh = false): void {
-    if (this.loading) return;
+    if (this.loading) {
+      return;
+    }
     if (!refresh && !this.stale && this.loadedAt && Date.now() - this.loadedAt < 60_000) {
       this.fetchCashTransactions().subscribe({
         error: () => this.refreshError.set('Unable to refresh transactions.'),
@@ -155,7 +161,9 @@ export class AccountStore {
       return;
     }
     this.loading = true;
-    if (!this.loadedAt) this.status.set('loading');
+    if (!this.loadedAt) {
+      this.status.set('loading');
+    }
     forkJoin([
       this.fetchAccounts().pipe(switchMap((accounts) => this.fetchAllHoldings(accounts))),
       this.fetchProfile(),
@@ -174,7 +182,9 @@ export class AccountStore {
         },
         error: () => {
           this.refreshError.set('Unable to refresh accounts.');
-          if (!this.loadedAt) this.status.set('error');
+          if (!this.loadedAt) {
+            this.status.set('error');
+          }
         },
       });
   }
@@ -194,8 +204,9 @@ export class AccountStore {
       return false;
     }
     this._selectedAccountId.set(accountId);
-    if (refresh && (this.stale || (this.loadedAt && Date.now() - this.loadedAt >= 60_000)))
+    if (refresh && (this.stale || (this.loadedAt && Date.now() - this.loadedAt >= 60_000))) {
       this.load(true);
+    }
     return true;
   }
 

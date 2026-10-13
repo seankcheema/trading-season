@@ -9,6 +9,11 @@
  * {@link app.order.event.OrderStatusStreamController} opens and
  * {@link app.order.event.OrderStatusStreamRegistry} tracks (BR-07).
  *
+ * <p>Each message also carries the order row and, for a fill, what the
+ * execution wrote, because the reporting service has no database connection
+ * and shows orders from these messages alone. What an order status does not
+ * carry is published by {@link app.record.PlatformRecordPublisher}.
+ *
  * <p>The other two consumer groups live elsewhere: {@code portfolio-valuation-capture}
  * in the Holdings and Trade Service and {@code reporting-ingester} in the reporting
  * service. Publisher and consumer are registered only when {@code app.events.enabled}

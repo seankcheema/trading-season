@@ -250,7 +250,9 @@ export class TransactionsDialogComponent implements OnInit {
 
   // Only cash transfers carry a +/- sign; a trade's value is its plain notional amount.
   protected sign(row: HistoryRow): string {
-    if (row.kind !== 'cash') return '';
+    if (row.kind !== 'cash') {
+      return '';
+    }
     return row.positive ? '+' : '-';
   }
 

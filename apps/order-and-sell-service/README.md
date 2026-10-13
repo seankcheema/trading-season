@@ -6,6 +6,7 @@ Spring Boot (Java 21) service that submits, validates, and executes buy and sell
 - Shares the `trading_season` database. The schema comes from [db/migrations](../../db/migrations); Hibernate never alters it.
 - Authenticates callers by verifying RS256 tokens from the [Auth Service](../auth-service/README.md) against its cached JWKS. The caller is always the token's `sub`.
 - Publishes one Kafka `trade-events` message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`) and runs the `order-status-pusher` consumer group, which forwards each change to the owner's open `GET /api/orders/stream` connections. The other two groups live in the [Holdings and Trade Service](../holdings-and-trade-service/README.md) and the [Reporting Service](../reporting-service/README.md).
+- Publishes every audit trail entry to the Kafka `platform-records` topic. The Reporting Service has no database connection: these two topics are how it knows about orders.
 
 ## Endpoints
 
@@ -62,7 +63,10 @@ flowchart TB
         SR[OrderStatusStreamRegistry]
         SC[OrderStatusStreamController]
     end
+    PR["record<br/>PlatformRecordPublisher"]
     K[["Kafka trade-events"]]
+    R[["Kafka platform-records"]]
+    AT -- "each audit entry, after commit" --> PR --> R
     subgraph Data["JPA entities"]
         E1["Order, Fill, CashTransaction,<br/>HoldingMovement, AuditTrail"]
         E2["Account, Holding, User,<br/>UserAccount, Instrument"]
@@ -137,6 +141,21 @@ Acceptance and execution are separate transactions (BR-06). The accepted order i
 
 Each `trade-events` message is published by `TradeEventPublisher` from an `AFTER_COMMIT` transactional event listener, so a consumer never sees a status the database does not hold. The message key is the account id as a string; the body is JSON with `orderId`, `status`, `symbol`, `side`, `quantity`, `price`, `rejectionReason` and `occurredAt`. A send failure is logged and never fails the order.
 
+### What reporting receives
+
+The Reporting Service reads Kafka, not the database, so everything it shows of an order travels in these messages. Each `trade-events` body also carries:
+
+| Field | When | Contents |
+| --- | --- | --- |
+| `order` | Always | The order row as committed with this status: `clientReference`, `instrumentId`, `instrumentName`, `indicativePrice`, `bufferPercent`, `submittedAt`, `acceptedAt`, `resolvedAt`, `simulatedAt` |
+| `execution` | `FILLED` only, otherwise null | What executing the order wrote: `userId`, `fillId`, `price`, `quantity`, `filledAt`; the cash posting `cashTransactionId` and `cashAmount` with the owner's `availableFunds` after it; the holding movement `holdingMovementId` and `quantityDelta` with the `holdingQuantity` it left |
+
+The frames on `GET /api/orders/stream` are these same bodies.
+
+The audit trail holds more than statuses, an execution failure for one, so it travels on its own: `AuditTrailService` raises an `AuditEntryRecord` for every entry, and `PlatformRecordPublisher` sends it to `platform-records` after the commit, keyed `ORDER_AUDIT:<auditId>`, with `type`, `auditId`, `orderId`, `eventType`, `detail` and `recordedAt`. The topic is compacted and shared with the Holdings and Trade and auth services; the record types are listed in the [Reporting Service README](../reporting-service/README.md#what-arrives).
+
+A message carrying a `replay` header is history published again for reporting by [db/tools/republish_history.py](../../db/README.md#reporting-feed-tools), not a status that just changed. `order-status-pusher` skips it, so nothing is pushed to a browser for an old order.
+
 ### Order status
 
 ```mermaid
@@ -151,7 +170,7 @@ stateDiagram-v2
     FILLED --> [*]
 ```
 
-Every transition is recorded in `audit_trail`, and every committed `ACCEPTED`, `FILLED` and `REJECTED` status is also published to `trade-events`. A new validation rule is a new `OrderValidator` class; the pipeline discovers it automatically and stops at the first rejection.
+Every transition is recorded in `audit_trail` and published to `platform-records`, and every committed `ACCEPTED`, `FILLED` and `REJECTED` status is also published to `trade-events`. A new validation rule is a new `OrderValidator` class; the pipeline discovers it automatically and stops at the first rejection.
 
 ## Configuration
 
@@ -166,13 +185,13 @@ Environment variables override [application.properties](src/main/resources/appli
 | `AUTH_JWT_ISSUER` | `https://auth.dualeapa.local` | Required `iss`, must equal the auth service's `JWT_ISSUER` |
 | `CORS_ORIGINS` | `http://localhost:4200` | Allowed browser origins, comma-separated |
 | `MARKET_REPLAY_ARCHIVE_LOCATION` | empty | Absolute path to the Parquet archive when the recorded path is not reachable |
-| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:29092` | Broker for `trade-events`; Compose sets `kafka:9092` |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:29092` | Broker for `trade-events` and `platform-records`; Compose sets `kafka:9092` |
 
-The property `app.events.enabled` (default `true`) registers the trade-event publisher and the `order-status-pusher` consumer; the test profile sets it to `false` so contexts without a broker never contact one. The stream endpoint is always present. `app.events.stream.heartbeat-millis` (default 15000) is the SSE keep-alive interval. Without a broker the service still starts, but every order then waits up to five seconds (`max.block.ms`) for it before responding.
+The property `app.events.enabled` (default `true`) registers both publishers and the `order-status-pusher` consumer; the test profile sets it to `false` so contexts without a broker never contact one. The stream endpoint is always present. `app.events.stream.heartbeat-millis` (default 15000) is the SSE keep-alive interval. Without a broker the service still starts, but every order then waits up to five seconds (`max.block.ms`) for it before responding.
 
 ## Run and test
 
-Start a migrated database ([db/README.md](../../db/README.md)), the auth service, and the Kafka broker with its topic from the Compose file (`docker compose -f infrastructure/docker-compose/docker-compose.local.yml up -d kafka-init`), then:
+Start a migrated database ([db/README.md](../../db/README.md)), the auth service, and the Kafka broker with its topics from the Compose file (`docker compose -f infrastructure/docker-compose/docker-compose.local.yml up -d kafka-init`), then:
 
 ```sh
 mvn spring-boot:run

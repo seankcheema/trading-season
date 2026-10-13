@@ -128,10 +128,16 @@ export class OrderService {
 
   // Replaces the cached history with the caller's orders as the backend has them.
   loadOrders(refresh = true): Observable<OrderResult[]> {
-    if (this.historyRequest) return this.historyRequest;
-    if (!refresh && this.historyStatus() === 'ready') return of(this._orders());
+    if (this.historyRequest) {
+      return this.historyRequest;
+    }
+    if (!refresh && this.historyStatus() === 'ready') {
+      return of(this._orders());
+    }
     const revision = this.revision;
-    if (this.historyStatus() === 'idle') this.historyStatus.set('loading');
+    if (this.historyStatus() === 'idle') {
+      this.historyStatus.set('loading');
+    }
     this.refreshing.set(true);
     const request = this._http.get<OrderResult[]>(`${this._apiUrl}/orders`).pipe(
       switchMap((orders) => (revision === this.revision ? of(orders) : this.loadOrders())),
@@ -170,7 +176,9 @@ export class OrderService {
 
   // A hidden tab skips the read; the next tick after it is shown catches up.
   private pollPending(): void {
-    if (typeof document !== 'undefined' && document.hidden) return;
+    if (typeof document !== 'undefined' && document.hidden) {
+      return;
+    }
     const pending = new Set(
       this._orders()
         .filter((order) => order.status === 'PENDING')
@@ -179,8 +187,9 @@ export class OrderService {
     this.loadOrders().subscribe({
       next: (orders) => {
         for (const order of orders) {
-          if (order.status === 'FILLED' && pending.has(order.orderId))
+          if (order.status === 'FILLED' && pending.has(order.orderId)) {
             this.pendingFilled.next(order);
+          }
         }
       },
       error: () => undefined,

@@ -1,6 +1,8 @@
 # Database
 
-One PostgreSQL database, `trading_season`, shared by every service. The schema is defined only by the migrations in [migrations](migrations), applied in file order; no service runs migrations itself and Hibernate never alters tables.
+One PostgreSQL database, `trading_season`, shared by the auth service and the two Java services. The schema is defined only by the migrations in [migrations](migrations), applied in file order; no service runs migrations itself and Hibernate never alters tables.
+
+The Reporting Service does not connect to it. What reporting shows is published to Kafka by the service that owns each row; the [tools](#reporting-feed-tools) below publish what those services never saw being written.
 
 | Migration | Purpose |
 | --- | --- |
@@ -9,8 +11,59 @@ One PostgreSQL database, `trading_season`, shared by every service. The schema i
 | [V003__Order_status_accepted.sql](migrations/V003__Order_status_accepted.sql) | Allows `ACCEPTED` in `orders.status`: an order is committed as accepted before it executes, then becomes `FILLED` or `REJECTED` |
 | [V008__Drop_account_status.sql](migrations/V008__Drop_account_status.sql) | Removes `user_accounts.account_status` |
 | [V009__Add_terms_acceptances.sql](migrations/V009__Add_terms_acceptances.sql) | `terms_acceptances`: one row per client and version of the platform terms they accepted |
+| [V010__Analyst_role.sql](migrations/V010__Analyst_role.sql) | Allows `ANALYST` in `user_accounts.user_role`, the role the Reporting Service serves its report runs to; `ADMIN`, allowed since V001, is served the console as well |
 
 In Docker, `db-init` runs [infrastructure/docker/init-db.sh](../infrastructure/docker/init-db.sh), which applies each file once and records it in `public.schema_migrations`. For a local PostgreSQL, apply the files in order with `psql -v ON_ERROR_STOP=1 -f`. Never edit an applied migration; add a new one.
+
+## Reporting feed tools
+
+[tools](tools) holds two command line tools and their tests. They are the only code that reads the database on reporting's behalf, they run when an operator runs them, and no service installs or imports them.
+
+```sh
+python -m venv db/tools/.venv
+db/tools/.venv/bin/python -m pip install -r db/tools/requirements.txt     # Windows: db/tools/.venv/Scripts/python
+```
+
+| Tool | What it does | Writes to |
+| --- | --- | --- |
+| [republish_history.py](tools/republish_history.py) | Reads the database once, in a single read-only snapshot, and publishes it to `trade-events` and `platform-records` in the shape the services publish it | Kafka only |
+| [seed_demo_history.py](tools/seed_demo_history.py) | Development only. Creates eight demo traders and writes six months of their trading up to the present moment | The database only |
+
+### Republishing history
+
+```sh
+db/tools/.venv/bin/python db/tools/republish_history.py \
+    --database-url postgresql://trading_season:password@localhost:5432/trading_season \
+    --bootstrap-servers localhost:29092
+```
+
+The services publish a row when they commit it. Rows that predate those publishers, or that SQL wrote (a seed, a restore, [demo-trader.sql](../apps/market-data/db/seeds/demo-trader.sql)), are in neither topic, so reporting does not know them. Run this once when adopting the Kafka-only reporting service, and again after loading rows with SQL.
+
+- It publishes every sign-in, profile, account, deposit and withdrawal, the newest valuation of each account, every audit entry, the newest completed simulation session, and every order at its current status with its fill and ledger postings. [reporting_feed.py](tools/reporting_feed.py) builds each message to mirror what the owning service sends, with the same key, so a row's history and its future land on the same partition.
+- The balance a posting left is not stored per row. It is worked back from today's: a trader's cash by removing every later posting of theirs, a holding by removing every later movement of that account and instrument.
+- It is safe to run again. Reporting applies each message as an upsert keyed by the row, and its report runs count an order's status once however often it arrives.
+- Republished order events carry a `replay` header. The `order-status-pusher` and `portfolio-valuation-capture` consumers skip them, so an old order is not pushed to a browser or valued again; the reporting consumer stores them like any other.
+- `--dry-run` prints how many messages of each kind it would publish and needs no broker. `--trade-events-topic` and `--platform-records-topic` name the topics for a deployment that renamed them.
+- It never selects a password hash, SSN, address or date of birth.
+
+### Demo history
+
+```sh
+db/tools/.venv/bin/python db/tools/seed_demo_history.py \
+    --database-url postgresql://trading_season:password@localhost:5432/trading_season
+```
+
+Additive, and for a development database only: nothing that exists is changed or removed. It needs tradable instruments, which the [market data import](../apps/market-data/README.md) creates.
+
+- Eight traders across the three levels, who joined between six months and one month ago, and one sign-up that never completed a profile. Their sign-ins end in `@demo.tradingseason.example` and the password is `DemoTrader1!`, so any of them can sign in to the Client UI. One is locked out for a week, so the reporting console has a lock to show.
+- Orders that filled and orders the trading rules rejected, with the reasons the Order and Sell Service gives, on weekdays; deposits and withdrawals; and the fills, cash and holding ledgers, holdings, audit trail and portfolio valuations that go with them. Cash never goes below zero and nothing is sold that is not held.
+- Prices follow a seeded random walk from each instrument's starting price. They are plausible and repeatable, and they are not the simulated market's prices.
+- The same trader on the same day always does the same things. Run again later, it adds only the days since it last ran; run twice on one day, the second run adds nothing.
+- `--days` sets how far back the history starts on a first run (default 180).
+- `--dry-run` writes everything, prints the summary and rolls it all back. It still advances the id sequences.
+- It publishes nothing. Run `republish_history.py` afterwards for reporting to see the history.
+
+Tests: `python -m pytest tests` in `db/tools`. They need no database or broker.
 
 ## Schema
 

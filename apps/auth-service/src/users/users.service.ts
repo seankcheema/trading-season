@@ -5,15 +5,22 @@ import * as bcrypt from 'bcrypt';
 import { User } from './user.entity.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
 import { UserDto } from './dto/user.dto.js';
+import { SignInPublisher } from '../events/sign-in-publisher.service.js';
 
 /** bcrypt cost factor used whenever a password is hashed. */
 const BCRYPT_ROUNDS = 10;
 
+/**
+ * Owns the credential records. Every change a caller makes to one is also
+ * published through SignInPublisher, because the reporting service shows
+ * sign-ins and their locks and has no database connection to read them with.
+ */
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    private signIns: SignInPublisher,
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<UserDto> {
@@ -33,6 +40,7 @@ export class UsersService {
 
     try {
       const savedUser = await this.usersRepository.save(user);
+      this.signIns.publish(savedUser);
       return this.mapToDto(savedUser);
     } catch (error) {
       // The check above is a read followed by a write, so two concurrent
@@ -71,7 +79,7 @@ export class UsersService {
     }
 
     user.failedAttempts += 1;
-    await this.usersRepository.save(user);
+    this.signIns.publish(await this.usersRepository.save(user));
   }
 
   async lockAccount(userId: string): Promise<void> {
@@ -85,7 +93,7 @@ export class UsersService {
     lockedUntil.setMinutes(lockedUntil.getMinutes() + 15);
 
     user.lockedUntil = lockedUntil;
-    await this.usersRepository.save(user);
+    this.signIns.publish(await this.usersRepository.save(user));
   }
 
   async resetFailedAttempts(userId: string): Promise<void> {
@@ -94,9 +102,15 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
+    // Every successful login lands here. Only one that actually clears a
+    // counter or a lock is news to reporting.
+    const changed = user.failedAttempts !== 0 || user.lockedUntil !== null;
     user.failedAttempts = 0;
     user.lockedUntil = null;
-    await this.usersRepository.save(user);
+    const saved = await this.usersRepository.save(user);
+    if (changed) {
+      this.signIns.publish(saved);
+    }
   }
 
   isAccountLocked(user: User): boolean {

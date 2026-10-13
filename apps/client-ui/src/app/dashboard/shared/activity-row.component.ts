@@ -102,7 +102,9 @@ export class ActivityRowComponent {
   // Only cash transfers carry a sign; a trade's amount is the plain notional value.
   protected readonly sign = computed(() => {
     const item = this.transaction();
-    if (item.kind !== 'cash') return '';
+    if (item.kind !== 'cash') {
+      return '';
+    }
     return item.positive ? '+' : '-';
   });
   protected readonly statusLabel = computed(

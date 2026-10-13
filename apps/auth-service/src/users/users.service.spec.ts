@@ -4,6 +4,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { UsersService } from './users.service.js';
 import { User } from './user.entity.js';
+import { SignInPublisher } from '../events/sign-in-publisher.service.js';
 
 vi.mock('bcrypt', () => ({
   hash: vi.fn(async (password: string, _rounds: number) => `hashed_${password}`),
@@ -13,6 +14,7 @@ vi.mock('bcrypt', () => ({
 describe('UsersService', () => {
   let service: UsersService;
   let mockUserRepository: any;
+  let signIns: { publish: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     mockUserRepository = {
@@ -20,6 +22,7 @@ describe('UsersService', () => {
       create: vi.fn(),
       save: vi.fn(),
     };
+    signIns = { publish: vi.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -28,10 +31,89 @@ describe('UsersService', () => {
           provide: getRepositoryToken(User),
           useValue: mockUserRepository,
         },
+        { provide: SignInPublisher, useValue: signIns },
       ],
     }).compile();
 
     service = module.get<UsersService>(UsersService);
+  });
+
+  describe('publishing sign-ins for reporting', () => {
+    const stored = () => ({
+      id: '123',
+      email: 'test@example.com',
+      password: 'hashed_password123',
+      role: 'TRADER',
+      failedAttempts: 0,
+      lockedUntil: null as Date | null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    beforeEach(() => {
+      mockUserRepository.save.mockImplementation(async (user: object) => user);
+    });
+
+    it('publishes a new sign-in once it is saved', async () => {
+      const user = stored();
+      mockUserRepository.findOne.mockResolvedValue(null);
+      mockUserRepository.create.mockReturnValue(user);
+
+      await service.create({ email: 'test@example.com', password: 'password123' });
+
+      expect(signIns.publish).toHaveBeenCalledTimes(1);
+      expect(signIns.publish).toHaveBeenCalledWith(user);
+    });
+
+    it('publishes nothing when the registration is refused', async () => {
+      mockUserRepository.findOne.mockResolvedValue(stored());
+
+      await expect(
+        service.create({ email: 'test@example.com', password: 'password123' }),
+      ).rejects.toThrow(ConflictException);
+
+      expect(signIns.publish).not.toHaveBeenCalled();
+    });
+
+    it('publishes each failed attempt with the new count', async () => {
+      mockUserRepository.findOne.mockResolvedValue({ ...stored(), failedAttempts: 2 });
+
+      await service.incrementFailedAttempts('123');
+
+      expect(signIns.publish).toHaveBeenCalledWith(expect.objectContaining({ failedAttempts: 3 }));
+    });
+
+    it('publishes a lock with when it ends', async () => {
+      mockUserRepository.findOne.mockResolvedValue({ ...stored(), failedAttempts: 5 });
+
+      await service.lockAccount('123');
+
+      const published = signIns.publish.mock.calls[0][0] as User;
+      expect(published.lockedUntil!.getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it('publishes the release of a lock', async () => {
+      mockUserRepository.findOne.mockResolvedValue({
+        ...stored(),
+        failedAttempts: 5,
+        lockedUntil: new Date(),
+      });
+
+      await service.resetFailedAttempts('123');
+
+      expect(signIns.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ failedAttempts: 0, lockedUntil: null }),
+      );
+    });
+
+    it('publishes nothing for a login that had nothing to clear', async () => {
+      mockUserRepository.findOne.mockResolvedValue(stored());
+
+      await service.resetFailedAttempts('123');
+
+      expect(mockUserRepository.save).toHaveBeenCalled();
+      expect(signIns.publish).not.toHaveBeenCalled();
+    });
   });
 
   describe('create', () => {
@@ -111,6 +193,25 @@ describe('UsersService', () => {
         email: 'test@example.com',
         password: 'hashed_password123',
       });
+    });
+
+    it('should store a role given by a trusted caller and return it', async () => {
+      mockUserRepository.findOne.mockResolvedValue(null);
+      mockUserRepository.create.mockImplementation((u: object) => u);
+      mockUserRepository.save.mockImplementation(async (u: object) => u);
+
+      const result = await service.create({
+        email: 'analyst@example.com',
+        password: 'password123',
+        role: 'ANALYST',
+      });
+
+      expect(mockUserRepository.create).toHaveBeenCalledWith({
+        email: 'analyst@example.com',
+        password: 'hashed_password123',
+        role: 'ANALYST',
+      });
+      expect(result.role).toBe('ANALYST');
     });
   });
 

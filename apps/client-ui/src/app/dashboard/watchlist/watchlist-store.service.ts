@@ -48,12 +48,20 @@ export class WatchlistStore {
   }
 
   load(refresh = false): Observable<WatchlistEntry[]> {
-    if (this.request) return this.request;
-    if (!refresh && this.status() === 'ready') return of(this.entries());
+    if (this.request) {
+      return this.request;
+    }
+    if (!refresh && this.status() === 'ready') {
+      return of(this.entries());
+    }
     // A GET during an optimistic write could erase the optimistic state.
-    if (this.pending().size) return of(this.entries());
+    if (this.pending().size) {
+      return of(this.entries());
+    }
     const revision = this.revision;
-    if (this.status() === 'idle') this.status.set('loading');
+    if (this.status() === 'idle') {
+      this.status.set('loading');
+    }
     const request = this.http.get<WatchlistEntry[]>(this.api).pipe(
       switchMap((entries) => (revision === this.revision ? of(entries) : this.load(true))),
       tap({
@@ -69,7 +77,9 @@ export class WatchlistStore {
       }),
       takeUntil(this.cancelled),
       finalize(() => {
-        if (this.request === request) this.request = undefined;
+        if (this.request === request) {
+          this.request = undefined;
+        }
       }),
       shareReplay({ bufferSize: 1, refCount: true }),
     );
@@ -79,8 +89,9 @@ export class WatchlistStore {
 
   toggle(rawSymbol: string): Observable<unknown> {
     const symbol = rawSymbol.trim().toUpperCase();
-    if (this.pending().has(symbol) || this.status() === 'idle' || this.status() === 'loading')
+    if (this.pending().has(symbol) || this.status() === 'idle' || this.status() === 'loading') {
       return EMPTY;
+    }
     const previous = this.entries().find((entry) => entry.symbol === symbol);
     const position = this.entries().findIndex((entry) => entry.symbol === symbol);
     this.revision++;
@@ -98,16 +109,19 @@ export class WatchlistStore {
     return mutation.pipe(
       tap({
         next: (entry) => {
-          if (entry)
+          if (entry) {
             this.entries.update((entries) =>
               entries.map((item) => (item.symbol === symbol ? entry : item)),
             );
+          }
           this.status.set('ready');
         },
         error: () => {
           this.entries.update((entries) => {
             const restored = entries.filter((entry) => entry.symbol !== symbol);
-            if (previous) restored.splice(position, 0, previous);
+            if (previous) {
+              restored.splice(position, 0, previous);
+            }
             return restored;
           });
           this.error.set('Unable to save watchlist. Click the star to retry.');

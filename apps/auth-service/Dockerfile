@@ -24,6 +24,7 @@ RUN npm run build
 # Stage 1 are NOT copied here — they never exist in the final image, which is
 # why the multi-stage result is significantly smaller.
 FROM node:24.8.0-alpine
+LABEL maintainer="DuaLEAPa Team"
 
 WORKDIR /app
 

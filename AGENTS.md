@@ -9,7 +9,7 @@ Read [README.md](README.md) for the service map and system diagrams, then only t
 | Setup, build, test | [README.md](README.md) and the service's own README |
 | Service boundaries and integration | [README.md](README.md) |
 | HTTP contract changes | The owning service README and its Swagger UI |
-| Schema changes | [Database](db/README.md) |
+| Schema changes, republishing history to Kafka, demo history | [Database](db/README.md) |
 | Deployment and CI | [Infrastructure](infrastructure/README.md) |
 | Documentation-only work | [Documentation instructions](docs/AGENTS.md) |
 
@@ -19,6 +19,7 @@ Follow nested AGENTS.md instructions for the area being changed. The reporting s
 
 - Keep deployable applications in apps and operational configuration in infrastructure. Keep Angular components that only one app uses inside that app (see apps/client-ui/shared-ui-components); extract a component into a top-level packages directory only once a second app actually consumes it, since that is the point npm workspace tooling becomes worth the added complexity.
 - Inspect source, manifests, tests, and configuration before relying on documentation. Resolve disagreements by correcting docs to match implemented behavior.
+- The reporting service reads Kafka only and has no database connection; keep it that way. When reporting needs to show something new, publish it from the service that owns the row (`trade-events` for an order status, `platform-records` for everything else) and extend [db/tools/reporting_feed.py](db/tools/reporting_feed.py) so history can be republished in the same shape.
 - Authentication (sign-up credentials, login, refresh, token issuing) is the NestJS auth service alone. The Java services only verify its RS256 tokens. Profile registration lives only in Holdings and Trade (`POST /api/registration`); do not add it to Order and Sell, and do not assume the two stores share users or credentials beyond the token `sub`.
 - Preserve unrelated working changes. Use git mv for tracked file moves.
 - Do not commit secrets, dependencies, temporary build output, or test reports.
@@ -35,14 +36,19 @@ Run from repository root unless a working directory is specified:
 | Auth dependencies | npm --prefix apps/auth-service ci |
 | UI build | npm --prefix apps/client-ui run build |
 | UI tests | npm --prefix apps/client-ui test -- --no-watch |
+| Reporting UI dependencies | npm --prefix apps/reporting-ui ci |
+| Reporting UI build | npm --prefix apps/reporting-ui run build |
+| Reporting UI tests | npm --prefix apps/reporting-ui test -- --no-watch |
 | Holdings and Trade tests | mvn -B -f apps/holdings-and-trade-service/pom.xml test |
 | Order and Sell tests | mvn -B -f apps/order-and-sell-service/pom.xml test |
 | Auth tests | npm --prefix apps/auth-service test |
 | Auth lint | npm --prefix apps/auth-service run lint |
+| Reporting tests | python -m pytest (working directory apps/reporting-service) |
+| Reporting feed tools tests | python -m pytest tests (working directory db/tools) |
 | Holdings and Trade Javadocs | mvn -B -f apps/holdings-and-trade-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc |
 | Order and Sell Javadocs | mvn -B -f apps/order-and-sell-service/pom.xml org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc |
 
-There is no root npm project. client-ui and auth-service are independent npm projects, each installed, built, and tested from its own directory; check each app's manifest before assuming a task exists.
+There is no root npm project. client-ui, reporting-ui and auth-service are independent npm projects, each installed, built, and tested from its own directory; check each app's manifest before assuming a task exists.
 
 ## Definition of done
 
