@@ -357,6 +357,20 @@ pipeline {
                         def qualityGate = waitForQualityGate abortPipeline: false
                         echo "SonarQube quality gate status: ${qualityGate.status}"
                         if (qualityGate.status != 'OK') {
+                            withSonarQubeEnv('SonarQube') {
+                                sh '''
+                                    set -eu
+                                    QUALITY_GATE_FILE="${WORKSPACE}/sonar-quality-gate.json"
+                                    curl --fail --silent --show-error \
+                                      --user "${SONAR_AUTH_TOKEN}:" \
+                                      "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=DuaLeapa-Project" \
+                                      > "$QUALITY_GATE_FILE"
+                                    node -e 'const fs = require("node:fs"); const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); for (const condition of report.projectStatus?.conditions ?? []) console.log(`SonarQube condition: ${condition.metricKey} status=${condition.status} actual=${condition.actualValue ?? "-"} threshold=${condition.errorThreshold ?? "-"}`);' "$QUALITY_GATE_FILE"
+                                    rm -f "$QUALITY_GATE_FILE"
+                                '''
+                            }
+                        }
+                        if (qualityGate.status != 'OK') {
                             error "SonarQube quality gate failed with status: ${qualityGate.status}"
                         }
                     }
