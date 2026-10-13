@@ -86,6 +86,7 @@ public class OrderService {
      * @param validationPipeline trading-rule pipeline
      * @param orderExecutionService settlement of orders that pass validation
      * @param auditTrailService lifecycle event recorder
+     * @param auditTrailRepository read access to an order's recorded lifecycle entries, oldest first
      * @param events publisher of the {@link app.order.event.OrderStatusEvent} raised at each committed status change
      * @param transactionManager manager behind the acceptance transaction, which commits before execution begins
      */
