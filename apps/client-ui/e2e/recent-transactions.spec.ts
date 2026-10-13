@@ -145,6 +145,34 @@ test('view all opens every transaction, including cash, and filters by type', as
   await expect(dialog).toBeHidden();
 });
 
+test('an order row expands into its audit timeline from pending to its final status', async ({
+  page,
+}) => {
+  await page.getByTestId('open-transactions').click();
+  const dialog = page.getByRole('dialog', { name: 'Recent Transactions' });
+  const order = dialog.getByTestId('transactions-order-1');
+  await expect(order).toHaveAttribute('aria-expanded', 'false');
+
+  await order.click();
+  await expect(order).toHaveAttribute('aria-expanded', 'true');
+  const trail = dialog.getByTestId('audit-trail-1');
+  const entries = trail.locator('.audit-entry');
+  await expect(entries).toHaveCount(3);
+
+  // Oldest first, each stage with its price and the time it was recorded.
+  await expect(entries.nth(0)).toContainText('PENDING');
+  await expect(entries.nth(1)).toContainText('ACCEPTED');
+  await expect(entries.nth(2)).toContainText('FILLED');
+  for (let stage = 0; stage < 3; stage++) {
+    await expect(entries.nth(stage)).toContainText('$200.00');
+    await expect(entries.nth(stage).locator('time')).toHaveAttribute('datetime', /^2026-01-05T14:31/);
+  }
+
+  await order.click();
+  await expect(order).toHaveAttribute('aria-expanded', 'false');
+  await expect(trail).toBeHidden();
+});
+
 test('a pending order updates to filled by itself, with the balances it moved', async ({
   page,
   dashboardPage,
