@@ -33,10 +33,10 @@
 .audit-entry:not(:last-child)::before {
   background: var(--border);
   content: '';
-  height: calc(100% - 0.25rem);
-  left: 0.28125rem;
+  height: 100%;
+  left: calc(0.25rem - 0.5px);
   position: absolute;
-  top: 1rem;
+  top: 0.5rem;
   width: 1px;
 }
 

@@ -123,22 +123,23 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
                   [attr.data-testid]="'transactions-order-' + row.orderId"
                   (click)="toggleAudit(row)"
                 >
-                  <span class="text-muted-foreground text-lg leading-none transition-transform" [class.rotate-90]="expandedOrderId() === row.orderId" aria-hidden="true">›</span>
+                  <span class="text-muted-foreground flex h-4 w-4 items-center justify-center transition-transform" [class.rotate-90]="expandedOrderId() === row.orderId" [class.text-primary]="expandedOrderId() === row.orderId" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5" /></svg>
+                  </span>
                   <ng-container [ngTemplateOutlet]="rowCells" [ngTemplateOutletContext]="{ $implicit: row }"></ng-container>
                 </button>
                 @if (expandedOrderId() === row.orderId) {
-                  <section class="audit-trail mx-3 mb-3 rounded-2xl border border-[#3a3a3a] bg-[#161616] px-4 py-4 text-[#e5e7eb]" [attr.data-testid]="'audit-trail-' + row.orderId" aria-label="Order audit trail">
-                    <h3 class="mb-3 text-sm font-semibold tracking-wide text-[#9ca3af]">AUDIT TRAIL</h3>
+                  <section class="audit-trail mb-2 ml-8 mr-2 border-l-2 border-white/50 py-1 pl-3 text-[#e5e7eb]" [attr.data-testid]="'audit-trail-' + row.orderId" aria-label="Order audit trail">
                     @if (auditLoading().has(row.orderId)) {
                       <p class="text-muted-foreground text-xs">Loading audit trail…</p>
                     } @else if (auditErrors().has(row.orderId)) {
                       <p class="text-loss text-xs" role="status">Unable to load this order's audit trail.</p>
                     } @else {
                       @for (entry of auditEntries().get(row.orderId) ?? []; track entry.occurredAt + entry.eventType) {
-                        <div class="audit-entry relative grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-x-3 pb-3 last:pb-0">
-                          <span class="audit-marker mt-1.5 h-3 w-3 rounded-full" [class]="auditMarkerClass(entry)" aria-hidden="true"></span>
-                          <div class="min-w-0"><p class="text-sm font-semibold leading-none">{{ entry.eventType }}</p><time class="mt-1 block text-xs text-[#9ca3af]" [attr.datetime]="entry.occurredAt">{{ entry.occurredAt | date: 'MMM d, h:mm:ss a' : '' : 'en-US' }}</time>@if (entry.detail) { <p class="mt-1 text-xs text-[#9ca3af]">{{ entry.detail }}</p> }</div>
-                          <div class="text-right tabular-nums"><div class="text-sm font-semibold leading-none">{{ entry.price | currency: 'USD' }}</div><div class="mt-1 text-xs text-[#9ca3af]">{{ entry.eventType === 'FILLED' ? 'fill price' : 'indicative' }}</div></div>
+                        <div class="audit-entry relative grid grid-cols-[0.75rem_8rem_minmax(0,1fr)_auto] items-baseline gap-x-2 pb-1.5 text-xs last:pb-0">
+                          <span class="audit-marker h-2 w-2 self-center rounded-full" [class]="auditMarkerClass(entry)" aria-hidden="true"></span>
+                          <span class="truncate font-semibold">{{ entry.eventType }}</span>
+                          <time class="text-[0.6875rem] text-[#9ca3af] tabular-nums" [attr.datetime]="entry.occurredAt">{{ entry.occurredAt | date: 'MMM d, h:mm:ss a' : '' : 'en-US' }}</time>                          <p class="text-right font-semibold tabular-nums">{{ entry.price | currency: 'USD' }}</p>
                         </div>
                       } @empty { <p class="text-muted-foreground text-xs">No audit events were recorded for this order.</p> }
                     }
@@ -303,6 +304,7 @@ export class TransactionsDialogComponent implements OnInit {
   protected auditMarkerClass(entry: OrderAuditEntry): string {
     if (entry.eventType === 'FILLED') return 'bg-[#2ee87b]';
     if (entry.eventType === 'REJECTED' || entry.eventType === 'EXECUTION_FAILED') return 'bg-[#fb7185]';
+    if (entry.eventType === 'PENDING') return 'bg-[#fac320]';
     return 'bg-[#16b9f2]';
   }
 
