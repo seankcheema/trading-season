@@ -274,6 +274,7 @@ Run from the repository root. There is no root npm project.
 | UI end-to-end | `npm --prefix apps/client-ui run e2e` |
 | Reporting UI build | `npm --prefix apps/reporting-ui run build` |
 | Reporting UI tests | `npm --prefix apps/reporting-ui test -- --no-watch` |
+| Reporting UI integration tests | `npm --prefix apps/reporting-ui run e2e` |
 | Holdings and Trade tests | `mvn -B -f apps/holdings-and-trade-service/pom.xml test` |
 | Order and Sell tests | `mvn -B -f apps/order-and-sell-service/pom.xml test` |
 | Auth tests and lint | `npm --prefix apps/auth-service test` and `npm --prefix apps/auth-service run lint` |

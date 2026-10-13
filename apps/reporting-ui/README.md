@@ -216,6 +216,7 @@ npm --prefix apps/reporting-ui ci
 npm --prefix apps/reporting-ui start
 npm --prefix apps/reporting-ui run build
 npm --prefix apps/reporting-ui test -- --no-watch
+npm --prefix apps/reporting-ui run e2e
 ```
 
 `ng serve` runs on port 4300 and expects the Auth Service on `localhost:3001` and the Reporting Service on `localhost:8083`; [scripts/start-local.ps1](../../scripts/start-local.ps1) starts all three, see [Local processes](../../README.md#local-processes-windows). Use `--no-watch` for the tests; Vitest's `--run` is not supported by the builder.
@@ -236,7 +237,31 @@ The production [Dockerfile](Dockerfile) builds the app and serves it through unp
 
 ## Tests
 
-`*.spec.ts` beside the code under `src`, on the Angular unit-test builder with Vitest. The run fails below 90 percent on statements, branches, functions, or lines (`coverageThresholds` in [angular.json](angular.json)). Add `--coverage` for the report. Shared test data and DOM helpers live in [src/testing](src/testing) and are excluded from the application build. There is no end-to-end suite for this app.
+`*.spec.ts` beside the code under `src`, on the Angular unit-test builder with Vitest. The run fails below 90 percent on statements, branches, functions, or lines (`coverageThresholds` in [angular.json](angular.json)). Add `--coverage` for the report. Shared test data and DOM helpers live in [src/testing](src/testing) and are excluded from the application build.
+### Integration tests
+
+Playwright specs in [e2e](e2e) drive the built app in Chromium against the real Reporting Service, so they check the screens, the service's read model and report run, and its access rules together. Only the two things the service does not itself provide are replaced: Kafka, and the Auth Service.
+
+```mermaid
+flowchart LR
+    Browser["Chromium<br/>(Playwright)"] -- "4390" --> UI["serve-ui.mjs<br/>production build, same path split as nginx.conf"]
+    UI -- "/api/reporting" --> RS["Reporting Service :8390<br/>the real Flask app"]
+    UI -- "/auth" --> Auth["auth-standin.mjs :3390<br/>signs RS256 tokens, serves the JWKS"]
+    RS -- "JWKS" --> Auth
+    Files[("throwaway files directory<br/>events and one report run")] --> RS
+    Scenario["fixtures/scenario.json"] --> Files
+    Scenario --> Auth
+    Scenario --> Specs["the specs' expected figures"]
+```
+
+- **The service is the real one.** [run_reporting_service.py](e2e/support/run_reporting_service.py) writes every message of [scenario.json](e2e/fixtures/scenario.json) to the topic files through the service's own `EventStore`, using the producers' message shapes from the service's `tests/messages.py`, then makes one report run with the service's own `run_report` (PNG charts included) and serves the app on a throwaway directory. The read model, the console queries and the role checks are not mocked.
+- **The Auth Service is a stand-in.** [auth-standin.mjs](e2e/support/auth-standin.mjs) answers `/auth/login`, `/auth/refresh` and `/auth/logout` and publishes a JWKS. It signs access tokens with a key made when it starts, with the claims and no key id the real service uses, so the Reporting Service verifies them with its own JWT checks. Refresh tokens rotate and logout revokes them. It lets a test change an account's roles (`POST /__e2e/roles`), which the real service has no route for.
+- **One scenario, two readers.** The service is seeded from the scenario and the specs work their expected figures out from the same file ([scenario.ts](e2e/fixtures/scenario.ts)), so a figure is never typed in twice. Orders are placed between 28 hours and 125 days back, clear of the edges of the 7, 30 and 90 day ranges and never in Today, so the suite gives the same answers whenever it runs. Browsers run in UTC.
+- **What is covered.** [sign-in.spec.ts](e2e/sign-in.spec.ts): the sign-in form, both roles, refusals, the no-access turn-away, sign-out and revocation. [access-control.spec.ts](e2e/access-control.spec.ts): each endpoint against each role, a token signed by another key, an expired token, read-only and input checks, and the screens' own handling of the refresh path and of a role change. [activity.spec.ts](e2e/activity.spec.ts), [customers.spec.ts](e2e/customers.spec.ts), [orders.spec.ts](e2e/orders.spec.ts) and [report-runs.spec.ts](e2e/report-runs.spec.ts): every figure, split, filter, sort, export and chart download of their screen, and its error and retry states. [shell.spec.ts](e2e/shell.spec.ts): navigation, the collapsible sidebar and the narrow layout.
+- **Run them** from the repository root: `npm --prefix apps/reporting-ui run e2e`. It needs Chromium (`npx --prefix apps/reporting-ui playwright install chromium`) and the Reporting Service's Python requirements. The suite uses `apps/reporting-service/venv` when there is one, else `python` on the path; `E2E_PYTHON` names another interpreter. It builds the app first; `E2E_SKIP_BUILD=1` reuses the last build, and `E2E_REUSE_SERVERS=1` reuses processes already listening on 4390, 8390 and 3390. Ports of its own keep a running development stack out of it. Reports are written to `reports/playwright`.
+- **Changing the service or a screen.** A new field in a published message, a new endpoint or a new role rule means extending the scenario and the specs with it. The scenario file's own `comment` says what the times must keep clear of.
+
+The suite is not a Jenkins stage yet: the existing end-to-end stage runs in a Chromium-only image without Python, so it needs an image with both.
 
 ## Known limitations
 
