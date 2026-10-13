@@ -242,6 +242,7 @@ export class ApiStub {
     await page.route('**/api/registration/account-exists', (route) => this.accountExists(route));
     await page.route(/\/api\/me\/watchlist(?:\/[^/?]+)?$/, (route) => this.watchlist(route));
     await page.route('**/api/orders', (route) => this.orderRequest(route));
+    await page.route(/\/api\/orders\/\d+\/audit$/, (route) => this.orderAuditRequest(route));
     await page.route('**/api/instruments', async (route) => {
       if (await this.caller(route))
         await this.json(route, 200, [
@@ -369,6 +370,30 @@ export class ApiStub {
     this.orders.set(owner, [result, ...(this.orders.get(owner) ?? [])]);
     this.orderReferences.set(key, result);
     await this.json(route, 201, result);
+  }
+
+  /** Mirrors the order service's owner-scoped, oldest-first audit contract. */
+  private async orderAuditRequest(route: Route): Promise<void> {
+    const owner = await this.caller(route);
+    if (!owner) return;
+    const orderId = Number(new URL(route.request().url()).pathname.split('/')[3]);
+    const order = (this.orders.get(owner) ?? []).find((candidate) => candidate.orderId === orderId);
+    if (!order) {
+      await this.json(route, 404, { error: `No order ${orderId}` });
+      return;
+    }
+    const entries = [
+      { eventType: 'PENDING', price: order.indicativePrice, occurredAt: order.submittedAt, detail: null },
+    ];
+    if (order.status === 'FILLED') {
+      entries.push(
+        { eventType: 'ACCEPTED', price: order.indicativePrice, occurredAt: order.submittedAt, detail: null },
+        { eventType: 'FILLED', price: order.indicativePrice, occurredAt: order.resolvedAt ?? order.submittedAt, detail: null },
+      );
+    } else if (order.status === 'REJECTED') {
+      entries.push({ eventType: 'REJECTED', price: order.indicativePrice, occurredAt: order.resolvedAt ?? order.submittedAt, detail: order.rejectionReason });
+    }
+    await this.json(route, 200, entries);
   }
 
   /** Moves the user's cash and the account's position the way a fill does. */
