@@ -31,6 +31,7 @@ import { ExportMenuComponent, downloadCsv } from '../shared/export-menu.componen
 import { ChartPoint, LineChartComponent } from '../shared/line-chart.component';
 import { live } from '../shared/live';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { SkeletonCardComponent, SkeletonKpisComponent } from '../shared/skeleton.component';
 import { SparklineComponent } from '../shared/sparkline.component';
 import { TimeframeToggleComponent } from '../shared/timeframe-toggle.component';
 
@@ -118,6 +119,8 @@ function feedRow(item: FeedItem): FeedRow {
     ChangePillComponent,
     LineChartComponent,
     SparklineComponent,
+    SkeletonCardComponent,
+    SkeletonKpisComponent,
   ],
   providers: [
     provideIcons({
@@ -156,9 +159,24 @@ function feedRow(item: FeedItem): FeedRow {
 
     @switch (activity.state()) {
       @case ('loading') {
-        <section class="dash-card p-5" aria-busy="true">
-          <p class="text-muted-foreground text-sm">Loading activity…</p>
-        </section>
+        <!-- The same rows as the loaded screen below, so nothing moves when it arrives. -->
+        <p class="sr-only" role="status">Loading activity…</p>
+        <app-skeleton-kpis />
+        <div
+          class="grid gap-3 lg:min-h-[30.75rem] lg:flex-[4] lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:grid-rows-[repeat(2,minmax(0,1fr))] xl:min-h-[15rem] xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] xl:grid-rows-[minmax(0,1fr)]"
+          aria-busy="true"
+        >
+          <app-skeleton-card chart class="lg:row-span-2 xl:row-span-1" />
+          <app-skeleton-card [lines]="4" />
+          <app-skeleton-card [lines]="3" />
+        </div>
+        <div
+          class="grid gap-3 lg:min-h-0 lg:flex-[5] lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]"
+          aria-busy="true"
+        >
+          <app-skeleton-card [lines]="6" />
+          <app-skeleton-card [lines]="6" />
+        </div>
       }
       @case ('error') {
         <section

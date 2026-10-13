@@ -284,6 +284,30 @@
     display: none;
   }
 
+  /* Placeholder for content that is still loading: a quiet block that pulses.
+     Size it with utilities (`h-4 w-24`). The pieces built from it are in
+     src/app/shared/skeleton.component.ts. The Client UI declares the same class
+     in its own styles.css; keep the two alike. */
+  .skeleton {
+    display: block;
+    border-radius: 0.375rem;
+    background: color-mix(in srgb, var(--foreground) 10%, transparent);
+    animation: skeleton-pulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes skeleton-pulse {
+    50% {
+      opacity: 0.45;
+    }
+  }
+
+  /* Held still, not sped up: the base rule above would make the pulse a flicker. */
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton {
+      animation: none;
+    }
+  }
+
   /* Rounded-full status tag: 10px uppercase on a 15 percent tint. */
   .status-pill {
     display: inline-block;

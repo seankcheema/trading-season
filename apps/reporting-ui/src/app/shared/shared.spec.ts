@@ -9,6 +9,12 @@ import { ExportMenuComponent, downloadCsv, toCsv } from './export-menu.component
 import { FilterSelectComponent } from './filter-select.component';
 import { LineChartComponent, axisScale, smoothPath } from './line-chart.component';
 import { Live, live } from './live';
+import {
+  SkeletonCardComponent,
+  SkeletonFactsComponent,
+  SkeletonKpisComponent,
+  SkeletonTableComponent,
+} from './skeleton.component';
 import { SparklineComponent } from './sparkline.component';
 import { TimeframeToggleComponent } from './timeframe-toggle.component';
 
@@ -601,5 +607,70 @@ describe('live', () => {
     data.reload();
     slow.next('old');
     expect(data.data()).toBe('new');
+  });
+});
+
+describe('loading placeholders', () => {
+  const blocks = (element: HTMLElement) => element.querySelectorAll('.skeleton');
+
+  it('draws a headline figure card for each figure, hidden from assistive technology', () => {
+    const five = render(SkeletonKpisComponent).nativeElement as HTMLElement;
+    expect(five.querySelectorAll('section.dash-card')).toHaveLength(5);
+    expect(five.getAttribute('aria-hidden')).toBe('true');
+    expect(text(five)).toBe('');
+
+    const three = render(SkeletonKpisComponent, { count: 3 }).nativeElement as HTMLElement;
+    expect(three.querySelectorAll('section.dash-card')).toHaveLength(3);
+  });
+
+  it('draws a card as a breakdown of rows, or as a chart when asked', () => {
+    const rows = render(SkeletonCardComponent).nativeElement as HTMLElement;
+    expect(rows.querySelectorAll('[data-row]')).toHaveLength(4);
+    expect(rows.querySelector('[data-chart]')).toBeNull();
+    expect(rows.getAttribute('aria-hidden')).toBe('true');
+    expect(Array.from(rows.classList)).toContain('dash-card');
+
+    const six = render(SkeletonCardComponent, { lines: 6 }).nativeElement as HTMLElement;
+    expect(six.querySelectorAll('[data-row]')).toHaveLength(6);
+
+    const chart = render(SkeletonCardComponent, { chart: '' }).nativeElement as HTMLElement;
+    expect(chart.querySelector('[data-chart]')).not.toBeNull();
+    expect(chart.querySelectorAll('[data-row]')).toHaveLength(0);
+  });
+
+  it('draws a label and a value for each fact', () => {
+    const facts = render(SkeletonFactsComponent, { count: 4 }).nativeElement as HTMLElement;
+    expect(facts.children).toHaveLength(4);
+    expect(blocks(facts)).toHaveLength(8);
+    expect(facts.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it("draws a table on the real table's columns, with its search and filters", () => {
+    const table = render(SkeletonTableComponent, {
+      tracks: '1.6fr 0.8fr 1fr',
+      filters: 2,
+      rows: 4,
+      minWidth: 760,
+    }).nativeElement as HTMLElement;
+    const rows = Array.from(table.querySelectorAll<HTMLElement>('[data-row]'));
+
+    expect(table.getAttribute('aria-hidden')).toBe('true');
+    expect(table.querySelectorAll('[data-filter]')).toHaveLength(2);
+    expect(rows).toHaveLength(4);
+    expect(rows[0].style.gridTemplateColumns).toBe('1.6fr 0.8fr 1fr');
+    expect(rows[0].children).toHaveLength(3);
+    expect(table.querySelector<HTMLElement>('.dash-table-head')!.children).toHaveLength(3);
+    expect(rows[0].parentElement!.style.minWidth).toBe('760px');
+    expect(Array.from(rows[0].children[0].classList)).toContain('h-5');
+  });
+
+  it('has no filters and eight rows unless told, and taller rows for two lines of text', () => {
+    const table = render(SkeletonTableComponent, { tracks: '1fr 1fr', tall: '' })
+      .nativeElement as HTMLElement;
+    const rows = table.querySelectorAll('[data-row]');
+
+    expect(table.querySelectorAll('[data-filter]')).toHaveLength(0);
+    expect(rows).toHaveLength(8);
+    expect(Array.from(rows[0].children[0].classList)).toContain('h-8');
   });
 });

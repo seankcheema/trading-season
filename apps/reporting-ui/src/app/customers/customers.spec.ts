@@ -192,11 +192,18 @@ describe('CustomersComponent', () => {
   it('shows loading, then offers a retry when the customers cannot be read', () => {
     load.mockReturnValue(throwError(() => new Error('down')));
     create();
-    expect(text(root())).toContain('Loading customers…');
+    const card = root().querySelector('section.dash-card')!;
+    expect(text(card.querySelector('[role="status"]')!)).toBe('Loading customers…');
+    // A table's shape stands in for it: the search, the three filters and rows on the seven columns.
+    expect(card.getAttribute('aria-busy')).toBe('true');
+    expect(card.querySelectorAll('app-skeleton-table [data-filter]')).toHaveLength(3);
+    expect(card.querySelector('app-skeleton-table [data-row]')!.children).toHaveLength(7);
 
     vi.advanceTimersByTime(0);
     fixture.detectChanges();
     expect(text(root().querySelector('[role="alert"]')!)).toContain("We couldn't load the customers.");
+    expect(card.getAttribute('aria-busy')).toBeNull();
+    expect(root().querySelector('.skeleton')).toBeNull();
 
     load.mockReturnValue(of({ customers: customers() }));
     root().querySelector<HTMLButtonElement>('[role="alert"] button')!.click();
@@ -417,11 +424,18 @@ describe('CustomerDetailComponent', () => {
   it('shows loading, then a way back and a retry when the customer cannot be read', () => {
     load.mockReturnValue(throwError(() => new Error('down')));
     create();
-    expect(text(root())).toContain('Loading the customer…');
+    expect(text(root().querySelector('[role="status"]')!)).toBe('Loading the customer…');
+    // The page's shape stands in for it: who it is, the three cards, then the orders table.
+    expect(root().querySelector('[data-skeleton]')).not.toBeNull();
+    expect(root().querySelectorAll('app-skeleton-facts')).toHaveLength(2);
+    expect(root().querySelector('.net-worth-card .skeleton')).not.toBeNull();
+    expect(root().querySelectorAll('app-skeleton-table [data-filter]')).toHaveLength(5);
+    expect(root().querySelector('app-skeleton-table [data-row]')!.children).toHaveLength(9);
 
     settle();
     const alert = root().querySelector('[role="alert"]')!;
     expect(text(alert)).toContain("We couldn't load this customer.");
+    expect(root().querySelector('.skeleton')).toBeNull();
     expect(alert.querySelector('a')!.getAttribute('href')).toBe('/customers');
 
     load.mockReturnValue(of(customerDetail()));

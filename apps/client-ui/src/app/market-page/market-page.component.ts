@@ -16,7 +16,11 @@ import { SettingsDialogComponent } from '../dashboard/settings-dialog/settings-d
 import { AccountControlComponent } from '../dashboard/shared/account-control.component';
 import { MarketClockControlComponent } from '../dashboard/shared/market-clock-control.component';
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
-import { ActivityItem, ActivityRowComponent } from '../dashboard/shared/activity-row.component';
+import {
+  ActivityItem,
+  ActivityRowComponent,
+  ActivityRowSkeletonComponent,
+} from '../dashboard/shared/activity-row.component';
 import { orderActivity } from '../dashboard/shared/activity';
 import { TradeTicketDraft } from '../dashboard/shared/trade-ticket.component';
 import { CurrencyPipe, DecimalPipe, TitleCasePipe, isPlatformBrowser } from '@angular/common';
@@ -137,6 +141,7 @@ interface MarketStats {
     MarketClockControlComponent,
 
     ActivityRowComponent,
+    ActivityRowSkeletonComponent,
 
     CurrencyPipe,
     DecimalPipe,
@@ -242,6 +247,13 @@ export class MarketPageComponent implements OnInit, OnDestroy {
 
   protected readonly refreshAccountId = signal<number | null>(null);
   protected readonly catalogueStatus = signal<'loading' | 'ready' | 'error'>('loading');
+
+  // Balances are on their way: the account box shows placeholders, not a dash.
+  protected readonly accountsLoading = computed(
+    () => this.accountStore.status() === 'idle' || this.accountStore.status() === 'loading',
+  );
+  // How many placeholder rows a list shows while it loads.
+  protected readonly skeletonRows = [1, 2, 3, 4, 5] as const;
 
   protected readonly busy = computed(
     () => this.submitting() || this.coolingDown() || this.refreshing(),

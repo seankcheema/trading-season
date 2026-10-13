@@ -10,7 +10,12 @@ import { NgIcon } from '@ng-icons/core';
       <summary [class]="triggerClasses()" [attr.aria-label]="ariaLabel()">
         <ng-content select="[dropdownTrigger]">
           <ng-icon [name]="iconName()" class="shrink-0 text-[16px]" />
-          <span class="min-w-0 flex-1 truncate text-left leading-tight">{{ label() }}</span>
+          @if (loading()) {
+            <span class="skeleton h-4 min-w-0 flex-1" aria-hidden="true"></span>
+            <span class="sr-only">{{ label() }}</span>
+          } @else {
+            <span class="min-w-0 flex-1 truncate text-left leading-tight">{{ label() }}</span>
+          }
           <ng-icon name="lucideChevronDown" class="text-muted-foreground shrink-0 text-[14px]" />
         </ng-content>
       </summary>
@@ -35,6 +40,9 @@ export class DashboardHeaderDropdownComponent {
   // Only used by the default trigger; a projected [dropdownTrigger] replaces it.
   readonly iconName = input('');
   readonly label = input('');
+  // The label is not known yet: the default trigger shows a placeholder in its place and
+  // keeps the label for assistive technology.
+  readonly loading = input(false);
   readonly ariaLabel = input.required<string>();
   readonly open = input(false);
   readonly containerClass = input('');

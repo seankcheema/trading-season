@@ -8,9 +8,11 @@ import { dayClock, dollars, longDay, recent, wholeDollars } from '../reporting/f
 import { ReportingApiService } from '../reporting/reporting-api.service';
 import { OrderBrowserComponent } from '../orders/order-browser.component';
 import { OrderDetailComponent } from '../orders/order-detail.component';
+import { ORDER_TABLE_MIN_WIDTH, ORDER_TRACKS } from '../orders/order-table.component';
 import { ChangePillComponent, statusTone } from '../shared/change-pill.component';
 import { ExportMenuComponent } from '../shared/export-menu.component';
 import { live } from '../shared/live';
+import { SkeletonFactsComponent, SkeletonTableComponent } from '../shared/skeleton.component';
 import { FAILED_SIGN_IN_WARNING, initials, titleCase } from './customers.component';
 
 // How often the customer is read again.
@@ -29,14 +31,45 @@ export const CUSTOMER_REFRESH_MS = 30_000;
     ExportMenuComponent,
     OrderBrowserComponent,
     OrderDetailComponent,
+    SkeletonFactsComponent,
+    SkeletonTableComponent,
   ],
   providers: [provideIcons({ lucideChevronLeft, lucideCircleAlert, lucideLock })],
   host: { class: 'flex flex-1 basis-0 flex-col gap-3 lg:min-h-[40rem]' },
   template: `
     @switch (detail.state()) {
       @case ('loading') {
-        <section class="dash-card mt-4 p-5" aria-busy="true">
-          <p class="text-muted-foreground text-sm">Loading the customer…</p>
+        <!-- The page as it will be laid out: who it is, the three cards, their orders. -->
+        <p class="sr-only" role="status">Loading the customer…</p>
+        <div
+          class="flex min-h-16 shrink-0 flex-wrap items-center gap-3 py-3"
+          aria-hidden="true"
+          data-skeleton
+        >
+          <span class="skeleton size-9 shrink-0 rounded-lg"></span>
+          <span class="skeleton size-10 shrink-0 rounded-full"></span>
+          <div class="min-w-0 flex-1">
+            <span class="skeleton h-6 w-48 max-w-full"></span>
+            <span class="skeleton mt-1.5 h-3.5 w-72 max-w-full"></span>
+          </div>
+        </div>
+        <div class="grid shrink-0 gap-3 lg:grid-cols-3" aria-hidden="true">
+          @for (card of [1, 2]; track card) {
+            <section class="dash-card p-5">
+              <span class="skeleton h-4 w-20"></span>
+              <app-skeleton-facts class="mt-4 grid grid-cols-2 gap-y-3.5" [count]="4" />
+            </section>
+          }
+          <section class="net-worth-card p-5">
+            <span class="skeleton h-3.5 w-24"></span>
+            <span class="skeleton mt-1.5 h-8 w-36"></span>
+            <span class="skeleton mt-4 h-4"></span>
+            <span class="skeleton mt-3 h-4"></span>
+          </section>
+        </div>
+        <section class="dash-card flex min-h-80 flex-1 flex-col p-5" aria-busy="true">
+          <span class="skeleton mb-4 h-4 w-16 shrink-0" aria-hidden="true"></span>
+          <app-skeleton-table [tracks]="tracks" [minWidth]="minWidth" [filters]="5" />
         </section>
       }
       @case ('error') {
@@ -166,6 +199,9 @@ export class CustomerDetailComponent {
   );
   // The order whose detail is open.
   protected readonly open = signal<number | null>(null);
+
+  protected readonly tracks = ORDER_TRACKS;
+  protected readonly minWidth = ORDER_TABLE_MIN_WIDTH;
 
   protected readonly cards = computed(() => {
     const customer = this.detail.data()!;
