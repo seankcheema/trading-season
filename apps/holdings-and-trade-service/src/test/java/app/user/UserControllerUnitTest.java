@@ -1,9 +1,11 @@
 package app.user;
 
+import app.auth.ConflictException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -13,9 +15,14 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -222,6 +229,44 @@ class UserControllerUnitTest {
         UserProfileResponse result = controller.me(jwt);
 
         assertNotNull(result);
+    }
+
+    @Test
+    void meReportsWhetherTheCallerAcceptedTheCurrentTerms() {
+        when(jwt.getSubject()).thenReturn(USER_ID.toString());
+        when(userService.getOwnAccount(USER_ID)).thenReturn(createTestUser(USER_ID));
+        when(userService.getUserAccount(USER_ID)).thenReturn(createTestAccount("test@example.com", "TRADER"));
+        when(userService.hasAcceptedCurrentTerms(USER_ID)).thenReturn(false, true);
+
+        assertFalse(controller.me(jwt).termsAccepted());
+        assertTrue(controller.me(jwt).termsAccepted());
+    }
+
+    @Test
+    void acceptTermsRecordsTheVersionShownThenReturnsTheUpdatedProfile() {
+        when(jwt.getSubject()).thenReturn(USER_ID.toString());
+        when(userService.getOwnAccount(USER_ID)).thenReturn(createTestUser(USER_ID));
+        when(userService.getUserAccount(USER_ID)).thenReturn(createTestAccount("test@example.com", "TRADER"));
+        when(userService.hasAcceptedCurrentTerms(USER_ID)).thenReturn(true);
+
+        UserProfileResponse result = controller.acceptTerms(jwt, new AcceptTermsRequest("2026-10-12"));
+
+        assertEquals(USER_ID, result.userId());
+        assertTrue(result.termsAccepted());
+        InOrder order = inOrder(userService);
+        order.verify(userService).acceptTerms(USER_ID, "2026-10-12");
+        order.verify(userService).hasAcceptedCurrentTerms(USER_ID);
+    }
+
+    @Test
+    void acceptTermsReturnsNoProfileWhenTheVersionShownIsNotInForce() {
+        when(jwt.getSubject()).thenReturn(USER_ID.toString());
+        doThrow(new ConflictException("The terms have changed. Reload to read the current version."))
+                .when(userService).acceptTerms(USER_ID, "2020-01-01");
+
+        assertThrows(ConflictException.class,
+                () -> controller.acceptTerms(jwt, new AcceptTermsRequest("2020-01-01")));
+        verify(userService, never()).getOwnAccount(USER_ID);
     }
 
     private User createTestUser(UUID userId) {

@@ -51,6 +51,7 @@ import { OrderSubmissionComponent } from './order-submission/order-submission.co
 import { OrderResult } from './orders/order.models';
 import { OrderService } from './orders/order.service';
 import { SettingsDialogComponent } from './settings-dialog/settings-dialog.component';
+import { TermsDialogComponent } from './terms/terms-dialog.component';
 import { DashboardHeaderDropdownComponent } from './shared/dashboard-header-dropdown.component';
 import { DailySparklineComponent } from './shared/daily-sparkline.component';
 import { PricedHolding } from './shared/assets';
@@ -96,6 +97,7 @@ type AccountDialog =
     PriceChartComponent,
     SettingsDialogComponent,
     SignedPercentPipe,
+    TermsDialogComponent,
     TimeframeToggleComponent,
   ],
   providers: [
@@ -214,6 +216,26 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly settingsOpen = signal(false);
   protected readonly historyDialog = signal<'transactions' | null>(null);
   protected readonly assetsDialogOpen = signal(false);
+
+  // While the platform terms are unaccepted the dashboard is inert behind the terms dialog.
+  protected readonly termsRequired = this.accountStore.needsTermsAcceptance;
+  // The name the user types to sign the terms.
+  protected readonly termsSignatureName = this.accountStore.fullName;
+  // The profile can arrive after the user has already opened something; nothing may stay open
+  // beside the terms dialog.
+  private readonly closeDialogsForTerms = effect(() => {
+    if (!this.termsRequired()) {
+      return;
+    }
+    untracked(() => {
+      this.openHeaderDropdown.set(null);
+      this.orderSymbol.set(null);
+      this.settingsOpen.set(false);
+      this.historyDialog.set(null);
+      this.assetsDialogOpen.set(false);
+      this.accountDialog.set(null);
+    });
+  });
   private readonly recentInstruments = inject(RecentInstrumentsService);
 
   // What the search bar offers before anything is typed: the biggest movers today, the user's

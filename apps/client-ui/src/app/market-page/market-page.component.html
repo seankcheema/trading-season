@@ -1,4 +1,4 @@
-<main class="market-page bg-[#0e0e0e] text-[#eefaff]">
+<main class="market-page bg-[#0e0e0e] text-[#eefaff]" [attr.inert]="termsRequired() ? '' : null">
   <header class="market-nav bg-[#0e0e0e]/95 px-4 backdrop-blur-xl md:px-6">
     <div class="market-nav-inner mx-auto flex h-full max-w-[1600px] items-center gap-3">
       <a
@@ -895,4 +895,8 @@
     (closed)="accountDialog.set(null)"
     (saved)="onAccountSaved($event)"
   />
+}
+
+@if (termsRequired()) {
+  <app-terms-dialog [signatureName]="termsSignatureName()" (declined)="onSignOut()" />
 }

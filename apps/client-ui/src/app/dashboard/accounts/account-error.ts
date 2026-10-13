@@ -1,7 +1,12 @@
 import { HttpErrorResponse } from '@angular/common/http';
 
 // Which change failed, since the same status means different things for each.
-export type AccountAction = 'create-account' | 'rename-account' | 'deposit' | 'withdraw';
+export type AccountAction =
+  | 'create-account'
+  | 'rename-account'
+  | 'deposit'
+  | 'withdraw'
+  | 'accept-terms';
 
 // Raised by AccountStore before any request when an account id is not among the caller's own.
 export class NotOwnedError extends Error {
@@ -19,11 +24,13 @@ export const ACCOUNT_ERROR_MESSAGES = {
   invalid: 'Please check the details and try again.',
   duplicateAccount: 'You already have an account with this name.',
   insufficientFunds: "You don't have enough cash for that withdrawal.",
+  termsChanged: 'The terms have changed. Reload the page to read the current version.',
   failed: {
     'create-account': "We couldn't create the account. Please try again.",
     'rename-account': "We couldn't rename the account. Please try again.",
     deposit: "We couldn't complete the deposit. Please try again.",
     withdraw: "We couldn't complete the withdrawal. Please try again.",
+    'accept-terms': "We couldn't record your acceptance. Please try again.",
   },
 } as const;
 
@@ -46,7 +53,10 @@ export function toAccountErrorMessage(error: unknown, action: AccountAction): st
       return ACCOUNT_ERROR_MESSAGES.sessionExpired;
     case 403:
     case 404:
-      return ACCOUNT_ERROR_MESSAGES.notOwned;
+      // Accepting the terms names no account, so there is none to be unavailable.
+      return action === 'accept-terms'
+        ? ACCOUNT_ERROR_MESSAGES.failed[action]
+        : ACCOUNT_ERROR_MESSAGES.notOwned;
     case 400:
       return backendMessage(error) ?? ACCOUNT_ERROR_MESSAGES.invalid;
     case 409:
@@ -66,6 +76,8 @@ function conflictMessage(action: AccountAction): string {
       return ACCOUNT_ERROR_MESSAGES.insufficientFunds;
     case 'deposit':
       return ACCOUNT_ERROR_MESSAGES.failed.deposit;
+    case 'accept-terms':
+      return ACCOUNT_ERROR_MESSAGES.termsChanged;
   }
 }
 

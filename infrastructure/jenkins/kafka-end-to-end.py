@@ -160,6 +160,11 @@ def main():
         'availableFunds': OPENING_FUNDS}, token)
     if status != 201:
         fail('register trader profile', f'holdings-and-trade-service answered {status}: {body}')
+    status, body = call('PUT', f'{HOLDINGS}/api/users/me/terms-acceptance',
+                        {'termsVersion': '2026-10-12'}, token)
+    if status != 200 or not body.get('termsAccepted'):
+        fail('accept platform terms', f'holdings-and-trade-service answered {status}: {body}')
+    say('accept platform terms', 'current platform terms accepted for the test trader')
     status, accounts = call('GET', f'{HOLDINGS}/api/me/accounts', token=token)
     if status != 200 or not accounts:
         fail('default account', f'holdings-and-trade-service answered {status}: {accounts}')

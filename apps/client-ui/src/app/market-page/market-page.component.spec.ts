@@ -83,6 +83,7 @@ describe('MarketPageComponent', () => {
     compare = '',
     accountId = '',
     orders: OrderResult[] = [],
+    profile: { termsAccepted?: boolean } = {},
   ): Promise<ComponentFixture<MarketPageComponent>> {
     await TestBed.configureTestingModule({
       imports: [MarketPageComponent],
@@ -118,7 +119,7 @@ describe('MarketPageComponent', () => {
       .flush([{ symbol: 'MSFT', quantity: 2, averageCost: 200 }]);
     http
       .expectOne('/api/users/me')
-      .flush({ firstName: 'Ada', lastName: 'Lovelace', availableFunds: 10000 });
+      .flush({ firstName: 'Ada', lastName: 'Lovelace', availableFunds: 10000, ...profile });
     http.expectOne((r) => r.url === '/api/me/cash-transactions').flush([]);
     http.expectOne('/api/orders').flush(orders);
     http.expectOne('/api/instruments').flush([
@@ -1049,4 +1050,64 @@ describe('MarketPageComponent', () => {
       TestBed.inject(HttpTestingController).expectNone({ method: 'POST', url: '/api/orders' });
     },
   );
+
+  describe('terms and conditions', () => {
+    function page(fixture: ComponentFixture<MarketPageComponent>) {
+      return fixture.nativeElement.querySelector('main.market-page') as HTMLElement;
+    }
+
+    function termsDialog(fixture: ComponentFixture<MarketPageComponent>) {
+      return fixture.nativeElement.querySelector('app-terms-dialog') as HTMLElement | null;
+    }
+
+    it('does not ask a user who has already accepted', async () => {
+      const fixture = await setup('aapl', '', '', [], { termsAccepted: true });
+
+      expect(termsDialog(fixture)).toBeNull();
+      expect(page(fixture).hasAttribute('inert')).toBe(false);
+    });
+
+    it('asks a user who has not accepted, and makes the page and its order ticket inert', async () => {
+      const fixture = await setup('aapl', '', '', [], { termsAccepted: false });
+
+      expect(termsDialog(fixture)?.textContent).toContain('Terms and Conditions');
+      expect(termsDialog(fixture)?.textContent).toContain('Ada Lovelace');
+      expect(page(fixture).hasAttribute('inert')).toBe(true);
+      expect(page(fixture).querySelector('app-trade-ticket')).not.toBeNull();
+      expect(page(fixture).contains(termsDialog(fixture))).toBe(false);
+    });
+
+    it('opens the page once the user signs and accepts', async () => {
+      const fixture = await setup('aapl', '', '', [], { termsAccepted: false });
+      const signature = fixture.nativeElement.querySelector('#termsSignature') as HTMLInputElement;
+      signature.value = 'Ada Lovelace';
+      signature.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+
+      (termsDialog(fixture)!.querySelector('button[type="submit"]') as HTMLButtonElement).click();
+      TestBed.inject(HttpTestingController)
+        .expectOne('/api/users/me/terms-acceptance')
+        .flush({ firstName: 'Ada', lastName: 'Lovelace', availableFunds: 10000, termsAccepted: true });
+      fixture.detectChanges();
+
+      expect(termsDialog(fixture)).toBeNull();
+      expect(page(fixture).hasAttribute('inert')).toBe(false);
+    });
+
+    it('signs the user out when they decline', async () => {
+      const fixture = await setup('aapl', '', '', [], { termsAccepted: false });
+      const logout = vi.spyOn(TestBed.inject(AuthService), 'logout').mockReturnValue(of(undefined));
+      const navigateToLogin = vi
+        .spyOn(TestBed.inject(Router), 'navigateByUrl')
+        .mockResolvedValue(true);
+
+      const signOut = Array.from(termsDialog(fixture)!.querySelectorAll('button')).find(
+        (candidate) => candidate.textContent?.trim() === 'Sign out',
+      )!;
+      signOut.click();
+
+      expect(logout).toHaveBeenCalledOnce();
+      expect(navigateToLogin).toHaveBeenCalledWith('/login');
+    });
+  });
 });
