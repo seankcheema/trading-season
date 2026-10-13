@@ -1,5 +1,5 @@
 // Disclaimer wording shown wherever an order can be placed. Kept in one place so the ticket
-// subtext and the review popup cannot drift apart. See docs/reference/trade-record.md.
+// subtext and the review popup cannot drift apart. See the Client UI README.
 
 /** Short subtext shown under every order ticket's submit button. */
 export const ORDER_DISCLAIMER_SUBTEXT =

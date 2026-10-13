@@ -11,9 +11,49 @@ The Reporting Service does not connect to it. What reporting shows is published 
 | [V003__Order_status_accepted.sql](migrations/V003__Order_status_accepted.sql) | Allows `ACCEPTED` in `orders.status`: an order is committed as accepted before it executes, then becomes `FILLED` or `REJECTED` |
 | [V008__Drop_account_status.sql](migrations/V008__Drop_account_status.sql) | Removes `user_accounts.account_status` |
 | [V009__Add_terms_acceptances.sql](migrations/V009__Add_terms_acceptances.sql) | `terms_acceptances`: one row per client and version of the platform terms they accepted |
-| [V010__Analyst_role.sql](migrations/V010__Analyst_role.sql) | Allows `ANALYST` in `user_accounts.user_role`, the role the Reporting Service serves its report runs to; `ADMIN`, allowed since V001, is served the console as well |
+| [V009__Analyst_role.sql](migrations/V009__Analyst_role.sql) | Allows `ANALYST` in `user_accounts.user_role`, the role the Reporting Service serves its report runs to; `ADMIN`, allowed since V001, is served the console as well |
+| [V010__Protect_trade_records.sql](migrations/V010__Protect_trade_records.sql) | Triggers that make the [trade record](#trade-record) append-only |
+| [V011__Protect_client_identity.sql](migrations/V011__Protect_client_identity.sql) | Triggers that fix the identity of the client the trade record is attributed to, and make `terms_acceptances` append-only |
 
 In Docker, `db-init` runs [infrastructure/docker/init-db.sh](../infrastructure/docker/init-db.sh), which applies each file once and records it in `public.schema_migrations`. For a local PostgreSQL, apply the files in order with `psql -v ON_ERROR_STOP=1 -f`. Never edit an applied migration; add a new one.
+
+## Trade record
+
+BR-14: every accepted order, pricing decision, and resulting change to cash or holdings must be permanently recorded and attributable to a specific client and time. The requirement sets no retention period, so nothing is archived out or purged, and closing an account or a client must leave every row in place.
+
+| Table | What it records | Attributed by |
+| --- | --- | --- |
+| orders | The terms the client submitted and the order's outcome | account, submission time |
+| audit_trail | One row per lifecycle event, with a self-contained description; see [Order and Sell: audit trail](../apps/order-and-sell-service/README.md#audit-trail) | order, recording time |
+| fills | The quantity and price an order was filled at | order, fill time |
+| cash_transactions | The signed cash change from a fill, deposit, or withdrawal | account, creation time |
+| holding_movements | The signed share change from a fill | account, instrument, creation time |
+
+An account always belongs to one user, so every row resolves to a client through its account.
+
+V010 and V011 add triggers that enforce this for every role, including the table owner the services connect as:
+
+| Table | Allowed | Rejected | Migration |
+| --- | --- | --- | --- |
+| audit_trail, fills, cash_transactions, holding_movements | INSERT | UPDATE, DELETE, TRUNCATE | V010 |
+| orders | INSERT; a `PENDING` order may become `ACCEPTED`, then is resolved once to `FILLED` or `REJECTED` | Changing submitted terms or a recorded acceptance time, changing a resolved order, DELETE, TRUNCATE | V010 |
+| accounts | INSERT, rename | Moving an account to another user, DELETE, TRUNCATE | V010 |
+| users | INSERT; changing address, trader level, settings, and the cached balance | Changing the user id, name, SSN, or date of birth; DELETE, TRUNCATE | V011 |
+| user_accounts | INSERT; changing the password hash, role, and sign-in lockout state | Changing the user id or email, DELETE, TRUNCATE | V011 |
+| terms_acceptances | INSERT | UPDATE, DELETE, TRUNCATE | V011 |
+
+- A rejected change raises SQLSTATE `23001` (`restrict_violation`).
+- `users.available_funds` and `holdings` stay mutable: they are cached balances derived from the ledgers, which remain the record.
+- No service changes a frozen identity column; each is written once, at registration. There is no way to deactivate or delete a client, and none can be added as a row delete. A change-of-name or change-of-email feature needs a migration that records the history instead of overwriting it.
+- Neither migration adds tables or columns or changes existing rows, and both may be reapplied. V011 reuses a function V010 creates, so apply them in order.
+- Once they are applied, manual cleanup of these tables with `DELETE`, `UPDATE`, or `TRUNCATE` fails; reset a disposable database by recreating it.
+- PostgreSQL makes committed rows durable across restarts, and a fill with its ledger rows is one transaction, so a crash or failed deployment leaves either the whole fill or none of it.
+
+Limits:
+
+- The table owner can remove the triggers with a schema change (`DROP TRIGGER`, or `ALTER TABLE ... DISABLE TRIGGER`), and the services connect as that owner. In the Compose stack they connect as the PostgreSQL superuser, which can also switch triggers off for its own session. Separating the owner role from the application role would close both paths; that separation is not implemented.
+- Dropping a table or the database is not prevented. The only protection is a backup taken beforehand; see [Database backup and restore](../infrastructure/README.md#database-backup-and-restore). Backups are manual.
+- The Java service tests run on H2, which does not load these triggers. With PostgreSQL binaries on PATH, [test_trade_record_migration.py](../apps/market-data/db/scripts/python/tests/test_trade_record_migration.py) verifies them against an isolated temporary cluster: `python apps/market-data/db/scripts/python/tests/test_trade_record_migration.py`.
 
 ## Reporting feed tools
 

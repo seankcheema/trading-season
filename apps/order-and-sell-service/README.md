@@ -141,6 +141,20 @@ Acceptance and execution are separate transactions (BR-06). The accepted order i
 
 Each `trade-events` message is published by `TradeEventPublisher` from an `AFTER_COMMIT` transactional event listener, so a consumer never sees a status the database does not hold. The message key is the account id as a string; the body is JSON with `orderId`, `status`, `symbol`, `side`, `quantity`, `price`, `rejectionReason` and `occurredAt`. A send failure is logged and never fails the order.
 
+### Audit trail
+
+Each submitted order writes these `audit_trail` entries, in order. The detail text is written to stand on its own, without needing any other row to interpret it, so the entry is the record of that event (BR-14).
+
+| Event | When | Detail |
+| --- | --- | --- |
+| `PENDING` | The order is created | The caller's user id, account, side, quantity, ticker, indicative price, buffer, client reference, and simulated time when one was sent |
+| `ACCEPTED` | The trading rules pass | The indicative price and buffer the order was accepted at |
+| `FILLED` | The fill and ledger rows are written | Quantity, fill price and its source, signed cash change for the user, signed holding change for the account |
+| `REJECTED` | A trading rule fails, or funds or holdings are insufficient at execution | The rejection reason |
+| `EXECUTION_FAILED` | Execution throws unexpectedly | The failure; the order stays `ACCEPTED` |
+
+The fill price is the client's indicative price; there is no live quote source, and each `FILLED` entry states this as its pricing decision. A resubmission of an order already on record writes nothing. The database rejects any change to a written entry; see [Database: trade record](../../db/README.md#trade-record).
+
 ### What reporting receives
 
 The Reporting Service reads Kafka, not the database, so everything it shows of an order travels in these messages. Each `trade-events` body also carries:

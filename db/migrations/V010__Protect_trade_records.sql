@@ -31,7 +31,7 @@
 -- Bypassing these guards needs a schema change (DROP TRIGGER, ALTER TABLE ...
 -- DISABLE TRIGGER), which only the table owner can make. Separating the owner
 -- role from the application role would close that path; see
--- docs/reference/trade-record.md.
+-- db/README.md.
 --
 -- Apply after V009, as the database owner, for fresh and retained databases.
 -- Adds no tables or columns and changes no existing rows. Safe to reapply.

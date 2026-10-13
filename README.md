@@ -147,6 +147,8 @@ Acceptance and execution are separate transactions, so an order is never recorde
 
 Every service writes only its own tables. The schema is defined once, in [db/migrations](db/migrations), and no service runs migrations itself.
 
+Orders, their audit trail, fills, and the cash and holding ledgers are the permanent trade record (BR-14). Database triggers make those rows append-only and fix the identity of the client they belong to, and the Client UI has the user review and confirm every order first; see [Database: trade record](db/README.md#trade-record).
+
 ```mermaid
 flowchart TB
     subgraph Auth["Auth Service"]
