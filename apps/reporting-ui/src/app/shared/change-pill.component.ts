@@ -7,13 +7,14 @@ import {
 } from '@angular/core';
 import { signedPercent } from '../reporting/format';
 
-export type PillTone = 'gain' | 'loss' | 'primary' | 'muted';
+export type PillTone = 'gain' | 'loss' | 'primary' | 'pending' | 'muted';
 
 // Tint behind the text: 10 percent for a change, 15 percent for a tag.
 const TONES: Record<PillTone, { change: string; tag: string }> = {
   gain: { change: 'text-gain bg-gain/10', tag: 'text-gain bg-gain/15' },
   loss: { change: 'text-loss bg-loss/10', tag: 'text-loss bg-loss/15' },
   primary: { change: 'text-primary bg-primary/15', tag: 'text-primary bg-primary/15' },
+  pending: { change: 'text-pending bg-pending/10', tag: 'text-pending bg-pending/15' },
   muted: { change: 'text-muted-foreground bg-muted', tag: 'text-muted-foreground bg-muted' },
 };
 
@@ -23,7 +24,7 @@ const STATUS_TONES: Record<string, PillTone> = {
   LOCKED: 'loss',
   FILLED: 'gain',
   COMPLETED: 'gain',
-  PENDING: 'primary',
+  PENDING: 'pending',
   ACCEPTED: 'primary',
   REJECTED: 'loss',
 };

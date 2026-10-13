@@ -360,10 +360,13 @@ export class OrderDetailComponent {
     return event.priceKind === 'FILL' ? 'fill price' : 'indicative';
   }
 
-  // Red for a failure, green for a fill, cyan for a step on the way.
+  // Red for a failure, green for a fill, gold while pending, cyan for any other step on the way.
   protected eventColor(eventType: string): string {
     if (/FAIL|REJECT/.test(eventType)) {
       return 'bg-loss';
+    }
+    if (eventType === 'PENDING') {
+      return 'bg-pending';
     }
     return eventType === 'FILLED' ? 'bg-gain' : 'bg-primary';
   }

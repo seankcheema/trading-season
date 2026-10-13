@@ -50,7 +50,7 @@ describe('ChangePillComponent', () => {
   it('knows the tone of each status and is quiet about one it does not know', () => {
     expect(['ACTIVE', 'FILLED', 'COMPLETED'].map(statusTone)).toEqual(['gain', 'gain', 'gain']);
     expect(['LOCKED', 'REJECTED'].map(statusTone)).toEqual(['loss', 'loss']);
-    expect(['PENDING', 'ACCEPTED'].map(statusTone)).toEqual(['primary', 'primary']);
+    expect(['PENDING', 'ACCEPTED'].map(statusTone)).toEqual(['pending', 'primary']);
     expect(statusTone('CANCELLED')).toBe('muted');
   });
 });

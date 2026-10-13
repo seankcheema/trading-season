@@ -482,7 +482,7 @@ describe('OrderDetailComponent', () => {
       'EXECUTION_FAILED',
     ]);
     expect(events.map((event) => event.querySelector('.rounded-full')!.className.match(/bg-\w+/)![0])).toEqual([
-      'bg-primary',
+      'bg-pending',
       'bg-primary',
       'bg-gain',
       'bg-loss',
