@@ -1,0 +1,491 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;500;600;700&display=swap');
+
+/* Tailwind CSS v4 */
+@import 'tailwindcss';
+
+/* TradingSeason design system tokens. The values are the design system's
+   tokens/colors.css, which are the dark theme of apps/client-ui/src/styles.css;
+   the product is dark-only, so they sit on :root. Change a value here only
+   together with the client UI, so the two apps stay one brand. */
+:root {
+  color-scheme: dark;
+
+  --radius: 0.625rem;
+  --background: #0e0e0e;
+  --foreground: #eefaff;
+  --card: #141414;
+  --card-foreground: #eefaff;
+  --popover: #141414;
+  --popover-foreground: #eefaff;
+  --primary: #00bbff;
+  --primary-foreground: #0e0e0e;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #eefaff;
+  --muted: #1a1a1a;
+  --muted-foreground: rgba(238, 250, 255, 0.5);
+  --accent: #1a1a1a;
+  --accent-foreground: #eefaff;
+  --destructive: #ff3d5a;
+  --border: rgba(238, 250, 255, 0.15);
+  --input: rgba(238, 250, 255, 0.15);
+  --ring: #00bbff;
+  --sidebar: #141414;
+  --sidebar-foreground: #eefaff;
+  --sidebar-border: rgba(238, 250, 255, 0.1);
+}
+
+/* Maps the tokens onto Tailwind color utilities (`bg-card`, `text-muted-foreground`,
+   `border-sidebar-border`). The client UI gets this mapping from the SpartanNG
+   preset; this app has no SpartanNG components, so it declares the mapping itself. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+}
+
+/* Market up/down colors, e.g. `text-gain`, `bg-loss/15`. Filled orders take the
+   gain color and rejected orders the loss color. */
+@theme {
+  --color-gain: #25eb69;
+  --color-loss: #ff3d5a;
+  --font-sans:
+    'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
+    'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  /* The design system sets text at the font's own line height, not Tailwind's
+     per-size ones. A template that needs another says so with a leading class. */
+  --text-xs--line-height: normal;
+  --text-sm--line-height: normal;
+  --text-base--line-height: normal;
+  --text-lg--line-height: normal;
+  --text-xl--line-height: normal;
+  --text-2xl--line-height: normal;
+  --text-3xl--line-height: normal;
+}
+
+/* A printed page is laid out desktop-wide whatever sheet the browser has in mind
+   (see the print rules at the end), but a width query in print still answers
+   for that sheet. So in print every breakpoint counts as reached, and Export
+   PDF gets the widest layout of each screen. */
+@custom-variant sm {
+  @media (width >= 40rem) {
+    @slot;
+  }
+  @media print {
+    @slot;
+  }
+}
+@custom-variant md {
+  @media (width >= 48rem) {
+    @slot;
+  }
+  @media print {
+    @slot;
+  }
+}
+@custom-variant lg {
+  @media (width >= 64rem) {
+    @slot;
+  }
+  @media print {
+    @slot;
+  }
+}
+@custom-variant xl {
+  @media (width >= 80rem) {
+    @slot;
+  }
+  @media print {
+    @slot;
+  }
+}
+
+/* Keep global element rules inside `@layer base`: unlayered CSS beats every
+   Tailwind utility regardless of specificity. */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    scrollbar-color: var(--border) var(--background);
+    scrollbar-width: thin;
+  }
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  *::-webkit-scrollbar-track,
+  *::-webkit-scrollbar-corner {
+    background: var(--background);
+  }
+  *::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background: var(--border);
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--muted-foreground);
+  }
+  html,
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply bg-background text-foreground;
+    line-height: normal;
+  }
+  /* Floating layers: the scrim fades in, the panel pops up into place. */
+  @keyframes ts-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes ts-pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation-duration: 1ms !important;
+    }
+  }
+
+  /* Focus: a 3px ring at half strength, in place of the browser outline. */
+  :where(a, button):focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent);
+  }
+}
+
+/* The dashboard vocabulary from the client UI (dashboard.component.css), shared
+   by every reporting screen. In `@layer components` so utilities in a template
+   still win. */
+@layer components {
+  .dash-card {
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: 0.875rem;
+    background: var(--card);
+  }
+
+  /* Small, quiet section labels above headline numbers. */
+  .dash-label {
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .dash-link {
+    cursor: pointer;
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    transition: color 150ms;
+  }
+
+  .dash-link:hover {
+    color: var(--primary);
+  }
+
+  /* The one hero card of a screen: a cyan glow over a deep-sea gradient. */
+  .net-worth-card {
+    min-width: 0;
+    border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
+    border-radius: 0.875rem;
+    background:
+      radial-gradient(100% 120% at 100% 100%, rgba(0, 187, 255, 0.28) 0%, transparent 60%),
+      linear-gradient(135deg, #10161a 0%, #0b2f3e 100%);
+  }
+
+  /* A whole table row that opens something. */
+  .row-button {
+    width: 100%;
+    cursor: pointer;
+    border-radius: 0.5rem;
+    padding: 0.625rem 0.5rem;
+    text-align: left;
+    font-size: 0.875rem;
+    transition: background-color 150ms;
+  }
+
+  .row-button:hover {
+    background: var(--muted);
+  }
+
+  /* Text inputs and select triggers outside the sign-in card: 32px, 8px radius. */
+  .ds-control {
+    height: 2rem;
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--input);
+    border-radius: 0.5rem;
+    background: color-mix(in srgb, var(--input) 30%, transparent);
+    font-size: 0.875rem;
+    outline: none;
+    transition:
+      border-color 150ms,
+      box-shadow 150ms;
+  }
+
+  .ds-control::placeholder {
+    color: var(--muted-foreground);
+  }
+
+  .ds-control:focus-visible,
+  .ds-control[aria-expanded='true'] {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent);
+  }
+
+  .dash-table-head {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.5rem;
+    color: var(--muted-foreground);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .dash-table-row {
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+    padding-block: 0.625rem;
+    font-size: 0.875rem;
+  }
+
+  /* A list that scrolls inside its card: no scrollbar, and a fade where it
+     clips. The bottom padding keeps the last row clear of the fade. */
+  .dash-scroll {
+    overflow-y: auto;
+    padding-bottom: 1.5rem;
+    scrollbar-width: none;
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 2rem), transparent);
+  }
+
+  .dash-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Rounded-full status tag: 10px uppercase on a 15 percent tint. */
+  .status-pill {
+    display: inline-block;
+    border-radius: 9999px;
+    padding: 2px 8px;
+    font-size: 0.625rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  /* Text inputs on the sign-in card. */
+  .auth-input {
+    height: 2rem;
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--input);
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--input) 30%, transparent);
+    padding: 0.25rem 2rem;
+    font-size: 0.875rem;
+    outline: none;
+    transition:
+      border-color 150ms,
+      box-shadow 150ms;
+  }
+
+  .auth-input::placeholder {
+    color: var(--muted-foreground);
+  }
+
+  .auth-input:focus-visible {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent);
+  }
+
+  .auth-input[aria-invalid='true'] {
+    border-color: color-mix(in srgb, var(--destructive) 50%, transparent);
+  }
+
+  .auth-button {
+    display: flex;
+    height: 2rem;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 5px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: background-color 150ms;
+  }
+
+  /* Secondary action in a page header: outlined, 32px, 8px radius. */
+  .ghost-button {
+    display: inline-flex;
+    height: 2rem;
+    cursor: pointer;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--input);
+    border-radius: 0.5rem;
+    background: color-mix(in srgb, var(--input) 30%, transparent);
+    padding-inline: 0.625rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: background-color 150ms;
+  }
+
+  .ghost-button:hover {
+    background: color-mix(in srgb, var(--input) 50%, transparent);
+  }
+
+  .ghost-button:focus-visible {
+    border-color: var(--ring);
+  }
+
+  .ghost-button:active {
+    translate: 0 1px;
+  }
+
+  .ghost-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  /* The same button without its outline, for a quiet action such as clearing filters. */
+  .ghost-button.is-plain {
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .ghost-button.is-plain:hover {
+    background: color-mix(in srgb, var(--muted) 50%, transparent);
+  }
+
+  /* 28px, for actions inside a dialog section. */
+  .ghost-button.is-small {
+    height: 1.75rem;
+    gap: 4px;
+    border-radius: 0.375rem;
+    font-size: 0.8rem;
+  }
+
+  /* 36px square, icon only. */
+  .ghost-button.is-icon {
+    height: 2.25rem;
+    width: 2.25rem;
+    justify-content: center;
+    padding: 0;
+  }
+}
+
+/* Export PDF prints the screen as a desktop shows it. The page is 1296px wide
+   inside its margins, so the widest layout applies instead of the narrow one a
+   sheet of paper would get, and it has A4's landscape proportions so it still
+   fits paper. Everything that clips or scrolls is opened up, and controls that
+   do nothing on paper are dropped. */
+@media print {
+  /* The browser paints the page margins its own dark canvas, a shade off the
+     app's background, which frames every page. The margin boxes cover them in
+     the app's own: an edge box with no neighbors spans its whole edge. The
+     color is --background, which a page context cannot read. */
+  @page {
+    size: 1376px 973px;
+    margin: 36px 40px;
+
+    @top-left-corner {
+      content: '';
+      background: #0e0e0e;
+    }
+    @top-center {
+      content: '';
+      background: #0e0e0e;
+    }
+    @top-right-corner {
+      content: '';
+      background: #0e0e0e;
+    }
+    @left-middle {
+      content: '';
+      background: #0e0e0e;
+    }
+    @right-middle {
+      content: '';
+      background: #0e0e0e;
+    }
+    @bottom-left-corner {
+      content: '';
+      background: #0e0e0e;
+    }
+    @bottom-center {
+      content: '';
+      background: #0e0e0e;
+    }
+    @bottom-right-corner {
+      content: '';
+      background: #0e0e0e;
+    }
+  }
+
+  html,
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  /* The shell and the screen stop filling a window and run down the pages. */
+  app-shell > div {
+    display: block !important;
+    height: auto !important;
+  }
+
+  app-shell main {
+    display: block !important;
+    padding: 0 !important;
+  }
+
+  /* A card stays on one page. A card that holds a list may need several, and
+     then the break falls between its rows. */
+  .dash-card:not(:has(.dash-scroll)) {
+    break-inside: avoid;
+  }
+
+  .dash-table-row,
+  .row-button,
+  app-shell li {
+    break-inside: avoid;
+  }
+
+  app-shell * {
+    overflow: visible !important;
+    max-height: none !important;
+    mask-image: none !important;
+  }
+
+  [role='dialog'] {
+    position: static !important;
+  }
+}

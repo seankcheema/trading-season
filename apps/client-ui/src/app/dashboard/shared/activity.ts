@@ -136,9 +136,15 @@ export function sortHistoryRows(
   return [...rows].sort((a, b) => {
     const x = valueOf(a);
     const y = valueOf(b);
-    if (x === y) return b.at - a.at || b.key.localeCompare(a.key);
-    if (x === null) return 1;
-    if (y === null) return -1;
+    if (x === y) {
+      return b.at - a.at || b.key.localeCompare(a.key);
+    }
+    if (x === null) {
+      return 1;
+    }
+    if (y === null) {
+      return -1;
+    }
     return (typeof x === 'string' ? x.localeCompare(y as string) : x - (y as number)) * sign;
   });
 }

@@ -5,10 +5,10 @@ FROM python:3.14-slim as builder
 
 WORKDIR /build
 
-# Install build dependencies
+# A compiler for any requirement that ships no wheel for this Python. No
+# database client library: the service has no database to connect to.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and build wheels
@@ -18,13 +18,9 @@ RUN pip wheel --no-cache-dir --no-deps --wheel-dir /build/wheels -r requirements
 
 # Stage 2: Runtime
 FROM python:3.14-slim
+LABEL maintainer="DuaLEAPa Team"
 
 WORKDIR /app
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 \
-    && rm -rf /var/lib/apt/lists/*
 
 # Copy wheels from builder
 COPY --from=builder /build/wheels /wheels
@@ -37,7 +33,7 @@ RUN pip install --no-cache /wheels/*
 COPY . .
 
 # Create non-root user for security. /data/reporting is the event and report
-# store; a named volume mounted there is initialised from this path, ownership
+# store, and the service's only source of data: it has no database connection; a named volume mounted there is initialised from this path, ownership
 # included, so the consumer can write to it as appuser. (A bind mount is not
 # initialised this way and must be writable by uid 1000 on the host.)
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app \

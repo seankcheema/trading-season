@@ -1,0 +1,5 @@
+# For the tools in this directory only. No service installs these.
+# psycopg reads the trading database; confluent-kafka publishes to the broker.
+psycopg[binary]==3.2.13
+confluent-kafka==2.15.1
+pytest==7.4.3

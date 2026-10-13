@@ -1,6 +1,11 @@
 package app.account;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
 
@@ -34,6 +39,12 @@ public class PortfolioValuation {
         this.value = value;
     }
 
+    /** Returns the generated identifier.
+     * @return the valuation id, or null before the observation is saved */
+    public Long getId() { return id; }
+    /** Returns the account the observation values.
+     * @return observed account */
+    public Integer getAccountId() { return accountId; }
     /** Returns the observation's actual calendar time.
      * @return real capture time */
     public Instant getObservedAt() { return observedAt; }

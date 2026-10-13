@@ -51,6 +51,7 @@ import { OrderSubmissionComponent } from './order-submission/order-submission.co
 import { OrderResult } from './orders/order.models';
 import { OrderService } from './orders/order.service';
 import { SettingsDialogComponent } from './settings-dialog/settings-dialog.component';
+import { TermsDialogComponent } from './terms/terms-dialog.component';
 import { DashboardHeaderDropdownComponent } from './shared/dashboard-header-dropdown.component';
 import { DailySparklineComponent } from './shared/daily-sparkline.component';
 import { PricedHolding } from './shared/assets';
@@ -96,6 +97,7 @@ type AccountDialog =
     PriceChartComponent,
     SettingsDialogComponent,
     SignedPercentPipe,
+    TermsDialogComponent,
     TimeframeToggleComponent,
   ],
   providers: [
@@ -141,7 +143,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const id = Number(this._router.routerState.snapshot.root.firstChild?.queryParams['accountId']);
     if (this.accountStore.status() === 'ready' && !this.initialAccountRestored) {
       this.initialAccountRestored = true;
-      if (id > 0) this.accountStore.selectAccount(id);
+      if (id > 0) {
+        this.accountStore.selectAccount(id);
+      }
     }
   });
   protected readonly hasAccounts = computed(() => this.accounts().length > 0);
@@ -212,6 +216,26 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly settingsOpen = signal(false);
   protected readonly historyDialog = signal<'transactions' | null>(null);
   protected readonly assetsDialogOpen = signal(false);
+
+  // While the platform terms are unaccepted the dashboard is inert behind the terms dialog.
+  protected readonly termsRequired = this.accountStore.needsTermsAcceptance;
+  // The name the user types to sign the terms.
+  protected readonly termsSignatureName = this.accountStore.fullName;
+  // The profile can arrive after the user has already opened something; nothing may stay open
+  // beside the terms dialog.
+  private readonly closeDialogsForTerms = effect(() => {
+    if (!this.termsRequired()) {
+      return;
+    }
+    untracked(() => {
+      this.openHeaderDropdown.set(null);
+      this.orderSymbol.set(null);
+      this.settingsOpen.set(false);
+      this.historyDialog.set(null);
+      this.assetsDialogOpen.set(false);
+      this.accountDialog.set(null);
+    });
+  });
   private readonly recentInstruments = inject(RecentInstrumentsService);
 
   // What the search bar offers before anything is typed: the biggest movers today, the user's
@@ -327,15 +351,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const marketTime = this.marketTimeMillis();
     const prices = new Map<string, number>();
     for (const entry of this.watchedInstruments()) {
-      if (entry.instrument) prices.set(entry.symbol, entry.instrument.price);
+      if (entry.instrument) {
+        prices.set(entry.symbol, entry.instrument.price);
+      }
     }
-    for (const holding of this.holdings()) prices.set(holding.symbol, holding.instrument.price);
+    for (const holding of this.holdings()) {
+      prices.set(holding.symbol, holding.instrument.price);
+    }
     return Object.fromEntries(
       [...prices].map(([symbol, price]) => {
         const candles = candlesBySymbol.get(symbol);
         if (candles?.length) {
-          if (marketTime !== null && marketTime < candles[candles.length - 1].time.getTime())
+          if (marketTime !== null && marketTime < candles[candles.length - 1].time.getTime()) {
             return [symbol, candles];
+          }
           const points = [...candles];
           points[points.length - 1] = {
             time: new Date(marketTime ?? points[points.length - 1].time.getTime()),
@@ -376,7 +405,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly portfolioChart = computed(() => {
     const points = this.portfolioHistory.points();
     const at = this.marketTimeMillis();
-    if (at === null || !points.length) return points;
+    if (at === null || !points.length) {
+      return points;
+    }
     return [
       ...points.filter((point) => point.time.getTime() < at),
       {
@@ -631,7 +662,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private applySnapshot(snapshot: MarketSnapshot): void {
     this.disconnectMarket?.();
-    if (this.marketSessionId() !== snapshot.sessionId) this.assetCandlePoints.set(new Map());
+    if (this.marketSessionId() !== snapshot.sessionId) {
+      this.assetCandlePoints.set(new Map());
+    }
     this.clearAssetChartSubscriptions();
     this.clearQueuedUpdates();
     this.marketGeneration++;
@@ -704,7 +737,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
     this.zone.run(() => {
       this.currentMarketTimestamp.set(event.marketTimestamp);
-      for (const tick of event.prices) this.applyTick(tick.symbol, tick.price);
+      for (const tick of event.prices) {
+        this.applyTick(tick.symbol, tick.price);
+      }
     });
   }
 
@@ -712,7 +747,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const previousPrice = this.instruments().find((stock) => stock.symbol === symbol)?.price;
     this.instruments.update((stocks) =>
       stocks.map((stock) => {
-        if (stock.symbol !== symbol) return stock;
+        if (stock.symbol !== symbol) {
+          return stock;
+        }
         const open = this.openingPrices.get(symbol) ?? price;
         const change = price - open;
         return { ...stock, price, change, changePercent: open ? (change / open) * 100 : 0 };
@@ -731,7 +768,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private animateTick(symbol: string, direction: TickAnimation['direction']): void {
     const existingTimer = this.tickAnimationTimers.get(symbol);
-    if (existingTimer) clearTimeout(existingTimer);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
     const durationMs = 500 + Math.floor(Math.random() * 501);
     this.tickAnimations.update((animations) => {
       const next = new Map(animations);

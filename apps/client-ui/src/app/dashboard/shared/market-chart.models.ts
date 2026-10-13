@@ -77,13 +77,19 @@ export function simpleMovingAverage(
   candles: readonly MarketCandlePoint[],
   period: number,
 ): PricePoint[] {
-  if (!validIndicatorInput(candles, period)) return [];
+  if (!validIndicatorInput(candles, period)) {
+    return [];
+  }
   const points: PricePoint[] = [];
   let sum = 0;
   candles.forEach((candle, index) => {
     sum += candle.close;
-    if (index >= period) sum -= candles[index - period].close;
-    if (index >= period - 1) points.push({ time: candle.time, value: sum / period });
+    if (index >= period) {
+      sum -= candles[index - period].close;
+    }
+    if (index >= period - 1) {
+      points.push({ time: candle.time, value: sum / period });
+    }
   });
   return points;
 }
@@ -93,7 +99,9 @@ export function exponentialMovingAverage(
   candles: readonly MarketCandlePoint[],
   period: number,
 ): PricePoint[] {
-  if (!validIndicatorInput(candles, period)) return [];
+  if (!validIndicatorInput(candles, period)) {
+    return [];
+  }
   const seed = candles.slice(0, period).reduce((sum, candle) => sum + candle.close, 0) / period;
   const multiplier = 2 / (period + 1);
   let value = seed;
@@ -135,7 +143,9 @@ export function relativeStrengthIndex(
   candles: readonly MarketCandlePoint[],
   period: number,
 ): PricePoint[] {
-  if (!validIndicatorInput(candles, period) || candles.length <= period) return [];
+  if (!validIndicatorInput(candles, period) || candles.length <= period) {
+    return [];
+  }
   let gains = 0;
   let losses = 0;
   for (let index = 1; index <= period; index++) {
@@ -167,9 +177,15 @@ function validIndicatorInput(candles: readonly MarketCandlePoint[], period: numb
 }
 
 function rsiValue(averageGain: number, averageLoss: number): number {
-  if (averageGain === 0 && averageLoss === 0) return 50;
-  if (averageLoss === 0) return 100;
-  if (averageGain === 0) return 0;
+  if (averageGain === 0 && averageLoss === 0) {
+    return 50;
+  }
+  if (averageLoss === 0) {
+    return 100;
+  }
+  if (averageGain === 0) {
+    return 0;
+  }
   return 100 - 100 / (1 + averageGain / averageLoss);
 }
 

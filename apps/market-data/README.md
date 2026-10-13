@@ -8,7 +8,7 @@ Layout under `apps/market-data/db`:
 | --- | --- |
 | `scripts/python/` | Numbered entry points, shared `lib/`, generation `config/`, requirements |
 | `scripts/powershell/` | `setup-database.ps1` and `setup-market-data.ps1` launchers |
-| `seeds/` | Generated archive (`synthetic-market-data-2026-v1`, gitignored) and [demo-trader.sql](db/seeds/demo-trader.sql), a development-only demo account |
+| `seeds/` | Generated archive (`synthetic-market-data-2026-v1`, gitignored) and [demo-trader.sql](db/seeds/demo-trader.sql), a development-only demo account. It is written by SQL, so the reporting service sees it only after [republish_history.py](../../db/README.md#reporting-feed-tools) has published it; [seed_demo_history.py](../../db/README.md#reporting-feed-tools) seeds a wider demo history |
 | `scripts/notebooks/` | `view-market.ipynb` for inspecting data |
 | `.venv/` | Python virtual environment (gitignored) |
 
@@ -57,3 +57,4 @@ On Linux, run the numbered scripts directly with Python 3 after `pip install -r 
 - Local Compose runs `db-init` (all migrations) automatically; its opt-in `initialize` and `seed` profiles run the steps above. Set `MARKET_DATA_AVAILABLE_DISK_GB` before using `seed`.
 - Jenkins builds [Dockerfile.market-data](../../infrastructure/docker/Dockerfile.market-data) and runs a two-day integration: initialize, restart the database, generate, validate, then import twice. Each script runs under coverage.py, and the merged report is the coverage SonarQube shows for these scripts.
 - `python apps/market-data/db/scripts/python/tests/test_watchlist_migration.py` validates the watchlist migration against a disposable cluster when PostgreSQL binaries are on `PATH`.
+- `python apps/market-data/db/scripts/python/tests/test_terms_acceptances_migration.py` does the same for the terms acceptance migration.

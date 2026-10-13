@@ -36,7 +36,17 @@ public class TradeEventPublisher {
     /** The topic every committed order status change is published to. */
     public static final String TOPIC = &quot;trade-events&quot;;
 
-<span class="fc" id="L39">    private static final Logger log = LoggerFactory.getLogger(TradeEventPublisher.class);</span>
+    /**
+     * Header carried by a message that repeats history instead of reporting
+     * something that just happened. This publisher never sets it. The
+     * republish tool in {@code db/tools} does, when it publishes the orders
+     * already in the database for a consumer that keeps its own copy of them,
+     * the reporting service. A consumer that reacts to a status change as it
+     * happens must skip a message that has it.
+     */
+    public static final String REPLAY_HEADER = &quot;replay&quot;;
+
+<span class="fc" id="L49">    private static final Logger log = LoggerFactory.getLogger(TradeEventPublisher.class);</span>
 
     private final KafkaTemplate&lt;String, String&gt; kafkaTemplate;
     private final ObjectMapper objectMapper;
@@ -47,10 +57,10 @@ public class TradeEventPublisher {
      * @param kafkaTemplate sends to the broker named by {@code spring.kafka.bootstrap-servers}
      * @param objectMapper  serialises the event body
      */
-<span class="fc" id="L50">    public TradeEventPublisher(KafkaTemplate&lt;String, String&gt; kafkaTemplate, ObjectMapper objectMapper) {</span>
-<span class="fc" id="L51">        this.kafkaTemplate = kafkaTemplate;</span>
-<span class="fc" id="L52">        this.objectMapper = objectMapper;</span>
-<span class="fc" id="L53">    }</span>
+<span class="fc" id="L60">    public TradeEventPublisher(KafkaTemplate&lt;String, String&gt; kafkaTemplate, ObjectMapper objectMapper) {</span>
+<span class="fc" id="L61">        this.kafkaTemplate = kafkaTemplate;</span>
+<span class="fc" id="L62">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L63">    }</span>
 
     /**
      * Sends one message for an order status change once its transaction has
@@ -61,21 +71,21 @@ public class TradeEventPublisher {
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onOrderStatus(OrderStatusEvent event) {
-<span class="fc" id="L64">        String key = String.valueOf(event.accountId());</span>
+<span class="fc" id="L74">        String key = String.valueOf(event.accountId());</span>
         try {
-<span class="fc" id="L66">            String value = objectMapper.writeValueAsString(event);</span>
-<span class="fc" id="L67">            kafkaTemplate.send(TOPIC, key, value).whenComplete((result, failure) -&gt; {</span>
-<span class="fc bfc" id="L68" title="All 2 branches covered.">                if (failure == null) {</span>
-<span class="fc" id="L69">                    RecordMetadata metadata = result.getRecordMetadata();</span>
-<span class="fc" id="L70">                    log.info(&quot;Published trade event orderId={} status={} key={} partition={} offset={}&quot;,</span>
-<span class="fc" id="L71">                            event.orderId(), event.status(), key, metadata.partition(), metadata.offset());</span>
-<span class="fc" id="L72">                } else {</span>
-<span class="fc" id="L73">                    log.error(&quot;Failed to publish trade event orderId={} key={}&quot;, event.orderId(), key, failure);</span>
+<span class="fc" id="L76">            String value = objectMapper.writeValueAsString(event);</span>
+<span class="fc" id="L77">            kafkaTemplate.send(TOPIC, key, value).whenComplete((result, failure) -&gt; {</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">                if (failure == null) {</span>
+<span class="fc" id="L79">                    RecordMetadata metadata = result.getRecordMetadata();</span>
+<span class="fc" id="L80">                    log.info(&quot;Published trade event orderId={} status={} key={} partition={} offset={}&quot;,</span>
+<span class="fc" id="L81">                            event.orderId(), event.status(), key, metadata.partition(), metadata.offset());</span>
+<span class="fc" id="L82">                } else {</span>
+<span class="fc" id="L83">                    log.error(&quot;Failed to publish trade event orderId={} key={}&quot;, event.orderId(), key, failure);</span>
                 }
-<span class="fc" id="L75">            });</span>
-<span class="fc" id="L76">        } catch (RuntimeException ex) {</span>
-<span class="fc" id="L77">            log.error(&quot;Failed to publish trade event orderId={} key={}&quot;, event.orderId(), key, ex);</span>
-<span class="fc" id="L78">        }</span>
-<span class="fc" id="L79">    }</span>
+<span class="fc" id="L85">            });</span>
+<span class="fc" id="L86">        } catch (RuntimeException ex) {</span>
+<span class="fc" id="L87">            log.error(&quot;Failed to publish trade event orderId={} key={}&quot;, event.orderId(), key, ex);</span>
+<span class="fc" id="L88">        }</span>
+<span class="fc" id="L89">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

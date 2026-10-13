@@ -16,7 +16,7 @@ class TestProfileEndpoint:
         assert data['last_name'] == 'Trader'
         assert data['trader_level'] == 'INTERMEDIATE'
         assert data['available_funds'] == 50000.0
-        assert 'email' not in data, 'the users table carries no email; credentials live in user_accounts'
+        assert 'email' not in data, 'a profile carries no email; sign-ins are separate records'
 
     def test_unknown_user_is_not_found(self, client, db_session, mocker):
         mocker.patch('app.verify_token', return_value={'sub': '00000000-0000-0000-0000-000000000000'})

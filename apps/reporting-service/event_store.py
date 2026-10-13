@@ -1,11 +1,12 @@
 """
-The reporting service's own copy of every trade event, as files.
+The reporting service's own copy of every message it consumed, as files.
 
-One JSON Lines file per Kafka partition under <files_dir>/events. Each line is
-one message: the partition and offset it came from, the account id that was
-the message key, and the fields of the body. The consumer appends; the report
-run reads. Nothing is ever rewritten, so the files are also the rebuild
-source for any run.
+One JSON Lines file per topic partition under <files_dir>/events:
+trade-events-p0.jsonl, platform-records-p0.jsonl and so on. Each line is one
+message: the partition and offset it came from, its key, and the fields of
+the body. The consumer appends; the report run and the read model read.
+Nothing is ever rewritten, so the files are also the rebuild source for
+everything the service serves.
 
 Idempotency needs no side file. Kafka delivers at least once, so a crash
 between an append and the offset commit redelivers a message already on
@@ -18,27 +19,67 @@ when Kafka redelivers it, because its offset was never committed.
 import json
 import logging
 import os
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-FILE_NAME = 'trade-events-p{partition}.jsonl'
+TRADE_EVENTS = 'trade-events'
+PLATFORM_RECORDS = 'platform-records'
+# The fields every order status line has, present or null, whatever the producer sent.
 EVENT_FIELDS = ('orderId', 'status', 'symbol', 'side', 'quantity', 'price', 'rejectionReason', 'occurredAt')
+_FRACTION = re.compile(r'(\.\d{6})\d+')
+
+
+def parse_occurred_at(value):
+    """
+    Parse the ISO-8601 timestamp Jackson writes. It may end in Z or an offset
+    and may carry more than six fractional digits, which Python rejects.
+    Returns an aware datetime in UTC, or None when unparseable.
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    text = value.strip()
+    if text.endswith('Z'):
+        text = text[:-1] + '+00:00'
+    text = _FRACTION.sub(r'\1', text)
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 class EventStore:
-    """Append-only JSON Lines files, one per partition."""
+    """
+    Append-only JSON Lines files for one topic, one per partition.
 
-    def __init__(self, events_dir):
+    topic says what the files hold, TRADE_EVENTS or PLATFORM_RECORDS, and
+    names them. It is not the broker's name for the topic, which a deployment
+    may configure: readers find the files by these two names whatever it is.
+
+    An order status line keeps the account id that was the message key as
+    accountId. A platform record line keeps its key, record type and id, as
+    key. Either way the body's own fields follow unchanged.
+    """
+
+    def __init__(self, events_dir, topic=TRADE_EVENTS):
         self.events_dir = Path(events_dir)
         self.events_dir.mkdir(parents=True, exist_ok=True)
+        self.topic = topic
         self._last_offset = {}
         self.refresh()
+
+    def _files(self):
+        return sorted(self.events_dir.glob(f'{self.topic}-p*.jsonl'))
 
     def refresh(self):
         """Re-read the last written offset of every partition file on disk."""
         self._last_offset = {}
-        for path in sorted(self.events_dir.glob('trade-events-p*.jsonl')):
+        for path in self._files():
             partition = _partition_of(path)
             if partition is None:
                 continue
@@ -53,7 +94,7 @@ class EventStore:
         return self._last_offset.get(partition)
 
     def path_for(self, partition):
-        return self.events_dir / FILE_NAME.format(partition=partition)
+        return self.events_dir / f'{self.topic}-p{partition}.jsonl'
 
     def append(self, partition, offset, key, body):
         """
@@ -62,24 +103,32 @@ class EventStore:
         """
         last = self._last_offset.get(partition)
         if last is not None and offset <= last:
-            logger.info('Skipping duplicate trade event partition=%s offset=%s (last written %s)',
-                        partition, offset, last)
+            logger.info('Skipping duplicate %s message partition=%s offset=%s (last written %s)',
+                        self.topic, partition, offset, last)
             return False
 
-        line = {'partition': partition, 'offset': offset, 'accountId': _account_id(key)}
-        for field in EVENT_FIELDS:
-            line[field] = body.get(field)
-
         with open(self.path_for(partition), 'a', encoding='utf-8') as handle:
-            handle.write(json.dumps(line, separators=(',', ':')) + '\n')
+            handle.write(json.dumps(self._line(partition, offset, key, body), separators=(',', ':')) + '\n')
             handle.flush()
             os.fsync(handle.fileno())
         self._last_offset[partition] = offset
         return True
 
+    def _line(self, partition, offset, key, body):
+        """Where the message came from first, so no body field can replace it."""
+        if self.topic == TRADE_EVENTS:
+            line = {'partition': partition, 'offset': offset, 'accountId': _account_id(key)}
+            for field in EVENT_FIELDS:
+                line[field] = body.get(field)
+        else:
+            line = {'partition': partition, 'offset': offset, 'key': key}
+        for field, value in body.items():
+            line.setdefault(field, value)
+        return line
+
     def iter_events(self):
         """Yield every parseable event across all partition files, in file order."""
-        for path in sorted(self.events_dir.glob('trade-events-p*.jsonl')):
+        for path in self._files():
             yield from _read_lines(path)
 
 

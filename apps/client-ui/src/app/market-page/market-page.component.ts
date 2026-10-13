@@ -13,6 +13,7 @@ import { ToastService } from '../notifications/toast.service';
 import { AuthService } from '../core/auth/auth.service';
 import { DashboardHeaderDropdownComponent } from '../dashboard/shared/dashboard-header-dropdown.component';
 import { SettingsDialogComponent } from '../dashboard/settings-dialog/settings-dialog.component';
+import { TermsDialogComponent } from '../dashboard/terms/terms-dialog.component';
 import { AccountControlComponent } from '../dashboard/shared/account-control.component';
 import { MarketClockControlComponent } from '../dashboard/shared/market-clock-control.component';
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
@@ -33,6 +34,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -148,6 +150,7 @@ interface MarketStats {
     TitleCasePipe,
     TimeframeToggleComponent,
     TradeTicketComponent,
+    TermsDialogComponent,
   ],
   providers: [
     MarketClockService,
@@ -220,6 +223,23 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   }
   protected readonly accountDialog = signal<{ account: Account | null } | null>(null);
 
+  // This page has its own order ticket, so it asks for the platform terms exactly as the
+  // dashboard does: the page is inert behind the terms dialog until they are accepted.
+  protected readonly termsRequired = this.accountStore.needsTermsAcceptance;
+  protected readonly termsSignatureName = this.accountStore.fullName;
+  // The profile can arrive after the user has already opened something; nothing may stay open
+  // beside the terms dialog.
+  private readonly closeDialogsForTerms = effect(() => {
+    if (!this.termsRequired()) {
+      return;
+    }
+    untracked(() => {
+      this.openHeaderDropdown.set(null);
+      this.settingsOpen.set(false);
+      this.accountDialog.set(null);
+    });
+  });
+
   private readonly requestedAccountId = signal<number | null>(null);
   private appliedAccountId: number | null = null;
   private readonly selectRequestedAccount = effect(() => {
@@ -247,13 +267,18 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     () => this.submitting() || this.coolingDown() || this.refreshing(),
   );
 
-  protected readonly tradeReady = computed(
+  private readonly dataReady = computed(
     () =>
       this.accountStore.status() === 'ready' &&
-      this.accountStore.selectedAccountId() !== null &&
       this.orders.historyStatus() === 'ready' &&
       this.catalogueStatus() === 'ready' &&
-      this.pageStatus() === 'ready' &&
+      this.pageStatus() === 'ready',
+  );
+
+  protected readonly tradeReady = computed(
+    () =>
+      this.dataReady() &&
+      this.accountStore.selectedAccountId() !== null &&
       !this.clock.clockUpdating() &&
       this.refreshAccountId() === null,
   );
@@ -368,7 +393,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   }
 
   protected selectAccount(id: number): void {
-    if (!this.accountStore.selectAccount(id)) return;
+    if (!this.accountStore.selectAccount(id)) {
+      return;
+    }
 
     this.requestedAccountId.set(id);
 
@@ -407,15 +434,16 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected submitOrder(draft: TradeTicketDraft): void {
     const accountId = Number(draft.accountId);
 
+    const validDraft =
+      Number.isInteger(draft.quantity) && draft.quantity > 0 && draft.symbol === this.symbol();
     if (
       !this.tradeReady() ||
       this.busy() ||
       !this.accountStore.isOwnedAccount(accountId) ||
-      !Number.isInteger(draft.quantity) ||
-      draft.quantity <= 0 ||
-      draft.symbol !== this.symbol()
-    )
+      !validDraft
+    ) {
       return;
+    }
 
     const price = this.instrument()?.price ?? 0;
 
@@ -424,7 +452,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
         ? Math.floor(this.tradingCashBalance() / price)
         : Math.floor(this.heldShares());
 
-    if (!Number.isFinite(price) || price <= 0 || draft.quantity > maximum) return;
+    if (!Number.isFinite(price) || price <= 0 || draft.quantity > maximum) {
+      return;
+    }
 
     const simulated = this.marketTimestamp();
 
@@ -462,7 +492,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
             const message = `Rejected: ${result.rejectionReason ?? 'The order was rejected.'}`;
             this.orderError.set(message);
             this.toasts.show(message, 'error');
-          } else this.orderMessage.set('Order pending.');
+          } else {
+            this.orderMessage.set('Order pending.');
+          }
         },
         error: (error: unknown) => {
           this.submitting.set(false);
@@ -475,7 +507,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
 
   protected retryBalances(): void {
     const id = this.refreshAccountId();
-    if (id !== null) this.refreshBalances(id);
+    if (id !== null) {
+      this.refreshBalances(id);
+    }
   }
 
   private refreshBalances(id: number): void {
@@ -589,8 +623,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   private readonly comparisonCandles = signal<MarketCandlePoint[]>([]);
   protected readonly chartCandles = computed(() => {
     const instrument = this.instrument();
-    if ((this.candles().at(-1)?.time.getTime() ?? -Infinity) > Date.parse(this.marketTimestamp()))
+    if ((this.candles().at(-1)?.time.getTime() ?? -Infinity) > Date.parse(this.marketTimestamp())) {
       return this.candles();
+    }
     return instrument
       ? applyLiveCandlePrice(this.candles(), instrument.price, this.marketTimestamp())
       : [];
@@ -613,8 +648,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     if (
       (this.comparisonCandles().at(-1)?.time.getTime() ?? -Infinity) >
       Date.parse(this.marketTimestamp())
-    )
+    ) {
       return this.comparisonCandles();
+    }
     return instrument
       ? applyLiveCandlePrice(this.comparisonCandles(), instrument.price, this.marketTimestamp())
       : [];
@@ -663,7 +699,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       error: () => {
         this.chartRefreshing.set(false);
         this.chartRefreshError.set('Chart data could not refresh.');
-        if (!this.candles().length) this.chartStatus.set('error');
+        if (!this.candles().length) {
+          this.chartStatus.set('error');
+        }
       },
     });
     onCleanup(() => subscription.unsubscribe());
@@ -695,7 +733,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.chartRefreshError.set('Comparison chart could not refresh.');
-        if (!this.comparisonCandles().length) this.comparisonChartStatus.set('error');
+        if (!this.comparisonCandles().length) {
+          this.comparisonChartStatus.set('error');
+        }
       },
     });
     onCleanup(() => subscription.unsubscribe());
@@ -704,7 +744,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly watchlist = inject(WatchlistStore);
 
   ngOnInit(): void {
-    if (!isPlatformBrowser(this.platformId)) return;
+    if (!isPlatformBrowser(this.platformId)) {
+      return;
+    }
 
     this.watchlist.load(true).subscribe({ error: () => undefined });
     this.accountStore.load();
@@ -807,7 +849,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       menu === 'chart-mode' ? 'chart-mode-picker' : 'comparison-picker';
     const toolbar = this.menuHost.nativeElement.querySelector('.chart-toolbar');
     const trigger = toolbar?.querySelector(`[aria-controls="${id}"]`);
-    if (!menu || !toolbar || !trigger) return;
+    if (!menu || !toolbar || !trigger) {
+      return;
+    }
     const frame = toolbar.getBoundingClientRect();
     const button = trigger.getBoundingClientRect();
     this.toolbarMenuPosition.set({
@@ -832,7 +876,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected submitAiPrompt(event: Event, symbol: string): void {
     event.preventDefault();
     const prompt = this.aiDraft().trim();
-    if (!prompt) return;
+    if (!prompt) {
+      return;
+    }
     this.aiMessages.update((messages) => [
       ...messages,
       { role: 'user', text: prompt },
@@ -860,23 +906,29 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     if (!(
       target instanceof Element &&
       target.closest('app-dashboard-header-dropdown, app-market-clock-control, app-account-control')
-    ))
+    )) {
       this.openHeaderDropdown.set(null);
+    }
   }
 
   private loadSnapshot(): void {
     this.disconnectMarket?.();
     this.disconnectMarket = undefined;
     this.connected.set(false);
-    if (!findInstrument(this.symbol(), this.instruments())) this.pageStatus.set('loading');
+    if (!findInstrument(this.symbol(), this.instruments())) {
+      this.pageStatus.set('loading');
+    }
     this.marketData
       .snapshot()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (snapshot) => this.applySnapshot(snapshot),
         error: () => {
-          if (this.pageStatus() !== 'ready') this.pageStatus.set('error');
-          else this.chartRefreshError.set('Market snapshot could not refresh.');
+          if (this.pageStatus() !== 'ready') {
+            this.pageStatus.set('error');
+          } else {
+            this.chartRefreshError.set('Market snapshot could not refresh.');
+          }
         },
       });
   }
@@ -930,7 +982,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       this.instruments.update((instruments) =>
         instruments.map((instrument) => {
           const price = prices.get(instrument.symbol);
-          if (price === undefined) return instrument;
+          if (price === undefined) {
+            return instrument;
+          }
           const openingPrice = this.openingPrices.get(instrument.symbol) ?? price;
           const change = price - openingPrice;
           return {
@@ -952,7 +1006,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
 
   private animateTick(symbol: string, direction: TickAnimation['direction']): void {
     const existingTimer = this.tickAnimationTimers.get(symbol);
-    if (existingTimer) clearTimeout(existingTimer);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
     const durationMs = 500 + Math.floor(Math.random() * 501);
     this.tickAnimations.update((animations) => {
       const next = new Map(animations);
@@ -998,7 +1054,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
 
   private validateComparison(): void {
     const comparison = this.comparisonSymbol();
-    if (!comparison) return;
+    if (!comparison) {
+      return;
+    }
     if (comparison === this.symbol() || !findInstrument(comparison, this.instruments())) {
       this.comparisonSymbol.set('');
       this.updateComparisonQuery('', true);

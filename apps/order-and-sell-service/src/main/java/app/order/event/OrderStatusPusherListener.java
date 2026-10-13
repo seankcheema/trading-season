@@ -23,7 +23,9 @@ import java.util.Optional;
  * Nothing is stored: a user with no open stream simply receives nothing.
  * A message whose key is not an account id, whose body is not JSON, or
  * whose account no longer exists is logged and skipped, never rethrown, so
- * the group keeps consuming and commits its offset.
+ * the group keeps consuming and commits its offset. A message carrying the
+ * {@link TradeEventPublisher#REPLAY_HEADER} is history published again for
+ * reporting, not a status that just changed, and is not pushed to anyone.
  *
  * <p>Absent when {@code app.events.enabled} is {@code false}.
  */
@@ -64,6 +66,12 @@ public class OrderStatusPusherListener {
     public void onTradeEvent(ConsumerRecord<String, String> record) {
         log.info("Consumer group {} received key={} partition={} offset={} value={}",
                 GROUP_ID, record.key(), record.partition(), record.offset(), record.value());
+
+        if (record.headers().lastHeader(TradeEventPublisher.REPLAY_HEADER) != null) {
+            log.debug("Ignoring replayed trade event at partition={} offset={}: nothing just happened",
+                    record.partition(), record.offset());
+            return;
+        }
 
         Integer accountId;
         try {

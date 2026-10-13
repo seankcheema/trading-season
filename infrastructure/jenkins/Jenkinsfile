@@ -47,12 +47,14 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                // The reporting tests run as root in Docker; make their output
-                // deletable before the checkout cleans the workspace.
+                // The reporting and database tool tests run as root in Docker; make
+                // their output deletable before the checkout cleans the workspace.
                 sh '''
-                    if [ -d apps/reporting-service ]; then
-                        docker run --rm -v "$(pwd)":/ws -w /ws alpine:latest chmod -R a+rwX /ws/apps/reporting-service || true
-                    fi
+                    for directory in apps/reporting-service db/tools; do
+                        if [ -d "$directory" ]; then
+                            docker run --rm -v "$(pwd)":/ws -w /ws alpine:latest chmod -R a+rwX "/ws/$directory" || true
+                        fi
+                    done
                 '''
                 script {
                     // Keep the multibranch job's SCM settings and add a depth-1 clone.
@@ -82,6 +84,7 @@ pipeline {
                 sh '''
                     set -eu
                     npm --prefix apps/client-ui ci
+                    npm --prefix apps/reporting-ui ci
                     npm --prefix apps/auth-service ci
                 '''
             }
@@ -285,6 +288,48 @@ pipeline {
                     }
                 }
 
+                // The tools that republish database history to Kafka and seed
+                // demo history. They are not part of any service, so no other
+                // suite runs their tests.
+                stage('Reporting Feed Tools Tests') {
+                    environment {
+                        CI = 'true'
+                    }
+                    steps {
+                        catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                            dir('db/tools') {
+                                sh '''
+                                    set -eu
+                                    docker run --rm \
+                                      -e PYTHONDONTWRITEBYTECODE=1 \
+                                      -v "$(pwd)":/app \
+                                      -w /app \
+                                      python:3.14-slim \
+                                      bash -c "
+                                        # Runs as root: hand the output back to the jenkins user on any exit.
+                                        trap 'chmod -R a+rwX /app' EXIT
+                                        set -eu
+                                        mkdir -p reports/junit
+                                        python -m pip install -q -r requirements.txt
+                                        python -m pytest -p no:cacheprovider tests/ -v \
+                                          --junit-xml=reports/junit/results.xml
+                                      "
+                                '''
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'db/tools/reports/**/*', allowEmptyArchive: true
+                            catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                                junit testResults: 'db/tools/reports/junit/*.xml',
+                                      allowEmptyResults: false,
+                                      healthScaleFactor: 1.0
+                            }
+                        }
+                    }
+                }
+
                 stage('Frontend Tests') {
                     steps {
                         dir('apps/client-ui') {
@@ -302,6 +347,27 @@ pipeline {
                             archiveArtifacts artifacts: 'apps/client-ui/coverage/**/*, apps/client-ui/reports/junit/*.xml',
                                               allowEmptyArchive: true
                             junit testResults: 'apps/client-ui/reports/junit/ui.xml', allowEmptyResults: false
+                        }
+                    }
+                }
+
+                stage('Reporting UI Tests') {
+                    steps {
+                        dir('apps/reporting-ui') {
+                            // coverageThresholds in angular.json enforce the coverage floor.
+                            sh '''
+                                set -eu
+                                mkdir -p reports/junit
+                                npm test -- --no-watch --coverage --reporters=junit --reporters=default --output-file=reports/junit/reporting-ui.xml --coverage-reporters=text --coverage-reporters=html --coverage-reporters=lcovonly --coverage-reporters=cobertura
+                                test -s coverage/reporting-ui/lcov.info
+                            '''
+                        }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'apps/reporting-ui/coverage/**/*, apps/reporting-ui/reports/junit/*.xml',
+                                              allowEmptyArchive: true
+                            junit testResults: 'apps/reporting-ui/reports/junit/reporting-ui.xml', allowEmptyResults: false
                         }
                     }
                 }
@@ -353,7 +419,27 @@ pipeline {
             when { expression { currentBuild.currentResult == 'SUCCESS' } }
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
+                    script {
+                        def qualityGate = waitForQualityGate abortPipeline: false
+                        echo "SonarQube quality gate status: ${qualityGate.status}"
+                        if (qualityGate.status != 'OK') {
+                            withSonarQubeEnv('SonarQube') {
+                                sh '''
+                                    set -eu
+                                    QUALITY_GATE_FILE="${WORKSPACE}/sonar-quality-gate.json"
+                                    curl --fail --silent --show-error \
+                                      --user "${SONAR_AUTH_TOKEN}:" \
+                                      "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=DuaLeapa-Project" \
+                                      > "$QUALITY_GATE_FILE"
+                                    node -e 'const fs = require("node:fs"); const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); for (const condition of report.projectStatus?.conditions ?? []) console.log(`SonarQube condition: ${condition.metricKey} status=${condition.status} actual=${condition.actualValue ?? "-"} threshold=${condition.errorThreshold ?? "-"}`);' "$QUALITY_GATE_FILE"
+                                    rm -f "$QUALITY_GATE_FILE"
+                                '''
+                            }
+                        }
+                        if (qualityGate.status != 'OK') {
+                            error "SonarQube quality gate failed with status: ${qualityGate.status}"
+                        }
+                    }
                 }
             }
         }
@@ -363,7 +449,7 @@ pipeline {
         stage('Pre-E2E Disk Cleanup') {
             steps {
                 // Reports were archived by their own stages.
-                sh 'rm -rf apps/holdings-and-trade-service/target apps/order-and-sell-service/target apps/client-ui/coverage'
+                sh 'rm -rf apps/holdings-and-trade-service/target apps/order-and-sell-service/target apps/client-ui/coverage apps/reporting-ui/coverage'
             }
         }
 
@@ -524,7 +610,7 @@ pipeline {
                     }
 
                     check_http client-ui / '<app-root'
-                    check_http reporting-ui / 'Reporting UI placeholder'
+                    check_http reporting-ui / '<app-root'
                     check_http reporting-service /health '"status": "healthy"' 8083
 
                     # Match PartitionCount as a whole tab-delimited field so 3 does not match 30.
@@ -538,6 +624,26 @@ pipeline {
                         /^Topic: /{for (i = 1; i <= NF; i++) if ($i == "PartitionCount: 3") ok = 1}
                         END {exit ok ? 0 : 1}' || {
                         echo "Topic trade-events does not have three partitions." >&2
+                        exit 1
+                    }
+
+                    # The reporting service has no database: this topic carries every
+                    # customer, account, transfer and audit entry it shows. Compacted,
+                    # so the latest state of each row is kept for good.
+                    RECORDS_DESCRIBE="$(compose exec -T kafka /opt/kafka/bin/kafka-topics.sh \
+                        --bootstrap-server localhost:9092 --describe --topic platform-records)" || {
+                        echo "Topic platform-records does not exist." >&2
+                        exit 1
+                    }
+                    echo "$RECORDS_DESCRIBE"
+                    echo "$RECORDS_DESCRIBE" | awk -F'\\t' '
+                        /^Topic: /{for (i = 1; i <= NF; i++) if ($i == "PartitionCount: 3") ok = 1}
+                        END {exit ok ? 0 : 1}' || {
+                        echo "Topic platform-records does not have three partitions." >&2
+                        exit 1
+                    }
+                    echo "$RECORDS_DESCRIBE" | grep -q 'cleanup.policy=compact' || {
+                        echo "Topic platform-records is not compacted." >&2
                         exit 1
                     }
 
@@ -609,7 +715,7 @@ pipeline {
                         echo "$1" >> "$EVIDENCE"
                     }
 
-                    note "===== Kafka end-to-end: one order through trade-events and its three consumers ====="
+                    note "===== Kafka end-to-end: one order through trade-events and its three consumers, and into a reporting service with no database ====="
 
                     # The build database is empty, so give the order something to buy.
                     compose exec -T db psql -U trading_season -d trading_season -v ON_ERROR_STOP=1 -q -c \
@@ -654,12 +760,17 @@ pipeline {
                     log_line order-and-sell-service "Pushed order status for account $ACCOUNT_ID to 1 open stream(s)" "order-status-pusher log"
                     log_line holdings-and-trade-service "Captured portfolio valuation for account $ACCOUNT_ID" "portfolio-valuation-capture log"
                     log_line reporting-consumer "Stored trade event orderId=$ORDER_ID status=FILLED" "reporting-ingester log"
+                    # The records around the order, each from the service that owns the row.
+                    log_line holdings-and-trade-service "Published platform record key=TRADING_ACCOUNT:$ACCOUNT_ID" "Holdings and Trade publishes the account"
+                    log_line order-and-sell-service "Published platform record key=ORDER_AUDIT:" "Order and Sell publishes the audit trail"
+                    log_line auth-service "Published platform record key=SIGN_IN:" "auth publishes the sign-in"
+                    log_line reporting-consumer "Stored platform record type=TRADING_ACCOUNT key=TRADING_ACCOUNT:$ACCOUNT_ID" "reporting-ingester log, account record"
 
                     # Finally every group must have consumed everything the order published.
                     attempt=1
                     while [ "$attempt" -le 30 ]; do
                         DESCRIBE="$(compose exec -T kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --all-groups 2>/dev/null || true)"
-                        if echo "$DESCRIBE" | awk '$2 == "trade-events" && $6 != "0" && $6 != "-" {bad = 1} END {exit bad}'; then
+                        if echo "$DESCRIBE" | awk '($2 == "trade-events" || $2 == "platform-records") && $6 != "0" && $6 != "-" {bad = 1} END {exit bad}'; then
                             break
                         fi
                         attempt=$((attempt + 1))
@@ -667,10 +778,10 @@ pipeline {
                     done
                     echo "$DESCRIBE" | tee -a "$EVIDENCE"
                     if [ "$attempt" -gt 30 ]; then
-                        echo "A consumer group still has lag on trade-events after 30 seconds." >&2
+                        echo "A consumer group still has lag on trade-events or platform-records after 30 seconds." >&2
                         exit 1
                     fi
-                    note "[KAFKA-E2E] consumer groups: every group has consumed everything on trade-events (lag 0)"
+                    note "[KAFKA-E2E] consumer groups: every group has consumed everything on trade-events and platform-records (lag 0)"
                     note "===== Kafka end-to-end: PASSED ====="
                 '''
             }
