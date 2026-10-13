@@ -112,3 +112,25 @@ export class ActivityRowComponent {
   );
   protected readonly tagClass = computed(() => ACTIVITY_TYPE_CLASSES[this.transaction().type]);
 }
+
+// Stands in for a row while the list loads: the same two lines on each side, as blocks.
+// The list says what is loading; these rows are hidden from assistive technology.
+@Component({
+  selector: 'li[app-activity-row-skeleton]',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    class:
+      'border-border/60 flex items-center justify-between gap-3 border-b py-2.5 last:border-b-0',
+    'aria-hidden': 'true',
+    'data-testid': 'activity-row-skeleton',
+  },
+  template: ` <span class="min-w-0 flex-1">
+      <span class="skeleton h-4 w-28"></span>
+      <span class="skeleton mt-1.5 h-3 w-36"></span>
+    </span>
+    <span class="shrink-0">
+      <span class="skeleton ml-auto h-4 w-20"></span>
+      <span class="skeleton mt-1.5 ml-auto h-3 w-24"></span>
+    </span>`,
+})
+export class ActivityRowSkeletonComponent {}

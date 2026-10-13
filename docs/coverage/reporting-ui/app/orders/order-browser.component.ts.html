@@ -25,28 +25,28 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>107/107</span>
+                <span class='fraction'>114/114</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">98.14% </span>
+                <span class="strong">98.18% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>53/54</span>
+                <span class='fraction'>54/55</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>26/26</span>
+                <span class='fraction'>30/30</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>74/74</span>
+                <span class='fraction'>80/80</span>
             </div>
         
             
@@ -255,7 +255,13 @@
 <a name='L190'></a><a href='#L190'>190</a>
 <a name='L191'></a><a href='#L191'>191</a>
 <a name='L192'></a><a href='#L192'>192</a>
-<a name='L193'></a><a href='#L193'>193</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L193'></a><a href='#L193'>193</a>
+<a name='L194'></a><a href='#L194'>194</a>
+<a name='L195'></a><a href='#L195'>195</a>
+<a name='L196'></a><a href='#L196'>196</a>
+<a name='L197'></a><a href='#L197'>197</a>
+<a name='L198'></a><a href='#L198'>198</a>
+<a name='L199'></a><a href='#L199'>199</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -266,6 +272,11 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">900x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -380,7 +391,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">25x</span>
 <span class="cline-any cline-yes">25x</span>
-<span class="cline-any cline-yes">67x</span>
+<span class="cline-any cline-yes">203x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">25x</span>
@@ -424,13 +435,14 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">55x</span>
+<span class="cline-any cline-yes">194x</span>
+<span class="cline-any cline-yes">55x</span>
+<span class="cline-any cline-yes">187x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">248x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -458,6 +470,11 @@ import { OrderTableComponent } from './order-table.component';
 &nbsp;
 const ALL = 'ALL';
 const NO_FILTERS = { query: '', status: ALL, side: ALL, symbol: ALL, owner: ALL, fill: ALL };
+&nbsp;
+// Whether a filter lets a value through: it is off, or it names that value.
+function picked(choice: string, value: string | null): boolean {
+  return choice === ALL || choice === value;
+}
 type Filters = typeof NO_FILTERS;
 &nbsp;
 function distinct(rows: readonly LedgerRow[], pick: (row: LedgerRow) =&gt; string): string[] {
@@ -611,18 +628,19 @@ export class OrderBrowserComponent {
     const { query, status, side, symbol, owner, fill } = this.filters();
     const needle = query.trim().toLowerCase();
     const ownerOf = this._ownerOf();
-    return this.rows().filter(
-      (row) =&gt;
-        (status === ALL || row.status === status) &amp;&amp;
-        (side === ALL || row.side === side) &amp;&amp;
-        (symbol === ALL || row.symbol === symbol) &amp;&amp;
-        (owner === ALL || ownerOf(row) === owner) &amp;&amp;
-        (fill === ALL || (row.order !== null &amp;&amp; (fill === 'priced') === (row.price !== null))) &amp;&amp;
-        (!needle ||
-          `${row.userName} ${row.accountName} ${row.symbol} ${row.side} ${row.order ? row.id : ''} ${row.reference}`
-            .toLowerCase()
-            .includes(needle)),
-    );
+    const chosen = (row: LedgerRow) =&gt;
+      picked(status, row.status) &amp;&amp;
+      picked(side, row.side) &amp;&amp;
+      picked(symbol, row.symbol) &amp;&amp;
+      picked(owner, ownerOf(row));
+    const priced = (row: LedgerRow) =&gt;
+      fill === ALL || (row.order !== null &amp;&amp; (fill === 'priced') === (row.price !== null));
+    const named = (row: LedgerRow) =&gt;
+      !needle ||
+      `${row.userName} ${row.accountName} ${row.symbol} ${row.side} ${row.order ? row.id : ''} ${row.reference}`
+        .toLowerCase()
+        .includes(needle);
+    return this.rows().filter((row) =&gt; chosen(row) &amp;&amp; priced(row) &amp;&amp; named(row));
   });
 &nbsp;
   // The rows on screen, in the order they are shown, for an export.
@@ -646,7 +664,7 @@ export class OrderBrowserComponent {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-10-12T19:59:16.561Z
+                at 2026-10-13T15:52:16.153Z
             </div>
         <script src="../../prettify.js"></script>
         <script>
