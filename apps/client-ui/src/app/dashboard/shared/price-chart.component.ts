@@ -934,15 +934,18 @@ export class PriceChartComponent {
   });
 
   protected readonly linePath = computed(() => {
-    if (this.curveMode() === 'monotone')
+    if (this.curveMode() === 'monotone') {
       return monotonePath(
         this.svgCoords().map((point, index) => ({
           ...point,
           transition: this.visiblePoints()[index].transition,
         })),
       );
+    }
     const interval = this.observationIntervalMs();
-    if (!interval) return this.smoothPath(this.svgCoords());
+    if (!interval) {
+      return this.smoothPath(this.svgCoords());
+    }
     return this.svgCoords()
       .map((point, index) => {
         return `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)},${point.y.toFixed(2)}`;
@@ -952,7 +955,9 @@ export class PriceChartComponent {
 
   protected readonly isolatedObservations = computed(() => {
     const interval = this.observationIntervalMs();
-    if (!interval) return [];
+    if (!interval) {
+      return [];
+    }
     const points = this.visiblePoints();
     return this._coords().filter(
       (_, index) =>
@@ -966,7 +971,9 @@ export class PriceChartComponent {
   private observationX(index: number): number {
     const points = this.visiblePoints();
     const domain = this.timeDomain();
-    if (domain) return timePosition(points[index].time.getTime(), domain);
+    if (domain) {
+      return timePosition(points[index].time.getTime(), domain);
+    }
     const start = points[0]?.time.getTime() ?? 0;
     const span = (points.at(-1)?.time.getTime() ?? start) - start;
     return span > 0 ? ((points[index].time.getTime() - start) / span) * 100 : 100;
@@ -982,14 +989,18 @@ export class PriceChartComponent {
   protected readonly bollingerAreaPath = computed(() => {
     const upper = this.indicatorSvgCoords(this.bollingerUpperSeries(), this.yScale());
     const lower = this.indicatorSvgCoords(this.bollingerLowerSeries(), this.yScale()).reverse();
-    if (upper.length < 2 || upper.length !== lower.length) return '';
+    if (upper.length < 2 || upper.length !== lower.length) {
+      return '';
+    }
     return `${[...upper, ...lower]
       .map((point, index) => `${index ? 'L' : 'M'} ${point.x.toFixed(2)},${point.y.toFixed(2)}`)
       .join(' ')} Z`;
   });
   protected readonly rsiPath = computed(() => {
     const actual = this.indicatorPath(this.rsiSeries(), { min: 0, max: 100, range: 100 });
-    if (actual) return actual;
+    if (actual) {
+      return actual;
+    }
     const last = this.mockRsiValues.length - 1;
     return this.smoothPath(
       this.mockRsiValues.map((value, index) => ({
@@ -1318,8 +1329,12 @@ export class PriceChartComponent {
 
   // Keeps labels near the edges from spilling outside the chart.
   protected edgeTransform(x: number): string {
-    if (x < 12) return 'translateX(0)';
-    if (x > 88) return 'translateX(-100%)';
+    if (x < 12) {
+      return 'translateX(0)';
+    }
+    if (x > 88) {
+      return 'translateX(-100%)';
+    }
     return 'translateX(-50%)';
   }
 
@@ -1343,8 +1358,9 @@ export class PriceChartComponent {
       }
       let nearest = 0;
       for (let index = 1; index < coords.length; index++) {
-        if (Math.abs(coords[index].x - ratio * 100) < Math.abs(coords[nearest].x - ratio * 100))
+        if (Math.abs(coords[index].x - ratio * 100) < Math.abs(coords[nearest].x - ratio * 100)) {
           nearest = index;
+        }
       }
       this.hoverIndex.set(nearest);
     } else {
@@ -1456,7 +1472,9 @@ export class PriceChartComponent {
     if (event.key in next) {
       event.preventDefault();
       this.hoverIndex.set(next[event.key]);
-    } else if (event.key === 'Escape' && this.hoverIndex() !== null) {
+      return;
+    }
+    if (event.key === 'Escape' && this.hoverIndex() !== null) {
       // Clear the inspection without also closing an enclosing dialog.
       event.stopPropagation();
       this.hoverIndex.set(null);

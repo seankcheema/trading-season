@@ -7,7 +7,7 @@
  *     apps/holdings-and-trade-service apps/order-and-sell-service
  *
  * JaCoCo identifies a file only by package and name, and both services use
- * the same packages (app/auth/AuthService.java exists in each). SonarQube's
+ * the same packages (app/auth/SecurityConfig.java exists in each). SonarQube's
  * JaCoCo importer resolves such a name to whichever file it finds first, so
  * one service's coverage lands on the other. The generic format takes a full
  * path, which this script builds from the service directory.

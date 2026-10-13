@@ -8,7 +8,7 @@ Layout under `apps/market-data/db`:
 | --- | --- |
 | `scripts/python/` | Numbered entry points, shared `lib/`, generation `config/`, requirements |
 | `scripts/powershell/` | `setup-database.ps1` and `setup-market-data.ps1` launchers |
-| `seeds/` | Generated archive (`synthetic-market-data-2026-v1`, gitignored) and [demo-trader.sql](db/seeds/demo-trader.sql), a development-only demo account |
+| `seeds/` | Generated archive (`synthetic-market-data-2026-v1`, gitignored) and [demo-trader.sql](db/seeds/demo-trader.sql), a development-only demo account. It is written by SQL, so the reporting service sees it only after [republish_history.py](../../db/README.md#reporting-feed-tools) has published it; [seed_demo_history.py](../../db/README.md#reporting-feed-tools) seeds a wider demo history |
 | `scripts/notebooks/` | `view-market.ipynb` for inspecting data |
 | `.venv/` | Python virtual environment (gitignored) |
 

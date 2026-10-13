@@ -111,7 +111,9 @@ export class OrderSubmissionComponent {
       this.candlePoints.set(null);
       this.chartContext = context;
     }
-    if (sessionId === null) return;
+    if (sessionId === null) {
+      return;
+    }
     this.chartRefreshing.set(true);
     this.chartError.set('');
     const subscription = this.marketData.candles(sessionId, symbol, timeframe).subscribe({
@@ -135,8 +137,9 @@ export class OrderSubmissionComponent {
     const marketTime = this.marketTimeMillis();
     const candles = this.candlePoints();
     if (candles?.length) {
-      if (marketTime !== null && marketTime < candles[candles.length - 1].time.getTime())
+      if (marketTime !== null && marketTime < candles[candles.length - 1].time.getTime()) {
         return candles;
+      }
       const points = [...candles];
       points[points.length - 1] = {
         time: new Date(marketTime ?? points[points.length - 1].time.getTime()),
@@ -262,7 +265,8 @@ export class OrderSubmissionComponent {
               currency: 'USD',
             }).format(result.indicativePrice);
             this.toasts.show(`Filled ${result.quantity} ${symbol} at ${price}.`, 'success');
-          } else if (result.status === 'REJECTED') {
+          }
+          if (result.status === 'REJECTED') {
             this.toasts.show(`Rejected: ${result.rejectionReason ?? ORDER_REJECTED}`, 'error');
           }
           this.submitted.emit(result);

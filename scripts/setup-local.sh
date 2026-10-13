@@ -20,7 +20,7 @@ Usage: ./scripts/setup-local.sh [options]
 Options:
   --database-mode auto|local|docker  Prefer local PostgreSQL, require it, or use Compose (default: auto)
   --parquet-source PATH              Copy and validate an existing archive when the repository archive is absent
-  --force-install                    Run both npm ci commands even when lockfiles are unchanged
+  --force-install                    Run every npm ci command even when lockfiles are unchanged
   -h, --help                         Show this help
 
 Database passwords are read from SPRING_DATASOURCE_PASSWORD and
@@ -62,6 +62,7 @@ cd "$repo_root"
 
 auth_dir="$repo_root/apps/auth-service"
 ui_dir="$repo_root/apps/client-ui"
+reporting_ui_dir="$repo_root/apps/reporting-ui"
 env_file="$auth_dir/.env"
 compose_file="$repo_root/infrastructure/docker-compose/docker-compose.local.yml"
 archive_path="$repo_root/$EXPECTED_ARCHIVE"
@@ -383,8 +384,9 @@ select_databases() {
     wait_for_compose_health db || fail 'Docker database did not become healthy within two minutes.'
     wait_for_compose_health kafka || fail 'Docker Kafka broker did not become healthy within two minutes.'
     # Separate from the broker starting: auto-creation is disabled, so
-    # trade-events exists only once this one-shot container has run.
-    docker_compose up -d kafka-init || fail 'Creating the trade-events topic failed. Review the Compose output above.'
+    # trade-events and platform-records exist only once this one-shot
+    # container has run.
+    docker_compose up -d kafka-init || fail 'Creating the Kafka topics failed. Review the Compose output above.'
     if [[ "$had_database" == true && -n "$existing_broker" ]]; then
         ready 'Docker database and broker — the existing containers are healthy; skipping startup.'
     else
@@ -404,7 +406,8 @@ select_databases() {
     export DB_NAME=trading_season
     # The broker is published on the host as localhost:29092; inside Compose it
     # is kafka:9092. These applications run on the VM, so they take the former.
-    # Order and Sell reads it to publish trade-events and run its consumers.
+    # Order and Sell reads it to publish trade-events and run its consumers; it,
+    # Holdings and Trade and the auth service publish platform-records to it.
     export KAFKA_BOOTSTRAP_SERVERS=localhost:29092
 }
 
@@ -420,7 +423,7 @@ start_service() {
 
 start_applications() {
     local port
-    for port in 3001 4200 8081 8082; do
+    for port in 3001 4200 4300 8081 8082; do
         port_in_use "$port" && fail "Application port $port is already in use. Stop the existing process or use the manual startup path."
     done
     log_dir="$(mktemp -d "${TMPDIR:-/tmp}/trading-season.XXXXXX")"
@@ -428,7 +431,11 @@ start_applications() {
     start_service holdings-and-trade "$repo_root/apps/holdings-and-trade-service" mvn spring-boot:run
     start_service order-and-sell "$repo_root/apps/order-and-sell-service" mvn spring-boot:run
     start_service ui "$ui_dir" npm start
-    done_stage 'Applications — starting UI :4200, auth :3001, holdings-and-trade :8081, and order-and-sell :8082. Press Ctrl+C to stop them.'
+    # Proxies /auth to the auth service started above. Its reports come from the
+    # Reporting Service on 8083, which this script does not start.
+    start_service reporting-ui "$reporting_ui_dir" npm start
+    done_stage 'Applications — starting UI :4200, reporting UI :4300, auth :3001, order-and-sell :8081, and holdings-and-trade :8082. Press Ctrl+C to stop them.'
+    ready 'The reporting UI needs the Reporting Service on :8083; start it separately (see apps/reporting-service/README.md).'
 
     set +e
     wait -n "${service_pids[@]}"
@@ -441,6 +448,7 @@ check_toolchain
 check_storage 'Repository storage' "$repo_root"
 configure_auth
 install_dependencies "$ui_dir" "$ui_dir/package-lock.json" 'UI dependencies'
+install_dependencies "$reporting_ui_dir" "$reporting_ui_dir/package-lock.json" 'Reporting UI dependencies'
 install_dependencies "$auth_dir" "$auth_dir/package-lock.json" 'Auth dependencies'
 prepare_archive
 select_databases

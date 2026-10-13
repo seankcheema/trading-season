@@ -1,7 +1,9 @@
 package app.order.audit;
 
 import org.junit.jupiter.api.Test;
+import app.record.AuditEntryRecord;
 import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.OffsetDateTime;
 
@@ -14,7 +16,8 @@ import static org.mockito.Mockito.verify;
 class AuditTrailServiceTest {
 
     private final AuditTrailRepository repository = mock(AuditTrailRepository.class);
-    private final AuditTrailService service = new AuditTrailService(repository);
+    private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
+    private final AuditTrailService service = new AuditTrailService(repository, events);
 
     @Test
     void recordsTheOrderEventWithItsDetailAndTime() {
@@ -28,6 +31,20 @@ class AuditTrailServiceTest {
         assertEquals("FILLED", entry.getEventType());
         assertEquals("Filled 3 @ 10.00", entry.getDetail());
         assertFalse(entry.getRecordedAt().isBefore(before));
+    }
+
+    @Test
+    void raisesEachEntryAsARecordForReporting() {
+        service.record(12, "EXECUTION_FAILED", "IllegalStateException: no owner");
+
+        ArgumentCaptor<AuditEntryRecord> raised = ArgumentCaptor.forClass(AuditEntryRecord.class);
+        verify(events).publishEvent(raised.capture());
+        AuditEntryRecord record = raised.getValue();
+        assertEquals(12, record.orderId());
+        assertEquals("EXECUTION_FAILED", record.eventType());
+        assertEquals("IllegalStateException: no owner", record.detail());
+        assertEquals(saved().getRecordedAt(), record.recordedAt());
+        assertEquals("ORDER_AUDIT", record.recordType());
     }
 
     @Test

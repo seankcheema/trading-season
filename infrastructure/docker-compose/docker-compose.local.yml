@@ -21,6 +21,13 @@ services:
       dockerfile: Dockerfile
     ports:
       - "4300:8080"
+    # Same reason as client-ui: Nginx resolves both proxy upstreams when it
+    # starts and exits if either name is unknown.
+    depends_on:
+      reporting-service:
+        condition: service_started
+      auth-service:
+        condition: service_started
 
   reporting-service:
     build:
@@ -28,15 +35,15 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8083:8083"
+    # No dependency on the database, and no connection to it: everything this
+    # service serves is read from the reporting_files volume, which the
+    # consumer below fills from Kafka.
     depends_on:
-      db-init:
-        condition: service_completed_successfully
       auth-service:
         condition: service_started
     environment:
       FLASK_ENV: development
       FLASK_DEBUG: "false"
-      DATABASE_URL: postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season
       AUTH_SERVICE_URL: http://auth-service:3001
       AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200,http://localhost:4300}
@@ -56,8 +63,10 @@ services:
       retries: 3
 
   # Reporting consumer: consumer group reporting-ingester. Appends every
-  # trade-events message to JSON line files on reporting_files and writes a
-  # report run (report.json plus PNG charts) every SCHEDULER_INTERVAL_MINUTES.
+  # trade-events and platform-records message to JSON line files on
+  # reporting_files and writes a report run (report.json plus PNG charts)
+  # every SCHEDULER_INTERVAL_MINUTES. Those two topics are all reporting
+  # knows; neither this container nor reporting-service reaches the database.
   # Same image as reporting-service, different process. Exactly one replica:
   # two consumers must never append to the same partition file.
   reporting-consumer:
@@ -66,16 +75,14 @@ services:
       dockerfile: Dockerfile
     command: ["python", "consumer.py"]
     depends_on:
-      db-init:
-        condition: service_completed_successfully
-      # Auto-creation is off, so the topic must exist before the first poll.
+      # Auto-creation is off, so both topics must exist before the first poll.
       kafka-init:
         condition: service_completed_successfully
     environment:
       FLASK_ENV: development
-      DATABASE_URL: postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_TRADE_EVENTS_TOPIC: trade-events
+      KAFKA_PLATFORM_RECORDS_TOPIC: platform-records
       REPORTING_CONSUMER_GROUP: reporting-ingester
       REPORTING_FILES_DIR: /data/reporting
       SCHEDULER_ENABLED: "true"
@@ -98,8 +105,8 @@ services:
     depends_on:
       db-init:
         condition: service_completed_successfully
-      # Consumer group portfolio-valuation-capture reads trade-events, so the
-      # topic must exist before the first poll.
+      # Consumer group portfolio-valuation-capture reads trade-events and the
+      # service publishes to platform-records, so both topics must exist first.
       kafka-init:
         condition: service_completed_successfully
     environment:
@@ -125,8 +132,8 @@ services:
     depends_on:
       db-init:
         condition: service_completed_successfully
-      # The service publishes to trade-events and auto-creation is off, so the
-      # topic must exist before the first order resolves.
+      # The service publishes to trade-events and platform-records and
+      # auto-creation is off, so both must exist before the first order resolves.
       kafka-init:
         condition: service_completed_successfully
     environment:
@@ -173,10 +180,14 @@ services:
       PGPASSWORD: ${DB_PASSWORD:-changeme}
     command: ["sh", "/init-db.sh", "postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season", "/workspace"]
 
-  # Event broker for the trade-events topic. Order and Sell publishes one
+  # Event broker for two topics. trade-events: Order and Sell publishes one
   # message per committed order status change; three consumer groups read it:
   # order-status-pusher (Order and Sell), portfolio-valuation-capture (Holdings
-  # and Trade) and reporting-ingester (reporting-consumer).
+  # and Trade) and reporting-ingester (reporting-consumer). platform-records:
+  # the auth service and both Java services publish the current state of the
+  # rows reporting shows that an order status does not carry (sign-ins,
+  # profiles, accounts, transfers, valuations, audit entries);
+  # reporting-ingester is its only reader.
   kafka:
     # Single-node KRaft: no ZooKeeper, and the controller quorum is this same
     # node. Sized for a developer machine, not durability -- one replica of
@@ -244,8 +255,8 @@ services:
       retries: 15
       start_period: 30s
 
-  # Topic creation. Auto-creation is disabled on the broker, so the topic
-  # exists only once this one-shot container has run.
+  # Topic creation. Auto-creation is disabled on the broker, so the topics
+  # exist only once this one-shot container has run.
   kafka-init:
     image: apache/kafka:4.1.1
     depends_on:
@@ -262,13 +273,25 @@ services:
     # events already written and events written afterwards would land in
     # different partitions for the same account.
     # --if-not-exists makes a rerun a no-op rather than an error.
+    #
+    # platform-records is compacted, not time-limited. Each message is the
+    # current state of one row, keyed by its type and id, so the topic never
+    # needs more than the latest message per key, and keeps that for good:
+    # the reporting service, which has no database, can always be rebuilt
+    # from it.
     command:
       - |
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
           --create --if-not-exists --topic trade-events \
           --partitions 3 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+          --create --if-not-exists --topic platform-records \
+          --partitions 3 --replication-factor 1 \
+          --config cleanup.policy=compact
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
           --describe --topic trade-events
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+          --describe --topic platform-records
 
   db-initialize:
     profiles: ["initialize"]
@@ -311,9 +334,16 @@ services:
       # database, so it waits for the same migration run the Java services do.
       db-init:
         condition: service_completed_successfully
+      # It publishes every sign-in it creates or changes to platform-records,
+      # starting with the development sign-ins it seeds as it starts, and
+      # auto-creation is off, so the topic must exist first.
+      kafka-init:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: development
       PORT: 3001
+      # In-network listener; the host-facing localhost:29092 does not resolve here.
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       # Shared with the backend. Flyway owns the schema; this service creates no tables.
       DB_HOST: db
       DB_PORT: 5432
@@ -335,12 +365,13 @@ volumes:
     # `docker compose up`. Use `docker compose down -v` to also remove this
     # volume, which wipes the database and starts fresh on the next `up`.
   reporting_files:
-    # The reporting service's copy of every trade event (JSON lines per
-    # partition) and its generated report runs. Derived data: delete it,
+    # The reporting service's copy of every message it consumed from
+    # trade-events and platform-records (JSON lines per partition) and its
+    # generated report runs: all the data it has. Derived data: delete it,
     # reset the reporting-ingester group's offset to earliest, and the
-    # consumer rebuilds it from the topic.
+    # consumer rebuilds it from the topics.
   market_data_archive:
     # Reusable generated Parquet archive, independent of PostgreSQL db_data.
   kafka_data:
     # KRaft metadata and partition logs. `docker compose down -v` wipes it;
-    # the next up reformats storage and kafka-init recreates the topic.
+    # the next up reformats storage and kafka-init recreates the topics.

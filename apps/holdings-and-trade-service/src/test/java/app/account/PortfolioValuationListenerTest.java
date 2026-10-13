@@ -10,6 +10,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -52,6 +53,17 @@ class PortfolioValuationListenerTest {
         Account account = new Account();
         account.setUserId(owner);
         return account;
+    }
+
+    @Test
+    void aFillThatIsPublishedAgainForReportingRecordsNothing() {
+        ConsumerRecord<String, String> replayed = record("42", FILLED);
+        replayed.headers().add(PortfolioValuationListener.REPLAY_HEADER, "true".getBytes(StandardCharsets.UTF_8));
+
+        listener.onTradeEvent(replayed);
+
+        verify(accounts, never()).findById(any());
+        verify(valuations, never()).capture(anyInt(), any(), anyBoolean());
     }
 
     @Test

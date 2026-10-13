@@ -8,6 +8,8 @@ import app.holding.HoldingRepository;
 import app.holding.HoldingWithCost;
 import app.instrument.Instrument;
 import app.instrument.InstrumentRepository;
+import app.record.TradingAccountRecord;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +24,11 @@ import java.util.stream.Collectors;
 /**
  * Service for managing user accounts and their holdings.
  * All operations are scoped to the authenticated user.
+ *
+ * &lt;p&gt;An account that is opened or renamed is raised as a
+ * {@link TradingAccountRecord}, which {@link app.record.PlatformRecordPublisher}
+ * sends to Kafka once the transaction has committed, so the reporting service
+ * knows every account and its owner without reading this table.
  */
 @Service
 public class AccountService {
@@ -30,6 +37,7 @@ public class AccountService {
     private final HoldingRepository holdingRepository;
     private final HoldingMovementRepository holdingMovementRepository;
     private final InstrumentRepository instrumentRepository;
+    private final ApplicationEventPublisher events;
 
     /**
      * Creates the service.
@@ -38,16 +46,19 @@ public class AccountService {
      * @param holdingRepository         persistence for holdings
      * @param holdingMovementRepository the movement ledger positions are priced from
      * @param instrumentRepository      read access to the instruments held
+     * @param events                    publisher of the {@link TradingAccountRecord} raised for an account
      */
     public AccountService(AccountRepository accountRepository,
                           HoldingRepository holdingRepository,
                           HoldingMovementRepository holdingMovementRepository,
-<span class="fc" id="L45">                          InstrumentRepository instrumentRepository) {</span>
-<span class="fc" id="L46">        this.accountRepository = accountRepository;</span>
-<span class="fc" id="L47">        this.holdingRepository = holdingRepository;</span>
-<span class="fc" id="L48">        this.holdingMovementRepository = holdingMovementRepository;</span>
-<span class="fc" id="L49">        this.instrumentRepository = instrumentRepository;</span>
-<span class="fc" id="L50">    }</span>
+                          InstrumentRepository instrumentRepository,
+<span class="fc" id="L55">                          ApplicationEventPublisher events) {</span>
+<span class="fc" id="L56">        this.accountRepository = accountRepository;</span>
+<span class="fc" id="L57">        this.holdingRepository = holdingRepository;</span>
+<span class="fc" id="L58">        this.holdingMovementRepository = holdingMovementRepository;</span>
+<span class="fc" id="L59">        this.instrumentRepository = instrumentRepository;</span>
+<span class="fc" id="L60">        this.events = events;</span>
+<span class="fc" id="L61">    }</span>
 
     /**
      * Retrieves all accounts belonging to the authenticated user.
@@ -57,7 +68,7 @@ public class AccountService {
      */
     @Transactional(readOnly = true)
     public List&lt;Account&gt; getAccountsForUser(UUID userId) {
-<span class="fc" id="L60">        return accountRepository.findByUserIdOrderByOpenedDateDesc(userId);</span>
+<span class="fc" id="L71">        return accountRepository.findByUserIdOrderByOpenedDateDesc(userId);</span>
     }
 
     /**
@@ -71,16 +82,16 @@ public class AccountService {
      */
     @Transactional(readOnly = true)
     public Account getAccountForUser(Integer accountId, UUID userId) {
-<span class="fc" id="L74">        Account account = accountRepository.findByIdAndUserId(accountId, userId)</span>
-<span class="fc" id="L75">                .orElseThrow(() -&gt; {</span>
+<span class="fc" id="L85">        Account account = accountRepository.findByIdAndUserId(accountId, userId)</span>
+<span class="fc" id="L86">                .orElseThrow(() -&gt; {</span>
                     // Check if account exists at all to provide different error message
-<span class="fc bfc" id="L77" title="All 2 branches covered.">                    if (accountRepository.existsById(accountId)) {</span>
-<span class="fc" id="L78">                        return new ForbiddenException(&quot;You do not have access to this account&quot;);</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                    if (accountRepository.existsById(accountId)) {</span>
+<span class="fc" id="L89">                        return new ForbiddenException(&quot;You do not have access to this account&quot;);</span>
                     } else {
-<span class="fc" id="L80">                        return new AccountNotFoundException(accountId);</span>
+<span class="fc" id="L91">                        return new AccountNotFoundException(accountId);</span>
                     }
                 });
-<span class="fc" id="L83">        return account;</span>
+<span class="fc" id="L94">        return account;</span>
     }
 
     /**
@@ -92,7 +103,7 @@ public class AccountService {
      */
     @Transactional(readOnly = true)
     public boolean verifyAccountOwnership(Integer accountId, UUID userId) {
-<span class="fc" id="L95">        return accountRepository.findByIdAndUserId(accountId, userId).isPresent();</span>
+<span class="fc" id="L106">        return accountRepository.findByIdAndUserId(accountId, userId).isPresent();</span>
     }
 
     /**
@@ -104,13 +115,15 @@ public class AccountService {
      */
     @Transactional
     public Account createAccount(UUID userId, String name) {
-<span class="fc" id="L107">        Account account = new Account();</span>
-<span class="fc" id="L108">        account.setUserId(userId);</span>
-<span class="fc" id="L109">        account.setName(name);</span>
-<span class="fc" id="L110">        account.setOpenedDate(LocalDate.now());</span>
-<span class="fc" id="L111">        account.setCurrency(&quot;USD&quot;);</span>
-        
-<span class="fc" id="L113">        return accountRepository.save(account);</span>
+<span class="fc" id="L118">        Account account = new Account();</span>
+<span class="fc" id="L119">        account.setUserId(userId);</span>
+<span class="fc" id="L120">        account.setName(name);</span>
+<span class="fc" id="L121">        account.setOpenedDate(LocalDate.now());</span>
+<span class="fc" id="L122">        account.setCurrency(&quot;USD&quot;);</span>
+
+<span class="fc" id="L124">        Account saved = accountRepository.save(account);</span>
+<span class="fc" id="L125">        events.publishEvent(TradingAccountRecord.from(saved));</span>
+<span class="fc" id="L126">        return saved;</span>
     }
 
     /**
@@ -122,7 +135,7 @@ public class AccountService {
      */
     @Transactional
     public Account createDefaultAccountForUser(UUID userId) {
-<span class="fc" id="L125">        return createAccount(userId, &quot;Main Account&quot;);</span>
+<span class="fc" id="L138">        return createAccount(userId, &quot;Main Account&quot;);</span>
     }
 
     /**
@@ -137,9 +150,11 @@ public class AccountService {
      */
     @Transactional
     public Account updateAccountName(Integer accountId, UUID userId, String newName) {
-<span class="fc" id="L140">        Account account = getAccountForUser(accountId, userId);</span>
-<span class="fc" id="L141">        account.setName(newName);</span>
-<span class="fc" id="L142">        return accountRepository.save(account);</span>
+<span class="fc" id="L153">        Account account = getAccountForUser(accountId, userId);</span>
+<span class="fc" id="L154">        account.setName(newName);</span>
+<span class="fc" id="L155">        Account saved = accountRepository.save(account);</span>
+<span class="fc" id="L156">        events.publishEvent(TradingAccountRecord.from(saved));</span>
+<span class="fc" id="L157">        return saved;</span>
     }
 
     /**
@@ -155,27 +170,27 @@ public class AccountService {
     @Transactional(readOnly = true)
     public List&lt;HoldingWithCost&gt; getHoldingsForAccount(Integer accountId, UUID userId) {
         // Verify ownership first
-<span class="fc" id="L158">        getAccountForUser(accountId, userId);</span>
+<span class="fc" id="L173">        getAccountForUser(accountId, userId);</span>
 
-<span class="fc" id="L160">        List&lt;Holding&gt; holdings = holdingRepository.findByAccountId(accountId);</span>
-<span class="fc bfc" id="L161" title="All 2 branches covered.">        if (holdings.isEmpty()) {</span>
-<span class="fc" id="L162">            return List.of();</span>
+<span class="fc" id="L175">        List&lt;Holding&gt; holdings = holdingRepository.findByAccountId(accountId);</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">        if (holdings.isEmpty()) {</span>
+<span class="fc" id="L177">            return List.of();</span>
         }
 
         // Two batched lookups rather than one query per position.
-<span class="fc" id="L166">        Map&lt;Integer, Instrument&gt; instruments = instrumentRepository</span>
-<span class="fc" id="L167">                .findByInstrumentIdIn(holdings.stream().map(Holding::getInstrumentId).toList())</span>
-<span class="fc" id="L168">                .stream()</span>
-<span class="fc" id="L169">                .collect(Collectors.toMap(Instrument::getInstrumentId, Function.identity()));</span>
-<span class="fc" id="L170">        Map&lt;Integer, BigDecimal&gt; averageCosts =</span>
-<span class="fc" id="L171">                CostBasis.averageCosts(holdingMovementRepository.pricedMovements(accountId));</span>
+<span class="fc" id="L181">        Map&lt;Integer, Instrument&gt; instruments = instrumentRepository</span>
+<span class="fc" id="L182">                .findByInstrumentIdIn(holdings.stream().map(Holding::getInstrumentId).toList())</span>
+<span class="fc" id="L183">                .stream()</span>
+<span class="fc" id="L184">                .collect(Collectors.toMap(Instrument::getInstrumentId, Function.identity()));</span>
+<span class="fc" id="L185">        Map&lt;Integer, BigDecimal&gt; averageCosts =</span>
+<span class="fc" id="L186">                CostBasis.averageCosts(holdingMovementRepository.pricedMovements(accountId));</span>
 
-<span class="fc" id="L173">        return holdings.stream()</span>
-<span class="fc" id="L174">                .map(holding -&gt; new HoldingWithCost(</span>
+<span class="fc" id="L188">        return holdings.stream()</span>
+<span class="fc" id="L189">                .map(holding -&gt; new HoldingWithCost(</span>
                         holding,
-<span class="fc" id="L176">                        instruments.get(holding.getInstrumentId()),</span>
-<span class="fc" id="L177">                        averageCosts.get(holding.getInstrumentId())))</span>
-<span class="fc" id="L178">                .toList();</span>
+<span class="fc" id="L191">                        instruments.get(holding.getInstrumentId()),</span>
+<span class="fc" id="L192">                        averageCosts.get(holding.getInstrumentId())))</span>
+<span class="fc" id="L193">                .toList();</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

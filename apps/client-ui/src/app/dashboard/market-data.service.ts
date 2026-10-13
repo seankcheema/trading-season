@@ -117,9 +117,12 @@ export class MarketDataService {
   }
 
   private remember(snapshot: MarketSnapshot): void {
-    if (!snapshot.stocks) return;
-    if (this.activeSession !== undefined && this.activeSession !== snapshot.sessionId)
+    if (!snapshot.stocks) {
+      return;
+    }
+    if (this.activeSession !== undefined && this.activeSession !== snapshot.sessionId) {
       this.invalidate(false);
+    }
     this.activeSession = snapshot.sessionId;
     this.latest = snapshot;
     this.advance(snapshot.marketTimestamp);
@@ -148,7 +151,9 @@ export class MarketDataService {
         tap((snapshot) => this.remember(snapshot)),
         takeUntil(this.invalidated),
         finalize(() => {
-          if (this.snapshotRequests.get(key) === request) this.snapshotRequests.delete(key);
+          if (this.snapshotRequests.get(key) === request) {
+            this.snapshotRequests.delete(key);
+          }
         }),
         shareReplay({ bufferSize: 1, refCount: true }),
       );
@@ -170,12 +175,16 @@ export class MarketDataService {
     symbol = symbol.trim().toUpperCase();
     const key = `${sessionId}:${symbol}:${timeframe}:${this.minute}`;
     const cached = this.candlesCache.get(key);
-    if (cached && cached.expiresAt > Date.now()) return of(cached.value);
+    if (cached && cached.expiresAt > Date.now()) {
+      return of(cached.value);
+    }
     const prefix = `${sessionId}:${symbol}:${timeframe}:`;
     const retained = cached ?? [...this.candlesCache.entries()].reverse()
       .find(([entryKey]) => entryKey.startsWith(prefix))?.[1];
     const existing = this.candleRequests.get(key);
-    if (existing) return retained ? concat(of(retained.value), existing) : existing;
+    if (existing) {
+      return retained ? concat(of(retained.value), existing) : existing;
+    }
     const epoch = this.candleEpoch;
     const params = new HttpParams()
       .set('sessionId', sessionId)
@@ -184,16 +193,21 @@ export class MarketDataService {
     const request = this.http.get<CandleSeries>(`${this.baseUrl}/candles`, { params }).pipe(
       switchMap((series) => {
         // Live minute changes do not invalidate a valid history response.
-        if (epoch !== this.candleEpoch) return EMPTY;
+        if (epoch !== this.candleEpoch) {
+          return EMPTY;
+        }
         this.candlesCache.delete(key);
         this.candlesCache.set(key, { value: series, expiresAt: Date.now() + 60_000 });
-        while (this.candlesCache.size > 64)
+        while (this.candlesCache.size > 64) {
           this.candlesCache.delete(this.candlesCache.keys().next().value!);
+        }
         return of(series);
       }),
       takeUntil(this.candlesInvalidated),
       finalize(() => {
-        if (this.candleRequests.get(key) === request) this.candleRequests.delete(key);
+        if (this.candleRequests.get(key) === request) {
+          this.candleRequests.delete(key);
+        }
       }),
       // An effect that re-runs unsubscribes before it resubscribes. Counting references here
       // would abort the in-flight request and send an identical one; letting it finish
@@ -229,7 +243,9 @@ export class MarketDataService {
   private reconcileSnapshot(snapshot: MarketSnapshot): MarketSnapshot {
     const latest = this.latest;
     if (!snapshot.stocks || !latest || latest.sessionId !== snapshot.sessionId ||
-        Date.parse(latest.marketTimestamp) <= Date.parse(snapshot.marketTimestamp)) return snapshot;
+        Date.parse(latest.marketTimestamp) <= Date.parse(snapshot.marketTimestamp)) {
+          return snapshot;
+        }
     const prices = new Map(latest.stocks.map((stock) => [stock.symbol, stock]));
     return {
       ...snapshot,
@@ -237,7 +253,9 @@ export class MarketDataService {
       serverTimestamp: latest.serverTimestamp,
       stocks: snapshot.stocks.map((stock) => {
         const live = prices.get(stock.symbol);
-        if (!live) return stock;
+        if (!live) {
+          return stock;
+        }
         // A delayed response must not rewind a live quote or split price from change.
         const open = stock.price - stock.change;
         return {
@@ -252,7 +270,9 @@ export class MarketDataService {
   }
 
   private receiveTick(event: MarketTickEvent, handlers: MarketStreamHandlers): void {
-    if (this.clockRequest) return;
+    if (this.clockRequest) {
+      return;
+    }
     if (this.latest && event.marketTimestamp.slice(0, 10) !== this.latest.marketTimestamp.slice(0, 10)) {
       // The session-open baseline changes on the next trading day.
       this.invalidate();
@@ -268,7 +288,9 @@ export class MarketDataService {
         serverTimestamp: event.serverTimestamp,
         stocks: this.latest.stocks.map((stock) => {
           const price = prices.get(stock.symbol);
-          if (price === undefined) return stock;
+          if (price === undefined) {
+            return stock;
+          }
           const open = stock.price - stock.change;
           return {
             ...stock,
@@ -293,17 +315,29 @@ export class MarketDataService {
       `${this.baseUrl}/stream?sessionId=${encodeURIComponent(sessionId)}`,
     );
     let closed = false;
-    source.onopen = () => { if (!closed) handlers.status(true); };
-    source.onerror = () => { if (!closed) handlers.status(false); };
+    source.onopen = () => {
+      if (!closed) {
+        handlers.status(true);
+      }
+    };
+    source.onerror = () => {
+      if (!closed) {
+        handlers.status(false);
+      }
+    };
     source.addEventListener('market-tick', (event) => {
-      if (closed || (this.activeSession !== undefined && this.activeSession !== sessionId)) return;
+      if (closed || (this.activeSession !== undefined && this.activeSession !== sessionId)) {
+        return;
+      }
       this.receiveTick(
         JSON.parse((event as MessageEvent<string>).data) as MarketTickEvent,
         handlers,
       );
     });
     source.addEventListener('resync', () => {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       this.invalidate();
       handlers.resync();
     });

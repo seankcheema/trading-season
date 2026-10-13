@@ -104,7 +104,9 @@ export function sortAssetRows(
   return [...rows].sort((a, b) => {
     const x = a[key];
     const y = b[key];
-    if (x === y) return a.symbol.localeCompare(b.symbol);
+    if (x === y) {
+      return a.symbol.localeCompare(b.symbol);
+    }
     return (typeof x === 'string' ? x.localeCompare(y as string) : x - (y as number)) * sign;
   });
 }

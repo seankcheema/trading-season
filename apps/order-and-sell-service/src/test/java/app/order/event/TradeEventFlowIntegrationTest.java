@@ -13,6 +13,8 @@ import app.order.dto.OrderRequest;
 import app.order.execution.CashTransactionRepository;
 import app.order.execution.FillRepository;
 import app.order.execution.HoldingMovementRepository;
+import app.record.AuditEntryRecord;
+import app.record.PlatformRecordPublisher;
 import app.support.UserAccountFixture;
 import app.user.User;
 import app.user.UserRepository;
@@ -61,7 +63,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>Two orders on one account produce three messages: the first order is
  * accepted then filled, the second fails a trading rule and goes straight
  * to rejected (BR-06 lifecycle). All three share the account's partition
- * and arrive in that order.
+ * and arrive in that order. Each message carries the order row, and the
+ * fill's carries what the execution wrote; the five audit trail entries the
+ * two orders produced arrive on {@code platform-records}.
  *
  * <p>This is the one context with {@code app.events.enabled=true}. The
  * embedded broker also sets {@code spring.kafka.bootstrap-servers} as a JVM
@@ -76,7 +80,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "spring.datasource.url=jdbc:h2:mem:trade-events;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE"
 })
 @ActiveProfiles("test")
-@EmbeddedKafka(partitions = 3, topics = TradeEventPublisher.TOPIC)
+@EmbeddedKafka(partitions = 3, topics = {TradeEventPublisher.TOPIC, PlatformRecordPublisher.TOPIC})
 @ExtendWith(OutputCaptureExtension.class)
 @Tag("integration")
 class TradeEventFlowIntegrationTest {
@@ -205,11 +209,30 @@ class TradeEventFlowIntegrationTest {
         assertEquals("FILLED", filledBody.get("status").stringValue());
         assertEquals(0, new BigDecimal("50.00").compareTo(filledBody.get("price").decimalValue()));
 
+        // Reporting has no database: the order row and what the fill wrote travel in the message.
+        JsonNode orderRow = filledBody.get("order");
+        assertEquals(filled.getClientReference().toString(), orderRow.get("clientReference").stringValue());
+        assertEquals(instrument.getInstrumentId().intValue(), orderRow.get("instrumentId").intValue());
+        assertEquals("Test Instrument", orderRow.get("instrumentName").stringValue());
+        assertTrue(accepted.get("execution").isNull(), "nothing has executed when the order is accepted");
+        JsonNode execution = filledBody.get("execution");
+        assertEquals(user.getUserId().toString(), execution.get("userId").stringValue());
+        assertEquals(fillRepository.findAll().getFirst().getFillId().intValue(), execution.get("fillId").intValue());
+        assertEquals(cashTransactionRepository.findAll().getFirst().getCashTransactionId().intValue(),
+                execution.get("cashTransactionId").intValue());
+        assertEquals(0, new BigDecimal("-5000.00").compareTo(execution.get("cashAmount").decimalValue()));
+        assertEquals(0, new BigDecimal("95000.00").compareTo(execution.get("availableFunds").decimalValue()));
+        assertEquals(holdingMovementRepository.findAll().getFirst().getHoldingMovementId().intValue(),
+                execution.get("holdingMovementId").intValue());
+        assertEquals(0, new BigDecimal("100").compareTo(execution.get("holdingQuantity").decimalValue()));
+
         JsonNode rejectedBody = objectMapper.readTree(records.get(2).value());
         assertEquals(rejected.getOrderId().intValue(), rejectedBody.get("orderId").intValue());
         assertEquals("REJECTED", rejectedBody.get("status").stringValue());
         assertEquals("SELL", rejectedBody.get("side").stringValue());
         assertEquals(rejected.getRejectionReason(), rejectedBody.get("rejectionReason").stringValue());
+
+        assertEveryAuditTrailEntryWasPublishedAsARecordKeyedByItsId(filled, rejected);
 
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
             String log = output.getAll();
@@ -229,15 +252,37 @@ class TradeEventFlowIntegrationTest {
         });
     }
 
+    /** The broker outlives a test method, so this runs inside the one test that places orders. */
+    private void assertEveryAuditTrailEntryWasPublishedAsARecordKeyedByItsId(Order filled, Order rejected) {
+        // PENDING, ACCEPTED and FILLED for the first order; PENDING and REJECTED for the second.
+        List<ConsumerRecord<String, String>> records = readRecords(PlatformRecordPublisher.TOPIC, 5);
+        List<String> entries = new ArrayList<>();
+        for (ConsumerRecord<String, String> record : records) {
+            JsonNode body = objectMapper.readTree(record.value());
+            assertEquals(AuditEntryRecord.TYPE, body.get("type").stringValue());
+            assertEquals(AuditEntryRecord.TYPE + ":" + body.get("auditId").intValue(), record.key());
+            entries.add(body.get("orderId").intValue() + " " + body.get("eventType").stringValue());
+        }
+        assertEquals(auditTrailRepository.count(), entries.size());
+        assertTrue(entries.containsAll(List.of(
+                filled.getOrderId() + " PENDING", filled.getOrderId() + " ACCEPTED", filled.getOrderId() + " FILLED",
+                rejected.getOrderId() + " PENDING", rejected.getOrderId() + " REJECTED")), entries.toString());
+    }
+
     private List<ConsumerRecord<String, String>> readRecords(int expected) {
-        Map<String, Object> props = KafkaTestUtils.consumerProps(broker, "trade-events-assert", false);
+        List<ConsumerRecord<String, String>> records = readRecords(TradeEventPublisher.TOPIC, expected);
+        records.sort(Comparator.comparingLong(ConsumerRecord::offset));
+        return records;
+    }
+
+    private List<ConsumerRecord<String, String>> readRecords(String topic, int expected) {
+        Map<String, Object> props = KafkaTestUtils.consumerProps(broker, topic + "-assert-" + UUID.randomUUID(), false);
         try (Consumer<String, String> consumer = new DefaultKafkaConsumerFactory<>(
                 props, new StringDeserializer(), new StringDeserializer()).createConsumer()) {
-            broker.consumeFromAnEmbeddedTopic(consumer, TradeEventPublisher.TOPIC);
+            broker.consumeFromAnEmbeddedTopic(consumer, topic);
             List<ConsumerRecord<String, String>> records = new ArrayList<>();
             KafkaTestUtils.getRecords(consumer, Duration.ofSeconds(10), expected).forEach(records::add);
-            records.sort(Comparator.comparingLong(ConsumerRecord::offset));
-            assertEquals(expected, records.size(), "exactly one message per committed status change");
+            assertEquals(expected, records.size(), "exactly one message per committed change on " + topic);
             return records;
         }
     }

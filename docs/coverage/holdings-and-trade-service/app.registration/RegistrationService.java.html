@@ -7,6 +7,8 @@ import app.auth.ForbiddenException;
 import app.user.User;
 import app.user.UserAccountRepository;
 import app.user.UserRepository;
+import app.record.CustomerProfileRecord;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +28,7 @@ public class RegistrationService {
     private final UserRepository userRepository;
     private final AccountService accountService;
     private final UserAccountRepository userAccountRepository;
+    private final ApplicationEventPublisher events;
 
     /**
      * Creates the service.
@@ -34,17 +37,22 @@ public class RegistrationService {
      * @param accountService  service for managing user accounts
      * @param userAccountRepository read-only access to the credential records
      *                              the auth service owns
+     * @param events                publisher of the {@link CustomerProfileRecord} raised for a new profile
      */
-<span class="fc" id="L38">    public RegistrationService(UserRepository userRepository, AccountService accountService, UserAccountRepository userAccountRepository) {</span>
-<span class="fc" id="L39">        this.userRepository = userRepository;</span>
-<span class="fc" id="L40">        this.accountService = accountService;</span>
-<span class="fc" id="L41">        this.userAccountRepository = userAccountRepository;</span>
-<span class="fc" id="L42">    }</span>
+    public RegistrationService(UserRepository userRepository, AccountService accountService,
+<span class="fc" id="L43">                               UserAccountRepository userAccountRepository, ApplicationEventPublisher events) {</span>
+<span class="fc" id="L44">        this.userRepository = userRepository;</span>
+<span class="fc" id="L45">        this.accountService = accountService;</span>
+<span class="fc" id="L46">        this.userAccountRepository = userAccountRepository;</span>
+<span class="fc" id="L47">        this.events = events;</span>
+<span class="fc" id="L48">    }</span>
 
     /**
      * Creates the business account for the authenticated caller from the
      * registration form's profile details. Also creates a default &quot;Main Account&quot;
-     * for the new user.
+     * for the new user. The profile is raised as a {@link CustomerProfileRecord}
+     * and published to Kafka after the commit, as the account is by
+     * {@link AccountService#createAccount}.
      *
      * @param caller  the user identified by the verified access token
      * @param request the profile details
@@ -54,30 +62,31 @@ public class RegistrationService {
      */
     @Transactional
     public User register(AuthenticatedUser caller, RegistrationRequest request) {
-<span class="fc bfc" id="L57" title="All 4 branches covered.">        if (caller.email() == null || !caller.email().equalsIgnoreCase(request.email())) {</span>
-<span class="fc" id="L58">            throw new ForbiddenException(&quot;Email does not match the signed-in account&quot;);</span>
+<span class="fc bfc" id="L65" title="All 4 branches covered.">        if (caller.email() == null || !caller.email().equalsIgnoreCase(request.email())) {</span>
+<span class="fc" id="L66">            throw new ForbiddenException(&quot;Email does not match the signed-in account&quot;);</span>
         }
-<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (userRepository.existsById(caller.userId())) {</span>
-<span class="fc" id="L61">            throw new ConflictException(&quot;Account is already registered&quot;);</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (userRepository.existsById(caller.userId())) {</span>
+<span class="fc" id="L69">            throw new ConflictException(&quot;Account is already registered&quot;);</span>
         }
 
-<span class="fc" id="L64">        User user = new User();</span>
-<span class="fc" id="L65">        user.setUserId(caller.userId());</span>
-<span class="fc" id="L66">        user.setFirstName(request.firstName());</span>
-<span class="fc" id="L67">        user.setMiddleName(request.middleName());</span>
-<span class="fc" id="L68">        user.setLastName(request.lastName());</span>
-<span class="fc" id="L69">        user.setSsn(request.ssn());</span>
-<span class="fc" id="L70">        user.setAddress(request.address());</span>
-<span class="fc" id="L71">        user.setDateOfBirth(request.dateOfBirth());</span>
-<span class="fc" id="L72">        user.setTraderLevel(request.traderLevel());</span>
-<span class="fc" id="L73">        user.setAvailableFunds(request.availableFunds());</span>
-<span class="fc" id="L74">        user.setCreatedAt(OffsetDateTime.now());</span>
-<span class="fc" id="L75">        userRepository.save(user);</span>
+<span class="fc" id="L72">        User user = new User();</span>
+<span class="fc" id="L73">        user.setUserId(caller.userId());</span>
+<span class="fc" id="L74">        user.setFirstName(request.firstName());</span>
+<span class="fc" id="L75">        user.setMiddleName(request.middleName());</span>
+<span class="fc" id="L76">        user.setLastName(request.lastName());</span>
+<span class="fc" id="L77">        user.setSsn(request.ssn());</span>
+<span class="fc" id="L78">        user.setAddress(request.address());</span>
+<span class="fc" id="L79">        user.setDateOfBirth(request.dateOfBirth());</span>
+<span class="fc" id="L80">        user.setTraderLevel(request.traderLevel());</span>
+<span class="fc" id="L81">        user.setAvailableFunds(request.availableFunds());</span>
+<span class="fc" id="L82">        user.setCreatedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L83">        userRepository.save(user);</span>
+<span class="fc" id="L84">        events.publishEvent(CustomerProfileRecord.from(user));</span>
 
         // Create a default &quot;Main Account&quot; for the new user
-<span class="fc" id="L78">        accountService.createDefaultAccountForUser(caller.userId());</span>
+<span class="fc" id="L87">        accountService.createDefaultAccountForUser(caller.userId());</span>
 
-<span class="fc" id="L80">        return user;</span>
+<span class="fc" id="L89">        return user;</span>
     }
 
     /**
@@ -96,7 +105,7 @@ public class RegistrationService {
      */
     @Transactional(readOnly = true)
     public boolean accountExists(String email) {
-<span class="fc" id="L99">        return userAccountRepository.existsByEmailIgnoreCase(email.trim());</span>
+<span class="fc" id="L108">        return userAccountRepository.existsByEmailIgnoreCase(email.trim());</span>
     }
 }
 

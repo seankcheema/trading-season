@@ -2,7 +2,7 @@
 
 import json
 
-from event_store import EventStore
+from event_store import PLATFORM_RECORDS, EventStore
 
 BODY = {
     'orderId': 7, 'status': 'FILLED', 'symbol': 'TEST', 'side': 'BUY',
@@ -59,6 +59,67 @@ class TestAppend:
         lines = read_lines(tmp_path / 'trade-events-p0.jsonl')
         assert lines[0]['accountId'] == 'joanna'
         assert lines[1]['accountId'] is None
+
+
+class TestWhatALineCarries:
+
+    def test_an_order_line_keeps_the_order_row_and_execution_the_event_carried(self, tmp_path):
+        store = EventStore(tmp_path)
+        body = {**BODY, 'order': {'clientReference': 'c0ffee', 'instrumentName': 'Test Corp'},
+                'execution': {'fillId': 9, 'availableFunds': 5000.0}}
+
+        store.append(0, 0, '42', body)
+
+        line = read_lines(tmp_path / 'trade-events-p0.jsonl')[0]
+        assert line['order'] == {'clientReference': 'c0ffee', 'instrumentName': 'Test Corp'}
+        assert line['execution'] == {'fillId': 9, 'availableFunds': 5000.0}
+
+    def test_an_order_line_always_has_the_status_fields_even_when_the_body_lacks_them(self, tmp_path):
+        store = EventStore(tmp_path)
+
+        store.append(0, 0, '42', {'orderId': 7})
+
+        line = read_lines(tmp_path / 'trade-events-p0.jsonl')[0]
+        assert line['orderId'] == 7
+        assert line['status'] is None and line['rejectionReason'] is None and line['occurredAt'] is None
+
+    def test_a_body_cannot_replace_where_the_message_came_from(self, tmp_path):
+        store = EventStore(tmp_path)
+
+        store.append(2, 9, '42', {**BODY, 'partition': 0, 'offset': 1, 'accountId': 7})
+
+        line = read_lines(tmp_path / 'trade-events-p2.jsonl')[0]
+        assert (line['partition'], line['offset'], line['accountId']) == (2, 9, 42)
+
+
+class TestPlatformRecords:
+
+    RECORD = {'type': 'CASH_TRANSFER', 'cashTransactionId': 31, 'accountId': 7, 'amount': -25.0,
+              'reason': 'WITHDRAWAL', 'createdAt': '2026-10-06T09:30:00Z', 'availableFunds': 75.0}
+
+    def test_a_record_line_keeps_its_key_and_every_field_of_the_body(self, tmp_path):
+        store = EventStore(tmp_path, PLATFORM_RECORDS)
+
+        assert store.append(1, 0, 'CASH_TRANSFER:31', self.RECORD) is True
+
+        line = read_lines(tmp_path / 'platform-records-p1.jsonl')[0]
+        assert line == {'partition': 1, 'offset': 0, 'key': 'CASH_TRANSFER:31', **self.RECORD}
+        assert line['accountId'] == 7, 'the account id of the record, not a key parsed as one'
+
+    def test_each_topic_has_its_own_files_and_its_own_offsets(self, tmp_path):
+        trades = EventStore(tmp_path)
+        records = EventStore(tmp_path, PLATFORM_RECORDS)
+
+        trades.append(0, 5, '42', BODY)
+        assert records.append(0, 5, 'CASH_TRANSFER:31', self.RECORD) is True, 'offset 5 of another topic'
+        assert records.append(0, 5, 'CASH_TRANSFER:31', self.RECORD) is False
+
+        assert [event['orderId'] for event in trades.iter_events()] == [7]
+        assert [event['type'] for event in records.iter_events()] == ['CASH_TRANSFER']
+        assert EventStore(tmp_path).last_offset(0) == 5
+        assert EventStore(tmp_path, PLATFORM_RECORDS).last_offset(0) == 5
+        assert sorted(path.name for path in tmp_path.iterdir()) == ['platform-records-p0.jsonl',
+                                                                    'trade-events-p0.jsonl']
 
 
 class TestResume:

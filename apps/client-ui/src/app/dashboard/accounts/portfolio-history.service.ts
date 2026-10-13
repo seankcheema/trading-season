@@ -79,7 +79,9 @@ export class PortfolioHistoryService {
       signature: this.signature(), points: this.points(), domain: this.domain(),
       expiresAt: Date.now() + 60_000,
     });
-    if (this.cache.size > 64) this.cache.delete(this.cache.keys().next().value!);
+    if (this.cache.size > 64) {
+      this.cache.delete(this.cache.keys().next().value!);
+    }
     this.pendingSignature = undefined;
   }
 
@@ -92,7 +94,9 @@ export class PortfolioHistoryService {
     this.accountId = accountId;
     this.timeframe = timeframe;
     const signature = this.signature();
-    if (this.pendingSignature === signature) return;
+    if (this.pendingSignature === signature) {
+      return;
+    }
     const cached = this.cache.get(this.cacheKey());
     if (cached?.signature === signature && !this.pendingCaptures.has(accountId ?? -1)) {
       this.points.set(cached.points);
@@ -111,10 +115,14 @@ export class PortfolioHistoryService {
 
   afterTrade(accountId: number): void {
     for (const key of this.cache.keys()) {
-      if (key.startsWith(`${accountId}:`)) this.cache.delete(key);
+      if (key.startsWith(`${accountId}:`)) {
+        this.cache.delete(key);
+      }
     }
     this.pendingCaptures.add(accountId);
-    if (accountId === this.accountId) this.refresh();
+    if (accountId === this.accountId) {
+      this.refresh();
+    }
   }
 
   refresh(): void {
@@ -128,7 +136,9 @@ export class PortfolioHistoryService {
     }
     this.pendingSignature = this.signature();
     this.refreshing.set(true);
-    if (!this.points().length && !this.cache.has(this.cacheKey())) this.status.set('loading');
+    if (!this.points().length && !this.cache.has(this.cacheKey())) {
+      this.status.set('loading');
+    }
     if (this.simulation) {
       this.loadSimulation(this.simulation);
       return;
@@ -161,7 +171,9 @@ export class PortfolioHistoryService {
       error: () => {
         this.pendingSignature = undefined;
         const cached = this.cache.get(this.cacheKey());
-        if (cached) cached.expiresAt = 0;
+        if (cached) {
+          cached.expiresAt = 0;
+        }
         this.refreshing.set(false);
         this.status.set('error');
       },
@@ -175,9 +187,13 @@ export class PortfolioHistoryService {
     for (const order of trades) {
       const instrument = context.catalogue.find((item) => item.instrumentId === order.instrumentId);
       const symbol = instrument?.simulatedStockSymbol ?? instrument?.ticker;
-      if (symbol) symbols.add(symbol);
+      if (symbol) {
+        symbols.add(symbol);
+      }
     }
-    if (context.rangeSymbol) symbols.add(context.rangeSymbol);
+    if (context.rangeSymbol) {
+      symbols.add(context.rangeSymbol);
+    }
     const requests = [...symbols]
       .filter((symbol) => !context.quoteSymbols?.length || context.quoteSymbols.includes(symbol))
       .map((symbol) => this.market.candles(context.sessionId, symbol, this.timeframe));
@@ -202,7 +218,9 @@ export class PortfolioHistoryService {
           const times = new Set<number>([start, context.at]);
           for (const candle of series.flatMap((item) => item.points)) {
             const time = Date.parse(candle.timestamp);
-            if (time >= start && time <= context.at) times.add(time);
+            if (time >= start && time <= context.at) {
+              times.add(time);
+            }
           }
           for (const order of trades) {
             const time = executionTime(order);
@@ -246,7 +264,9 @@ export class PortfolioHistoryService {
         error: () => {
           this.pendingSignature = undefined;
           const cached = this.cache.get(this.cacheKey());
-          if (cached) cached.expiresAt = 0;
+          if (cached) {
+            cached.expiresAt = 0;
+          }
           this.refreshing.set(false);
           this.status.set('error');
         },

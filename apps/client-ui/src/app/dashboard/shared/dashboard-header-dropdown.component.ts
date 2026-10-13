@@ -69,7 +69,9 @@ export class DashboardHeaderDropdownComponent {
 
   protected onEscape(event: KeyboardEvent): void {
     const details = event.currentTarget as HTMLDetailsElement;
-    if (!details.open) return;
+    if (!details.open) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     details.open = false;

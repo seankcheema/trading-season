@@ -7,6 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service.js';
 import { User } from '../users/user.entity.js';
+import type { UserRole } from '../users/user-role.js';
 import { CreateUserDto } from '../users/dto/create-user.dto.js';
 import { AuthTokenDto } from './dto/auth-token.dto.js';
 import { JwtPayload } from './dto/jwt-payload.dto.js';
@@ -171,7 +172,7 @@ export class AuthService {
   private issueTokens(
     userId: string,
     email: string,
-    roles: Array<'ADMIN' | 'TRADER'>,
+    roles: UserRole[],
     refreshToken: string,
   ): AuthTokenDto {
     const now = Math.floor(Date.now() / 1000);

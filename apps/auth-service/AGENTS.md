@@ -5,5 +5,6 @@
 - This service owns no migrations. Its tables come from Flyway in db/migrations; add migrations there instead of editing applied ones, and leave synchronize disabled.
 - Access tokens are RS256 JWTs; refresh tokens are opaque, hashed server-side, rotated, and revocable. Do not interchange them.
 - Preserve generic credential errors and existing failed-login protections. Never add fallback signing keys.
+- Every write to `user_accounts` publishes the sign-in through `SignInPublisher`; the reporting service has no other way to learn of it. Never put the password hash in a record, and never let publishing delay or fail a login.
 - Use ephemeral keys in tests. Verify contract changes against controller, strategy, service, and tests together; logout takes a refresh token in the body and needs no access token.
 - Use the [local README](README.md) for setup and commands.

@@ -68,9 +68,14 @@ services:
       # it needs the migrations applied before its first query.
       db-init:
         condition: service_completed_successfully
+      # It publishes every sign-in it creates or changes to platform-records,
+      # and auto-creation is off, so the topic must exist first.
+      kafka-init:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: development
       PORT: 3001
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       DB_HOST: db
       DB_PORT: 5432
       DB_NAME: trading_season
@@ -83,10 +88,13 @@ services:
     networks:
       - ci-network
 
-  # Event broker for the trade-events topic. Order and Sell publishes one
+  # Event broker for two topics. trade-events: Order and Sell publishes one
   # message per committed order status change; three consumer groups read it:
   # order-status-pusher (Order and Sell), portfolio-valuation-capture (Holdings
-  # and Trade) and reporting-ingester (reporting-consumer).
+  # and Trade) and reporting-ingester (reporting-consumer). platform-records:
+  # the auth service and both Java services publish the current state of the
+  # rows reporting shows that an order status does not carry;
+  # reporting-ingester is its only reader.
   kafka:
     # Single-node KRaft: no ZooKeeper, and the controller quorum is this same
     # node. Sized for a developer machine, not durability -- one replica of
@@ -174,13 +182,21 @@ services:
     # events already written and events written afterwards would land in
     # different partitions for the same account.
     # --if-not-exists makes a rerun a no-op rather than an error.
+    # platform-records is compacted: each message is the current state of one
+    # row, keyed by its type and id, so only the latest per key is ever needed.
     command:
       - |
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
           --create --if-not-exists --topic trade-events \
           --partitions 3 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+          --create --if-not-exists --topic platform-records \
+          --partitions 3 --replication-factor 1 \
+          --config cleanup.policy=compact
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
           --describe --topic trade-events
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+          --describe --topic platform-records
     networks:
       - ci-network
 
@@ -245,15 +261,13 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8083:8083"
+    # No database: everything it serves is read from reporting_files.
     depends_on:
-      db-init:
-        condition: service_completed_successfully
       auth-service:
         condition: service_started
     environment:
       FLASK_ENV: production
       FLASK_DEBUG: "false"
-      DATABASE_URL: postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season
       AUTH_SERVICE_URL: http://auth-service:3001
       AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200,http://localhost:4300}
@@ -276,15 +290,13 @@ services:
       dockerfile: Dockerfile
     command: ["python", "consumer.py"]
     depends_on:
-      db-init:
-        condition: service_completed_successfully
       kafka-init:
         condition: service_completed_successfully
     environment:
       FLASK_ENV: production
-      DATABASE_URL: postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_TRADE_EVENTS_TOPIC: trade-events
+      KAFKA_PLATFORM_RECORDS_TOPIC: platform-records
       REPORTING_CONSUMER_GROUP: reporting-ingester
       REPORTING_FILES_DIR: /data/reporting
       SCHEDULER_ENABLED: "true"
