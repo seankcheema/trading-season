@@ -44,3 +44,30 @@ describe('DashboardHeaderDropdownComponent keyboard interaction', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 });
+
+@Component({
+  imports: [DashboardHeaderDropdownComponent],
+  providers: [provideIcons({ lucideChevronDown })],
+  template: `<app-dashboard-header-dropdown iconName="lucideChevronDown" label="Loading accounts…"
+    ariaLabel="Select account" [loading]="loading()" />`,
+})
+class LoadingHost {
+  readonly loading = signal(true);
+}
+
+describe('DashboardHeaderDropdownComponent loading label', () => {
+  it('shows a placeholder in place of a label that is not known yet, and still names it', () => {
+    const fixture = TestBed.createComponent(LoadingHost);
+    fixture.detectChanges();
+    const summary: HTMLElement = fixture.nativeElement.querySelector('summary');
+
+    expect(summary.querySelector('.skeleton')?.getAttribute('aria-hidden')).toBe('true');
+    expect(summary.querySelector('.sr-only')?.textContent).toBe('Loading accounts…');
+    expect(summary.querySelector('.truncate')).toBeNull();
+
+    fixture.componentInstance.loading.set(false);
+    fixture.detectChanges();
+    expect(summary.querySelector('.skeleton')).toBeNull();
+    expect(summary.querySelector('.truncate')?.textContent).toBe('Loading accounts…');
+  });
+});

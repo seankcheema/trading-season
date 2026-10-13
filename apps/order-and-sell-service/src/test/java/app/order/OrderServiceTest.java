@@ -95,6 +95,7 @@ class OrderServiceTest {
         // The auth service creates the account before it issues a token.
         UUID userId = UUID.randomUUID();
         UserAccountFixture.createActiveAccount(jdbcTemplate, userId, "trader@example.com");
+        UserAccountFixture.acceptCurrentTerms(jdbcTemplate, userId);
 
         // Create test user; funds belong to the user (KAN-93)
         user = new User();

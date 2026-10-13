@@ -145,9 +145,28 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
                 </div>
               </li>
             } @empty {
-              <li class="text-muted-foreground px-2 py-8 text-center text-sm">
-                {{ loading() ? 'Loading transactions…' : 'No transactions match these filters.' }}
-              </li>
+              @if (loading()) {
+                <li class="sr-only" role="status">Loading transactions…</li>
+                @for (row of skeletonRows; track row) {
+                  <li
+                    class="history-grid grid items-center gap-2 px-2 py-2.5"
+                    aria-hidden="true"
+                    data-testid="transactions-row-skeleton"
+                  >
+                    <span class="skeleton h-5 w-4/5"></span>
+                    @for (cell of [1, 2, 3]; track cell) {
+                      <span class="skeleton h-5 w-3/5"></span>
+                    }
+                    @for (cell of [1, 2, 3]; track cell) {
+                      <span class="skeleton ml-auto h-5 w-3/5"></span>
+                    }
+                  </li>
+                }
+              } @else {
+                <li class="text-muted-foreground px-2 py-8 text-center text-sm">
+                  No transactions match these filters.
+                </li>
+              }
             }
           </ul>
         </div>
@@ -184,6 +203,8 @@ export class TransactionsDialogComponent implements OnInit {
   protected readonly sortKey = signal<HistorySortKey>('date');
   protected readonly sortDirection = signal<SortDirection>('desc');
   protected readonly loading = signal(true);
+  // How many placeholder rows stand in for the table while it loads.
+  protected readonly skeletonRows = [1, 2, 3, 4, 5, 6] as const;
   protected readonly loadError = signal(false);
 
   // Starts from the few transfers the dashboard already holds, then swaps in the full ledger.
@@ -250,7 +271,9 @@ export class TransactionsDialogComponent implements OnInit {
 
   // Only cash transfers carry a +/- sign; a trade's value is its plain notional amount.
   protected sign(row: HistoryRow): string {
-    if (row.kind !== 'cash') return '';
+    if (row.kind !== 'cash') {
+      return '';
+    }
     return row.positive ? '+' : '-';
   }
 

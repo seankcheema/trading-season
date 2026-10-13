@@ -21,7 +21,9 @@ export class HlmFieldDescription implements OnDestroy {
   private readonly _cleanup: EffectRef | null = this._a11y
     ? effect(() => {
         const a11y = this._a11y;
-        if (!a11y) return;
+        if (!a11y) {
+          return;
+        }
 
         const id = this.id();
         if (this._registeredId && this._registeredId !== id) {

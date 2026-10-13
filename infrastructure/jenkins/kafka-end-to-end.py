@@ -1,10 +1,12 @@
 """
-One trade order through the trade-events topic and its three consumers.
+One trade order through the trade-events topic and its three consumers, and
+into a reporting service that has no database.
 
 Run inside the reporting-consumer container of the local Compose stack
 (the Jenkins "Kafka End-to-End Flow" stage does this), where every service
-is reachable by its Compose name and the reporting files and database are
-at hand:
+is reachable by its Compose name and the reporting files are at hand. The
+trading database is not: nothing in this container can reach it, which is
+the point, and the first step checks it.
 
     docker compose ... exec -T reporting-consumer python - < infrastructure/jenkins/kafka-end-to-end.py
 
@@ -13,9 +15,16 @@ order, and then verifies what each consumer did with the two messages
 (ACCEPTED and FILLED) the order published:
 
   order-status-pusher          the stream received both status frames
-  portfolio-valuation-capture  a portfolio valuation row exists for the account
+  portfolio-valuation-capture  the account's portfolio history has a valuation
   reporting-ingester           both events are in the event files, a report run
                                counts the fill, and the web service serves it
+                               to an analyst and refuses it to the trader
+
+It then checks what reached reporting on the platform-records topic, each
+record from the service that owns the row: the sign-in from the auth service,
+the profile, account and valuation from Holdings and Trade, the audit trail
+from Order and Sell. The console, served to the seeded development admin,
+must show the trader, the order, its ledger impact and its audit trail.
 
 Every finding is printed as a "[KAFKA-E2E] step: result" line so the Jenkins
 console and the archived evidence file read as a plain checklist. The exit
@@ -36,6 +45,18 @@ ORDERS = 'http://order-and-sell-service:8081'
 HOLDINGS = 'http://holdings-and-trade-service:8082'
 REPORTING = 'http://reporting-service:8083'
 WAIT_SECONDS = 45
+
+# Report runs are served to the ANALYST role only, and registration only ever
+# creates traders. This is the development analyst the auth service seeds when
+# NODE_ENV is not production, which is how the Compose stack runs it.
+ANALYST_EMAIL = 'analyst@example.com'
+ANALYST_PASSWORD = 'analyst123'
+# The console is served to the ADMIN role only; the auth service seeds this one too.
+ADMIN_EMAIL = 'reporting-admin@example.com'
+ADMIN_PASSWORD = 'admin123'
+OPENING_FUNDS = 50000.00
+ORDER_QUANTITY = 10
+ORDER_PRICE = 25.00
 
 # The chart library comments on string axis labels at INFO level; keep the
 # checklist readable.
@@ -105,7 +126,25 @@ class StreamReader(threading.Thread):
             self.opened.set()
 
 
+def assert_no_database():
+    """The reporting image must have neither a database setting nor a driver to use one with."""
+    from app import app
+
+    configured = [name for name in app.config if 'DATABASE_URL' in name]
+    if configured or app.config['SQLALCHEMY_DATABASE_URI'] != 'sqlite:///:memory:':
+        fail('reporting has no database', f'the service is configured with {configured or "a database URI"}')
+    for driver in ('psycopg', 'psycopg2', 'pg8000', 'asyncpg'):
+        try:
+            __import__(driver)
+        except ImportError:
+            continue
+        fail('reporting has no database', f'the {driver} driver is installed in the reporting image')
+    say('reporting has no database', 'no database setting and no PostgreSQL driver in the reporting image; '
+                                     'its tables are an in-memory read model built from the event files')
+
+
 def main():
+    assert_no_database()
     email = f'jenkins-{uuid.uuid4().hex[:8]}@example.com'
     password = 'Jenkins-' + uuid.uuid4().hex[:12]
 
@@ -118,9 +157,14 @@ def main():
     status, body = call('POST', f'{HOLDINGS}/api/registration', {
         'email': email, 'firstName': 'Jenkins', 'lastName': 'Pipeline', 'ssn': '123-45-6789',
         'address': '1 Build Street', 'dateOfBirth': '1990-01-01', 'traderLevel': 'INTERMEDIATE',
-        'availableFunds': 50000.00}, token)
+        'availableFunds': OPENING_FUNDS}, token)
     if status != 201:
         fail('register trader profile', f'holdings-and-trade-service answered {status}: {body}')
+    status, body = call('PUT', f'{HOLDINGS}/api/users/me/terms-acceptance',
+                        {'termsVersion': '2026-10-12'}, token)
+    if status != 200 or not body.get('termsAccepted'):
+        fail('accept platform terms', f'holdings-and-trade-service answered {status}: {body}')
+    say('accept platform terms', 'current platform terms accepted for the test trader')
     status, accounts = call('GET', f'{HOLDINGS}/api/me/accounts', token=token)
     if status != 200 or not accounts:
         fail('default account', f'holdings-and-trade-service answered {status}: {accounts}')
@@ -143,7 +187,7 @@ def main():
 
     status, order = call('POST', f'{ORDERS}/api/orders', {
         'accountId': account_id, 'instrumentId': instrument['instrumentId'], 'orderType': 'BUY',
-        'quantity': 10, 'indicativePrice': 25.00, 'clientReference': str(uuid.uuid4())}, token)
+        'quantity': ORDER_QUANTITY, 'indicativePrice': ORDER_PRICE, 'clientReference': str(uuid.uuid4())}, token)
     if status != 201 or order.get('status') != 'FILLED':
         fail('place order', f'order-and-sell-service answered {status}: {order}')
     order_id = order['orderId']
@@ -157,23 +201,21 @@ def main():
     say('consumer order-status-pusher', f'the stream delivered ACCEPTED then FILLED for order {order_id}')
 
     from app import app
-    from models import db
-    from sqlalchemy import text
+    from models import PortfolioValuation, db
+    from read_model import read_model
     import report_run
-    import run_store
+
+    # The capture consumer wrote to the trading database, which this container
+    # cannot reach, so ask the service that owns the row.
+    def captured_points():
+        status, points = call('GET', f'{HOLDINGS}/api/accounts/{account_id}/portfolio-history?timeframe=1D',
+                              token=token)
+        return points if status == 200 and points else None
+    points = wait_for('consumer portfolio-valuation-capture', captured_points)
+    say('consumer portfolio-valuation-capture',
+        f'the portfolio history of account {account_id} has {len(points)} point(s), latest value {points[-1]["value"]}')
 
     with app.app_context():
-        def valuation_rows():
-            return db.session.execute(
-                text('SELECT count(*) FROM portfolio_valuations WHERE account_id = :account'),
-                {'account': account_id}).scalar()
-        rows = wait_for('consumer portfolio-valuation-capture', valuation_rows)
-        value = db.session.execute(
-            text('SELECT portfolio_value FROM portfolio_valuations WHERE account_id = :account '
-                 'ORDER BY observed_at DESC LIMIT 1'), {'account': account_id}).scalar()
-        say('consumer portfolio-valuation-capture',
-            f'{rows} valuation row(s) for account {account_id}, latest value {value}')
-
         files_dir = app.config['REPORTING_FILES_DIR']
 
         def stored_statuses():
@@ -182,20 +224,98 @@ def main():
         wait_for('consumer reporting-ingester', stored_statuses)
         say('consumer reporting-ingester', f'both events of order {order_id} are in the event files')
 
-        report = report_run.run_report(files_dir, db.session)
-        db.session.remove()
+        # The same capture, as it reached reporting: published by Holdings and
+        # Trade to platform-records, stored by the consumer, applied to the read model.
+        def valuation_in_read_model():
+            with read_model.lock:
+                try:
+                    read_model.sync(db.session, files_dir)
+                    row = db.session.query(PortfolioValuation).filter_by(account_id=account_id).first()
+                    return float(row.portfolio_value) if row is not None else None
+                finally:
+                    db.session.rollback()
+        # Zero is a real value, so compare with None instead of using wait_for's truthiness.
+        deadline = time.monotonic() + WAIT_SECONDS
+        value = valuation_in_read_model()
+        while value is None and time.monotonic() < deadline:
+            time.sleep(1)
+            value = valuation_in_read_model()
+        if value is None:
+            fail('valuation reached reporting', f'no PORTFOLIO_VALUATION record for account {account_id} '
+                                                f'after {WAIT_SECONDS} seconds')
+        say('valuation reached reporting', f'the read model holds a portfolio value of {value} for account '
+                                           f'{account_id}, from the platform-records topic')
+
+        with read_model.lock:
+            read_model.sync(db.session, files_dir)
+            report = report_run.run_report(files_dir, db.session)
+            db.session.remove()
     say('report run', f"run {report['runId']}: {report['eventCount']} events, "
                       f"{report['statusCounts']['FILLED']} filled, {report['statusCounts']['REJECTED']} rejected, "
                       f"charts {', '.join(report['files'])}")
 
-    status, served = call('GET', f'{REPORTING}/api/reporting/runs/latest', token=token)
+    status, refused = call('GET', f'{REPORTING}/api/reporting/runs/latest', token=token)
+    if status != 403:
+        fail('report refused to a trader', f'reporting-service answered {status} to a TRADER token: {refused}')
+    say('report refused to a trader', 'GET /api/reporting/runs/latest answers 403 to the trader who placed the order')
+
+    status, body = call('POST', f'{AUTH}/auth/login', {'email': ANALYST_EMAIL, 'password': ANALYST_PASSWORD})
+    if status != 201 or 'accessToken' not in body:
+        fail('analyst sign-in', f'auth-service answered {status} for the seeded analyst {ANALYST_EMAIL}: {body}')
+    analyst_token = body['accessToken']
+    say('analyst sign-in', f'{ANALYST_EMAIL} signed in with the ANALYST role')
+
+    status, served = call('GET', f'{REPORTING}/api/reporting/runs/latest', token=analyst_token)
     if status != 200 or served.get('runId') != report['runId']:
         fail('report served', f'reporting-service answered {status}: {served}')
     symbols = [row['symbol'] for row in served['volumeBySymbol']]
     if instrument['ticker'] not in symbols:
         fail('report served', f'{instrument["ticker"]} missing from volumeBySymbol {symbols}')
-    say('report served', f"GET /api/reporting/runs/latest returns run {served['runId']} with {instrument['ticker']} in its volume table")
-    say('result', 'one order, two messages, three consumers: all verified')
+    say('report served', f"GET /api/reporting/runs/latest returns run {served['runId']} to the analyst with {instrument['ticker']} in its volume table")
+
+    account_names = [row.get('accountName') for row in served['tradesPerAccount'] if row['accountId'] == account_id]
+    if account_names != ['Main Account']:
+        fail('report names the account', f'tradesPerAccount names account {account_id} as {account_names}')
+    say('report names the account', f'the run labels account {account_id} "Main Account (Jenkins Pipeline)" '
+                                    'from the account and profile records, not from the database')
+
+    status, body = call('POST', f'{AUTH}/auth/login', {'email': ADMIN_EMAIL, 'password': ADMIN_PASSWORD})
+    if status != 201 or 'accessToken' not in body:
+        fail('admin sign-in', f'auth-service answered {status} for the seeded admin {ADMIN_EMAIL}: {body}')
+    admin_token = body['accessToken']
+    say('admin sign-in', f'{ADMIN_EMAIL} signed in with the ADMIN role')
+
+    funds_left = OPENING_FUNDS - ORDER_QUANTITY * ORDER_PRICE
+
+    def customer_in_console():
+        status, listed = call('GET', f'{REPORTING}/api/reporting/customers', token=admin_token)
+        if status != 200:
+            return None
+        return next((row for row in listed['customers'] if row['email'] == email and row['cash'] == funds_left), None)
+    customer = wait_for('console shows the customer', customer_in_console)
+    if (customer['name'], customer['traderLevel'], customer['accounts']) != ('Jenkins Pipeline', 'INTERMEDIATE', 1):
+        fail('console shows the customer', f'the console lists {customer}')
+    say('console shows the customer', f"{customer['email']} is listed as {customer['name']}, {customer['traderLevel']}, "
+                                      f"cash {customer['cash']}: sign-in from auth, profile and account from "
+                                      "Holdings and Trade, cash from the fill")
+
+    def order_in_console():
+        status, detail = call('GET', f'{REPORTING}/api/reporting/orders/{order_id}', token=admin_token)
+        if status != 200 or len(detail.get('audit', [])) < 3:
+            return None
+        return detail
+    detail = wait_for('console shows the order', order_in_console)
+    trail = [entry['eventType'] for entry in detail['audit']]
+    ledger = detail['ledger']
+    if (detail['status'], trail) != ('FILLED', ['PENDING', 'ACCEPTED', 'FILLED']):
+        fail('console shows the order', f"order {order_id} is {detail['status']} with audit trail {trail}")
+    if (ledger['cashBefore'], ledger['cashAfter'], ledger['holdingAfter']) != (OPENING_FUNDS, funds_left,
+                                                                               float(ORDER_QUANTITY)):
+        fail('console shows the order', f'order {order_id} has ledger {ledger}')
+    say('console shows the order', f"order {order_id} is FILLED with audit trail {' > '.join(trail)}, cash "
+                                   f"{ledger['cashBefore']} to {ledger['cashAfter']}, holding "
+                                   f"{ledger['holdingBefore']} to {ledger['holdingAfter']}")
+    say('result', 'one order, two messages, three consumers, and a console built from Kafka alone: all verified')
 
 
 if __name__ == '__main__':

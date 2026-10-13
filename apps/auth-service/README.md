@@ -5,6 +5,7 @@ NestJS service that owns credentials and sessions. It issues RS256 access tokens
 - Port 3001, no `/api` prefix
 - Swagger UI at http://localhost:3001/api/docs (spec at `/api-json`)
 - Tables in the shared `trading_season` database: `user_accounts` and `refresh_tokens`. Their schema lives in [db/migrations](../../db/migrations); this service runs no migrations and leaves TypeORM `synchronize` off.
+- Publishes every change to a sign-in to the Kafka `platform-records` topic, because the [Reporting Service](../reporting-service/README.md) shows sign-ins and their locks and has no database connection to read them with; see [What reporting receives](#what-reporting-receives).
 
 ## Endpoints
 
@@ -21,10 +22,31 @@ The token response is `accessToken`, `refreshToken`, and `expiresIn` (900). Erro
 
 ## Tokens and sessions
 
-- **Access token**: RS256 JWT valid for 15 minutes with claims `sub` (user UUID), `email`, `roles` (`ADMIN` or `TRADER`), `iss`, `iat`, `exp`. It stays valid until expiry even after logout.
+- **Access token**: RS256 JWT valid for 15 minutes with claims `sub` (user UUID), `email`, `roles` (one of `TRADER`, `ANALYST` or `ADMIN`), `iss`, `iat`, `exp`. It stays valid until expiry even after logout.
 - **Refresh token**: opaque 256-bit random string valid for 7 days. Only its SHA-256 hash is stored. It rotates on every use, and presenting an already-used token revokes every live session for that user.
 - **Lockout**: five failed logins lock the account for 15 minutes. Unknown account, wrong password, and locked all return the same generic 401, and each costs one bcrypt comparison so timing does not reveal which case occurred.
 - Send refresh tokens in the JSON body; cookies are not used. Logout needs no access token, so a session can be ended after the access token expires.
+
+## Roles
+
+Each account has one role, stored in `user_accounts.user_role` and carried in the token's `roles` claim. This service only issues the claim; the services that receive the token decide what a role may do.
+
+| Role | Assigned | Used by |
+| --- | --- | --- |
+| `TRADER` | Every registration | The default; the trading services do not check roles |
+| `ANALYST` | Never by registration | The [Reporting Service](../reporting-service/README.md) serves its report runs to this role, and nothing else, so an analyst sees only Report runs in the [Reporting UI](../reporting-ui/README.md) |
+| `ADMIN` | Never by registration | The [Reporting Service](../reporting-service/README.md) serves this role everything: the report runs and the console's activity, customers and orders. An admin sees every screen of the [Reporting UI](../reporting-ui/README.md) |
+
+`POST /auth/register` takes no role and rejects a body that carries one, so a caller cannot choose their own. To make an existing account an analyst or an admin, update it in the database:
+
+```sql
+UPDATE user_accounts SET user_role = 'ANALYST' WHERE email = 'someone@example.com';
+UPDATE user_accounts SET user_role = 'ADMIN' WHERE email = 'someone-else@example.com';
+```
+
+Neither role is a customer: the Reporting Service leaves both out of its customer list.
+
+The change reaches the account's tokens at its next sign-in or refresh, so within 15 minutes for a session that is already open. The allowed values are fixed by a check constraint in [db/migrations](../../db/migrations) and by [user-role.ts](src/users/user-role.ts); a new role needs a migration and an entry there.
 
 ## Design
 
@@ -88,6 +110,7 @@ classDiagram
     WellKnownController --> JwtKeysService
     AuthService --> UsersService
     AuthService --> RefreshTokensService
+    UsersService --> SignInPublisher : publishes each change
     AuthService ..> JwtKeysService : signs with
     UsersService --> User
     RefreshTokensService --> RefreshToken
@@ -174,6 +197,16 @@ sequenceDiagram
     end
 ```
 
+## What reporting receives
+
+`SignInPublisher` sends the current state of a sign-in to `platform-records` whenever this service changes it: a registration, a development sign-in it seeds, each failed attempt, a lock, and the login that clears a counter or a lock. A login that had nothing to clear publishes nothing.
+
+| Key | Body |
+| --- | --- |
+| `SIGN_IN:<userId>` | `type` (`SIGN_IN`), `userId`, `email`, `role`, `failedLoginAttempts`, `lockedUntil`, `createdAt`, `updatedAt` |
+
+The body is built field by field and never includes the password hash. Publishing cannot change the outcome of a login: `publish` returns at once, messages are sent one after another in the background, and a broker that is down is logged, not surfaced to the caller. The topic is compacted and shared with the Java services; see the [Reporting Service README](../reporting-service/README.md#what-arrives).
+
 ## Local setup
 
 ```sh
@@ -189,7 +222,7 @@ node scripts/generate-dev-keys.mjs >> .env
 
 Keep `DB_HOST=localhost`, `DB_PORT=5432`, `DB_NAME=trading_season` and the matching `DB_USER` and `DB_PASSWORD`. Start a migrated database first (see [db/README.md](../../db/README.md)), then run `npm run start:dev`. The service refuses to start without both JWT keys. The Java services must use the same issuer as `JWT_ISSUER`.
 
-In development the service seeds `admin@example.com` / `admin123`; production never does.
+In development the service seeds three sign-ins, each only if its email is not already there: `admin@example.com` / `admin123`, a `TRADER` for the Client UI despite its name; `analyst@example.com` / `analyst123`, an `ANALYST` for the Reporting UI's report runs; and `reporting-admin@example.com` / `admin123`, an `ADMIN` for every screen of the Reporting UI. Production never seeds any of them.
 
 | Variable | Purpose |
 | --- | --- |
@@ -198,6 +231,8 @@ In development the service seeds `admin@example.com` / `admin123`; production ne
 | `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY` | RS256 key pair with literal `\n` escapes. Required, no fallback |
 | `JWT_ISSUER` | `iss` claim, must match the Java services' `AUTH_JWT_ISSUER` |
 | `CORS_ORIGINS` | Comma-separated allowed browser origins, default `http://localhost:4200` |
+| `KAFKA_BOOTSTRAP_SERVERS` | Broker for `platform-records`, `localhost:29092` on the host and `kafka:9092` in Compose. Unset, nothing is published |
+| `EVENTS_ENABLED` | `false` turns publishing off whatever the broker setting, for running without a broker. Default `true` |
 
 ## Commands
 

@@ -7,6 +7,8 @@ import app.auth.ForbiddenException;
 import app.user.User;
 import app.user.UserAccountRepository;
 import app.user.UserRepository;
+import app.record.CustomerProfileRecord;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +28,7 @@ public class RegistrationService {
     private final UserRepository userRepository;
     private final AccountService accountService;
     private final UserAccountRepository userAccountRepository;
+    private final ApplicationEventPublisher events;
 
     /**
      * Creates the service.
@@ -34,17 +37,22 @@ public class RegistrationService {
      * @param accountService  service for managing user accounts
      * @param userAccountRepository read-only access to the credential records
      *                              the auth service owns
+     * @param events                publisher of the {@link CustomerProfileRecord} raised for a new profile
      */
-    public RegistrationService(UserRepository userRepository, AccountService accountService, UserAccountRepository userAccountRepository) {
+    public RegistrationService(UserRepository userRepository, AccountService accountService,
+                               UserAccountRepository userAccountRepository, ApplicationEventPublisher events) {
         this.userRepository = userRepository;
         this.accountService = accountService;
         this.userAccountRepository = userAccountRepository;
+        this.events = events;
     }
 
     /**
      * Creates the business account for the authenticated caller from the
      * registration form's profile details. Also creates a default "Main Account"
-     * for the new user.
+     * for the new user. The profile is raised as a {@link CustomerProfileRecord}
+     * and published to Kafka after the commit, as the account is by
+     * {@link AccountService#createAccount}.
      *
      * @param caller  the user identified by the verified access token
      * @param request the profile details
@@ -73,6 +81,7 @@ public class RegistrationService {
         user.setAvailableFunds(request.availableFunds());
         user.setCreatedAt(OffsetDateTime.now());
         userRepository.save(user);
+        events.publishEvent(CustomerProfileRecord.from(user));
 
         // Create a default "Main Account" for the new user
         accountService.createDefaultAccountForUser(caller.userId());

@@ -30,7 +30,9 @@ import java.time.OffsetDateTime;
  * not at all (BR-09); an unexpected failure rolls back only this execution
  * and leaves the accepted order on record. The committed outcome is raised
  * as an {@link OrderStatusEvent} and published to Kafka after this
- * transaction commits.
+ * transaction commits; a fill's event carries the fill, both ledger postings
+ * and the balances they left, because the reporting service reads none of
+ * those tables.
  *
  * &lt;p&gt;&lt;b&gt;Simplification:&lt;/b&gt; this fills at the order's client-submitted
  * {@code indicativePrice} rather than a live market quote — business-backend
@@ -88,17 +90,17 @@ public class OrderExecutionService {
                                   CashTransactionRepository cashTransactionRepository,
                                   HoldingMovementRepository holdingMovementRepository,
                                   AuditTrailService auditTrailService,
-<span class="fc" id="L91">                                  ApplicationEventPublisher events) {</span>
-<span class="fc" id="L92">        this.accountRepository = accountRepository;</span>
-<span class="fc" id="L93">        this.userRepository = userRepository;</span>
-<span class="fc" id="L94">        this.holdingRepository = holdingRepository;</span>
-<span class="fc" id="L95">        this.orderRepository = orderRepository;</span>
-<span class="fc" id="L96">        this.fillRepository = fillRepository;</span>
-<span class="fc" id="L97">        this.cashTransactionRepository = cashTransactionRepository;</span>
-<span class="fc" id="L98">        this.holdingMovementRepository = holdingMovementRepository;</span>
-<span class="fc" id="L99">        this.auditTrailService = auditTrailService;</span>
-<span class="fc" id="L100">        this.events = events;</span>
-<span class="fc" id="L101">    }</span>
+<span class="fc" id="L93">                                  ApplicationEventPublisher events) {</span>
+<span class="fc" id="L94">        this.accountRepository = accountRepository;</span>
+<span class="fc" id="L95">        this.userRepository = userRepository;</span>
+<span class="fc" id="L96">        this.holdingRepository = holdingRepository;</span>
+<span class="fc" id="L97">        this.orderRepository = orderRepository;</span>
+<span class="fc" id="L98">        this.fillRepository = fillRepository;</span>
+<span class="fc" id="L99">        this.cashTransactionRepository = cashTransactionRepository;</span>
+<span class="fc" id="L100">        this.holdingMovementRepository = holdingMovementRepository;</span>
+<span class="fc" id="L101">        this.auditTrailService = auditTrailService;</span>
+<span class="fc" id="L102">        this.events = events;</span>
+<span class="fc" id="L103">    }</span>
 
     /**
      * Executes an accepted order in a new transaction.
@@ -113,86 +115,89 @@ public class OrderExecutionService {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Order execute(Order order, Instrument instrument) {
-<span class="fc" id="L116">        boolean isBuy = Order.TYPE_BUY.equals(order.getOrderType());</span>
-<span class="fc" id="L117">        BigDecimal fillPrice = order.getIndicativePrice();</span>
-<span class="fc" id="L118">        BigDecimal tradeValue = order.getQuantity().multiply(fillPrice);</span>
+<span class="fc" id="L118">        boolean isBuy = Order.TYPE_BUY.equals(order.getOrderType());</span>
+<span class="fc" id="L119">        BigDecimal fillPrice = order.getIndicativePrice();</span>
+<span class="fc" id="L120">        BigDecimal tradeValue = order.getQuantity().multiply(fillPrice);</span>
 
-<span class="fc" id="L120">        Account account = accountRepository.findById(order.getAccountId())</span>
-<span class="fc" id="L121">                .orElseThrow(() -&gt; new IllegalStateException(</span>
-<span class="fc" id="L122">                        &quot;Account &quot; + order.getAccountId() + &quot; disappeared mid-execution&quot;));</span>
-<span class="fc" id="L123">        User user = userRepository.findByIdForUpdate(account.getUserId())</span>
-<span class="pc" id="L124">                .orElseThrow(() -&gt; new IllegalStateException(</span>
-<span class="nc" id="L125">                        &quot;Account &quot; + account.getAccountId() + &quot; has no owning user&quot;));</span>
+<span class="fc" id="L122">        Account account = accountRepository.findById(order.getAccountId())</span>
+<span class="fc" id="L123">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+<span class="fc" id="L124">                        &quot;Account &quot; + order.getAccountId() + &quot; disappeared mid-execution&quot;));</span>
+<span class="fc" id="L125">        User user = userRepository.findByIdForUpdate(account.getUserId())</span>
+<span class="pc" id="L126">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+<span class="nc" id="L127">                        &quot;Account &quot; + account.getAccountId() + &quot; has no owning user&quot;));</span>
 
-<span class="fc bfc" id="L127" title="All 4 branches covered.">        if (isBuy &amp;&amp; tradeValue.compareTo(user.getAvailableFunds()) &gt; 0) {</span>
-<span class="fc" id="L128">            return reject(order, instrument, &quot;BR-09: insufficient funds at execution time&quot;);</span>
+<span class="fc bfc" id="L129" title="All 4 branches covered.">        if (isBuy &amp;&amp; tradeValue.compareTo(user.getAvailableFunds()) &gt; 0) {</span>
+<span class="fc" id="L130">            return reject(order, instrument, &quot;BR-09: insufficient funds at execution time&quot;);</span>
         }
 
-<span class="fc" id="L131">        Holding holding = holdingRepository</span>
-<span class="fc" id="L132">                .findByAccountIdAndInstrumentIdForUpdate(order.getAccountId(), order.getInstrumentId())</span>
-<span class="fc" id="L133">                .orElse(null);</span>
-<span class="fc bfc" id="L134" title="All 2 branches covered.">        BigDecimal currentQuantity = holding == null ? BigDecimal.ZERO : holding.getQuantity();</span>
-<span class="fc bfc" id="L135" title="All 4 branches covered.">        if (!isBuy &amp;&amp; order.getQuantity().compareTo(currentQuantity) &gt; 0) {</span>
-<span class="fc" id="L136">            return reject(order, instrument, &quot;Insufficient holdings at execution time&quot;);</span>
+<span class="fc" id="L133">        Holding holding = holdingRepository</span>
+<span class="fc" id="L134">                .findByAccountIdAndInstrumentIdForUpdate(order.getAccountId(), order.getInstrumentId())</span>
+<span class="fc" id="L135">                .orElse(null);</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        BigDecimal currentQuantity = holding == null ? BigDecimal.ZERO : holding.getQuantity();</span>
+<span class="fc bfc" id="L137" title="All 4 branches covered.">        if (!isBuy &amp;&amp; order.getQuantity().compareTo(currentQuantity) &gt; 0) {</span>
+<span class="fc" id="L138">            return reject(order, instrument, &quot;Insufficient holdings at execution time&quot;);</span>
         }
 
-<span class="fc" id="L139">        OffsetDateTime now = OffsetDateTime.now();</span>
+<span class="fc" id="L141">        OffsetDateTime now = OffsetDateTime.now();</span>
 
-<span class="fc" id="L141">        Fill fill = new Fill();</span>
-<span class="fc" id="L142">        fill.setOrderId(order.getOrderId());</span>
-<span class="fc" id="L143">        fill.setQuotePrice(fillPrice);</span>
-<span class="fc" id="L144">        fill.setQuantity(order.getQuantity());</span>
-<span class="fc" id="L145">        fill.setFilledAt(now);</span>
-<span class="fc" id="L146">        fill = fillRepository.save(fill);</span>
+<span class="fc" id="L143">        Fill fill = new Fill();</span>
+<span class="fc" id="L144">        fill.setOrderId(order.getOrderId());</span>
+<span class="fc" id="L145">        fill.setQuotePrice(fillPrice);</span>
+<span class="fc" id="L146">        fill.setQuantity(order.getQuantity());</span>
+<span class="fc" id="L147">        fill.setFilledAt(now);</span>
+<span class="fc" id="L148">        fill = fillRepository.save(fill);</span>
 
-<span class="fc bfc" id="L148" title="All 2 branches covered.">        BigDecimal cashDelta = isBuy ? tradeValue.negate() : tradeValue;</span>
-<span class="fc" id="L149">        CashTransaction cashTransaction = new CashTransaction();</span>
-<span class="fc" id="L150">        cashTransaction.setAccountId(account.getAccountId());</span>
-<span class="fc" id="L151">        cashTransaction.setFillId(fill.getFillId());</span>
-<span class="fc" id="L152">        cashTransaction.setAmount(cashDelta);</span>
-<span class="fc" id="L153">        cashTransaction.setReason(CashTransaction.REASON_ORDER_FILL);</span>
-<span class="fc" id="L154">        cashTransaction.setCreatedAt(now);</span>
-<span class="fc" id="L155">        cashTransactionRepository.save(cashTransaction);</span>
-<span class="fc" id="L156">        user.setAvailableFunds(user.getAvailableFunds().add(cashDelta));</span>
-<span class="fc" id="L157">        userRepository.save(user);</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">        BigDecimal cashDelta = isBuy ? tradeValue.negate() : tradeValue;</span>
+<span class="fc" id="L151">        CashTransaction cashTransaction = new CashTransaction();</span>
+<span class="fc" id="L152">        cashTransaction.setAccountId(account.getAccountId());</span>
+<span class="fc" id="L153">        cashTransaction.setFillId(fill.getFillId());</span>
+<span class="fc" id="L154">        cashTransaction.setAmount(cashDelta);</span>
+<span class="fc" id="L155">        cashTransaction.setReason(CashTransaction.REASON_ORDER_FILL);</span>
+<span class="fc" id="L156">        cashTransaction.setCreatedAt(now);</span>
+<span class="fc" id="L157">        cashTransactionRepository.save(cashTransaction);</span>
+<span class="fc" id="L158">        user.setAvailableFunds(user.getAvailableFunds().add(cashDelta));</span>
+<span class="fc" id="L159">        userRepository.save(user);</span>
 
-<span class="fc bfc" id="L159" title="All 2 branches covered.">        BigDecimal quantityDelta = isBuy ? order.getQuantity() : order.getQuantity().negate();</span>
-<span class="fc" id="L160">        HoldingMovement movement = new HoldingMovement();</span>
-<span class="fc" id="L161">        movement.setAccountId(account.getAccountId());</span>
-<span class="fc" id="L162">        movement.setInstrumentId(order.getInstrumentId());</span>
-<span class="fc" id="L163">        movement.setFillId(fill.getFillId());</span>
-<span class="fc" id="L164">        movement.setQuantityDelta(quantityDelta);</span>
-<span class="fc" id="L165">        movement.setCreatedAt(now);</span>
-<span class="fc" id="L166">        holdingMovementRepository.save(movement);</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        BigDecimal quantityDelta = isBuy ? order.getQuantity() : order.getQuantity().negate();</span>
+<span class="fc" id="L162">        HoldingMovement movement = new HoldingMovement();</span>
+<span class="fc" id="L163">        movement.setAccountId(account.getAccountId());</span>
+<span class="fc" id="L164">        movement.setInstrumentId(order.getInstrumentId());</span>
+<span class="fc" id="L165">        movement.setFillId(fill.getFillId());</span>
+<span class="fc" id="L166">        movement.setQuantityDelta(quantityDelta);</span>
+<span class="fc" id="L167">        movement.setCreatedAt(now);</span>
+<span class="fc" id="L168">        holdingMovementRepository.save(movement);</span>
 
-<span class="fc bfc" id="L168" title="All 2 branches covered.">        if (holding == null) {</span>
-<span class="fc" id="L169">            holding = new Holding();</span>
-<span class="fc" id="L170">            holding.setAccountId(order.getAccountId());</span>
-<span class="fc" id="L171">            holding.setInstrumentId(order.getInstrumentId());</span>
-<span class="fc" id="L172">            holding.setQuantity(quantityDelta);</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        if (holding == null) {</span>
+<span class="fc" id="L171">            holding = new Holding();</span>
+<span class="fc" id="L172">            holding.setAccountId(order.getAccountId());</span>
+<span class="fc" id="L173">            holding.setInstrumentId(order.getInstrumentId());</span>
+<span class="fc" id="L174">            holding.setQuantity(quantityDelta);</span>
         } else {
-<span class="fc" id="L174">            holding.setQuantity(holding.getQuantity().add(quantityDelta));</span>
+<span class="fc" id="L176">            holding.setQuantity(holding.getQuantity().add(quantityDelta));</span>
         }
-<span class="fc" id="L176">        holding.setUpdatedAt(now);</span>
-<span class="fc" id="L177">        holdingRepository.save(holding);</span>
+<span class="fc" id="L178">        holding.setUpdatedAt(now);</span>
+<span class="fc" id="L179">        holdingRepository.save(holding);</span>
 
-<span class="fc" id="L179">        order.setStatus(Order.STATUS_FILLED);</span>
-<span class="fc" id="L180">        order.setResolvedAt(now);</span>
-<span class="fc" id="L181">        final Order savedOrder = orderRepository.save(order);</span>
-<span class="fc" id="L182">        auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_FILLED,</span>
-<span class="fc" id="L183">                &quot;Filled &quot; + savedOrder.getQuantity() + &quot; @ &quot; + fillPrice);</span>
-<span class="fc" id="L184">        events.publishEvent(OrderStatusEvent.from(savedOrder, instrument));</span>
-<span class="fc" id="L185">        return savedOrder;</span>
+<span class="fc" id="L181">        order.setStatus(Order.STATUS_FILLED);</span>
+<span class="fc" id="L182">        order.setResolvedAt(now);</span>
+<span class="fc" id="L183">        final Order savedOrder = orderRepository.save(order);</span>
+<span class="fc" id="L184">        auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_FILLED,</span>
+<span class="fc" id="L185">                &quot;Filled &quot; + savedOrder.getQuantity() + &quot; @ &quot; + fillPrice);</span>
+<span class="fc" id="L186">        events.publishEvent(OrderStatusEvent.from(savedOrder, instrument, new OrderStatusEvent.Execution(</span>
+<span class="fc" id="L187">                user.getUserId(), fill.getFillId(), fillPrice, savedOrder.getQuantity(), now,</span>
+<span class="fc" id="L188">                cashTransaction.getCashTransactionId(), cashDelta, user.getAvailableFunds(),</span>
+<span class="fc" id="L189">                movement.getHoldingMovementId(), quantityDelta, holding.getQuantity())));</span>
+<span class="fc" id="L190">        return savedOrder;</span>
     }
 
     private Order reject(Order order, Instrument instrument, String reason) {
-<span class="fc" id="L189">        order.setStatus(Order.STATUS_REJECTED);</span>
-<span class="fc" id="L190">        order.setRejectionReason(reason);</span>
-<span class="fc" id="L191">        order.setResolvedAt(OffsetDateTime.now());</span>
-<span class="fc" id="L192">        final Order savedOrder = orderRepository.save(order);</span>
-<span class="fc" id="L193">        auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_REJECTED, reason);</span>
-<span class="fc" id="L194">        events.publishEvent(OrderStatusEvent.from(savedOrder, instrument));</span>
-<span class="fc" id="L195">        return savedOrder;</span>
+<span class="fc" id="L194">        order.setStatus(Order.STATUS_REJECTED);</span>
+<span class="fc" id="L195">        order.setRejectionReason(reason);</span>
+<span class="fc" id="L196">        order.setResolvedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L197">        final Order savedOrder = orderRepository.save(order);</span>
+<span class="fc" id="L198">        auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_REJECTED, reason);</span>
+<span class="fc" id="L199">        events.publishEvent(OrderStatusEvent.from(savedOrder, instrument));</span>
+<span class="fc" id="L200">        return savedOrder;</span>
     }
 }
 

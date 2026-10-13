@@ -68,7 +68,7 @@ function flushAccounts(
     holdings?: Record<number, unknown[]>;
     cash?: number;
     transactions?: unknown[];
-    profile?: { firstName: string; lastName: string };
+    profile?: { firstName: string; lastName: string; termsAccepted?: boolean };
     orders?: OrderResult[];
   } = {},
 ): HttpTestingController {
@@ -1332,6 +1332,17 @@ describe('DashboardComponent', () => {
       showWatchList(fixture);
 
       expect(table(fixture).textContent).toContain('Loading watchlist');
+      // Rows on the table's own columns stand in for it, hidden from a screen reader.
+      const placeholders = table(fixture).querySelectorAll('[data-testid="watchlist-row-skeleton"]');
+      expect(placeholders).toHaveLength(5);
+      expect(placeholders[0].children).toHaveLength(5);
+      expect(placeholders[0].getAttribute('aria-hidden')).toBe('true');
+      expect(table(fixture).querySelector('li[role="status"]')?.className).toContain('sr-only');
+
+      fixture.componentInstance['watchlist'].status.set('ready');
+      fixture.detectChanges();
+      expect(table(fixture).querySelector('[data-testid="watchlist-row-skeleton"]')).toBeNull();
+      expect(table(fixture).textContent).not.toContain('Loading watchlist');
     });
 
     it('explains a watch list that failed to load and retries on request', () => {
@@ -1396,6 +1407,28 @@ describe('DashboardComponent', () => {
         .match((request) => request.url.includes('/portfolio-history'))
         .forEach((r) => r.flush([]));
     });
+
+    it('holds the chart area with a placeholder while portfolio history loads', () => {
+      const { fixture } = render();
+      const history = fixture.componentInstance['portfolioHistory'];
+      history.points.set([]);
+      history.status.set('loading');
+      fixture.detectChanges();
+
+      const placeholder = root(fixture).querySelector('[data-testid="portfolio-history-skeleton"]')!;
+      expect(placeholder.getAttribute('aria-busy')).toBe('true');
+      expect(placeholder.textContent).toContain('Loading portfolio history…');
+      expect(placeholder.querySelector('.skeleton')?.getAttribute('aria-hidden')).toBe('true');
+      expect(root(fixture).querySelector('app-price-chart')).toBeNull();
+      expect(root(fixture).querySelector('[data-testid="portfolio-chart-empty-state"]')).toBeNull();
+
+      history.status.set('ready');
+      fixture.detectChanges();
+      expect(root(fixture).querySelector('[data-testid="portfolio-history-skeleton"]')).toBeNull();
+      expect(
+        root(fixture).querySelector('[data-testid="portfolio-chart-empty-state"]'),
+      ).not.toBeNull();
+    });
   });
 
   describe('accounts, portfolios and cash', () => {
@@ -1438,9 +1471,55 @@ describe('DashboardComponent', () => {
     it('shows a loading label until the accounts arrive', () => {
       const fixture = render();
 
+      const dropdown = element(fixture).querySelector('[data-testid="account-dropdown"]')!;
+      expect(dropdown.textContent).toContain('Loading accounts…');
+      // The label and the menu's accounts are placeholders, still named for a screen reader.
+      expect(dropdown.querySelector('summary .skeleton')).not.toBeNull();
+      expect(text(dropdown.querySelector('summary .sr-only'))).toBe('Loading accounts…');
+      expect(dropdown.querySelectorAll('[data-testid="account-skeleton"]')).toHaveLength(2);
+      expect(text(dropdown.querySelector('[role="menu"] [role="status"]'))).toBe('Loading accounts…');
+
+      flushAccounts(fixture);
+      expect(dropdown.querySelector('.skeleton')).toBeNull();
+      expect(dropdown.textContent).not.toContain('Loading accounts');
+      expect(text(dropdown.querySelector('summary'))).toBe(ACCOUNTS[0].name);
+    });
+
+    it('shows placeholders, not zero balances or empty states, until the accounts arrive', () => {
+      const fixture = render();
+      const netWorth = () => element(fixture).querySelector('[data-testid="net-worth"]')!;
+      const count = (testId: string) =>
+        element(fixture).querySelectorAll(`[data-testid="${testId}"]`).length;
+
+      expect(netWorth().getAttribute('aria-busy')).toBe('true');
+      expect(netWorth().querySelector('.skeleton')?.getAttribute('aria-hidden')).toBe('true');
+      expect(text(netWorth())).toBe('Loading net worth…');
+      expect(element(fixture).textContent).not.toContain('% invested');
+      expect(element(fixture).textContent).not.toContain('Invested $');
+      // Rows stand in for the assets and the transactions, each list saying what it is loading.
+      expect(count('asset-row-skeleton')).toBe(5);
       expect(
-        element(fixture).querySelector('[data-testid="account-dropdown"]')?.textContent,
-      ).toContain('Loading accounts…');
+        element(fixture).querySelector('[data-testid="asset-row-skeleton"]')!.children,
+      ).toHaveLength(9);
+      expect(count('activity-row-skeleton')).toBe(5);
+      expect(text(element(fixture).querySelector('[data-testid="assets-table"]'))).toContain(
+        'Loading assets…',
+      );
+      expect(text(element(fixture).querySelector('[data-testid="recent-transactions"]'))).toContain(
+        'Loading transactions…',
+      );
+      expect(element(fixture).textContent).not.toContain('to start building a portfolio');
+      expect(element(fixture).textContent).not.toContain('No transactions yet');
+
+      flushAccounts(fixture, ACCOUNTS, { holdings: {}, cash: 250, transactions: [] });
+
+      expect(netWorth().getAttribute('aria-busy')).toBeNull();
+      expect(text(netWorth())).toBe('$250.00');
+      expect(element(fixture).querySelector('.skeleton')).toBeNull();
+      expect(element(fixture).textContent).toContain('0% invested');
+      expect(element(fixture).textContent).toContain('Cash $250.00');
+      expect(element(fixture).textContent).toContain('This account has no holdings yet.');
+      expect(element(fixture).textContent).toContain('No transactions yet');
     });
 
     it("lists only the signed-in user's accounts with each portfolio's value", () => {
@@ -1551,9 +1630,12 @@ describe('DashboardComponent', () => {
     it('shows a loading state without rendering a zero-value portfolio chart', () => {
       const fixture = render();
 
-      expect(text(element(fixture).querySelector('[data-testid="portfolio-chart-status"]'))).toBe(
-        'Loading portfolio…',
-      );
+      const status = element(fixture).querySelector('[data-testid="portfolio-chart-status"]')!;
+      expect(text(status)).toBe('Loading portfolio…');
+      // The card's shape stands in for it: the value, the range toggle and the chart.
+      expect(status.getAttribute('aria-busy')).toBe('true');
+      expect(status.querySelectorAll('.skeleton')).toHaveLength(4);
+      expect(status.querySelector('.sr-only')?.textContent).toBe('Loading portfolio…');
       expect(element(fixture).querySelector('app-price-chart')).toBeNull();
       expect(element(fixture).querySelector('app-timeframe-toggle')).toBeNull();
     });
@@ -1861,6 +1943,101 @@ describe('DashboardComponent', () => {
       flushAccounts(fixture, ACCOUNTS, { profile: { firstName: 'Prince', lastName: '' } });
 
       expect(text(element(fixture).querySelector('[data-testid="profile-initials"]'))).toBe('P');
+    });
+  });
+
+  describe('terms and conditions', () => {
+    const NOT_ACCEPTED = { ...PROFILE, termsAccepted: false };
+
+    function render() {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      return fixture;
+    }
+
+    function element(fixture: ComponentFixture<DashboardComponent>) {
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    function termsDialog(fixture: ComponentFixture<DashboardComponent>) {
+      return element(fixture).querySelector('app-terms-dialog');
+    }
+
+    function content(fixture: ComponentFixture<DashboardComponent>) {
+      return element(fixture).querySelector('[data-testid="dashboard-content"]') as HTMLElement;
+    }
+
+    it('does not ask before the profile has loaded', () => {
+      const fixture = render();
+
+      expect(termsDialog(fixture)).toBeNull();
+      expect(content(fixture).hasAttribute('inert')).toBe(false);
+    });
+
+    it('does not ask a user who has already accepted', () => {
+      const fixture = render();
+      flushAccounts(fixture, ACCOUNTS, { profile: { ...PROFILE, termsAccepted: true } });
+
+      expect(termsDialog(fixture)).toBeNull();
+      expect(content(fixture).hasAttribute('inert')).toBe(false);
+    });
+
+    it('asks a user who has not accepted, and makes the dashboard behind it inert', () => {
+      const fixture = render();
+      flushAccounts(fixture, ACCOUNTS, { profile: NOT_ACCEPTED });
+
+      expect(termsDialog(fixture)?.textContent).toContain('Terms and Conditions');
+      expect(termsDialog(fixture)?.textContent).toContain('Ada Lovelace');
+      expect(content(fixture).hasAttribute('inert')).toBe(true);
+      expect(content(fixture).contains(termsDialog(fixture))).toBe(false);
+    });
+
+    it('closes anything opened while the profile was still loading', () => {
+      const fixture = render();
+      const component = fixture.componentInstance;
+      component['onSettings']();
+      component['openOrder'](MOCK_INSTRUMENTS[0]);
+      fixture.detectChanges();
+      expect(element(fixture).querySelector('app-settings-dialog')).not.toBeNull();
+
+      flushAccounts(fixture, ACCOUNTS, { profile: NOT_ACCEPTED });
+
+      expect(element(fixture).querySelector('app-settings-dialog')).toBeNull();
+      expect(component['orderInstrument']()).toBeNull();
+      expect(element(fixture).querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    });
+
+    it('opens the dashboard once the user signs and accepts', () => {
+      const fixture = render();
+      const http = flushAccounts(fixture, ACCOUNTS, { profile: NOT_ACCEPTED });
+      const signature = element(fixture).querySelector('#termsSignature') as HTMLInputElement;
+      signature.value = 'Ada Lovelace';
+      signature.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+
+      (termsDialog(fixture)!.querySelector('button[type="submit"]') as HTMLButtonElement).click();
+      const request = http.expectOne('/api/users/me/terms-acceptance');
+      expect(request.request.method).toBe('PUT');
+      request.flush({ ...PROFILE, availableFunds: CASH, termsAccepted: true });
+      fixture.detectChanges();
+
+      expect(termsDialog(fixture)).toBeNull();
+      expect(content(fixture).hasAttribute('inert')).toBe(false);
+    });
+
+    it('signs the user out when they decline', () => {
+      const fixture = render();
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+      flushAccounts(fixture, ACCOUNTS, { profile: NOT_ACCEPTED });
+
+      const signOut = Array.from(termsDialog(fixture)!.querySelectorAll('button')).find(
+        (candidate) => candidate.textContent?.trim() === 'Sign out',
+      )!;
+      signOut.click();
+      fixture.detectChanges();
+
+      expect(navigate).toHaveBeenCalledWith('/login');
+      TestBed.inject(HttpTestingController).expectNone('/api/users/me/terms-acceptance');
     });
   });
 });

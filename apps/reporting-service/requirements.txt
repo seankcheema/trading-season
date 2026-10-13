@@ -3,8 +3,9 @@ Flask-CORS==4.0.0
 Flask-WTF==1.2.2
 Flask-SQLAlchemy==3.1.1
 SQLAlchemy==2.0.43
-# 3.2.3 ships no Python 3.14 wheel; 3.2.13 is the first 3.2.x that does.
-psycopg[binary]==3.2.13
+# No database driver on purpose. SQLAlchemy only runs the in-memory SQLite read
+# model, with the sqlite3 module Python ships; this service cannot connect to
+# the trading database.
 python-dotenv==1.0.0
 PyJWT==2.15.1
 # RS256 verification needs cryptography. Listed explicitly rather than as the
@@ -14,7 +15,7 @@ cryptography==50.0.2
 requests==2.31.0
 APScheduler==3.10.4
 gunicorn==21.2.0
-# Kafka consumer for trade-events (prebuilt cp314 manylinux_2_28 wheel; no compiler needed).
+# Kafka consumer for trade-events and platform-records (prebuilt cp314 manylinux_2_28 wheel; no compiler needed).
 confluent-kafka==2.15.1
 # Charts for report runs, rendered headless on the Agg backend.
 matplotlib==3.11.2

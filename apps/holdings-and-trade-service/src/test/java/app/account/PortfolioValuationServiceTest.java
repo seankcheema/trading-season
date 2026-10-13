@@ -4,6 +4,8 @@ import app.auth.ForbiddenException;
 import app.holding.*;
 import app.instrument.Instrument;
 import app.market.*;
+import app.record.PortfolioValuationRecord;
+import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
@@ -21,8 +23,13 @@ class PortfolioValuationServiceTest {
     private final MarketReplayService market = mock(MarketReplayService.class);
     private final UUID user = UUID.randomUUID();
     private final Instant now = Instant.parse("2026-10-01T18:00:30Z");
-    private final PortfolioValuationService service = new PortfolioValuationService(accounts, repository,
-            movements, valuations, market, Clock.fixed(now, ZoneOffset.UTC));
+    private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
+    private final PortfolioValuationService service = serviceAt(now);
+
+    private PortfolioValuationService serviceAt(Instant instant) {
+        return new PortfolioValuationService(accounts, repository, movements, valuations, market, events,
+                Duration.ofMinutes(15), Clock.fixed(instant, ZoneOffset.UTC));
+    }
 
     @BeforeEach
     void setup() {
@@ -59,6 +66,51 @@ class PortfolioValuationServiceTest {
         var result = service.capture(1, user, false);
         assertEquals(now, result.timestamp());
         assertEquals(0, new BigDecimal("110").compareTo(result.value()));
+    }
+
+    @Test
+    void aCaptureIsRaisedForReportingWithItsAccountAndValue() {
+        when(accounts.getHoldingsForAccount(1, user)).thenReturn(List.of(holding("ABC", "2.5", "40.20")));
+
+        service.capture(1, user, false);
+
+        var raised = org.mockito.ArgumentCaptor.forClass(PortfolioValuationRecord.class);
+        verify(events).publishEvent(raised.capture());
+        PortfolioValuationRecord record = raised.getValue();
+        assertEquals(1, record.accountId());
+        assertEquals(now, record.observedAt());
+        assertEquals(0, new BigDecimal("100.50").compareTo(record.portfolioValue()));
+        assertEquals("PORTFOLIO_VALUATION", record.recordType());
+        assertEquals("1", record.recordId(), "keyed by account, so a newer value replaces an older one");
+    }
+
+    @Test
+    void scheduledCapturesAreRaisedForReportingAtMostOncePerInterval() {
+        when(accounts.getHoldingsForAccount(1, user)).thenReturn(List.of(holding("ABC", "1", "10")));
+        Clock clock = mock(Clock.class);
+        when(clock.instant()).thenReturn(now, now.plusSeconds(60), now.plusSeconds(840), now.plusSeconds(900));
+        PortfolioValuationService scheduler = new PortfolioValuationService(accounts, repository, movements,
+                valuations, market, events, Duration.ofMinutes(15), clock);
+
+        scheduler.capture(1, user, true);
+        scheduler.capture(1, user, true);
+        scheduler.capture(1, user, true);
+        verify(valuations, times(3)).save(any());
+        verify(events, times(1)).publishEvent(any(PortfolioValuationRecord.class));
+
+        scheduler.capture(1, user, true);
+        verify(events, times(2)).publishEvent(any(PortfolioValuationRecord.class));
+    }
+
+    @Test
+    void aCaptureForAFillOrADashboardIsAlwaysRaised() {
+        when(accounts.getHoldingsForAccount(1, user)).thenReturn(List.of(holding("ABC", "1", "10")));
+
+        service.capture(1, user, true);
+        service.capture(1, user, false);
+        service.capture(1, user, false);
+
+        verify(events, times(3)).publishEvent(any(PortfolioValuationRecord.class));
     }
 
     @Test

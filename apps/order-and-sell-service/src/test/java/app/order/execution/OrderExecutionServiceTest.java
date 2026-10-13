@@ -8,6 +8,7 @@ import app.instrument.Instrument;
 import app.order.Order;
 import app.order.OrderRepository;
 import app.order.audit.AuditTrailService;
+import app.order.event.OrderStatusEvent;
 import app.user.User;
 import app.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -115,6 +116,52 @@ class OrderExecutionServiceTest {
         assertEquals(new BigDecimal("10"), holding.getQuantity());
 
         verify(auditTrailService).record(order.getOrderId(), Order.STATUS_FILLED, "Filled 10 @ 25.00");
+    }
+
+    @Test
+    void theFilledEventCarriesTheFillBothPostingsAndTheBalancesTheyLeft() {
+        when(cashTransactionRepository.save(any(CashTransaction.class))).thenAnswer(invocation -> {
+            CashTransaction posted = invocation.getArgument(0);
+            posted.setCashTransactionId(71);
+            return posted;
+        });
+        when(holdingMovementRepository.save(any(HoldingMovement.class))).thenAnswer(invocation -> {
+            HoldingMovement posted = invocation.getArgument(0);
+            posted.setHoldingMovementId(72);
+            return posted;
+        });
+        Holding existing = new Holding();
+        existing.setAccountId(ACCOUNT_ID);
+        existing.setInstrumentId(INSTRUMENT_ID);
+        existing.setQuantity(new BigDecimal("8"));
+        when(holdingRepository.findByAccountIdAndInstrumentIdForUpdate(ACCOUNT_ID, INSTRUMENT_ID))
+                .thenReturn(Optional.of(existing));
+        Instrument instrument = new Instrument();
+        instrument.setTicker("TEST");
+        instrument.setName("Test Instrument");
+
+        service.execute(order(Order.TYPE_SELL, "3", "40.00"), instrument);
+
+        ArgumentCaptor<OrderStatusEvent> raised = ArgumentCaptor.forClass(OrderStatusEvent.class);
+        verify(events).publishEvent(raised.capture());
+        OrderStatusEvent event = raised.getValue();
+        assertEquals(Order.STATUS_FILLED, event.status());
+        assertEquals("Test Instrument", event.order().instrumentName());
+        assertEquals(INSTRUMENT_ID, event.order().instrumentId());
+        assertNotNull(event.order().resolvedAt());
+
+        OrderStatusEvent.Execution execution = event.execution();
+        assertEquals(USER_ID, execution.userId());
+        assertEquals(FILL_ID, execution.fillId());
+        assertEquals(new BigDecimal("40.00"), execution.price());
+        assertEquals(new BigDecimal("3"), execution.quantity());
+        assertEquals(savedFill().getFilledAt(), execution.filledAt());
+        assertEquals(71, execution.cashTransactionId());
+        assertEquals(new BigDecimal("120.00"), execution.cashAmount());
+        assertEquals(new BigDecimal("1120.00"), execution.availableFunds());
+        assertEquals(72, execution.holdingMovementId());
+        assertEquals(new BigDecimal("-3"), execution.quantityDelta());
+        assertEquals(new BigDecimal("5"), execution.holdingQuantity());
     }
 
     @Test

@@ -25,6 +25,10 @@ import java.util.Optional;
  * after placing an order, with the owner resolved from the account row
  * because there is no caller token here.
  *
+ * <p>A message carrying the {@link #REPLAY_HEADER} is an old fill published
+ * again for reporting. The holdings did not change when it arrived, so it
+ * records nothing.
+ *
  * <p>This is derived data, not part of the fill (BR-09): the fill, cash and
  * holdings are already committed before the message exists. A capture that
  * fails is logged and the offset still commits, exactly as the minute
@@ -42,6 +46,14 @@ public class PortfolioValuationListener {
 
     /** The consumer group this listener commits offsets under. */
     public static final String GROUP_ID = "portfolio-valuation-capture";
+
+    /**
+     * Header carried by a message that repeats history instead of reporting
+     * a status that just changed: the republish tool in {@code db/tools} sets
+     * it on the orders it publishes again for the reporting service. Order
+     * and Sell declares the same name beside its publisher.
+     */
+    public static final String REPLAY_HEADER = "replay";
 
     static final String STATUS_FILLED = "FILLED";
 
@@ -75,6 +87,12 @@ public class PortfolioValuationListener {
     public void onTradeEvent(ConsumerRecord<String, String> record) {
         LOG.info("Consumer group {} received key={} partition={} offset={}",
                 GROUP_ID, record.key(), record.partition(), record.offset());
+
+        if (record.headers().lastHeader(REPLAY_HEADER) != null) {
+            LOG.debug("Ignoring replayed trade event at partition={} offset={}: holdings unchanged",
+                    record.partition(), record.offset());
+            return;
+        }
 
         Integer accountId;
         String status;

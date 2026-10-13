@@ -83,13 +83,17 @@ export class AccountStore {
   // A superseded GET joins the replacement request instead of publishing stale balances.
   private read<T>(key: string, factory: () => Observable<T>): Observable<T> {
     const existing = this.reads.get(key);
-    if (existing) return existing as Observable<T>;
+    if (existing) {
+      return existing as Observable<T>;
+    }
     const revision = this.revision;
     const request = factory().pipe(
       switchMap((value) => (revision === this.revision ? of(value) : this.read(key, factory))),
       takeUntil(this.cancelled),
       finalize(() => {
-        if (this.reads.get(key) === request) this.reads.delete(key);
+        if (this.reads.get(key) === request) {
+          this.reads.delete(key);
+        }
       }),
       shareReplay({ bufferSize: 1, refCount: true }),
     );
@@ -115,6 +119,17 @@ export class AccountStore {
     return `${firstLetter(profile.firstName)}${firstLetter(profile.lastName)}`;
   });
 
+  // The signed-in user's first and last name, which they type to sign the platform terms.
+  // Empty until the profile loads.
+  readonly fullName = computed(() => {
+    const profile = this._profile();
+    return profile ? `${profile.firstName ?? ''} ${profile.lastName ?? ''}`.trim() : '';
+  });
+
+  // True only once the profile has loaded and says the terms in force are not accepted, so
+  // nothing asks for acceptance while the answer is still unknown.
+  readonly needsTermsAcceptance = computed(() => this._profile()?.termsAccepted === false);
+
   readonly selectedAccount = computed(
     () =>
       this._accounts().find((account) => account.accountId === this._selectedAccountId()) ??
@@ -136,7 +151,9 @@ export class AccountStore {
   );
 
   load(refresh = false): void {
-    if (this.loading) return;
+    if (this.loading) {
+      return;
+    }
     if (!refresh && !this.stale && this.loadedAt && Date.now() - this.loadedAt < 60_000) {
       this.fetchCashTransactions().subscribe({
         error: () => this.refreshError.set('Unable to refresh transactions.'),
@@ -144,7 +161,9 @@ export class AccountStore {
       return;
     }
     this.loading = true;
-    if (!this.loadedAt) this.status.set('loading');
+    if (!this.loadedAt) {
+      this.status.set('loading');
+    }
     forkJoin([
       this.fetchAccounts().pipe(switchMap((accounts) => this.fetchAllHoldings(accounts))),
       this.fetchProfile(),
@@ -163,7 +182,9 @@ export class AccountStore {
         },
         error: () => {
           this.refreshError.set('Unable to refresh accounts.');
-          if (!this.loadedAt) this.status.set('error');
+          if (!this.loadedAt) {
+            this.status.set('error');
+          }
         },
       });
   }
@@ -183,8 +204,9 @@ export class AccountStore {
       return false;
     }
     this._selectedAccountId.set(accountId);
-    if (refresh && (this.stale || (this.loadedAt && Date.now() - this.loadedAt >= 60_000)))
+    if (refresh && (this.stale || (this.loadedAt && Date.now() - this.loadedAt >= 60_000))) {
       this.load(true);
+    }
     return true;
   }
 
@@ -221,6 +243,22 @@ export class AccountStore {
       }),
       switchMap((updated) => this.afterChange(this.fetchAccounts(), updated)),
     );
+  }
+
+  // Records that the user accepts the terms they were shown. The backend refuses a version
+  // that is no longer in force, and answers with the updated profile.
+  acceptTerms(termsVersion: string): Observable<void> {
+    return this._http
+      .put<UserProfile>(`${this._apiUrl}/users/me/terms-acceptance`, { termsVersion })
+      .pipe(
+        takeUntil(this.cancelled),
+        tap((profile) => {
+          // A profile read that began before the acceptance would report it as missing.
+          this.invalidate();
+          this.applyProfile(profile);
+        }),
+        map(() => undefined),
+      );
   }
 
   deposit(amount: number): Observable<void> {
@@ -327,11 +365,13 @@ export class AccountStore {
   // One request serves both the shared cash and who the user is.
   private fetchProfile(): Observable<UserProfile> {
     return this.read('profile', () => this._http.get<UserProfile>(`${this._apiUrl}/users/me`)).pipe(
-      tap((profile) => {
-        this._profile.set(profile);
-        this._cashBalance.set(Number(profile.availableFunds) || 0);
-      }),
+      tap((profile) => this.applyProfile(profile)),
     );
+  }
+
+  private applyProfile(profile: UserProfile): void {
+    this._profile.set(profile);
+    this._cashBalance.set(Number(profile.availableFunds) || 0);
   }
 
   private fetchCashTransactions(): Observable<CashTransaction[]> {
