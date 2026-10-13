@@ -110,6 +110,14 @@ export class RegisterPage {
 }
 
 /** Reads the persisted session, or null when the user is signed out. */
+/**
+ * Confirms the review popup every order passes through before it is sent. Call it right after
+ * clicking a ticket's Buy or Sell button.
+ */
+export async function confirmOrderReview(page: Page): Promise<void> {
+  await page.getByTestId('order-review-confirm').click();
+}
+
 export async function readStoredSession(page: Page): Promise<StoredSession | null> {
   const raw = await page.evaluate((key) => localStorage.getItem(key), SESSION_STORAGE_KEY);
   return raw === null ? null : (JSON.parse(raw) as StoredSession);

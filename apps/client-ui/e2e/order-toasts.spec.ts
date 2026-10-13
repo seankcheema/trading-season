@@ -1,3 +1,4 @@
+import { confirmOrderReview } from './fixtures/pages';
 import { expect, test } from './fixtures/test';
 
 const credentials = { email: 'toast-trader@example.com', password: 'Trader-password1!' };
@@ -77,6 +78,7 @@ for (const viewport of [
     await expect(dialog.locator('#order-shares')).toHaveValue('22');
     await dialog.locator('#order-shares').fill('1');
     await dialog.getByRole('button', { name: 'Buy 1 AAPL', exact: true }).click();
+    await confirmOrderReview(page);
 
     await expect(dialog.getByRole('button', { name: /^Buying/ })).toBeDisabled();
     await expect(dialog.locator('.order-spinner')).toBeVisible();
@@ -101,6 +103,7 @@ for (const viewport of [
     for (const [side, action] of [['buy', 'Buy'], ['sell', 'Sell'], ['sell', 'Sell']]) {
       if (side === 'sell') await dialog.getByRole('button', { name: 'sell', exact: true }).click();
       await dialog.getByRole('button', { name: `${action} 1 AAPL`, exact: true }).click();
+      await confirmOrderReview(page);
 
       await expect(dialog.locator('.order-spinner')).toBeVisible();
       await expect(toast).toHaveCount(1);
@@ -111,6 +114,7 @@ for (const viewport of [
     expect(sides).toEqual(['BUY', 'BUY', 'SELL', 'SELL']);
     expect(new Set(references).size).toBe(4);
     await dialog.getByRole('button', { name: 'Sell 1 AAPL', exact: true }).click();
+    await confirmOrderReview(page);
 
     await expect(toast).toHaveCount(1);
 

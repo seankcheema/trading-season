@@ -21,6 +21,8 @@ import { RouterLink } from '@angular/router';
 import { Instrument, OrderSide, PricePoint, Timeframe, findInstrument } from '../mock-data';
 import { MarketDataService } from '../market-data.service';
 import { toOrderErrorMessage } from '../orders/order-error';
+import { ORDER_DISCLAIMER_SUBTEXT } from '../orders/order-disclaimer';
+import { OrderReviewDialogComponent } from '../orders/order-review-dialog.component';
 import { OrderResult } from '../orders/order.models';
 import { OrderService } from '../orders/order.service';
 import { InstrumentSearchComponent } from '../shared/instrument-search.component';
@@ -40,12 +42,13 @@ const ORDER_REJECTED = 'The order was rejected.';
     NgIcon,
     RouterLink,
     InstrumentSearchComponent,
+    OrderReviewDialogComponent,
     PriceChartComponent,
     SignedPercentPipe,
     TimeframeToggleComponent,
   ],
   providers: [provideIcons({ lucideExpand, lucideX })],
-  host: { '(document:keydown.escape)': 'closed.emit()' },
+  host: { '(document:keydown.escape)': 'onEscape()' },
   templateUrl: './order-submission.component.html',
   styleUrl: './order-submission.component.css',
 })
@@ -174,6 +177,10 @@ export class OrderSubmissionComponent {
       : this.cashBalance() + this.orderValue(),
   );
 
+  protected readonly disclaimer = ORDER_DISCLAIMER_SUBTEXT;
+  // Every order is reviewed before it is sent; the review popup owns the final confirmation.
+  protected readonly reviewOpen = signal(false);
+
   protected readonly submitting = signal(false);
   private readonly coolingDown = signal(false);
   private readonly submittedSide = signal<OrderSide>('buy');
@@ -225,15 +232,36 @@ export class OrderSubmissionComponent {
     input.value = String(quantity);
   }
 
+  // Escape cancels the review popup when it is open; the popup handles that itself, so the
+  // order dialog stays open behind it.
+  protected onEscape(): void {
+    if (!this.reviewOpen()) {
+      this.closed.emit();
+    }
+  }
+
+  private selectedAccountId(): number | null {
+    const accountId = Number(this.accountId());
+    return Number.isInteger(accountId) && accountId > 0 ? accountId : null;
+  }
+
   protected submit(): void {
     if (!this.canSubmit()) {
       return;
     }
-    const accountId = Number(this.accountId());
-    if (!Number.isInteger(accountId) || accountId <= 0) {
+    if (!this.selectedAccountId()) {
       // No account selected yet, so there is nothing to place the order against.
       this.errorMessage.set(ORDER_NEEDS_ACCOUNT);
       this.toasts.show(ORDER_NEEDS_ACCOUNT, 'error');
+      return;
+    }
+    this.reviewOpen.set(true);
+  }
+
+  protected confirmOrder(): void {
+    this.reviewOpen.set(false);
+    const accountId = this.selectedAccountId();
+    if (!this.canSubmit() || !accountId) {
       return;
     }
 

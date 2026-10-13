@@ -1,5 +1,6 @@
 import { newAccount } from './fixtures/accounts';
 import type { SeedAccount } from './fixtures/api-stub';
+import { confirmOrderReview } from './fixtures/pages';
 import { expect, test } from './fixtures/test';
 
 const USER = newAccount();
@@ -157,6 +158,7 @@ test.describe('assets dialog', () => {
     const order = page.getByRole('dialog', { name: 'New Order' });
     await order.locator('#order-shares').fill('1');
     await order.getByRole('button', { name: 'Buy 1 AAPL', exact: true }).click();
+    await confirmOrderReview(page);
     await expect(page.locator('hlm-toaster .toast')).toContainText('Filled 1 AAPL');
     await order.getByRole('button', { name: 'Close order submission' }).click();
 
