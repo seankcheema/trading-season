@@ -353,7 +353,13 @@ pipeline {
             when { expression { currentBuild.currentResult == 'SUCCESS' } }
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
+                    script {
+                        def qualityGate = waitForQualityGate abortPipeline: false
+                        echo "SonarQube quality gate status: ${qualityGate.status}"
+                        if (qualityGate.status != 'OK') {
+                            error "SonarQube quality gate failed with status: ${qualityGate.status}"
+                        }
+                    }
                 }
             }
         }
