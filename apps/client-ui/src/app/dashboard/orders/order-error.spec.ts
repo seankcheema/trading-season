@@ -27,6 +27,17 @@ describe('toOrderErrorMessage', () => {
     // they can trade on, and saying which would confirm another user's account exists.
     expect(toOrderErrorMessage(httpError(403))).toBe(ORDER_ERROR_MESSAGES.notOwned);
     expect(toOrderErrorMessage(httpError(404))).toBe(ORDER_ERROR_MESSAGES.notOwned);
+    expect(
+      toOrderErrorMessage(httpError(403, { error: 'You do not have access to this account' })),
+    ).toBe(ORDER_ERROR_MESSAGES.notOwned);
+  });
+
+  it('should ask the trader to reload when their order is refused over the platform terms', () => {
+    expect(
+      toOrderErrorMessage(
+        httpError(403, { error: 'Accept the platform terms before placing an order' }),
+      ),
+    ).toBe(ORDER_ERROR_MESSAGES.termsRequired);
   });
 
   it('should surface the backend message on a bad request', () => {
