@@ -13,6 +13,7 @@ import { ToastService } from '../notifications/toast.service';
 import { AuthService } from '../core/auth/auth.service';
 import { DashboardHeaderDropdownComponent } from '../dashboard/shared/dashboard-header-dropdown.component';
 import { SettingsDialogComponent } from '../dashboard/settings-dialog/settings-dialog.component';
+import { TermsDialogComponent } from '../dashboard/terms/terms-dialog.component';
 import { AccountControlComponent } from '../dashboard/shared/account-control.component';
 import { MarketClockControlComponent } from '../dashboard/shared/market-clock-control.component';
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
@@ -37,6 +38,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -153,6 +155,7 @@ interface MarketStats {
     TitleCasePipe,
     TimeframeToggleComponent,
     TradeTicketComponent,
+    TermsDialogComponent,
   ],
   providers: [
     MarketClockService,
@@ -224,6 +227,23 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     this.authService.logout().subscribe(() => void this.router.navigateByUrl('/login'));
   }
   protected readonly accountDialog = signal<{ account: Account | null } | null>(null);
+
+  // This page has its own order ticket, so it asks for the platform terms exactly as the
+  // dashboard does: the page is inert behind the terms dialog until they are accepted.
+  protected readonly termsRequired = this.accountStore.needsTermsAcceptance;
+  protected readonly termsSignatureName = this.accountStore.fullName;
+  // The profile can arrive after the user has already opened something; nothing may stay open
+  // beside the terms dialog.
+  private readonly closeDialogsForTerms = effect(() => {
+    if (!this.termsRequired()) {
+      return;
+    }
+    untracked(() => {
+      this.openHeaderDropdown.set(null);
+      this.settingsOpen.set(false);
+      this.accountDialog.set(null);
+    });
+  });
 
   private readonly requestedAccountId = signal<number | null>(null);
   private appliedAccountId: number | null = null;

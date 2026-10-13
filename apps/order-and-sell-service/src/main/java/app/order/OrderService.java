@@ -13,6 +13,9 @@ import app.order.event.OrderStatusEvent;
 import app.order.execution.OrderExecutionService;
 import app.order.validation.OrderValidationPipeline;
 import app.order.validation.ValidationResult;
+import app.user.TermsAcceptance;
+import app.user.TermsAcceptanceId;
+import app.user.TermsAcceptanceRepository;
 import app.user.User;
 import app.user.UserRepository;
 import org.slf4j.Logger;
@@ -68,6 +71,7 @@ public class OrderService {
     private final AccountRepository accountRepository;
     private final InstrumentRepository instrumentRepository;
     private final UserRepository userRepository;
+    private final TermsAcceptanceRepository termsAcceptanceRepository;
     private final OrderValidationPipeline validationPipeline;
     private final OrderExecutionService orderExecutionService;
     private final AuditTrailService auditTrailService;
@@ -81,6 +85,7 @@ public class OrderService {
      * @param accountRepository account lookup and ownership checks
      * @param instrumentRepository instrument lookup
      * @param userRepository user lookup
+     * @param termsAcceptanceRepository read-only lookup of accepted platform terms
      * @param validationPipeline trading-rule pipeline
      * @param orderExecutionService settlement of orders that pass validation
      * @param auditTrailService lifecycle event recorder
@@ -91,6 +96,7 @@ public class OrderService {
                          AccountRepository accountRepository,
                          InstrumentRepository instrumentRepository,
                          UserRepository userRepository,
+                         TermsAcceptanceRepository termsAcceptanceRepository,
                          OrderValidationPipeline validationPipeline,
                          OrderExecutionService orderExecutionService,
                          AuditTrailService auditTrailService,
@@ -100,6 +106,7 @@ public class OrderService {
         this.accountRepository = accountRepository;
         this.instrumentRepository = instrumentRepository;
         this.userRepository = userRepository;
+        this.termsAcceptanceRepository = termsAcceptanceRepository;
         this.validationPipeline = validationPipeline;
         this.orderExecutionService = orderExecutionService;
         this.auditTrailService = auditTrailService;
@@ -117,18 +124,27 @@ public class OrderService {
      * is in its audit trail. Never throws for a trade that fails a trading
      * rule or whose execution fails; those are outcomes, reflected in the
      * returned order's status, not HTTP-level errors. It throws only when the
-     * request names something that doesn't exist or isn't the caller's.
+     * request names something that doesn't exist or isn't the caller's, or
+     * when the caller has not accepted the platform terms in force.
      *
      * <p>Ownership is settled before anything else, including the idempotency
      * lookup: an idempotency key is scoped to an account, so answering one
      * before checking the account would hand a caller the outcome of an order
      * on an account they don't own.
      *
+     * <p>A caller who has not accepted the platform terms in force
+     * ({@link TermsAcceptance#CURRENT_VERSION}) cannot place a new order, and
+     * nothing is recorded for the attempt. The dashboard already asks for the
+     * acceptance before it shows an order ticket; this is the same rule for a
+     * request that did not come through the dashboard. A resubmission of an
+     * order that is already on record still returns that order.
+     *
      * @param request the validated submission
      * @param callerId the caller's user id, from the token's {@code sub} claim
      * @return the persisted order in its current status
      * @throws AccountNotFoundException    if {@code accountId} does not exist
-     * @throws ForbiddenException          if {@code accountId} belongs to another user
+     * @throws ForbiddenException          if {@code accountId} belongs to another user, or the
+     *         caller has not accepted the platform terms in force
      * @throws InstrumentNotFoundException if {@code instrumentId} does not exist
      * @throws org.springframework.dao.DataAccessException if the acceptance transaction itself
      *         fails to persist; nothing is then on record
@@ -168,6 +184,11 @@ public class OrderService {
             // Note: a genuinely concurrent duplicate can still race past this check;
             // the DB's UNIQUE (account_id, client_reference) constraint is the backstop.
             return new Acceptance(existing.get(), null, false);
+        }
+
+        if (!termsAcceptanceRepository.existsById(
+                new TermsAcceptanceId(callerId, TermsAcceptance.CURRENT_VERSION))) {
+            throw new ForbiddenException("Accept the platform terms before placing an order");
         }
 
         User user = userRepository.findById(account.getUserId())

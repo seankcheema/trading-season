@@ -8,8 +8,10 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Tag("unit")
 class UserProfileResponseTest {
@@ -31,7 +33,7 @@ class UserProfileResponseTest {
         
         UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER");
 
-        UserProfileResponse response = UserProfileResponse.from(user, account);
+        UserProfileResponse response = UserProfileResponse.from(user, account, false);
 
         assertEquals(USER_ID, response.userId());
         assertEquals("test@example.com", response.email());
@@ -60,7 +62,7 @@ class UserProfileResponseTest {
         
         UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER");
 
-        UserProfileResponse response = UserProfileResponse.from(user, account);
+        UserProfileResponse response = UserProfileResponse.from(user, account, false);
 
         assertNotNull(response);
         assertEquals(USER_ID, response.userId());
@@ -82,7 +84,7 @@ class UserProfileResponseTest {
         
         UserAccount account = new UserAccount(USER_ID, "alice@example.com", "TRADER");
 
-        UserProfileResponse response = UserProfileResponse.from(user, account);
+        UserProfileResponse response = UserProfileResponse.from(user, account, false);
 
         assertNotNull(response);
         assertEquals("alice@example.com", response.email());
@@ -111,7 +113,7 @@ class UserProfileResponseTest {
         
         UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER");
 
-        UserProfileResponse response = UserProfileResponse.from(user, account);
+        UserProfileResponse response = UserProfileResponse.from(user, account, false);
 
         assertEquals(BigDecimal.ZERO, response.availableFunds());
     }
@@ -131,7 +133,7 @@ class UserProfileResponseTest {
         
         UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER");
 
-        UserProfileResponse response = UserProfileResponse.from(user, account);
+        UserProfileResponse response = UserProfileResponse.from(user, account, false);
 
         assertEquals(new BigDecimal("999999999.99"), response.availableFunds());
     }
@@ -151,7 +153,7 @@ class UserProfileResponseTest {
         
         UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER");
 
-        UserProfileResponse response = UserProfileResponse.from(user, account);
+        UserProfileResponse response = UserProfileResponse.from(user, account, false);
 
         assertEquals("", response.middleName());
     }
@@ -174,7 +176,7 @@ class UserProfileResponseTest {
             
             UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER");
 
-            UserProfileResponse response = UserProfileResponse.from(user, account);
+            UserProfileResponse response = UserProfileResponse.from(user, account, false);
 
             assertEquals(level, response.traderLevel());
         }
@@ -211,8 +213,8 @@ class UserProfileResponseTest {
         
         UserAccount account2 = new UserAccount(userId2, "user2@example.com", "TRADER");
 
-        UserProfileResponse response1 = UserProfileResponse.from(user1, account1);
-        UserProfileResponse response2 = UserProfileResponse.from(user2, account2);
+        UserProfileResponse response1 = UserProfileResponse.from(user1, account1, false);
+        UserProfileResponse response2 = UserProfileResponse.from(user2, account2, false);
 
         assertEquals(userId1, response1.userId());
         assertEquals(userId2, response2.userId());
@@ -237,7 +239,7 @@ class UserProfileResponseTest {
         
         UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER");
 
-        UserProfileResponse response = UserProfileResponse.from(user, account);
+        UserProfileResponse response = UserProfileResponse.from(user, account, false);
 
         assertNull(response.middleName());
     }
@@ -258,7 +260,7 @@ class UserProfileResponseTest {
         
         UserAccount account = new UserAccount(USER_ID, "test@example.com", "ADMIN");
 
-        UserProfileResponse response = UserProfileResponse.from(user, account);
+        UserProfileResponse response = UserProfileResponse.from(user, account, false);
 
         assertEquals("ADMIN", response.userRole());
     }
@@ -282,7 +284,21 @@ class UserProfileResponseTest {
         assertEquals(id2, account2.getUserId());
     }
 
+    @Test
+    void userProfileResponseReportsTermsAsAccepted() {
+        User user = new User();
+        user.setUserId(USER_ID);
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER");
 
+        assertTrue(UserProfileResponse.from(user, account, true).termsAccepted());
+    }
 
+    @Test
+    void userProfileResponseReportsTermsAsNotAccepted() {
+        User user = new User();
+        user.setUserId(USER_ID);
+        UserAccount account = new UserAccount(USER_ID, "test@example.com", "TRADER");
 
+        assertFalse(UserProfileResponse.from(user, account, false).termsAccepted());
+    }
 }

@@ -31,11 +31,36 @@ public final class UserAccountFixture {
     }
 
     /**
-     * Removes every account row.
+     * Records that the user accepted the platform terms in force, as Holdings
+     * and Trade Service does when they accept in the dashboard. This service
+     * only reads acceptances, so it has no repository method that can.
+     *
+     * @param jdbc   template bound to the test database
+     * @param userId the user who accepted
+     */
+    public static void acceptCurrentTerms(JdbcTemplate jdbc, UUID userId) {
+        acceptTerms(jdbc, userId, app.user.TermsAcceptance.CURRENT_VERSION);
+    }
+
+    /**
+     * Records that the user accepted one version of the platform terms.
+     *
+     * @param jdbc         template bound to the test database
+     * @param userId       the user who accepted
+     * @param termsVersion the version they accepted
+     */
+    public static void acceptTerms(JdbcTemplate jdbc, UUID userId, String termsVersion) {
+        jdbc.update("insert into terms_acceptances (user_id, terms_version, accepted_at) "
+                + "values (?, ?, current_timestamp)", userId, termsVersion);
+    }
+
+    /**
+     * Removes every account row and every terms acceptance.
      *
      * @param jdbc template bound to the test database
      */
     public static void deleteAll(JdbcTemplate jdbc) {
+        jdbc.update("delete from terms_acceptances");
         jdbc.update("delete from user_accounts");
     }
 }

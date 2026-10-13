@@ -16,8 +16,14 @@ export const ORDER_ERROR_MESSAGES = {
   notOwned: "That account isn't available to you.",
   unknownInstrument: "We couldn't find that symbol. Pick another and try again.",
   invalid: 'Please check the order details and try again.',
+  termsRequired: 'The platform terms have changed. Reload the page to accept them before trading.',
   failed: "We couldn't submit the order. Please try again.",
 } as const;
+
+// How Order and Sell Service begins its refusal of an order from a user who has not accepted
+// the platform terms in force. It is the only thing that tells that 403 from the one for an
+// account the caller does not own.
+const TERMS_REFUSAL = 'Accept the platform terms';
 
 // Maps a failed order submission to a message safe to show the trader.
 //
@@ -40,6 +46,11 @@ export function toOrderErrorMessage(error: unknown): string {
     case 401:
       return ORDER_ERROR_MESSAGES.sessionExpired;
     case 403:
+      // A page loaded before the terms changed still shows an order ticket; the backend
+      // refuses its orders until the new terms are accepted.
+      return backendMessage(error)?.startsWith(TERMS_REFUSAL)
+        ? ORDER_ERROR_MESSAGES.termsRequired
+        : ORDER_ERROR_MESSAGES.notOwned;
     case 404:
       return ORDER_ERROR_MESSAGES.notOwned;
     case 400:

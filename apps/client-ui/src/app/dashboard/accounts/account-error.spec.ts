@@ -57,6 +57,18 @@ describe('toAccountErrorMessage', () => {
     );
   });
 
+  it('explains refused terms as changed terms, and never as an unavailable account', () => {
+    expect(toAccountErrorMessage(httpError(409), 'accept-terms')).toBe(
+      ACCOUNT_ERROR_MESSAGES.termsChanged,
+    );
+    expect(toAccountErrorMessage(httpError(404), 'accept-terms')).toBe(
+      ACCOUNT_ERROR_MESSAGES.failed['accept-terms'],
+    );
+    expect(toAccountErrorMessage(new Error('boom'), 'accept-terms')).toBe(
+      ACCOUNT_ERROR_MESSAGES.failed['accept-terms'],
+    );
+  });
+
   it('uses the per-action message for any other status', () => {
     expect(toAccountErrorMessage(httpError(418), 'withdraw')).toBe(
       ACCOUNT_ERROR_MESSAGES.failed.withdraw,

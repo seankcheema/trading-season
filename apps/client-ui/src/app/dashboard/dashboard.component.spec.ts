@@ -68,7 +68,7 @@ function flushAccounts(
     holdings?: Record<number, unknown[]>;
     cash?: number;
     transactions?: unknown[];
-    profile?: { firstName: string; lastName: string };
+    profile?: { firstName: string; lastName: string; termsAccepted?: boolean };
     orders?: OrderResult[];
   } = {},
 ): HttpTestingController {
@@ -1943,6 +1943,101 @@ describe('DashboardComponent', () => {
       flushAccounts(fixture, ACCOUNTS, { profile: { firstName: 'Prince', lastName: '' } });
 
       expect(text(element(fixture).querySelector('[data-testid="profile-initials"]'))).toBe('P');
+    });
+  });
+
+  describe('terms and conditions', () => {
+    const NOT_ACCEPTED = { ...PROFILE, termsAccepted: false };
+
+    function render() {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      return fixture;
+    }
+
+    function element(fixture: ComponentFixture<DashboardComponent>) {
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    function termsDialog(fixture: ComponentFixture<DashboardComponent>) {
+      return element(fixture).querySelector('app-terms-dialog');
+    }
+
+    function content(fixture: ComponentFixture<DashboardComponent>) {
+      return element(fixture).querySelector('[data-testid="dashboard-content"]') as HTMLElement;
+    }
+
+    it('does not ask before the profile has loaded', () => {
+      const fixture = render();
+
+      expect(termsDialog(fixture)).toBeNull();
+      expect(content(fixture).hasAttribute('inert')).toBe(false);
+    });
+
+    it('does not ask a user who has already accepted', () => {
+      const fixture = render();
+      flushAccounts(fixture, ACCOUNTS, { profile: { ...PROFILE, termsAccepted: true } });
+
+      expect(termsDialog(fixture)).toBeNull();
+      expect(content(fixture).hasAttribute('inert')).toBe(false);
+    });
+
+    it('asks a user who has not accepted, and makes the dashboard behind it inert', () => {
+      const fixture = render();
+      flushAccounts(fixture, ACCOUNTS, { profile: NOT_ACCEPTED });
+
+      expect(termsDialog(fixture)?.textContent).toContain('Terms and Conditions');
+      expect(termsDialog(fixture)?.textContent).toContain('Ada Lovelace');
+      expect(content(fixture).hasAttribute('inert')).toBe(true);
+      expect(content(fixture).contains(termsDialog(fixture))).toBe(false);
+    });
+
+    it('closes anything opened while the profile was still loading', () => {
+      const fixture = render();
+      const component = fixture.componentInstance;
+      component['onSettings']();
+      component['openOrder'](MOCK_INSTRUMENTS[0]);
+      fixture.detectChanges();
+      expect(element(fixture).querySelector('app-settings-dialog')).not.toBeNull();
+
+      flushAccounts(fixture, ACCOUNTS, { profile: NOT_ACCEPTED });
+
+      expect(element(fixture).querySelector('app-settings-dialog')).toBeNull();
+      expect(component['orderInstrument']()).toBeNull();
+      expect(element(fixture).querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    });
+
+    it('opens the dashboard once the user signs and accepts', () => {
+      const fixture = render();
+      const http = flushAccounts(fixture, ACCOUNTS, { profile: NOT_ACCEPTED });
+      const signature = element(fixture).querySelector('#termsSignature') as HTMLInputElement;
+      signature.value = 'Ada Lovelace';
+      signature.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+
+      (termsDialog(fixture)!.querySelector('button[type="submit"]') as HTMLButtonElement).click();
+      const request = http.expectOne('/api/users/me/terms-acceptance');
+      expect(request.request.method).toBe('PUT');
+      request.flush({ ...PROFILE, availableFunds: CASH, termsAccepted: true });
+      fixture.detectChanges();
+
+      expect(termsDialog(fixture)).toBeNull();
+      expect(content(fixture).hasAttribute('inert')).toBe(false);
+    });
+
+    it('signs the user out when they decline', () => {
+      const fixture = render();
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+      flushAccounts(fixture, ACCOUNTS, { profile: NOT_ACCEPTED });
+
+      const signOut = Array.from(termsDialog(fixture)!.querySelectorAll('button')).find(
+        (candidate) => candidate.textContent?.trim() === 'Sign out',
+      )!;
+      signOut.click();
+      fixture.detectChanges();
+
+      expect(navigate).toHaveBeenCalledWith('/login');
+      TestBed.inject(HttpTestingController).expectNone('/api/users/me/terms-acceptance');
     });
   });
 });
