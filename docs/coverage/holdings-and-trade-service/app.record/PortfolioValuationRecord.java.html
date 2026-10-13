@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioValuationRecord.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.record</a> &gt; <span class="el_source">PortfolioValuationRecord.java</span></div><h1>PortfolioValuationRecord.java</h1><pre class="source lang-java linenums">package app.record;
+
+import app.account.PortfolioValuation;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+
+/**
+ * The market value of an account's holdings at a moment, published as
+ * {@value #TYPE}. Keyed by account, not by valuation: only the newest value
+ * of an account matters to a consumer, so a later one replaces an earlier one
+ * when the topic is compacted.
+ *
+ * @param valuationId    the valuation row
+ * @param accountId      the account valued
+ * @param observedAt     when the value was observed
+ * @param portfolioValue the value of the account's holdings, excluding cash
+ */
+<span class="fc" id="L19">public record PortfolioValuationRecord(</span>
+        Long valuationId,
+        Integer accountId,
+        Instant observedAt,
+        BigDecimal portfolioValue) implements PlatformRecord {
+
+    /** The record type valuations are published under. */
+    public static final String TYPE = &quot;PORTFOLIO_VALUATION&quot;;
+
+    /**
+     * Captures a saved valuation.
+     *
+     * @param valuation the valuation after it was saved, so that it has its id
+     * @return the record describing it
+     */
+    public static PortfolioValuationRecord from(PortfolioValuation valuation) {
+<span class="fc" id="L35">        return new PortfolioValuationRecord(valuation.getId(), valuation.getAccountId(),</span>
+<span class="fc" id="L36">                valuation.getObservedAt(), valuation.getValue());</span>
+    }
+
+    @Override
+    public String recordType() {
+<span class="fc" id="L41">        return TYPE;</span>
+    }
+
+    @Override
+    public String recordId() {
+<span class="fc" id="L46">        return String.valueOf(accountId);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

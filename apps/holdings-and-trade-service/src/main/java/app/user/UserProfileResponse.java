@@ -17,7 +17,7 @@ import java.util.UUID;
  * @param dateOfBirth    date of birth
  * @param traderLevel    BEGINNER, INTERMEDIATE or ADVANCED
  * @param availableFunds cash available for trading
- * @param userRole       ADMIN or TRADER
+ * @param userRole       ADMIN, TRADER or ANALYST
  * @param createdAt      when the account was registered
  */
 public record UserProfileResponse(

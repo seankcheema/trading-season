@@ -63,22 +63,25 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityErrorHandler errorHandler)
             throws Exception {
 <span class="fc" id="L65">        http</span>
-<span class="fc" id="L66">                .csrf(AbstractHttpConfigurer::disable)</span>
-<span class="fc" id="L67">                .cors(Customizer.withDefaults())</span>
-<span class="fc" id="L68">                .sessionManagement(session -&gt; session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))</span>
-<span class="fc" id="L69">                .authorizeHttpRequests(auth -&gt; auth</span>
-<span class="fc" id="L70">                        .requestMatchers(HttpMethod.GET, &quot;/api/market/**&quot;).permitAll()</span>
-<span class="fc" id="L71">                        .requestMatchers(&quot;/error&quot;).permitAll()</span>
-<span class="fc" id="L72">                        .requestMatchers(&quot;/swagger-ui.html&quot;, &quot;/swagger-ui/**&quot;, &quot;/v3/api-docs&quot;, &quot;/v3/api-docs/**&quot;).permitAll()</span>
-<span class="fc" id="L73">                        .anyRequest().authenticated())</span>
-<span class="fc" id="L74">                .oauth2ResourceServer(oauth2 -&gt; oauth2</span>
-<span class="fc" id="L75">                        .jwt(jwt -&gt; jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))</span>
-<span class="fc" id="L76">                        .authenticationEntryPoint(errorHandler)</span>
-<span class="fc" id="L77">                        .accessDeniedHandler(errorHandler))</span>
-<span class="fc" id="L78">                .exceptionHandling(exceptions -&gt; exceptions</span>
+                // CSRF disabled: API uses stateless JWT authentication with Bearer tokens in Authorization header.
+                // CSRF attacks cannot occur because tokens are not automatically sent by browsers. NOSONAR java:S4502
+<span class="fc" id="L68">                .csrf(AbstractHttpConfigurer::disable)</span>
+<span class="fc" id="L69">                .cors(Customizer.withDefaults())</span>
+<span class="fc" id="L70">                .sessionManagement(session -&gt; session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))</span>
+<span class="fc" id="L71">                .authorizeHttpRequests(auth -&gt; auth</span>
+<span class="fc" id="L72">                        .requestMatchers(HttpMethod.GET, &quot;/api/market/**&quot;).permitAll()</span>
+<span class="fc" id="L73">                        .requestMatchers(&quot;/error&quot;).permitAll()</span>
+                        // Swagger/OpenAPI documentation paths
+<span class="fc" id="L75">                        .requestMatchers(&quot;/swagger-ui.html&quot;, &quot;/swagger-ui/**&quot;, &quot;/v3/api-docs&quot;, &quot;/v3/api-docs/**&quot;, &quot;/webjars/**&quot;).permitAll()</span>
+<span class="fc" id="L76">                        .anyRequest().authenticated())</span>
+<span class="fc" id="L77">                .oauth2ResourceServer(oauth2 -&gt; oauth2</span>
+<span class="fc" id="L78">                        .jwt(jwt -&gt; jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))</span>
 <span class="fc" id="L79">                        .authenticationEntryPoint(errorHandler)</span>
-<span class="fc" id="L80">                        .accessDeniedHandler(errorHandler));</span>
-<span class="fc" id="L81">        return http.build();</span>
+<span class="fc" id="L80">                        .accessDeniedHandler(errorHandler))</span>
+<span class="fc" id="L81">                .exceptionHandling(exceptions -&gt; exceptions</span>
+<span class="fc" id="L82">                        .authenticationEntryPoint(errorHandler)</span>
+<span class="fc" id="L83">                        .accessDeniedHandler(errorHandler));</span>
+<span class="fc" id="L84">        return http.build();</span>
     }
 
     /**
@@ -91,7 +94,7 @@ public class SecurityConfig {
     @Bean
     public JwtDecoder jwtDecoder(@Value(&quot;${app.auth.jwk-set-uri}&quot;) String jwkSetUri,
                                  @Value(&quot;${app.auth.issuer}&quot;) String issuer) {
-<span class="fc" id="L94">        return buildJwtDecoder(jwkSetUri, issuer, new RestTemplate());</span>
+<span class="fc" id="L97">        return buildJwtDecoder(jwkSetUri, issuer, new RestTemplate());</span>
     }
 
     /**
@@ -104,12 +107,12 @@ public class SecurityConfig {
      * @return the configured decoder
      */
     static NimbusJwtDecoder buildJwtDecoder(String jwkSetUri, String issuer, RestOperations restOperations) {
-<span class="fc" id="L107">        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri)</span>
-<span class="fc" id="L108">                .jwsAlgorithm(SignatureAlgorithm.RS256)</span>
-<span class="fc" id="L109">                .restOperations(restOperations)</span>
-<span class="fc" id="L110">                .build();</span>
-<span class="fc" id="L111">        decoder.setJwtValidator(tokenValidator(issuer));</span>
-<span class="fc" id="L112">        return decoder;</span>
+<span class="fc" id="L110">        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri)</span>
+<span class="fc" id="L111">                .jwsAlgorithm(SignatureAlgorithm.RS256)</span>
+<span class="fc" id="L112">                .restOperations(restOperations)</span>
+<span class="fc" id="L113">                .build();</span>
+<span class="fc" id="L114">        decoder.setJwtValidator(tokenValidator(issuer));</span>
+<span class="fc" id="L115">        return decoder;</span>
     }
 
     /**
@@ -121,24 +124,24 @@ public class SecurityConfig {
      * @return the combined validator
      */
     static OAuth2TokenValidator&lt;Jwt&gt; tokenValidator(String issuer) {
-<span class="fc" id="L124">        return new DelegatingOAuth2TokenValidator&lt;&gt;(</span>
-<span class="fc" id="L125">                JwtValidators.createDefaultWithIssuer(issuer),</span>
+<span class="fc" id="L127">        return new DelegatingOAuth2TokenValidator&lt;&gt;(</span>
+<span class="fc" id="L128">                JwtValidators.createDefaultWithIssuer(issuer),</span>
                 new JwtClaimValidator&lt;String&gt;(JwtClaimNames.SUB, AuthenticatedUser::isUuid));
     }
 
     /**
-     * Maps the token's {@code roles} claim (ADMIN or TRADER) to {@code ROLE_}
+     * Maps the token's {@code roles} claim (ADMIN, TRADER or ANALYST) to {@code ROLE_}
      * authorities so endpoints can use role-based rules.
      *
      * @return the authentication converter
      */
     static JwtAuthenticationConverter jwtAuthenticationConverter() {
-<span class="fc" id="L136">        JwtGrantedAuthoritiesConverter authorities = new JwtGrantedAuthoritiesConverter();</span>
-<span class="fc" id="L137">        authorities.setAuthoritiesClaimName(&quot;roles&quot;);</span>
-<span class="fc" id="L138">        authorities.setAuthorityPrefix(&quot;ROLE_&quot;);</span>
-<span class="fc" id="L139">        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();</span>
-<span class="fc" id="L140">        converter.setJwtGrantedAuthoritiesConverter(authorities);</span>
-<span class="fc" id="L141">        return converter;</span>
+<span class="fc" id="L139">        JwtGrantedAuthoritiesConverter authorities = new JwtGrantedAuthoritiesConverter();</span>
+<span class="fc" id="L140">        authorities.setAuthoritiesClaimName(&quot;roles&quot;);</span>
+<span class="fc" id="L141">        authorities.setAuthorityPrefix(&quot;ROLE_&quot;);</span>
+<span class="fc" id="L142">        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();</span>
+<span class="fc" id="L143">        converter.setJwtGrantedAuthoritiesConverter(authorities);</span>
+<span class="fc" id="L144">        return converter;</span>
     }
 
     /**
@@ -150,13 +153,13 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource(
             @Value(&quot;${app.cors.allowed-origins}&quot;) List&lt;String&gt; allowedOrigins) {
-<span class="fc" id="L153">        CorsConfiguration cors = new CorsConfiguration();</span>
-<span class="fc" id="L154">        cors.setAllowedOrigins(allowedOrigins);</span>
-<span class="fc" id="L155">        cors.setAllowedMethods(List.of(&quot;GET&quot;, &quot;POST&quot;, &quot;PUT&quot;, &quot;PATCH&quot;, &quot;DELETE&quot;, &quot;OPTIONS&quot;));</span>
-<span class="fc" id="L156">        cors.setAllowedHeaders(List.of(&quot;Authorization&quot;, &quot;Content-Type&quot;));</span>
-<span class="fc" id="L157">        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();</span>
-<span class="fc" id="L158">        source.registerCorsConfiguration(&quot;/**&quot;, cors);</span>
-<span class="fc" id="L159">        return source;</span>
+<span class="fc" id="L156">        CorsConfiguration cors = new CorsConfiguration();</span>
+<span class="fc" id="L157">        cors.setAllowedOrigins(allowedOrigins);</span>
+<span class="fc" id="L158">        cors.setAllowedMethods(List.of(&quot;GET&quot;, &quot;POST&quot;, &quot;PUT&quot;, &quot;PATCH&quot;, &quot;DELETE&quot;, &quot;OPTIONS&quot;));</span>
+<span class="fc" id="L159">        cors.setAllowedHeaders(List.of(&quot;Authorization&quot;, &quot;Content-Type&quot;));</span>
+<span class="fc" id="L160">        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();</span>
+<span class="fc" id="L161">        source.registerCorsConfiguration(&quot;/**&quot;, cors);</span>
+<span class="fc" id="L162">        return source;</span>
     }
 }
 

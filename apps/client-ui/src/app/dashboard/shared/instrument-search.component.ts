@@ -270,13 +270,16 @@ export class InstrumentSearchComponent {
   // A modal dialog owns the keyboard while it is open, and typing in a field must keep its
   // slash, so the shortcut only fires from the page itself.
   protected onDocumentKeydown(event: KeyboardEvent): void {
-    if (!this.shortcut() || this.document.querySelector('[aria-modal="true"]')) return;
+    if (!this.shortcut() || this.document.querySelector('[aria-modal="true"]')) {
+      return;
+    }
     const target = event.target;
     const typing =
       target instanceof HTMLElement &&
       (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
     const palette = event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey);
-    const slash = event.key === '/' && !typing && !event.metaKey && !event.ctrlKey && !event.altKey;
+    const modified = event.metaKey || event.ctrlKey || event.altKey;
+    const slash = event.key === '/' && !typing && !modified;
     if (palette || slash) {
       event.preventDefault();
       this.field().nativeElement.focus();
@@ -288,11 +291,15 @@ export class InstrumentSearchComponent {
     switch (event.key) {
       case 'ArrowDown':
         event.preventDefault();
-        if (count) this.activeIndex.update((i) => (i + 1) % count);
+        if (count) {
+          this.activeIndex.update((i) => (i + 1) % count);
+        }
         break;
       case 'ArrowUp':
         event.preventDefault();
-        if (count) this.activeIndex.update((i) => (i - 1 + count) % count);
+        if (count) {
+          this.activeIndex.update((i) => (i - 1 + count) % count);
+        }
         break;
       case 'Enter': {
         const instrument = this.options()[this.activeIndex()];
@@ -311,19 +318,26 @@ export class InstrumentSearchComponent {
           this.field().nativeElement.blur();
         }
         break;
+      default:
+        break;
     }
   }
 
   protected onAction(): void {
     const best = this.hasQuery() ? this.results()[0] : undefined;
-    if (best) this.select(best);
-    else this.field().nativeElement.focus();
+    if (best) {
+      this.select(best);
+    } else {
+      this.field().nativeElement.focus();
+    }
   }
 
   protected select(instrument: Instrument): void {
     this.query.set('');
     // Otherwise the suggestions would reopen straight away behind the order ticket.
-    if (this.suggestionGroups().length) this.field().nativeElement.blur();
+    if (this.suggestionGroups().length) {
+      this.field().nativeElement.blur();
+    }
     this.selected.emit(instrument);
   }
 }

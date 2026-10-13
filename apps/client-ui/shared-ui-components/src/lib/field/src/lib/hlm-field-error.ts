@@ -56,12 +56,16 @@ export class HlmFieldError implements OnDestroy {
 
   protected readonly _hasError = computed(() => {
     const errors = this._field?.errors();
-    if (!errors) return false;
+    if (!errors) {
+      return false;
+    }
 
     const validator = this.validator();
     const spartanInvalid = this._field?.controlState()?.spartanInvalid;
 
-    if (!spartanInvalid) return false;
+    if (!spartanInvalid) {
+      return false;
+    }
 
     return validator ? validator in errors : Object.keys(errors).length > 0;
   });
@@ -69,7 +73,9 @@ export class HlmFieldError implements OnDestroy {
   private readonly _cleanup: EffectRef | null = this._a11y
     ? effect(() => {
         const a11y = this._a11y;
-        if (!a11y) return;
+        if (!a11y) {
+          return;
+        }
 
         const id = this.id();
         const hasError = this._hasError();

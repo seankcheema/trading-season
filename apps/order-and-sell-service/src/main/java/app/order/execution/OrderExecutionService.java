@@ -30,7 +30,9 @@ import java.time.OffsetDateTime;
  * not at all (BR-09); an unexpected failure rolls back only this execution
  * and leaves the accepted order on record. The committed outcome is raised
  * as an {@link OrderStatusEvent} and published to Kafka after this
- * transaction commits.
+ * transaction commits; a fill's event carries the fill, both ledger postings
+ * and the balances they left, because the reporting service reads none of
+ * those tables.
  *
  * <p><b>Simplification:</b> this fills at the order's client-submitted
  * {@code indicativePrice} rather than a live market quote — business-backend
@@ -181,7 +183,10 @@ public class OrderExecutionService {
         final Order savedOrder = orderRepository.save(order);
         auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_FILLED,
                 "Filled " + savedOrder.getQuantity() + " @ " + fillPrice);
-        events.publishEvent(OrderStatusEvent.from(savedOrder, instrument));
+        events.publishEvent(OrderStatusEvent.from(savedOrder, instrument, new OrderStatusEvent.Execution(
+                user.getUserId(), fill.getFillId(), fillPrice, savedOrder.getQuantity(), now,
+                cashTransaction.getCashTransactionId(), cashDelta, user.getAvailableFunds(),
+                movement.getHoldingMovementId(), quantityDelta, holding.getQuantity())));
         return savedOrder;
     }
 

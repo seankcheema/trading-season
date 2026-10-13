@@ -181,35 +181,7 @@ function setupGlobalObserver(platformId: Object): void {
     globalObserver = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-          const element = mutation.target as HTMLElement;
-          const manager = elementClassManagers.get(element);
-
-          // Only process elements we're managing
-          if (manager && observedElements.has(element)) {
-            if (manager.isUpdating) continue; // Ignore changes we're making
-
-            // Update base classes to include any externally added classes
-            const currentClasses = toClassList(element.className);
-            const allSourceClasses = new Set<string>();
-
-            // Collect all classes from all sources
-            for (const source of manager.sources.values()) {
-              for (const className of source.classes) {
-                allSourceClasses.add(className);
-              }
-            }
-
-            // Any classes not from sources become new base classes
-            manager.baseClasses.clear();
-
-            for (const className of currentClasses) {
-              if (!allSourceClasses.has(className)) {
-                manager.baseClasses.add(className);
-              }
-            }
-
-            updateElement(manager);
-          }
+          adoptExternalClasses(mutation.target as HTMLElement);
         }
       }
     });
@@ -223,8 +195,41 @@ function setupGlobalObserver(platformId: Object): void {
   }
 }
 
+function adoptExternalClasses(element: HTMLElement): void {
+  const manager = elementClassManagers.get(element);
+
+  // Only process elements we're managing, and ignore changes we're making
+  if (!manager || !observedElements.has(element) || manager.isUpdating) {
+    return;
+  }
+
+  // Update base classes to include any externally added classes
+  const currentClasses = toClassList(element.className);
+  const allSourceClasses = new Set<string>();
+
+  // Collect all classes from all sources
+  for (const source of manager.sources.values()) {
+    for (const className of source.classes) {
+      allSourceClasses.add(className);
+    }
+  }
+
+  // Any classes not from sources become new base classes
+  manager.baseClasses.clear();
+
+  for (const className of currentClasses) {
+    if (!allSourceClasses.has(className)) {
+      manager.baseClasses.add(className);
+    }
+  }
+
+  updateElement(manager);
+}
+
 function updateElement(manager: ElementClassManager): void {
-  if (manager.isUpdating) return; // Prevent recursive updates
+  if (manager.isUpdating) {
+    return; // Prevent recursive updates
+  }
 
   manager.isUpdating = true;
 

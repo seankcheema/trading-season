@@ -4,11 +4,12 @@ import json
 import sys
 import threading
 import types
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import consumer
-from consumer import KafkaSource, handle_message, main, run_consumer_loop, start_scheduler
-from event_store import EventStore
+from consumer import KafkaSource, TopicStores, handle_message, main, run_consumer_loop, start_scheduler
+from event_store import PLATFORM_RECORDS, TRADE_EVENTS, EventStore
 
 BODY = {'orderId': 7, 'status': 'FILLED', 'symbol': 'TEST', 'side': 'BUY',
         'quantity': 100, 'price': 50.0, 'rejectionReason': None, 'occurredAt': '2026-10-06T09:30:00Z'}
@@ -17,11 +18,15 @@ BODY = {'orderId': 7, 'status': 'FILLED', 'symbol': 'TEST', 'side': 'BUY',
 class FakeMessage:
     """Looks like a confluent_kafka.Message for the parts the loop uses."""
 
-    def __init__(self, partition, offset, key, value, error=None):
+    def __init__(self, partition, offset, key, value, error=None, topic=TRADE_EVENTS):
         self._partition, self._offset, self._key, self._value, self._error = partition, offset, key, value, error
+        self._topic = topic
 
     def error(self):
         return self._error
+
+    def topic(self):
+        return self._topic
 
     def partition(self):
         return self._partition
@@ -79,6 +84,68 @@ class TestHandleMessage:
         assert store.last_offset(0) is None
 
 
+class TestTopicStores:
+    """One consumer reads both topics; each message goes to its own topic's files."""
+
+    RECORD = {'type': 'CASH_TRANSFER', 'cashTransactionId': 31, 'accountId': 7, 'amount': -25.0,
+              'reason': 'WITHDRAWAL', 'createdAt': '2026-10-06T09:30:00Z'}
+
+    def stores(self, tmp_path):
+        return TopicStores({TRADE_EVENTS: EventStore(tmp_path, TRADE_EVENTS),
+                            PLATFORM_RECORDS: EventStore(tmp_path, PLATFORM_RECORDS)})
+
+    def test_a_topic_the_broker_knows_by_another_name_still_fills_the_same_files(self, tmp_path):
+        stores = TopicStores({'staging.orders': EventStore(tmp_path, TRADE_EVENTS),
+                              'staging.records': EventStore(tmp_path, PLATFORM_RECORDS)})
+        record = FakeMessage(0, 0, b'CASH_TRANSFER:31', json.dumps(self.RECORD).encode(), topic='staging.records')
+        trade = FakeMessage(0, 0, b'42', json.dumps(BODY).encode(), topic='staging.orders')
+
+        assert handle_message(trade, stores) is True
+        assert handle_message(record, stores) is True
+
+        assert sorted(path.name for path in tmp_path.iterdir()) == ['platform-records-p0.jsonl',
+                                                                    'trade-events-p0.jsonl']
+
+    def test_routes_each_message_to_the_files_of_its_topic(self, tmp_path):
+        stores = self.stores(tmp_path)
+        record = FakeMessage(0, 0, b'CASH_TRANSFER:31', json.dumps(self.RECORD).encode(), topic=PLATFORM_RECORDS)
+
+        assert handle_message(message(0, 0), stores) is True
+        assert handle_message(record, stores) is True
+
+        trade = json.loads((tmp_path / 'trade-events-p0.jsonl').read_text(encoding='utf-8'))
+        assert (trade['accountId'], trade['orderId']) == (42, 7)
+        stored = json.loads((tmp_path / 'platform-records-p0.jsonl').read_text(encoding='utf-8'))
+        assert stored['key'] == 'CASH_TRANSFER:31'
+        assert stored['type'] == 'CASH_TRANSFER'
+        assert stored['cashTransactionId'] == 31
+
+    def test_the_same_offset_on_two_topics_is_two_messages(self, tmp_path):
+        stores = self.stores(tmp_path)
+        record = FakeMessage(0, 0, b'CASH_TRANSFER:31', json.dumps(self.RECORD).encode(), topic=PLATFORM_RECORDS)
+
+        assert handle_message(message(0, 0), stores) is True
+        assert handle_message(record, stores) is True
+        assert handle_message(record, stores) is False, 'redelivered'
+
+    def test_a_message_from_a_topic_nobody_stores_is_skipped(self, tmp_path):
+        stores = self.stores(tmp_path)
+        stray = FakeMessage(0, 0, b'1', json.dumps(BODY).encode(), topic='some-other-topic')
+
+        assert handle_message(stray, stores) is False
+        assert list(tmp_path.iterdir()) == []
+
+    def test_refresh_re_reads_every_topic(self, tmp_path):
+        stores = self.stores(tmp_path)
+        other = EventStore(tmp_path, PLATFORM_RECORDS)
+        other.append(1, 4, 'SIGN_IN:a', {'type': 'SIGN_IN'})
+
+        stores.refresh()
+
+        again = FakeMessage(1, 4, b'SIGN_IN:a', b'{"type":"SIGN_IN"}', topic=PLATFORM_RECORDS)
+        assert handle_message(again, stores) is False, 'the offset another writer left is seen after a refresh'
+
+
 class TestConsumerLoop:
 
     def test_stores_commits_and_closes(self, tmp_path):
@@ -130,12 +197,35 @@ class TestScheduler:
             job = scheduler.get_job('report_run')
             assert job is not None
             assert job.trigger.interval.total_seconds() == 3600
+            first_run_in = job.next_run_time - datetime.now(timezone.utc)
+            assert timedelta(minutes=59) < first_run_in <= timedelta(minutes=60)
         finally:
             scheduler.shutdown(wait=False)
 
+    def test_the_first_run_can_be_due_before_a_whole_interval(self, app, tmp_path):
+        first_run_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+        scheduler = start_scheduler(app, str(tmp_path), interval_minutes=60, first_run_at=first_run_at)
+        try:
+            assert scheduler.get_job('report_run').next_run_time == first_run_at
+        finally:
+            scheduler.shutdown(wait=False)
+
+    def test_a_run_that_comes_due_late_still_runs(self, app, tmp_path, mocker):
+        ran = threading.Event()
+        mocker.patch('report_run.run_report', side_effect=lambda *args: ran.set())
+        mocker.patch('read_model.read_model.sync')
+        mocker.patch('models.db.session.remove')
+        overdue = datetime.now(timezone.utc) - timedelta(minutes=5)
+        scheduler = start_scheduler(app, str(tmp_path), interval_minutes=60, first_run_at=overdue)
+        try:
+            assert ran.wait(5), 'a first run already overdue at start-up is not dropped as a misfire'
+        finally:
+            scheduler.shutdown(wait=True)
 
     def test_the_job_runs_a_report_inside_the_app_context(self, app, tmp_path, mocker):
-        run_report = mocker.patch('report_run.run_report')
+        calls = []
+        sync = mocker.patch('read_model.read_model.sync', side_effect=lambda *args: calls.append('sync'))
+        run_report = mocker.patch('report_run.run_report', side_effect=lambda *args: calls.append('report'))
         remove = mocker.patch('models.db.session.remove')
         scheduler = start_scheduler(app, str(tmp_path), interval_minutes=60)
         try:
@@ -145,10 +235,13 @@ class TestScheduler:
 
         run_report.assert_called_once()
         assert run_report.call_args.args[0] == str(tmp_path)
+        assert sync.call_args.args[1] == str(tmp_path)
+        assert calls == ['sync', 'report'], 'the names a run uses come from a read model brought up to date first'
         assert remove.called
 
     def test_a_failed_report_is_logged_and_does_not_escape(self, app, tmp_path, mocker, caplog):
-        mocker.patch('report_run.run_report', side_effect=RuntimeError('database away'))
+        mocker.patch('report_run.run_report', side_effect=RuntimeError('disk away'))
+        mocker.patch('read_model.read_model.sync')
         remove = mocker.patch('models.db.session.remove')
         scheduler = start_scheduler(app, str(tmp_path), interval_minutes=60)
         try:
@@ -192,6 +285,13 @@ class TestKafkaSource:
         subscribe.call_args.kwargs['on_assign'](consumer_cls.return_value, [])
         assert assigned == [True]
 
+    def test_one_group_subscribes_to_every_topic_it_is_given(self, mocker):
+        consumer_cls = fake_confluent_kafka(mocker)
+
+        KafkaSource('kafka:9092', 'reporting-ingester', ['trade-events', 'platform-records'])
+
+        assert consumer_cls.return_value.subscribe.call_args.args[0] == ['trade-events', 'platform-records']
+
     def test_without_an_assign_callback(self, mocker):
         consumer_cls = fake_confluent_kafka(mocker)
 
@@ -220,21 +320,30 @@ class TestMain:
     def test_wires_the_store_scheduler_and_source_from_the_app_config(self, app, files_dir, mocker):
         mocker.patch.dict(app.config, {
             'SCHEDULER_ENABLED': True, 'SCHEDULER_INTERVAL_MINUTES': 5, 'KAFKA_BOOTSTRAP_SERVERS': 'kafka:9092',
-            'REPORTING_CONSUMER_GROUP': 'reporting-ingester', 'KAFKA_TRADE_EVENTS_TOPIC': 'trade-events'})
+            'REPORTING_CONSUMER_GROUP': 'reporting-ingester', 'KAFKA_TRADE_EVENTS_TOPIC': 'trade-events',
+            'KAFKA_PLATFORM_RECORDS_TOPIC': 'platform-records'})
         signal = mocker.patch('consumer.signal.signal')
         source_cls = mocker.patch('consumer.KafkaSource')
         loop = mocker.patch('consumer.run_consumer_loop')
-        scheduler = mocker.patch('consumer.start_scheduler').return_value
+        start_scheduler = mocker.patch('consumer.start_scheduler')
+        scheduler = start_scheduler.return_value
 
         main()
 
+        assert start_scheduler.call_args.args[1:] == (str(files_dir), 5)
+        first_run_in = start_scheduler.call_args.kwargs['first_run_at'] - datetime.now(timezone.utc)
+        assert abs(first_run_in) < timedelta(seconds=30), 'the first report run is due as the consumer starts'
         assert signal.call_count == 2, 'SIGTERM and SIGINT both ask the loop to stop'
         source_cls.assert_called_once()
-        assert source_cls.call_args.args == ('kafka:9092', 'reporting-ingester', 'trade-events')
-        store = loop.call_args.args[1]
-        assert source_cls.call_args.kwargs['on_assign'] == store.refresh
-        assert store.events_dir == files_dir / 'events'
-        loop.assert_called_once_with(source_cls.return_value, store, loop.call_args.args[2])
+        assert source_cls.call_args.args == ('kafka:9092', 'reporting-ingester',
+                                             ['trade-events', 'platform-records'])
+        stores = loop.call_args.args[1]
+        assert source_cls.call_args.kwargs['on_assign'] == stores.refresh
+        assert isinstance(stores, TopicStores)
+        assert {name: store.topic for name, store in stores._stores.items()} == {
+            'trade-events': 'trade-events', 'platform-records': 'platform-records'}
+        assert all(store.events_dir == files_dir / 'events' for store in stores._stores.values())
+        loop.assert_called_once_with(source_cls.return_value, stores, loop.call_args.args[2])
         scheduler.shutdown.assert_called_once_with(wait=True)
 
     def test_signal_handler_stops_the_loop(self, app, files_dir, mocker):
