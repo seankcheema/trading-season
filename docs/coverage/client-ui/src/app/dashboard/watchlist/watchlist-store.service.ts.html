@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">98.48% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>60/60</span>
+                <span class='fraction'>65/66</span>
             </div>
         
             
@@ -189,7 +189,21 @@
 <a name='L124'></a><a href='#L124'>124</a>
 <a name='L125'></a><a href='#L125'>125</a>
 <a name='L126'></a><a href='#L126'>126</a>
-<a name='L127'></a><a href='#L127'>127</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L127'></a><a href='#L127'>127</a>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a>
+<a name='L137'></a><a href='#L137'>137</a>
+<a name='L138'></a><a href='#L138'>138</a>
+<a name='L139'></a><a href='#L139'>139</a>
+<a name='L140'></a><a href='#L140'>140</a>
+<a name='L141'></a><a href='#L141'>141</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -240,11 +254,19 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">140x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">139x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">138x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">138x</span>
 <span class="cline-any cline-yes">138x</span>
-<span class="cline-any cline-yes">138x</span>
+<span class="cline-any cline-yes">132x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">138x</span>
 <span class="cline-any cline-yes">118x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -261,6 +283,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">121x</span>
+<span class="cline-any cline-yes">120x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -272,6 +296,7 @@
 <span class="cline-any cline-yes">7x</span>
 <span class="cline-any cline-yes">7x</span>
 <span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-yes">6x</span>
@@ -293,12 +318,15 @@
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
@@ -365,12 +393,20 @@ export class WatchlistStore {
   }
 &nbsp;
   load(refresh = false): Observable&lt;WatchlistEntry[]&gt; {
-    if (this.request) return this.request;
-    if (!refresh &amp;&amp; this.status() === 'ready') return of(this.entries());
+    if (this.request) {
+      return this.request;
+    }
+    if (!refresh &amp;&amp; this.status() === 'ready') {
+      return of(this.entries());
+    }
     // A GET during an optimistic write could erase the optimistic state.
-    <span class="missing-if-branch" title="if path not taken" >I</span>if (this.pending().size) <span class="cstat-no" title="statement not covered" >return of(this.entries());</span>
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (this.pending().size) {
+<span class="cstat-no" title="statement not covered" >      return of(this.entries());</span>
+    }
     const revision = this.revision;
-    if (this.status() === 'idle') this.status.set('loading');
+    if (this.status() === 'idle') {
+      this.status.set('loading');
+    }
     const request = this.http.get&lt;WatchlistEntry[]&gt;(this.api).pipe(
       switchMap((entries) =&gt; (revision === this.revision ? of(entries) : this.load(true))),
       tap({
@@ -386,7 +422,9 @@ export class WatchlistStore {
       }),
       takeUntil(this.cancelled),
       finalize(() =&gt; {
-        if (this.request === request) this.request = undefined;
+        if (this.request === request) {
+          this.request = undefined;
+        }
       }),
       shareReplay({ bufferSize: 1, refCount: true }),
     );
@@ -396,8 +434,9 @@ export class WatchlistStore {
 &nbsp;
   toggle(rawSymbol: string): Observable&lt;unknown&gt; {
     const symbol = rawSymbol.trim().toUpperCase();
-    if (this.pending().has(symbol) || this.status() === 'idle' || this.status() === 'loading')
+    if (this.pending().has(symbol) || this.status() === 'idle' || this.status() === 'loading') {
       return EMPTY;
+    }
     const previous = this.entries().find((entry) =&gt; entry.symbol === symbol);
     const position = this.entries().findIndex((entry) =&gt; entry.symbol === symbol);
     this.revision++;
@@ -415,16 +454,19 @@ export class WatchlistStore {
     return mutation.pipe(
       tap({
         next: (entry) =&gt; {
-          if (entry)
+          if (entry) {
             this.entries.update((entries) =&gt;
               entries.map((item) =&gt; (item.symbol === symbol ? entry : <span class="branch-1 cbranch-no" title="branch not covered" >item))</span>,
             );
+          }
           this.status.set('ready');
         },
         error: () =&gt; {
           this.entries.update((entries) =&gt; {
             const restored = entries.filter((entry) =&gt; entry.symbol !== symbol);
-            if (previous) restored.splice(position, 0, previous);
+            if (previous) {
+              restored.splice(position, 0, previous);
+            }
             return restored;
           });
           this.error.set('Unable to save watchlist. Click the star to retry.');
@@ -448,7 +490,7 @@ export class WatchlistStore {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-10-12T19:58:36.891Z
+                at 2026-10-13T21:06:02.903Z
             </div>
         <script src="../../../../prettify.js"></script>
         <script>
