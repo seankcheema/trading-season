@@ -15,7 +15,13 @@ import {
 } from 'rxjs';
 import { BACKEND_API_URL } from '../../core/api.config';
 import { UnknownInstrumentError } from './order-error';
-import { InstrumentRef, OrderResult, OrderSubmission, OrderType } from './order.models';
+import {
+  InstrumentRef,
+  OrderAuditEntry,
+  OrderResult,
+  OrderSubmission,
+  OrderType,
+} from './order.models';
 
 // How often to re-read the history while an order is still pending.
 export const PENDING_ORDER_POLL_MS = 5_000;
@@ -157,6 +163,13 @@ export class OrderService {
     );
     this.historyRequest = request;
     return request;
+  }
+
+  /** Reads the signed-in trader's immutable audit timeline for one order. */
+  orderAudit(orderId: number): Observable<OrderAuditEntry[]> {
+    return this._http
+      .get<OrderAuditEntry[]>(`${this._apiUrl}/orders/${orderId}/audit`)
+      .pipe(takeUntil(this.cancelled));
   }
 
   private startPolling(): void {
