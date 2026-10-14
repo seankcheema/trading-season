@@ -38,6 +38,7 @@ import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.kafka.test.utils.ContainerTestUtils;
 import org.springframework.kafka.test.utils.KafkaTestUtils;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -54,6 +55,8 @@ import java.util.UUID;
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 /**
  * Runs the real path from {@code OrderService} through the after-commit
@@ -116,12 +119,19 @@ class TradeEventFlowIntegrationTest {
     @Autowired
     private OrderStatusStreamRegistry streams;
 
+    @MockitoBean
+    private app.order.execution.ExecutionQuoteSource quotes;
+
     private User user;
     private Account account;
     private Instrument instrument;
 
     @BeforeEach
     void setUp() {
+        when(quotes.current(any(), any())).thenReturn(
+            new app.order.execution.ExecutionQuoteSource.Quote(
+                new BigDecimal("50.00"), 1L, java.time.Instant.parse("2026-01-05T16:00:00Z")));
+
         auditTrailRepository.deleteAll();
         holdingMovementRepository.deleteAll();
         cashTransactionRepository.deleteAll();

@@ -134,6 +134,9 @@ class OrderExecutionServiceTest {
 
     @Test
     void theFilledEventCarriesTheFillBothPostingsAndTheBalancesTheyLeft() {
+        when(quotes.current(any(), any())).thenReturn(
+            new ExecutionQuoteSource.Quote(new BigDecimal("40.00"), 1,
+                java.time.Instant.parse("2026-01-05T16:00:00Z")));
         when(cashTransactionRepository.save(any(CashTransaction.class))).thenAnswer(invocation -> {
             CashTransaction posted = invocation.getArgument(0);
             posted.setCashTransactionId(71);

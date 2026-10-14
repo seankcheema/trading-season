@@ -229,12 +229,31 @@ function Write-NewLogLines {
     }
 }
 
+function Write-LocalEndpoints {
+    Write-Host ''
+    Write-Host 'Local services are ready:'
+    Write-Host '  Client UI                  http://localhost:4200'
+    Write-Host '  Reporting UI               http://localhost:4300'
+    Write-Host '  Auth Service               http://localhost:3001'
+    Write-Host '  Order and Sell Service     http://localhost:8081/swagger-ui.html'
+    Write-Host '  Holdings and Trade Service http://localhost:8082/swagger-ui.html'
+    if (-not $SkipReporting) {
+        Write-Host '  Reporting Service          http://localhost:8083/docs'
+    }
+    Write-Host "  PostgreSQL                 ${dbHost}:$parsedDbPort"
+    if ($eventsEnabled) {
+        Write-Host "  Kafka                      localhost:$brokerPort"
+    }
+    Write-Host ''
+}
+
 function Wait-LocalBackends {
     $pending = @{
         'auth' = 'http://127.0.0.1:3001/health'
         'holdings-and-trade' = 'http://127.0.0.1:8082/v3/api-docs'
         'order-and-sell' = 'http://127.0.0.1:8081/v3/api-docs'
     }
+
     $deadline = [DateTime]::UtcNow.AddMinutes(3)
     Write-Host 'Waiting for auth and both Java services before starting the UI...'
     while ($pending.Count -gt 0) {
@@ -412,7 +431,8 @@ try {
     $processes += Start-LocalService -Name 'reporting-ui' -FilePath $npm `
         -ArgumentList @('start') -WorkingDirectory $reportingUiDirectory
 
-    Write-Host 'Starting UI :4200, reporting UI :4300, auth :3001, order-and-sell :8081, and holdings-and-trade :8082. Press Ctrl+C to stop all services.'
+    Write-LocalEndpoints
+    Write-Host 'Press Ctrl+C to stop all services.'
     if ($SkipReporting) {
         Write-Host 'Reporting was skipped: the reporting UI signs in but cannot load a report.'
     }

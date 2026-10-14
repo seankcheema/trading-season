@@ -4,7 +4,6 @@ import app.auth.AuthenticatedUser;
 import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
-import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -79,7 +78,7 @@ public class UserController {
      * @throws app.auth.ConflictException if the version shown is not the one in force
      * @throws UserNotFoundException      if the caller has not registered
      */
-    @PutMapping("/me/terms-acceptance")
+    @PutMapping("/terms-acceptance")
     @Operation(summary = "Accept the platform terms", description = "Records that the authenticated user accepts the version of the platform terms they were shown, and returns their updated profile")
     public UserProfileResponse acceptTerms(@AuthenticationPrincipal Jwt jwt,
                                            @Valid @RequestBody AcceptTermsRequest request) {

@@ -216,19 +216,10 @@ The UI is at http://localhost:4200 and the Reporting UI at http://localhost:4300
 
 ### Local processes (Windows)
 
-```powershell
-npm --prefix apps/client-ui ci
-npm --prefix apps/reporting-ui ci
-npm --prefix apps/auth-service ci
-python -m venv apps/reporting-service/venv
-apps/reporting-service/venv/Scripts/python -m pip install -r apps/reporting-service/requirements.txt
-Copy-Item apps/auth-service/.env.example apps/auth-service/.env
-node apps/auth-service/scripts/generate-dev-keys.mjs | Add-Content apps/auth-service/.env
-$env:SPRING_DATASOURCE_PASSWORD = 'password'
-.\scripts\start-local.ps1
-```
-
-The script starts the Client UI on 4200, the Reporting UI on 4300, the Auth Service, both Java services, the Reporting Service on 8083 and its consumer, and stops with an instruction if a project's dependencies are not installed. This needs a running `trading_season` database; see [db/README.md](db/README.md) to create and migrate one, and [apps/market-data](apps/market-data/README.md) to load synthetic market data.
+Follow [LOCAL_SETUP.md](docs/LOCAL_SETUP.md). It installs dependencies, creates the
+development keys, instantiates PostgreSQL and Kafka, applies every migration,
+loads the market-data seed, applies the dummy demo seed, republishes history
+for reporting, and starts all host services with their endpoint and port map.
 
 On Linux, `scripts/setup-local.sh` installs the dependencies and starts both UIs, the Auth Service and both Java services. When it starts the database from the Compose file it also starts the Compose broker and creates both topics; when it finds a local PostgreSQL it starts no broker, so start the Compose `kafka` and `kafka-init` services first. It does not start the Reporting Service or its consumer; start them as [apps/reporting-service](apps/reporting-service/README.md#local-development) describes.
 

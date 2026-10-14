@@ -3,7 +3,6 @@ package app.order;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.support.TransactionTemplate;
 import app.account.Account;
 import app.account.AccountNotFoundException;
@@ -187,11 +186,19 @@ class OrderServiceTest {
         var request = order("BUY", "1", "50");
         org.mockito.Mockito.when(quotes.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal("49"), 7L, java.time.Instant.parse("2026-01-05T16:00:01Z")));
-        Order filled = orderService.submitOrder(request, user.getUserId());
-        assertEquals(0, new BigDecimal("49").compareTo(filled.getExecutionPrice()));
-        assertEquals(0, new BigDecimal("49").compareTo(orderService.getOwnOrders(user.getUserId()).getFirst().getExecutionPrice()));
-        assertEquals(0, new BigDecimal("49").compareTo(orderService.submitOrder(request, user.getUserId()).getExecutionPrice()));
-        assertNotNull(filled.getExecutedSimulatedAt()); assertEquals(7L, filled.getSessionId());
+        Order first = orderService.submitOrder(request, user.getUserId());
+        Order retried = orderService.submitOrder(request, user.getUserId());
+        assertEquals(first.getOrderId(), retried.getOrderId());
+        assertEquals(Order.STATUS_FILLED, retried.getStatus());
+        assertNotNull(retried.getExecutionPrice());
+        assertEquals(0, new BigDecimal("49").compareTo(retried.getExecutionPrice()));
+
+        Order fromHistory = orderService.getOwnOrders(user.getUserId()).getFirst();
+        assertEquals(first.getOrderId(), fromHistory.getOrderId());
+        assertNotNull(fromHistory.getExecutionPrice());
+        assertEquals(0, new BigDecimal("49").compareTo(fromHistory.getExecutionPrice()));
+        assertNotNull(retried.getExecutedSimulatedAt());
+        assertEquals(7L, retried.getSessionId());
     }
 
     @Test
@@ -224,15 +231,16 @@ class OrderServiceTest {
         jdbcTemplate.execute("alter table holding_movements add constraint buffer_test_failure check (quantity_delta <= 0)");
         try {
             var request = order("BUY", "1", "50.00");
-            var failure = assertThrows(DataIntegrityViolationException.class,
-                    () -> orderService.submitOrder(request, user.getUserId()));
-            assertNotNull(failure);
-            assertEquals(0, orderRepository.count());
+            Order saved = orderService.submitOrder(request, user.getUserId());
+
+            assertEquals(Order.STATUS_ACCEPTED, saved.getStatus());
+            assertEquals(1, orderRepository.count());
             assertEquals(0, fillRepository.count());
             assertEquals(0, cashTransactionRepository.count());
             assertEquals(0, holdingMovementRepository.count());
             assertEquals(0, holdingRepository.count());
-            assertEquals(0, auditTrailRepository.count());
+            assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_ACCEPTED, OrderService.AUDIT_EXECUTION_FAILED),
+                    auditEventsFor(saved));
             assertEquals(0, STARTING_FUNDS.compareTo(availableFunds()));
         } finally {
             jdbcTemplate.execute("alter table holding_movements drop constraint buffer_test_failure");
@@ -287,11 +295,11 @@ class OrderServiceTest {
                     () -> trade.get(200, java.util.concurrent.TimeUnit.MILLISECONDS)));
             release.countDown();
             archive.get(5, java.util.concurrent.TimeUnit.SECONDS);
-            var failure = assertThrows(java.util.concurrent.ExecutionException.class,
-                    () -> trade.get(5, java.util.concurrent.TimeUnit.SECONDS));
-            var cause = assertInstanceOf(ResponseStatusException.class, failure.getCause());
-            assertEquals(409, cause.getStatusCode().value());
-            assertEquals(0, orderRepository.count());
+                Order saved = trade.get(5, java.util.concurrent.TimeUnit.SECONDS);
+                assertEquals(Order.STATUS_ACCEPTED, saved.getStatus());
+                assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_ACCEPTED, OrderService.AUDIT_EXECUTION_FAILED),
+                    auditEventsFor(saved));
+                assertEquals(1, orderRepository.count());
             assertEquals(0, fillRepository.count());
             assertEquals(0, cashTransactionRepository.count());
         } finally {
@@ -362,7 +370,8 @@ class OrderServiceTest {
         assertNotNull(order.getResolvedAt());
         assertEquals(0, new BigDecimal("1000.00").compareTo(availableFunds()));
         assertEquals(0, fillRepository.count());
-        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_REJECTED), auditEventsFor(order));
+        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_ACCEPTED, Order.STATUS_REJECTED),
+            auditEventsFor(order));
     }
 
     @Test

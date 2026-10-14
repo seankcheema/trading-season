@@ -79,7 +79,7 @@ class AccountServiceUnitTest {
     @Test
     void aRenamedAccountIsRaisedForReportingUnderTheSameKey() {
         Account account = createAccount(4, USER_ID, "Old Name");
-        when(accountRepository.findByIdAndUserId(4, USER_ID)).thenReturn(Optional.of(account));
+                when(accountRepository.findByIdForUpdate(4)).thenReturn(Optional.of(account));
         when(accountRepository.save(any(Account.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         accountService.updateAccountName(4, USER_ID, "New Name");

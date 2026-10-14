@@ -111,8 +111,6 @@ public class OrderService {
                          OrderValidationPipeline validationPipeline,
                          OrderExecutionService orderExecutionService,
                          AuditTrailService auditTrailService,
-                         ExecutionQuoteSource quotes,
-                         HoldingRepository holdingRepository,
                  ApplicationEventPublisher events,
                  PlatformTransactionManager transactionManager,
                  ExecutionQuoteSource quotes,

@@ -17,7 +17,7 @@ The Reporting Service does not connect to it. What reporting shows is published 
 
 The repository currently contains multiple `V009__*.sql` files. The migration runner tracks applied filenames in `public.schema_migrations`, so each file is applied once. Do not rename or edit applied migrations; add a new migration for further schema changes.
 
-In Docker, `db-init` runs [infrastructure/docker/init-db.sh](../infrastructure/docker/init-db.sh), which applies each file once and records it in `public.schema_migrations`. For a local PostgreSQL, apply the files in order with `psql -v ON_ERROR_STOP=1 -f`. Never edit an applied migration; add a new one.
+In Docker, `db-init` runs [infrastructure/docker/init-db.sh](../infrastructure/docker/init-db.sh), which applies each file once and records it in `public.schema_migrations`. For local PostgreSQL on Windows, use [scripts/apply-migrations.ps1](../scripts/apply-migrations.ps1), or apply the files in order with `psql -v ON_ERROR_STOP=1 -f` or pgAdmin's Query Tool. Never edit an applied migration; add a new one.
 
 ## Reporting feed tools
 
