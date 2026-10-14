@@ -84,18 +84,16 @@ test.describe('Activity', () => {
   }
 
   test("sends the viewer's own time zone offset with the range", async ({ page, openAsAdmin }) => {
-    const asked: string[] = [];
-    page.on('request', (request) => {
-      if (request.url().includes('/api/reporting/activity')) {
-        asked.push(new URL(request.url()).search);
-      }
-    });
+    // The heading can be on screen before the first request leaves, so wait for the request itself.
+    const asked = page.waitForRequest((request) =>
+      request.url().includes('/api/reporting/activity'),
+    );
 
     await openAsAdmin('/');
     await expect(heading(page)).toBeVisible();
 
     // The suite's browser sits in UTC.
-    expect(asked[0]).toBe('?range=7d&tzOffset=0');
+    expect(new URL((await asked).url()).search).toBe('?range=7d&tzOffset=0');
   });
 
   test('remembers the range in this browser across a reload', async ({ page, openAsAdmin }) => {
