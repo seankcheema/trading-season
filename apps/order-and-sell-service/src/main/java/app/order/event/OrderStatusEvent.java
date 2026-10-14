@@ -36,7 +36,9 @@ import java.util.UUID;
  * @param symbol          the instrument's ticker
  * @param side            {@code BUY} or {@code SELL}
  * @param quantity        units ordered
- * @param price           the price the order was filled at, or would be; currently the indicative price
+ * @param price           the price the order was filled at when the status is {@code FILLED}
+ *                        (the fill's quote price, BR-08/15); otherwise the indicative price
+ *                        the trader saw
  * @param rejectionReason why the order was rejected, or {@code null} otherwise
  * @param occurredAt      when the order reached this status
  * @param order           the order row as committed with this status
@@ -143,7 +145,7 @@ public record OrderStatusEvent(
                 instrument.getTicker(),
                 order.getOrderType(),
                 order.getQuantity(),
-                order.getIndicativePrice(),
+                execution != null ? execution.price() : order.getIndicativePrice(),
                 order.getRejectionReason(),
                 occurredAt,
                 new OrderRecord(

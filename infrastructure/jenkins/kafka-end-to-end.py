@@ -191,14 +191,20 @@ def main():
     if status != 201 or order.get('status') != 'FILLED':
         fail('place order', f'order-and-sell-service answered {status}: {order}')
     order_id = order['orderId']
-    say('place order', f'order {order_id}: BUY 10 {instrument["ticker"]} at 25.00, status {order["status"]}')
+    say('place order', f'order {order_id}: BUY 10 {instrument["ticker"]} at indicative price 25.00, status {order["status"]}')
     print(f'[KAFKA-E2E] orderId={order_id} accountId={account_id}', flush=True)
 
     stream.join(WAIT_SECONDS)
     statuses = [frame['status'] for frame in stream.frames if frame.get('orderId') == order_id]
     if statuses != ['ACCEPTED', 'FILLED']:
         fail('consumer order-status-pusher', f'stream frames for order {order_id} were {statuses}, error {stream.error}')
-    say('consumer order-status-pusher', f'the stream delivered ACCEPTED then FILLED for order {order_id}')
+    # The fill settles at the market quote at execution (BR-08), not necessarily at the
+    # indicative price, so every cash check below derives from the price the fill carries.
+    filled = next(frame for frame in stream.frames if frame.get('orderId') == order_id and frame['status'] == 'FILLED')
+    fill_price = float(filled['execution']['price'])
+    if fill_price <= 0 or float(filled['price']) != fill_price:
+        fail('consumer order-status-pusher', f'the FILLED frame carries price {filled.get("price")} and execution price {fill_price}')
+    say('consumer order-status-pusher', f'the stream delivered ACCEPTED then FILLED for order {order_id}, filled at {fill_price}')
 
     from app import app
     from models import PortfolioValuation, db
@@ -285,7 +291,7 @@ def main():
     admin_token = body['accessToken']
     say('admin sign-in', f'{ADMIN_EMAIL} signed in with the ADMIN role')
 
-    funds_left = OPENING_FUNDS - ORDER_QUANTITY * ORDER_PRICE
+    funds_left = round(OPENING_FUNDS - ORDER_QUANTITY * fill_price, 2)
 
     def customer_in_console():
         status, listed = call('GET', f'{REPORTING}/api/reporting/customers', token=admin_token)
