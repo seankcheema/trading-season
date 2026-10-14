@@ -59,6 +59,9 @@ import java.time.OffsetDateTime;
 @Service
 public class OrderExecutionService {
 
+    /** Where the fill price comes from; recorded with every fill as its pricing decision. */
+    static final String FILL_PRICE_SOURCE = "client indicative price; no live quote";
+
     private final AccountRepository accountRepository;
     private final UserRepository userRepository;
     private final HoldingRepository holdingRepository;
@@ -104,6 +107,12 @@ public class OrderExecutionService {
 
     /**
      * Executes an accepted order in a new transaction.
+     *
+     * <p>A fill records a {@code FILLED} audit event naming the fill price and
+     * its source ({@link #FILL_PRICE_SOURCE}), the signed cash change for the
+     * owning user, and the signed holding change for the account. Change
+     * {@link #FILL_PRICE_SOURCE} together with {@code fillPrice} once a live
+     * quote source exists.
      *
      * @param order      the {@code ACCEPTED} order to execute
      * @param instrument the instrument being traded
@@ -182,12 +191,19 @@ public class OrderExecutionService {
         order.setResolvedAt(now);
         final Order savedOrder = orderRepository.save(order);
         auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_FILLED,
-                "Filled " + savedOrder.getQuantity() + " @ " + fillPrice);
+                "Filled " + savedOrder.getQuantity().toPlainString() + " @ " + fillPrice.toPlainString()
+                        + " (" + FILL_PRICE_SOURCE + "); cash " + signed(cashDelta)
+                        + " for user " + user.getUserId() + "; holding " + signed(quantityDelta)
+                        + " on account " + account.getAccountId());
         events.publishEvent(OrderStatusEvent.from(savedOrder, instrument, new OrderStatusEvent.Execution(
                 user.getUserId(), fill.getFillId(), fillPrice, savedOrder.getQuantity(), now,
                 cashTransaction.getCashTransactionId(), cashDelta, user.getAvailableFunds(),
                 movement.getHoldingMovementId(), quantityDelta, holding.getQuantity())));
         return savedOrder;
+    }
+
+    private static String signed(BigDecimal amount) {
+        return (amount.signum() >= 0 ? "+" : "") + amount.toPlainString();
     }
 
     private Order reject(Order order, Instrument instrument, String reason) {

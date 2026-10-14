@@ -27,7 +27,7 @@ flowchart LR
 
 | Step | Script | Notes |
 | --- | --- | --- |
-| 0001 | `0001-initialize-database.py --database-url URL --empty-database` | Applies V001 and V002 to an empty schema. Never use it for seeding |
+| 0001 | `0001-initialize-database.py --database-url URL --empty-database` | Applies every migration in `db/migrations`, in file order, to an empty schema. Never use it for seeding |
 | 0002 | `0002-generate-synthetic-market-data.py [--start-date D --end-date D] [--regenerate]` | No database access. Replacing a different archive needs `--regenerate` and is validated in staging |
 | 0003 | `0003-validate-synthetic-market-data.py` | Checksums, exact one-second coverage, unique sequences, spreads, candle agreement |
 | 0004 | `0004-import-synthetic-market-data.py --database-url URL [--tick-storage parquet\|postgres] [--replace] [--available-disk-gb N]` | Per-month checkpoints are verified and skipped on rerun. The session stays `RUNNING` until every month is verified |

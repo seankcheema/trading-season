@@ -132,6 +132,12 @@ public class OrderService {
      * before checking the account would hand a caller the outcome of an order
      * on an account they don't own.
      *
+     * <p>Each step is written to the audit trail: {@code PENDING} with the
+     * caller's id and the submitted terms, {@code ACCEPTED} with the price
+     * and buffer once the rules pass, then the final {@code FILLED} or
+     * {@code REJECTED} event. A resubmission of an order already on record
+     * writes nothing.
+     *
      * <p>A caller who has not accepted the platform terms in force
      * ({@link TermsAcceptance#CURRENT_VERSION}) cannot place a new order, and
      * nothing is recorded for the attempt. The dashboard already asks for the
@@ -214,7 +220,8 @@ public class OrderService {
         order.setSubmittedAt(now);
         order.setSimulatedAt(request.simulatedAt());
         order = orderRepository.save(order);
-        auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, null);
+        auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING,
+                submissionDetail(order, instrument, callerId));
 
         ValidationResult result = validationPipeline.run(request, user, account, instrument);
         if (!result.passed()) {
@@ -233,7 +240,10 @@ public class OrderService {
         order.setStatus(Order.STATUS_ACCEPTED);
         order.setAcceptedAt(OffsetDateTime.now());
         order = orderRepository.save(order);
-        auditTrailService.record(order.getOrderId(), Order.STATUS_ACCEPTED, null);
+        auditTrailService.record(order.getOrderId(), Order.STATUS_ACCEPTED,
+                "Passed trading rules; accepted at indicative price "
+                        + order.getIndicativePrice().toPlainString()
+                        + " with buffer " + order.getBufferPercent().toPlainString() + "%");
         events.publishEvent(OrderStatusEvent.from(order, instrument));
         return new Acceptance(order, instrument, true);
     }
@@ -254,6 +264,20 @@ public class OrderService {
         return detail.length() <= MAX_FAILURE_DETAIL_LENGTH
                 ? detail
                 : detail.substring(0, MAX_FAILURE_DETAIL_LENGTH);
+    }
+
+    /**
+     * Describes a new order so its audit row identifies the client and the
+     * terms they submitted without relying on any other row.
+     */
+    private static String submissionDetail(Order order, Instrument instrument, UUID callerId) {
+        return "Submitted by user " + callerId + " on account " + order.getAccountId() + ": "
+                + order.getOrderType() + " " + order.getQuantity().toPlainString() + " "
+                + instrument.getTicker() + " at indicative price "
+                + order.getIndicativePrice().toPlainString()
+                + ", buffer " + order.getBufferPercent().toPlainString() + "%"
+                + ", client reference " + order.getClientReference()
+                + (order.getSimulatedAt() == null ? "" : ", simulated at " + order.getSimulatedAt());
     }
 
     /**

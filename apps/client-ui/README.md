@@ -13,6 +13,8 @@ Live prices, candles, and the tick stream come from the Java market API. Metrics
 
 A user who has not accepted the platform terms in force sees them on the dashboard and on the market page in a dialog that cannot be dismissed, with everything behind it inert. They sign by typing their name and accept, or sign out. The wording and its version are in [terms-content.ts](src/app/dashboard/terms/terms-content.ts); the version must match the one [Holdings and Trade Service](../holdings-and-trade-service/README.md) and [Order and Sell Service](../order-and-sell-service/README.md) have in force, which a test in each of them checks. After changing the wording, run `npm --prefix apps/client-ui run terms:pdf` to regenerate [the PDF](../../docs/terms-and-conditions.pdf) from it.
 
+Every order is reviewed before it is sent. Pressing Buy or Sell in the dashboard order dialog or the market page order ticket opens a review dialog that restates the side, quantity, symbol, price, and estimated cost or proceeds, and states that the order, its fill price, and the resulting cash and holding changes are permanently recorded and cannot be edited or deleted. No order request is sent until the user confirms; cancelling, or pressing Escape, closes the review and leaves the ticket unchanged. A short line under each submit button says the same. The wording is defined once, in [order-disclaimer.ts](src/app/dashboard/orders/order-disclaimer.ts), and is product wording, not legal advice.
+
 ## Architecture
 
 ```mermaid

@@ -115,7 +115,9 @@ class OrderExecutionServiceTest {
         assertEquals(INSTRUMENT_ID, holding.getInstrumentId());
         assertEquals(new BigDecimal("10"), holding.getQuantity());
 
-        verify(auditTrailService).record(order.getOrderId(), Order.STATUS_FILLED, "Filled 10 @ 25.00");
+        verify(auditTrailService).record(order.getOrderId(), Order.STATUS_FILLED,
+                "Filled 10 @ 25.00 (client indicative price; no live quote); cash -250.00 for user "
+                        + USER_ID + "; holding +10 on account " + ACCOUNT_ID);
     }
 
     @Test
@@ -173,7 +175,11 @@ class OrderExecutionServiceTest {
         when(holdingRepository.findByAccountIdAndInstrumentIdForUpdate(ACCOUNT_ID, INSTRUMENT_ID))
                 .thenReturn(Optional.of(existing));
 
-        Order result = service.execute(order(Order.TYPE_SELL, "3", "40.00"), new Instrument());
+        Order order = order(Order.TYPE_SELL, "3", "40.00");
+        Order result = service.execute(order, new Instrument());
+        verify(auditTrailService).record(order.getOrderId(), Order.STATUS_FILLED,
+                "Filled 3 @ 40.00 (client indicative price; no live quote); cash +120.00 for user "
+                        + USER_ID + "; holding -3 on account " + ACCOUNT_ID);
 
         assertEquals(Order.STATUS_FILLED, result.getStatus());
         assertEquals(new BigDecimal("120.00"), savedCashTransaction().getAmount());

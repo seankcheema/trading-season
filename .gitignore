@@ -8,6 +8,10 @@ node_modules/
 /build_output.txt
 /.synthetic-market-data-2026-v1
 
+# Database backups (scripts/backup-database.sh)
+/backups/
+*.dump
+
 # Logs
 *.log
 
