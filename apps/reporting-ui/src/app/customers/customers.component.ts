@@ -11,12 +11,16 @@ import { ExportMenuComponent, downloadCsv } from '../shared/export-menu.componen
 import { FilterSelectComponent, SelectOption } from '../shared/filter-select.component';
 import { live } from '../shared/live';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { SkeletonTableComponent } from '../shared/skeleton.component';
 import { SortHeaderComponent } from '../shared/sort-header.component';
 
 // How often the customer list is read again.
 export const CUSTOMERS_REFRESH_MS = 30_000;
 // From this many failed sign-ins the count is shown as a warning.
 export const FAILED_SIGN_IN_WARNING = 3;
+
+// The table's columns. Its loading placeholder takes the same tracks.
+const CUSTOMER_TRACKS = '1.6fr 0.8fr 0.6fr 1fr 1fr 0.8fr 0.8fr';
 
 type CustomerSortKey = 'name' | 'status' | 'accounts' | 'cash' | 'portfolio' | 'failed' | 'last';
 
@@ -65,13 +69,14 @@ function sortValue(customer: Customer, key: CustomerSortKey): string | number {
     FilterSelectComponent,
     SortHeaderComponent,
     ChangePillComponent,
+    SkeletonTableComponent,
   ],
   providers: [provideIcons({ lucideCircleAlert, lucideSearch, lucideX })],
   host: { class: 'flex min-h-[32rem] flex-1 basis-0 flex-col gap-3' },
   styles: `
     .customer-grid {
       display: grid;
-      grid-template-columns: 1.6fr 0.8fr 0.6fr 1fr 1fr 0.8fr 0.8fr;
+      grid-template-columns: ${CUSTOMER_TRACKS};
       align-items: center;
       gap: 0.5rem;
     }
@@ -84,10 +89,14 @@ function sortValue(customer: Customer, key: CustomerSortKey): string | number {
       <app-export-menu (exportCsv)="exportCsv()" />
     </app-page-header>
 
-    <section class="dash-card flex min-h-0 flex-1 flex-col p-5">
+    <section
+      class="dash-card flex min-h-0 flex-1 flex-col p-5"
+      [attr.aria-busy]="list.state() === 'loading' ? 'true' : null"
+    >
       @switch (list.state()) {
         @case ('loading') {
-          <p class="text-muted-foreground text-sm" aria-busy="true">Loading customers…</p>
+          <p class="sr-only" role="status">Loading customers…</p>
+          <app-skeleton-table [tracks]="tracks" [minWidth]="760" [filters]="3" tall />
         }
         @case ('error') {
           <div class="flex flex-col items-center gap-3 py-14 text-center" role="alert">
@@ -221,6 +230,7 @@ export class CustomersComponent {
   protected readonly list = live(() => this._api.customers(), CUSTOMERS_REFRESH_MS);
   protected readonly customers = computed(() => this.list.data()?.customers ?? []);
 
+  protected readonly tracks = CUSTOMER_TRACKS;
   protected readonly empty = NO_FILTERS;
   protected readonly warning = FAILED_SIGN_IN_WARNING;
   protected readonly filters = signal<Filters>(NO_FILTERS);

@@ -15,6 +15,11 @@ const SIDE_TONES: Record<LedgerRow['side'], PillTone> = {
   WITHDRAWAL: 'muted',
 };
 
+// The table's columns. Its loading placeholder takes the same tracks.
+export const ORDER_TRACKS = '0.7fr 1fr 1.3fr 0.7fr 0.8fr 0.6fr 0.9fr 0.9fr 0.9fr';
+// The width under which the table scrolls sideways.
+export const ORDER_TABLE_MIN_WIDTH = 880;
+
 // The orders table of the Orders screen and of a customer's page, with the
 // deposits and withdrawals among the orders. An order's row opens the order; a
 // transfer has nothing more to show, so its row is not a button. On a
@@ -28,7 +33,7 @@ const SIDE_TONES: Record<LedgerRow['side'], PillTone> = {
   styles: `
     .order-grid {
       display: grid;
-      grid-template-columns: 0.7fr 1fr 1.3fr 0.7fr 0.8fr 0.6fr 0.9fr 0.9fr 0.9fr;
+      grid-template-columns: ${ORDER_TRACKS};
       align-items: center;
       gap: 0.5rem;
     }

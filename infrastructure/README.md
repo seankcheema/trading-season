@@ -56,7 +56,7 @@ Cleanup always removes the build-scoped test containers, volumes, and images, te
 
 ### SonarQube
 
-The analysis stage runs after the test suites so it can import their coverage reports, and the quality gate stage aborts the build when the gate fails.
+The analysis stage runs after the test suites so it can import their coverage reports, and the quality gate stage logs the returned SonarQube status before aborting the build when the gate fails.
 
 | Where | Setting |
 | --- | --- |

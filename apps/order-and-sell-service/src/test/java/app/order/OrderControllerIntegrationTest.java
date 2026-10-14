@@ -98,6 +98,7 @@ class OrderControllerIntegrationTest {
         // a test without one is exercising a state production cannot reach.
         userId = UUID.randomUUID();
         UserAccountFixture.createActiveAccount(jdbcTemplate, userId, "orders@example.com");
+        UserAccountFixture.acceptCurrentTerms(jdbcTemplate, userId);
 
         user = new User();
         user.setUserId(userId);
@@ -397,6 +398,61 @@ class OrderControllerIntegrationTest {
                 .andExpect(jsonPath("$.error").value(notNullValue()));
 
         assertTrue(orderRepository.findAll().isEmpty());
+    }
+
+    @Test
+    void refusesAnOrderFromACallerWhoHasNotAcceptedThePlatformTerms() throws Exception {
+        jdbcTemplate.update("delete from terms_acceptances where user_id = ?", userId);
+
+        submit("BUY", "10", "20.00")
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Accept the platform terms before placing an order"));
+
+        assertTrue(orderRepository.findAll().isEmpty());
+        assertEquals(0, auditTrailRepository.count());
+        assertEquals(0, fillRepository.count());
+        assertEquals(0, new BigDecimal("1000.00").compareTo(
+                userRepository.findById(userId).orElseThrow().getAvailableFunds()));
+    }
+
+    @Test
+    void refusesAnOrderFromACallerWhoAcceptedOnlyAnEarlierVersionOfTheTerms() throws Exception {
+        jdbcTemplate.update("delete from terms_acceptances where user_id = ?", userId);
+        UserAccountFixture.acceptTerms(jdbcTemplate, userId, "2020-01-01");
+
+        submit("BUY", "10", "20.00").andExpect(status().isForbidden());
+
+        assertTrue(orderRepository.findAll().isEmpty());
+    }
+
+    @Test
+    void anotherUsersAcceptanceDoesNotLetTheCallerTrade() throws Exception {
+        jdbcTemplate.update("delete from terms_acceptances where user_id = ?", userId);
+        UserAccountFixture.acceptCurrentTerms(jdbcTemplate, UUID.randomUUID());
+
+        submit("BUY", "10", "20.00").andExpect(status().isForbidden());
+
+        assertTrue(orderRepository.findAll().isEmpty());
+    }
+
+    @Test
+    void resubmittingAnOrderAlreadyOnRecordStillAnswersAfterTheTermsChange() throws Exception {
+        String payload = body("BUY", "10", "20.00");
+        mockMvc.perform(post("/api/orders").with(tokenFor(userId))
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("FILLED"));
+        Integer orderId = orderRepository.findAll().getFirst().getOrderId();
+        jdbcTemplate.update("delete from terms_acceptances where user_id = ?", userId);
+
+        mockMvc.perform(post("/api/orders").with(tokenFor(userId))
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.orderId").value(orderId))
+                .andExpect(jsonPath("$.status").value("FILLED"));
+
+        assertEquals(1, orderRepository.count());
+        assertEquals(1, fillRepository.count());
     }
 
     @Test

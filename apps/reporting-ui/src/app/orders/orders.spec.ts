@@ -619,11 +619,18 @@ describe('OrderDetailComponent', () => {
   it('shows loading, then an error when the order cannot be read, and closes', () => {
     const pending = new Subject<OrderDetail>();
     render(pending);
-    expect(text(root())).toContain('Loading the order…');
+    expect(text(root().querySelector('[role="status"]')!)).toBe('Loading the order…');
+    // The dialog's shape stands in for it: three sections on the left, two on the right.
+    const skeleton = root().querySelector('[data-skeleton]')!;
+    expect(skeleton.getAttribute('aria-busy')).toBe('true');
+    expect(
+      Array.from(skeleton.querySelectorAll('app-skeleton-facts')).map((facts) => facts.children.length),
+    ).toEqual([3, 9, 6, 4, 4]);
 
     pending.error(new Error('down'));
     fixture.detectChanges();
     expect(text(root().querySelector('[role="alert"]')!)).toBe("We couldn't load this order.");
+    expect(root().querySelector('.skeleton')).toBeNull();
 
     const closed = vi.fn();
     fixture.componentInstance.closed.subscribe(closed);
@@ -774,11 +781,18 @@ describe('OrdersComponent', () => {
     });
     fixture = TestBed.createComponent(OrdersComponent);
     fixture.detectChanges();
-    expect(text(root())).toContain('Loading orders…');
+    const card = root().querySelector('section.dash-card')!;
+    expect(text(card.querySelector('[role="status"]')!)).toBe('Loading orders…');
+    // A table's shape stands in for it: the search, the five filters and rows on the nine columns.
+    expect(card.getAttribute('aria-busy')).toBe('true');
+    expect(card.querySelectorAll('app-skeleton-table [data-filter]')).toHaveLength(5);
+    expect(card.querySelector('app-skeleton-table [data-row]')!.children).toHaveLength(9);
 
     vi.advanceTimersByTime(0);
     fixture.detectChanges();
     expect(text(root().querySelector('[role="alert"]')!)).toContain("We couldn't load the orders.");
+    expect(card.getAttribute('aria-busy')).toBeNull();
+    expect(root().querySelector('.skeleton')).toBeNull();
 
     load.mockReturnValue(of(list()));
     root().querySelector<HTMLButtonElement>('[role="alert"] button')!.click();

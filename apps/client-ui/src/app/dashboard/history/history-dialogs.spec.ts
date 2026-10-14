@@ -194,6 +194,28 @@ describe('history dialogs', () => {
       expect(fixture.nativeElement.querySelector('[data-testid="audit-trail-1"]')).toBeNull();
     });
 
+    it('shows placeholder rows until the cash ledger arrives', () => {
+      const fixture = TestBed.createComponent(TransactionsDialogComponent);
+      fixture.detectChanges();
+      const table: HTMLElement = fixture.nativeElement.querySelector(
+        '[data-testid="transactions-table"]',
+      );
+      const placeholders = rows(fixture, 'transactions-row-skeleton');
+
+      expect(placeholders).toHaveLength(6);
+      // One block under each of the seven columns, hidden from a screen reader, which is told instead.
+      expect(placeholders[0].children).toHaveLength(7);
+      expect(placeholders[0].getAttribute('aria-hidden')).toBe('true');
+      expect(table.querySelector('[role="status"]')?.textContent).toContain('Loading transactions…');
+      expect(table.textContent).not.toContain('No transactions match these filters.');
+
+      http.expectOne((request) => request.url === '/api/me/cash-transactions').flush([]);
+      fixture.detectChanges();
+      expect(rows(fixture, 'transactions-row-skeleton')).toHaveLength(0);
+      expect(table.querySelector('[role="status"]')).toBeNull();
+      expect(table.textContent).toContain('No transactions match these filters.');
+    });
+
     it('still shows the recent transfers when the full ledger cannot be loaded', () => {
       const fixture = TestBed.createComponent(TransactionsDialogComponent);
       fixture.detectChanges();

@@ -119,6 +119,17 @@ export class AccountStore {
     return `${firstLetter(profile.firstName)}${firstLetter(profile.lastName)}`;
   });
 
+  // The signed-in user's first and last name, which they type to sign the platform terms.
+  // Empty until the profile loads.
+  readonly fullName = computed(() => {
+    const profile = this._profile();
+    return profile ? `${profile.firstName ?? ''} ${profile.lastName ?? ''}`.trim() : '';
+  });
+
+  // True only once the profile has loaded and says the terms in force are not accepted, so
+  // nothing asks for acceptance while the answer is still unknown.
+  readonly needsTermsAcceptance = computed(() => this._profile()?.termsAccepted === false);
+
   readonly selectedAccount = computed(
     () =>
       this._accounts().find((account) => account.accountId === this._selectedAccountId()) ??
@@ -234,6 +245,22 @@ export class AccountStore {
     );
   }
 
+  // Records that the user accepts the terms they were shown. The backend refuses a version
+  // that is no longer in force, and answers with the updated profile.
+  acceptTerms(termsVersion: string): Observable<void> {
+    return this._http
+      .put<UserProfile>(`${this._apiUrl}/users/me/terms-acceptance`, { termsVersion })
+      .pipe(
+        takeUntil(this.cancelled),
+        tap((profile) => {
+          // A profile read that began before the acceptance would report it as missing.
+          this.invalidate();
+          this.applyProfile(profile);
+        }),
+        map(() => undefined),
+      );
+  }
+
   deposit(amount: number): Observable<void> {
     return this.postCashTransaction(amount, 'DEPOSIT');
   }
@@ -338,11 +365,13 @@ export class AccountStore {
   // One request serves both the shared cash and who the user is.
   private fetchProfile(): Observable<UserProfile> {
     return this.read('profile', () => this._http.get<UserProfile>(`${this._apiUrl}/users/me`)).pipe(
-      tap((profile) => {
-        this._profile.set(profile);
-        this._cashBalance.set(Number(profile.availableFunds) || 0);
-      }),
+      tap((profile) => this.applyProfile(profile)),
     );
+  }
+
+  private applyProfile(profile: UserProfile): void {
+    this._profile.set(profile);
+    this._cashBalance.set(Number(profile.availableFunds) || 0);
   }
 
   private fetchCashTransactions(): Observable<CashTransaction[]> {

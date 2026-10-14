@@ -83,6 +83,7 @@ describe('MarketPageComponent', () => {
     compare = '',
     accountId = '',
     orders: OrderResult[] = [],
+    profile: { termsAccepted?: boolean } = {},
   ): Promise<ComponentFixture<MarketPageComponent>> {
     await TestBed.configureTestingModule({
       imports: [MarketPageComponent],
@@ -118,7 +119,7 @@ describe('MarketPageComponent', () => {
       .flush([{ symbol: 'MSFT', quantity: 2, averageCost: 200 }]);
     http
       .expectOne('/api/users/me')
-      .flush({ firstName: 'Ada', lastName: 'Lovelace', availableFunds: 10000 });
+      .flush({ firstName: 'Ada', lastName: 'Lovelace', availableFunds: 10000, ...profile });
     http.expectOne((r) => r.url === '/api/me/cash-transactions').flush([]);
     http.expectOne('/api/orders').flush(orders);
     http.expectOne('/api/instruments').flush([
@@ -256,9 +257,19 @@ describe('MarketPageComponent', () => {
     fixture.detectChanges();
     expect(panel.textContent).toContain('Loading account balances');
     expect(panel.querySelector('[data-testid="available-cash"]').textContent).not.toContain('$');
+    // Each balance is a placeholder while it loads, and a dash only once loading has failed.
+    for (const testId of ['available-cash', 'account-portfolio-value']) {
+      const balance = panel.querySelector(`[data-testid="${testId}"]`);
+      expect(balance.querySelector('.skeleton').getAttribute('aria-hidden')).toBe('true');
+      expect(balance.textContent).not.toContain('—');
+    }
+    expect(panel.querySelector('p[role="status"]').className).toContain('sr-only');
     fixture.componentInstance['accountStore'].status.set('error');
     fixture.detectChanges();
     expect(panel.textContent).toContain('Retry accounts');
+    expect(panel.querySelector('.skeleton')).toBeNull();
+    expect(panel.querySelector('[data-testid="available-cash"]').textContent).toContain('—');
+    expect(panel.textContent).not.toContain('Loading account balances');
   });
 
   it('previews available cash as the buy slider changes without reducing the buying limit', async () => {
@@ -778,6 +789,108 @@ describe('MarketPageComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('MSFT chart data is unavailable');
   });
 
+  it('holds the page layout with placeholders until the market snapshot arrives', async () => {
+    const snapshot = new Subject<MarketSnapshot>();
+    marketData.snapshot.mockReturnValueOnce(snapshot);
+    const fixture = await setup();
+    const root = fixture.nativeElement as HTMLElement;
+    const skeleton = root.querySelector('[data-testid="market-skeleton"]')!;
+
+    expect(skeleton.getAttribute('aria-busy')).toBe('true');
+    expect(skeleton.querySelector('.sr-only')?.textContent).toBe('Loading live market…');
+    // The summary and chart on the left, the tools on the right, as the page will have them.
+    expect(skeleton.querySelector('.market-main')?.getAttribute('aria-hidden')).toBe('true');
+    expect(skeleton.querySelector('.tools-column')?.getAttribute('aria-hidden')).toBe('true');
+    expect(skeleton.querySelectorAll('.market-metrics > div')).toHaveLength(7);
+    expect(skeleton.querySelector('.chart-stage .skeleton')).not.toBeNull();
+    expect(skeleton.querySelectorAll('[data-testid="activity-row-skeleton"]')).toHaveLength(5);
+    expect(root.querySelector('app-price-chart')).toBeNull();
+    expect(root.querySelector('app-trade-ticket')).toBeNull();
+
+    snapshot.next(SNAPSHOT);
+    snapshot.complete();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(root.querySelector('[data-testid="market-skeleton"]')).toBeNull();
+    expect(root.querySelector('h1')?.textContent).toContain('AAPL');
+    expect(root.querySelector('app-trade-ticket')).not.toBeNull();
+  });
+
+  it('holds the chart with a placeholder while its candles load', async () => {
+    const pending = new Subject<CandleSeries>();
+    marketData.candles.mockImplementation(() => pending);
+    const fixture = await setup();
+    const root = fixture.nativeElement as HTMLElement;
+    const message = root.querySelector('.chart-message')!;
+
+    expect(message.getAttribute('aria-busy')).toBe('true');
+    expect(message.querySelector('.sr-only')?.textContent).toBe('Loading candles…');
+    expect(message.querySelector('.skeleton')?.getAttribute('aria-hidden')).toBe('true');
+    expect(root.querySelector('app-price-chart')).toBeNull();
+
+    pending.next({
+      sessionId: 7,
+      symbol: 'AAPL',
+      timeframe: '1D',
+      marketTimestamp: SNAPSHOT.marketTimestamp,
+      points: [
+        { timestamp: '2026-01-05T15:00:00Z', open: 224, high: 226, low: 223, close: 225, volume: 1000 },
+      ],
+    });
+    fixture.detectChanges();
+    expect(root.querySelector('.chart-message')).toBeNull();
+    expect(root.querySelector('app-price-chart')).not.toBeNull();
+    pending.complete();
+  });
+
+  it('holds both comparison charts with placeholders while their candles load', async () => {
+    const pending = new Subject<CandleSeries>();
+    marketData.candles.mockImplementation(() => pending);
+    const fixture = await setup('aapl', 'msft');
+    const messages = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.comparison-chart .chart-message'),
+    );
+
+    expect(messages.map((message) => message.querySelector('.sr-only')?.textContent)).toEqual([
+      'Loading AAPL candles…',
+      'Loading MSFT candles…',
+    ]);
+    for (const message of messages) {
+      expect(message.getAttribute('aria-busy')).toBe('true');
+      expect(message.querySelector('.skeleton')).not.toBeNull();
+    }
+    pending.complete();
+  });
+
+  it('holds recent orders with placeholder rows while order history loads', async () => {
+    const fixture = await setup();
+    const component = fixture.componentInstance;
+    component['insightTab'].set('recent-orders');
+    component['orders'].historyStatus.set('loading');
+    fixture.detectChanges();
+    const panel = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="market-recent-orders"]',
+    )!;
+
+    expect(panel.querySelectorAll('[data-testid="activity-row-skeleton"]')).toHaveLength(5);
+    expect(panel.querySelector('li[role="status"]')?.textContent).toBe('Loading orders…');
+    expect(panel.textContent).not.toContain('No orders at this simulated time.');
+    expect(panel.textContent).toContain('Investing · All stocks');
+
+    // Whose orders they are is not known either until the accounts arrive.
+    component['accountStore'].status.set('loading');
+    fixture.detectChanges();
+    expect(panel.textContent).not.toContain('All stocks');
+    expect(panel.querySelector(':scope > .skeleton')).not.toBeNull();
+    component['accountStore'].status.set('ready');
+
+    component['orders'].historyStatus.set('ready');
+    fixture.detectChanges();
+    expect(panel.querySelector('[data-testid="activity-row-skeleton"]')).toBeNull();
+    expect(panel.textContent).toContain('No orders at this simulated time.');
+  });
+
   it('shows an instrument-not-found state without opening a stream', async () => {
     const fixture = await setup('missing');
     expect(fixture.nativeElement.textContent).toContain('Instrument not found');
@@ -1049,4 +1162,64 @@ describe('MarketPageComponent', () => {
       TestBed.inject(HttpTestingController).expectNone({ method: 'POST', url: '/api/orders' });
     },
   );
+
+  describe('terms and conditions', () => {
+    function page(fixture: ComponentFixture<MarketPageComponent>) {
+      return fixture.nativeElement.querySelector('main.market-page') as HTMLElement;
+    }
+
+    function termsDialog(fixture: ComponentFixture<MarketPageComponent>) {
+      return fixture.nativeElement.querySelector('app-terms-dialog') as HTMLElement | null;
+    }
+
+    it('does not ask a user who has already accepted', async () => {
+      const fixture = await setup('aapl', '', '', [], { termsAccepted: true });
+
+      expect(termsDialog(fixture)).toBeNull();
+      expect(page(fixture).hasAttribute('inert')).toBe(false);
+    });
+
+    it('asks a user who has not accepted, and makes the page and its order ticket inert', async () => {
+      const fixture = await setup('aapl', '', '', [], { termsAccepted: false });
+
+      expect(termsDialog(fixture)?.textContent).toContain('Terms and Conditions');
+      expect(termsDialog(fixture)?.textContent).toContain('Ada Lovelace');
+      expect(page(fixture).hasAttribute('inert')).toBe(true);
+      expect(page(fixture).querySelector('app-trade-ticket')).not.toBeNull();
+      expect(page(fixture).contains(termsDialog(fixture))).toBe(false);
+    });
+
+    it('opens the page once the user signs and accepts', async () => {
+      const fixture = await setup('aapl', '', '', [], { termsAccepted: false });
+      const signature = fixture.nativeElement.querySelector('#termsSignature') as HTMLInputElement;
+      signature.value = 'Ada Lovelace';
+      signature.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+
+      (termsDialog(fixture)!.querySelector('button[type="submit"]') as HTMLButtonElement).click();
+      TestBed.inject(HttpTestingController)
+        .expectOne('/api/users/me/terms-acceptance')
+        .flush({ firstName: 'Ada', lastName: 'Lovelace', availableFunds: 10000, termsAccepted: true });
+      fixture.detectChanges();
+
+      expect(termsDialog(fixture)).toBeNull();
+      expect(page(fixture).hasAttribute('inert')).toBe(false);
+    });
+
+    it('signs the user out when they decline', async () => {
+      const fixture = await setup('aapl', '', '', [], { termsAccepted: false });
+      const logout = vi.spyOn(TestBed.inject(AuthService), 'logout').mockReturnValue(of(undefined));
+      const navigateToLogin = vi
+        .spyOn(TestBed.inject(Router), 'navigateByUrl')
+        .mockResolvedValue(true);
+
+      const signOut = Array.from(termsDialog(fixture)!.querySelectorAll('button')).find(
+        (candidate) => candidate.textContent?.trim() === 'Sign out',
+      )!;
+      signOut.click();
+
+      expect(logout).toHaveBeenCalledOnce();
+      expect(navigateToLogin).toHaveBeenCalledWith('/login');
+    });
+  });
 });

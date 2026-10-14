@@ -1,5 +1,9 @@
 import { WatchlistStore } from './watchlist/watchlist-store.service';
-import { ActivityItem, ActivityRowComponent } from './shared/activity-row.component';
+import {
+  ActivityItem,
+  ActivityRowComponent,
+  ActivityRowSkeletonComponent,
+} from './shared/activity-row.component';
 import { cashActivity, orderActivity, orderDate } from './shared/activity';
 import { AssetsDialogComponent } from './history/assets-dialog.component';
 import { TransactionsDialogComponent } from './history/transactions-dialog.component';
@@ -51,6 +55,7 @@ import { OrderSubmissionComponent } from './order-submission/order-submission.co
 import { OrderResult } from './orders/order.models';
 import { OrderService } from './orders/order.service';
 import { SettingsDialogComponent } from './settings-dialog/settings-dialog.component';
+import { TermsDialogComponent } from './terms/terms-dialog.component';
 import { DashboardHeaderDropdownComponent } from './shared/dashboard-header-dropdown.component';
 import { DailySparklineComponent } from './shared/daily-sparkline.component';
 import { PricedHolding } from './shared/assets';
@@ -81,6 +86,7 @@ type AccountDialog =
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ActivityRowComponent,
+    ActivityRowSkeletonComponent,
     AccountDialogComponent,
     AssetsDialogComponent,
     AccountControlComponent,
@@ -96,6 +102,7 @@ type AccountDialog =
     PriceChartComponent,
     SettingsDialogComponent,
     SignedPercentPipe,
+    TermsDialogComponent,
     TimeframeToggleComponent,
   ],
   providers: [
@@ -147,6 +154,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   });
   protected readonly hasAccounts = computed(() => this.accounts().length > 0);
+  // Until the accounts arrive there is no balance, holding or cash transfer to show, so the
+  // cards that depend on them show placeholders instead of zeros and empty states.
+  protected readonly accountsLoading = computed(
+    () => this.accountStore.status() === 'idle' || this.accountStore.status() === 'loading',
+  );
+  protected readonly transactionsLoading = computed(
+    () => this.orderService.historyStatus() === 'loading' || this.accountsLoading(),
+  );
+  // How many placeholder rows a list shows while it loads.
+  protected readonly skeletonRows = [1, 2, 3, 4, 5] as const;
   protected readonly accountLabel = computed(() => {
     switch (this.accountStore.status()) {
       case 'idle':
@@ -214,6 +231,26 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly settingsOpen = signal(false);
   protected readonly historyDialog = signal<'transactions' | null>(null);
   protected readonly assetsDialogOpen = signal(false);
+
+  // While the platform terms are unaccepted the dashboard is inert behind the terms dialog.
+  protected readonly termsRequired = this.accountStore.needsTermsAcceptance;
+  // The name the user types to sign the terms.
+  protected readonly termsSignatureName = this.accountStore.fullName;
+  // The profile can arrive after the user has already opened something; nothing may stay open
+  // beside the terms dialog.
+  private readonly closeDialogsForTerms = effect(() => {
+    if (!this.termsRequired()) {
+      return;
+    }
+    untracked(() => {
+      this.openHeaderDropdown.set(null);
+      this.orderSymbol.set(null);
+      this.settingsOpen.set(false);
+      this.historyDialog.set(null);
+      this.assetsDialogOpen.set(false);
+      this.accountDialog.set(null);
+    });
+  });
   private readonly recentInstruments = inject(RecentInstrumentsService);
 
   // What the search bar offers before anything is typed: the biggest movers today, the user's

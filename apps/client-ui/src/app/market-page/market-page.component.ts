@@ -13,10 +13,15 @@ import { ToastService } from '../notifications/toast.service';
 import { AuthService } from '../core/auth/auth.service';
 import { DashboardHeaderDropdownComponent } from '../dashboard/shared/dashboard-header-dropdown.component';
 import { SettingsDialogComponent } from '../dashboard/settings-dialog/settings-dialog.component';
+import { TermsDialogComponent } from '../dashboard/terms/terms-dialog.component';
 import { AccountControlComponent } from '../dashboard/shared/account-control.component';
 import { MarketClockControlComponent } from '../dashboard/shared/market-clock-control.component';
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
-import { ActivityItem, ActivityRowComponent } from '../dashboard/shared/activity-row.component';
+import {
+  ActivityItem,
+  ActivityRowComponent,
+  ActivityRowSkeletonComponent,
+} from '../dashboard/shared/activity-row.component';
 import { orderActivity } from '../dashboard/shared/activity';
 import { TradeTicketDraft } from '../dashboard/shared/trade-ticket.component';
 import { CurrencyPipe, DecimalPipe, TitleCasePipe, isPlatformBrowser } from '@angular/common';
@@ -33,6 +38,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -137,6 +143,7 @@ interface MarketStats {
     MarketClockControlComponent,
 
     ActivityRowComponent,
+    ActivityRowSkeletonComponent,
 
     CurrencyPipe,
     DecimalPipe,
@@ -148,6 +155,7 @@ interface MarketStats {
     TitleCasePipe,
     TimeframeToggleComponent,
     TradeTicketComponent,
+    TermsDialogComponent,
   ],
   providers: [
     MarketClockService,
@@ -220,6 +228,23 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   }
   protected readonly accountDialog = signal<{ account: Account | null } | null>(null);
 
+  // This page has its own order ticket, so it asks for the platform terms exactly as the
+  // dashboard does: the page is inert behind the terms dialog until they are accepted.
+  protected readonly termsRequired = this.accountStore.needsTermsAcceptance;
+  protected readonly termsSignatureName = this.accountStore.fullName;
+  // The profile can arrive after the user has already opened something; nothing may stay open
+  // beside the terms dialog.
+  private readonly closeDialogsForTerms = effect(() => {
+    if (!this.termsRequired()) {
+      return;
+    }
+    untracked(() => {
+      this.openHeaderDropdown.set(null);
+      this.settingsOpen.set(false);
+      this.accountDialog.set(null);
+    });
+  });
+
   private readonly requestedAccountId = signal<number | null>(null);
   private appliedAccountId: number | null = null;
   private readonly selectRequestedAccount = effect(() => {
@@ -242,6 +267,13 @@ export class MarketPageComponent implements OnInit, OnDestroy {
 
   protected readonly refreshAccountId = signal<number | null>(null);
   protected readonly catalogueStatus = signal<'loading' | 'ready' | 'error'>('loading');
+
+  // Balances are on their way: the account box shows placeholders, not a dash.
+  protected readonly accountsLoading = computed(
+    () => this.accountStore.status() === 'idle' || this.accountStore.status() === 'loading',
+  );
+  // How many placeholder rows a list shows while it loads.
+  protected readonly skeletonRows = [1, 2, 3, 4, 5] as const;
 
   protected readonly busy = computed(
     () => this.submitting() || this.coolingDown() || this.refreshing(),

@@ -20,11 +20,11 @@ let nextDialogId = 0;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgIcon],
   providers: [provideIcons({ lucideX })],
-  host: { '(document:keydown.escape)': 'closed.emit()' },
+  host: { '(document:keydown.escape)': 'dismiss()' },
   template: `
     <div
       class="dashboard-dialog-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-12 backdrop-blur-sm md:items-center"
-      (click)="closed.emit()"
+      (click)="dismiss()"
     >
       <section
         #dialog
@@ -38,14 +38,16 @@ let nextDialogId = 0;
       >
         <header class="border-border flex items-center justify-between gap-4 border-b px-5 py-3">
           <h2 [id]="titleId" class="text-sm font-semibold">{{ dialogTitle() }}</h2>
-          <button
-            type="button"
-            class="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 cursor-pointer items-center justify-center rounded-lg transition-colors"
-            [attr.aria-label]="closeLabel()"
-            (click)="closed.emit()"
-          >
-            <ng-icon name="lucideX" class="text-[18px]" />
-          </button>
+          @if (dismissible()) {
+            <button
+              type="button"
+              class="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 cursor-pointer items-center justify-center rounded-lg transition-colors"
+              [attr.aria-label]="closeLabel()"
+              (click)="closed.emit()"
+            >
+              <ng-icon name="lucideX" class="text-[18px]" />
+            </button>
+          }
         </header>
         <div class="p-5">
           <ng-content />
@@ -89,6 +91,9 @@ export class DashboardDialogComponent {
   readonly closeLabel = input('Close dialog');
   // Form dialogs are narrow; tables need room, and the full assets table needs the most.
   readonly size = input<'narrow' | 'wide' | 'xwide'>('narrow');
+  // False for a dialog that must be answered: it has no close button, and neither Escape nor a
+  // click on the backdrop closes it. The projected content provides the only ways out.
+  readonly dismissible = input(true);
   readonly closed = output<void>();
 
   protected readonly sizeClass = computed(
@@ -100,5 +105,11 @@ export class DashboardDialogComponent {
   constructor() {
     // Move focus into the dialog so keyboard and screen reader users land on its content.
     afterNextRender(() => this._dialog().nativeElement.focus());
+  }
+
+  protected dismiss(): void {
+    if (this.dismissible()) {
+      this.closed.emit();
+    }
   }
 }
