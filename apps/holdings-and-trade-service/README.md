@@ -198,6 +198,8 @@ sequenceDiagram
 
 Parquet-backed sessions read raw ticks from the archive: `MARKET_REPLAY_ARCHIVE_LOCATION` first, then the location recorded at import, then the matching archive under `apps/market-data/db/seeds`. A missing partition returns an unavailable error rather than falling back to one-minute candles.
 
+The replay serves every simulated series the same way, whatever its instrument class: the equities of all three markets, the FX pairs and the crypto assets in the [universe](../market-data/README.md#universe) share the one session calendar and are quoted in US dollars. The snapshot and stream name each series by its simulated symbol, which `/api/instruments` maps back to the instrument through `simulatedStockSymbol`.
+
 ## Configuration
 
 Environment variables override [application.properties](src/main/resources/application.properties).
