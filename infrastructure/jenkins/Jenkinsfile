@@ -566,6 +566,17 @@ pipeline {
                         exit 1
                     fi
 
+                    # BR-08 and BR-12: orders execute against the simulated market, so seed
+                    # two days of it before anything trades. The seed service runs once and
+                    # is removed, so it is not one of the expected running services below.
+                    AVAILABLE_DISK_GB="$(compose exec -T db df -Pk /var/lib/postgresql/data | awk 'NR==2 {print $4/1048576}')"
+                    SCRIPTS=apps/market-data/db/scripts/python
+                    if ! compose run --rm --build -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" market-data-seed \
+                        "python $SCRIPTS/0002-generate-synthetic-market-data.py --start-date 2026-01-05 --end-date 2026-01-06 && python $SCRIPTS/0003-validate-synthetic-market-data.py && python $SCRIPTS/0004-import-synthetic-market-data.py --tick-storage parquet --database-url postgresql://trading_season:changeme@db:5432/trading_season"; then
+                        echo "Seeding the simulated market into the stack failed." >&2
+                        exit 1
+                    fi
+
                     EXPECTED_SERVICES="auth-service client-ui db holdings-and-trade-service kafka order-and-sell-service reporting-consumer reporting-service reporting-ui"
                     RUNNING_SERVICES="$(compose ps --services --filter status=running | sort | tr '\\n' ' ' | sed 's/ $//')"
                     if [ "$RUNNING_SERVICES" != "$EXPECTED_SERVICES" ]; then
@@ -717,10 +728,9 @@ pipeline {
 
                     note "===== Kafka end-to-end: one order through trade-events and its three consumers, and into a reporting service with no database ====="
 
-                    # The build database is empty, so give the order something to buy.
-                    compose exec -T db psql -U trading_season -d trading_season -v ON_ERROR_STOP=1 -q -c \
-                        "INSERT INTO instruments (ticker, name, asset_class, market, currency, is_tradable) VALUES ('CIEQ', 'CI Equity', 'Equity', 'US', 'USD', true);"
-                    note "[KAFKA-E2E] instrument: CIEQ inserted for this build"
+                    # The stack stage seeded two days of the simulated market, so every
+                    # instrument the order can pick has a current quote to execute against.
+                    note "[KAFKA-E2E] instruments: $(compose exec -T db psql -U trading_season -d trading_season -At -c "SELECT count(*) FROM instruments WHERE is_tradable AND simulated_stock_symbol IS NOT NULL") tradable instruments with a simulated price series"
 
                     # Registers a trader, opens the order stream, places the order and checks
                     # each consumer's effect from inside the stack network.
