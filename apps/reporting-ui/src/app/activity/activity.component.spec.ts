@@ -110,7 +110,7 @@ describe('ActivityComponent', () => {
     expect(bars.map((bar) => bar.style.width)).toEqual(['60%', '10%', '10%', '20%']);
     expect(bars.map((bar) => bar.className.match(/bg-\w+/)![0])).toEqual([
       'bg-gain',
-      'bg-primary',
+      'bg-pending',
       'bg-primary',
       'bg-loss',
     ]);

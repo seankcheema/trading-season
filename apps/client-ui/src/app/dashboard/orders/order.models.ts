@@ -52,3 +52,11 @@ export interface OrderResult {
   submittedAt: string;
   resolvedAt: string | null;
 }
+
+/** One immutable lifecycle event from GET /api/orders/{orderId}/audit. */
+export interface OrderAuditEntry {
+  eventType: string;
+  price: number;
+  occurredAt: string;
+  detail: string | null;
+}

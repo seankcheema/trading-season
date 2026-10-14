@@ -73,6 +73,8 @@ export interface HistoryRow {
   value: number;
   positive: boolean;
   rejectionReason: string | null;
+  // Present only on trades; used to load their owner-scoped audit timeline on demand.
+  orderId: number | null;
 }
 
 export type HistorySortKey =
@@ -101,6 +103,7 @@ export function orderHistoryRow(
     value: item.value,
     positive: item.positive,
     rejectionReason: order.rejectionReason,
+    orderId: order.orderId,
   };
 }
 
@@ -121,6 +124,7 @@ export function cashHistoryRow(transaction: CashTransaction): HistoryRow {
     value: item.value,
     positive: item.positive,
     rejectionReason: null,
+    orderId: null,
   };
 }
 

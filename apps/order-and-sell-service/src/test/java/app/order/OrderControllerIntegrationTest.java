@@ -319,6 +319,32 @@ class OrderControllerIntegrationTest {
     }
 
     @Test
+    void orderAuditReturnsTheOwnersTimelineOldestFirstWithPriceAndRealTimestamps() throws Exception {
+        Integer orderId = JsonPath.read(submit("BUY", "10", "20.00")
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.orderId");
+
+        mockMvc.perform(get("/api/orders/{orderId}/audit", orderId).with(tokenFor(user.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(3)))
+                .andExpect(jsonPath("$[0].eventType").value("PENDING"))
+                .andExpect(jsonPath("$[1].eventType").value("ACCEPTED"))
+                .andExpect(jsonPath("$[2].eventType").value("FILLED"))
+                .andExpect(jsonPath("$[0].price").value(20.00))
+                .andExpect(jsonPath("$[0].occurredAt").value(notNullValue()))
+                .andExpect(jsonPath("$[2].occurredAt").value(notNullValue()));
+    }
+
+    @Test
+    void orderAuditDoesNotRevealAnotherUsersOrder() throws Exception {
+        Integer orderId = JsonPath.read(submit("BUY", "10", "20.00")
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.orderId");
+        UUID strangerId = givenAnOrderBelongingToAnotherUser();
+
+        mockMvc.perform(get("/api/orders/{orderId}/audit", orderId).with(tokenFor(strangerId)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void listingOrdersIsEmptyForACallerWhoHasNotTraded() throws Exception {
         mockMvc.perform(get("/api/orders").with(tokenFor(UUID.randomUUID())))
                 .andExpect(status().isOk())
