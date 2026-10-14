@@ -17,7 +17,7 @@ All require a bearer token except the public market reads.
 | POST | `/api/orders` | Submit a buy or sell order. Returns 201 with the outcome (`FILLED`, `REJECTED`, or `ACCEPTED` when execution failed and the order stays on record) |
 | GET | `/api/orders` | The caller's orders across all their accounts, newest first |
 | GET | `/api/orders/stream` | Server-Sent Events: an `order-status` event with each committed status change's JSON body, and a `heartbeat` every 15 seconds |
-| GET | `/api/instruments` | Every instrument with `tradable` and `simulatedStockSymbol` |
+| GET | `/api/instruments` | Every instrument (UK, US and Indian equities, FX pairs and crypto assets, as seeded by the [market data import](../market-data/README.md#universe)) with `assetClass`, `market`, `currency`, `tradable` and `simulatedStockSymbol` |
 | GET | `/api/users/me` | The caller's profile, without the SSN |
 | GET | `/api/market/snapshot`, `/candles`, `/stream` | Public market data (snapshot, OHLCV candles, SSE ticks) |
 | PUT | `/api/market/clock` | Move the shared replay cursor |
@@ -139,7 +139,7 @@ sequenceDiagram
 
 Acceptance and execution are separate transactions (BR-06). The accepted order is committed before any ledger row is written, and the fill, cash transaction, holding movement, holding update and FILLED status commit together or not at all (BR-09). If execution throws, only the execution rolls back: the order stays `ACCEPTED`, an `EXECUTION_FAILED` audit entry records the cause (truncated to 255 characters), and the response returns the order in that state. Nothing retries it automatically.
 
-Each `trade-events` message is published by `TradeEventPublisher` from an `AFTER_COMMIT` transactional event listener, so a consumer never sees a status the database does not hold. The message key is the account id as a string; the body is JSON with `orderId`, `status`, `symbol`, `side`, `quantity`, `price`, `rejectionReason` and `occurredAt`. A send failure is logged and never fails the order.
+Each `trade-events` message is published by `TradeEventPublisher` from an `AFTER_COMMIT` transactional event listener, so a consumer never sees a status the database does not hold. The message key is the account id as a string; the body is JSON with `orderId`, `status`, `symbol`, `side`, `quantity`, `price`, `rejectionReason` and `occurredAt`. For a `FILLED` message `price` is the fill's quote price, the price the trade settled at (BR-08, BR-15), which is what reporting values filled orders by; for every other status it is the indicative price the trader saw. A send failure is logged and never fails the order.
 
 ### What reporting receives
 
@@ -171,7 +171,6 @@ stateDiagram-v2
 ```
 
 Every transition is recorded in `audit_trail` and published to `platform-records`, and every committed `ACCEPTED`, `FILLED` and `REJECTED` status is also published to `trade-events`. A new validation rule is a new `OrderValidator` class; the pipeline discovers it automatically and stops at the first rejection.
-
 ## Configuration
 
 Environment variables override [application.properties](src/main/resources/application.properties).
