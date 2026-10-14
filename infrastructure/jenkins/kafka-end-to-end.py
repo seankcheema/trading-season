@@ -172,11 +172,21 @@ def main():
     say('register trader profile', f'profile created, default account {account_id}')
 
     status, instruments = call('GET', f'{ORDERS}/api/instruments', token=token)
-    tradable = [i for i in instruments if i.get('tradable')] if status == 200 else []
+    tradable = [i for i in instruments if i.get('tradable') and i.get('ticker') == 'CIEQ'] if status == 200 else []
     if not tradable:
         fail('instrument', f'no tradable instrument; order-and-sell-service answered {status}: {instruments}')
     instrument = tradable[0]
     say('instrument', f"{instrument['ticker']} (id {instrument['instrumentId']}) is tradable")
+
+    status, snapshot = call('GET', f'{HOLDINGS}/api/market/snapshot')
+    stocks = snapshot.get('stocks', []) if isinstance(snapshot, dict) else []
+    quote = next((stock for stock in stocks if stock.get('symbol') == 'CIEQ'), {})
+    if (status != 200 or snapshot.get('status') != 'OPEN'
+            or quote.get('price') != ORDER_PRICE
+            or not snapshot.get('marketTimestamp')
+            or quote.get('timestamp') != snapshot.get('marketTimestamp')):
+        fail('market quote', f'Holdings replay fixture is unavailable or inconsistent: {status}: {snapshot}')
+    say('market quote', 'Holdings serves an OPEN replay quote for CIEQ at 25.00')
 
     stream = StreamReader(token)
     stream.start()
@@ -187,7 +197,8 @@ def main():
 
     status, order = call('POST', f'{ORDERS}/api/orders', {
         'accountId': account_id, 'instrumentId': instrument['instrumentId'], 'orderType': 'BUY',
-        'quantity': ORDER_QUANTITY, 'indicativePrice': ORDER_PRICE, 'clientReference': str(uuid.uuid4())}, token)
+        'quantity': ORDER_QUANTITY, 'indicativePrice': ORDER_PRICE, 'sessionId': snapshot['sessionId'],
+        'clientReference': str(uuid.uuid4())}, token)
     if status != 201 or order.get('status') != 'FILLED':
         fail('place order', f'order-and-sell-service answered {status}: {order}')
     order_id = order['orderId']

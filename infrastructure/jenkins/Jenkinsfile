@@ -742,10 +742,10 @@ pipeline {
 
                     note "===== Kafka end-to-end: one order through trade-events and its three consumers, and into a reporting service with no database ====="
 
-                    # The build database is empty, so give the order something to buy.
-                    compose exec -T db psql -U trading_season -d trading_season -v ON_ERROR_STOP=1 -q -c \
-                        "INSERT INTO instruments (ticker, name, asset_class, market, currency, is_tradable) VALUES ('CIEQ', 'CI Equity', 'Equity', 'US', 'USD', true);"
-                    note "[KAFKA-E2E] instrument: CIEQ inserted for this build"
+                    # Execution requires a real quote from Holdings and Trade.
+                    compose exec -T db psql -U trading_season -d trading_season -v ON_ERROR_STOP=1 -q \
+                        < infrastructure/jenkins/kafka-market-fixture.sql
+                    note "[KAFKA-E2E] market fixture: CIEQ mapped to a completed replay session at 25.00"
 
                     # Registers a trader, opens the order stream, places the order and checks
                     # each consumer's effect from inside the stack network.
