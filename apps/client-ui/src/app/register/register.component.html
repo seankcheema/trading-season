@@ -11,7 +11,7 @@
     </div>
 
     <div hlmCardContent>
-      <form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate class="flex flex-col gap-5">
+      <form method="post" [formGroup]="form" (ngSubmit)="onSubmit()" novalidate class="flex flex-col gap-5">
         <div class="grid grid-cols-2 gap-3">
           <div hlmField>
             <label hlmFieldLabel for="firstName" class="text-foreground">First name</label>

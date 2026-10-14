@@ -1,6 +1,11 @@
 """
 Trading Season Reporting Service
-Python Flask microservice for portfolio performance, trade history, and risk summaries.
+Python Flask microservice for report runs and the admin console.
+
+Everything it serves comes from Kafka. The consumer process (consumer.py)
+writes what it consumes to files; this web process reads those files and
+keeps its own read model of them (read_model.py). It has no connection to
+the trading database.
 """
 
 import os
@@ -8,24 +13,16 @@ import uuid
 from pathlib import Path
 from flask import Flask, jsonify, request, g, send_from_directory
 from flask_cors import CORS
+from flask_wtf.csrf import CSRFProtect
 from datetime import datetime, UTC
 import jwt
 import requests
 from functools import wraps
 from config import config
 import logging
-from sqlalchemy import text
 
-# Import database models and services
+# The read model's tables; filled from the event files, never from the trading database
 from models import db
-from db_service import (
-    UserRepository, AccountRepository, HoldingRepository,
-    OrderRepository, TradeRepository, CashTransactionRepository,
-    AuditRepository, MetadataRepository
-)
-
-# Import scheduled tasks
-from scheduled_tasks import init_scheduler, shutdown_scheduler, get_refresh_status
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -40,25 +37,28 @@ app = Flask(__name__)
 config_name = os.getenv('FLASK_ENV', 'development')
 app.config.from_object(config[config_name])
 
-# Configure SQLAlchemy
-app.config['SQLALCHEMY_DATABASE_URI'] = app.config['DATABASE_URL']
+# Configure SQLAlchemy for the read model: an in-memory SQLite database, for
+# which Flask-SQLAlchemy keeps one connection shared by every thread.
+app.config['SQLALCHEMY_DATABASE_URI'] = app.config['READ_MODEL_URL']
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
 
-# Set engine options only for PostgreSQL (SQLite doesn't support pool options)
-if 'sqlite' not in app.config['DATABASE_URL']:
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'pool_size': 10,
-        'pool_recycle': 3600,
-        'pool_pre_ping': True,
-    }
-else:
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
-
-# Initialize database
+# Initialize the read model
 db.init_app(app)
 
-# Enable CORS
-CORS(app, origins=app.config['CORS_ORIGINS'])
+# Enable CORS for the SPA's bearer-token requests only. This service does not
+# use cookie-based auth, so cross-origin credentials stay disabled.
+CORS(
+    app,
+    origins=app.config['CORS_ORIGINS'],
+    supports_credentials=False,
+    allow_headers=['Authorization', 'Content-Type'],
+)
+
+# Enable CSRF protection. It only checks POST, PUT, PATCH and DELETE, so the
+# read-only API is unaffected; a state-changing route added later is protected
+# by default.
+csrf = CSRFProtect(app)
 
 
 # ============================================================================
@@ -85,8 +85,8 @@ class JWKSCache:
                 self.keys = response.json()['keys']
                 self.cached_at = now
                 logger.info("JWKS cache refreshed")
-            except Exception as e:
-                logger.error(f"Failed to fetch JWKS: {e}")
+            except Exception:
+                logger.exception("Failed to fetch JWKS")
                 raise
         return self.keys
 
@@ -94,45 +94,52 @@ class JWKSCache:
 jwks_cache = JWKSCache()
 
 
+def candidate_keys(keys, kid):
+    """
+    The JWKS keys a token may have been signed with. A token that names a
+    key id gets exactly that key. The auth service signs its tokens without a
+    key id, so such a token is checked against every published key, the same
+    way the Java services' JWKS verifier does.
+    """
+    if kid is None:
+        return list(keys)
+    return [k for k in keys if k.get('kid') == kid]
+
+
 def verify_token(token):
     """Verify JWT token and return decoded payload"""
     try:
-        # Get the kid from the token header
+        from jwt.algorithms import RSAAlgorithm
+
         unverified_header = jwt.get_unverified_header(token)
         kid = unverified_header.get('kid')
-        
-        # Get the public key from JWKS
-        keys = jwks_cache.get_keys()
-        key = None
-        for k in keys:
-            if k.get('kid') == kid:
-                key = k
-                break
-        
-        if not key:
+
+        candidates = candidate_keys(jwks_cache.get_keys(), kid)
+        if not candidates:
             raise ValueError(f"Key {kid} not found in JWKS")
-        
-        # Build the public key
-        from jwt.algorithms import RSAAlgorithm
-        public_key = RSAAlgorithm.from_jwk(key)
-        
-        # Verify and decode the token
-        decoded = jwt.decode(
-            token,
-            public_key,
-            algorithms=[app.config['JWT_ALGORITHM']],
-            issuer=app.config['AUTH_JWT_ISSUER'],
-            options={'verify_exp': True}
-        )
-        
-        return decoded
-    
+
+        last_signature_error = None
+        for key in candidates:
+            public_key = RSAAlgorithm.from_jwk(key)
+            try:
+                return jwt.decode(
+                    token,
+                    public_key,
+                    algorithms=[app.config['JWT_ALGORITHM']],
+                    issuer=app.config['AUTH_JWT_ISSUER'],
+                    options={'verify_exp': True}
+                )
+            except jwt.InvalidSignatureError as e:
+                # Not this key; a token without a kid may match a later one.
+                last_signature_error = e
+        raise last_signature_error
+
     except jwt.ExpiredSignatureError:
         raise ValueError("Token has expired")
     except jwt.InvalidTokenError as e:
         raise ValueError(f"Invalid token: {e}")
     except Exception as e:
-        logger.error(f"Token verification error: {e}")
+        logger.exception("Token verification error")
         raise ValueError(f"Token verification failed: {e}")
 
 
@@ -162,6 +169,33 @@ def require_auth(f):
     return decorated_function
 
 
+# Who may read what. The auth service puts the account's role in the token's
+# `roles` claim; registration only ever issues TRADER. An admin reads
+# everything; an analyst reads the report runs and nothing else.
+ADMIN_ROLE = 'ADMIN'
+REPORT_READER_ROLES = ('ANALYST', ADMIN_ROLE)
+
+
+def require_role(*allowed):
+    """
+    Decorator to require one of the given roles in the verified token's
+    `roles` claim. Place it under @require_auth, which verifies the token and
+    sets g.user. A valid token without any of them is 403, not 401: the caller
+    is known, just not allowed.
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            roles = g.user.get('roles')
+            if not isinstance(roles, list) or not any(role in roles for role in allowed):
+                return jsonify({'error': f'The {" or ".join(allowed)} role is required'}), 403
+            return f(*args, **kwargs)
+
+        return decorated_function
+
+    return decorator
+
+
 # ============================================================================
 # Health Check
 # ============================================================================
@@ -170,9 +204,14 @@ def require_auth(f):
 def health():
     """Service health check endpoint (public, no auth required)"""
     try:
-        # Verify database connectivity
-        db.session.execute(text('SELECT 1'))
-        
+        # Verify the read model can be brought up to date from the event files
+        from read_model import read_model
+        with read_model.lock:
+            try:
+                read_model.sync(db.session, app.config['REPORTING_FILES_DIR'])
+            finally:
+                db.session.rollback()
+
         return jsonify({
             'status': 'healthy',
             'service': 'reporting-service',
@@ -181,7 +220,7 @@ def health():
         }), 200
     
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        logger.exception("Health check failed")
         return jsonify({
             'status': 'unhealthy',
             'service': 'reporting-service',
@@ -213,15 +252,21 @@ def root():
         'service': 'Trading Season Reporting Service',
         'status': 'initialized',
         'version': '0.1.0',
-        'description': 'Portfolio performance, trade history, and risk summaries',
+        'description': 'Report runs and the admin console, both built from Kafka topics',
         'documentation': '/docs',
         'openapi': '/openapi.yaml',
         'health': '/health',
         'api_endpoints': {
-            'portfolio': 'GET /api/reporting/portfolio',
-            'account_portfolio': 'GET /api/reporting/portfolio/{accountId}',
-            'trades': 'GET /api/reporting/trades',
-            'profile': 'GET /api/reporting/profile'
+            'profile': 'GET /api/reporting/profile',
+            'runs': 'GET /api/reporting/runs',
+            'latest_report': 'GET /api/reporting/runs/latest',
+            'run_file': 'GET /api/reporting/runs/{runId}/files/{name}',
+            'scheduler_status': 'GET /api/reporting/scheduler/status',
+            'activity': 'GET /api/reporting/activity',
+            'orders': 'GET /api/reporting/orders',
+            'order': 'GET /api/reporting/orders/{orderId}',
+            'customers': 'GET /api/reporting/customers',
+            'customer': 'GET /api/reporting/customers/{userId}'
         }
     }), 200
 
@@ -282,38 +327,24 @@ def register_routes():
 # ============================================================================
 
 def init_app():
-    """Initialize the application"""
+    """
+    Initialize the application for the development server (python app.py).
+    Registers the routes. There is no database to check: the read model is
+    built from the event files on the first request that needs it. The
+    report scheduler is not started here either: it runs in the consumer
+    process (consumer.py).
+    """
     logger.info(f"Initializing Reporting Service (env: {app.config['ENV']})")
-    logger.info(f"Database: {app.config['DATABASE_URL']}")
     logger.info(f"Auth Service: {app.config['AUTH_SERVICE_URL']}")
-    
-    # Verify database connectivity
+    logger.info(f"Reporting files: {app.config['REPORTING_FILES_DIR']}")
+
     try:
         with app.app_context():
-            db.session.execute(text('SELECT 1'))
-
-            if db.engine.dialect.name == 'sqlite':
-                version_query = text('SELECT sqlite_version()')
-            else:
-                version_query = text('SELECT version()')
-
-            version = db.session.execute(version_query).scalar()
-            logger.info(f"Database connected: {version}")
-            
-            # Register API routes
             register_routes()
             logger.info("Application initialized successfully")
-            
-            # Initialize background scheduler
-            init_scheduler(app)
-            logger.info("Background scheduler initialized")
-            
-            # Register graceful shutdown handler
-            import atexit
-            atexit.register(shutdown_scheduler)
-    
-    except Exception as e:
-        logger.error(f"Failed to initialize application: {e}")
+
+    except Exception:
+        logger.exception("Failed to initialize application")
         raise
 
 

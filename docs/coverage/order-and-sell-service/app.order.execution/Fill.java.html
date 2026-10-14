@@ -17,7 +17,11 @@ import java.time.OffsetDateTime;
  */
 @Entity
 @Table(name = &quot;fills&quot;)
-<span class="fc" id="L20">public class Fill {</span>
+public class Fill {
+
+    /** Creates an instance of this class. */
+<span class="fc" id="L23">    public Fill() {</span>
+<span class="fc" id="L24">    }</span>
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -37,45 +41,95 @@ import java.time.OffsetDateTime;
     @Column(name = &quot;filled_at&quot;, nullable = false, updatable = false)
     private OffsetDateTime filledAt;
 
+    /**
+     * Returns the fill ID.
+     *
+     * @return the fill ID
+     */
     public Integer getFillId() {
-<span class="fc" id="L41">        return fillId;</span>
+<span class="fc" id="L50">        return fillId;</span>
     }
 
+    /**
+     * Sets the fill ID.
+     *
+     * @param fillId the fill ID
+     */
     public void setFillId(Integer fillId) {
-<span class="fc" id="L45">        this.fillId = fillId;</span>
-<span class="fc" id="L46">    }</span>
+<span class="fc" id="L59">        this.fillId = fillId;</span>
+<span class="fc" id="L60">    }</span>
 
+    /**
+     * Returns the order ID.
+     *
+     * @return the order ID
+     */
     public Integer getOrderId() {
-<span class="fc" id="L49">        return orderId;</span>
+<span class="fc" id="L68">        return orderId;</span>
     }
 
+    /**
+     * Sets the order ID.
+     *
+     * @param orderId the order ID
+     */
     public void setOrderId(Integer orderId) {
-<span class="fc" id="L53">        this.orderId = orderId;</span>
-<span class="fc" id="L54">    }</span>
-
-    public BigDecimal getQuotePrice() {
-<span class="fc" id="L57">        return quotePrice;</span>
-    }
-
-    public void setQuotePrice(BigDecimal quotePrice) {
-<span class="fc" id="L61">        this.quotePrice = quotePrice;</span>
-<span class="fc" id="L62">    }</span>
-
-    public BigDecimal getQuantity() {
-<span class="fc" id="L65">        return quantity;</span>
-    }
-
-    public void setQuantity(BigDecimal quantity) {
-<span class="fc" id="L69">        this.quantity = quantity;</span>
-<span class="fc" id="L70">    }</span>
-
-    public OffsetDateTime getFilledAt() {
-<span class="fc" id="L73">        return filledAt;</span>
-    }
-
-    public void setFilledAt(OffsetDateTime filledAt) {
-<span class="fc" id="L77">        this.filledAt = filledAt;</span>
+<span class="fc" id="L77">        this.orderId = orderId;</span>
 <span class="fc" id="L78">    }</span>
+
+    /**
+     * Returns the quote price.
+     *
+     * @return the quote price
+     */
+    public BigDecimal getQuotePrice() {
+<span class="fc" id="L86">        return quotePrice;</span>
+    }
+
+    /**
+     * Sets the quote price.
+     *
+     * @param quotePrice the quote price
+     */
+    public void setQuotePrice(BigDecimal quotePrice) {
+<span class="fc" id="L95">        this.quotePrice = quotePrice;</span>
+<span class="fc" id="L96">    }</span>
+
+    /**
+     * Returns the quantity.
+     *
+     * @return the quantity
+     */
+    public BigDecimal getQuantity() {
+<span class="fc" id="L104">        return quantity;</span>
+    }
+
+    /**
+     * Sets the quantity.
+     *
+     * @param quantity the quantity
+     */
+    public void setQuantity(BigDecimal quantity) {
+<span class="fc" id="L113">        this.quantity = quantity;</span>
+<span class="fc" id="L114">    }</span>
+
+    /**
+     * Returns the filled at.
+     *
+     * @return the filled at
+     */
+    public OffsetDateTime getFilledAt() {
+<span class="fc" id="L122">        return filledAt;</span>
+    }
+
+    /**
+     * Sets the filled at.
+     *
+     * @param filledAt the filled at
+     */
+    public void setFilledAt(OffsetDateTime filledAt) {
+<span class="fc" id="L131">        this.filledAt = filledAt;</span>
+<span class="fc" id="L132">    }</span>
 }
 
 

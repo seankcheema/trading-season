@@ -4,8 +4,12 @@ This service owns order submission, validation, execution, instrument reference 
 
 - Resolve user ownership from the verified token subject before reading or writing an account.
 - Keep validation and response mapping in controllers, business logic in services, and persistence in repositories.
-- Execute fills, shared user cash balance updates, cash transactions, holding movements, holdings, and audit changes in one transaction. A persistence failure must roll back the whole submission.
-- Reject orders whose credential record no longer exists. Credential activation status was removed; do not restore it implicitly. Portfolio accounts use `accounts.archived_at`: reject new orders and execution under the account row lock when archived, preserving order history and idempotent retries.
+- Commit the accepted order in its own transaction before executing it (BR-06). Execute fills, shared user cash balance updates, cash transactions, holding movements, holdings, and the execution audit change in one separate transaction (BR-09). A persistence failure during execution rolls back only the execution; the accepted order stays on record with an `EXECUTION_FAILED` audit entry.
+- Publish order status changes only from `AFTER_COMMIT` transactional event listeners in `order/event/`, never from inside the transaction. Keep the publisher and the `order-status-pusher` consumer behind `app.events.enabled`; the `GET /api/orders/stream` endpoint is always registered. The `portfolio-valuation-capture` group belongs to Holdings and Trade and `reporting-ingester` to the reporting service.
+- The reporting service has no database connection: what it shows of an order is what `OrderStatusEvent` carries, and what it shows of an audit trail is what `record/` publishes to `platform-records`. A new column the console should show has to be added to those messages, not read by reporting. Never put an SSN, address, date of birth or password hash in one.
+- A `trade-events` message with the `replay` header is history republished for reporting. Any consumer added here that reacts to a status as it happens must skip it, as `OrderStatusPusherListener` does.
+- Reject orders whose credential record no longer exists. Account activation status was removed; do not restore it implicitly.
+- Portfolio accounts use `accounts.archived_at`: reject new orders and execution under the account row lock when archived, preserving order history and idempotent retries.
 - Preserve real audit timestamps separately from the simulation cursor and retain idempotent client references.
 - Mirror source packages under `src/test/java/app`. Use H2 with the test profile, and cover cross-user isolation and buy/sell ledgers.
 - Run `mvn -B test`; JaCoCo enforces the configured 70 percent floor per package on every counter.

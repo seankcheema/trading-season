@@ -1,4 +1,4 @@
-<main class="market-page bg-[#0e0e0e] text-[#eefaff]">
+<main class="market-page bg-[#0e0e0e] text-[#eefaff]" [attr.inert]="termsRequired() ? '' : null">
   <header class="market-nav bg-[#0e0e0e]/95 px-4 backdrop-blur-xl md:px-6">
     <div class="market-nav-inner mx-auto flex h-full max-w-[1600px] items-center gap-3">
       <a
@@ -75,8 +75,64 @@
   <div class="market-content">
     @switch (pageStatus()) {
       @case ('loading') {
-        <div class="text-muted-foreground flex min-h-[60vh] items-center justify-center">
-          Loading live market…
+        <div class="market-grid" role="status" aria-busy="true" data-testid="market-skeleton">
+          <span class="sr-only">Loading live market…</span>
+          <div class="market-main" aria-hidden="true">
+            <section class="market-summary border-border bg-card rounded-xl border px-4 py-1">
+              <div class="market-identity">
+                <div>
+                  <span class="skeleton h-6 w-20"></span>
+                  <span class="skeleton mt-1.5 h-3 w-32"></span>
+                </div>
+                <span class="skeleton h-8 w-28"></span>
+              </div>
+              <div class="market-metrics">
+                @for (metric of [1, 2, 3, 4, 5, 6, 7]; track metric) {
+                  <div>
+                    <span class="skeleton ml-auto h-2.5 w-10"></span>
+                    <span class="skeleton mt-1.5 ml-auto h-3 w-14"></span>
+                  </div>
+                }
+              </div>
+            </section>
+            <section class="chart-panel border-border bg-card rounded-xl border p-3">
+              <div class="chart-toolbar">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  @for (tool of [1, 2, 3]; track tool) {
+                    <span class="skeleton h-8 w-28"></span>
+                  }
+                </div>
+                <span class="skeleton h-8 w-44"></span>
+              </div>
+              <div class="chart-stage flex">
+                <span class="skeleton flex-1 rounded-lg"></span>
+              </div>
+            </section>
+          </div>
+          <aside class="tools-column" aria-hidden="true">
+            <section class="insight-panel border-border bg-card rounded-xl border p-3">
+              <div class="border-border border-b pb-2">
+                <span class="skeleton h-8 w-4/5"></span>
+              </div>
+              <ul class="insight-content pt-3">
+                @for (row of skeletonRows; track row) {
+                  <li app-activity-row-skeleton></li>
+                }
+              </ul>
+            </section>
+            <section class="account-value-panel">
+              <span class="skeleton h-10 w-full rounded-lg"></span>
+              <div class="account-value-balances">
+                @for (card of [1, 2]; track card) {
+                  <div class="overview-card account-balance-card">
+                    <span class="skeleton h-3 w-20"></span>
+                    <span class="skeleton mt-1.5 h-7 w-24"></span>
+                  </div>
+                }
+              </div>
+            </section>
+            <span class="skeleton h-[24.5rem] w-full shrink-0 rounded-xl"></span>
+          </aside>
         </div>
       }
       @case ('error') {
@@ -422,7 +478,10 @@
                             />
                           }
                           @case ('loading') {
-                            <div class="chart-message">Loading {{ active.symbol }} candles…</div>
+                            <div class="chart-message" role="status" aria-busy="true">
+                              <span class="sr-only">Loading {{ active.symbol }} candles…</span>
+                              <span class="skeleton flex-1 self-stretch rounded-lg" aria-hidden="true"></span>
+                            </div>
                           }
                           @case ('empty') {
                             <div class="chart-message">
@@ -456,7 +515,10 @@
                             />
                           }
                           @case ('loading') {
-                            <div class="chart-message">Loading {{ compared.symbol }} candles…</div>
+                            <div class="chart-message" role="status" aria-busy="true">
+                              <span class="sr-only">Loading {{ compared.symbol }} candles…</span>
+                              <span class="skeleton flex-1 self-stretch rounded-lg" aria-hidden="true"></span>
+                            </div>
                           }
                           @case ('empty') {
                             <div class="chart-message">
@@ -488,7 +550,10 @@
                         />
                       }
                       @case ('loading') {
-                        <div class="chart-message">Loading candles…</div>
+                        <div class="chart-message" role="status" aria-busy="true">
+                          <span class="sr-only">Loading candles…</span>
+                          <span class="skeleton flex-1 self-stretch rounded-lg" aria-hidden="true"></span>
+                        </div>
                       }
                       @case ('empty') {
                         <div class="chart-message">No candle data is available for this range.</div>
@@ -555,10 +620,14 @@
                       aria-label="Recent Orders"
                       data-testid="market-recent-orders"
                     >
-                      <p class="text-muted-foreground mb-2 text-xs">
-                        {{ accountStore.selectedAccount()?.name ?? 'No account selected' }} · All
-                        stocks
-                      </p>
+                      @if (accountsLoading()) {
+                        <span class="skeleton mb-2 h-4 w-40" aria-hidden="true"></span>
+                      } @else {
+                        <p class="text-muted-foreground mb-2 text-xs">
+                          {{ accountStore.selectedAccount()?.name ?? 'No account selected' }} · All
+                          stocks
+                        </p>
+                      }
                       @if (orders.historyStatus() === 'error' || catalogueStatus() === 'error') {
                         <p class="text-loss text-xs" role="alert">Recent orders unavailable.</p>
                         <button
@@ -573,14 +642,16 @@
                         @for (order of recentOrders(); track order.key) {
                           <li app-activity-row [transaction]="order"></li>
                         } @empty {
-                          <li class="text-muted-foreground py-6 text-center text-sm">
-                            {{
-                              orders.historyStatus() === 'loading' ||
-                              accountStore.status() === 'loading'
-                                ? 'Loading orders…'
-                                : 'No orders at this simulated time.'
-                            }}
-                          </li>
+                          @if (orders.historyStatus() === 'loading' || accountsLoading()) {
+                            <li class="sr-only" role="status">Loading orders…</li>
+                            @for (row of skeletonRows; track row) {
+                              <li app-activity-row-skeleton></li>
+                            }
+                          } @else {
+                            <li class="text-muted-foreground py-6 text-center text-sm">
+                              No orders at this simulated time.
+                            </li>
+                          }
                         }
                       </ul>
                     </div>
@@ -758,6 +829,7 @@
                         </div>
                       }
                       <form
+                        method="post"
                         class="mt-2 flex min-h-11 items-center gap-2 rounded-lg border border-white/10 bg-[#202020] p-1.5 pl-3 focus-within:border-primary/40"
                         (submit)="submitAiPrompt($event, active.symbol)"
                       >
@@ -807,6 +879,8 @@
                     <dd class="text-xl font-semibold tabular-nums" data-testid="available-cash">
                       @if (accountStore.status() === 'ready') {
                         {{ availableCash() | currency: 'USD' }}
+                      } @else if (accountsLoading()) {
+                        <span class="skeleton h-7 w-24" aria-hidden="true"></span>
                       } @else {
                         <span aria-label="Balance unavailable">—</span>
                       }
@@ -823,16 +897,16 @@
                           portfolioValues().get(accountStore.selectedAccountId()!) ?? 0
                             | currency: 'USD'
                         }}
+                      } @else if (accountsLoading()) {
+                        <span class="skeleton h-7 w-24" aria-hidden="true"></span>
                       } @else {
                         <span aria-label="Balance unavailable">—</span>
                       }
                     </dd>
                   </div>
                 </dl>
-                @if (accountStore.status() === 'idle' || accountStore.status() === 'loading') {
-                  <p class="text-muted-foreground text-xs" role="status">
-                    Loading account balances…
-                  </p>
+                @if (accountsLoading()) {
+                  <p class="sr-only" role="status">Loading account balances…</p>
                 }
                 @if (accountStore.status() === 'error') {
                   <p class="text-loss text-xs" role="alert">
@@ -894,4 +968,8 @@
     (closed)="accountDialog.set(null)"
     (saved)="onAccountSaved($event)"
   />
+}
+
+@if (termsRequired()) {
+  <app-terms-dialog [signatureName]="termsSignatureName()" (declined)="onSignOut()" />
 }

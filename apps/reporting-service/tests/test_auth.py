@@ -91,7 +91,7 @@ class TestTokenExtraction:
     
     def test_invalid_token_format_rejected(self, client):
         """Test invalid token format is rejected"""
-        response = client.get('/api/reporting/portfolio', 
+        response = client.get('/api/reporting/profile',
                             headers={'Authorization': 'InvalidFormat token'})
         assert response.status_code == 401
 
@@ -138,7 +138,7 @@ class TestAuthenticationErrors:
     
     def test_missing_authorization_header_error(self, client):
         """Test error when authorization header is missing"""
-        response = client.get('/api/reporting/portfolio')
+        response = client.get('/api/reporting/profile')
         assert response.status_code == 401
         data = response.get_json()
         assert 'error' in data
@@ -146,13 +146,13 @@ class TestAuthenticationErrors:
     
     def test_invalid_bearer_format_error(self, client):
         """Test error for invalid Bearer format"""
-        response = client.get('/api/reporting/portfolio', 
+        response = client.get('/api/reporting/profile',
                             headers={'Authorization': 'Bearer'})
         assert response.status_code == 401
     
     def test_missing_bearer_prefix_error(self, client):
         """Test error when Bearer prefix is missing"""
-        response = client.get('/api/reporting/portfolio',
+        response = client.get('/api/reporting/profile',
                             headers={'Authorization': 'test-token'})
         assert response.status_code == 401
 
@@ -199,10 +199,78 @@ class TestAuthorizationFlow:
     
     def test_auth_flow_requires_bearer_token(self, client):
         """Test protected endpoints require Bearer token"""
-        response = client.get('/api/reporting/portfolio')
+        response = client.get('/api/reporting/profile')
         assert response.status_code == 401
     
     def test_health_endpoint_no_auth_required(self, client):
         """Test health endpoint requires no auth"""
         response = client.get('/health')
         assert response.status_code != 401
+
+
+class TestRs256Verification:
+    """Real RS256 tokens against a JWKS, the way the auth service issues them."""
+
+    @staticmethod
+    def _rsa_jwk(kid=None):
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from jwt.algorithms import RSAAlgorithm
+        import json
+
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        jwk = json.loads(RSAAlgorithm.to_jwk(private_key.public_key()))
+        jwk.update({'use': 'sig', 'alg': 'RS256'})
+        if kid is not None:
+            jwk['kid'] = kid
+        return private_key, jwk
+
+    @staticmethod
+    def _token(private_key, app, headers=None, **claims):
+        payload = {
+            'sub': str(uuid.uuid4()),
+            'iss': app.config['AUTH_JWT_ISSUER'],
+            'exp': datetime.now(UTC) + timedelta(minutes=5),
+        }
+        payload.update(claims)
+        return jwt.encode(payload, private_key, algorithm='RS256', headers=headers)
+
+    def test_token_without_a_kid_verifies_against_the_published_key(self, app, mocker):
+        # The auth service publishes a kid in its JWKS but signs tokens without one.
+        private_key, jwk = self._rsa_jwk(kid='auth-key-1')
+        mocker.patch('app.jwks_cache.get_keys', return_value=[jwk])
+
+        decoded = verify_token(self._token(private_key, app))
+
+        assert decoded['iss'] == app.config['AUTH_JWT_ISSUER']
+        assert uuid.UUID(decoded['sub'])
+
+    def test_token_with_a_matching_kid_uses_that_key(self, app, mocker):
+        other_key, other_jwk = self._rsa_jwk(kid='old')
+        private_key, jwk = self._rsa_jwk(kid='current')
+        mocker.patch('app.jwks_cache.get_keys', return_value=[other_jwk, jwk])
+
+        decoded = verify_token(self._token(private_key, app, headers={'kid': 'current'}))
+
+        assert decoded['iss'] == app.config['AUTH_JWT_ISSUER']
+
+    def test_token_signed_by_an_unknown_key_is_rejected(self, app, mocker):
+        _, published_jwk = self._rsa_jwk(kid='auth-key-1')
+        rogue_key, _ = self._rsa_jwk()
+        mocker.patch('app.jwks_cache.get_keys', return_value=[published_jwk])
+
+        with pytest.raises(ValueError, match='Invalid token'):
+            verify_token(self._token(rogue_key, app))
+
+    def test_token_naming_an_unknown_kid_is_rejected(self, app, mocker):
+        private_key, jwk = self._rsa_jwk(kid='auth-key-1')
+        mocker.patch('app.jwks_cache.get_keys', return_value=[jwk])
+
+        with pytest.raises(ValueError, match='not found in JWKS'):
+            verify_token(self._token(private_key, app, headers={'kid': 'rotated-away'}))
+
+    def test_wrong_issuer_is_rejected(self, app, mocker):
+        private_key, jwk = self._rsa_jwk()
+        mocker.patch('app.jwks_cache.get_keys', return_value=[jwk])
+
+        with pytest.raises(ValueError, match='Invalid token'):
+            verify_token(self._token(private_key, app, iss='https://someone-else.example'))

@@ -49,10 +49,10 @@ services:
         condition: service_healthy
     volumes:
       - ../../db/migrations:/workspace/db/migrations:ro
-      - ../docker/init-db.sh:/workspace/infrastructure/docker/init-db.sh:ro
+      - ../docker/init-db.sh:/init-db.sh:ro
     environment:
-      DATABASE_URL: postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season
-    command: ["sh", "-c", 'exec sh /workspace/infrastructure/docker/init-db.sh "$$DATABASE_URL"']
+      PGPASSWORD: ${DB_PASSWORD:-changeme}
+    command: ["sh", "/init-db.sh", "postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season", "/workspace"]
     networks:
       - ci-network
 
@@ -68,9 +68,14 @@ services:
       # it needs the migrations applied before its first query.
       db-init:
         condition: service_completed_successfully
+      # It publishes every sign-in it creates or changes to platform-records,
+      # and auto-creation is off, so the topic must exist first.
+      kafka-init:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: development
       PORT: 3001
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       DB_HOST: db
       DB_PORT: 5432
       DB_NAME: trading_season
@@ -83,8 +88,13 @@ services:
     networks:
       - ci-network
 
-  # Event broker for the trade-events topic. Nothing publishes or consumes
-  # yet.
+  # Event broker for two topics. trade-events: Order and Sell publishes one
+  # message per committed order status change; three consumer groups read it:
+  # order-status-pusher (Order and Sell), portfolio-valuation-capture (Holdings
+  # and Trade) and reporting-ingester (reporting-consumer). platform-records:
+  # the auth service and both Java services publish the current state of the
+  # rows reporting shows that an order status does not carry;
+  # reporting-ingester is its only reader.
   kafka:
     # Single-node KRaft: no ZooKeeper, and the controller quorum is this same
     # node. Sized for a developer machine, not durability -- one replica of
@@ -172,13 +182,21 @@ services:
     # events already written and events written afterwards would land in
     # different partitions for the same account.
     # --if-not-exists makes a rerun a no-op rather than an error.
+    # platform-records is compacted: each message is the current state of one
+    # row, keyed by its type and id, so only the latest per key is ever needed.
     command:
       - |
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
           --create --if-not-exists --topic trade-events \
           --partitions 3 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+          --create --if-not-exists --topic platform-records \
+          --partitions 3 --replication-factor 1 \
+          --config cleanup.policy=compact
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
           --describe --topic trade-events
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+          --describe --topic platform-records
     networks:
       - ci-network
 
@@ -193,6 +211,10 @@ services:
     depends_on:
       db-init:
         condition: service_completed_successfully
+      # Consumer group portfolio-valuation-capture reads trade-events, so the
+      # topic must exist before the first poll.
+      kafka-init:
+        condition: service_completed_successfully
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
       SPRING_DATASOURCE_USERNAME: trading_season
@@ -200,6 +222,8 @@ services:
       AUTH_JWK_SET_URI: http://auth-service:3001/.well-known/jwks.json
       AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
+      # In-network listener; the host-facing localhost:29092 does not resolve here.
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     networks:
       - ci-network
 
@@ -214,6 +238,10 @@ services:
     depends_on:
       db-init:
         condition: service_completed_successfully
+      # The service publishes to trade-events and auto-creation is off, so the
+      # topic must exist before the first order resolves.
+      kafka-init:
+        condition: service_completed_successfully
     environment:
       EXECUTION_MARKET_BASE_URL: http://holdings-and-trade-service:8082
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
@@ -222,6 +250,8 @@ services:
       AUTH_JWK_SET_URI: http://auth-service:3001/.well-known/jwks.json
       AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
+      # In-network listener; the host-facing localhost:29092 does not resolve here.
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     networks:
       - ci-network
 
@@ -232,22 +262,51 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8083:8083"
+    # No database: everything it serves is read from reporting_files.
     depends_on:
-      db-init:
-        condition: service_completed_successfully
       auth-service:
         condition: service_started
     environment:
       FLASK_ENV: production
       FLASK_DEBUG: "false"
-      DATABASE_URL: postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season
       AUTH_SERVICE_URL: http://auth-service:3001
       AUTH_JWT_ISSUER: ${JWT_ISSUER:-https://auth.dualeapa.local}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200,http://localhost:4300}
       REPORTING_SERVICE_PORT: 8083
       REPORTING_SERVICE_HOST: 0.0.0.0
+      # The web service only serves; the consumer below runs the report job.
+      SCHEDULER_ENABLED: "false"
+      SCHEDULER_INTERVAL_MINUTES: 15
+      REPORTING_FILES_DIR: /data/reporting
+    volumes:
+      - reporting_files:/data/reporting:ro
+    networks:
+      - ci-network
+
+  # Reporting consumer: consumer group reporting-ingester. Same image as
+  # reporting-service, different process; see docker-compose.local.yml.
+  reporting-consumer:
+    build:
+      context: ../../apps/reporting-service
+      dockerfile: Dockerfile
+    command: ["python", "consumer.py"]
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      FLASK_ENV: production
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TRADE_EVENTS_TOPIC: trade-events
+      KAFKA_PLATFORM_RECORDS_TOPIC: platform-records
+      REPORTING_CONSUMER_GROUP: reporting-ingester
+      REPORTING_FILES_DIR: /data/reporting
       SCHEDULER_ENABLED: "true"
       SCHEDULER_INTERVAL_MINUTES: 15
+    volumes:
+      - reporting_files:/data/reporting
+    healthcheck:
+      disable: true
+    stop_grace_period: 20s
     networks:
       - ci-network
 
@@ -255,6 +314,7 @@ volumes:
   jenkins_home:
   db_data:
   kafka_data:
+  reporting_files:
 
 networks:
   ci-network:

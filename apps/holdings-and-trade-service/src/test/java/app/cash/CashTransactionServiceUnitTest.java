@@ -3,6 +3,7 @@ package app.cash;
 import app.account.Account;
 import app.account.AccountNotFoundException;
 import app.account.AccountRepository;
+import app.record.CashTransferRecord;
 import app.user.User;
 import app.user.UserNotFoundException;
 import app.user.UserRepository;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
@@ -47,12 +49,52 @@ class CashTransactionServiceUnitTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private ApplicationEventPublisher events;
+
     private CashTransactionService service;
 
     // JUnit invokes this lifecycle hook through reflection.
     @BeforeEach
     public void setUp() {
-        service = new CashTransactionService(cashTransactionRepository, accountRepository, userRepository);
+        service = new CashTransactionService(cashTransactionRepository, accountRepository, userRepository, events);
+    }
+
+    @Test
+    void aWithdrawalIsRaisedForReportingWithTheBalanceItLeft() {
+        User user = user(new BigDecimal("100.00"));
+        givenUserWithAccount(user, 7);
+        when(cashTransactionRepository.save(any(CashTransaction.class))).thenAnswer(invocation -> {
+            CashTransaction posted = invocation.getArgument(0);
+            posted.setCashTransactionId(31);
+            return posted;
+        });
+
+        CashTransaction saved = service.move(USER_ID, new BigDecimal("25.00"), "WITHDRAWAL");
+
+        ArgumentCaptor<CashTransferRecord> raised = ArgumentCaptor.forClass(CashTransferRecord.class);
+        verify(events).publishEvent(raised.capture());
+        CashTransferRecord record = raised.getValue();
+        assertEquals(31, record.cashTransactionId());
+        assertEquals(7, record.accountId());
+        assertEquals(USER_ID, record.userId());
+        assertEquals(new BigDecimal("-25.00"), record.amount());
+        assertEquals("WITHDRAWAL", record.reason());
+        assertEquals(saved.getCreatedAt(), record.createdAt());
+        assertEquals(new BigDecimal("75.00"), record.availableFunds());
+        assertEquals("CASH_TRANSFER", record.recordType());
+        assertEquals("31", record.recordId());
+    }
+
+    @Test
+    void aRefusedWithdrawalRaisesNothing() {
+        User user = user(new BigDecimal("10.00"));
+        givenUserWithAccount(user, 7);
+
+        assertThrows(InsufficientFundsException.class,
+                () -> service.move(USER_ID, new BigDecimal("10.01"), "WITHDRAWAL"));
+
+        verify(events, never()).publishEvent(any());
     }
 
     @Test

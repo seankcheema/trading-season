@@ -8,6 +8,8 @@ import app.holding.HoldingRepository;
 import app.holding.HoldingWithCost;
 import app.instrument.Instrument;
 import app.instrument.InstrumentRepository;
+import app.record.TradingAccountRecord;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +24,11 @@ import java.util.stream.Collectors;
 /**
  * Service for managing user accounts and their holdings.
  * All operations are scoped to the authenticated user.
+ *
+ * <p>An account that is opened or renamed is raised as a
+ * {@link TradingAccountRecord}, which {@link app.record.PlatformRecordPublisher}
+ * sends to Kafka once the transaction has committed, so the reporting service
+ * knows every account and its owner without reading this table.
  */
 @Service
 public class AccountService {
@@ -30,6 +37,7 @@ public class AccountService {
     private final HoldingRepository holdingRepository;
     private final HoldingMovementRepository holdingMovementRepository;
     private final InstrumentRepository instrumentRepository;
+    private final ApplicationEventPublisher events;
 
     /**
      * Creates the service.
@@ -38,15 +46,18 @@ public class AccountService {
      * @param holdingRepository         persistence for holdings
      * @param holdingMovementRepository the movement ledger positions are priced from
      * @param instrumentRepository      read access to the instruments held
+     * @param events                    publisher of the {@link TradingAccountRecord} raised for an account
      */
     public AccountService(AccountRepository accountRepository,
                           HoldingRepository holdingRepository,
                           HoldingMovementRepository holdingMovementRepository,
-                          InstrumentRepository instrumentRepository) {
+                          InstrumentRepository instrumentRepository,
+                          ApplicationEventPublisher events) {
         this.accountRepository = accountRepository;
         this.holdingRepository = holdingRepository;
         this.holdingMovementRepository = holdingMovementRepository;
         this.instrumentRepository = instrumentRepository;
+        this.events = events;
     }
 
     /**
@@ -110,8 +121,10 @@ public class AccountService {
         account.setName(name);
         account.setOpenedDate(LocalDate.now());
         account.setCurrency("USD");
-        
-        return accountRepository.save(account);
+
+        Account saved = accountRepository.save(account);
+        events.publishEvent(TradingAccountRecord.from(saved));
+        return saved;
     }
 
     /**
@@ -142,7 +155,9 @@ public class AccountService {
         Account account = lockedOwnedAccount(accountId, userId);
         requireActive(account);
         account.setName(newName);
-        return accountRepository.save(account);
+        Account saved = accountRepository.save(account);
+        events.publishEvent(TradingAccountRecord.from(saved));
+        return saved;
     }
 
     /**

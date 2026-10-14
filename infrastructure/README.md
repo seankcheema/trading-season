@@ -4,12 +4,14 @@ Container and CI configuration. None of it is a production deployment.
 
 | Resource | Purpose |
 | --- | --- |
-| [docker-compose.local.yml](docker-compose/docker-compose.local.yml) | Full local stack: UI, services, database, Kafka, reporting |
+| [docker-compose.local.yml](docker-compose/docker-compose.local.yml) | Full local stack: UI, services, database, Kafka with both topics, the reporting service and its consumer |
 | [docker-compose.jenkins.yml](docker-compose/docker-compose.jenkins.yml) | Optional Jenkins container (UI on host port 8888) |
 | [Jenkinsfile](jenkins/Jenkinsfile) | CI pipeline |
+| [sonar-project.properties](jenkins/sonar-project.properties), [jacoco-to-sonar-coverage.mjs](jenkins/jacoco-to-sonar-coverage.mjs) | SonarQube analysis settings and the Java coverage conversion it depends on |
+| [jenkins/kafka-end-to-end.py](jenkins/kafka-end-to-end.py) | Order-to-consumers check the pipeline runs against the built stack |
 | [docker/init-db.sh](docker/init-db.sh) | `db-init`: applies every `db/migrations/V*.sql` once, recorded in `public.schema_migrations` |
 | [docker/Dockerfile.market-data](docker/Dockerfile.market-data) | Image for the market-data scripts and the Jenkins integration stage |
-| [docker/Dockerfile.playwright](docker/Dockerfile.playwright) | Slim Chromium-only image for the Playwright E2E stage |
+| [docker/Dockerfile.playwright](docker/Dockerfile.playwright) | Slim headless-Chromium and Python 3 image for the Playwright E2E stage, which runs the Client UI and Reporting UI suites; tagged with the Playwright version and `-python3` |
 | [docker/Dockerfile.jenkins](docker/Dockerfile.jenkins), [setup-jenkins.sh](docker/setup-jenkins.sh) | Optional Jenkins image with Node 24, JDK 21, Docker CLI, and Compose |
 | [docker/run-compose.sh](docker/run-compose.sh) | Uses `docker compose`, falling back to `docker-compose` |
 
@@ -30,22 +32,50 @@ docker compose --project-name trading-season-local -f infrastructure/docker-comp
 | Order and Sell Service | 8081 |
 | Holdings and Trade Service | 8082 |
 | Reporting Service | 8083 |
+| Reporting consumer | none (`reporting-consumer`, same image as the Reporting Service, runs `python consumer.py`) |
 | PostgreSQL | 5432 |
 | Kafka | 29092 (`kafka:9092` in the network) |
 
-- `DB_PASSWORD` sets the one database password every service uses. Defaults are for disposable development only.
+- `DB_PASSWORD` sets the one database password the auth service and the Java services use. The reporting containers are given no database setting and do not depend on `db` or `db-init`. Defaults are for disposable development only.
 - `db-init` migrates the database before dependent services start; a failed migration stops it. Data persists in the `db_data` volume; `down -v` deletes it.
-- A one-shot `kafka-init` creates the `trade-events` topic with three partitions. Auto-creation is disabled. No service produces or consumes yet.
+- A one-shot `kafka-init` creates two topics, each with three partitions; auto-creation is disabled. `trade-events`: the Order and Sell Service publishes to it, and three consumer groups read it: `order-status-pusher` (Order and Sell), `portfolio-valuation-capture` (Holdings and Trade) and `reporting-ingester` (`reporting-consumer`). `platform-records`: the auth service and both Java services publish to it, and `reporting-ingester` is its only reader; it is created with `cleanup.policy=compact`, so it keeps the latest state of every row instead of expiring by age. The auth service, both Java services and the consumer start only after `kafka-init` completes and receive `KAFKA_BOOTSTRAP_SERVERS=kafka:9092`.
+- The `reporting-consumer` and `reporting-service` containers share the `reporting_files` volume at `/data/reporting`: the consumer appends the messages of both topics and writes report runs, the web service reads them and builds its read model from them. It is all the data reporting has. `down -v` deletes it; the files can be rebuilt by resetting the `reporting-ingester` group's offsets (see [apps/reporting-service](../apps/reporting-service/README.md)).
+- A fresh stack needs nothing more: everything is published from the first registration. A database that already holds data, or is loaded by SQL, needs [republish_history.py](../db/README.md#reporting-feed-tools) run once against `localhost:29092` for reporting to see it.
+- `reporting-ui` serves the Angular app through Nginx and proxies `/api/reporting` to `reporting-service` and `/auth` to `auth-service`, so it starts after both and needs no CORS entry on either.
+- To inspect the topic: `docker compose --project-name trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --all-groups` shows each group's lag.
 - Opt-in profiles: `initialize` (first-time empty database) and `seed` (market data steps 0002 to 0004; see [apps/market-data](../apps/market-data/README.md)).
-- For Linux VMs, `scripts/setup-local.sh` at the repository root reuses a local PostgreSQL or starts the database from this Compose file.
+- For Linux VMs, `scripts/setup-local.sh` at the repository root reuses a local PostgreSQL or starts `db`, `kafka` and `kafka-init` from this Compose file, and runs the applications on the host against `localhost:29092`. With a local PostgreSQL it starts no broker, and it never starts the reporting service or its consumer.
 
 ## Jenkins
 
 The pipeline needs a Linux agent with Docker and Compose, JDK 21 at `/usr/lib/jvm/java-21-amazon-corretto`, a Maven tool named `Maven`, and a NodeJS tool named `NodeJS` running 24.8 or later. It requires 5 GiB of free workspace storage.
 
-Stages: toolchain and preflight checks, depth-1 checkout, `npm ci`, parallel test suites (both Java services, auth, reporting, frontend, synthetic market data), Javadocs, Playwright E2E, then a build of the local stack with build-scoped JWT keys and smoke checks. A failing test stage skips everything after it. Reports are archived per stage, missing JUnit reports fail the build, and each tier enforces its own coverage floor (UI 90, Holdings and Trade 85, Order and Sell 70, auth 70).
+Stages: toolchain and preflight checks, depth-1 checkout, `npm ci`, parallel test suites (both Java services, auth, reporting, the reporting feed tools in `db/tools`, frontend, reporting UI, synthetic market data), Javadocs, the [SonarQube](#sonarqube) analysis and quality gate, Playwright E2E (the Client UI suite against an API stand-in, then the Reporting UI suite against the real Reporting Service with only the Auth Service stubbed; both always run and either fails the stage), then a build of the local stack with build-scoped JWT keys and smoke checks: every expected container, including `reporting-consumer`, is running; the UIs and the reporting health endpoint answer; the `trade-events` topic exists with three partitions; `platform-records` exists with three partitions and is compacted; and the three consumer groups (`order-status-pusher`, `portfolio-valuation-capture`, `reporting-ingester`) have registered, with their partition assignment printed to the console. A missing group fails the build and prints that service's log. The stage ends by pruning dangling images and trimming the Docker build cache to 2 GiB; it does not prune stopped containers, networks, or volumes. A final "Kafka End-to-End Flow" stage then runs [kafka-end-to-end.py](jenkins/kafka-end-to-end.py) inside the `reporting-consumer` container: it first checks that the reporting image has no database setting and no PostgreSQL driver; then registers a trader, opens the order stream, places a BUY order and checks that the stream received both status frames, that a portfolio valuation was captured and reached reporting, that both events reached the reporting files and a report run that names the account from published records, that the web service refuses that run to the trader and serves it to the seeded development analyst, that the console shows the seeded development admin the trader, the order, its ledger impact and its audit trail, and that every consumer group ends at lag 0 on both topics. Each step is printed as a `[KAFKA-E2E]` line, together with the matching producer and consumer log lines, and archived as `reports/kafka-end-to-end/evidence.txt`. A failing test stage skips everything after it. Reports are archived per stage, missing JUnit reports fail the build, and each tier enforces its own coverage floor (UI 90, Reporting UI 90, Holdings and Trade 85, Order and Sell 70, auth 70).
 
 Cleanup always removes the build-scoped test containers, volumes, and images, tears down the local stack only if this build started it and failed, trims Docker caches, and deletes the workspace. Playwright images and Maven and npm caches are kept only when at least 6 GiB will remain free.
+
+### SonarQube
+
+The analysis stage runs after the test suites so it can import their coverage reports, and the quality gate stage logs the returned SonarQube status before aborting the build when the gate fails.
+
+| Where | Setting |
+| --- | --- |
+| Jenkins plugin | SonarQube Scanner |
+| Manage Jenkins > Tools | A SonarQube Scanner installation named `SonarScanner` |
+| Manage Jenkins > System | A SonarQube server named `SonarQube` with the server URL typed in and a Secret text credential holding the project analysis token. A blank URL field still lets the scan run against the `http://localhost:9000` default, but the quality gate stage then fails with `Expected URL scheme 'http' or 'https'` |
+| SonarQube > Administration > Webhooks | A webhook to `<jenkins-url>/sonarqube-webhook/`; without it the quality gate stage waits until it times out |
+| SonarQube project | Key and name `DuaLeapa-Project`, as set in [sonar-project.properties](jenkins/sonar-project.properties) |
+
+The Jenkinsfile holds no server URL or token; both come from the `SonarQube` server entry. Language rules come from the quality profiles assigned to the project in SonarQube, not from this repository.
+
+Coverage reaches SonarQube from the reports the test stages write: LCOV for the two UIs and the auth service, Cobertura XML for the reporting service and the market-data scripts, and JaCoCo for the Java services. [jacoco-to-sonar-coverage.mjs](jenkins/jacoco-to-sonar-coverage.mjs) first rewrites each JaCoCo report with full file paths, because both services use the same Java packages and SonarQube's JaCoCo importer would otherwise credit one service's coverage to the other. The reporting tests mount the workspace at its own path inside the container so the source path in `coverage.xml` exists on the agent. The market-data scripts have no unit tests, so their stage runs every script of the two-day integration under coverage.py and merges the results into `reports/market-data/coverage.xml`; the figure is what that integration executes. That report names each file relative to the repository root, which the scanner resolves from the workspace.
+
+To scan from a workstation, run the test suites, then from the repository root:
+
+```sh
+node infrastructure/jenkins/jacoco-to-sonar-coverage.mjs apps/holdings-and-trade-service apps/order-and-sell-service
+SONAR_HOST_URL=<server-url> SONAR_TOKEN=<token> sonar-scanner -Dproject.settings=infrastructure/jenkins/sonar-project.properties
+```
 
 ### Disk space failures
 
@@ -62,10 +92,10 @@ docker system df
 
 Never run `docker volume prune` or `docker system prune --volumes` on the agent: unattached volumes may hold Jenkins home, databases, or archives. Rerun through Jenkins so files keep the agent's ownership. If cleanup logs show every build removing all caches, give the agent more storage.
 
-An `Operation not permitted` failure under `apps/reporting-service` means a root-owned file from the pytest container survived; the Checkout stage repairs permissions, but a workspace stuck by an older build must be removed once by hand.
+An `Operation not permitted` failure under `apps/reporting-service` or `db/tools` means a root-owned file from a pytest container survived; the Checkout stage repairs permissions, but a workspace stuck by an older build must be removed once by hand.
 
-The local and Jenkins Compose database initializers mount the complete migrations directory and run `docker/init-db.sh`, including V009 account archiving and V010 execution buffers, before dependent services start. Existing volumes receive pending migrations through the migration ledger.
+The local and Jenkins Compose database initializers mount the complete migrations directory and run `docker/init-db.sh`, including account archiving, terms acceptance, accepted-order status, analyst role, and execution buffer migrations, before dependent services start. Existing volumes receive pending migrations through the migration ledger.
 
 ## Execution market dependency
 
-Order and Sell reads execution quotes from Holdings and Trade's authoritative replay snapshot. Both Compose environments set `EXECUTION_MARKET_BASE_URL` to `http://holdings-and-trade-service:8082`; local processes default to `http://localhost:8082`. An unreachable service rejects trading instead of filling at client prices. Apply pending migrations, including V010, before starting the updated services. Deploy both updated Java services before the UI; old order history retains legacy replay time fallbacks.
+Order and Sell reads execution quotes from Holdings and Trade's authoritative replay snapshot. Both Compose environments set `EXECUTION_MARKET_BASE_URL` to `http://holdings-and-trade-service:8082`; local processes default to `http://localhost:8082`. An unreachable service rejects trading instead of filling at client prices.

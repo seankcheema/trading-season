@@ -5,10 +5,10 @@ FROM python:3.14-slim as builder
 
 WORKDIR /build
 
-# Install build dependencies
+# A compiler for any requirement that ships no wheel for this Python. No
+# database client library: the service has no database to connect to.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and build wheels
@@ -18,13 +18,9 @@ RUN pip wheel --no-cache-dir --no-deps --wheel-dir /build/wheels -r requirements
 
 # Stage 2: Runtime
 FROM python:3.14-slim
+LABEL maintainer="DuaLEAPa Team"
 
 WORKDIR /app
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 \
-    && rm -rf /var/lib/apt/lists/*
 
 # Copy wheels from builder
 COPY --from=builder /build/wheels /wheels
@@ -36,9 +32,18 @@ RUN pip install --no-cache /wheels/*
 # Copy application code
 COPY . .
 
-# Create non-root user for security
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+# Create non-root user for security. /data/reporting is the event and report
+# store, and the service's only source of data: it has no database connection; a named volume mounted there is initialised from this path, ownership
+# included, so the consumer can write to it as appuser. (A bind mount is not
+# initialised this way and must be writable by uid 1000 on the host.)
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app \
+    && mkdir -p /data/reporting && chown appuser:appuser /data/reporting
 USER appuser
+
+# Where the consumer writes and the web service reads; matplotlib needs a
+# writable cache directory for its font index.
+ENV REPORTING_FILES_DIR=/data/reporting \
+    MPLCONFIGDIR=/tmp/matplotlib
 
 # Expose Flask port
 EXPOSE 8083
@@ -47,6 +52,7 @@ EXPOSE 8083
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
     CMD python -c "import requests; requests.get('http://127.0.0.1:8083/health', timeout=3)" || exit 1
 
-# Run with Gunicorn
+# Run with Gunicorn. The consumer container overrides this with
+# ["python", "consumer.py"] in Compose; same image, different process.
 CMD ["gunicorn", "--bind", "0.0.0.0:8083", "--workers", "4", "--threads", "2", "--worker-class", "gthread", "--timeout", "60", "--access-logfile", "-", "--error-logfile", "-", "wsgi:app"]
 

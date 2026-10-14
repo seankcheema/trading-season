@@ -14,10 +14,12 @@ Order creation, validation and execution live in [Order and Sell Service](../ord
 
 ## Key Packages
 
-- `auth/` - Registration, token wiring, security configuration, and error mapping
+- `auth/` - Token verification wiring, security configuration, the authenticated caller, and error mapping
+- `registration/` - Profile registration and the account-existence check; never handles passwords or sign-in
 - `user/` - The caller's profile and the shared cash balance it carries
-- `account/` - The caller's accounts and the assembled view of their holdings
+- `account/` - The caller's accounts, the assembled view of their holdings, and portfolio valuation history: `PortfolioValuationService.capture` is called by the minute scheduler, by the dashboard's request, and by `PortfolioValuationListener`, the `portfolio-valuation-capture` Kafka consumer that fires on every `FILLED` trade event. The listener is gated by `app.events.enabled`.
 - `cash/` - Deposits, withdrawals, and the append-only cash ledger
+- `record/` - What the reporting service is told: a `PlatformRecord` per profile, account, transfer and valuation written, sent to the `platform-records` topic by `PlatformRecordPublisher` after the commit, and the current simulation session, which `market/MarketSessionAnnouncer` raises once at start. The reporting service has no database connection, so a service method that writes a row it shows must raise the record in the same transaction. Never put an SSN, address or date of birth in one.
 - `holding/` - Cached positions, plus the movement and fill rows a position's cost is derived from
 - `instrument/` - Read access to tradable asset definitions, for naming a holding
 - `market/` - Shared market data services
@@ -31,7 +33,7 @@ Order creation, validation and execution live in [Order and Sell Service](../ord
 
 ## Data scope
 
-Every user-specific endpoint resolves the owner from the verified token's `sub` claim. An account id in a path is checked against that owner before anything is read or written: another user's account is 403, a nonexistent one is 404. Cash endpoints take no account at all. Do not add an endpoint that accepts a user or owner id from the request.
+Every user-specific endpoint resolves the owner from the verified token's `sub` claim. An account id in a path is checked against that owner before anything is read or written: another user's account is 403, a nonexistent one is 404. Cash endpoints take no account at all. Do not add an endpoint that accepts a user or owner id from the request. The one non-HTTP path, the `portfolio-valuation-capture` Kafka consumer, has no caller: it takes the account id from the message key, resolves the owner from the account row, and only ever appends a valuation for that account.
 
 ## Development
 
@@ -46,10 +48,10 @@ Configuration lives in [application.properties](src/main/resources/application.p
 
 ## HTTP Endpoints
 
-All endpoints require an RS256 access token issued by the auth service, except `POST /api/auth/account-exists` and the public market GET endpoints.
+All endpoints require an RS256 access token issued by the auth service, except `POST /api/registration/account-exists` and the public market GET endpoints.
 
-- `POST /api/auth/account-exists` - Whether an email is registered (public)
-- `POST /api/auth/register` - Create the caller's profile and default account
+- `POST /api/registration/account-exists` - Whether an email is registered (public)
+- `POST /api/registration` - Create the caller's profile and default account
 - `GET /api/users/me` - The caller's profile, without the SSN
 - `GET/PUT/DELETE /api/me/watchlist` - The caller's saved stocks (PUT/DELETE take `/{symbol}`)
 - `GET /api/me/accounts` - The caller's accounts

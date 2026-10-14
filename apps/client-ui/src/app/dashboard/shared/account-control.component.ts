@@ -41,6 +41,7 @@ import { Account } from '../accounts/account.models';
     <app-dashboard-header-dropdown
       iconName="lucideBriefcaseBusiness"
       [label]="label()"
+      [loading]="loading()"
       ariaLabel="Select account"
       [open]="open()"
       (openChange)="openChange.emit($event)"
@@ -123,7 +124,17 @@ import { Account } from '../accounts/account.models';
           }
 
           @default {
-            <p class="text-muted-foreground px-2 py-1.5 text-xs">Loading accounts…</p>
+            <p class="sr-only" role="status">Loading accounts…</p>
+            @for (row of [1, 2]; track row) {
+              <div
+                class="flex min-h-9 flex-col justify-center gap-1.5 px-2 py-1.5"
+                aria-hidden="true"
+                data-testid="account-skeleton"
+              >
+                <span class="skeleton h-4 w-32"></span>
+                <span class="skeleton h-3 w-24"></span>
+              </div>
+            }
           }
         }
       </div>
@@ -139,6 +150,10 @@ export class AccountControlComponent {
   readonly selected = output<number>();
   readonly create = output<void>();
   readonly rename = output<Account>();
+
+  protected readonly loading = computed(
+    () => this.store().status() === 'idle' || this.store().status() === 'loading',
+  );
 
   protected readonly label = computed(() =>
     this.store().status() === 'ready'

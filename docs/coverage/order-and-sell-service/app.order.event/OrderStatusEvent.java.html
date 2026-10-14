@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OrderStatusEvent.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.order.event</a> &gt; <span class="el_source">OrderStatusEvent.java</span></div><h1>OrderStatusEvent.java</h1><pre class="source lang-java linenums">package app.order.event;
+
+import app.instrument.Instrument;
+import app.order.Order;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+/**
+ * One order reaching a committed status: {@code ACCEPTED} when the trading
+ * rules passed and the order was recorded as a firm commitment (BR-06), then
+ * {@code FILLED} or {@code REJECTED} when execution resolved it. An order the
+ * rules reject goes straight to {@code REJECTED}. {@code OrderService} and
+ * {@code OrderExecutionService} raise it inside the transaction that made the
+ * change, and {@link TradeEventPublisher} sends it to Kafka once that
+ * transaction has committed, so a consumer never sees a status the database
+ * does not.
+ *
+ * &lt;p&gt;The record is the message body as well: serialised as JSON it carries
+ * every component except {@code accountId}, which travels as the message
+ * key so that one account's events share a partition and keep their order.
+ * It holds plain values, not entities, because it is handled after the
+ * transaction and outside any persistence context.
+ *
+ * &lt;p&gt;The message is also how the reporting service learns about orders. It
+ * has no database connection, so everything it shows of an order is carried
+ * here: {@link OrderRecord} holds the order row as it stood at this status,
+ * and {@link Execution} the fill and the two ledger postings of a
+ * {@code FILLED} order.
+ *
+ * @param accountId       the account the order was placed against; the message key, not part of the body
+ * @param orderId         the order
+ * @param status          {@code ACCEPTED}, {@code FILLED} or {@code REJECTED}
+ * @param symbol          the instrument's ticker
+ * @param side            {@code BUY} or {@code SELL}
+ * @param quantity        units ordered
+ * @param price           the price the order was filled at, or would be; currently the indicative price
+ * @param rejectionReason why the order was rejected, or {@code null} otherwise
+ * @param occurredAt      when the order reached this status
+ * @param order           the order row as committed with this status
+ * @param execution       the fill and its ledger postings when the status is {@code FILLED}, otherwise {@code null}
+ */
+<span class="fc" id="L45">public record OrderStatusEvent(</span>
+        @JsonIgnore Integer accountId,
+        Integer orderId,
+        String status,
+        String symbol,
+        String side,
+        BigDecimal quantity,
+        BigDecimal price,
+        String rejectionReason,
+        OffsetDateTime occurredAt,
+        OrderRecord order,
+        Execution execution) {
+
+    /**
+     * The order row behind a status change: what a consumer without access
+     * to the {@code orders} table needs to show the order.
+     *
+     * @param clientReference the idempotency key the client submitted the order under
+     * @param instrumentId    the instrument's id
+     * @param instrumentName  the instrument's display name
+     * @param indicativePrice the price the client saw when submitting
+     * @param bufferPercent   the price tolerance the order was submitted with
+     * @param submittedAt     when the order was received
+     * @param acceptedAt      when the trading rules passed, or {@code null}
+     * @param resolvedAt      when the order was filled or rejected, or {@code null}
+     * @param simulatedAt     the replay time the client traded at, or {@code null}
+     */
+<span class="fc" id="L72">    public record OrderRecord(</span>
+            UUID clientReference,
+            Integer instrumentId,
+            String instrumentName,
+            BigDecimal indicativePrice,
+            BigDecimal bufferPercent,
+            OffsetDateTime submittedAt,
+            OffsetDateTime acceptedAt,
+            OffsetDateTime resolvedAt,
+            OffsetDateTime simulatedAt) {
+    }
+
+    /**
+     * What executing an order wrote: the fill, the cash posting and the
+     * holding movement, each with the balance it left, so a consumer can keep
+     * the owner's funds and the account's position without reading either
+     * table.
+     *
+     * @param userId            the trader who owns the account, and whose funds the fill moved
+     * @param fillId            the fill
+     * @param price             the price the order was filled at
+     * @param quantity          units filled
+     * @param filledAt          when the fill was written
+     * @param cashTransactionId the cash ledger row the fill posted
+     * @param cashAmount        the signed amount posted: negative for a buy, positive for a sell
+     * @param availableFunds    the owning user's available funds after the posting
+     * @param holdingMovementId the position ledger row the fill posted
+     * @param quantityDelta     the signed change in units held: positive for a buy, negative for a sell
+     * @param holdingQuantity   units of the instrument the account holds after the movement
+     */
+<span class="fc" id="L102">    public record Execution(</span>
+            UUID userId,
+            Integer fillId,
+            BigDecimal price,
+            BigDecimal quantity,
+            OffsetDateTime filledAt,
+            Integer cashTransactionId,
+            BigDecimal cashAmount,
+            BigDecimal availableFunds,
+            Integer holdingMovementId,
+            BigDecimal quantityDelta,
+            BigDecimal holdingQuantity) {
+    }
+
+    /**
+     * Captures an order's current status, for a status that executed nothing.
+     *
+     * @param order      the order after its status change was saved
+     * @param instrument the instrument the order trades, for its ticker and name
+     * @return the event describing that status
+     */
+    public static OrderStatusEvent from(Order order, Instrument instrument) {
+<span class="fc" id="L124">        return from(order, instrument, null);</span>
+    }
+
+    /**
+     * Captures an order's current status together with what its execution wrote.
+     *
+     * @param order      the order after its status change was saved
+     * @param instrument the instrument the order trades, for its ticker and name
+     * @param execution  the fill and ledger postings of a filled order, or {@code null}
+     * @return the event describing that status
+     */
+    public static OrderStatusEvent from(Order order, Instrument instrument, Execution execution) {
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        OffsetDateTime occurredAt = order.getResolvedAt() != null ? order.getResolvedAt()</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">                : order.getAcceptedAt() != null ? order.getAcceptedAt()</span>
+<span class="pc" id="L138">                : order.getSubmittedAt();</span>
+<span class="fc" id="L139">        return new OrderStatusEvent(</span>
+<span class="fc" id="L140">                order.getAccountId(),</span>
+<span class="fc" id="L141">                order.getOrderId(),</span>
+<span class="fc" id="L142">                order.getStatus(),</span>
+<span class="fc" id="L143">                instrument.getTicker(),</span>
+<span class="fc" id="L144">                order.getOrderType(),</span>
+<span class="fc" id="L145">                order.getQuantity(),</span>
+<span class="fc" id="L146">                order.getIndicativePrice(),</span>
+<span class="fc" id="L147">                order.getRejectionReason(),</span>
+                occurredAt,
+                new OrderRecord(
+<span class="fc" id="L150">                        order.getClientReference(),</span>
+<span class="fc" id="L151">                        order.getInstrumentId(),</span>
+<span class="fc" id="L152">                        instrument.getName(),</span>
+<span class="fc" id="L153">                        order.getIndicativePrice(),</span>
+<span class="fc" id="L154">                        order.getBufferPercent(),</span>
+<span class="fc" id="L155">                        order.getSubmittedAt(),</span>
+<span class="fc" id="L156">                        order.getAcceptedAt(),</span>
+<span class="fc" id="L157">                        order.getResolvedAt(),</span>
+<span class="fc" id="L158">                        order.getSimulatedAt()),</span>
+                execution);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

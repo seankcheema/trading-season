@@ -6,12 +6,23 @@
  * rejects an instrument that exists but is closed to trading.
  */
 public class InstrumentNotFoundException extends RuntimeException {
+    /**
+     * Creates the exception with a custom message.
+     *
+     * @param message the detail message
+     */
     public InstrumentNotFoundException(String message) {
-<span class="fc" id="L10">        super(message);</span>
-<span class="fc" id="L11">    }</span>
+<span class="fc" id="L15">        super(message);</span>
+<span class="fc" id="L16">    }</span>
+
+    /**
+     * Creates the exception for an instrument id that does not exist.
+     *
+     * @param instrumentId the missing instrument id
+     */
     public InstrumentNotFoundException(Integer instrumentId) {
-<span class="fc" id="L13">        super(&quot;No instrument exists for the given instrument id: &quot; + instrumentId);</span>
-<span class="fc" id="L14">    }</span>
+<span class="fc" id="L24">        super(&quot;No instrument exists for the given instrument id: &quot; + instrumentId);</span>
+<span class="fc" id="L25">    }</span>
 }
 
 

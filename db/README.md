@@ -1,143 +1,82 @@
 # Database
 
-The services share the PostgreSQL `trading_season` database on port 5432. The canonical schema is maintained in [migrations](migrations); services do not apply migrations themselves. Run the commands below from the repository root.
+One PostgreSQL database, `trading_season`, shared by the auth service and the two Java services. The schema is defined only by the migrations in [migrations](migrations), applied in file order; no service runs migrations itself and Hibernate never alters tables.
 
-## Local PostgreSQL setup
+The Reporting Service does not connect to it. What reporting shows is published to Kafka by the service that owns each row; the [tools](#reporting-feed-tools) below publish what those services never saw being written.
 
-Install PostgreSQL 16 and make `psql` available on `PATH`. Connect to the default `postgres` database as your PostgreSQL administrator, using psql or pgAdmin's Query Tool. Create the development role and database, running each statement separately (database creation cannot run inside a transaction):
+| Migration | Purpose |
+| --- | --- |
+| [V001__Initialize_database.sql](migrations/V001__Initialize_database.sql) | The full schema for an empty database |
+| [V002__Add_watchlist.sql](migrations/V002__Add_watchlist.sql) | `user_watchlist` |
+| [V003__Order_status_accepted.sql](migrations/V003__Order_status_accepted.sql) | Allows `ACCEPTED` in `orders.status`: an order is committed as accepted before it executes, then becomes `FILLED` or `REJECTED` |
+| [V008__Drop_account_status.sql](migrations/V008__Drop_account_status.sql) | Removes `user_accounts.account_status` |
+| [V009__Add_account_archiving.sql](migrations/V009__Add_account_archiving.sql) | Adds account archiving (`accounts.archived_at`) so portfolios are retired without deleting history |
+| [V009__Add_terms_acceptances.sql](migrations/V009__Add_terms_acceptances.sql) | Adds `terms_acceptances`: one row per user and terms version |
+| [V009__Analyst_role.sql](migrations/V009__Analyst_role.sql) | Allows `ANALYST` in `user_accounts.user_role` |
+| [V010__Enforce_execution_buffers.sql](migrations/V010__Enforce_execution_buffers.sql) | Adds execution buffer defaults and replay-execution context used by order execution |
 
-```sql
-CREATE ROLE trading_season WITH LOGIN PASSWORD 'password';
+The repository currently contains multiple `V009__*.sql` files. The migration runner tracks applied filenames in `public.schema_migrations`, so each file is applied once. Do not rename or edit applied migrations; add a new migration for further schema changes.
+
+In Docker, `db-init` runs [infrastructure/docker/init-db.sh](../infrastructure/docker/init-db.sh), which applies each file once and records it in `public.schema_migrations`. For a local PostgreSQL, apply the files in order with `psql -v ON_ERROR_STOP=1 -f`. Never edit an applied migration; add a new one.
+
+## Reporting feed tools
+
+[tools](tools) holds two command line tools and their tests. They are the only code that reads the database on reporting's behalf, they run when an operator runs them, and no service installs or imports them.
+
+```sh
+python -m venv db/tools/.venv
+db/tools/.venv/bin/python -m pip install -r db/tools/requirements.txt     # Windows: db/tools/.venv/Scripts/python
 ```
 
-```sql
-CREATE DATABASE trading_season OWNER trading_season;
+| Tool | What it does | Writes to |
+| --- | --- | --- |
+| [republish_history.py](tools/republish_history.py) | Reads the database once, in a single read-only snapshot, and publishes it to `trade-events` and `platform-records` in the shape the services publish it | Kafka only |
+| [seed_demo_history.py](tools/seed_demo_history.py) | Development only. Creates eight demo traders and writes six months of their trading up to the present moment | The database only |
+
+### Republishing history
+
+```sh
+db/tools/.venv/bin/python db/tools/republish_history.py \
+    --database-url postgresql://trading_season:password@localhost:5432/trading_season \
+    --bootstrap-servers localhost:29092
 ```
 
-These commands assume the role and database do not already exist. The password is a local development example; use the same value in each service's configuration.
+The services publish a row when they commit it. Rows that predate those publishers, or that SQL wrote (a seed, a restore, [demo-trader.sql](../apps/market-data/db/seeds/demo-trader.sql)), are in neither topic, so reporting does not know them. Run this once when adopting the Kafka-only reporting service, and again after loading rows with SQL.
 
-### Apply migrations
+- It publishes every sign-in, profile, account, deposit and withdrawal, the newest valuation of each account, every audit entry, the newest completed simulation session, and every order at its current status with its fill and ledger postings. [reporting_feed.py](tools/reporting_feed.py) builds each message to mirror what the owning service sends, with the same key, so a row's history and its future land on the same partition.
+- The balance a posting left is not stored per row. It is worked back from today's: a trader's cash by removing every later posting of theirs, a holding by removing every later movement of that account and instrument.
+- It is safe to run again. Reporting applies each message as an upsert keyed by the row, and its report runs count an order's status once however often it arrives.
+- Republished order events carry a `replay` header. The `order-status-pusher` and `portfolio-valuation-capture` consumers skip them, so an old order is not pushed to a browser or valued again; the reporting consumer stores them like any other.
+- `--dry-run` prints how many messages of each kind it would publish and needs no broker. `--trade-events-topic` and `--platform-records-topic` name the topics for a deployment that renamed them.
+- It never selects a password hash, SSN, address or date of birth.
 
-Connect as the database owner and apply the checked-in migrations in version order. For a fresh database, the `public` schema must be empty before V001:
+### Demo history
 
-```powershell
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f db/migrations/V001__Initialize_database.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f db/migrations/V002__Add_watchlist.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f db/migrations/V008__Drop_account_status.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f db/migrations/V009__Add_account_archiving.sql
-psql -h localhost -p 5432 -U trading_season -d trading_season -W -v ON_ERROR_STOP=1 -f db/migrations/V010__Enforce_execution_buffers.sql
+```sh
+db/tools/.venv/bin/python db/tools/seed_demo_history.py \
+    --database-url postgresql://trading_season:password@localhost:5432/trading_season
 ```
 
-Stop if any command fails. The repository currently contains V001, V002, V008, V009, and V010; there are no separate V003-V007 files. V001 initializes the schema, V002 adds the saved watchlist, V008 removes `user_accounts.account_status` and its values, and V009 adds portfolio account archiving. V010 adds execution buffer defaults and replay execution context. After all five, a fresh database has 20 application tables.
+Additive, and for a development database only: nothing that exists is changed or removed. It needs tradable instruments, which the [market data import](../apps/market-data/README.md) creates.
 
-### Upgrade a legacy database
+- Eight traders across the three levels, who joined between six months and one month ago, and one sign-up that never completed a profile. Their sign-ins end in `@demo.tradingseason.example` and the password is `DemoTrader1!`, so any of them can sign in to the Client UI. One is locked out for a week, so the reporting console has a lock to show.
+- Orders that filled and orders the trading rules rejected, with the reasons the Order and Sell Service gives, on weekdays; deposits and withdrawals; and the fills, cash and holding ledgers, holdings, audit trail and portfolio valuations that go with them. Cash never goes below zero and nothing is sold that is not held.
+- Prices follow a seeded random walk from each instrument's starting price. They are plausible and repeatable, and they are not the simulated market's prices.
+- The same trader on the same day always does the same things. Run again later, it adds only the days since it last ran; run twice on one day, the second run adds nothing.
+- `--days` sets how far back the history starts on a first run (default 180).
+- `--dry-run` writes everything, prints the summary and rolls it all back. It still advances the id sequences.
+- It publishes nothing. Run `republish_history.py` afterwards for reporting to see the history.
 
-V001 also repairs a legacy schema missing all three of `user_accounts`, `refresh_tokens`, and `portfolio_valuations`, preserving existing application data. Run it as the database owner, then apply V002, V008, V009, and V010 using the commands above. A legacy database retaining the `sessions` table has 21 application tables after repair.
-
-V001 refuses to run if any of those three tables already exists; do not rerun it on an initialized or partially upgraded database. For a database where V001 is already applied, apply only the remaining migrations. The SQL is the authority for supported repair behavior: see [V001](migrations/V001__Initialize_database.sql).
-
-### Verify ownership and permissions
-
-Connect to `trading_season` and check table ownership:
-
-```sql
-SELECT tablename, tableowner
-FROM pg_tables
-WHERE schemaname = 'public'
-ORDER BY tablename;
-```
-
-Application tables should be owned by `trading_season`. If they were created as another user, connect to this database as the administrator and correct ownership and permissions:
-
-```sql
-DO $$
-DECLARE r record;
-BEGIN
-  FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
-    EXECUTE format('ALTER TABLE public.%I OWNER TO trading_season', r.tablename);
-  END LOOP;
-END $$;
-
-GRANT USAGE ON SCHEMA public TO trading_season;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO trading_season;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO trading_season;
-```
-
-Run the ownership query again to verify the result. Future migrations should also run as `trading_season`. If another role will create future objects, run these grants as that creating role (default privileges apply only to objects it creates):
-
-```sql
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO trading_season;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO trading_season;
-```
-
-## Docker Compose setup
-
-To run the database in Docker while running applications locally:
-
-```powershell
-$env:DB_PASSWORD = 'password'
-docker compose --project-name trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml up -d db db-init
-docker compose --project-name trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml logs db-init
-```
-
-Check that `db-init` finishes successfully before starting applications. PostgreSQL is available at `localhost:5432`, with database and user `trading_season`. Setting `DB_PASSWORD` above aligns it with the local configuration example; Compose defaults to `changeme` when it is unset. Ensure port 5432 is available.
-
-The [migration runner](../infrastructure/docker/init-db.sh) waits for PostgreSQL, applies each migration once, and records filenames in `public.schema_migrations`. That ledger is an additional table beyond the 20 application tables. Starting only `db` does not apply migrations. The named database volume persists across restarts; changing `DB_PASSWORD` does not change the password of a role already stored in that volume.
-
-## Connect applications and verify setup
-
-Copy [the auth environment example](../apps/auth-service/.env.example) if you have not configured it yet:
-
-```powershell
-Copy-Item apps/auth-service/.env.example apps/auth-service/.env
-```
-
-Set `DB_HOST=localhost`, `DB_PORT=5432`, `DB_NAME=trading_season`, `DB_USER=trading_season`, and `DB_PASSWORD` to the chosen database password in `apps/auth-service/.env`. For the Java services, set the matching password before starting local processes:
-
-```powershell
-$env:SPRING_DATASOURCE_PASSWORD = 'password'
-```
-
-Both Java services default to `jdbc:postgresql://localhost:5432/trading_season` and user `trading_season`. See the [root getting-started instructions](../README.md#getting-started) for dependencies, JWT key generation, and application startup.
-
-After startup, verify that the auth table is accessible:
-
-```sql
-SELECT user_id, email, user_role, created_at
-FROM user_accounts
-ORDER BY created_at DESC;
-```
-
-The query lists registered users, if any; an empty result before registration or development seeding is valid.
-
-## Synthetic market data
-
-With the schema migrated, generate and load synthetic data using the routine from the pasted setup:
-
-```powershell
-$freeDiskGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
-
-apps/market-data/db/scripts/powershell/setup-market-data.ps1 `
-  -DatabaseUrl postgresql://trading_season:password@localhost:5432/trading_season `
-  -AvailableDiskGb $freeDiskGb
-```
-
-Use the configured password in the URL and report free space on the drive storing PostgreSQL data. Add `-StartDate 2026-01-05 -EndDate 2026-01-06` for a smaller archive, or `-Regenerate` to replace an incompatible archive. The launcher creates a Python virtual environment, installs dependencies, generates the 2026 archive, validates it, and imports candles and session metadata. Raw ticks remain in Parquet; retain the archive for replay.
-
-The separate `setup-database.ps1` initializer applies only V001 and V002 to an empty schema; apply V008, V009, and V010 afterwards. For pipeline details and individual troubleshooting commands, see the [Market Data README](../apps/market-data/README.md).
+Tests: `python -m pytest tests` in `db/tools`. They need no database or broker.
 
 ## Schema
-
-The diagram describes the 20 application tables after all checked-in migrations. SQL defines the full columns and constraints. Add new migrations for schema changes; do not edit applied migrations.
-
 ```mermaid
 erDiagram
     user_accounts ||--|| users : "credentials for"
     user_accounts ||--o{ refresh_tokens : issues
     users ||--o{ accounts : owns
     users ||--o{ user_watchlist : saves
+    users ||--o{ terms_acceptances : accepts
     stocks ||--o{ user_watchlist : appears_in
 
     stocks o|--o| instruments : "optionally powers"
@@ -182,6 +121,11 @@ erDiagram
         UUID user_id PK, FK
         VARCHAR symbol PK, FK
         TIMESTAMPTZ created_at
+    }
+    terms_acceptances {
+        UUID user_id PK, FK
+        TEXT terms_version PK
+        TIMESTAMPTZ accepted_at
     }
     refresh_tokens {
         UUID id PK

@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">95.91% </span>
+                <span class="strong">94.44% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>47/49</span>
+                <span class='fraction'>51/54</span>
             </div>
         
             
@@ -212,7 +212,17 @@
 <a name='L147'></a><a href='#L147'>147</a>
 <a name='L148'></a><a href='#L148'>148</a>
 <a name='L149'></a><a href='#L149'>149</a>
-<a name='L150'></a><a href='#L150'>150</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L150'></a><a href='#L150'>150</a>
+<a name='L151'></a><a href='#L151'>151</a>
+<a name='L152'></a><a href='#L152'>152</a>
+<a name='L153'></a><a href='#L153'>153</a>
+<a name='L154'></a><a href='#L154'>154</a>
+<a name='L155'></a><a href='#L155'>155</a>
+<a name='L156'></a><a href='#L156'>156</a>
+<a name='L157'></a><a href='#L157'>157</a>
+<a name='L158'></a><a href='#L158'>158</a>
+<a name='L159'></a><a href='#L159'>159</a>
+<a name='L160'></a><a href='#L160'>160</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -238,13 +248,13 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">152x</span>
-<span class="cline-any cline-yes">152x</span>
-<span class="cline-any cline-yes">152x</span>
-<span class="cline-any cline-yes">152x</span>
-<span class="cline-any cline-yes">152x</span>
+<span class="cline-any cline-yes">158x</span>
+<span class="cline-any cline-yes">158x</span>
+<span class="cline-any cline-yes">158x</span>
+<span class="cline-any cline-yes">158x</span>
+<span class="cline-any cline-yes">158x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">152x</span>
+<span class="cline-any cline-yes">158x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -306,9 +316,13 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">19x</span>
 <span class="cline-any cline-yes">19x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">16x</span>
 <span class="cline-any cline-yes">16x</span>
 <span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">15x</span>
@@ -317,11 +331,15 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">11x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -330,6 +348,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -423,7 +443,7 @@ export class AuthService {
         );
       }),
       switchMap(() =&gt;
-        this._http.post&lt;unknown&gt;(`${this._backendApiUrl}/auth/register`, toProfile(details)).pipe(
+        this._http.post&lt;unknown&gt;(`${this._backendApiUrl}/registration`, toProfile(details)).pipe(
           catchError((error: unknown) =&gt; {
             // Without a profile the account can't use the dashboard, so don't leave it signed in.
             this._storage.clear();
@@ -454,10 +474,14 @@ export class AuthService {
       return of(true);
     }
     const revision = this._storage.revision;
-    if (this.refresh?.revision === revision) return this.refresh.result;
+    if (this.refresh?.revision === revision) {
+      return this.refresh.result;
+    }
     const refreshToken = this._storage.refreshToken;
     if (!refreshToken) {
-      <span class="missing-if-branch" title="else path not taken" >E</span>if (this._storage.hasSession()) this._storage.clear();
+      <span class="missing-if-branch" title="else path not taken" >E</span>if (this._storage.hasSession()) {
+        this._storage.clear();
+      }
       return of(false);
     }
     const current = () =&gt; this._storage.revision === revision;
@@ -465,12 +489,16 @@ export class AuthService {
       .post&lt;AuthTokens&gt;(`${this._authApiUrl}/auth/refresh`, { refreshToken }))
       .pipe(
         map((tokens) =&gt; {
-          if (!current()) return false;
+          if (!current()) {
+            return false;
+          }
           this._storage.save(tokens);
           return true;
         }),
         catchError((error: unknown) =&gt; {
-          <span class="missing-if-branch" title="if path not taken" >I</span>if (!current()) <span class="cstat-no" title="statement not covered" >return of(false);</span>
+          <span class="missing-if-branch" title="if path not taken" >I</span>if (!current()) {
+<span class="cstat-no" title="statement not covered" >            return of(false);</span>
+          }
           if (error instanceof HttpErrorResponse &amp;&amp; [400, 401, 403].includes(error.status)) {
             this._storage.clear();
             return of(false);
@@ -478,7 +506,9 @@ export class AuthService {
           return throwError(() =&gt; error);
         }),
         finalize(() =&gt; {
-          <span class="missing-if-branch" title="else path not taken" >E</span>if (this.refresh?.result === result) this.refresh = undefined;
+          <span class="missing-if-branch" title="else path not taken" >E</span>if (this.refresh?.result === result) {
+            this.refresh = undefined;
+          }
         }),
         // Rotation must complete even when chart selection cancels all waiting reads.
         shareReplay({ bufferSize: 1, refCount: false }),
@@ -517,7 +547,7 @@ function toProfile(details: RegistrationDetails) {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-10-06T14:07:34.295Z
+                at 2026-10-13T15:51:30.035Z
             </div>
         <script src="../../../../prettify.js"></script>
         <script>

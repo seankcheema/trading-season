@@ -60,7 +60,7 @@ export class AuthService {
         );
       }),
       switchMap(() =>
-        this._http.post<unknown>(`${this._backendApiUrl}/auth/register`, toProfile(details)).pipe(
+        this._http.post<unknown>(`${this._backendApiUrl}/registration`, toProfile(details)).pipe(
           catchError((error: unknown) => {
             // Without a profile the account can't use the dashboard, so don't leave it signed in.
             this._storage.clear();
@@ -91,10 +91,14 @@ export class AuthService {
       return of(true);
     }
     const revision = this._storage.revision;
-    if (this.refresh?.revision === revision) return this.refresh.result;
+    if (this.refresh?.revision === revision) {
+      return this.refresh.result;
+    }
     const refreshToken = this._storage.refreshToken;
     if (!refreshToken) {
-      if (this._storage.hasSession()) this._storage.clear();
+      if (this._storage.hasSession()) {
+        this._storage.clear();
+      }
       return of(false);
     }
     const current = () => this._storage.revision === revision;
@@ -102,12 +106,16 @@ export class AuthService {
       .post<AuthTokens>(`${this._authApiUrl}/auth/refresh`, { refreshToken }))
       .pipe(
         map((tokens) => {
-          if (!current()) return false;
+          if (!current()) {
+            return false;
+          }
           this._storage.save(tokens);
           return true;
         }),
         catchError((error: unknown) => {
-          if (!current()) return of(false);
+          if (!current()) {
+            return of(false);
+          }
           if (error instanceof HttpErrorResponse && [400, 401, 403].includes(error.status)) {
             this._storage.clear();
             return of(false);
@@ -115,7 +123,9 @@ export class AuthService {
           return throwError(() => error);
         }),
         finalize(() => {
-          if (this.refresh?.result === result) this.refresh = undefined;
+          if (this.refresh?.result === result) {
+            this.refresh = undefined;
+          }
         }),
         // Rotation must complete even when chart selection cancels all waiting reads.
         shareReplay({ bufferSize: 1, refCount: false }),

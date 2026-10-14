@@ -23,7 +23,9 @@ export class ToastService implements OnDestroy {
 
   dismiss(id: number): void {
     const toast = this.state().find((message) => message.id === id);
-    if (!toast || toast.closing) return;
+    if (!toast || toast.closing) {
+      return;
+    }
     clearTimeout(this.timers.get(id));
     this.state.update((messages) =>
       messages.map((message) => (message.id === id ? { ...message, closing: true } : message)),

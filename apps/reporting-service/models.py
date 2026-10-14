@@ -1,211 +1,214 @@
 """
-SQLAlchemy ORM models for trading_season database
-Maps to read-only views of main application data
+The reporting service's read model: the tables its endpoints query.
+
+None of this is the trading database. The service has no connection to it.
+The tables live in an in-memory SQLite database that each process builds
+from the files the consumer wrote (read_model.py), by applying every order
+status event and platform record in them (projection.py). They are shaped
+like the trading tables the messages describe, so the console's queries
+read the way they would against the real ones, but they hold only what was
+published: no password hash, SSN, address or date of birth has a column
+here, so none can be stored or selected.
+
+Rows arrive in whatever order the topics deliver them, so nothing here may
+depend on another row existing: SQLite does not enforce the foreign keys,
+which are declared only to document how the tables relate.
 """
 
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import Column, String, Numeric, DateTime, Integer, Boolean, Text, ForeignKey, Enum
-from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 import uuid
+
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, Numeric, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID
 
 db = SQLAlchemy()
 
+# The two keys most tables point at.
+ACCOUNT_KEY = 'accounts.account_id'
+INSTRUMENT_KEY = 'instruments.instrument_id'
 
-def utc_now():
-    """Return a timezone-aware UTC timestamp for model defaults."""
-    return datetime.now(UTC)
+
+def _now():
+    return datetime.now(timezone.utc)
 
 
 class User(db.Model):
-    """User profile - owned by Holdings and Trade Service"""
+    """A trader's profile, from CUSTOMER_PROFILE records. Cash follows funds_balances."""
     __tablename__ = 'users'
-    
+
     user_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email = Column(String(100), unique=True, nullable=False, index=True)
-    first_name = Column(String(100), nullable=False)
-    last_name = Column(String(100), nullable=False)
-    middle_name = Column(String(100), nullable=True)
-    address = Column(Text, nullable=False)
-    ssn = Column(String(11), nullable=False)
-    date_of_birth = Column(DateTime, nullable=False)
-    trader_level = Column(String(50), nullable=False)  # BEGINNER, INTERMEDIATE, ADVANCED
-    available_funds = Column(Numeric(15, 2), nullable=False)
-    created_at = Column(DateTime, default=utc_now, nullable=False)
-    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
-    
+    first_name = Column(Text, nullable=False)
+    last_name = Column(Text, nullable=False)
+    trader_level = Column(Text, nullable=False, default='BEGINNER')
+    available_funds = Column(Numeric(14, 2), nullable=False, default=0)
+    session_timeout_minutes = Column(Integer, nullable=False, default=10)
+    last_activity_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+
     def __repr__(self):
-        return f'<User {self.email}>'
+        return f'<User {self.user_id}>'
+
+
+class FundsBalance(db.Model):
+    """
+    The newest cash balance published for a trader, and when it held.
+
+    A profile, a deposit or withdrawal, and a fill each carry the balance
+    they left, on two topics whose relative order is not guaranteed. This
+    row keeps the one with the latest as_of, and users.available_funds
+    mirrors it, so a profile that arrives after a fill cannot put an older
+    balance back.
+    """
+    __tablename__ = 'funds_balances'
+
+    user_id = Column(UUID(as_uuid=True), primary_key=True)
+    available_funds = Column(Numeric(14, 2), nullable=False)
+    as_of = Column(DateTime(timezone=True), nullable=False)
 
 
 class Account(db.Model):
-    """Account metadata - owned by Holdings and Trade Service"""
+    """A trading account, from TRADING_ACCOUNT records. The key of every order event is its account_id."""
     __tablename__ = 'accounts'
-    
+
     account_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.user_id'), nullable=False, index=True)
-    account_name = Column(String(255), nullable=False)
-    account_type = Column(String(50), nullable=False)  # TRADING, INVESTMENT, etc.
-    status = Column(String(50), nullable=False)  # ACTIVE, FROZEN, CLOSED
-    cash_balance = Column(Numeric(15, 2), nullable=False, default=0)
-    created_at = Column(DateTime, default=utc_now, nullable=False)
-    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
-    
+    name = Column(Text, nullable=False)
+    opened_date = Column(Date, nullable=False, default=lambda: _now().date())
+    currency = Column(Text, nullable=False, default='USD')
+
     user = db.relationship('User', backref='accounts')
-    
+
     def __repr__(self):
-        return f'<Account {self.account_name}>'
+        return f'<Account {self.account_id} {self.name}>'
+
+
+class UserAccount(db.Model):
+    """A sign-in, from the auth service's SIGN_IN records. The password hash is never published."""
+    __tablename__ = 'user_accounts'
+
+    user_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(Text, nullable=False)
+    user_role = Column(Text, nullable=False, default='TRADER')
+    failed_login_attempts = Column(Integer, nullable=False, default=0)
+    locked_until = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now)
 
 
 class Instrument(db.Model):
-    """Tradable instruments"""
+    """An instrument that has been ordered, from the order events that name it."""
     __tablename__ = 'instruments'
-    
+
     instrument_id = Column(Integer, primary_key=True, autoincrement=True)
-    symbol = Column(String(20), unique=True, nullable=False, index=True)
-    name = Column(String(255), nullable=False)
-    asset_class = Column(String(50), nullable=False)  # EQUITY, BOND, etc.
-    is_tradable = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=utc_now, nullable=False)
-    
-    def __repr__(self):
-        return f'<Instrument {self.symbol}>'
+    ticker = Column(Text, nullable=False)
+    name = Column(Text, nullable=False)
+    is_tradable = Column(Boolean, nullable=False, default=True)
 
 
 class Order(db.Model):
-    """Order history - owned by Holdings and Trade Service"""
+    """An order as of its latest status event. order_type is the side, BUY or SELL."""
     __tablename__ = 'orders'
-    
+
     order_id = Column(Integer, primary_key=True, autoincrement=True)
-    account_id = Column(Integer, ForeignKey('accounts.account_id'), nullable=False, index=True)
-    instrument_id = Column(Integer, ForeignKey('instruments.instrument_id'), nullable=False)
-    user_id = Column(UUID(as_uuid=True), ForeignKey('users.user_id'), nullable=False, index=True)
-    order_type = Column(String(50), nullable=False)  # BUY, SELL
-    quantity = Column(Numeric(15, 2), nullable=False)
-    indicative_price = Column(Numeric(15, 2), nullable=False)
-    status = Column(String(50), nullable=False, index=True)  # PENDING, FILLED, REJECTED
-    rejection_reason = Column(String(255), nullable=True)
-    client_reference = Column(UUID(as_uuid=True), nullable=True)
-    submitted_at = Column(DateTime, nullable=False, index=True)
-    resolved_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=utc_now, nullable=False)
-    
-    account = db.relationship('Account', backref='orders')
-    instrument = db.relationship('Instrument', backref='orders')
-    user = db.relationship('User', backref='orders')
-    
-    def __repr__(self):
-        return f'<Order {self.order_id} {self.order_type} {self.quantity}>'
+    account_id = Column(Integer, ForeignKey(ACCOUNT_KEY), nullable=False, index=True)
+    instrument_id = Column(Integer, ForeignKey(INSTRUMENT_KEY), nullable=False)
+    client_reference = Column(UUID(as_uuid=True), nullable=False, default=uuid.uuid4)
+    order_type = Column(Text, nullable=False)
+    status = Column(Text, nullable=False)
+    quantity = Column(Numeric(18, 4), nullable=False)
+    indicative_price = Column(Numeric(18, 6), nullable=True)
+    buffer_percent = Column(Numeric(5, 2), nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+    submitted_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    accepted_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    simulated_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class Fill(db.Model):
-    """Order execution records - owned by Holdings and Trade Service"""
+    """The execution of a filled order, from its FILLED event."""
     __tablename__ = 'fills'
-    
+
     fill_id = Column(Integer, primary_key=True, autoincrement=True)
-    order_id = Column(Integer, ForeignKey('orders.order_id'), nullable=False, unique=True, index=True)
-    filled_quantity = Column(Numeric(15, 2), nullable=False)
-    filled_price = Column(Numeric(15, 2), nullable=False)
-    fill_timestamp = Column(DateTime, nullable=False, index=True)
-    commission = Column(Numeric(15, 2), default=0)
-    created_at = Column(DateTime, default=utc_now, nullable=False)
-    
-    order = db.relationship('Order', backref='fills')
-    
-    def __repr__(self):
-        return f'<Fill {self.fill_id} {self.filled_quantity}@{self.filled_price}>'
-
-
-class Holding(db.Model):
-    """Position tracking - owned by Holdings and Trade Service"""
-    __tablename__ = 'holdings'
-    
-    holding_id = Column(Integer, primary_key=True, autoincrement=True)
-    account_id = Column(Integer, ForeignKey('accounts.account_id'), nullable=False, index=True)
-    instrument_id = Column(Integer, ForeignKey('instruments.instrument_id'), nullable=False)
-    quantity = Column(Numeric(15, 2), nullable=False)
-    average_cost = Column(Numeric(15, 2), nullable=False)
-    created_at = Column(DateTime, default=utc_now, nullable=False)
-    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
-    
-    account = db.relationship('Account', backref='holdings')
-    instrument = db.relationship('Instrument', backref='holdings')
-    
-    def __repr__(self):
-        return f'<Holding {self.quantity} x {self.instrument_id}>'
+    order_id = Column(Integer, ForeignKey('orders.order_id'), nullable=False, index=True)
+    quote_price = Column(Numeric(18, 6), nullable=False)
+    quantity = Column(Numeric(18, 4), nullable=False)
+    filled_at = Column(DateTime(timezone=True), nullable=False, default=_now)
 
 
 class CashTransaction(db.Model):
-    """Cash ledger - owned by Holdings and Trade Service"""
+    """
+    A cash posting. reason is ORDER_FILL, from a FILLED event, or DEPOSIT or
+    WITHDRAWAL, from a CASH_TRANSFER record; amount is signed, money out is negative.
+    """
     __tablename__ = 'cash_transactions'
-    
-    transaction_id = Column(Integer, primary_key=True, autoincrement=True)
-    account_id = Column(Integer, ForeignKey('accounts.account_id'), nullable=False, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey('users.user_id'), nullable=False, index=True)
-    amount = Column(Numeric(15, 2), nullable=False)
-    transaction_type = Column(String(50), nullable=False)  # DEPOSIT, WITHDRAWAL, FEE, FILL, etc.
-    reference_id = Column(Integer, nullable=True)  # Order ID, Fill ID, etc.
-    timestamp = Column(DateTime, nullable=False, index=True)
-    created_at = Column(DateTime, default=utc_now, nullable=False)
-    
-    account = db.relationship('Account', backref='cash_transactions')
-    user = db.relationship('User', backref='cash_transactions')
-    
-    def __repr__(self):
-        return f'<CashTransaction {self.amount} {self.transaction_type}>'
+
+    cash_transaction_id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey(ACCOUNT_KEY), nullable=False, index=True)
+    fill_id = Column(Integer, ForeignKey('fills.fill_id'), nullable=True)
+    amount = Column(Numeric(14, 2), nullable=False)
+    reason = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
 
 
 class HoldingMovement(db.Model):
-    """Position ledger - owned by Holdings and Trade Service"""
+    """What a fill posted to a position, from its FILLED event."""
     __tablename__ = 'holding_movements'
-    
-    movement_id = Column(Integer, primary_key=True, autoincrement=True)
-    holding_id = Column(Integer, ForeignKey('holdings.holding_id'), nullable=False, index=True)
-    account_id = Column(Integer, ForeignKey('accounts.account_id'), nullable=False, index=True)
-    instrument_id = Column(Integer, ForeignKey('instruments.instrument_id'), nullable=False)
-    movement_type = Column(String(50), nullable=False)  # BUY, SELL, etc.
-    quantity = Column(Numeric(15, 2), nullable=False)
-    price = Column(Numeric(15, 2), nullable=False)
-    reference_id = Column(Integer, nullable=True)  # Fill ID, etc.
-    timestamp = Column(DateTime, nullable=False, index=True)
-    created_at = Column(DateTime, default=utc_now, nullable=False)
-    
-    holding = db.relationship('Holding', backref='movements')
-    account = db.relationship('Account', backref='holding_movements')
-    instrument = db.relationship('Instrument', backref='holding_movements')
-    
-    def __repr__(self):
-        return f'<HoldingMovement {self.quantity} {self.movement_type}>'
+
+    holding_movement_id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey(ACCOUNT_KEY), nullable=False, index=True)
+    instrument_id = Column(Integer, ForeignKey(INSTRUMENT_KEY), nullable=False)
+    fill_id = Column(Integer, ForeignKey('fills.fill_id'), nullable=False)
+    quantity_delta = Column(Numeric(18, 4), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class Holding(db.Model):
+    """
+    What an account holds of an instrument: the quantity the newest movement
+    left. last_movement_id is that movement, so an older FILLED event that is
+    replayed cannot put an earlier quantity back.
+    """
+    __tablename__ = 'holdings'
+    __table_args__ = (UniqueConstraint('account_id', 'instrument_id', name='uq_holdings_account_instrument'),)
+
+    holding_id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey(ACCOUNT_KEY), nullable=False, index=True)
+    instrument_id = Column(Integer, ForeignKey(INSTRUMENT_KEY), nullable=False)
+    quantity = Column(Numeric(18, 4), nullable=False)
+    last_movement_id = Column(Integer, nullable=False, default=0)
 
 
 class AuditTrail(db.Model):
-    """Event history - owned by Holdings and Trade Service"""
+    """An entry of an order's audit trail, from ORDER_AUDIT records."""
     __tablename__ = 'audit_trail'
-    
-    event_id = Column(Integer, primary_key=True, autoincrement=True)
-    account_id = Column(Integer, ForeignKey('accounts.account_id'), nullable=False, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey('users.user_id'), nullable=False, index=True)
-    event_type = Column(String(100), nullable=False, index=True)  # ORDER_SUBMITTED, ORDER_FILLED, etc.
-    event_details = Column(Text, nullable=True)  # JSON or descriptive text
-    reference_id = Column(Integer, nullable=True)  # Order ID, Fill ID, etc.
-    timestamp = Column(DateTime, nullable=False, index=True)
-    created_at = Column(DateTime, default=utc_now, nullable=False)
-    
-    account = db.relationship('Account', backref='audit_events')
-    user = db.relationship('User', backref='audit_events')
-    
-    def __repr__(self):
-        return f'<AuditTrail {self.event_type}>'
+
+    audit_id = Column(Integer, primary_key=True, autoincrement=True)
+    order_id = Column(Integer, ForeignKey('orders.order_id'), nullable=False, index=True)
+    event_type = Column(Text, nullable=False)
+    detail = Column(Text, nullable=True)
+    recorded_at = Column(DateTime(timezone=True), nullable=False, default=_now)
 
 
-class ReportingMetadata(db.Model):
-    """Reporting service metadata (last refresh, etc.)"""
-    __tablename__ = 'reporting_metadata'
-    
-    metadata_id = Column(Integer, primary_key=True, autoincrement=True)
-    key = Column(String(100), unique=True, nullable=False, index=True)
-    value = Column(Text, nullable=False)
-    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
-    
-    def __repr__(self):
-        return f'<ReportingMetadata {self.key}>'
+class PortfolioValuation(db.Model):
+    """
+    The market value of an account's holdings at a moment; cash is not part
+    of it. From PORTFOLIO_VALUATION records, of which only the newest per
+    account is kept.
+    """
+    __tablename__ = 'portfolio_valuations'
+
+    valuation_id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey(ACCOUNT_KEY), nullable=False, index=True)
+    observed_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    portfolio_value = Column(Numeric(18, 6), nullable=False)
+
+
+class SimulationSession(db.Model):
+    """The session prices are replayed from, from the MARKET_SESSION record. One row."""
+    __tablename__ = 'simulation_sessions'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    status = Column(Text, nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=True)

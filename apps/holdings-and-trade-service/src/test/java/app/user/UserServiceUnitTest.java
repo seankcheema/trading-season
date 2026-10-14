@@ -1,9 +1,12 @@
 package app.user;
 
+import app.auth.ConflictException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -28,11 +31,14 @@ class UserServiceUnitTest {
     @Mock
     private UserAccountRepository userAccountRepository;
 
+    @Mock
+    private TermsAcceptanceRepository termsAcceptanceRepository;
+
     private UserService userService;
 
     @BeforeEach
-    public void setUp() {
-        userService = new UserService(userRepository, userAccountRepository);
+    void setUp() {
+        userService = new UserService(userRepository, userAccountRepository, termsAcceptanceRepository);
     }
 
     @Test
@@ -233,6 +239,87 @@ class UserServiceUnitTest {
         assertEquals("admin@example.com", result.getEmail());
     }
 
+    @Test
+    void hasAcceptedCurrentTermsIsTrueWhenTheCurrentVersionWasAccepted() {
+        when(termsAcceptanceRepository.existsById(currentTermsFor(USER_ID))).thenReturn(true);
+
+        assertTrue(userService.hasAcceptedCurrentTerms(USER_ID));
+    }
+
+    @Test
+    void hasAcceptedCurrentTermsIsFalseWhenOnlyAnotherVersionOrNothingWasAccepted() {
+        when(termsAcceptanceRepository.existsById(currentTermsFor(USER_ID))).thenReturn(false);
+
+        assertFalse(userService.hasAcceptedCurrentTerms(USER_ID));
+    }
+
+    @Test
+    void acceptTermsRecordsTheCurrentVersionForTheCallerWithTheTimeOfAcceptance() {
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(createTestUser(USER_ID)));
+        when(termsAcceptanceRepository.existsById(currentTermsFor(USER_ID))).thenReturn(false);
+        OffsetDateTime before = OffsetDateTime.now();
+
+        userService.acceptTerms(USER_ID, UserService.CURRENT_TERMS_VERSION);
+
+        ArgumentCaptor<TermsAcceptance> saved = ArgumentCaptor.forClass(TermsAcceptance.class);
+        verify(termsAcceptanceRepository).save(saved.capture());
+        assertEquals(USER_ID, saved.getValue().getUserId());
+        assertEquals(UserService.CURRENT_TERMS_VERSION, saved.getValue().getTermsVersion());
+        assertFalse(saved.getValue().getAcceptedAt().isBefore(before));
+        assertFalse(saved.getValue().getAcceptedAt().isAfter(OffsetDateTime.now()));
+    }
+
+    @Test
+    void acceptTermsKeepsTheFirstAcceptanceWhenAcceptedAgain() {
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(createTestUser(USER_ID)));
+        when(termsAcceptanceRepository.existsById(currentTermsFor(USER_ID))).thenReturn(true);
+
+        userService.acceptTerms(USER_ID, UserService.CURRENT_TERMS_VERSION);
+
+        verify(termsAcceptanceRepository, never()).save(any());
+    }
+
+    @Test
+    void acceptTermsLocksTheProfileBeforeLookingForAnExistingAcceptance() {
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(createTestUser(USER_ID)));
+
+        userService.acceptTerms(USER_ID, UserService.CURRENT_TERMS_VERSION);
+
+        InOrder order = inOrder(userRepository, termsAcceptanceRepository);
+        order.verify(userRepository).findByIdForUpdate(USER_ID);
+        order.verify(termsAcceptanceRepository).existsById(currentTermsFor(USER_ID));
+    }
+
+    @Test
+    void acceptTermsRejectsAVersionThatIsNotInForceWithoutRecordingAnything() {
+        ConflictException exception = assertThrows(ConflictException.class,
+                () -> userService.acceptTerms(USER_ID, "2020-01-01"));
+
+        assertEquals("The terms have changed. Reload to read the current version.", exception.getMessage());
+        verifyNoInteractions(userRepository, termsAcceptanceRepository);
+    }
+
+    @Test
+    void acceptTermsRejectsAMissingVersionWithoutRecordingAnything() {
+        assertThrows(ConflictException.class, () -> userService.acceptTerms(USER_ID, null));
+
+        verifyNoInteractions(userRepository, termsAcceptanceRepository);
+    }
+
+    @Test
+    void acceptTermsThrowsUserNotFoundBeforeRegistrationWithoutRecordingAnything() {
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.empty());
+
+        UserNotFoundException exception = assertThrows(UserNotFoundException.class,
+                () -> userService.acceptTerms(USER_ID, UserService.CURRENT_TERMS_VERSION));
+
+        assertEquals("Account is not registered", exception.getMessage());
+        verifyNoInteractions(termsAcceptanceRepository);
+    }
+
+    private static TermsAcceptanceId currentTermsFor(UUID userId) {
+        return new TermsAcceptanceId(userId, UserService.CURRENT_TERMS_VERSION);
+    }
 
     private User createTestUser(UUID userId) {
         User user = new User();

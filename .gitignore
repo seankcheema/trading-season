@@ -11,6 +11,9 @@ node_modules/
 # Logs
 *.log
 
+# SonarScanner working directory
+.scannerwork/
+
 # Local/generated market-data archives
 apps/market-data/db/seeds/synthetic-market-data-2026-v1/
 apps/business-backend/db/seeds/synthetic-market-data-2026-v1/
@@ -30,6 +33,7 @@ TradingSeason Design System/
 
 # Python
 .venv/
+db/tools/reports/
 __pycache__/
 __pycachee__/
 *.pyc

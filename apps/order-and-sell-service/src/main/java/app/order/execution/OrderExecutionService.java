@@ -8,19 +8,31 @@ import app.instrument.Instrument;
 import app.order.Order;
 import app.order.OrderRepository;
 import app.order.audit.AuditTrailService;
+import app.order.event.OrderStatusEvent;
 import app.user.User;
 import app.user.UserRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
 /**
- * Turns a PENDING order that passed the rule pipeline into a fill,
- * atomically, and moves it to {@code FILLED} (KAN-93). This class does not
- * itself decide whether a trade is allowed, it carries out one that already
- * was.
+ * Turns an {@code ACCEPTED} order into a fill, atomically, and moves it to
+ * {@code FILLED} (KAN-93). This class does not itself decide whether a trade
+ * is allowed, it carries out one that already was.
+ *
+ * <p>It runs in its own transaction, separate from the one that committed
+ * the order as accepted (BR-06). The fill, the cash movement, the holding
+ * movement, the updated holding and the audit row are written together or
+ * not at all (BR-09); an unexpected failure rolls back only this execution
+ * and leaves the accepted order on record. The committed outcome is raised
+ * as an {@link OrderStatusEvent} and published to Kafka after this
+ * transaction commits; a fill's event carries the fill, both ledger postings
+ * and the balances they left, because the reporting service reads none of
+ * those tables.
  *
  * <p>The fill uses one current quote from Holdings and Trade's replay clock,
  * obtained after resource locks. Adverse movement outside the order's buffer,
@@ -51,6 +63,7 @@ public class OrderExecutionService {
     private final CashTransactionRepository cashTransactionRepository;
     private final HoldingMovementRepository holdingMovementRepository;
     private final AuditTrailService auditTrailService;
+    private final ApplicationEventPublisher events;
 
     /**
      * Creates the service.
@@ -64,6 +77,7 @@ public class OrderExecutionService {
      * @param cashTransactionRepository cash ledger persistence
      * @param holdingMovementRepository position ledger persistence
      * @param auditTrailService lifecycle event recorder
+     * @param events publisher of the {@link app.order.event.OrderStatusEvent} raised when execution commits
      */
     public OrderExecutionService(AccountRepository accountRepository,
                                   UserRepository userRepository,
@@ -72,7 +86,9 @@ public class OrderExecutionService {
                                   FillRepository fillRepository,
                                   CashTransactionRepository cashTransactionRepository,
                                   HoldingMovementRepository holdingMovementRepository,
-                                  AuditTrailService auditTrailService, ExecutionQuoteSource quotes) {
+                                  AuditTrailService auditTrailService,
+                                  ApplicationEventPublisher events,
+                                  ExecutionQuoteSource quotes) {
         this.quotes = quotes;
         this.accountRepository = accountRepository;
         this.userRepository = userRepository;
@@ -82,19 +98,21 @@ public class OrderExecutionService {
         this.cashTransactionRepository = cashTransactionRepository;
         this.holdingMovementRepository = holdingMovementRepository;
         this.auditTrailService = auditTrailService;
+        this.events = events;
     }
 
     /**
-     * Executes an order whose trading rules have passed.
+     * Executes an accepted order in a new transaction.
      *
-     * @throws org.springframework.web.server.ResponseStatusException if the account is archived
-     * @param order      the {@code PENDING} order to execute
+     * @param order      the {@code ACCEPTED} order to execute
      * @param instrument the instrument being traded
      * @return the order as {@code FILLED}, or {@code REJECTED} when its buffer,
      *         quote availability, funds or holdings fail execution checks
      * @throws IllegalStateException if the account or its owning user no longer exists
+     * @throws org.springframework.dao.DataAccessException if a ledger write fails; this
+     *         transaction rolls back and the order stays {@code ACCEPTED}
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Order execute(Order order, Instrument instrument) {
         boolean isBuy = Order.TYPE_BUY.equals(order.getOrderType());
 
@@ -113,16 +131,16 @@ public class OrderExecutionService {
                 .orElse(null);
         BigDecimal currentQuantity = holding == null ? BigDecimal.ZERO : holding.getQuantity();
         if (!ExecutionPolicy.validBuffer(order.getBufferPercent()))
-            return reject(order, ExecutionPolicy.reason("INVALID_BUFFER"));
+            return reject(order, instrument, ExecutionPolicy.reason("INVALID_BUFFER"));
         ExecutionQuoteSource.Quote quote;
         try { quote = quotes.current(instrument, order.getSessionId()); }
-        catch (ExecutionQuoteSource.QuoteUnavailableException ex) { return reject(order, ex.getMessage()); }
+        catch (ExecutionQuoteSource.QuoteUnavailableException ex) { return reject(order, instrument, ex.getMessage()); }
         BigDecimal fillPrice = quote.price();
         BigDecimal tradeValue = order.getQuantity().multiply(fillPrice);
         BigDecimal boundary = ExecutionPolicy.boundary(order.getOrderType(), order.getIndicativePrice(), order.getBufferPercent());
         String failure = ExecutionPolicy.failure(order.getOrderType(), order.getQuantity(), fillPrice,
                 boundary, user.getAvailableFunds(), currentQuantity);
-        if (failure != null) return reject(order, ExecutionPolicy.reason(failure));
+        if (failure != null) return reject(order, instrument, ExecutionPolicy.reason(failure));
         order.setSessionId(quote.sessionId());
         order.setExecutedSimulatedAt(quote.timestamp().atOffset(java.time.ZoneOffset.UTC));
         order.setExecutionPrice(fillPrice);
@@ -172,15 +190,20 @@ public class OrderExecutionService {
         final Order savedOrder = orderRepository.save(order);
         auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_FILLED,
                 "Filled " + savedOrder.getQuantity() + " @ " + fillPrice);
+        events.publishEvent(OrderStatusEvent.from(savedOrder, instrument, new OrderStatusEvent.Execution(
+                user.getUserId(), fill.getFillId(), fillPrice, savedOrder.getQuantity(), now,
+                cashTransaction.getCashTransactionId(), cashDelta, user.getAvailableFunds(),
+                movement.getHoldingMovementId(), quantityDelta, holding.getQuantity())));
         return savedOrder;
     }
 
-    private Order reject(Order order, String reason) {
+    private Order reject(Order order, Instrument instrument, String reason) {
         order.setStatus(Order.STATUS_REJECTED);
         order.setRejectionReason(reason);
         order.setResolvedAt(OffsetDateTime.now());
         final Order savedOrder = orderRepository.save(order);
         auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_REJECTED, reason);
+        events.publishEvent(OrderStatusEvent.from(savedOrder, instrument));
         return savedOrder;
     }
 }

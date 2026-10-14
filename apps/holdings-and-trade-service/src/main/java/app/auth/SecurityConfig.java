@@ -63,11 +63,13 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityErrorHandler errorHandler)
             throws Exception {
         http
+                // CSRF disabled: API uses stateless JWT authentication with Bearer tokens in Authorization header.
+                // CSRF attacks cannot occur because tokens are not automatically sent by browsers. NOSONAR java:S4502
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.POST, "/api/auth/account-exists").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/registration/account-exists").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/market/**").permitAll()
                         .requestMatchers("/error").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**").permitAll()
@@ -128,7 +130,7 @@ public class SecurityConfig {
     }
 
     /**
-     * Maps the token's {@code roles} claim (ADMIN or TRADER) to {@code ROLE_}
+     * Maps the token's {@code roles} claim (ADMIN, TRADER or ANALYST) to {@code ROLE_}
      * authorities so endpoints can use role-based rules.
      *
      * @return the authentication converter

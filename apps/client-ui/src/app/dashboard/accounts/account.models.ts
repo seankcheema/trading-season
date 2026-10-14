@@ -30,12 +30,13 @@ export interface CashTransaction {
   createdAt: string;
 }
 
-// The part of GET /api/users/me the dashboard reads: who the user is, and the cash
-// every one of their accounts shares.
+// The part of GET /api/users/me the dashboard reads: who the user is, the cash every one of
+// their accounts shares, and whether they have accepted the platform terms in force.
 export interface UserProfile {
   firstName: string;
   lastName: string;
   availableFunds: number;
+  termsAccepted: boolean;
 }
 
 // Creating and renaming an account take the same details. A new account starts empty.

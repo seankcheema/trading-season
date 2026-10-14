@@ -4,16 +4,37 @@ import app.holding.HoldingMovementRepository;
 import app.market.MarketReplayService;
 import app.market.MarketRequestException;
 import app.market.MarketTimeframe;
+import app.record.PortfolioValuationRecord;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
-/** Captures current holdings on real dates, independently of the replay calendar. */
+/**
+ * Captures current holdings on real dates, independently of the replay calendar.
+ *
+ * <p>A captured value is also raised as a {@link PortfolioValuationRecord},
+ * which {@link app.record.PlatformRecordPublisher} sends to Kafka after the
+ * commit, so the reporting service can show a customer's portfolio without
+ * reading this table. A capture asked for by a fill or a dashboard is always
+ * raised. The scheduler captures every account every minute, which is more
+ * than reporting needs, so its captures are raised at most once per account
+ * per {@code app.events.valuation-interval-minutes}.
+ */
 @Service
 public class PortfolioValuationService {
     private final AccountService accounts;
@@ -21,6 +42,9 @@ public class PortfolioValuationService {
     private final HoldingMovementRepository movements;
     private final PortfolioValuationRepository valuations;
     private final MarketReplayService market;
+    private final ApplicationEventPublisher events;
+    private final Duration scheduledPublishInterval;
+    private final Map<Integer, Instant> lastPublished = new ConcurrentHashMap<>();
     private final Clock clock;
 
     /**
@@ -30,22 +54,30 @@ public class PortfolioValuationService {
      * @param movements existing acquisition ledger
      * @param valuations persisted observations
      * @param market current replay prices
+     * @param events publisher of the {@link PortfolioValuationRecord} raised for a capture
+     * @param scheduledPublishIntervalMinutes least minutes between two scheduled captures of one
+     *        account that are raised for reporting
      */
     @Autowired
     public PortfolioValuationService(AccountService accounts, AccountRepository accountRepository,
             HoldingMovementRepository movements, PortfolioValuationRepository valuations,
-            MarketReplayService market) {
-        this(accounts, accountRepository, movements, valuations, market, Clock.systemUTC());
+            MarketReplayService market, ApplicationEventPublisher events,
+            @Value("${app.events.valuation-interval-minutes:15}") long scheduledPublishIntervalMinutes) {
+        this(accounts, accountRepository, movements, valuations, market, events,
+                Duration.ofMinutes(scheduledPublishIntervalMinutes), Clock.systemUTC());
     }
 
     PortfolioValuationService(AccountService accounts, AccountRepository accountRepository,
             HoldingMovementRepository movements, PortfolioValuationRepository valuations,
-            MarketReplayService market, Clock clock) {
+            MarketReplayService market, ApplicationEventPublisher events,
+            Duration scheduledPublishInterval, Clock clock) {
         this.accounts = accounts;
         this.accountRepository = accountRepository;
         this.movements = movements;
         this.valuations = valuations;
         this.market = market;
+        this.events = events;
+        this.scheduledPublishInterval = scheduledPublishInterval;
         this.clock = clock;
     }
 
@@ -91,7 +123,21 @@ public class PortfolioValuationService {
                     position.averageCost() == null ? BigDecimal.ZERO : position.averageCost());
             value = value.add(position.holding().getQuantity().multiply(price));
         }
-        return point(valuations.save(new PortfolioValuation(accountId, now, value)));
+        PortfolioValuation saved = valuations.save(new PortfolioValuation(accountId, now, value));
+        if (dueForReporting(accountId, now, scheduled)) {
+            events.publishEvent(PortfolioValuationRecord.from(saved));
+        }
+        return point(saved);
+    }
+
+    /** Whether this capture is raised for reporting; remembers when it is. */
+    private boolean dueForReporting(Integer accountId, Instant now, boolean scheduled) {
+        Instant last = lastPublished.get(accountId);
+        if (scheduled && last != null && now.isBefore(last.plus(scheduledPublishInterval))) {
+            return false;
+        }
+        lastPublished.put(accountId, now);
+        return true;
     }
 
     /**

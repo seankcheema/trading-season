@@ -108,6 +108,7 @@ class OrderServiceTest {
         // The auth service creates the account before it issues a token.
         UUID userId = UUID.randomUUID();
         UserAccountFixture.createActiveAccount(jdbcTemplate, userId, "trader@example.com");
+        UserAccountFixture.acceptCurrentTerms(jdbcTemplate, userId);
 
         // Create test user; funds belong to the user (KAN-93)
         user = new User();
@@ -324,7 +325,7 @@ class OrderServiceTest {
         assertNull(order.getRejectionReason());
         assertNotNull(order.getAcceptedAt());
         assertNotNull(order.getResolvedAt());
-        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_FILLED), auditEventsFor(order));
+        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_ACCEPTED, Order.STATUS_FILLED), auditEventsFor(order));
     }
 
     @Test
@@ -387,7 +388,7 @@ class OrderServiceTest {
                 .findByAccountIdAndInstrumentId(account.getAccountId(), instrument.getInstrumentId())
                 .orElseThrow();
         assertEquals(0, BigDecimal.ZERO.compareTo(holding.getQuantity()));
-        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_FILLED), auditEventsFor(order));
+        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_ACCEPTED, Order.STATUS_FILLED), auditEventsFor(order));
     }
 
     @Test

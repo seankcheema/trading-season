@@ -11,12 +11,23 @@
 
 <span class="fc" id="L12">    private static final ValidationResult PASS = new ValidationResult(true, null);</span>
 
+    /**
+     * Returns the shared passing result.
+     *
+     * @return a result with {@code passed} true and no reason
+     */
     public static ValidationResult pass() {
-<span class="fc" id="L15">        return PASS;</span>
+<span class="fc" id="L20">        return PASS;</span>
     }
 
+    /**
+     * Creates a rejecting result.
+     *
+     * @param reason why the order failed the rule
+     * @return a result with {@code passed} false and the given reason
+     */
     public static ValidationResult reject(String reason) {
-<span class="fc" id="L19">        return new ValidationResult(false, reason);</span>
+<span class="fc" id="L30">        return new ValidationResult(false, reason);</span>
     }
 }
 

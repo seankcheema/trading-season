@@ -3,6 +3,7 @@
 - Follow existing standalone components, reactive forms, OnPush change detection, and signal patterns.
 - Import shared components through exported @shared/ui-components subpaths; avoid copying their implementations into this app.
 - Preserve accessible labels, validation feedback, keyboard interactions, and responsive behavior.
+- Content that is still loading shows a placeholder in its shape, not a zero, an empty state, or a line of "Loading" text; see [Loading states](README.md#loading-states). Use the `skeleton` class from [src/styles.css](src/styles.css), hide the blocks with `aria-hidden`, and name what is loading in a visually hidden `role="status"`. Keep the class identical to the Reporting UI's.
 - Check submission handlers before assuming API wiring exists. Integration changes must follow the contract in the owning service README (for example [auth](../auth-service/README.md)).
 - `/api` is split across both Java services by path. Trading paths (`/api/orders`, `/api/instruments`) go to Order and Sell on 8081; everything else goes to Holdings and Trade on 8082. A new backend path needs the same entry in both [proxy.conf.json](proxy.conf.json) and [nginx.conf](nginx.conf).
 - Validate UI changes with the app build and relevant Angular tests. Use --no-watch; see the [README](README.md#commands).

@@ -40,7 +40,10 @@ describe('AccountStore', () => {
   function load(
     accounts: Account[] = ACCOUNTS,
     funds = 5_000,
-    profile: { firstName: string; lastName: string } = { firstName: 'Ada', lastName: 'Lovelace' },
+    profile: { firstName: string; lastName: string; termsAccepted?: boolean } = {
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+    },
   ): void {
     store.load();
     http.expectOne('/api/me/accounts').flush(accounts);
@@ -347,6 +350,84 @@ describe('AccountStore', () => {
       load(ACCOUNTS, 5_000, { firstName: 'Prince', lastName: '   ' });
 
       expect(store.initials()).toBe('P');
+    });
+
+    it('has no full name before the profile loads', () => {
+      expect(store.fullName()).toBe('');
+    });
+
+    it('joins the first and last name into the full name', () => {
+      load(ACCOUNTS, 5_000, { firstName: 'Ada', lastName: 'Lovelace' });
+
+      expect(store.fullName()).toBe('Ada Lovelace');
+    });
+
+    it('gives the one name on file as the full name', () => {
+      load(ACCOUNTS, 5_000, { firstName: 'Prince', lastName: '   ' });
+
+      expect(store.fullName()).toBe('Prince');
+    });
+  });
+
+  describe('terms', () => {
+    const ADA = { firstName: 'Ada', lastName: 'Lovelace' };
+    const termsUrl = '/api/users/me/terms-acceptance';
+
+    it('does not ask for acceptance before the profile loads', () => {
+      expect(store.needsTermsAcceptance()).toBe(false);
+    });
+
+    it('asks for acceptance when the profile says the terms are not accepted', () => {
+      load(ACCOUNTS, 5_000, { ...ADA, termsAccepted: false });
+
+      expect(store.needsTermsAcceptance()).toBe(true);
+    });
+
+    it('does not ask again once the profile says the terms are accepted', () => {
+      load(ACCOUNTS, 5_000, { ...ADA, termsAccepted: true });
+
+      expect(store.needsTermsAcceptance()).toBe(false);
+    });
+
+    it('sends the version the user was shown and takes the profile from the answer', () => {
+      load(ACCOUNTS, 5_000, { ...ADA, termsAccepted: false });
+      let completed = false;
+
+      store.acceptTerms('2026-10-12').subscribe({ complete: () => (completed = true) });
+      const request = http.expectOne(termsUrl);
+      expect(request.request.method).toBe('PUT');
+      expect(request.request.body).toEqual({ termsVersion: '2026-10-12' });
+      request.flush({ ...ADA, availableFunds: 5_000, termsAccepted: true });
+
+      expect(completed).toBe(true);
+      expect(store.needsTermsAcceptance()).toBe(false);
+      expect(store.cashBalance()).toBe(5_000);
+    });
+
+    it('keeps asking when the backend refuses the acceptance', () => {
+      load(ACCOUNTS, 5_000, { ...ADA, termsAccepted: false });
+      let status = 0;
+
+      store.acceptTerms('2020-01-01').subscribe({ error: (error) => (status = error.status) });
+      http
+        .expectOne(termsUrl)
+        .flush({ error: 'The terms have changed.' }, { status: 409, statusText: 'Conflict' });
+
+      expect(status).toBe(409);
+      expect(store.needsTermsAcceptance()).toBe(true);
+    });
+
+    it('ignores a profile read that began before the acceptance was recorded', () => {
+      load(ACCOUNTS, 5_000, { ...ADA, termsAccepted: false });
+      store['fetchProfile']().subscribe();
+      const before = http.expectOne('/api/users/me');
+
+      store.acceptTerms('2026-10-12').subscribe();
+      http.expectOne(termsUrl).flush({ ...ADA, availableFunds: 5_000, termsAccepted: true });
+      before.flush({ ...ADA, availableFunds: 5_000, termsAccepted: false });
+      http.expectOne('/api/users/me').flush({ ...ADA, availableFunds: 5_000, termsAccepted: true });
+
+      expect(store.needsTermsAcceptance()).toBe(false);
     });
   });
   it('keeps current balances while refreshing and rejects profile responses predating a fill', () => {

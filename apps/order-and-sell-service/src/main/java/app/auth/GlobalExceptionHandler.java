@@ -27,26 +27,15 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Handles duplicate account or email registration attempts.
-     *
-     * @param ex the conflict
-     * @return 409 with the conflict message
-     */
-    @ExceptionHandler(ConflictException.class)
-    public ResponseEntity<Map<String, String>> handleConflict(ConflictException ex) {
-        return error(HttpStatus.CONFLICT, ex.getMessage());
-    }
-
-    /**
-     * Handles a concurrent registration that passed the service checks but hit a
-     * unique constraint on insert.
+     * Handles a write that passed the service checks but hit a unique constraint
+     * on insert, such as two concurrent submissions of the same client reference.
      *
      * @param ex the constraint violation
      * @return 409 without database details
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Map<String, String>> handleDataIntegrity(DataIntegrityViolationException ex) {
-        return error(HttpStatus.CONFLICT, "Account or email is already registered");
+        return error(HttpStatus.CONFLICT, "Request conflicts with existing data");
     }
 
     /**

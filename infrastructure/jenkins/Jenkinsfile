@@ -3,7 +3,7 @@ pipeline {
 
     tools {
         // Names must match the installations under Manage Jenkins > Tools.
-        maven 'Maven'
+        maven 'maven'
         nodejs 'NodeJS'
     }
 
@@ -47,12 +47,14 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                // The reporting tests run as root in Docker; make their output
-                // deletable before the checkout cleans the workspace.
+                // The reporting and database tool tests run as root in Docker; make
+                // their output deletable before the checkout cleans the workspace.
                 sh '''
-                    if [ -d apps/reporting-service ]; then
-                        docker run --rm -v "$(pwd)":/ws -w /ws alpine:latest chmod -R a+rwX /ws/apps/reporting-service || true
-                    fi
+                    for directory in apps/reporting-service db/tools; do
+                        if [ -d "$directory" ]; then
+                            docker run --rm -v "$(pwd)":/ws -w /ws alpine:latest chmod -R a+rwX "/ws/$directory" || true
+                        fi
+                    done
                 '''
                 script {
                     // Keep the multibranch job's SCM settings and add a depth-1 clone.
@@ -82,13 +84,13 @@ pipeline {
                 sh '''
                     set -eu
                     npm --prefix apps/client-ui ci
+                    npm --prefix apps/reporting-ui ci
                     npm --prefix apps/auth-service ci
                 '''
             }
         }
-
-        // Each Java suite uses its own Maven repository. E2E runs afterwards
-        // to avoid browser CPU contention.
+        // Each suite runs once. Java branches use separate Maven repositories.
+        // E2E follows the parallel group to avoid browser CPU contention.
         stage('Test Suites') {
             failFast true
             parallel {
@@ -155,6 +157,8 @@ pipeline {
                             DATABASE_URL="postgresql://trading_season:test-password@${DB_CONTAINER}:5432/trading_season"
                             SCRIPTS=apps/market-data/db/scripts/python
                             SEEDS=/workspace/apps/market-data/db/seeds
+                            # Each script run records coverage beside the other reports for the SonarQube stage.
+                            COVERAGE="-m coverage run --parallel-mode"
 
                             start_db() {
                                 docker run -d --name "$DB_CONTAINER" --network "$TEST_NETWORK" -e POSTGRES_DB=trading_season -e POSTGRES_USER=trading_season -e POSTGRES_PASSWORD=test-password -v "$DB_VOLUME:/var/lib/postgresql/data" postgres:16-alpine
@@ -169,7 +173,7 @@ pipeline {
 
                             # Initialize, then restart the database to prove the schema persists.
                             start_db
-                            docker run --rm --network "$TEST_NETWORK" "$TEST_TAG" $SCRIPTS/0001-initialize-database.py --database-url "$DATABASE_URL" --disposable-database
+                            docker run --rm --network "$TEST_NETWORK" -e COVERAGE_FILE=/reports/.coverage -v "$PWD/reports/market-data:/reports" "$TEST_TAG" $COVERAGE $SCRIPTS/0001-initialize-database.py --database-url "$DATABASE_URL" --disposable-database
                             docker rm -f "$DB_CONTAINER"
                             start_db
                             docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select count(*) from information_schema.tables where table_schema='public';" | grep -Eq '^[1-9][0-9]*$'
@@ -178,10 +182,12 @@ pipeline {
                             AVAILABLE_DISK_GB="$(docker exec "$DB_CONTAINER" df -Pk /var/lib/postgresql/data | awk 'NR==2 {print $4/1048576}')"
 
                             # Generate two days of data, validate, then import twice (the second import must be a no-op).
-                            docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:$SEEDS" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/generation-resources.txt python $SCRIPTS/0002-generate-synthetic-market-data.py --start-date 2026-01-05 --end-date 2026-01-06
-                            docker run --rm --network "$TEST_NETWORK" -v "$ARCHIVE_VOLUME:$SEEDS" "$TEST_TAG" $SCRIPTS/0003-validate-synthetic-market-data.py
-                            docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:$SEEDS" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/import-resources.txt python $SCRIPTS/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
-                            docker run --rm --network "$TEST_NETWORK" -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:$SEEDS" "$TEST_TAG" $SCRIPTS/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
+                            docker run --rm --network "$TEST_NETWORK" -e COVERAGE_FILE=/reports/.coverage -v "$ARCHIVE_VOLUME:$SEEDS" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/generation-resources.txt python $COVERAGE $SCRIPTS/0002-generate-synthetic-market-data.py --start-date 2026-01-05 --end-date 2026-01-06
+                            docker run --rm --network "$TEST_NETWORK" -e COVERAGE_FILE=/reports/.coverage -v "$ARCHIVE_VOLUME:$SEEDS" -v "$PWD/reports/market-data:/reports" "$TEST_TAG" $COVERAGE $SCRIPTS/0003-validate-synthetic-market-data.py
+                            docker run --rm --network "$TEST_NETWORK" -e COVERAGE_FILE=/reports/.coverage -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:$SEEDS" -v "$PWD/reports/market-data:/reports" --entrypoint /usr/bin/time "$TEST_TAG" -v -o /reports/import-resources.txt python $COVERAGE $SCRIPTS/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
+                            docker run --rm --network "$TEST_NETWORK" -e COVERAGE_FILE=/reports/.coverage -e MARKET_DATA_AVAILABLE_DISK_GB="$AVAILABLE_DISK_GB" -v "$ARCHIVE_VOLUME:$SEEDS" -v "$PWD/reports/market-data:/reports" "$TEST_TAG" $COVERAGE $SCRIPTS/0004-import-synthetic-market-data.py --tick-storage parquet --database-url "$DATABASE_URL"
+                            # Merge the per-run coverage data into the report the SonarQube stage imports.
+                            docker run --rm -e COVERAGE_FILE=/reports/.coverage -v "$PWD/reports/market-data:/reports" --entrypoint sh "$TEST_TAG" -c 'python -m coverage combine && python -m coverage xml -o /reports/coverage.xml && rm -f /reports/.coverage'
 
                             docker exec "$DB_CONTAINER" psql -U trading_season -d trading_season -Atc "select count(*) from market_ticks; select count(*) from candles; select pg_database_size(current_database()); select coalesce(sum(pg_indexes_size(quote_ident(schemaname)||'.'||quote_ident(tablename))),0) from pg_tables where schemaname='public';" > reports/market-data/database-after.txt
                             docker exec "$DB_CONTAINER" du -sb /var/lib/postgresql/data > reports/market-data/disk-after.txt
@@ -189,6 +195,7 @@ pipeline {
                             test -s reports/market-data/generation-resources.txt
                             test -s reports/market-data/import-resources.txt
                             test -s reports/market-data/database-after.txt
+                            test -s reports/market-data/coverage.xml
                         '''
                     }
                     post {
@@ -243,16 +250,18 @@ pipeline {
                             dir('apps/reporting-service') {
                                 // python:3.14-slim: the full image pulls large -dev
                                 // libraries and has exhausted agent disk before.
+                                // Mounted at the agent's own path so the source path
+                                // recorded in coverage.xml resolves for SonarQube.
                                 sh '''
                                     set -eu
                                     docker run --rm \
                                       -e PYTHONDONTWRITEBYTECODE=1 \
-                                      -v "$(pwd)":/app \
-                                      -w /app \
+                                      -v "$(pwd)":"$(pwd)" \
+                                      -w "$(pwd)" \
                                       python:3.14-slim \
                                       bash -c "
                                         # Runs as root: hand the output back to the jenkins user on any exit.
-                                        trap 'chmod -R a+rwX /app' EXIT
+                                        trap 'chmod -R a+rwX .' EXIT
                                         set -eu
                                         mkdir -p reports/junit coverage
                                         python -m pip install -q -r requirements.txt
@@ -272,6 +281,48 @@ pipeline {
                                               allowEmptyArchive: true
                             catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                                 junit testResults: 'apps/reporting-service/reports/junit/*.xml',
+                                      allowEmptyResults: false,
+                                      healthScaleFactor: 1.0
+                            }
+                        }
+                    }
+                }
+
+                // The tools that republish database history to Kafka and seed
+                // demo history. They are not part of any service, so no other
+                // suite runs their tests.
+                stage('Reporting Feed Tools Tests') {
+                    environment {
+                        CI = 'true'
+                    }
+                    steps {
+                        catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                            dir('db/tools') {
+                                sh '''
+                                    set -eu
+                                    docker run --rm \
+                                      -e PYTHONDONTWRITEBYTECODE=1 \
+                                      -v "$(pwd)":/app \
+                                      -w /app \
+                                      python:3.14-slim \
+                                      bash -c "
+                                        # Runs as root: hand the output back to the jenkins user on any exit.
+                                        trap 'chmod -R a+rwX /app' EXIT
+                                        set -eu
+                                        mkdir -p reports/junit
+                                        python -m pip install -q -r requirements.txt
+                                        python -m pytest -p no:cacheprovider tests/ -v \
+                                          --junit-xml=reports/junit/results.xml
+                                      "
+                                '''
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'db/tools/reports/**/*', allowEmptyArchive: true
+                            catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                                junit testResults: 'db/tools/reports/junit/*.xml',
                                       allowEmptyResults: false,
                                       healthScaleFactor: 1.0
                             }
@@ -299,6 +350,27 @@ pipeline {
                         }
                     }
                 }
+
+                stage('Reporting UI Tests') {
+                    steps {
+                        dir('apps/reporting-ui') {
+                            // coverageThresholds in angular.json enforce the coverage floor.
+                            sh '''
+                                set -eu
+                                mkdir -p reports/junit
+                                npm test -- --no-watch --coverage --reporters=junit --reporters=default --output-file=reports/junit/reporting-ui.xml --coverage-reporters=text --coverage-reporters=html --coverage-reporters=lcovonly --coverage-reporters=cobertura
+                                test -s coverage/reporting-ui/lcov.info
+                            '''
+                        }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'apps/reporting-ui/coverage/**/*, apps/reporting-ui/reports/junit/*.xml',
+                                              allowEmptyArchive: true
+                            junit testResults: 'apps/reporting-ui/reports/junit/reporting-ui.xml', allowEmptyResults: false
+                        }
+                    }
+                }
             }
         }
 
@@ -320,10 +392,64 @@ pipeline {
             }
         }
 
+        stage('SonarQube Analysis') {
+            when { expression { currentBuild.currentResult == 'SUCCESS' } }
+            steps {
+                script {
+                    def scannerHome = tool(env.SONAR_SCANNER_TOOL ?: 'SonarScanner')
+
+                    // The server URL and analysis token come from the 'SonarQube'
+                    // server under Manage Jenkins > System; the project key and
+                    // name are in sonar-project.properties.
+                    withSonarQubeEnv('SonarQube') {
+                        sh """
+                            set -eu
+                            node infrastructure/jenkins/jacoco-to-sonar-coverage.mjs \
+                              apps/holdings-and-trade-service apps/order-and-sell-service
+                            "${scannerHome}/bin/sonar-scanner" \
+                              -Dproject.settings=infrastructure/jenkins/sonar-project.properties \
+                              -Dsonar.projectVersion="\$BUILD_NUMBER"
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            when { expression { currentBuild.currentResult == 'SUCCESS' } }
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    script {
+                        def qualityGate = waitForQualityGate abortPipeline: false
+                        echo "SonarQube quality gate status: ${qualityGate.status}"
+                        if (qualityGate.status != 'OK') {
+                            withSonarQubeEnv('SonarQube') {
+                                sh '''
+                                    set -eu
+                                    QUALITY_GATE_FILE="${WORKSPACE}/sonar-quality-gate.json"
+                                    curl --fail --silent --show-error \
+                                      --user "${SONAR_AUTH_TOKEN}:" \
+                                      "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=DuaLeapa-Project" \
+                                      > "$QUALITY_GATE_FILE"
+                                    node -e 'const fs = require("node:fs"); const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); for (const condition of report.projectStatus?.conditions ?? []) console.log(`SonarQube condition: ${condition.metricKey} status=${condition.status} actual=${condition.actualValue ?? "-"} threshold=${condition.errorThreshold ?? "-"}`);' "$QUALITY_GATE_FILE"
+                                    rm -f "$QUALITY_GATE_FILE"
+                                '''
+                            }
+                        }
+                        if (qualityGate.status != 'OK') {
+                            error "SonarQube quality gate failed with status: ${qualityGate.status}"
+                        }
+                    }
+                }
+            }
+        }
+
+
+
         stage('Pre-E2E Disk Cleanup') {
             steps {
                 // Reports were archived by their own stages.
-                sh 'rm -rf apps/holdings-and-trade-service/target apps/order-and-sell-service/target apps/client-ui/coverage'
+                sh 'rm -rf apps/holdings-and-trade-service/target apps/order-and-sell-service/target apps/client-ui/coverage apps/reporting-ui/coverage'
             }
         }
 
@@ -338,43 +464,83 @@ pipeline {
                         returnStdout: true
                     ).trim()
                 }
-                dir('apps/client-ui') {
-                    sh '''
-                        set -eu
-                        # Chromium needs system libraries the agent lacks and the
-                        # jenkins user cannot install, so the suite runs in a slim
-                        # Chromium-only image tagged with the @playwright/test version.
-                        PW_VERSION="$(node -p "require('@playwright/test/package.json').version")"
-                        PW_IMAGE="trading-season-playwright:${PW_VERSION}"
-                        if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
-                            docker build --build-arg PLAYWRIGHT_VERSION="$PW_VERSION" \
-                                -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
-                        fi
-                        # The workspace (with node_modules) and the Jenkins Node are
-                        # mounted in. --user keeps output owned by jenkins and
-                        # --ipc=host avoids Chromium crashes from the small /dev/shm.
-                        # The API is stubbed, so no backend or database is needed.
-                        NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
-                        docker run --rm --name "$E2E_TEST_CONTAINER" \
-                            --user "$(id -u):$(id -g)" \
-                            --ipc=host \
-                            -v "$WORKSPACE:/workspace" \
-                            -v "$NODE_HOME:/opt/node:ro" \
-                            -e HOME=/tmp \
-                            -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-                            -e CI=true \
-                            -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
-                            -w /workspace/apps/client-ui \
-                            "$PW_IMAGE" \
-                            npm run e2e
-                    '''
-                }
+                // Two suites share one image: the Client UI's, against an in-memory
+                // API stand-in, and the Reporting UI's, against the real Reporting
+                // Service. Both always run, so a failure in the first does not hide
+                // the second; the stage fails if either did.
+                sh '''
+                    set -eu
+                    # Chromium needs system libraries the agent lacks and the
+                    # jenkins user cannot install, so the suites run in a slim
+                    # Chromium-only image tagged with the @playwright/test version.
+                    # Python is in it too, for the Reporting Service.
+                    PW_VERSION="$(cd apps/client-ui && node -p "require('@playwright/test/package.json').version")"
+                    REPORTING_PW_VERSION="$(cd apps/reporting-ui && node -p "require('@playwright/test/package.json').version")"
+                    if [ "$PW_VERSION" != "$REPORTING_PW_VERSION" ]; then
+                        echo "Client UI uses @playwright/test $PW_VERSION and Reporting UI $REPORTING_PW_VERSION; the image holds browsers for one version, so they must match." >&2
+                        exit 1
+                    fi
+                    PW_IMAGE="trading-season-playwright:${PW_VERSION}-python3"
+                    if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
+                        docker build --build-arg PLAYWRIGHT_VERSION="$PW_VERSION" \
+                            -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
+                    fi
+                    # The workspace (with node_modules) and the Jenkins Node are
+                    # mounted in. --user keeps output owned by jenkins and
+                    # --ipc=host avoids Chromium crashes from the small /dev/shm.
+                    NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
+                    client_status=0
+                    reporting_status=0
+
+                    # The API is stubbed, so no backend or database is needed.
+                    docker run --rm --name "$E2E_TEST_CONTAINER" \
+                        --user "$(id -u):$(id -g)" \
+                        --ipc=host \
+                        -v "$WORKSPACE:/workspace" \
+                        -v "$NODE_HOME:/opt/node:ro" \
+                        -e HOME=/tmp \
+                        -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+                        -e CI=true \
+                        -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
+                        -w /workspace/apps/client-ui \
+                        "$PW_IMAGE" \
+                        npm run e2e || client_status=$?
+
+                    # The suite starts the real Reporting Service, the Auth Service
+                    # stand-in and the built app inside this one container, on
+                    # loopback ports of its own. The service's requirements go into
+                    # a venv first, as in the Reporting Service Tests stage; Kafka and
+                    # the database are not needed, the service reads seeded files.
+                    docker run --rm --name "$E2E_TEST_CONTAINER" \
+                        --user "$(id -u):$(id -g)" \
+                        --ipc=host \
+                        -v "$WORKSPACE:/workspace" \
+                        -v "$NODE_HOME:/opt/node:ro" \
+                        -e HOME=/tmp \
+                        -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+                        -e CI=true \
+                        -e PYTHONDONTWRITEBYTECODE=1 \
+                        -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
+                        -e E2E_PYTHON=/tmp/reporting-venv/bin/python \
+                        -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
+                        -w /workspace/apps/reporting-ui \
+                        "$PW_IMAGE" \
+                        sh -c "python3 -m venv /tmp/reporting-venv && /tmp/reporting-venv/bin/pip install -q -r /workspace/apps/reporting-service/requirements.txt && npm run e2e" \
+                        || reporting_status=$?
+
+                    echo "Client UI end-to-end exit status: $client_status; Reporting UI: $reporting_status"
+                    if [ "$client_status" -ne 0 ] || [ "$reporting_status" -ne 0 ]; then
+                        exit 1
+                    fi
+                '''
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'apps/client-ui/reports/playwright/**/*',
+                    archiveArtifacts artifacts: 'apps/client-ui/reports/playwright/**/*, apps/reporting-ui/reports/playwright/**/*',
                                       allowEmptyArchive: true
-                    junit testResults: 'apps/client-ui/reports/playwright/junit.xml',
+                    // One report per suite. A suite that could not start leaves none,
+                    // and the other still has to, or the stage reports nothing ran.
+                    junit testResults: 'apps/client-ui/reports/playwright/junit.xml, apps/reporting-ui/reports/playwright/junit.xml',
                           allowEmptyResults: false,
                           healthScaleFactor: 1.0
                 }
@@ -408,7 +574,7 @@ pipeline {
                     # Disposable stack: always start from an empty database.
                     compose down -v --remove-orphans
 
-                    if ! compose up -d --build auth-service client-ui db db-init holdings-and-trade-service kafka order-and-sell-service reporting-service reporting-ui; then
+                    if ! compose up -d --build auth-service client-ui db db-init holdings-and-trade-service kafka order-and-sell-service reporting-consumer reporting-service reporting-ui; then
                         compose logs --no-color db-init >&2 || true
                         exit 1
                     fi
@@ -440,7 +606,7 @@ pipeline {
                         exit 1
                     fi
 
-                    EXPECTED_SERVICES="auth-service client-ui db holdings-and-trade-service kafka order-and-sell-service reporting-service reporting-ui"
+                    EXPECTED_SERVICES="auth-service client-ui db holdings-and-trade-service kafka order-and-sell-service reporting-consumer reporting-service reporting-ui"
                     RUNNING_SERVICES="$(compose ps --services --filter status=running | sort | tr '\\n' ' ' | sed 's/ $//')"
                     if [ "$RUNNING_SERVICES" != "$EXPECTED_SERVICES" ]; then
                         echo "Expected running services: $EXPECTED_SERVICES" >&2
@@ -484,7 +650,7 @@ pipeline {
                     }
 
                     check_http client-ui / '<app-root'
-                    check_http reporting-ui / 'Reporting UI placeholder'
+                    check_http reporting-ui / '<app-root'
                     check_http reporting-service /health '"status": "healthy"' 8083
 
                     # Match PartitionCount as a whole tab-delimited field so 3 does not match 30.
@@ -501,8 +667,168 @@ pipeline {
                         exit 1
                     }
 
+                    # The reporting service has no database: this topic carries every
+                    # customer, account, transfer and audit entry it shows. Compacted,
+                    # so the latest state of each row is kept for good.
+                    RECORDS_DESCRIBE="$(compose exec -T kafka /opt/kafka/bin/kafka-topics.sh \
+                        --bootstrap-server localhost:9092 --describe --topic platform-records)" || {
+                        echo "Topic platform-records does not exist." >&2
+                        exit 1
+                    }
+                    echo "$RECORDS_DESCRIBE"
+                    echo "$RECORDS_DESCRIBE" | awk -F'\\t' '
+                        /^Topic: /{for (i = 1; i <= NF; i++) if ($i == "PartitionCount: 3") ok = 1}
+                        END {exit ok ? 0 : 1}' || {
+                        echo "Topic platform-records does not have three partitions." >&2
+                        exit 1
+                    }
+                    echo "$RECORDS_DESCRIBE" | grep -q 'cleanup.policy=compact' || {
+                        echo "Topic platform-records is not compacted." >&2
+                        exit 1
+                    }
+
+                    # The three consumer groups register only once their service has
+                    # started and polled, so wait for all of them and then print the
+                    # assignment. This is the build's evidence that every consumer of
+                    # trade-events is live, not just that the topic exists.
+                    EXPECTED_GROUPS="order-status-pusher portfolio-valuation-capture reporting-ingester"
+                    attempt=1
+                    while [ "$attempt" -le 60 ]; do
+                        GROUPS_LIST="$(compose exec -T kafka /opt/kafka/bin/kafka-consumer-groups.sh \
+                            --bootstrap-server localhost:9092 --list 2>/dev/null || true)"
+                        missing=""
+                        for group in $EXPECTED_GROUPS; do
+                            echo "$GROUPS_LIST" | grep -qx "$group" || missing="$missing $group"
+                        done
+                        [ -z "$missing" ] && break
+                        attempt=$((attempt + 1))
+                        sleep 2
+                    done
+                    if [ -n "$missing" ]; then
+                        echo "Consumer groups not registered on trade-events within two minutes:$missing" >&2
+                        for group in $missing; do
+                            case "$group" in
+                                order-status-pusher) service=order-and-sell-service ;;
+                                portfolio-valuation-capture) service=holdings-and-trade-service ;;
+                                reporting-ingester) service=reporting-consumer ;;
+                            esac
+                            echo "===== $service logs =====" >&2
+                            compose logs --no-color --tail 100 "$service" >&2 || true
+                        done
+                        exit 1
+                    fi
+                    echo "===== Kafka consumer groups on trade-events ====="
+                    compose exec -T kafka /opt/kafka/bin/kafka-consumer-groups.sh \
+                        --bootstrap-server localhost:9092 --describe --all-groups
+
                     docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Image}}\\t{{.Ports}}'
+
+                    # The rebuild leaves the previous build's images untagged, so
+                    # drop them and trim the build cache now that the stack is
+                    # verified. Stopped containers, networks, and volumes are left
+                    # alone: the agent's Docker daemon also serves other workloads.
+                    docker image prune -f || echo "Dangling image prune failed; continuing." >&2
+                    docker builder prune -f --keep-storage=2gb 2>/dev/null || docker builder prune -af || echo "Build cache prune failed; continuing." >&2
                 '''
+            }
+        }
+
+        stage('Kafka End-to-End Flow') {
+            when {
+                expression { currentBuild.currentResult == 'SUCCESS' }
+            }
+            steps {
+                sh '''
+                    set -eu
+                    COMPOSE_FILE="infrastructure/docker-compose/docker-compose.local.yml"
+                    COMPOSE_ENV_FILE="infrastructure/docker-compose/.env"
+                    PROJECT_NAME="trading-season-local"
+                    compose() {
+                        sh infrastructure/docker/run-compose.sh --project-name "$PROJECT_NAME" --env-file "$COMPOSE_ENV_FILE" -f "$COMPOSE_FILE" "$@"
+                    }
+                    EVIDENCE_DIR="reports/kafka-end-to-end"
+                    EVIDENCE="$EVIDENCE_DIR/evidence.txt"
+                    mkdir -p "$EVIDENCE_DIR"
+                    : > "$EVIDENCE"
+                    note() {
+                        echo "$1"
+                        echo "$1" >> "$EVIDENCE"
+                    }
+
+                    note "===== Kafka end-to-end: one order through trade-events and its three consumers, and into a reporting service with no database ====="
+
+                    # The build database is empty, so give the order something to buy.
+                    compose exec -T db psql -U trading_season -d trading_season -v ON_ERROR_STOP=1 -q -c \
+                        "INSERT INTO instruments (ticker, name, asset_class, market, currency, is_tradable) VALUES ('CIEQ', 'CI Equity', 'Equity', 'US', 'USD', true);"
+                    note "[KAFKA-E2E] instrument: CIEQ inserted for this build"
+
+                    # Registers a trader, opens the order stream, places the order and checks
+                    # each consumer's effect from inside the stack network.
+                    status=0
+                    compose exec -T reporting-consumer python - < infrastructure/jenkins/kafka-end-to-end.py > "$EVIDENCE_DIR/flow.txt" 2>&1 || status=$?
+                    cat "$EVIDENCE_DIR/flow.txt"
+                    cat "$EVIDENCE_DIR/flow.txt" >> "$EVIDENCE"
+                    if [ "$status" -ne 0 ]; then
+                        echo "Kafka end-to-end flow failed (exit $status); service logs follow." >&2
+                        for service in order-and-sell-service holdings-and-trade-service reporting-consumer; do
+                            echo "===== $service logs =====" >&2
+                            compose logs --no-color --tail 100 "$service" >&2 || true
+                        done
+                        exit 1
+                    fi
+                    IDS="$(grep '^.KAFKA-E2E. orderId=' "$EVIDENCE_DIR/flow.txt" | tr '=' ' ')"
+                    ORDER_ID="$(echo "$IDS" | awk '{print $3}')"
+                    ACCOUNT_ID="$(echo "$IDS" | awk '{print $5}')"
+
+                    # The producer and each consumer announce what they did in their own logs.
+                    log_line() {
+                        attempt=1
+                        while [ "$attempt" -le 45 ]; do
+                            LINE="$(compose logs --no-color "$1" 2>/dev/null | grep -F "$2" | tail -1 || true)"
+                            if [ -n "$LINE" ]; then
+                                note "[KAFKA-E2E] $3: ${LINE#*| }"
+                                return 0
+                            fi
+                            attempt=$((attempt + 1))
+                            sleep 1
+                        done
+                        echo "No log line matching '$2' from $1 within 45 seconds." >&2
+                        return 1
+                    }
+                    log_line order-and-sell-service "Published trade event orderId=$ORDER_ID status=ACCEPTED" "producer log, ACCEPTED"
+                    log_line order-and-sell-service "Published trade event orderId=$ORDER_ID status=FILLED" "producer log, FILLED"
+                    log_line order-and-sell-service "Pushed order status for account $ACCOUNT_ID to 1 open stream(s)" "order-status-pusher log"
+                    log_line holdings-and-trade-service "Captured portfolio valuation for account $ACCOUNT_ID" "portfolio-valuation-capture log"
+                    log_line reporting-consumer "Stored trade event orderId=$ORDER_ID status=FILLED" "reporting-ingester log"
+                    # The records around the order, each from the service that owns the row.
+                    log_line holdings-and-trade-service "Published platform record key=TRADING_ACCOUNT:$ACCOUNT_ID" "Holdings and Trade publishes the account"
+                    log_line order-and-sell-service "Published platform record key=ORDER_AUDIT:" "Order and Sell publishes the audit trail"
+                    log_line auth-service "Published platform record key=SIGN_IN:" "auth publishes the sign-in"
+                    log_line reporting-consumer "Stored platform record type=TRADING_ACCOUNT key=TRADING_ACCOUNT:$ACCOUNT_ID" "reporting-ingester log, account record"
+
+                    # Finally every group must have consumed everything the order published.
+                    attempt=1
+                    while [ "$attempt" -le 30 ]; do
+                        DESCRIBE="$(compose exec -T kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --all-groups 2>/dev/null || true)"
+                        if echo "$DESCRIBE" | awk '($2 == "trade-events" || $2 == "platform-records") && $6 != "0" && $6 != "-" {bad = 1} END {exit bad}'; then
+                            break
+                        fi
+                        attempt=$((attempt + 1))
+                        sleep 1
+                    done
+                    echo "$DESCRIBE" | tee -a "$EVIDENCE"
+                    if [ "$attempt" -gt 30 ]; then
+                        echo "A consumer group still has lag on trade-events or platform-records after 30 seconds." >&2
+                        exit 1
+                    fi
+                    note "[KAFKA-E2E] consumer groups: every group has consumed everything on trade-events and platform-records (lag 0)"
+                    note "===== Kafka end-to-end: PASSED ====="
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/kafka-end-to-end/**/*', allowEmptyArchive: true
+                }
             }
         }
     }
@@ -559,13 +885,17 @@ pipeline {
                 script {
                     def cacheCleanupStatus = sh(script: '''
                         set +e
-                        PW_VERSION=""
-                        if [ -f node_modules/@playwright/test/package.json ]; then
-                            PW_VERSION="$(node -p "require('@playwright/test/package.json').version" 2>/dev/null)"
+                        # The image the end-to-end stage builds: its tag is the Playwright
+                        # version and "-python3". There is no root npm project, so the
+                        # version is read from the app whose node_modules hold it.
+                        PW_TAG=""
+                        if [ -f apps/client-ui/node_modules/@playwright/test/package.json ]; then
+                            PW_VERSION="$(cd apps/client-ui && node -p "require('@playwright/test/package.json').version" 2>/dev/null)"
+                            [ -z "$PW_VERSION" ] || PW_TAG="${PW_VERSION}-python3"
                         fi
                         # Drop Playwright images for other versions and the official images.
                         docker image ls trading-season-playwright --format '{{.Tag}}' | while read -r tag; do
-                            [ "$tag" = "$PW_VERSION" ] || docker image rm "trading-season-playwright:$tag" >/dev/null 2>&1
+                            [ "$tag" = "$PW_TAG" ] || docker image rm "trading-season-playwright:$tag" >/dev/null 2>&1
                         done
                         docker image ls mcr.microsoft.com/playwright --format '{{.Repository}}:{{.Tag}}' | while read -r image; do
                             docker image rm "$image" >/dev/null 2>&1
@@ -583,8 +913,8 @@ pipeline {
                         fi
 
                         echo "Only $((PROJECTED_KB / 1024 / 1024)) GiB will be free after workspace cleanup; removing all caches."
-                        if [ -n "$PW_VERSION" ]; then
-                            docker image rm "trading-season-playwright:$PW_VERSION" >/dev/null 2>&1
+                        if [ -n "$PW_TAG" ]; then
+                            docker image rm "trading-season-playwright:$PW_TAG" >/dev/null 2>&1
                         fi
                         docker builder prune -af 2>/dev/null
                         exit 0

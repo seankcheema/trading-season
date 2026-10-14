@@ -9,32 +9,60 @@ import app.instrument.InstrumentNotFoundException;
 import app.instrument.InstrumentRepository;
 import app.order.audit.AuditTrailService;
 import app.order.dto.OrderRequest;
+import app.order.event.OrderStatusEvent;
 import app.order.execution.OrderExecutionService;
 import app.order.validation.OrderValidationPipeline;
 import app.order.validation.ValidationResult;
 import app.user.User;
 import app.user.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.UUID;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
- * Orchestrates one order submission: resolving and ownership-checking the
- * account, the idempotency check, loading the entities the rule pipeline
- * needs, persisting the order as {@code PENDING}, running the pipeline, and
- * — only if it passes — handing off to {@link OrderExecutionService}. A
- * failed rule leaves the order {@code REJECTED}; a successful execution
- * leaves it {@code FILLED} (KAN-93). This is the &quot;Order controller&quot; +
- * &quot;Trading rule pipeline&quot; handoff from the KAN-95 walkthrough, minus the
- * HTTP concerns, which stay in {@link OrderController}.
+ * Orchestrates one order submission in two transactions (BR-06).
+ *
+ * &lt;p&gt;The first, {@link #accept}, does the idempotency and ownership checks,
+ * persists the order as {@code PENDING}, runs the trading-rule pipeline, and
+ * commits the order as {@code REJECTED} or {@code ACCEPTED}. An accepted order
+ * is the firm's record of intent; once committed, nothing downstream can
+ * erase it.
+ *
+ * &lt;p&gt;The second is {@link OrderExecutionService#execute}, which runs in its
+ * own transaction and moves the order to {@code FILLED}, or {@code REJECTED}
+ * under the row lock. If execution throws unexpectedly, the failure is
+ * written to the audit trail in a short third transaction and the order is
+ * returned, and remains, {@code ACCEPTED}.
+ *
+ * &lt;p&gt;Each transaction raises an {@link OrderStatusEvent} for the status it
+ * committed, published to Kafka after that commit by
+ * {@link app.order.event.TradeEventPublisher}. A resubmission that returns an
+ * existing order raises nothing.
  */
 @Service
 public class OrderService {
+
+    /** Audit event type written when execution throws and the order stays {@code ACCEPTED}. */
+    public static final String AUDIT_EXECUTION_FAILED = &quot;EXECUTION_FAILED&quot;;
+
+    /**
+     * Longest failure description written to the audit trail. PostgreSQL's
+     * {@code detail} column is unbounded text, but a driver exception can run
+     * to kilobytes of SQL, and the audit row must never itself fail to write.
+     */
+    static final int MAX_FAILURE_DETAIL_LENGTH = 255;
+
+<span class="fc" id="L65">    private static final Logger log = LoggerFactory.getLogger(OrderService.class);</span>
 
     private final OrderRepository orderRepository;
     private final AccountRepository accountRepository;
@@ -43,32 +71,53 @@ public class OrderService {
     private final OrderValidationPipeline validationPipeline;
     private final OrderExecutionService orderExecutionService;
     private final AuditTrailService auditTrailService;
+    private final ApplicationEventPublisher events;
+    private final TransactionTemplate transactions;
 
+    /**
+     * Creates the service.
+     *
+     * @param orderRepository order persistence
+     * @param accountRepository account lookup and ownership checks
+     * @param instrumentRepository instrument lookup
+     * @param userRepository user lookup
+     * @param validationPipeline trading-rule pipeline
+     * @param orderExecutionService settlement of orders that pass validation
+     * @param auditTrailService lifecycle event recorder
+     * @param events publisher of the {@link app.order.event.OrderStatusEvent} raised at each committed status change
+     * @param transactionManager manager behind the acceptance transaction, which commits before execution begins
+     */
     public OrderService(OrderRepository orderRepository,
                          AccountRepository accountRepository,
                          InstrumentRepository instrumentRepository,
                          UserRepository userRepository,
                          OrderValidationPipeline validationPipeline,
                          OrderExecutionService orderExecutionService,
-<span class="fc" id="L53">                         AuditTrailService auditTrailService) {</span>
-<span class="fc" id="L54">        this.orderRepository = orderRepository;</span>
-<span class="fc" id="L55">        this.accountRepository = accountRepository;</span>
-<span class="fc" id="L56">        this.instrumentRepository = instrumentRepository;</span>
-<span class="fc" id="L57">        this.userRepository = userRepository;</span>
-<span class="fc" id="L58">        this.validationPipeline = validationPipeline;</span>
-<span class="fc" id="L59">        this.orderExecutionService = orderExecutionService;</span>
-<span class="fc" id="L60">        this.auditTrailService = auditTrailService;</span>
-<span class="fc" id="L61">    }</span>
+                         AuditTrailService auditTrailService,
+                         ApplicationEventPublisher events,
+<span class="fc" id="L98">                         PlatformTransactionManager transactionManager) {</span>
+<span class="fc" id="L99">        this.orderRepository = orderRepository;</span>
+<span class="fc" id="L100">        this.accountRepository = accountRepository;</span>
+<span class="fc" id="L101">        this.instrumentRepository = instrumentRepository;</span>
+<span class="fc" id="L102">        this.userRepository = userRepository;</span>
+<span class="fc" id="L103">        this.validationPipeline = validationPipeline;</span>
+<span class="fc" id="L104">        this.orderExecutionService = orderExecutionService;</span>
+<span class="fc" id="L105">        this.auditTrailService = auditTrailService;</span>
+<span class="fc" id="L106">        this.events = events;</span>
+<span class="fc" id="L107">        this.transactions = new TransactionTemplate(transactionManager);</span>
+<span class="fc" id="L108">    }</span>
 
     /**
      * Submits an order on an account the caller owns. The order is created
      * {@code PENDING}; it returns as {@code REJECTED} when a trading rule
-     * fails, or {@code FILLED} once the fill is written and the owning user's
-     * available funds and the account's holdings have moved. Never throws for
-     * a trade that fails a trading rule — that's a normal outcome, reflected
-     * in the returned order's status, not an HTTP-level error. It throws only
-     * when the request names something that doesn't exist or isn't the
-     * caller's.
+     * fails, {@code FILLED} once the fill is written and the owning user's
+     * available funds and the account's holdings have moved, or
+     * {@code ACCEPTED} when it passed the rules but execution failed
+     * unexpectedly, in which case the order stays on record and the failure
+     * is in its audit trail. Never throws for a trade that fails a trading
+     * rule or whose execution fails; those are outcomes, reflected in the
+     * returned order's status, not HTTP-level errors. It throws only when the
+     * request names something that doesn't exist or isn't the caller's.
      *
      * &lt;p&gt;Ownership is settled before anything else, including the idempotency
      * lookup: an idempotency key is scoped to an account, so answering one
@@ -77,73 +126,113 @@ public class OrderService {
      *
      * @param request the validated submission
      * @param callerId the caller's user id, from the token's {@code sub} claim
-     * @return the persisted order in its final status
+     * @return the persisted order in its current status
      * @throws AccountNotFoundException    if {@code accountId} does not exist
      * @throws ForbiddenException          if {@code accountId} belongs to another user
      * @throws InstrumentNotFoundException if {@code instrumentId} does not exist
-     * @throws org.springframework.dao.DataAccessException if persistence fails; the order and all
-     *         execution ledger writes are rolled back together
+     * @throws org.springframework.dao.DataAccessException if the acceptance transaction itself
+     *         fails to persist; nothing is then on record
      * @throws IllegalStateException       if the account has no owning user
      */
-    @Transactional
     public Order submitOrder(OrderRequest request, UUID callerId) {
-<span class="fc" id="L90">        Account account = accountRepository.findById(request.accountId())</span>
-<span class="fc" id="L91">                .orElseThrow(() -&gt; new AccountNotFoundException(&quot;No account &quot; + request.accountId()));</span>
-<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (!account.getUserId().equals(callerId)) {</span>
-<span class="fc" id="L93">            throw new ForbiddenException(&quot;You do not have access to this account&quot;);</span>
+<span class="fc" id="L138">        Acceptance accepted = transactions.execute(status -&gt; accept(request, callerId));</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        if (!accepted.executable()) {</span>
+<span class="fc" id="L140">            return accepted.order();</span>
+        }
+        try {
+<span class="fc" id="L143">            return orderExecutionService.execute(accepted.order(), accepted.instrument());</span>
+<span class="fc" id="L144">        } catch (RuntimeException ex) {</span>
+<span class="fc" id="L145">            Integer orderId = accepted.order().getOrderId();</span>
+<span class="fc" id="L146">            log.error(&quot;Execution of order {} failed; the order stays ACCEPTED on record&quot;, orderId, ex);</span>
+<span class="fc" id="L147">            recordExecutionFailure(orderId, ex);</span>
+<span class="fc" id="L148">            return orderRepository.findById(orderId).orElse(accepted.order());</span>
+        }
+    }
+
+    /** What the acceptance transaction committed, and whether execution should follow. */
+<span class="fc" id="L153">    private record Acceptance(Order order, Instrument instrument, boolean executable) {</span>
+    }
+
+    private Acceptance accept(OrderRequest request, UUID callerId) {
+<span class="fc" id="L157">        Account account = accountRepository.findById(request.accountId())</span>
+<span class="fc" id="L158">                .orElseThrow(() -&gt; new AccountNotFoundException(&quot;No account &quot; + request.accountId()));</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        if (!account.getUserId().equals(callerId)) {</span>
+<span class="fc" id="L160">            throw new ForbiddenException(&quot;You do not have access to this account&quot;);</span>
         }
 
-<span class="fc" id="L96">        Optional&lt;Order&gt; existing = orderRepository</span>
-<span class="fc" id="L97">                .findByAccountIdAndClientReference(request.accountId(), request.clientReference());</span>
-<span class="fc bfc" id="L98" title="All 2 branches covered.">        if (existing.isPresent()) {</span>
+<span class="fc" id="L163">        Optional&lt;Order&gt; existing = orderRepository</span>
+<span class="fc" id="L164">                .findByAccountIdAndClientReference(request.accountId(), request.clientReference());</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        if (existing.isPresent()) {</span>
             // Same idempotency key already processed (or in flight) for this account —
             // return its outcome rather than validating or executing a second time.
             // Note: a genuinely concurrent duplicate can still race past this check;
             // the DB's UNIQUE (account_id, client_reference) constraint is the backstop.
-<span class="fc" id="L103">            return existing.get();</span>
+<span class="fc" id="L170">            return new Acceptance(existing.get(), null, false);</span>
         }
 
-<span class="fc" id="L106">        User user = userRepository.findById(account.getUserId())</span>
-<span class="pc" id="L107">                .orElseThrow(() -&gt; new IllegalStateException(</span>
-<span class="nc" id="L108">                        &quot;Account &quot; + account.getAccountId() + &quot; has no owning user&quot;));</span>
-<span class="fc" id="L109">        Instrument instrument = instrumentRepository.findById(request.instrumentId())</span>
-<span class="fc" id="L110">                .orElseThrow(() -&gt; new InstrumentNotFoundException(&quot;No instrument &quot; + request.instrumentId()));</span>
+<span class="fc" id="L173">        User user = userRepository.findById(account.getUserId())</span>
+<span class="pc" id="L174">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+<span class="nc" id="L175">                        &quot;Account &quot; + account.getAccountId() + &quot; has no owning user&quot;));</span>
+<span class="fc" id="L176">        Instrument instrument = instrumentRepository.findById(request.instrumentId())</span>
+<span class="fc" id="L177">                .orElseThrow(() -&gt; new InstrumentNotFoundException(&quot;No instrument &quot; + request.instrumentId()));</span>
 
-<span class="fc bfc" id="L112" title="All 2 branches covered.">        BigDecimal bufferPercent = request.bufferPercent() != null</span>
-<span class="fc" id="L113">                ? request.bufferPercent()</span>
-<span class="fc" id="L114">                : user.getExecutionBufferPercent();</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        BigDecimal bufferPercent = request.bufferPercent() != null</span>
+<span class="fc" id="L180">                ? request.bufferPercent()</span>
+<span class="fc" id="L181">                : user.getExecutionBufferPercent();</span>
 
-<span class="fc" id="L116">        OffsetDateTime now = OffsetDateTime.now();</span>
-<span class="fc" id="L117">        Order order = new Order();</span>
-<span class="fc" id="L118">        order.setAccountId(account.getAccountId());</span>
-<span class="fc" id="L119">        order.setInstrumentId(instrument.getInstrumentId());</span>
-<span class="fc" id="L120">        order.setClientReference(request.clientReference());</span>
-<span class="fc" id="L121">        order.setOrderType(request.orderType());</span>
-<span class="fc" id="L122">        order.setQuantity(request.quantity());</span>
-<span class="fc" id="L123">        order.setIndicativePrice(request.indicativePrice());</span>
-<span class="fc" id="L124">        order.setBufferPercent(bufferPercent);</span>
-<span class="fc" id="L125">        order.setStatus(Order.STATUS_PENDING);</span>
-<span class="fc" id="L126">        order.setSubmittedAt(now);</span>
-<span class="fc" id="L127">        order.setSimulatedAt(request.simulatedAt());</span>
-<span class="fc" id="L128">        order = orderRepository.save(order);</span>
-<span class="fc" id="L129">        auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, null);</span>
+<span class="fc" id="L183">        OffsetDateTime now = OffsetDateTime.now();</span>
+<span class="fc" id="L184">        Order order = new Order();</span>
+<span class="fc" id="L185">        order.setAccountId(account.getAccountId());</span>
+<span class="fc" id="L186">        order.setInstrumentId(instrument.getInstrumentId());</span>
+<span class="fc" id="L187">        order.setClientReference(request.clientReference());</span>
+<span class="fc" id="L188">        order.setOrderType(request.orderType());</span>
+<span class="fc" id="L189">        order.setQuantity(request.quantity());</span>
+<span class="fc" id="L190">        order.setIndicativePrice(request.indicativePrice());</span>
+<span class="fc" id="L191">        order.setBufferPercent(bufferPercent);</span>
+<span class="fc" id="L192">        order.setStatus(Order.STATUS_PENDING);</span>
+<span class="fc" id="L193">        order.setSubmittedAt(now);</span>
+<span class="fc" id="L194">        order.setSimulatedAt(request.simulatedAt());</span>
+<span class="fc" id="L195">        order = orderRepository.save(order);</span>
+<span class="fc" id="L196">        auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, null);</span>
 
-<span class="fc" id="L131">        ValidationResult result = validationPipeline.run(request, user, account, instrument);</span>
-<span class="fc bfc" id="L132" title="All 2 branches covered.">        if (!result.passed()) {</span>
-<span class="fc" id="L133">            order.setStatus(Order.STATUS_REJECTED);</span>
-<span class="fc" id="L134">            order.setRejectionReason(result.reason());</span>
-<span class="fc" id="L135">            order.setResolvedAt(OffsetDateTime.now());</span>
-<span class="fc" id="L136">            order = orderRepository.save(order);</span>
-<span class="fc" id="L137">            auditTrailService.record(order.getOrderId(), Order.STATUS_REJECTED, result.reason());</span>
-<span class="fc" id="L138">            return order;</span>
+<span class="fc" id="L198">        ValidationResult result = validationPipeline.run(request, user, account, instrument);</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        if (!result.passed()) {</span>
+<span class="fc" id="L200">            order.setStatus(Order.STATUS_REJECTED);</span>
+<span class="fc" id="L201">            order.setRejectionReason(result.reason());</span>
+<span class="fc" id="L202">            order.setResolvedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L203">            order = orderRepository.save(order);</span>
+<span class="fc" id="L204">            auditTrailService.record(order.getOrderId(), Order.STATUS_REJECTED, result.reason());</span>
+<span class="fc" id="L205">            events.publishEvent(OrderStatusEvent.from(order, instrument));</span>
+<span class="fc" id="L206">            return new Acceptance(order, instrument, false);</span>
         }
 
-        // The rules passed (BR-05); the order stays PENDING until execution
-        // moves it to FILLED, or rejects it under the row lock.
-<span class="fc" id="L143">        order.setAcceptedAt(OffsetDateTime.now());</span>
-<span class="fc" id="L144">        order = orderRepository.save(order);</span>
+        // The rules passed (BR-05). Commit the order as ACCEPTED before anything
+        // executes: this is the record of intent BR-06 requires, and it survives
+        // whatever happens in the execution transaction.
+<span class="fc" id="L212">        order.setStatus(Order.STATUS_ACCEPTED);</span>
+<span class="fc" id="L213">        order.setAcceptedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L214">        order = orderRepository.save(order);</span>
+<span class="fc" id="L215">        auditTrailService.record(order.getOrderId(), Order.STATUS_ACCEPTED, null);</span>
+<span class="fc" id="L216">        events.publishEvent(OrderStatusEvent.from(order, instrument));</span>
+<span class="fc" id="L217">        return new Acceptance(order, instrument, true);</span>
+    }
 
-<span class="fc" id="L146">        return orderExecutionService.execute(order, instrument);</span>
+    private void recordExecutionFailure(Integer orderId, RuntimeException failure) {
+<span class="fc" id="L221">        String detail = describe(failure);</span>
+        try {
+<span class="fc" id="L223">            transactions.executeWithoutResult(status -&gt;</span>
+<span class="fc" id="L224">                    auditTrailService.record(orderId, AUDIT_EXECUTION_FAILED, detail));</span>
+<span class="nc" id="L225">        } catch (RuntimeException auditFailure) {</span>
+<span class="nc" id="L226">            log.error(&quot;Could not record the execution failure of order {}&quot;, orderId, auditFailure);</span>
+<span class="fc" id="L227">        }</span>
+<span class="fc" id="L228">    }</span>
+
+    private static String describe(RuntimeException failure) {
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">        String message = failure.getMessage() == null ? &quot;&quot; : failure.getMessage();</span>
+<span class="fc" id="L232">        String detail = failure.getClass().getSimpleName() + &quot;: &quot; + message;</span>
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        return detail.length() &lt;= MAX_FAILURE_DETAIL_LENGTH</span>
+<span class="fc" id="L234">                ? detail</span>
+<span class="fc" id="L235">                : detail.substring(0, MAX_FAILURE_DETAIL_LENGTH);</span>
     }
 
     /**
@@ -157,9 +246,7 @@ public class OrderService {
      */
     @Transactional(readOnly = true)
     public List&lt;Order&gt; getOwnOrders(UUID userId) {
-<span class="fc" id="L160">        return orderRepository.findAllByOwningUserId(userId);</span>
+<span class="fc" id="L249">        return orderRepository.findAllByOwningUserId(userId);</span>
     }
 }
-
-
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

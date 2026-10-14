@@ -2,8 +2,6 @@
 Tests for Flask application configuration and initialization
 """
 
-import os
-
 import pytest
 from sqlalchemy import text
 from config import (
@@ -11,7 +9,6 @@ from config import (
     DevelopmentConfig,
     ProductionConfig,
     TestingConfig,
-    normalize_database_url,
 )
 
 
@@ -54,35 +51,17 @@ class TestConfig:
         assert isinstance(config.CORS_ORIGINS, list)
         assert len(config.CORS_ORIGINS) > 0
 
-    def test_normalize_database_url_postgresql_scheme(self):
-        """Test PostgreSQL URLs use the psycopg driver."""
-        database_url = 'postgresql://user:pass@localhost:5432/reporting'
+    def test_there_is_no_database_to_configure(self, monkeypatch):
+        """The service reads Kafka's files only: a database URL in the environment changes nothing."""
+        monkeypatch.setenv('DATABASE_URL', 'postgresql://trading_season:password@localhost:5432/trading_season')
 
-        assert normalize_database_url(database_url) == (
-            'postgresql+psycopg://user:pass@localhost:5432/reporting'
-        )
+        for settings in (Config, DevelopmentConfig, ProductionConfig, TestingConfig):
+            assert not hasattr(settings, 'DATABASE_URL')
+            assert settings.READ_MODEL_URL == 'sqlite:///:memory:'
 
-    def test_normalize_database_url_postgres_alias(self):
-        """Test postgres:// aliases are normalized."""
-        database_url = 'postgres://user:pass@localhost:5432/reporting'
-
-        assert normalize_database_url(database_url) == (
-            'postgresql+psycopg://user:pass@localhost:5432/reporting'
-        )
-
-    def test_testing_config_normalizes_environment_url(self, monkeypatch):
-        """Test TEST_DATABASE_URL is normalized when loaded from the environment."""
-        monkeypatch.setenv(
-            'TEST_DATABASE_URL',
-            'postgresql://trading_season:password@localhost:5432/trading_season_test'
-        )
-
-        class RuntimeTestingConfig(Config):
-            DATABASE_URL = normalize_database_url(os.getenv('TEST_DATABASE_URL', ''))
-
-        assert RuntimeTestingConfig.DATABASE_URL == (
-            'postgresql+psycopg://trading_season:password@localhost:5432/trading_season_test'
-        )
+    def test_consumes_both_topics_by_default(self):
+        assert Config.KAFKA_TRADE_EVENTS_TOPIC == 'trade-events'
+        assert Config.KAFKA_PLATFORM_RECORDS_TOPIC == 'platform-records'
 
 
 class TestAppInitialization:
@@ -98,17 +77,28 @@ class TestAppInitialization:
         assert app.config['TESTING'] is True
         assert app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] is False
     
-    def test_database_initialized(self, app):
-        """Test database is initialized"""
+    def test_read_model_is_an_in_memory_database(self, app):
+        """The only database the app knows is its own in-memory read model"""
+        assert app.config['SQLALCHEMY_DATABASE_URI'] == 'sqlite:///:memory:'
         with app.app_context():
-            # Verify we can execute a simple query
-            result = app.extensions['sqlalchemy'].session.execute(text('SELECT 1'))
-            assert result is not None
+            session = app.extensions['sqlalchemy'].session
+            assert session.execute(text('SELECT 1')).scalar() == 1
+            assert session.get_bind().dialect.name == 'sqlite'
     
     def test_cors_enabled(self, client):
         """Test CORS is enabled on responses."""
         response = client.get('/', headers={'Origin': 'http://localhost:4200'})
         assert response.headers.get('Access-Control-Allow-Origin') == 'http://localhost:4200'
+
+    def test_csrf_protection_enabled(self, app):
+        """Test CSRF protection is registered on the app."""
+        assert 'csrf' in app.extensions
+        assert app.config['WTF_CSRF_ENABLED'] is True
+
+    def test_csrf_protection_keeps_read_only_contract(self, client):
+        """Test CSRF protection does not change responses on the read-only API."""
+        assert client.get('/').status_code == 200
+        assert client.post('/').status_code == 405
 
 
 class TestHealthCheckEndpoint:
@@ -146,7 +136,7 @@ class TestRootEndpoint:
         response = client.get('/')
         data = response.get_json()
         assert 'api_endpoints' in data
-        assert 'portfolio' in data['api_endpoints']
+        assert 'runs' in data['api_endpoints']
 
     def test_root_endpoint_lists_docs_links(self, client):
         """Test root endpoint exposes docs links."""
@@ -186,7 +176,7 @@ class TestErrorHandlers:
     
     def test_401_missing_auth(self, client):
         """Test 401 for missing authorization"""
-        response = client.get('/api/reporting/portfolio')
+        response = client.get('/api/reporting/profile')
         assert response.status_code == 401
         data = response.get_json()
         assert 'error' in data

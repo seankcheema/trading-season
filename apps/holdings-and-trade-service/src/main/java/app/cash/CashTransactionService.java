@@ -5,7 +5,9 @@ import app.account.AccountNotFoundException;
 import app.account.AccountRepository;
 import app.user.User;
 import app.user.UserNotFoundException;
+import app.record.CashTransferRecord;
 import app.user.UserRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +28,11 @@ import java.util.UUID;
  *
  * <p>Every operation is scoped to the user id from the verified token, so a
  * caller can only read and move their own cash.
+ *
+ * <p>Each movement is raised as a {@link CashTransferRecord}, which
+ * {@link app.record.PlatformRecordPublisher} sends to Kafka once the
+ * transaction has committed, so the reporting service sees deposits,
+ * withdrawals and the balance they left without reading the ledger.
  */
 @Service
 public class CashTransactionService {
@@ -39,6 +46,7 @@ public class CashTransactionService {
     private final CashTransactionRepository cashTransactionRepository;
     private final AccountRepository accountRepository;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher events;
 
     /**
      * Creates the service.
@@ -46,13 +54,16 @@ public class CashTransactionService {
      * @param cashTransactionRepository persistence for the cash ledger
      * @param accountRepository         used to resolve the account a row is booked against
      * @param userRepository            persistence for the balance the ledger backs
+     * @param events                    publisher of the {@link CashTransferRecord} raised for a movement
      */
     public CashTransactionService(CashTransactionRepository cashTransactionRepository,
                                   AccountRepository accountRepository,
-                                  UserRepository userRepository) {
+                                  UserRepository userRepository,
+                                  ApplicationEventPublisher events) {
         this.cashTransactionRepository = cashTransactionRepository;
         this.accountRepository = accountRepository;
         this.userRepository = userRepository;
+        this.events = events;
     }
 
     /**
@@ -115,7 +126,9 @@ public class CashTransactionService {
         transaction.setAmount(signed);
         transaction.setReason(reason);
         transaction.setCreatedAt(OffsetDateTime.now());
-        return cashTransactionRepository.save(transaction);
+        CashTransaction saved = cashTransactionRepository.save(transaction);
+        events.publishEvent(CashTransferRecord.from(saved, userId, user.getAvailableFunds()));
+        return saved;
     }
 
     private static int pageSize(Integer limit) {

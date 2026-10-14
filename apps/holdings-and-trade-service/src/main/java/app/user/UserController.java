@@ -4,6 +4,7 @@ import app.auth.AuthenticatedUser;
 import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,7 +30,7 @@ public class UserController {
     /**
      * Creates the controller.
      *
-     * @param userService account lookup logic
+     * @param userService account lookup and terms acceptance logic
      */
     public UserController(UserService userService) {
         this.userService = userService;
@@ -65,8 +66,30 @@ public class UserController {
     @GetMapping
     @Operation(summary = "Get authenticated user profile", description = "Returns the profile of the authenticated user, including personal and account information")
     public UserProfileResponse me(@AuthenticationPrincipal Jwt jwt) {
+        return profileOf(AuthenticatedUser.from(jwt).userId());
+    }
+
+    /**
+     * Records that the caller accepts the platform terms. Accepting again
+     * succeeds and changes nothing.
+     *
+     * @param jwt     the verified access token
+     * @param request the version of the terms the caller was shown
+     * @return the caller's profile, now reporting the terms as accepted
+     * @throws app.auth.ConflictException if the version shown is not the one in force
+     * @throws UserNotFoundException      if the caller has not registered
+     */
+    @PutMapping("/me/terms-acceptance")
+    @Operation(summary = "Accept the platform terms", description = "Records that the authenticated user accepts the version of the platform terms they were shown, and returns their updated profile")
+    public UserProfileResponse acceptTerms(@AuthenticationPrincipal Jwt jwt,
+                                           @Valid @RequestBody AcceptTermsRequest request) {
         UUID userId = AuthenticatedUser.from(jwt).userId();
+        userService.acceptTerms(userId, request.termsVersion());
+        return profileOf(userId);
+    }
+
+    private UserProfileResponse profileOf(UUID userId) {
         return UserProfileResponse.from(userService.getOwnAccount(userId),
-                userService.getUserAccount(userId));
+                userService.getUserAccount(userId), userService.hasAcceptedCurrentTerms(userId));
     }
 }
