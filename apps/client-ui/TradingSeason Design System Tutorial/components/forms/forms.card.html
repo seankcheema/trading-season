@@ -1,0 +1,21 @@
+<!-- @dsCard group="Components" viewport="700x400" name="Forms" subtitle="Field, Input, NativeSelect, Select" -->
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{padding:20px;font-size:14px}.r{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.c{display:flex;flex-direction:column;gap:14px}</style></head><body><div id="root"></div>
+<script type="text/babel">
+const NS = window.TradingSeasonDesignSystem_86c3eb;
+
+const { Field, FieldChecklist, Input, NativeSelect, Select } = NS;
+function App(){const [s,setS]=React.useState('FILLED');const [pw,setPw]=React.useState('trade1');return <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:18}}>
+<Field label="Email" htmlFor="e"><Input id="e" icon="mail" radius={5} placeholder="you@example.com"/></Field>
+<Field label="Email" htmlFor="e2" error="Enter a valid email address."><Input id="e2" icon="mail" radius={5} defaultValue="jane@" invalid/></Field>
+<Field label="Password" htmlFor="p"><Input id="p" icon="lock" reveal radius={5} value={pw} onChange={e=>setPw(e.target.value)}/><FieldChecklist items={[{label:'At least 8 characters',met:pw.length>=8},{label:'At least 1 number',met:/\d/.test(pw)},{label:'At least 1 special character',met:/[^\w\s]/.test(pw)}]}/></Field>
+<Field label="Available funds" htmlFor="f" description="A minimum of $5,000 is required to open an account."><Input id="f" icon="dollar-sign" type="number" radius={5} placeholder="5000"/></Field>
+<Field label="Trader level" htmlFor="t"><NativeSelect id="t" radius={5} options={['Beginner','Intermediate','Advanced']}/></Field>
+<Field label="Status filter"><Select value={s} onChange={setS} width="100%" options={['FILLED','PENDING','REJECTED','CANCELLED']}/></Field>
+</div>}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>
