@@ -61,12 +61,14 @@ The analysis stage runs after the test suites so it can import their coverage re
 | Where | Setting |
 | --- | --- |
 | Jenkins plugin | SonarQube Scanner |
-| Manage Jenkins > Tools | A SonarQube Scanner installation named `SonarScanner` |
+| Manage Jenkins > Tools | A SonarQube Scanner installation named `SonarScanner`, using CLI 8.1 with its bundled JRE |
 | Manage Jenkins > System | A SonarQube server named `SonarQube` with the server URL typed in and a Secret text credential holding the project analysis token. A blank URL field still lets the scan run against the `http://localhost:9000` default, but the quality gate stage then fails with `Expected URL scheme 'http' or 'https'` |
 | SonarQube > Administration > Webhooks | A webhook to `<jenkins-url>/sonarqube-webhook/`; without it the quality gate stage waits until it times out |
 | SonarQube project | Key and name `DuaLeapa-Project`, as set in [sonar-project.properties](jenkins/sonar-project.properties) |
 
 The Jenkinsfile holds no server URL or token; both come from the `SonarQube` server entry. Language rules come from the quality profiles assigned to the project in SonarQube, not from this repository.
+
+If analysis fails with `No tool named SonarScanner found`, open Manage Jenkins > Tools > SonarQube Scanner installations, add the installation with the exact name `SonarScanner`, configure the CLI 8.1 distribution with its bundled JRE, and save. An existing `SONAR_SCANNER_TOOL` environment override must match the configured installation name. Rerun the pipeline after saving; the scanner tool is separate from the `SonarQube` server entry and its credentials.
 
 Coverage reaches SonarQube from the reports the test stages write: LCOV for the two UIs and the auth service, Cobertura XML for the reporting service and the market-data scripts, and JaCoCo for the Java services. [jacoco-to-sonar-coverage.mjs](jenkins/jacoco-to-sonar-coverage.mjs) first rewrites each JaCoCo report with full file paths, because both services use the same Java packages and SonarQube's JaCoCo importer would otherwise credit one service's coverage to the other. The reporting tests mount the workspace at its own path inside the container so the source path in `coverage.xml` exists on the agent. The market-data scripts have no unit tests, so their stage runs every script of the two-day integration under coverage.py and merges the results into `reports/market-data/coverage.xml`; the figure is what that integration executes. That report names each file relative to the repository root, which the scanner resolves from the workspace.
 

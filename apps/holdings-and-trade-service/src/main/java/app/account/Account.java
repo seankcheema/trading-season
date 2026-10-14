@@ -33,10 +33,18 @@ public class Account {
     @Column(name = "archived_at")
     private Instant archivedAt;
 
-    /** @return the archive timestamp, or null for an active account */
+    /**
+     * Returns when this account was archived.
+     *
+     * @return the archive timestamp, or null for an active account
+     */
     public Instant getArchivedAt() { return archivedAt; }
 
-    /** @param archivedAt the archive timestamp; null means active */
+    /**
+     * Sets when this account was archived.
+     *
+     * @param archivedAt the archive timestamp; null means active
+     */
     public void setArchivedAt(Instant archivedAt) { this.archivedAt = archivedAt; }
 
     @Id

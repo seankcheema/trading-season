@@ -12,4 +12,5 @@ app.order.event
 app.order.execution
 app.order.validation
 app.order.validation.impl
+app.record
 app.user
