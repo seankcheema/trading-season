@@ -13,6 +13,8 @@ pipeline {
     }
 
     options {
+        // The native agent shares memory with Jenkins and SonarQube.
+        disableConcurrentBuilds()
         buildDiscarder(logRotator(numToKeepStr: '10'))
         // The Checkout stage does a depth-1 clone instead.
         skipDefaultCheckout(true)
@@ -89,11 +91,10 @@ pipeline {
                 '''
             }
         }
-        // Each suite runs once. Java branches use separate Maven repositories.
-        // E2E follows the parallel group to avoid browser CPU contention.
+        // Each suite runs once, sequentially to limit peak agent memory usage.
+        // Java suites use separate Maven repositories; E2E follows the group.
         stage('Test Suites') {
-            failFast true
-            parallel {
+            stages {
                 stage('Holdings and Trade Service Tests') {
                     steps {
                         dir('apps/holdings-and-trade-service') {
