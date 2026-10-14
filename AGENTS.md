@@ -11,6 +11,7 @@ Read [README.md](README.md) for the service map and system diagrams, then only t
 | HTTP contract changes | The owning service README and its Swagger UI |
 | Schema changes, republishing history to Kafka, demo history | [Database](db/README.md) |
 | Deployment and CI | [Infrastructure](infrastructure/README.md) |
+| Stock forecast research | [Stock Forecast](apps/stock-forecast/README.md) |
 | Documentation-only work | [Documentation instructions](docs/AGENTS.md) |
 
 Follow nested AGENTS.md instructions for the area being changed. The reporting service is in development; its README lists what is implemented.

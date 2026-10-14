@@ -13,7 +13,9 @@ A trading simulation platform: an Angular client, two Spring Boot services for t
 | Reporting Service | [apps/reporting-service](apps/reporting-service/README.md) | 8083 | Kafka consumer storing both topics as files, scheduled report runs with charts, endpoints serving the runs to analysts and admins, and views of activity, orders and customers for admins from a read model of those files. No database connection |
 | Reporting UI | [apps/reporting-ui](apps/reporting-ui/README.md) | 4300 | Sign-in for analysts and admins; report runs for both, and activity, customers and orders for admins, read from the Reporting Service |
 | Market Data | [apps/market-data](apps/market-data/README.md) | - | Synthetic market data generation and import |
+| Stock Forecast | [apps/stock-forecast](apps/stock-forecast/README.md) | - | Offline Python research pipeline using real AAPL and SPY history; writes a static Trend card scorecard |
 | Database | [db](db/README.md) | 5432 | Migrations and schema for the shared `trading_season` database, and the tools that publish its history to Kafka and seed demo history |
+
 
 ## Architecture
 
