@@ -91,10 +91,11 @@ pipeline {
                 '''
             }
         }
-        // Each suite runs once, sequentially to limit peak agent memory usage.
-        // Java suites use separate Maven repositories; E2E follows the group.
+        // Each suite runs once in parallel, with separate Maven repositories.
+        // E2E follows the test group.
         stage('Test Suites') {
-            stages {
+            failFast true
+            parallel {
                 stage('Holdings and Trade Service Tests') {
                     steps {
                         dir('apps/holdings-and-trade-service') {
@@ -419,34 +420,13 @@ pipeline {
         stage('Quality Gate') {
             when { expression { currentBuild.currentResult == 'SUCCESS' } }
             steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    script {
-                        def qualityGate = waitForQualityGate abortPipeline: false
-                        echo "SonarQube quality gate status: ${qualityGate.status}"
-                        if (qualityGate.status != 'OK') {
-                            withSonarQubeEnv('SonarQube') {
-                                sh '''
-                                    set -eu
-                                    QUALITY_GATE_FILE="${WORKSPACE}/sonar-quality-gate.json"
-                                    curl --fail --silent --show-error \
-                                      --user "${SONAR_AUTH_TOKEN}:" \
-                                      "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=DuaLeapa-Project" \
-                                      > "$QUALITY_GATE_FILE"
-                                    node -e 'const fs = require("node:fs"); const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); for (const condition of report.projectStatus?.conditions ?? []) console.log(`SonarQube condition: ${condition.metricKey} status=${condition.status} actual=${condition.actualValue ?? "-"} threshold=${condition.errorThreshold ?? "-"}`);' "$QUALITY_GATE_FILE"
-                                    rm -f "$QUALITY_GATE_FILE"
-                                '''
-                            }
-                        }
-                        if (qualityGate.status != 'OK') {
-                            error "SonarQube quality gate failed with status: ${qualityGate.status}"
-                        }
+                timeout(time: 15, unit: 'MINUTES') {
+                    withSonarQubeEnv('SonarQube') {
+                        sh 'node infrastructure/jenkins/wait-for-quality-gate.mjs'
                     }
                 }
             }
         }
-
-
-
         stage('Pre-E2E Disk Cleanup') {
             steps {
                 // Reports were archived by their own stages.
@@ -467,8 +447,8 @@ pipeline {
                 }
                 // Two suites share one image: the Client UI's, against an in-memory
                 // API stand-in, and the Reporting UI's, against the real Reporting
-                // Service. Both always run, so a failure in the first does not hide
-                // the second; the stage fails if either did.
+                // Service. Both run concurrently in separate containers; a failure in
+                // either suite fails the stage after both exit.
                 sh '''
                     set -eu
                     # Chromium needs system libraries the agent lacks and the
@@ -494,7 +474,7 @@ pipeline {
                     reporting_status=0
 
                     # The API is stubbed, so no backend or database is needed.
-                    docker run --rm --name "$E2E_TEST_CONTAINER" \
+                    docker run --rm --name "${E2E_TEST_CONTAINER}-client" \
                         --user "$(id -u):$(id -g)" \
                         --ipc=host \
                         -v "$WORKSPACE:/workspace" \
@@ -505,14 +485,15 @@ pipeline {
                         -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
                         -w /workspace/apps/client-ui \
                         "$PW_IMAGE" \
-                        npm run e2e || client_status=$?
+                        npm run e2e &
+                    client_pid=$!
 
                     # The suite starts the real Reporting Service, the Auth Service
                     # stand-in and the built app inside this one container, on
                     # loopback ports of its own. The service's requirements go into
                     # a venv first, as in the Reporting Service Tests stage; Kafka and
                     # the database are not needed, the service reads seeded files.
-                    docker run --rm --name "$E2E_TEST_CONTAINER" \
+                    docker run --rm --name "${E2E_TEST_CONTAINER}-reporting" \
                         --user "$(id -u):$(id -g)" \
                         --ipc=host \
                         -v "$WORKSPACE:/workspace" \
@@ -527,7 +508,10 @@ pipeline {
                         -w /workspace/apps/reporting-ui \
                         "$PW_IMAGE" \
                         sh -c "python3 -m venv /tmp/reporting-venv && /tmp/reporting-venv/bin/pip install -q -r /workspace/apps/reporting-service/requirements.txt && npm run e2e" \
-                        || reporting_status=$?
+                        &
+                    reporting_pid=$!
+                    wait "$client_pid" || client_status=$?
+                    wait "$reporting_pid" || reporting_status=$?
 
                     echo "Client UI end-to-end exit status: $client_status; Reporting UI: $reporting_status"
                     if [ "$client_status" -ne 0 ] || [ "$reporting_status" -ne 0 ]; then
@@ -853,7 +837,8 @@ pipeline {
                             fi
                         }
                         if [ -n "${E2E_TEST_CONTAINER:-}" ]; then
-                            remove_resource container "$E2E_TEST_CONTAINER" -f
+                            remove_resource container "${E2E_TEST_CONTAINER}-client" -f
+                            remove_resource container "${E2E_TEST_CONTAINER}-reporting" -f
                         fi
                         if [ -n "${MARKET_TEST_TAG:-}" ]; then
                             remove_resource container "${MARKET_TEST_TAG}-db" -f
