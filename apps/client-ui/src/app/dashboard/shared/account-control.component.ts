@@ -5,7 +5,7 @@ import {
   lucideBriefcaseBusiness,
   lucideCheck,
   lucideChevronDown,
-  lucidePencil,
+  lucideEllipsis,
   lucidePlus,
 } from '@ng-icons/lucide';
 import { DashboardHeaderDropdownComponent } from './dashboard-header-dropdown.component';
@@ -32,7 +32,7 @@ import { Account } from '../accounts/account.models';
       lucideBriefcaseBusiness,
       lucideCheck,
       lucideChevronDown,
-      lucidePencil,
+      lucideEllipsis,
       lucidePlus,
     }),
   ],
@@ -97,10 +97,10 @@ import { Account } from '../accounts/account.models';
                   type="button"
                   role="menuitem"
                   class="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors"
-                  [attr.aria-label]="'Rename ' + account.name"
+                  [attr.aria-label]="'Settings for ' + account.name"
                   (click)="rename.emit(account)"
                 >
-                  <ng-icon name="lucidePencil" class="text-[14px]" />
+                  <ng-icon name="lucideEllipsis" class="text-[14px]" />
                 </button>
               </div>
             } @empty {

@@ -228,7 +228,41 @@ export class AccountStore {
     );
   }
 
-  // Renaming is the only edit an account, and so its portfolio, supports.
+  eligibility(
+    accountId: number,
+  ): Observable<{ archiveBlockers: string[]; deleteBlockers: string[] }> {
+    return this._http
+      .get<{ archiveBlockers: string[]; deleteBlockers: string[] }>(
+        `${this._apiUrl}/me/accounts/${accountId}/eligibility`,
+      )
+      .pipe(takeUntil(this.cancelled));
+  }
+
+  deleteAccount(accountId: number): Observable<void> {
+    if (!this.isOwnedAccount(accountId)) return throwError(() => new NotOwnedError());
+    const url = `${this._apiUrl}/me/accounts/${accountId}`;
+    const request = this._http.delete<unknown>(url, { params: { confirmed: true } });
+    return request.pipe(
+      takeUntil(this.cancelled),
+      tap(() => {
+        this.invalidate();
+        this._accounts.update((accounts) => accounts.filter((a) => a.accountId !== accountId));
+        this._holdings.update((current) => {
+          const next = new Map(current);
+          next.delete(accountId);
+          return next;
+        });
+      }),
+      switchMap(() =>
+        this.afterChange(
+          forkJoin([this.fetchAccounts(), this.fetchProfile(), this.fetchCashTransactions()]),
+          undefined,
+        ),
+      ),
+    );
+  }
+
+  // Rename an active account.
   renameAccount(accountId: number, details: AccountDetails): Observable<Account> {
     if (!this.isOwnedAccount(accountId)) {
       return throwError(() => new NotOwnedError());

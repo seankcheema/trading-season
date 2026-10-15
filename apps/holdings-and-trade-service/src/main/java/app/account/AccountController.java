@@ -39,13 +39,13 @@ public class AccountController {
     }
 
     /**
-     * Returns all accounts belonging to the authenticated caller.
+     * Returns ACTIVE accounts belonging to the authenticated caller.
      *
      * @param jwt the verified access token
      * @return a list of the caller's accounts
      */
     @GetMapping("/me/accounts")
-    @Operation(summary = "List user accounts", description = "Retrieves all accounts owned by the authenticated user")
+    @Operation(summary = "List user accounts", description = "Retrieves ACTIVE accounts owned by the authenticated user; archived accounts remain in history")
     public List<AccountResponse> listAccounts(@AuthenticationPrincipal Jwt jwt) {
         AuthenticatedUser caller = AuthenticatedUser.from(jwt);
         return accountService.getAccountsForUser(caller.userId())

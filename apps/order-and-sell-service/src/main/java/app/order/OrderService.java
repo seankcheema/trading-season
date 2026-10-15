@@ -51,7 +51,8 @@ import java.util.UUID;
  * <p>Each transaction raises an {@link OrderStatusEvent} for the status it
  * committed, published to Kafka after that commit by
  * {@link app.order.event.TradeEventPublisher}. A resubmission that returns an
- * existing order raises nothing.
+ * existing order raises nothing. New submissions lock the account and require ACTIVE
+ * status, serializing order acceptance with account archiving and deletion.
  */
 @Service
 public class OrderService {
@@ -175,7 +176,7 @@ public class OrderService {
     }
 
     private Acceptance accept(OrderRequest request, UUID callerId) {
-        Account account = accountRepository.findById(request.accountId())
+        Account account = accountRepository.findByIdForUpdate(request.accountId())
                 .orElseThrow(() -> new AccountNotFoundException("No account " + request.accountId()));
         if (!account.getUserId().equals(callerId)) {
             throw new ForbiddenException("You do not have access to this account");
@@ -189,6 +190,10 @@ public class OrderService {
             // Note: a genuinely concurrent duplicate can still race past this check;
             // the DB's UNIQUE (account_id, client_reference) constraint is the backstop.
             return new Acceptance(existing.get(), null, false);
+        }
+
+        if (!"ACTIVE".equals(account.getStatus())) {
+            throw new ForbiddenException("Archived accounts cannot trade");
         }
 
         if (!termsAcceptanceRepository.existsById(

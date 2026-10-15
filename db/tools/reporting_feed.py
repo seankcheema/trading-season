@@ -48,7 +48,7 @@ QUERIES = {
     'profiles': '''SELECT user_id, first_name, last_name, trader_level, available_funds, session_timeout_minutes,
                           last_activity_at, created_at
                    FROM users ORDER BY created_at, user_id''',
-    'accounts': 'SELECT account_id, user_id, name, opened_date, currency FROM accounts ORDER BY account_id',
+    'accounts': 'SELECT account_id, user_id, name, opened_date, currency, status, archived_at FROM accounts ORDER BY account_id',
     'session': '''SELECT id FROM simulation_sessions WHERE status = 'COMPLETED'
                   ORDER BY created_at DESC, id DESC LIMIT 1''',
     'cash': '''SELECT cash_transaction_id, account_id, fill_id, amount, reason, created_at
@@ -172,6 +172,7 @@ def build_messages(snapshot):
         messages.append(_record('TRADING_ACCOUNT', row['account_id'], {
             'accountId': row['account_id'], 'userId': text(row['user_id']), 'name': row['name'],
             'openedDate': iso(row['opened_date']), 'currency': row['currency'],
+            'status': row.get('status', 'ACTIVE'), 'archivedAt': iso(row.get('archived_at')),
         }))
     for row in snapshot['session']:
         messages.append(_record('MARKET_SESSION', 'current', {'sessionId': row['id']}))

@@ -14,7 +14,8 @@ import java.util.UUID;
 /**
  * A brokerage/child account: the unit orders and holdings attach to/
  * A user can own more than one account (KAN-78, KAN-103/104)
- * Represents an account with an ID, name, and balance.
+ * Represents an account with an ID, name, balance, and ACTIVE or ARCHIVED lifecycle.
+ * Archived accounts retain their identity and history but reject new financial activity.
  * <p>{@code cashBalance} is a cache (BR-10) reconciled against
  * {@code cash_transactions}; never write this field without inserting the
  * matching ledger row. Since KAN-93 order execution does not move it: buy and
@@ -45,6 +46,28 @@ public class Account {
 
     @Column(nullable = false)
     private String currency = "USD";
+
+    @Column(nullable = false)
+    private String status = "ACTIVE";
+
+    @Column(name = "archived_at")
+    private java.time.Instant archivedAt;
+
+    /** Returns the portfolio lifecycle.
+     * @return ACTIVE or ARCHIVED */
+    public String getStatus() { return status; }
+
+    /** Sets the portfolio lifecycle.
+     * @param status ACTIVE or ARCHIVED */
+    public void setStatus(String status) { this.status = status; }
+
+    /** Returns the archive audit time.
+     * @return archive time, or null for an active account */
+    public java.time.Instant getArchivedAt() { return archivedAt; }
+
+    /** Sets the archive audit time.
+     * @param archivedAt time the account became read-only */
+    public void setArchivedAt(java.time.Instant archivedAt) { this.archivedAt = archivedAt; }
 
     /**
      * Returns the ID.

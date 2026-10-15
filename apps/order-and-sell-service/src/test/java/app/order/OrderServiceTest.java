@@ -392,6 +392,18 @@ class OrderServiceTest {
     }
 
     @Test
+    void archivedAccountsRejectNewOrdersAndPreserveHistoryReplays() {
+        OrderRequest original = order("BUY", "1", "10.00");
+        Order placed = orderService.submitOrder(original, user.getUserId());
+        account.setStatus("ARCHIVED"); account.setArchivedAt(java.time.Instant.now());
+        accountRepository.saveAndFlush(account);
+        assertThrows(ForbiddenException.class,
+                () -> orderService.submitOrder(order("BUY", "1", "10.00"), user.getUserId()));
+        assertEquals(placed.getOrderId(), orderService.submitOrder(original, user.getUserId()).getOrderId());
+        assertEquals(1, orderRepository.count());
+    }
+
+    @Test
     void submitOrderRefusesAnAccountTheCallerDoesNotOwn() {
         OrderRequest request = order("BUY", "1", "10.00");
 

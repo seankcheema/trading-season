@@ -27,6 +27,22 @@ public interface AccountRepository extends JpaRepository<Account, Integer> {
     Optional<Account> findByIdForUpdate(Integer accountId);
 
     /**
+     * Counts every nonzero share position, including negative and fractional quantities.
+     * @param accountId account to check
+     * @return number of nonzero positions
+     */
+    @Query(value = "SELECT COUNT(*) FROM holdings WHERE account_id = :accountId AND quantity <> 0", nativeQuery = true)
+    long countNonzeroHoldings(Integer accountId);
+
+    /**
+     * Counts orders that have not reached a terminal state; ACCEPTED also blocks archiving.
+     * @param accountId account to check
+     * @return number of unresolved orders
+     */
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE account_id = :accountId AND status NOT IN ('FILLED', 'REJECTED', 'CANCELLED', 'EXPIRED')", nativeQuery = true)
+    long countUnresolvedOrders(Integer accountId);
+
+    /**
      * Finds all accounts belonging to a user, ordered by opened date descending.
      *
      * @param userId the owner's UUID

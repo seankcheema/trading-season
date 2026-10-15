@@ -77,6 +77,9 @@ class Account(db.Model):
     opened_date = Column(Date, nullable=False, default=lambda: _now().date())
     currency = Column(Text, nullable=False, default='USD')
 
+    status = Column(Text, nullable=False, default='ACTIVE')
+    archived_at = Column(DateTime(timezone=True))
+
     user = db.relationship('User', backref='accounts')
 
     def __repr__(self):

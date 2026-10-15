@@ -292,13 +292,25 @@ def _customer_profile(session, record):
 
 def _trading_account(session, record):
     opened = record.get('openedDate')
-    _upsert(session, Account, ['account_id'], {
+    status = record.get('status', 'ACTIVE')
+    if status not in ('ACTIVE', 'ARCHIVED'):
+        raise Unusable('Unknown account lifecycle status')
+    archived_at = _time(record.get('archivedAt'), 'archivedAt') if record.get('archivedAt') else None
+    if (status == 'ARCHIVED') != (archived_at is not None):
+        raise Unusable('Archive timestamp must match account status')
+    values = {
         'account_id': _integer(record.get('accountId'), 'accountId'),
         'user_id': _uuid(record.get('userId'), 'userId'),
         'name': _text(record.get('name'), 'name'),
         'opened_date': _date(opened, 'openedDate') if opened is not None else datetime.now(timezone.utc).date(),
         'currency': _text(record.get('currency'), 'currency', required=False) or 'USD',
-    })
+        'status': status, 'archived_at': archived_at,
+    }
+    # Restoration is not supported; replaying an older account cannot undo archiving.
+    existing = session.get(Account, values['account_id'])
+    if existing and existing.status == 'ARCHIVED' and status == 'ACTIVE':
+        return
+    _upsert(session, Account, ['account_id'], values)
 
 
 def _cash_transfer(session, record):

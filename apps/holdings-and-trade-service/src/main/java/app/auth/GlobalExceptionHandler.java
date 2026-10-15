@@ -121,6 +121,16 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.BAD_REQUEST, message);
     }
 
+    /**
+     * Returns a lifecycle validation failure.
+     * @param ex unmet account requirement
+     * @return 409 with a specific explanation
+     */
+    @ExceptionHandler(app.account.AccountStateException.class)
+    public ResponseEntity<Map<String, String>> handleAccountState(app.account.AccountStateException ex) {
+        return error(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
     private static ResponseEntity<Map<String, String>> error(HttpStatus status, String message) {
         return ResponseEntity.status(status).body(Map.of("error", message));
     }

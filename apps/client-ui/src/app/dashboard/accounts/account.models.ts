@@ -8,6 +8,8 @@
 export interface Account {
   accountId: number;
   name: string;
+  status?: 'ACTIVE' | 'ARCHIVED';
+  archivedAt?: string | null;
   // ISO date, YYYY-MM-DD.
   openedDate: string;
 }

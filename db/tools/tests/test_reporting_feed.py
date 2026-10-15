@@ -166,7 +166,7 @@ class TestRecords:
 
         assert of_type(messages, 'TRADING_ACCOUNT')[1].body == {
             'type': 'TRADING_ACCOUNT', 'accountId': 2, 'userId': str(SEAN), 'name': 'Growth',
-            'openedDate': '2026-10-03', 'currency': 'USD'}
+            'openedDate': '2026-10-03', 'currency': 'USD', 'status': 'ACTIVE', 'archivedAt': None}
         assert of_type(messages, 'MARKET_SESSION')[0].body == {'type': 'MARKET_SESSION', 'sessionId': 2026001}
         assert of_type(messages, 'PORTFOLIO_VALUATION')[0].body == {
             'type': 'PORTFOLIO_VALUATION', 'valuationId': 45, 'accountId': 1,

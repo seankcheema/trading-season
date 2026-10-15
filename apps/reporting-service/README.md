@@ -206,3 +206,7 @@ The image runs gunicorn by default; Compose starts a second container from the s
 - The console aggregates in Python, loading the orders of twice the chosen range per request, and one request at a time per worker uses the tables.
 - The quote an order executed against is not published, so an order shows its indicative price, price buffer and slippage in place of bid, ask and spread.
 - An order appears once its account and its owner's profile have been published. Rows written by SQL are in neither topic until they are republished.
+
+### Archived portfolio accounts
+
+TRADING_ACCOUNT records now include `status` (ACTIVE or ARCHIVED) and nullable `archivedAt`. The read model retains these fields alongside account identity and all financial history. Earlier records without these fields default to ACTIVE; replaying an older ACTIVE account never reverses an archived state. No reporting route changes are introduced here: a dedicated archived-account review interface can use this retained state in later work. The client Delete action archives accounts and never deletes their underlying records. See [account lifecycle](../holdings-and-trade-service/api.md).

@@ -403,3 +403,30 @@ class TestWhatTheConsoleMakesOfIt:
         assert (customers['sean@example.com']['cash'], customers['sean@example.com']['portfolio']) == (9000.0, 1010.0)
         assert customers['jane@example.com']['status'] == 'LOCKED'
         assert customers['jane@example.com']['failedAttempts'] == 5
+
+
+class TestAccountLifecycle:
+    def test_archival_preserves_financial_rows_and_survives_older_replay(self, customer):
+        apply_trade_event(customer, filled(7, 11, 21, 31))
+        retained = (count(customer, Order), count(customer, Fill), count(customer, CashTransaction))
+        record = dict(account(), status='ARCHIVED', archivedAt='2026-10-15T12:00:00Z')
+        apply_record(customer, record)
+        apply_record(customer, record)
+        apply_record(customer, account())
+        row = customer.get(Account, 1)
+        assert row.status == 'ARCHIVED'
+        assert stored(row.archived_at) == utc(2026, 10, 15, 12)
+        assert retained == (count(customer, Order), count(customer, Fill), count(customer, CashTransaction))
+
+    def test_unknown_status_cannot_change_account(self, customer):
+        with pytest.raises(Unusable):
+            apply_record(customer, dict(account(), status='UNKNOWN'))
+        assert customer.get(Account, 1).status == 'ACTIVE'
+
+
+    def test_status_and_archive_timestamp_must_agree(self, customer):
+        with pytest.raises(Unusable):
+            apply_record(customer, dict(account(), status='ARCHIVED'))
+        with pytest.raises(Unusable):
+            apply_record(customer, dict(account(), archivedAt='2026-10-15T12:00:00Z'))
+        assert customer.get(Account, 1).status == 'ACTIVE'
