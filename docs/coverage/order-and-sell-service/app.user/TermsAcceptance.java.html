@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TermsAcceptance.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.user</a> &gt; <span class="el_source">TermsAcceptance.java</span></div><h1>TermsAcceptance.java</h1><pre class="source lang-java linenums">package app.user;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.IdClass;
+import jakarta.persistence.Table;
+import org.hibernate.annotations.Immutable;
+
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+/**
+ * A read-only view of a client's acceptance of one version of the platform
+ * terms.
+ *
+ * &lt;p&gt;Holdings and Trade Service records acceptances in
+ * {@code terms_acceptances} and is the only writer. This service reads them to
+ * refuse an order from a client who has not accepted the terms in force.
+ *
+ * &lt;p&gt;Marked {@link Immutable}, and reached only through
+ * {@link TermsAcceptanceRepository}, which has no method that writes, so this
+ * service cannot record or alter an acceptance.
+ */
+@Entity
+@Immutable
+@IdClass(TermsAcceptanceId.class)
+@Table(name = &quot;terms_acceptances&quot;)
+public class TermsAcceptance {
+
+    /**
+     * The version of the platform terms in force, named by its effective date.
+     * It must equal {@code UserService.CURRENT_TERMS_VERSION} in Holdings and
+     * Trade Service and {@code TERMS_VERSION} in the client; change all three
+     * together whenever the wording of the terms changes.
+     */
+    public static final String CURRENT_VERSION = &quot;2026-10-12&quot;;
+
+    @Id
+    @Column(name = &quot;user_id&quot;, updatable = false, nullable = false)
+    private UUID userId;
+
+    @Id
+    @Column(name = &quot;terms_version&quot;, updatable = false, nullable = false)
+    private String termsVersion;
+
+    @Column(name = &quot;accepted_at&quot;, updatable = false, nullable = false)
+    private OffsetDateTime acceptedAt;
+
+    /**
+     * Required by Hibernate.
+     */
+<span class="nc" id="L53">    protected TermsAcceptance() {</span>
+<span class="nc" id="L54">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

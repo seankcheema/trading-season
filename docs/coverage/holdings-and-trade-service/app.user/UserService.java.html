@@ -1,30 +1,44 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UserService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.user</a> &gt; <span class="el_source">UserService.java</span></div><h1>UserService.java</h1><pre class="source lang-java linenums">package app.user;
 
+import app.auth.ConflictException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Reads business accounts on behalf of their owners.
+ * Reads business accounts on behalf of their owners, and records their
+ * acceptance of the platform terms.
  */
 @Service
 public class UserService {
 
+    /**
+     * The version of the platform terms in force, named by its effective date.
+     * Change it whenever the wording of the terms changes: every client then has
+     * no acceptance for the new version and is asked to accept again.
+     */
+    public static final String CURRENT_TERMS_VERSION = &quot;2026-10-12&quot;;
+
     private final UserRepository userRepository;
     private final UserAccountRepository userAccountRepository;
+    private final TermsAcceptanceRepository termsAcceptanceRepository;
 
     /**
      * Creates the service.
      *
-     * @param userRepository        persistence for business accounts
-     * @param userAccountRepository read-only access to the auth service's
-     *                              credential records
+     * @param userRepository            persistence for business accounts
+     * @param userAccountRepository     read-only access to the auth service's
+     *                                  credential records
+     * @param termsAcceptanceRepository persistence for accepted terms
      */
-<span class="fc" id="L24">    public UserService(UserRepository userRepository, UserAccountRepository userAccountRepository) {</span>
-<span class="fc" id="L25">        this.userRepository = userRepository;</span>
-<span class="fc" id="L26">        this.userAccountRepository = userAccountRepository;</span>
-<span class="fc" id="L27">    }</span>
+    public UserService(UserRepository userRepository, UserAccountRepository userAccountRepository,
+<span class="fc" id="L37">                       TermsAcceptanceRepository termsAcceptanceRepository) {</span>
+<span class="fc" id="L38">        this.userRepository = userRepository;</span>
+<span class="fc" id="L39">        this.userAccountRepository = userAccountRepository;</span>
+<span class="fc" id="L40">        this.termsAcceptanceRepository = termsAcceptanceRepository;</span>
+<span class="fc" id="L41">    }</span>
 
     /**
      * Loads the account belonging to the given user. Callers pass the id from the
@@ -37,8 +51,8 @@ public class UserService {
      */
     @Transactional(readOnly = true)
     public User getOwnAccount(UUID userId) {
-<span class="fc" id="L40">        return userRepository.findById(userId)</span>
-<span class="fc" id="L41">                .orElseThrow(() -&gt; new UserNotFoundException(&quot;Account is not registered&quot;));</span>
+<span class="fc" id="L54">        return userRepository.findById(userId)</span>
+<span class="fc" id="L55">                .orElseThrow(() -&gt; new UserNotFoundException(&quot;Account is not registered&quot;));</span>
     }
 
     /**
@@ -52,8 +66,49 @@ public class UserService {
      */
     @Transactional(readOnly = true)
     public UserAccount getUserAccount(UUID userId) {
-<span class="fc" id="L55">        return userAccountRepository.findById(userId)</span>
-<span class="fc" id="L56">                .orElseThrow(() -&gt; new UserNotFoundException(&quot;Account is not registered&quot;));</span>
+<span class="fc" id="L69">        return userAccountRepository.findById(userId)</span>
+<span class="fc" id="L70">                .orElseThrow(() -&gt; new UserNotFoundException(&quot;Account is not registered&quot;));</span>
     }
+
+    /**
+     * Reports whether the given user has accepted the terms currently in force.
+     * An acceptance of an earlier version does not count.
+     *
+     * @param userId the caller's user id from the token's sub claim
+     * @return {@code true} if the user accepted {@link #CURRENT_TERMS_VERSION}
+     */
+    @Transactional(readOnly = true)
+    public boolean hasAcceptedCurrentTerms(UUID userId) {
+<span class="fc" id="L82">        return termsAcceptanceRepository.existsById(new TermsAcceptanceId(userId, CURRENT_TERMS_VERSION));</span>
+    }
+
+    /**
+     * Records that the given user accepted the terms currently in force.
+     *
+     * &lt;p&gt;The caller names the version they were shown, so an acceptance is never
+     * recorded against wording the user did not see. Accepting again changes
+     * nothing: the first acceptance and its time stand.
+     *
+     * &lt;p&gt;The profile row is locked for the rest of the transaction, so two
+     * requests from the same user cannot both find no acceptance and both
+     * insert one.
+     *
+     * @param userId       the caller's user id from the token's sub claim
+     * @param termsVersion the version of the terms the user was shown
+     * @throws ConflictException     if {@code termsVersion} is not the version in force
+     * @throws UserNotFoundException if the caller has not registered a business account
+     */
+    @Transactional
+    public void acceptTerms(UUID userId, String termsVersion) {
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (!CURRENT_TERMS_VERSION.equals(termsVersion)) {</span>
+<span class="fc" id="L104">            throw new ConflictException(&quot;The terms have changed. Reload to read the current version.&quot;);</span>
+        }
+<span class="fc" id="L106">        userRepository.findByIdForUpdate(userId)</span>
+<span class="fc" id="L107">                .orElseThrow(() -&gt; new UserNotFoundException(&quot;Account is not registered&quot;));</span>
+<span class="fc" id="L108">        TermsAcceptanceId id = new TermsAcceptanceId(userId, termsVersion);</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (!termsAcceptanceRepository.existsById(id)) {</span>
+<span class="fc" id="L110">            termsAcceptanceRepository.save(new TermsAcceptance(userId, termsVersion, OffsetDateTime.now()));</span>
+        }
+<span class="fc" id="L112">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

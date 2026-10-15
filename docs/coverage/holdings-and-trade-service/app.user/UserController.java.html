@@ -3,9 +3,12 @@
 import app.auth.AuthenticatedUser;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -26,11 +29,11 @@ public class UserController {
     /**
      * Creates the controller.
      *
-     * @param userService account lookup logic
+     * @param userService account lookup and terms acceptance logic
      */
-<span class="fc" id="L31">    public UserController(UserService userService) {</span>
-<span class="fc" id="L32">        this.userService = userService;</span>
-<span class="fc" id="L33">    }</span>
+<span class="fc" id="L34">    public UserController(UserService userService) {</span>
+<span class="fc" id="L35">        this.userService = userService;</span>
+<span class="fc" id="L36">    }</span>
 
     /**
      * Returns the caller's business account.
@@ -42,9 +45,31 @@ public class UserController {
     @GetMapping(&quot;/me&quot;)
     @Operation(summary = &quot;Get authenticated user profile&quot;, description = &quot;Returns the profile of the authenticated user, including personal and account information&quot;)
     public UserProfileResponse me(@AuthenticationPrincipal Jwt jwt) {
-<span class="fc" id="L45">        UUID userId = AuthenticatedUser.from(jwt).userId();</span>
-<span class="fc" id="L46">        return UserProfileResponse.from(userService.getOwnAccount(userId),</span>
-<span class="fc" id="L47">                userService.getUserAccount(userId));</span>
+<span class="fc" id="L48">        return profileOf(AuthenticatedUser.from(jwt).userId());</span>
+    }
+
+    /**
+     * Records that the caller accepts the platform terms. Accepting again
+     * succeeds and changes nothing.
+     *
+     * @param jwt     the verified access token
+     * @param request the version of the terms the caller was shown
+     * @return the caller's profile, now reporting the terms as accepted
+     * @throws app.auth.ConflictException if the version shown is not the one in force
+     * @throws UserNotFoundException      if the caller has not registered
+     */
+    @PutMapping(&quot;/me/terms-acceptance&quot;)
+    @Operation(summary = &quot;Accept the platform terms&quot;, description = &quot;Records that the authenticated user accepts the version of the platform terms they were shown, and returns their updated profile&quot;)
+    public UserProfileResponse acceptTerms(@AuthenticationPrincipal Jwt jwt,
+                                           @Valid @RequestBody AcceptTermsRequest request) {
+<span class="fc" id="L65">        UUID userId = AuthenticatedUser.from(jwt).userId();</span>
+<span class="fc" id="L66">        userService.acceptTerms(userId, request.termsVersion());</span>
+<span class="fc" id="L67">        return profileOf(userId);</span>
+    }
+
+    private UserProfileResponse profileOf(UUID userId) {
+<span class="fc" id="L71">        return UserProfileResponse.from(userService.getOwnAccount(userId),</span>
+<span class="fc" id="L72">                userService.getUserAccount(userId), userService.hasAcceptedCurrentTerms(userId));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
