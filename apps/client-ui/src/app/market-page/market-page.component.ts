@@ -857,8 +857,12 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   @HostListener('window:resize')
   protected positionToolbarMenu(): void {
     const menu = this.openToolbarMenu();
-    const id = menu === 'indicators' ? 'indicator-picker' :
-      menu === 'chart-mode' ? 'chart-mode-picker' : 'comparison-picker';
+    let id = 'comparison-picker';
+    if (menu === 'indicators') {
+      id = 'indicator-picker';
+    } else if (menu === 'chart-mode') {
+      id = 'chart-mode-picker';
+    }
     const toolbar = this.menuHost.nativeElement.querySelector('.chart-toolbar');
     const trigger = toolbar?.querySelector(`[aria-controls="${id}"]`);
     if (!menu || !toolbar || !trigger) {
