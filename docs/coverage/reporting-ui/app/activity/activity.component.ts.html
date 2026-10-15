@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>247/247</span>
+                <span class='fraction'>236/236</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>163/163</span>
+                <span class='fraction'>154/154</span>
             </div>
         
             
@@ -499,25 +499,7 @@
 <a name='L434'></a><a href='#L434'>434</a>
 <a name='L435'></a><a href='#L435'>435</a>
 <a name='L436'></a><a href='#L436'>436</a>
-<a name='L437'></a><a href='#L437'>437</a>
-<a name='L438'></a><a href='#L438'>438</a>
-<a name='L439'></a><a href='#L439'>439</a>
-<a name='L440'></a><a href='#L440'>440</a>
-<a name='L441'></a><a href='#L441'>441</a>
-<a name='L442'></a><a href='#L442'>442</a>
-<a name='L443'></a><a href='#L443'>443</a>
-<a name='L444'></a><a href='#L444'>444</a>
-<a name='L445'></a><a href='#L445'>445</a>
-<a name='L446'></a><a href='#L446'>446</a>
-<a name='L447'></a><a href='#L447'>447</a>
-<a name='L448'></a><a href='#L448'>448</a>
-<a name='L449'></a><a href='#L449'>449</a>
-<a name='L450'></a><a href='#L450'>450</a>
-<a name='L451'></a><a href='#L451'>451</a>
-<a name='L452'></a><a href='#L452'>452</a>
-<a name='L453'></a><a href='#L453'>453</a>
-<a name='L454'></a><a href='#L454'>454</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L437'></a><a href='#L437'>437</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -577,6 +559,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -646,8 +629,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">63x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -677,24 +658,9 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">44x</span>
 <span class="cline-any cline-yes">19x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">19x</span>
-<span class="cline-any cline-yes">19x</span>
-<span class="cline-any cline-yes">19x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">19x</span>
-<span class="cline-any cline-yes">19x</span>
-<span class="cline-any cline-yes">19x</span>
 <span class="cline-any cline-yes">19x</span>
 <span class="cline-any cline-yes">19x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">19x</span>
-<span class="cline-any cline-yes">19x</span>
-<span class="cline-any cline-yes">19x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
@@ -1002,7 +968,6 @@ import { ExportMenuComponent, downloadCsv } from '../shared/export-menu.componen
 import { ChartPoint, LineChartComponent } from '../shared/line-chart.component';
 import { live } from '../shared/live';
 import { PageHeaderComponent } from '../shared/page-header.component';
-import { SkeletonCardComponent, SkeletonKpisComponent } from '../shared/skeleton.component';
 import { SparklineComponent } from '../shared/sparkline.component';
 import { TimeframeToggleComponent } from '../shared/timeframe-toggle.component';
 &nbsp;
@@ -1033,6 +998,7 @@ const BAR_COLORS: Record&lt;PillTone, string&gt; = {
   gain: 'bg-gain',
   loss: 'bg-loss',
   primary: 'bg-primary',
+  pending: 'bg-pending',
   muted: 'bg-muted-foreground',
 };
 &nbsp;
@@ -1090,8 +1056,6 @@ function feedRow(item: FeedItem): FeedRow {
     ChangePillComponent,
     LineChartComponent,
     SparklineComponent,
-    SkeletonCardComponent,
-    SkeletonKpisComponent,
   ],
   providers: [
     provideIcons({
@@ -1130,24 +1094,9 @@ function feedRow(item: FeedItem): FeedRow {
 &nbsp;
     @switch (activity.state()) {
       @case ('loading') {
-        &lt;!-- The same rows as the loaded screen below, so nothing moves when it arrives. --&gt;
-        &lt;p class="sr-only" role="status"&gt;Loading activity…&lt;/p&gt;
-        &lt;app-skeleton-kpis /&gt;
-        &lt;div
-          class="grid gap-3 lg:min-h-[30.75rem] lg:flex-[4] lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:grid-rows-[repeat(2,minmax(0,1fr))] xl:min-h-[15rem] xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] xl:grid-rows-[minmax(0,1fr)]"
-          aria-busy="true"
-        &gt;
-          &lt;app-skeleton-card chart class="lg:row-span-2 xl:row-span-1" /&gt;
-          &lt;app-skeleton-card [lines]="4" /&gt;
-          &lt;app-skeleton-card [lines]="3" /&gt;
-        &lt;/div&gt;
-        &lt;div
-          class="grid gap-3 lg:min-h-0 lg:flex-[5] lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]"
-          aria-busy="true"
-        &gt;
-          &lt;app-skeleton-card [lines]="6" /&gt;
-          &lt;app-skeleton-card [lines]="6" /&gt;
-        &lt;/div&gt;
+        &lt;section class="dash-card p-5" aria-busy="true"&gt;
+          &lt;p class="text-muted-foreground text-sm"&gt;Loading activity…&lt;/p&gt;
+        &lt;/section&gt;
       }
       @case ('error') {
         &lt;section
@@ -1429,7 +1378,7 @@ export class ActivityComponent {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-10-13T15:52:16.153Z
+                at 2026-10-13T21:14:01.366Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

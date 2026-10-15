@@ -14,4 +14,5 @@
 - This app does not import the Client UI's shared-ui-components. Using one here makes it a second consumer, which the root [AGENTS.md](../../AGENTS.md) says is the point to extract it into a top-level package first.
 - Preserve accessible labels, validation feedback, keyboard interactions, and the narrow-viewport layout.
 - Validate changes with the app build and the Angular tests. Use --no-watch; see the [README](README.md#commands). Keep test data in `src/testing`, which the application build excludes.
-- Do not edit files under this application while a dev server is running; the watcher rebuilds on every change.
+- Keep unit tests under `src` and the Playwright integration tests under `e2e`, which the unit-test builder and the application build leave out. The integration tests run the real Reporting Service on files seeded from [scenario.json](e2e/fixtures/scenario.json), and only the Auth Service is a stand-in. When a message, endpoint, role rule or screen changes, extend the scenario and the specs with it, and keep the expected figures derived from the scenario, never typed a second time. See the [README](README.md#integration-tests).
+- Do not edit files under this application while a dev server is running; the watcher rebuilds on every change, and the integration tests serve a build of their own on other ports.

@@ -16,6 +16,7 @@ All require a bearer token except the public market reads.
 | --- | --- | --- |
 | POST | `/api/orders` | Submit a buy or sell order. Returns 201 with the outcome (`FILLED`, `REJECTED`, or `ACCEPTED` when execution failed and the order stays on record) |
 | GET | `/api/orders` | The caller's orders across all their accounts, newest first |
+| GET | `/api/orders/{orderId}/audit` | One of the caller's orders as its audit trail, oldest first: `eventType`, `price` (the order's indicative price), `occurredAt`, `detail`. Another caller's order is 404, the same as a missing one |
 | GET | `/api/orders/stream` | Server-Sent Events: an `order-status` event with each committed status change's JSON body, and a `heartbeat` every 15 seconds |
 | GET | `/api/instruments` | Every instrument (UK, US and Indian equities, FX pairs and crypto assets, as seeded by the [market data import](../market-data/README.md#universe)) with `assetClass`, `market`, `currency`, `tradable` and `simulatedStockSymbol` |
 | GET | `/api/users/me` | The caller's profile, without the SSN |
