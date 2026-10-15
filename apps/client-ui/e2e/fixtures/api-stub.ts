@@ -268,6 +268,7 @@ export class ApiStub {
     await page.route('**/api/registration/account-exists', (route) => this.accountExists(route));
     await page.route(/\/api\/me\/watchlist(?:\/[^/?]+)?$/, (route) => this.watchlist(route));
     await page.route('**/api/orders', (route) => this.orderRequest(route));
+    await page.route('**/api/orders/stream', (route) => this.orderStream(route));
     await page.route(/\/api\/orders\/\d+\/audit$/, (route) => this.orderAuditRequest(route));
     await page.route('**/api/instruments', async (route) => {
       if (await this.caller(route))
@@ -452,10 +453,30 @@ export class ApiStub {
     }
   }
 
+  // Order status frames per owner id, queued until the page next opens the stream.
+  private readonly streamFrames = new Map<string, string[]>();
+
+  /**
+   * GET /api/orders/stream as the page reads it: a fulfilled route cannot stay open, so each
+   * open delivers the `order-status` events queued since the last one and then ends, and the
+   * page's own reconnect collects the next batch within its backoff.
+   */
+  private async orderStream(route: Route): Promise<void> {
+    const ownerId = await this.caller(route);
+    if (!ownerId) return;
+    const frames = this.streamFrames.get(ownerId) ?? [];
+    this.streamFrames.set(ownerId, []);
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: frames.join('') + 'event: heartbeat\ndata: {}\n\n',
+    });
+  }
+
   /**
    * Settles a pending order the way the backend does on its own, without any request from the
-   * page: a fill moves cash and holdings, a rejection records why. The page only learns of it
-   * by reading the order history again.
+   * page: a fill moves cash and holdings, a rejection records why. The page learns of it from
+   * the `order-status` frame queued for its stream, as it would from the Kafka-fed push.
    */
   resolveOrder(
     email: string,
@@ -487,6 +508,15 @@ export class ApiStub {
       rejectionReason: outcome.status === 'REJECTED' ? outcome.rejectionReason : null,
       resolvedAt: pending.submittedAt,
     };
+    const frame = {
+      orderId,
+      status: outcome.status,
+      rejectionReason: orders[index].rejectionReason,
+      order: { resolvedAt: orders[index].resolvedAt },
+    };
+    const queue = this.streamFrames.get(owner.id) ?? [];
+    queue.push(`event: order-status\ndata: ${JSON.stringify(frame)}\n\n`);
+    this.streamFrames.set(owner.id, queue);
   }
 
   /** Trading accounts the business backend holds for a user, oldest first. */

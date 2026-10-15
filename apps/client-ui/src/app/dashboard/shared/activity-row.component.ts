@@ -4,8 +4,9 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 // What a row is: the side of a trade or the direction of a cash transfer.
 export type ActivityType = 'BUY' | 'SELL' | 'DEPOSIT' | 'WITHDRAWAL';
 
-// Where a row stands. Cash transfers have no lifecycle and always read as completed.
-export type ActivityStatus = 'FILLED' | 'REJECTED' | 'PENDING' | 'COMPLETED';
+// Where a row stands. Cash transfers have no lifecycle and always read as completed. ACCEPTED
+// is an order committed on record whose execution has not completed (BR-06).
+export type ActivityStatus = 'FILLED' | 'REJECTED' | 'PENDING' | 'ACCEPTED' | 'COMPLETED';
 
 export interface ActivityItem {
   kind: 'cash' | 'trade';
@@ -28,14 +29,17 @@ export const ACTIVITY_STATUS_LABELS: Record<ActivityStatus, string> = {
   FILLED: 'Filled',
   REJECTED: 'Rejected',
   PENDING: 'Pending',
+  ACCEPTED: 'Accepted',
   COMPLETED: 'Cash Transaction',
 };
 
-// Classes for each status: green filled, red rejected, yellow pending, cyan completed cash.
+// Classes for each status: green filled, red rejected, yellow pending, blue accepted (the same
+// blue the audit timeline uses for that stage), cyan completed cash.
 export const ACTIVITY_STATUS_CLASSES: Record<ActivityStatus, string> = {
   FILLED: 'bg-gain/15 text-gain',
   REJECTED: 'bg-loss/15 text-loss',
   PENDING: 'bg-amber-400/15 text-amber-400',
+  ACCEPTED: 'bg-[#16b9f2]/15 text-[#16b9f2]',
   COMPLETED: 'bg-primary/15 text-primary',
 };
 

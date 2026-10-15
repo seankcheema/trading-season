@@ -5,9 +5,23 @@
 
 export type OrderType = 'BUY' | 'SELL';
 
-// PENDING is never the status of a submission's response: an order reaches FILLED or REJECTED
-// before the request returns. It can still appear in order history.
-export type OrderStatus = 'PENDING' | 'FILLED' | 'REJECTED';
+// PENDING is never the status of a submission's response: an order is ACCEPTED or REJECTED
+// before the request returns, and an accepted order is normally FILLED in the same request.
+// A response is ACCEPTED only when execution failed and the order stays on record (BR-06).
+// PENDING can still appear in order history.
+export type OrderStatus = 'PENDING' | 'ACCEPTED' | 'FILLED' | 'REJECTED';
+
+// One `order-status` frame on GET /api/orders/stream: the body of a trade event, pushed the
+// moment the Order and Sell Service commits a status change (BR-07). Only the fields the client
+// applies are typed; see apps/order-and-sell-service/README.md for the full shape.
+export interface OrderStatusFrame {
+  orderId: number;
+  status: OrderStatus;
+  rejectionReason: string | null;
+  order?: {
+    resolvedAt?: string | null;
+  };
+}
 
 export interface InstrumentRef {
   instrumentId: number;

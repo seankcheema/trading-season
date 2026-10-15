@@ -2,8 +2,9 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { UnknownInstrumentError } from './order-error';
-import { InstrumentRef, OrderResult } from './order.models';
-import { OrderService, PENDING_ORDER_POLL_MS } from './order.service';
+import { InstrumentRef, OrderResult, OrderStatusFrame } from './order.models';
+import { OrderService, STREAM_RECONNECT_MS } from './order.service';
+import { TokenStorageService } from '../../core/auth/token-storage.service';
 import { vi } from 'vitest';
 
 function instrument(overrides: Partial<InstrumentRef> = {}): InstrumentRef {
@@ -318,52 +319,272 @@ describe('OrderService', () => {
   });
 
 
-  describe('pending order polling', () => {
-    beforeEach(() => vi.useFakeTimers());
-    afterEach(() => vi.useRealTimers());
+  describe('the order status stream', () => {
+    // One fake GET /api/orders/stream: the test writes server-sent events into it and can end
+    // it, the way a dropped connection does.
+    class FakeStream {
+      readonly requests: RequestInit[] = [];
+      // When set, the next open is answered with 503 and no body, like a service that is down.
+      refuseNext = false;
+      private controller?: ReadableStreamDefaultController<Uint8Array>;
+      private opened?: () => void;
+      readonly fetch = vi.fn((_: string, init?: RequestInit) => {
+        this.requests.push(init ?? {});
+        if (this.refuseNext) {
+          this.refuseNext = false;
+          return Promise.resolve(new Response(null, { status: 503 }));
+        }
+        const body = new ReadableStream<Uint8Array>({
+          start: (controller) => {
+            this.controller = controller;
+            // Like a real fetch, an aborted request ends the body with an error.
+            init?.signal?.addEventListener('abort', () => controller.error(new Error('aborted')));
+            this.opened?.();
+          },
+        });
+        return Promise.resolve(new Response(body, { status: 200 }));
+      });
 
-    function loadPending(): void {
-      service.loadOrders().subscribe();
-      http.expectOne('/api/orders').flush([order({ status: 'PENDING', resolvedAt: null })]);
-      TestBed.tick();
+      send(event: string, data: unknown): void {
+        this.raw(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      }
+
+      raw(text: string): void {
+        this.controller?.enqueue(new TextEncoder().encode(text));
+      }
+
+      drop(): void {
+        this.controller?.close();
+      }
+
+      // Resolves once the service has read the response and is waiting on frames.
+      opening(): Promise<void> {
+        return new Promise((resolve) => (this.opened = resolve));
+      }
     }
 
-    it('re-reads the history while an order is pending and announces the fill', () => {
+    const tokens = { accessToken: 'token', refreshToken: 'refresh', expiresIn: 900 };
+    let stream: FakeStream;
+
+    function frame(overrides: Partial<OrderStatusFrame> = {}): OrderStatusFrame {
+      return { orderId: 1, status: 'FILLED', rejectionReason: null, order: { resolvedAt: '2026-01-05T16:00:01Z' }, ...overrides };
+    }
+
+    // Lets the service's promise chain run between a frame being written and it being applied.
+    // A message port is a macrotask that fake timers never touch, so this works while they run.
+    const settle = () =>
+      new Promise<void>((resolve) => {
+        const channel = new MessageChannel();
+        channel.port1.onmessage = () => resolve();
+        channel.port2.postMessage(0);
+      });
+
+    async function signIn(): Promise<void> {
+      TestBed.inject(TokenStorageService).save(tokens);
+      const opened = stream.opening();
+      TestBed.tick();
+      await opened;
+    }
+
+    async function loadOpenOrder(status: 'PENDING' | 'ACCEPTED' = 'PENDING'): Promise<void> {
+      service.loadOrders().subscribe();
+      http.expectOne('/api/orders').flush([order({ status, resolvedAt: null })]);
+      await settle();
+    }
+
+    beforeEach(() => {
+      stream = new FakeStream();
+      vi.stubGlobal('fetch', stream.fetch);
+      localStorage.clear();
+    });
+    afterEach(() => {
+      TestBed.inject(TokenStorageService).clear();
+      vi.unstubAllGlobals();
+    });
+
+    it('does not open the stream while signed out', () => {
+      TestBed.tick();
+      expect(stream.fetch).not.toHaveBeenCalled();
+    });
+
+    it('opens the stream with the bearer token once signed in', async () => {
+      await signIn();
+      expect(stream.fetch).toHaveBeenCalledWith('/api/orders/stream', expect.objectContaining({ cache: 'no-store' }));
+      expect((stream.requests[0].headers as Record<string, string>)['Authorization']).toBe('Bearer token');
+    });
+
+    it('applies a fill from the stream and announces it', async () => {
       const filled: OrderResult[] = [];
       service.pendingFilled.subscribe((result) => filled.push(result));
-      loadPending();
+      await signIn();
+      await loadOpenOrder();
 
-      vi.advanceTimersByTime(PENDING_ORDER_POLL_MS);
-      http.expectOne('/api/orders').flush([order({ status: 'PENDING', resolvedAt: null })]);
+      stream.send('heartbeat', {});
+      stream.send('order-status', frame({ status: 'ACCEPTED' }));
+      await settle();
+      expect(service.orders()[0].status).toBe('ACCEPTED');
       expect(filled).toEqual([]);
 
-      vi.advanceTimersByTime(PENDING_ORDER_POLL_MS);
-      http.expectOne('/api/orders').flush([order()]);
-      expect(filled).toEqual([order()]);
-      expect(service.orders()[0].status).toBe('FILLED');
-      TestBed.tick();
-
-      // Nothing is pending any more, so the timer stops.
-      vi.advanceTimersByTime(PENDING_ORDER_POLL_MS * 3);
+      stream.send('order-status', frame());
+      await settle();
+      expect(service.orders()[0]).toMatchObject({ status: 'FILLED', resolvedAt: '2026-01-05T16:00:01Z' });
+      expect(filled).toHaveLength(1);
       http.expectNone('/api/orders');
     });
 
-    it('does not announce an order that was rejected', () => {
+    it('applies a rejection with its reason without announcing a fill', async () => {
       const filled: OrderResult[] = [];
       service.pendingFilled.subscribe((result) => filled.push(result));
-      loadPending();
-      vi.advanceTimersByTime(PENDING_ORDER_POLL_MS);
-      http.expectOne('/api/orders').flush([order({ status: 'REJECTED', rejectionReason: 'No' })]);
+      await signIn();
+      await loadOpenOrder();
+
+      stream.send('order-status', frame({ status: 'REJECTED', rejectionReason: 'Insufficient funds' }));
+      await settle();
+      expect(service.orders()[0]).toMatchObject({ status: 'REJECTED', rejectionReason: 'Insufficient funds' });
       expect(filled).toEqual([]);
-      expect(service.orders()[0].status).toBe('REJECTED');
     });
 
-    it('never polls when no order is pending', () => {
+    it('never moves a resolved order backwards when frames arrive late', async () => {
+      await signIn();
       service.loadOrders().subscribe();
       http.expectOne('/api/orders').flush([order()]);
+
+      stream.send('order-status', frame({ status: 'ACCEPTED' }));
+      stream.raw('event: order-status\ndata: {not json\n\n');
+      stream.send('order-status', { orderId: 'one', status: 'FILLED' });
+      await settle();
+      expect(service.orders()[0].status).toBe('FILLED');
+    });
+
+    it('re-reads the history for an order it has not seen', async () => {
+      await signIn();
+      stream.send('order-status', frame({ orderId: 77 }));
+      await settle();
+      http.expectOne('/api/orders').flush([order({ orderId: 77 })]);
+      expect(service.orders().map((value) => value.orderId)).toEqual([77]);
+    });
+
+    it('reopens a dropped stream after a growing delay and catches up once', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        await signIn();
+        stream.drop();
+        await settle();
+        expect(stream.fetch).toHaveBeenCalledTimes(1);
+
+        // The first attempt comes after the initial delay, and the open connection re-reads the
+        // history once to catch up.
+        let reopened = stream.opening();
+        vi.advanceTimersByTime(STREAM_RECONNECT_MS.initial);
+        await reopened;
+        await settle();
+        expect(stream.fetch).toHaveBeenCalledTimes(2);
+        http.expectOne('/api/orders').flush([order()]);
+
+        // A refused attempt doubles the wait before the next one, and nothing is re-read until
+        // a connection is actually open again.
+        stream.drop();
+        await settle();
+        stream.refuseNext = true;
+        vi.advanceTimersByTime(STREAM_RECONNECT_MS.initial);
+        await settle();
+        expect(stream.fetch).toHaveBeenCalledTimes(3);
+        http.expectNone('/api/orders');
+        vi.advanceTimersByTime(STREAM_RECONNECT_MS.initial);
+        expect(stream.fetch).toHaveBeenCalledTimes(3);
+        reopened = stream.opening();
+        vi.advanceTimersByTime(STREAM_RECONNECT_MS.initial);
+        await reopened;
+        await settle();
+        expect(stream.fetch).toHaveBeenCalledTimes(4);
+        http.expectOne('/api/orders').flush([order()]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('closes the stream on sign-out and opens a fresh one for the next sign-in', async () => {
+      await signIn();
+      const first = stream.requests[0].signal as AbortSignal;
+      TestBed.inject(TokenStorageService).clear();
       TestBed.tick();
-      vi.advanceTimersByTime(PENDING_ORDER_POLL_MS * 3);
-      http.expectNone('/api/orders');
+      expect(first.aborted).toBe(true);
+      // The aborted read ends without scheduling a reconnect.
+      await settle();
+      await settle();
+      expect(stream.fetch).toHaveBeenCalledTimes(1);
+
+      await signIn();
+      expect(stream.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not open the stream where fetch is unavailable', () => {
+      vi.stubGlobal('fetch', undefined);
+      TestBed.inject(TokenStorageService).save(tokens);
+      TestBed.tick();
+      expect(stream.requests).toEqual([]);
+    });
+
+    it('gives up when the session cannot be renewed', () => {
+      // An expired token with no refresh token ends the session instead of opening a stream.
+      TestBed.inject(TokenStorageService).save({ ...tokens, refreshToken: '', expiresIn: -1 });
+      TestBed.tick();
+      expect(stream.fetch).not.toHaveBeenCalled();
+      expect(TestBed.inject(TokenStorageService).hasSession()).toBe(false);
+    });
+
+    it('retries after a failed token renewal', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        TestBed.inject(TokenStorageService).save({ ...tokens, expiresIn: -1 });
+        TestBed.tick();
+        http.expectOne('http://localhost:3001/auth/refresh').flush({}, { status: 500, statusText: 'Down' });
+        expect(stream.fetch).not.toHaveBeenCalled();
+
+        const opened = stream.opening();
+        vi.advanceTimersByTime(STREAM_RECONNECT_MS.initial);
+        http.expectOne('http://localhost:3001/auth/refresh').flush({ ...tokens, accessToken: 'renewed' });
+        await opened;
+        await settle();
+        expect((stream.requests[0].headers as Record<string, string>)['Authorization']).toBe('Bearer renewed');
+        http.expectOne('/api/orders').flush([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('reads a frame with comment and id lines and fills in the fields it lacks', async () => {
+      const filled: OrderResult[] = [];
+      service.pendingFilled.subscribe((result) => filled.push(result));
+      await signIn();
+      await loadOpenOrder('ACCEPTED');
+
+      stream.raw(': keep-alive\r\nid: 7\r\nevent: order-status\r\ndata: {"orderId":1,"status":"FILLED"}\r\n\r\n');
+      await settle();
+      expect(service.orders()[0]).toMatchObject({ status: 'FILLED', rejectionReason: null, resolvedAt: null });
+      expect(filled).toHaveLength(1);
+    });
+
+    it('survives a failed catch-up read and a failed read for an unknown order', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        await signIn();
+        stream.drop();
+        await settle();
+        const reopened = stream.opening();
+        vi.advanceTimersByTime(STREAM_RECONNECT_MS.initial);
+        await reopened;
+        await settle();
+        http.expectOne('/api/orders').flush({}, { status: 503, statusText: 'Unavailable' });
+
+        stream.send('order-status', frame({ orderId: 77 }));
+        await settle();
+        http.expectOne('/api/orders').flush({}, { status: 503, statusText: 'Unavailable' });
+        expect(service.orders()).toEqual([]);
+        expect(service.historyStatus()).toBe('error');
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
