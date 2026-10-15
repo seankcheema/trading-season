@@ -99,7 +99,7 @@ pipeline {
                         dir('apps/holdings-and-trade-service') {
                             sh '''
                                 set -eu
-                                mvn -B -Dmaven.repo.local="$WORKSPACE/.m2/holdings-and-trade-service" clean test
+                                sh "$WORKSPACE/infrastructure/jenkins/maven-retry.sh" -B -Dmaven.repo.local="$WORKSPACE/.m2/holdings-and-trade-service" clean test
                                 test -s target/site/jacoco/jacoco.xml
                             '''
                         }
@@ -120,7 +120,7 @@ pipeline {
                         dir('apps/order-and-sell-service') {
                             sh '''
                                 set -eu
-                                mvn -B -Dmaven.repo.local="$WORKSPACE/.m2/order-and-sell-service" clean test
+                                sh "$WORKSPACE/infrastructure/jenkins/maven-retry.sh" -B -Dmaven.repo.local="$WORKSPACE/.m2/order-and-sell-service" clean test
                                 test -s target/site/jacoco/jacoco.xml
                             '''
                         }
@@ -380,7 +380,7 @@ pipeline {
                 sh '''
                     set -eu
                     for service in holdings-and-trade-service order-and-sell-service; do
-                        mvn -B -Dmaven.repo.local="$WORKSPACE/.m2/$service" -f "apps/$service/pom.xml" org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc
+                        sh "$WORKSPACE/infrastructure/jenkins/maven-retry.sh" -B -Dmaven.repo.local="$WORKSPACE/.m2/$service" -f "apps/$service/pom.xml" org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc
                         test -s "apps/$service/target/reports/apidocs/index.html"
                     done
                 '''
