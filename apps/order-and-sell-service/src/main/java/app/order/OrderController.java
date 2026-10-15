@@ -2,6 +2,7 @@ package app.order;
 
 import app.auth.AuthenticatedUser;
 import app.order.dto.OrderRequest;
+import app.order.dto.OrderAuditEntryResponse;
 import app.order.dto.OrderResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,6 +12,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -81,6 +83,26 @@ public class OrderController {
     public List<OrderResponse> listOwnOrders(@AuthenticationPrincipal Jwt jwt) {
         return orderService.getOwnOrders(AuthenticatedUser.from(jwt).userId()).stream()
                 .map(OrderResponse::from)
+                .toList();
+    }
+
+    /**
+     * Lists the immutable lifecycle audit trail for one of the caller's
+     * orders. Entries are oldest first so a client can render the progression
+     * from PENDING through its current status. A missing order and an order
+     * belonging to a different caller both return 404.
+     *
+     * @param orderId the requested order id
+     * @param jwt the verified access token identifying the caller
+     * @return audit entries with the order price and their real record times
+     */
+    @GetMapping("/{orderId}/audit")
+    @Operation(summary = "Get an order audit trail", description = "Retrieves the authenticated caller's order lifecycle entries, oldest first")
+    public List<OrderAuditEntryResponse> getOwnOrderAudit(@PathVariable Integer orderId,
+                                                           @AuthenticationPrincipal Jwt jwt) {
+        Order order = orderService.getOwnOrder(orderId, AuthenticatedUser.from(jwt).userId());
+        return orderService.getOwnOrderAudit(orderId, AuthenticatedUser.from(jwt).userId()).stream()
+                .map(entry -> OrderAuditEntryResponse.from(entry, order.getIndicativePrice()))
                 .toList();
     }
 }

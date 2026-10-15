@@ -62,10 +62,11 @@
 }
 
 /* Market up/down colors, e.g. `text-gain`, `bg-loss/15`. Filled orders take the
-   gain color and rejected orders the loss color. */
+   gain color, rejected orders the loss color, and pending orders the pending color. */
 @theme {
   --color-gain: #25eb69;
   --color-loss: #ff3d5a;
+  --color-pending: #fac320;
   --font-sans:
     'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
     'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;

@@ -62,6 +62,7 @@ const BAR_COLORS: Record<PillTone, string> = {
   gain: 'bg-gain',
   loss: 'bg-loss',
   primary: 'bg-primary',
+  pending: 'bg-pending',
   muted: 'bg-muted-foreground',
 };
 
