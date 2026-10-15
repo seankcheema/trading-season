@@ -110,7 +110,7 @@ describe('ActivityComponent', () => {
     expect(bars.map((bar) => bar.style.width)).toEqual(['60%', '10%', '10%', '20%']);
     expect(bars.map((bar) => bar.className.match(/bg-\w+/)![0])).toEqual([
       'bg-gain',
-      'bg-primary',
+      'bg-pending',
       'bg-primary',
       'bg-loss',
     ]);
@@ -344,16 +344,22 @@ describe('ActivityComponent', () => {
     fixture = TestBed.createComponent(ActivityComponent);
     fixture.detectChanges();
     const root = fixture.nativeElement as HTMLElement;
-    expect(text(root)).toContain('Loading activity…');
+    expect(text(root.querySelector('[role="status"]')!)).toBe('Loading activity…');
     expect(text(root.querySelector('app-page-header p')!)).toBe('Derived from order and cash ledgers');
+    // The screen's shape stands in for it: the headline figures, then a card for each of the five below.
+    expect(root.querySelectorAll('app-skeleton-kpis section')).toHaveLength(5);
+    expect(root.querySelectorAll('app-skeleton-card')).toHaveLength(5);
+    expect(root.querySelectorAll('app-skeleton-card [data-chart]')).toHaveLength(1);
 
     settle();
     expect(text(root.querySelector('[role="alert"]')!)).toContain("We couldn't load the activity.");
+    expect(root.querySelector('.skeleton')).toBeNull();
 
     load.mockReturnValue(of(activity()));
     root.querySelector<HTMLButtonElement>('[role="alert"] button')!.click();
     fixture.detectChanges();
     expect(text(card(root, 'Orders'))).toContain('1,424');
+    expect(root.querySelector('.skeleton')).toBeNull();
   });
 
   it('exports the status split of the chosen range as csv', () => {

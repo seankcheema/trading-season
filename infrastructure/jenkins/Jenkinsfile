@@ -464,43 +464,83 @@ pipeline {
                         returnStdout: true
                     ).trim()
                 }
-                dir('apps/client-ui') {
-                    sh '''
-                        set -eu
-                        # Chromium needs system libraries the agent lacks and the
-                        # jenkins user cannot install, so the suite runs in a slim
-                        # Chromium-only image tagged with the @playwright/test version.
-                        PW_VERSION="$(node -p "require('@playwright/test/package.json').version")"
-                        PW_IMAGE="trading-season-playwright:${PW_VERSION}"
-                        if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
-                            docker build --build-arg PLAYWRIGHT_VERSION="$PW_VERSION" \
-                                -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
-                        fi
-                        # The workspace (with node_modules) and the Jenkins Node are
-                        # mounted in. --user keeps output owned by jenkins and
-                        # --ipc=host avoids Chromium crashes from the small /dev/shm.
-                        # The API is stubbed, so no backend or database is needed.
-                        NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
-                        docker run --rm --name "$E2E_TEST_CONTAINER" \
-                            --user "$(id -u):$(id -g)" \
-                            --ipc=host \
-                            -v "$WORKSPACE:/workspace" \
-                            -v "$NODE_HOME:/opt/node:ro" \
-                            -e HOME=/tmp \
-                            -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-                            -e CI=true \
-                            -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
-                            -w /workspace/apps/client-ui \
-                            "$PW_IMAGE" \
-                            npm run e2e
-                    '''
-                }
+                // Two suites share one image: the Client UI's, against an in-memory
+                // API stand-in, and the Reporting UI's, against the real Reporting
+                // Service. Both always run, so a failure in the first does not hide
+                // the second; the stage fails if either did.
+                sh '''
+                    set -eu
+                    # Chromium needs system libraries the agent lacks and the
+                    # jenkins user cannot install, so the suites run in a slim
+                    # Chromium-only image tagged with the @playwright/test version.
+                    # Python is in it too, for the Reporting Service.
+                    PW_VERSION="$(cd apps/client-ui && node -p "require('@playwright/test/package.json').version")"
+                    REPORTING_PW_VERSION="$(cd apps/reporting-ui && node -p "require('@playwright/test/package.json').version")"
+                    if [ "$PW_VERSION" != "$REPORTING_PW_VERSION" ]; then
+                        echo "Client UI uses @playwright/test $PW_VERSION and Reporting UI $REPORTING_PW_VERSION; the image holds browsers for one version, so they must match." >&2
+                        exit 1
+                    fi
+                    PW_IMAGE="trading-season-playwright:${PW_VERSION}-python3"
+                    if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
+                        docker build --build-arg PLAYWRIGHT_VERSION="$PW_VERSION" \
+                            -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
+                    fi
+                    # The workspace (with node_modules) and the Jenkins Node are
+                    # mounted in. --user keeps output owned by jenkins and
+                    # --ipc=host avoids Chromium crashes from the small /dev/shm.
+                    NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
+                    client_status=0
+                    reporting_status=0
+
+                    # The API is stubbed, so no backend or database is needed.
+                    docker run --rm --name "$E2E_TEST_CONTAINER" \
+                        --user "$(id -u):$(id -g)" \
+                        --ipc=host \
+                        -v "$WORKSPACE:/workspace" \
+                        -v "$NODE_HOME:/opt/node:ro" \
+                        -e HOME=/tmp \
+                        -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+                        -e CI=true \
+                        -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
+                        -w /workspace/apps/client-ui \
+                        "$PW_IMAGE" \
+                        npm run e2e || client_status=$?
+
+                    # The suite starts the real Reporting Service, the Auth Service
+                    # stand-in and the built app inside this one container, on
+                    # loopback ports of its own. The service's requirements go into
+                    # a venv first, as in the Reporting Service Tests stage; Kafka and
+                    # the database are not needed, the service reads seeded files.
+                    docker run --rm --name "$E2E_TEST_CONTAINER" \
+                        --user "$(id -u):$(id -g)" \
+                        --ipc=host \
+                        -v "$WORKSPACE:/workspace" \
+                        -v "$NODE_HOME:/opt/node:ro" \
+                        -e HOME=/tmp \
+                        -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+                        -e CI=true \
+                        -e PYTHONDONTWRITEBYTECODE=1 \
+                        -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
+                        -e E2E_PYTHON=/tmp/reporting-venv/bin/python \
+                        -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
+                        -w /workspace/apps/reporting-ui \
+                        "$PW_IMAGE" \
+                        sh -c "python3 -m venv /tmp/reporting-venv && /tmp/reporting-venv/bin/pip install -q -r /workspace/apps/reporting-service/requirements.txt && npm run e2e" \
+                        || reporting_status=$?
+
+                    echo "Client UI end-to-end exit status: $client_status; Reporting UI: $reporting_status"
+                    if [ "$client_status" -ne 0 ] || [ "$reporting_status" -ne 0 ]; then
+                        exit 1
+                    fi
+                '''
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'apps/client-ui/reports/playwright/**/*',
+                    archiveArtifacts artifacts: 'apps/client-ui/reports/playwright/**/*, apps/reporting-ui/reports/playwright/**/*',
                                       allowEmptyArchive: true
-                    junit testResults: 'apps/client-ui/reports/playwright/junit.xml',
+                    // One report per suite. A suite that could not start leaves none,
+                    // and the other still has to, or the stage reports nothing ran.
+                    junit testResults: 'apps/client-ui/reports/playwright/junit.xml, apps/reporting-ui/reports/playwright/junit.xml',
                           allowEmptyResults: false,
                           healthScaleFactor: 1.0
                 }
@@ -845,13 +885,17 @@ pipeline {
                 script {
                     def cacheCleanupStatus = sh(script: '''
                         set +e
-                        PW_VERSION=""
-                        if [ -f node_modules/@playwright/test/package.json ]; then
-                            PW_VERSION="$(node -p "require('@playwright/test/package.json').version" 2>/dev/null)"
+                        # The image the end-to-end stage builds: its tag is the Playwright
+                        # version and "-python3". There is no root npm project, so the
+                        # version is read from the app whose node_modules hold it.
+                        PW_TAG=""
+                        if [ -f apps/client-ui/node_modules/@playwright/test/package.json ]; then
+                            PW_VERSION="$(cd apps/client-ui && node -p "require('@playwright/test/package.json').version" 2>/dev/null)"
+                            [ -z "$PW_VERSION" ] || PW_TAG="${PW_VERSION}-python3"
                         fi
                         # Drop Playwright images for other versions and the official images.
                         docker image ls trading-season-playwright --format '{{.Tag}}' | while read -r tag; do
-                            [ "$tag" = "$PW_VERSION" ] || docker image rm "trading-season-playwright:$tag" >/dev/null 2>&1
+                            [ "$tag" = "$PW_TAG" ] || docker image rm "trading-season-playwright:$tag" >/dev/null 2>&1
                         done
                         docker image ls mcr.microsoft.com/playwright --format '{{.Repository}}:{{.Tag}}' | while read -r image; do
                             docker image rm "$image" >/dev/null 2>&1
@@ -869,8 +913,8 @@ pipeline {
                         fi
 
                         echo "Only $((PROJECTED_KB / 1024 / 1024)) GiB will be free after workspace cleanup; removing all caches."
-                        if [ -n "$PW_VERSION" ]; then
-                            docker image rm "trading-season-playwright:$PW_VERSION" >/dev/null 2>&1
+                        if [ -n "$PW_TAG" ]; then
+                            docker image rm "trading-season-playwright:$PW_TAG" >/dev/null 2>&1
                         fi
                         docker builder prune -af 2>/dev/null
                         exit 0

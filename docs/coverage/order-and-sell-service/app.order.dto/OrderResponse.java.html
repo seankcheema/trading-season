@@ -23,10 +23,7 @@ import java.time.OffsetDateTime;
  * @param simulatedAt      selected replay time, or null when real execution time should be displayed
  * @param resolvedAt       when the order reached a final status, if it has
  */
-
-
-
-<span class="fc" id="L29">public record OrderResponse(</span>
+<span class="fc" id="L26">public record OrderResponse(</span>
         Integer orderId,
         Integer instrumentId,
         Integer accountId,
@@ -46,18 +43,18 @@ import java.time.OffsetDateTime;
      * @return the response describing the order
      */
     public static OrderResponse from(Order order) {
-<span class="fc" id="L49">        return new OrderResponse(</span>
-<span class="fc" id="L50">                order.getOrderId(),</span>
-<span class="fc" id="L51">                order.getInstrumentId(),</span>
-<span class="fc" id="L52">                order.getAccountId(),</span>
-<span class="fc" id="L53">                order.getStatus(),</span>
-<span class="fc" id="L54">                order.getOrderType(),</span>
-<span class="fc" id="L55">                order.getQuantity(),</span>
-<span class="fc" id="L56">                order.getIndicativePrice(),</span>
-<span class="fc" id="L57">                order.getRejectionReason(),</span>
-<span class="fc" id="L58">                order.getSubmittedAt(),</span>
-<span class="fc" id="L59">                order.getResolvedAt(),</span>
-<span class="fc" id="L60">                order.getSimulatedAt()</span>
+<span class="fc" id="L46">        return new OrderResponse(</span>
+<span class="fc" id="L47">                order.getOrderId(),</span>
+<span class="fc" id="L48">                order.getInstrumentId(),</span>
+<span class="fc" id="L49">                order.getAccountId(),</span>
+<span class="fc" id="L50">                order.getStatus(),</span>
+<span class="fc" id="L51">                order.getOrderType(),</span>
+<span class="fc" id="L52">                order.getQuantity(),</span>
+<span class="fc" id="L53">                order.getIndicativePrice(),</span>
+<span class="fc" id="L54">                order.getRejectionReason(),</span>
+<span class="fc" id="L55">                order.getSubmittedAt(),</span>
+<span class="fc" id="L56">                order.getResolvedAt(),</span>
+<span class="fc" id="L57">                order.getSimulatedAt()</span>
         );
     }
 }

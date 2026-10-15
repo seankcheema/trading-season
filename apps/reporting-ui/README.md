@@ -160,10 +160,13 @@ The tokens are declared in [src/styles.css](src/styles.css) with the same values
 | Dialog | [dialog.component.ts](src/app/shared/dialog.component.ts) |
 | Orders table with its search and filter row | [order-table.component.ts](src/app/orders/order-table.component.ts) inside [order-browser.component.ts](src/app/orders/order-browser.component.ts), shared by Orders and the customer page |
 | DashCard, DashLabel, DashLink, Button, Input, table head and rows | Classes in [src/styles.css](src/styles.css): `dash-card`, `net-worth-card`, `dash-label`, `dash-link`, `ghost-button`, `ds-control`, `dash-table-head`, `row-button` |
+| None: the kit draws no loading state | [skeleton.component.ts](src/app/shared/skeleton.component.ts): the headline figures, a card with a chart or a breakdown, labelled values, and a searchable table, built from the `skeleton` class in [src/styles.css](src/styles.css) |
 
 From 1024px wide a screen fills the window and its lists scroll inside their cards, with a bottom fade and no scrollbar, as the kit draws it. From 1280px wide Activity does so down to a window 616px high, so it fits a short wide display such as 1920x828 with the browser's own bars: its chart row, with the chart and the two splits side by side, takes four ninths of the room under the headline figures and never less than the four statuses need, and the two lists take the rest. Between 1024px and 1279px the two splits stack beside the chart so that it keeps its width, and the screen fills a window from 1032px high. Narrower, or on a shorter window, the page scrolls.
 
 Report runs fills the window from 1280px wide, down to the same 616px: the row with Trades per day and the client segments takes five ninths of the room under the headline figures and the row with symbols and accounts the rest, the chart grows with its card, and each breakdown scrolls inside its own. Below 1280px its cards stack and the page scrolls.
+
+While a screen's first load is in flight it shows placeholders in its own layout: Activity and Report runs their headline figures and cards, Customers and Orders their search, filters and table, the customer page its heading, three cards and orders, and the order dialog its sections. Each is laid out on the same grid as the loaded screen, so on a window the screen fills nothing moves when the data arrives. The blocks pulse, stop under `prefers-reduced-motion`, and are hidden from assistive technology, which is told what is loading by a visually hidden status. A load that fails shows the error and its retry instead, and a refresh keeps the data already on screen. The Client UI declares the same `skeleton` class for its own [loading states](../client-ui/README.md#loading-states); keep the two alike.
 
 From 768px wide the sidebar stands beside the screen and can be collapsed to 60px with the button beside the logo: the logo mark, the navigation icons, the button itself and log out stay, and the names remain as tooltips and for assistive technology. The choice is kept in this browser's `localStorage`. Narrower, the sidebar is a bar across the top and does not collapse.
 
@@ -186,6 +189,7 @@ The kit is a proposal drawn on sample data. Where the product has no such data, 
 | The chart row holds Notional traded and Orders by status | A third card, Client segments: each trader level's notional and its share, traders and orders in the range | The business requirements ask for activity by client segment, which the kit predates |
 | Three sidebar entries | A fourth, Report runs, and for an analyst only that one | The scheduled reports built from the Kafka topic are a product requirement the kit predates |
 | No way to sign out | A log out button beside the signed-in user | The kit does not draw one |
+| No loading state | Placeholders in the screen's layout while its first load is in flight | The kit is drawn on sample data, which is never on its way |
 | Most traded shows a price sparkline under "Today" whatever the range | The column is named after the chosen range and plots the symbol's fill prices in it | The label follows what is plotted |
 
 Report runs is not in the kit. It is built from the kit's vocabulary as Activity uses it: the headline tiles, cards, the 6px bars of Orders by status, and filled orders in the gain color with rejected ones in the loss color. Its header carries the range toggle Activity has, with the same five ranges, and it opens on 7D and afterwards on the range last chosen in this browser, which it remembers apart from Activity's. Its figures are drawn in the page from what the service answers for the latest run over that range: the run's `report.json` for all time, with days in UTC, and for a narrower range the service's cut of the same run in the viewer's days, ending when the run was generated. The days of Trades per day are also given to screen readers as a table that names the zone, and the column under the pointer is read out above the chart. The PNG charts the Reporting Service renders, in the same surface and colors, are the downloads, for the range on screen, and a file of a narrower range carries the range in its name. When a run is more than a minute late the header says Overdue with the time it was expected, which is how a consumer that is not running shows; a run on time shows nothing there.
@@ -212,6 +216,7 @@ npm --prefix apps/reporting-ui ci
 npm --prefix apps/reporting-ui start
 npm --prefix apps/reporting-ui run build
 npm --prefix apps/reporting-ui test -- --no-watch
+npm --prefix apps/reporting-ui run e2e
 ```
 
 `ng serve` runs on port 4300 and expects the Auth Service on `localhost:3001` and the Reporting Service on `localhost:8083`; [scripts/start-local.ps1](../../scripts/start-local.ps1) starts all three, see [Local processes](../../README.md#local-processes-windows). Use `--no-watch` for the tests; Vitest's `--run` is not supported by the builder.
@@ -232,7 +237,31 @@ The production [Dockerfile](Dockerfile) builds the app and serves it through unp
 
 ## Tests
 
-`*.spec.ts` beside the code under `src`, on the Angular unit-test builder with Vitest. The run fails below 90 percent on statements, branches, functions, or lines (`coverageThresholds` in [angular.json](angular.json)). Add `--coverage` for the report. Shared test data and DOM helpers live in [src/testing](src/testing) and are excluded from the application build. There is no end-to-end suite for this app.
+`*.spec.ts` beside the code under `src`, on the Angular unit-test builder with Vitest. The run fails below 90 percent on statements, branches, functions, or lines (`coverageThresholds` in [angular.json](angular.json)). Add `--coverage` for the report. Shared test data and DOM helpers live in [src/testing](src/testing) and are excluded from the application build.
+### Integration tests
+
+Playwright specs in [e2e](e2e) drive the built app in Chromium against the real Reporting Service, so they check the screens, the service's read model and report run, and its access rules together. Only the two things the service does not itself provide are replaced: Kafka, and the Auth Service.
+
+```mermaid
+flowchart LR
+    Browser["Chromium<br/>(Playwright)"] -- "4390" --> UI["serve-ui.mjs<br/>production build, same path split as nginx.conf"]
+    UI -- "/api/reporting" --> RS["Reporting Service :8390<br/>the real Flask app"]
+    UI -- "/auth" --> Auth["auth-standin.mjs :3390<br/>signs RS256 tokens, serves the JWKS"]
+    RS -- "JWKS" --> Auth
+    Files[("throwaway files directory<br/>events and one report run")] --> RS
+    Scenario["fixtures/scenario.json"] --> Files
+    Scenario --> Auth
+    Scenario --> Specs["the specs' expected figures"]
+```
+
+- **The service is the real one.** [run_reporting_service.py](e2e/support/run_reporting_service.py) writes every message of [scenario.json](e2e/fixtures/scenario.json) to the topic files through the service's own `EventStore`, using the producers' message shapes from the service's `tests/messages.py`, then makes one report run with the service's own `run_report` (PNG charts included) and serves the app on a throwaway directory. The read model, the console queries and the role checks are not mocked.
+- **The Auth Service is a stand-in.** [auth-standin.mjs](e2e/support/auth-standin.mjs) answers `/auth/login`, `/auth/refresh` and `/auth/logout` and publishes a JWKS. It signs access tokens with a key made when it starts, with the claims and no key id the real service uses, so the Reporting Service verifies them with its own JWT checks. Refresh tokens rotate and logout revokes them. It lets a test change an account's roles (`POST /__e2e/roles`), which the real service has no route for.
+- **One scenario, two readers.** The service is seeded from the scenario and the specs work their expected figures out from the same file ([scenario.ts](e2e/fixtures/scenario.ts)), so a figure is never typed in twice. Orders are placed between 28 hours and 125 days back, clear of the edges of the 7, 30 and 90 day ranges and never in Today, so the suite gives the same answers whenever it runs. Browsers run in UTC.
+- **What is covered.** [sign-in.spec.ts](e2e/sign-in.spec.ts): the sign-in form, both roles, refusals, the no-access turn-away, sign-out and revocation. [access-control.spec.ts](e2e/access-control.spec.ts): each endpoint against each role, a token signed by another key, an expired token, read-only and input checks, and the screens' own handling of the refresh path and of a role change. [activity.spec.ts](e2e/activity.spec.ts), [customers.spec.ts](e2e/customers.spec.ts), [orders.spec.ts](e2e/orders.spec.ts) and [report-runs.spec.ts](e2e/report-runs.spec.ts): every figure, split, filter, sort, export and chart download of their screen, and its error and retry states. [shell.spec.ts](e2e/shell.spec.ts): navigation, the collapsible sidebar and the narrow layout.
+- **Run them** from the repository root: `npm --prefix apps/reporting-ui run e2e`. It needs Chromium (`npx --prefix apps/reporting-ui playwright install chromium`) and the Reporting Service's Python requirements. The suite uses `apps/reporting-service/venv` when there is one, else `python` on the path; `E2E_PYTHON` names another interpreter. It builds the app first; `E2E_SKIP_BUILD=1` reuses the last build, and `E2E_REUSE_SERVERS=1` reuses processes already listening on 4390, 8390 and 3390. Ports of its own keep a running development stack out of it. Reports are written to `reports/playwright`.
+- **Changing the service or a screen.** A new field in a published message, a new endpoint or a new role rule means extending the scenario and the specs with it. The scenario file's own `comment` says what the times must keep clear of.
+
+In the [Jenkins pipeline](../../infrastructure/README.md#jenkins) the suite runs in the End-to-End Tests stage, after the Client UI's, in the same Playwright image. That image carries Debian's Python 3.11 as well as Chromium; the stage makes a venv from the Reporting Service's `requirements.txt` and sets `E2E_PYTHON` to it. Both suites always run, and the stage fails if either does. Both apps must resolve the same `@playwright/test` version, since the image holds browsers for one; the stage stops with a message if they differ. The service itself is built for Python 3.14, and the suite has been run on 3.11 and 3.14.
 
 ## Known limitations
 

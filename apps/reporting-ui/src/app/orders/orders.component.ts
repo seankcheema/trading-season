@@ -5,8 +5,10 @@ import { ReportingApiService } from '../reporting/reporting-api.service';
 import { ExportMenuComponent, downloadCsv } from '../shared/export-menu.component';
 import { live } from '../shared/live';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { SkeletonTableComponent } from '../shared/skeleton.component';
 import { OrderBrowserComponent } from './order-browser.component';
 import { OrderDetailComponent } from './order-detail.component';
+import { ORDER_TABLE_MIN_WIDTH, ORDER_TRACKS } from './order-table.component';
 
 // How often the order list is read again.
 export const ORDERS_REFRESH_MS = 30_000;
@@ -23,6 +25,7 @@ export const ORDERS_REFRESH_MS = 30_000;
     ExportMenuComponent,
     OrderBrowserComponent,
     OrderDetailComponent,
+    SkeletonTableComponent,
   ],
   providers: [provideIcons({ lucideCircleAlert })],
   host: { class: 'flex min-h-[32rem] flex-1 basis-0 flex-col gap-3' },
@@ -31,10 +34,14 @@ export const ORDERS_REFRESH_MS = 30_000;
       <app-export-menu (exportCsv)="exportCsv()" />
     </app-page-header>
 
-    <section class="dash-card flex min-h-0 flex-1 flex-col p-5">
+    <section
+      class="dash-card flex min-h-0 flex-1 flex-col p-5"
+      [attr.aria-busy]="list.state() === 'loading' ? 'true' : null"
+    >
       @switch (list.state()) {
         @case ('loading') {
-          <p class="text-muted-foreground text-sm" aria-busy="true">Loading orders…</p>
+          <p class="sr-only" role="status">Loading orders…</p>
+          <app-skeleton-table [tracks]="tracks" [minWidth]="minWidth" [filters]="5" />
         }
         @case ('error') {
           <div class="flex flex-col items-center gap-3 py-14 text-center" role="alert">
@@ -66,6 +73,9 @@ export class OrdersComponent {
   protected readonly list = live(() => this._api.orders(), ORDERS_REFRESH_MS);
   // The order whose detail is open.
   protected readonly open = signal<number | null>(null);
+
+  protected readonly tracks = ORDER_TRACKS;
+  protected readonly minWidth = ORDER_TABLE_MIN_WIDTH;
 
   protected readonly subtitle = computed(() => {
     const session = this.list.data()?.sessionId;

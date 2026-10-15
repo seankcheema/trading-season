@@ -458,13 +458,20 @@ describe('RunsComponent', () => {
 
   it('shows loading and empty states', () => {
     const root = render('loading');
-    expect(text(root)).toContain('Loading report runs…');
+    expect(text(root.querySelector('[role="status"]')!)).toBe('Loading report runs…');
     expect(root.querySelector('[data-meters]')).toBeNull();
+    // The report's shape stands in for it: the headline figures, the chart and the three breakdowns.
+    expect(root.querySelector('[aria-busy="true"]')).not.toBeNull();
+    expect(root.querySelectorAll('app-skeleton-kpis section')).toHaveLength(5);
+    expect(root.querySelectorAll('app-skeleton-card')).toHaveLength(4);
+    expect(root.querySelectorAll('app-skeleton-card [data-chart]')).toHaveLength(1);
 
     store.state.set('empty');
     store.scheduler.set(null);
     fixture.detectChanges();
     expect(text(root)).toContain('No report runs yet');
+    expect(root.querySelector('.skeleton')).toBeNull();
+    expect(root.querySelector('[aria-busy]')).toBeNull();
     expect(text(root)).toContain('Written by the reporting consumer · each run replaces');
 
     store.scheduler.set(schedulerStatus({ interval_minutes: 1 }));

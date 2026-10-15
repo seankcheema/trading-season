@@ -31,6 +31,7 @@ import { ChangePillComponent } from '../shared/change-pill.component';
 import { ExportMenuComponent, saveFile } from '../shared/export-menu.component';
 import { roundStep } from '../shared/line-chart.component';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { SkeletonCardComponent, SkeletonKpisComponent } from '../shared/skeleton.component';
 import { TimeframeToggleComponent } from '../shared/timeframe-toggle.component';
 
 // What each chart the report job writes shows; an unknown file falls back to its name.
@@ -95,6 +96,8 @@ interface SavedChart {
     TimeframeToggleComponent,
     ChangePillComponent,
     ExportMenuComponent,
+    SkeletonCardComponent,
+    SkeletonKpisComponent,
   ],
   providers: [provideIcons({ lucideCircleAlert, lucideDownload, lucideInbox, lucideRefreshCw })],
   // From 1280px wide the screen fills the window and its lists scroll inside their

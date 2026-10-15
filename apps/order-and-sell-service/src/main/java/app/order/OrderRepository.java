@@ -36,6 +36,19 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
     @Query("SELECT o FROM Order o JOIN Account a ON a.id = o.accountId "
             + "WHERE a.userId = :userId ORDER BY o.submittedAt DESC, o.orderId DESC")
     List<Order> findAllByOwningUserId(UUID userId);
+
+    /**
+     * Finds one order only when it belongs to the supplied user. This keeps a
+     * detail read scoped by the verified token subject instead of trusting an
+     * id in the URL.
+     *
+     * @param orderId the requested order
+     * @param userId the caller's user id from the token's sub claim
+     * @return the owned order, or empty when it is absent or belongs to someone else
+     */
+    @Query("SELECT o FROM Order o JOIN Account a ON a.id = o.accountId "
+            + "WHERE o.orderId = :orderId AND a.userId = :userId")
+    Optional<Order> findByOrderIdAndOwningUserId(Integer orderId, UUID userId);
 }
 
 

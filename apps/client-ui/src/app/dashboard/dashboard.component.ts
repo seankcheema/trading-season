@@ -1,5 +1,9 @@
 import { WatchlistStore } from './watchlist/watchlist-store.service';
-import { ActivityItem, ActivityRowComponent } from './shared/activity-row.component';
+import {
+  ActivityItem,
+  ActivityRowComponent,
+  ActivityRowSkeletonComponent,
+} from './shared/activity-row.component';
 import { cashActivity, orderActivity, orderDate } from './shared/activity';
 import { AssetsDialogComponent } from './history/assets-dialog.component';
 import { TransactionsDialogComponent } from './history/transactions-dialog.component';
@@ -82,6 +86,7 @@ type AccountDialog =
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ActivityRowComponent,
+    ActivityRowSkeletonComponent,
     AccountDialogComponent,
     AssetsDialogComponent,
     AccountControlComponent,
@@ -149,6 +154,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   });
   protected readonly hasAccounts = computed(() => this.accounts().length > 0);
+  // Until the accounts arrive there is no balance, holding or cash transfer to show, so the
+  // cards that depend on them show placeholders instead of zeros and empty states.
+  protected readonly accountsLoading = computed(
+    () => this.accountStore.status() === 'idle' || this.accountStore.status() === 'loading',
+  );
+  protected readonly transactionsLoading = computed(
+    () => this.orderService.historyStatus() === 'loading' || this.accountsLoading(),
+  );
+  // How many placeholder rows a list shows while it loads.
+  protected readonly skeletonRows = [1, 2, 3, 4, 5] as const;
   protected readonly accountLabel = computed(() => {
     switch (this.accountStore.status()) {
       case 'idle':

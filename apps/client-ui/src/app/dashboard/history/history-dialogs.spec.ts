@@ -154,12 +154,66 @@ describe('history dialogs', () => {
       }
     });
 
-    it('does not make rows clickable', () => {
+    it('expands an order into its pending-to-final audit timeline', () => {
       seedOrders();
       const fixture = open();
+      click(fixture, '[data-testid="transactions-order-1"]');
       expect(
-        fixture.nativeElement.querySelectorAll('[data-testid="transactions-row"] button'),
-      ).toHaveLength(0);
+        fixture.nativeElement.querySelector('[data-testid="audit-trail-1"]')?.textContent,
+      ).toContain('Loading audit trail');
+      http.expectOne('/api/orders/1/audit').flush([
+        {
+          eventType: 'PENDING',
+          price: 100,
+          occurredAt: '2026-01-05T15:59:00Z',
+          detail: null,
+        },
+        {
+          eventType: 'ACCEPTED',
+          price: 100,
+          occurredAt: '2026-01-05T15:59:30Z',
+          detail: null,
+        },
+        {
+          eventType: 'FILLED',
+          price: 100,
+          occurredAt: '2026-01-05T16:00:00Z',
+          detail: 'Filled 2 @ 100.00',
+        },
+      ]);
+      fixture.detectChanges();
+
+      const trail = fixture.nativeElement.querySelector('[data-testid="audit-trail-1"]');
+      expect(trail.textContent).toContain('PENDING');
+      expect(trail.textContent).toContain('ACCEPTED');
+      expect(trail.textContent).toContain('FILLED');
+      expect(trail.textContent).toContain('$100.00');
+      expect(fixture.nativeElement.querySelector('[data-testid="transactions-order-1"]')?.getAttribute('aria-expanded')).toBe('true');
+
+      click(fixture, '[data-testid="transactions-order-1"]');
+      expect(fixture.nativeElement.querySelector('[data-testid="audit-trail-1"]')).toBeNull();
+    });
+
+    it('shows placeholder rows until the cash ledger arrives', () => {
+      const fixture = TestBed.createComponent(TransactionsDialogComponent);
+      fixture.detectChanges();
+      const table: HTMLElement = fixture.nativeElement.querySelector(
+        '[data-testid="transactions-table"]',
+      );
+      const placeholders = rows(fixture, 'transactions-row-skeleton');
+
+      expect(placeholders).toHaveLength(6);
+      // One block under each of the seven columns, hidden from a screen reader, which is told instead.
+      expect(placeholders[0].children).toHaveLength(7);
+      expect(placeholders[0].getAttribute('aria-hidden')).toBe('true');
+      expect(table.querySelector('[role="status"]')?.textContent).toContain('Loading transactions…');
+      expect(table.textContent).not.toContain('No transactions match these filters.');
+
+      http.expectOne((request) => request.url === '/api/me/cash-transactions').flush([]);
+      fixture.detectChanges();
+      expect(rows(fixture, 'transactions-row-skeleton')).toHaveLength(0);
+      expect(table.querySelector('[role="status"]')).toBeNull();
+      expect(table.textContent).toContain('No transactions match these filters.');
     });
 
     it('still shows the recent transfers when the full ledger cannot be loaded', () => {

@@ -8,6 +8,7 @@ import app.instrument.Instrument;
 import app.instrument.InstrumentNotFoundException;
 import app.instrument.InstrumentRepository;
 import app.order.audit.AuditTrailService;
+import app.order.audit.AuditTrail;
 import app.order.dto.OrderRequest;
 import app.order.event.OrderStatusEvent;
 import app.order.execution.OrderExecutionService;
@@ -75,6 +76,7 @@ public class OrderService {
     private final OrderValidationPipeline validationPipeline;
     private final OrderExecutionService orderExecutionService;
     private final AuditTrailService auditTrailService;
+    private final app.order.audit.AuditTrailRepository auditTrailRepository;
     private final ApplicationEventPublisher events;
     private final TransactionTemplate transactions;
 
@@ -89,6 +91,7 @@ public class OrderService {
      * @param validationPipeline trading-rule pipeline
      * @param orderExecutionService settlement of orders that pass validation
      * @param auditTrailService lifecycle event recorder
+     * @param auditTrailRepository read access to an order's recorded lifecycle entries, oldest first
      * @param events publisher of the {@link app.order.event.OrderStatusEvent} raised at each committed status change
      * @param transactionManager manager behind the acceptance transaction, which commits before execution begins
      */
@@ -100,6 +103,7 @@ public class OrderService {
                          OrderValidationPipeline validationPipeline,
                          OrderExecutionService orderExecutionService,
                          AuditTrailService auditTrailService,
+                         app.order.audit.AuditTrailRepository auditTrailRepository,
                          ApplicationEventPublisher events,
                          PlatformTransactionManager transactionManager) {
         this.orderRepository = orderRepository;
@@ -110,6 +114,7 @@ public class OrderService {
         this.validationPipeline = validationPipeline;
         this.orderExecutionService = orderExecutionService;
         this.auditTrailService = auditTrailService;
+        this.auditTrailRepository = auditTrailRepository;
         this.events = events;
         this.transactions = new TransactionTemplate(transactionManager);
     }
@@ -292,5 +297,36 @@ public class OrderService {
     @Transactional(readOnly = true)
     public List<Order> getOwnOrders(UUID userId) {
         return orderRepository.findAllByOwningUserId(userId);
+    }
+
+    /**
+     * Returns one order only when it belongs to the caller. An unowned and an
+     * unknown order are intentionally indistinguishable to the client.
+     *
+     * @param orderId the requested order id
+     * @param userId the caller's user id from the token's {@code sub} claim
+     * @return the caller's owned order
+     * @throws AccountNotFoundException if the order is absent or not owned by the caller
+     */
+    @Transactional(readOnly = true)
+    public Order getOwnOrder(Integer orderId, UUID userId) {
+        return orderRepository.findByOrderIdAndOwningUserId(orderId, userId)
+                .orElseThrow(() -> new AccountNotFoundException("No order " + orderId));
+    }
+
+    /**
+     * Returns the lifecycle audit entries for one order owned by the caller.
+     * An unowned or unknown order is deliberately indistinguishable to avoid
+     * revealing another trader's order ids.
+     *
+     * @param orderId the requested order id
+     * @param userId the caller's user id from the token's {@code sub} claim
+     * @return immutable lifecycle entries, oldest first
+     * @throws app.account.AccountNotFoundException if the order is absent or not owned by the caller
+     */
+    @Transactional(readOnly = true)
+    public List<AuditTrail> getOwnOrderAudit(Integer orderId, UUID userId) {
+        Order order = getOwnOrder(orderId, userId);
+        return auditTrailRepository.findAllByOrderIdOrderByRecordedAtAscAuditIdAsc(order.getOrderId());
     }
 }

@@ -39,6 +39,7 @@ Run from repository root unless a working directory is specified:
 | Reporting UI dependencies | npm --prefix apps/reporting-ui ci |
 | Reporting UI build | npm --prefix apps/reporting-ui run build |
 | Reporting UI tests | npm --prefix apps/reporting-ui test -- --no-watch |
+| Reporting UI integration tests | npm --prefix apps/reporting-ui run e2e (needs Chromium and the Reporting Service's Python requirements) |
 | Holdings and Trade tests | mvn -B -f apps/holdings-and-trade-service/pom.xml test |
 | Order and Sell tests | mvn -B -f apps/order-and-sell-service/pom.xml test |
 | Auth tests | npm --prefix apps/auth-service test |

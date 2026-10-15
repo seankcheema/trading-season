@@ -7,14 +7,26 @@
 #
 # Build it with no context; nothing from the repository is copied in:
 #   docker build --build-arg PLAYWRIGHT_VERSION=1.63.0 \
-#     -t trading-season-playwright:1.63.0 - < infrastructure/docker/Dockerfile.playwright
+#     -t trading-season-playwright:1.63.0-python3 - < infrastructure/docker/Dockerfile.playwright
 #
-# PLAYWRIGHT_VERSION must equal the installed @playwright/test version; browser
-# builds are only guaranteed to match the Playwright release that installed them.
+# PLAYWRIGHT_VERSION must equal the installed @playwright/test version of both
+# apps that use the image; browser builds are only guaranteed to match the
+# Playwright release that installed them.
+#
+# The Reporting UI integration tests start the real Reporting Service, so the
+# image also carries Debian's Python 3 and its venv module. The Reporting
+# Service's requirements are installed into a venv by the pipeline when the
+# suite runs, not baked in: they change with the service, this image only with
+# Playwright. The "-python3" tag suffix is what makes an agent that still holds
+# the earlier Chromium-only image build this one.
 FROM node:24.8.0-bookworm-slim
 
 ARG PLAYWRIGHT_VERSION
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 python3-venv \
+    && rm -rf /var/lib/apt/lists/*
 
 # The pipeline runs this image as the Jenkins user, so the browsers must be
 # readable by any UID. The npm cache and apt lists are removed in the same

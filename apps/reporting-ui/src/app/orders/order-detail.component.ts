@@ -18,6 +18,7 @@ import { ReportingApiService } from '../reporting/reporting-api.service';
 import { ChangePillComponent, statusTone } from '../shared/change-pill.component';
 import { copyText } from '../shared/clipboard';
 import { DialogComponent } from '../shared/dialog.component';
+import { SkeletonFactsComponent } from '../shared/skeleton.component';
 
 // What each status means for the ledger.
 const STATUS_NOTES: Record<OrderStatus, string> = {
@@ -60,7 +61,7 @@ function signedShares(value: number): string {
 @Component({
   selector: 'app-order-detail',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon, ChangePillComponent, DialogComponent],
+  imports: [NgIcon, ChangePillComponent, DialogComponent, SkeletonFactsComponent],
   providers: [provideIcons({ lucideCheck, lucideCopy })],
   styles: `
     .section {
@@ -78,7 +79,45 @@ function signedShares(value: number): string {
     >
       @switch (loaded().state) {
         @case ('loading') {
-          <p class="text-muted-foreground text-sm" aria-busy="true">Loading the order…</p>
+          <!-- The dialog as it will be laid out: the order, its note, then the sections. -->
+          <div aria-busy="true" data-skeleton>
+            <p class="sr-only" role="status">Loading the order…</p>
+            <div aria-hidden="true">
+              <div class="mb-4 flex flex-wrap items-center gap-4">
+                <span class="skeleton size-11 shrink-0 rounded-xl"></span>
+                <div class="min-w-0 flex-1">
+                  <span class="skeleton h-6 w-56 max-w-full"></span>
+                  <span class="skeleton mt-1.5 h-3.5 w-72 max-w-full"></span>
+                </div>
+                <div>
+                  <span class="skeleton ml-auto h-3 w-16"></span>
+                  <span class="skeleton mt-1.5 h-7 w-28"></span>
+                </div>
+              </div>
+              <span class="skeleton mb-4 h-9"></span>
+              <div class="grid gap-3 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+                <div class="flex min-w-0 flex-col gap-3">
+                  @for (facts of skeletonSections; track $index) {
+                    <div class="section">
+                      <span class="skeleton mb-3 h-3.5 w-24"></span>
+                      <app-skeleton-facts
+                        class="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3"
+                        [count]="facts"
+                      />
+                    </div>
+                  }
+                </div>
+                <div class="flex min-w-0 flex-col gap-3 self-start">
+                  @for (facts of [4, 4]; track $index) {
+                    <div class="section">
+                      <span class="skeleton mb-3 h-3.5 w-24"></span>
+                      <app-skeleton-facts class="grid grid-cols-2 gap-x-4 gap-y-3" [count]="facts" />
+                    </div>
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
         }
         @case ('error') {
           <p class="text-sm" role="alert">We couldn't load this order.</p>
@@ -243,6 +282,8 @@ export class OrderDetailComponent {
   readonly closed = output<void>();
 
   protected readonly loaded = signal<Loaded>({ state: 'loading' });
+  // How many facts each section on the left holds: customer, execution, ledger impact.
+  protected readonly skeletonSections = [3, 9, 6] as const;
   // Which id was just copied, for as long as its button says so.
   protected readonly copied = signal<Copied | null>(null);
   private _copiedTimer?: ReturnType<typeof setTimeout>;
@@ -360,10 +401,13 @@ export class OrderDetailComponent {
     return event.priceKind === 'FILL' ? 'fill price' : 'indicative';
   }
 
-  // Red for a failure, green for a fill, cyan for a step on the way.
+  // Red for a failure, green for a fill, gold while pending, cyan for any other step on the way.
   protected eventColor(eventType: string): string {
     if (/FAIL|REJECT/.test(eventType)) {
       return 'bg-loss';
+    }
+    if (eventType === 'PENDING') {
+      return 'bg-pending';
     }
     return eventType === 'FILLED' ? 'bg-gain' : 'bg-primary';
   }
