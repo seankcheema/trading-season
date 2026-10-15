@@ -143,6 +143,7 @@ function createDashboard(): ComponentFixture<DashboardComponent> {
 
 describe('DashboardComponent', () => {
   beforeEach(async () => {
+    sessionStorage.clear();
     await TestBed.configureTestingModule({
       imports: [DashboardComponent],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
@@ -257,7 +258,7 @@ describe('DashboardComponent', () => {
       row.querySelector('[data-testid="activity-tag"]')!.className;
     expect(tagClass(rows[0])).toContain('text-gain');
     expect(tagClass(rows[1])).toContain('text-primary');
-    expect(tagClass(rows[2])).toContain('text-amber-400');
+    expect(tagClass(rows[2])).toContain('text-pending');
     expect(tagClass(rows[3])).toContain('text-loss');
   });
 

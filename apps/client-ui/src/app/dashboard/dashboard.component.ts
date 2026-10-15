@@ -67,6 +67,7 @@ import { RecentInstrumentsService } from './shared/recent-instruments.service';
 import { PriceChartComponent } from './shared/price-chart.component';
 import { SignedPercentPipe } from './shared/signed-percent.pipe';
 import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
+import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 
 type HeaderDropdown = 'account' | 'market-clock' | 'profile';
 type TickAnimation = {
@@ -85,6 +86,7 @@ type AccountDialog =
   selector: 'app-dashboard',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ThemeToggleComponent,
     ActivityRowComponent,
     ActivityRowSkeletonComponent,
     AccountDialogComponent,
@@ -143,16 +145,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly accounts = this.accountStore.accounts;
   protected readonly selectedAccount = this.accountStore.selectedAccount;
   protected readonly selectedAccountId = this.accountStore.selectedAccountId;
-  private initialAccountRestored = false;
-  private readonly restoreAccount = effect(() => {
-    const id = Number(this._router.routerState.snapshot.root.firstChild?.queryParams['accountId']);
-    if (this.accountStore.status() === 'ready' && !this.initialAccountRestored) {
-      this.initialAccountRestored = true;
-      if (id > 0) {
-        this.accountStore.selectAccount(id);
-      }
-    }
-  });
   protected readonly hasAccounts = computed(() => this.accounts().length > 0);
   // Until the accounts arrive there is no balance, holding or cash transfer to show, so the
   // cards that depend on them show placeholders instead of zeros and empty states.

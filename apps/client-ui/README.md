@@ -94,6 +94,10 @@ sequenceDiagram
 
 Network and refresh-service failures keep the credentials so the request can be retried; sign-out happens on explicit logout, inactivity, or missing or rejected refresh credentials.
 
+### Selected account
+
+The account chosen in the header is never part of a URL, where it would reach browser history, server logs and shared links. [AccountStore](src/app/dashboard/accounts/account-store.service.ts) holds it for the dashboard and the market page, and keeps it in this tab's `sessionStorage` under `ts.accounts.selected`, so moving between the two pages or reloading keeps it, and a new tab starts on the first account. Sign-out forgets it, and a saved id that is not one of the user's accounts selects the first one. Links made before this carried `?accountId=`; [dropAccountIdGuard](src/app/core/drop-account-id.guard.ts) opens them without it.
+
 ## Loading states
 
 While data is on its way, the part of the screen that waits for it shows placeholders in the shape of what is coming: pulsing blocks where the figures, rows and charts will be. A figure is not shown as zero, and a list is not shown as empty, until the answer says so.
@@ -111,6 +115,19 @@ While data is on its way, the part of the screen that waits for it shows placeho
 | Market page | Rows of Recent Orders | The orders and the accounts arrive |
 
 A placeholder is the `skeleton` class in [src/styles.css](src/styles.css), sized with utilities; a list row has its own in [activity-row.component.ts](src/app/dashboard/shared/activity-row.component.ts). The blocks are hidden from assistive technology, and a visually hidden status beside them says what is loading, so a screen reader hears "Loading accounts" as before. The pulse stops under `prefers-reduced-motion`. A load that fails shows its error and retry in place of the placeholder, and a refresh of data already on screen leaves it there. The [Reporting UI](../reporting-ui/README.md#design-system) declares the same class; keep the two alike.
+
+## Themes
+
+The app comes in the design system's dark theme, which is the default, and a light one. The switch is the sun or moon button in the header of the landing page, the dashboard and the market page, and at the top right of the sign-in and registration pages.
+
+| Piece | What it does |
+| --- | --- |
+| [src/styles.css](src/styles.css) | The light tokens on `:root`, the dark ones on `:root.dark`. Light keeps the brand's ink and cyan but deepens each color used as text, primary, gain, loss and pending, until it reads at 4.5:1 on a white card. Besides the SpartanNG tokens there are tokens for the hero card, the surfaces the trading charts float, and the chart indicators |
+| [ThemeService](src/app/core/theme/theme.service.ts) | Adds or removes the `dark` class on `<html>`, keeps the choice in this browser's `localStorage` under `ts.settings.theme`, and follows a choice made in another open tab. On the server it changes nothing but the class |
+| [ThemeToggleComponent](src/app/core/theme/theme-toggle.component.ts) | The switch. Its label names the theme a click gives |
+| [src/index.html](src/index.html) | Ships `class="dark"` and a script that removes it when light was saved, before the first paint, so a reload or a prerendered page does not flash dark |
+
+Use a token, not a literal color, in new markup: a literal looks right in one theme only. The [Reporting UI](../reporting-ui/README.md#theme) declares the same values and has its own switch; the choice is kept per origin, so each app remembers its own.
 
 ## Commands
 

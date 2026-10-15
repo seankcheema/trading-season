@@ -94,6 +94,7 @@ import { PriceChartComponent } from '../dashboard/shared/price-chart.component';
 import { SignedPercentPipe } from '../dashboard/shared/signed-percent.pipe';
 import { TimeframeToggleComponent } from '../dashboard/shared/timeframe-toggle.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
+import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
@@ -133,6 +134,7 @@ interface MarketStats {
   selector: 'app-market-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ThemeToggleComponent,
     WatchlistStarComponent,
     DashboardHeaderDropdownComponent,
     SettingsDialogComponent,
@@ -243,17 +245,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       this.settingsOpen.set(false);
       this.accountDialog.set(null);
     });
-  });
-
-  private readonly requestedAccountId = signal<number | null>(null);
-  private appliedAccountId: number | null = null;
-  private readonly selectRequestedAccount = effect(() => {
-    const id = this.requestedAccountId();
-
-    if (this.accountStore.status() === 'ready' && id !== null && id !== this.appliedAccountId) {
-      this.appliedAccountId = id;
-      this.accountStore.selectAccount(id);
-    }
   });
 
   protected readonly submitting = signal(false);
@@ -404,21 +395,11 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       });
   }
 
+  // The store keeps the choice for the dashboard and this tab; the URL never carries it.
   protected selectAccount(id: number): void {
-    if (!this.accountStore.selectAccount(id)) {
-      return;
+    if (this.accountStore.selectAccount(id)) {
+      this.openHeaderDropdown.set(null);
     }
-
-    this.requestedAccountId.set(id);
-
-    this.openHeaderDropdown.set(null);
-
-    void this.router.navigate([], {
-      relativeTo: this.route,
-      queryParams: { accountId: id },
-      queryParamsHandling: 'merge',
-      replaceUrl: true,
-    });
   }
 
   protected openCreateAccount(): void {
@@ -785,12 +766,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     );
     this.routeSubscription.add(
       this.route.queryParamMap.subscribe((params) => {
-        const accountId = Number(params.get('accountId'));
-
-        this.requestedAccountId.set(
-          Number.isInteger(accountId) && accountId > 0 ? accountId : null,
-        );
-
         const rawSymbol = params.get('compare') ?? '';
         const symbol = normalizeMarketSymbol(rawSymbol);
         this.comparisonSymbol.set(symbol);
@@ -823,7 +798,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     void this.router.navigate(['/dashboard/markets', marketSymbolSlug(instrument.symbol)], {
       queryParams: {
         compare: compare && compare !== instrument.symbol ? marketSymbolSlug(compare) : null,
-        accountId: this.accountStore.selectedAccountId(),
       },
 
       queryParamsHandling: 'merge',

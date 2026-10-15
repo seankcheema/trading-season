@@ -20,10 +20,10 @@
   align-items: center;
   justify-content: center;
   gap: 0;
-  border: 1px solid rgba(238, 250, 255, 0.15);
+  border: 1px solid color-mix(in srgb, var(--foreground) 15%, transparent);
   border-radius: 0.5rem;
   padding: 0;
-  color: rgba(238, 250, 255, 0.62);
+  color: color-mix(in srgb, var(--foreground) 62%, transparent);
   font-size: 1.5rem;
   font-weight: 600;
   transition: 150ms ease;
@@ -32,8 +32,8 @@
   font-size: 1.5rem;
 }
 .nav-back:hover {
-  border-color: rgba(0, 187, 255, 0.35);
-  color: #00bbff;
+  border-color: color-mix(in srgb, var(--primary) 35%, transparent);
+  color: var(--primary);
 }
 
 .market-content {
@@ -73,7 +73,7 @@
   text-align: right;
 }
 .market-metrics dt {
-  color: rgba(238, 250, 255, 0.46);
+  color: color-mix(in srgb, var(--foreground) 46%, transparent);
   font-size: 0.5625rem;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -136,7 +136,7 @@
   flex: 0 1 auto;
   grid-template-columns: auto auto;
   gap: 0.75rem;
-  border-left: 1px solid rgba(238, 250, 255, 0.08);
+  border-left: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
   padding-left: 0.75rem;
 }
 .comparison-metrics div {
@@ -145,7 +145,7 @@
   gap: 0.2rem;
 }
 .comparison-metrics dt {
-  color: rgba(238, 250, 255, 0.42);
+  color: color-mix(in srgb, var(--foreground) 42%, transparent);
   font-size: 0.5625rem;
   font-weight: 600;
   letter-spacing: 0;
@@ -239,19 +239,19 @@
   width: 0.75rem;
   height: 0.75rem;
   flex: 0 0 auto;
-  border: 1px solid rgba(238, 250, 255, 0.3);
+  border: 1px solid color-mix(in srgb, var(--foreground) 30%, transparent);
   border-radius: 0.2rem;
 }
 .indicator-checkbox-checked {
-  border-color: #00bbff;
-  background: #00bbff;
-  box-shadow: inset 0 0 0 2px #181818;
+  border-color: var(--primary);
+  background: var(--primary);
+  box-shadow: inset 0 0 0 2px var(--menu);
 }
 .chart-stage {
   min-height: 25rem;
   flex: 1;
   border-radius: 0.75rem;
-  background: #0e0e0e;
+  background: var(--background);
   padding: 0.75rem;
   position: relative;
 }
@@ -281,7 +281,7 @@
   height: 100%;
   align-items: center;
   justify-content: center;
-  color: rgba(238, 250, 255, 0.46);
+  color: color-mix(in srgb, var(--foreground) 46%, transparent);
   font-size: 0.8125rem;
   text-align: center;
 }
@@ -295,9 +295,9 @@
   align-items: stretch;
   flex-direction: column;
   gap: 0;
-  border: 1px solid rgba(238, 250, 255, 0.15);
+  border: 1px solid color-mix(in srgb, var(--foreground) 15%, transparent);
   border-radius: 0.5rem;
-  background: #181818;
+  background: var(--menu);
   padding: 0;
   box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.45);
 }
@@ -346,7 +346,7 @@
   padding-right: 0.75rem;
 }
 .comparison-chart + .comparison-chart {
-  border-left: 1px solid rgba(238, 250, 255, 0.1);
+  border-left: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
   padding-right: 0;
   padding-left: 0.75rem;
 }
@@ -371,16 +371,16 @@
   gap: 0.4rem;
 }
 .indicator-legend span[data-indicator='sma'] {
-  color: #f6c453;
+  color: var(--indicator-sma);
 }
 .indicator-legend span[data-indicator='ema'] {
-  color: #b784ff;
+  color: var(--indicator-ema);
 }
 .indicator-legend span[data-indicator='bollinger'] {
-  color: #ff8f66;
+  color: var(--indicator-bollinger);
 }
 .indicator-legend span[data-indicator='rsi'] {
-  color: #42d3ff;
+  color: var(--indicator-rsi);
 }
 
 .tool-button,
@@ -390,11 +390,11 @@
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
-  border: 1px solid rgba(238, 250, 255, 0.28);
+  border: 1px solid color-mix(in srgb, var(--foreground) 28%, transparent);
   border-radius: 0.5rem;
-  background: #242424;
+  background: var(--raised);
   padding: 0 0.75rem;
-  color: rgba(238, 250, 255, 0.85);
+  color: color-mix(in srgb, var(--foreground) 85%, transparent);
   font-size: 0.75rem;
   font-weight: 600;
   transition:
@@ -408,12 +408,12 @@
 }
 .tool-button:hover,
 .tool-icon:hover {
-  border-color: rgba(0, 187, 255, 0.55);
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
   background: #8ae5ff;
   color: #08131a;
 }
 .tool-button-active {
-  border-color: rgba(0, 187, 255, 0.45);
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
   background: #57d7ff;
   color: #08131a;
 }
@@ -515,7 +515,7 @@
 }
 .insight-intro > span,
 .insight-item > div > span {
-  color: rgba(238, 250, 255, 0.42);
+  color: color-mix(in srgb, var(--foreground) 42%, transparent);
   font-size: 0.625rem;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -529,12 +529,12 @@
 .insight-intro p,
 .insight-item p {
   margin-top: 0.25rem;
-  color: rgba(238, 250, 255, 0.46);
+  color: color-mix(in srgb, var(--foreground) 46%, transparent);
   font-size: 0.6875rem;
   line-height: 1.5;
 }
 .insight-item {
-  border-top: 1px solid rgba(238, 250, 255, 0.08);
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
   padding: 0.75rem 0;
 }
 .insight-item > div {
@@ -567,9 +567,9 @@
   display: grid;
   min-width: 0;
   grid-template-rows: minmax(0, 1fr) auto;
-  border: 1px solid rgba(238, 250, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
   border-radius: 0.55rem;
-  background: rgba(238, 250, 255, 0.018);
+  background: color-mix(in srgb, var(--foreground) 1.8%, transparent);
   padding: 0.4rem 0.45rem;
 }
 .overview-card-topline {
@@ -586,10 +586,10 @@
   height: 1.75rem;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(238, 250, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
   border-radius: 0.45rem;
-  background: #27323a;
-  color: #eefaff;
+  background: var(--tile);
+  color: var(--foreground);
   font-size: 0.82rem;
 }
 .overview-card-heading {
@@ -602,7 +602,7 @@
 .overview-card-heading > span {
   display: flex;
   align-items: center;
-  color: rgba(238, 250, 255, 0.8);
+  color: color-mix(in srgb, var(--foreground) 80%, transparent);
   font-size: 0.56rem;
   font-weight: 600;
   letter-spacing: 0.035em;
@@ -611,7 +611,7 @@
 .overview-card-heading > strong {
   display: flex;
   align-items: flex-start;
-  color: rgba(255, 255, 255, 0.9);
+  color: color-mix(in srgb, var(--foreground) 90%, transparent);
   font-size: 0.66rem;
   line-height: 1.15;
   overflow-wrap: anywhere;
@@ -626,10 +626,10 @@
 .overview-progress span {
   height: 0.26rem;
   border-radius: 999px;
-  background: rgba(238, 250, 255, 0.12);
+  background: color-mix(in srgb, var(--foreground) 12%, transparent);
 }
 .overview-progress span.overview-progress-filled {
-  background: rgba(255, 255, 255, 0.8);
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
 }
 .overview-summary {
   display: grid;
@@ -638,11 +638,11 @@
   grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 0.7rem;
-  border: 1px solid rgba(238, 250, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
   border-radius: 0.55rem;
-  background: #1d232c;
+  background: var(--tile-muted);
   padding: 0.42rem 0.65rem;
-  color: #eefaff;
+  color: var(--foreground);
 }
 .overview-summary-content {
   padding: 0 0.15rem;
@@ -650,7 +650,7 @@
 .overview-summary-content strong {
   display: block;
   margin-bottom: 0.18rem;
-  color: rgba(238, 250, 255, 0.82);
+  color: color-mix(in srgb, var(--foreground) 82%, transparent);
   font-size: 0.64rem;
 }
 .overview-summary-content p {
@@ -666,10 +666,10 @@
 }
 .news-list {
   display: grid;
-  border-top: 1px solid rgba(238, 250, 255, 0.09);
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 9%, transparent);
 }
 .news-story {
-  border-bottom: 1px solid rgba(238, 250, 255, 0.09);
+  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 9%, transparent);
   padding: 0.82rem 0.15rem 0.86rem;
 }
 .news-story:last-child {
@@ -680,7 +680,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  color: rgba(238, 250, 255, 0.46);
+  color: color-mix(in srgb, var(--foreground) 46%, transparent);
   font-size: 0.58rem;
   font-weight: 600;
   letter-spacing: 0.045em;
@@ -700,17 +700,17 @@
 }
 .news-story h3 {
   margin: 0;
-  color: rgba(238, 250, 255, 0.6);
+  color: color-mix(in srgb, var(--foreground) 60%, transparent);
   font-size: 0.75rem;
   font-weight: 500;
   line-height: 1.42;
   transition: color 150ms ease;
 }
 .news-story:hover h3 {
-  color: rgba(238, 250, 255, 0.92);
+  color: color-mix(in srgb, var(--foreground) 92%, transparent);
 }
 .news-arrow {
-  color: rgba(238, 250, 255, 0.42);
+  color: color-mix(in srgb, var(--foreground) 42%, transparent);
   font-size: 1.35rem;
   font-weight: 300;
   line-height: 1;
@@ -729,8 +729,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(238, 250, 255, 0.8);
-  border-color: rgba(238, 250, 255, 0.2);
+  color: color-mix(in srgb, var(--foreground) 80%, transparent);
+  border-color: color-mix(in srgb, var(--foreground) 20%, transparent);
 }
 .tools-close-button {
   position: relative;
@@ -843,7 +843,7 @@
     padding-bottom: 0.75rem;
   }
   .comparison-chart + .comparison-chart {
-    border-top: 1px solid rgba(238, 250, 255, 0.1);
+    border-top: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     border-left: 0;
     padding-top: 0.75rem;
     padding-left: 0;

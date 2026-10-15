@@ -2,11 +2,12 @@
   <!-- Faint vertical line texture behind the hero -->
   <div class="landing-texture pointer-events-none absolute inset-x-0 top-0 h-[70vh]" aria-hidden="true"></div>
 
-  <header class="relative mx-auto flex h-24 w-full max-w-6xl items-center md:h-28">
+  <header class="relative mx-auto flex h-24 w-full max-w-6xl items-center justify-between md:h-28">
     <a routerLink="/" class="flex items-center gap-3 cursor-default" aria-label="TradingSeason home">
       <img src="2b-waves.svg" alt="" class="size-11 md:size-14" />
       <span class="text-2xl font-semibold tracking-tight md:text-3xl">TradingSeason</span>
     </a>
+    <app-theme-toggle />
   </header>
 
   <main class="relative flex flex-1 flex-col">
@@ -75,7 +76,7 @@
             x2="1440"
             [attr.y1]="y"
             [attr.y2]="y"
-            stroke="#eefaff"
+            stroke="currentColor"
             stroke-opacity="0.06"
             stroke-dasharray="2 6"
             vector-effect="non-scaling-stroke"

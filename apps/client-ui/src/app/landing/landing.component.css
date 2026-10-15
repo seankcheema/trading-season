@@ -7,7 +7,7 @@
   background-image: repeating-linear-gradient(
     90deg,
     transparent 0 9px,
-    rgba(238, 250, 255, 0.035) 9px 10px
+    color-mix(in srgb, var(--foreground) 3.5%, transparent) 9px 10px
   );
   mask-image: radial-gradient(ellipse 60% 80% at 50% 30%, #000 20%, transparent 75%);
 }

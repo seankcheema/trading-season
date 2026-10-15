@@ -129,7 +129,7 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
                   <ng-container [ngTemplateOutlet]="rowCells" [ngTemplateOutletContext]="{ $implicit: row }"></ng-container>
                 </button>
                 @if (expandedOrderId() === row.orderId) {
-                  <section class="audit-trail mb-2 ml-8 mr-2 border-l-2 border-white/50 py-1 pl-3 text-[#e5e7eb]" [attr.data-testid]="'audit-trail-' + row.orderId" aria-label="Order audit trail">
+                  <section class="audit-trail mb-2 ml-8 mr-2 border-l-2 border-foreground/50 py-1 pl-3 text-foreground/90" [attr.data-testid]="'audit-trail-' + row.orderId" aria-label="Order audit trail">
                     @if (auditLoading().has(row.orderId)) {
                       <p class="text-muted-foreground text-xs">Loading audit trail…</p>
                     } @else if (auditErrors().has(row.orderId)) {
@@ -139,7 +139,7 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
                         <div class="audit-entry relative grid grid-cols-[0.75rem_8rem_minmax(0,1fr)_auto] items-baseline gap-x-2 pb-1.5 text-xs last:pb-0">
                           <span class="audit-marker h-2 w-2 self-center rounded-full" [class]="auditMarkerClass(entry)" aria-hidden="true"></span>
                           <span class="truncate font-semibold">{{ entry.eventType }}</span>
-                          <time class="text-[0.6875rem] text-[#9ca3af] tabular-nums" [attr.datetime]="entry.occurredAt">{{ entry.occurredAt | date: 'MMM d, h:mm:ss a' : '' : 'en-US' }}</time>                          <p class="text-right font-semibold tabular-nums">{{ entry.price | currency: 'USD' }}</p>
+                          <time class="text-[0.6875rem] text-muted-foreground tabular-nums" [attr.datetime]="entry.occurredAt">{{ entry.occurredAt | date: 'MMM d, h:mm:ss a' : '' : 'en-US' }}</time>                          <p class="text-right font-semibold tabular-nums">{{ entry.price | currency: 'USD' }}</p>
                         </div>
                       } @empty { <p class="text-muted-foreground text-xs">No audit events were recorded for this order.</p> }
                     }
@@ -324,15 +324,15 @@ export class TransactionsDialogComponent implements OnInit {
 
   protected auditMarkerClass(entry: OrderAuditEntry): string {
     if (entry.eventType === 'FILLED') {
-      return 'bg-[#2ee87b]';
+      return 'bg-gain';
     }
     if (entry.eventType === 'REJECTED' || entry.eventType === 'EXECUTION_FAILED') {
-      return 'bg-[#fb7185]';
+      return 'bg-loss';
     }
     if (entry.eventType === 'PENDING') {
-      return 'bg-[#fac320]';
+      return 'bg-pending';
     }
-    return 'bg-[#16b9f2]';
+    return 'bg-primary';
   }
 
   protected toggleAudit(row: HistoryRow): void {

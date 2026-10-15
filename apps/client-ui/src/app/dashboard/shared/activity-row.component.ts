@@ -35,7 +35,7 @@ export const ACTIVITY_STATUS_LABELS: Record<ActivityStatus, string> = {
 export const ACTIVITY_STATUS_CLASSES: Record<ActivityStatus, string> = {
   FILLED: 'bg-gain/15 text-gain',
   REJECTED: 'bg-loss/15 text-loss',
-  PENDING: 'bg-amber-400/15 text-amber-400',
+  PENDING: 'bg-pending/15 text-pending',
   COMPLETED: 'bg-primary/15 text-primary',
 };
 
@@ -44,7 +44,7 @@ export const ACTIVITY_TYPE_CLASSES: Record<ActivityType, string> = {
   BUY: 'bg-gain/15 text-gain',
   SELL: 'bg-loss/15 text-loss',
   DEPOSIT: 'bg-primary/15 text-primary',
-  WITHDRAWAL: 'bg-amber-400/15 text-amber-400',
+  WITHDRAWAL: 'bg-pending/15 text-pending',
 };
 
 @Component({

@@ -31,7 +31,7 @@ async function openMarketPage(page: Page, loginPage: LoginPage): Promise<void> {
   await expect(dialog.getByRole('link', { name: 'Open full screen market chart' })).toBeVisible();
 
   await dialog.getByRole('link', { name: 'Open full screen market chart' }).click();
-  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl\?accountId=\d+$/);
+  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl$/);
   await expect(page.getByRole('heading', { name: 'AAPL', exact: true })).toBeVisible();
 }
 
@@ -124,7 +124,7 @@ test('changes chart tools and keeps the selected comparison in the URL', async (
   await comparisonPicker.getByRole('combobox', { name: 'Search instruments' }).fill('MSFT');
   await comparisonPicker.getByRole('option', { name: /MSFT/ }).click();
 
-  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl\?accountId=\d+&compare=msft$/);
+  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl\?compare=msft$/);
   await expect(page.getByRole('region', { name: 'AAPL price chart' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'MSFT price chart' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Remove comparison', exact: true })).toBeVisible();
@@ -135,6 +135,13 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   loginPage,
   api,
 }) => {
+  // The selected account is kept by the app for this tab, never in the URL.
+  const visited: string[] = [];
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) {
+      visited.push(frame.url());
+    }
+  });
   await loginPage.goto();
   await loginPage.signIn(USER.email, USER.password);
   await page.getByTestId('account-dropdown').locator('summary').click();
@@ -142,6 +149,8 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   await page.getByRole('combobox', { name: 'Search instruments' }).fill('AAPL');
   await page.getByRole('option', { name: /AAPL/ }).first().click();
   await page.getByRole('link', { name: 'Open full screen market chart' }).click();
+  await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');
+  await page.reload();
   await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');
   const buy = page.getByRole('button', { name: 'Buy 2 AAPL', exact: true });
   // The ticket zeroes the quantity when the account input settles, so refill until the click lands.
@@ -171,6 +180,23 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   ).toHaveLength(1);
   await page.getByRole('link', { name: 'Back to dashboard' }).click();
   await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');
+  await expect(page).toHaveURL(/\/dashboard$/);
+  expect(visited.length).toBeGreaterThan(3);
+  expect(visited.filter((url) => /accountId/i.test(url))).toEqual([]);
+});
+
+test('opens an old link that named an account without the account in the URL', async ({
+  page,
+  loginPage,
+}) => {
+  await loginPage.goto();
+  await loginPage.signIn(USER.email, USER.password);
+  await expect(page).toHaveURL(/\/dashboard$/);
+
+  await page.goto('/dashboard/markets/aapl?accountId=2&compare=msft');
+
+  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl\?compare=msft$/);
+  await expect(page.getByRole('heading', { name: 'AAPL', exact: true })).toBeVisible();
 });
 
 test('creates and renames accounts from the reused market dropdown', async ({

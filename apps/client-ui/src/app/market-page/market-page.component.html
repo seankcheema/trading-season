@@ -1,9 +1,8 @@
-<main class="market-page bg-[#0e0e0e] text-[#eefaff]" [attr.inert]="termsRequired() ? '' : null">
-  <header class="market-nav bg-[#0e0e0e]/95 px-4 backdrop-blur-xl md:px-6">
+<main class="market-page bg-background text-foreground" [attr.inert]="termsRequired() ? '' : null">
+  <header class="market-nav bg-background/95 px-4 backdrop-blur-xl md:px-6">
     <div class="market-nav-inner mx-auto flex h-full max-w-[1600px] items-center gap-3">
       <a
         routerLink="/dashboard"
-        [queryParams]="{ accountId: accountStore.selectedAccountId() }"
         class="nav-back"
         aria-label="Back to dashboard"
       >
@@ -22,6 +21,7 @@
           (openChange)="openHeaderDropdown.set($event ? 'market-clock' : null)"
           (snapshotApplied)="onClockSnapshot($event)"
         />
+        <app-theme-toggle />
         <app-dashboard-header-dropdown
           data-testid="notifications-dropdown"
           ariaLabel="Open notifications"
@@ -805,7 +805,7 @@
                               [class]="
                                 message.role === 'user'
                                   ? 'bg-primary/15 text-foreground ml-auto'
-                                  : 'bg-white/5 text-muted-foreground mr-auto'
+                                  : 'bg-foreground/5 text-muted-foreground mr-auto'
                               "
                             >
                               {{ message.text }}
@@ -830,12 +830,12 @@
                       }
                       <form
                         method="post"
-                        class="mt-2 flex min-h-11 items-center gap-2 rounded-lg border border-white/10 bg-[#202020] p-1.5 pl-3 focus-within:border-primary/40"
+                        class="mt-2 flex min-h-11 items-center gap-2 rounded-lg border border-foreground/10 bg-(--field) p-1.5 pl-3 focus-within:border-primary/40"
                         (submit)="submitAiPrompt($event, active.symbol)"
                       >
                         <input
                           type="text"
-                          class="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-white/30"
+                          class="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-foreground/30"
                           [value]="aiDraft()"
                           [placeholder]="'Ask about ' + active.symbol"
                           aria-label="Ask market AI"

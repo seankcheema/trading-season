@@ -39,6 +39,7 @@
           (create)="openCreateAccount()"
           (rename)="openRenameAccount($event)"
         />
+        <app-theme-toggle />
         <app-dashboard-header-dropdown
           data-testid="profile-dropdown"
           ariaLabel="Open profile menu"
@@ -105,7 +106,7 @@
             }
           </div>
           <div
-            class="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10"
+            class="mt-2 h-1.5 overflow-hidden rounded-full bg-foreground/10"
             role="meter"
             aria-label="Invested share of net worth"
             aria-valuemin="0"

@@ -1,3 +1,4 @@
+import { SELECTED_ACCOUNT_STORAGE_KEY } from '../dashboard/accounts/account-store.service';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { OrderResult } from '../dashboard/orders/order.models';
@@ -85,6 +86,10 @@ describe('MarketPageComponent', () => {
     orders: OrderResult[] = [],
     profile: { termsAccepted?: boolean } = {},
   ): Promise<ComponentFixture<MarketPageComponent>> {
+    // The account this tab chose earlier, as AccountStore keeps it; never a URL parameter.
+    if (accountId) {
+      sessionStorage.setItem(SELECTED_ACCOUNT_STORAGE_KEY, accountId);
+    }
     await TestBed.configureTestingModule({
       imports: [MarketPageComponent],
       providers: [
@@ -96,7 +101,7 @@ describe('MarketPageComponent', () => {
           provide: ActivatedRoute,
           useValue: {
             paramMap: of(convertToParamMap({ symbol })),
-            queryParamMap: of(convertToParamMap({ compare, accountId })),
+            queryParamMap: of(convertToParamMap({ compare })),
           },
         },
         { provide: MarketDataService, useValue: marketData },
@@ -133,6 +138,7 @@ describe('MarketPageComponent', () => {
   }
 
   beforeEach(() => {
+    sessionStorage.clear();
     vi.clearAllMocks();
     marketData.candles.mockImplementation(
       (_sessionId: number, symbol: string, timeframe: Timeframe) =>
@@ -1051,7 +1057,7 @@ describe('MarketPageComponent', () => {
     expect(c['recentOrders']()[0].key).toBe('order-41');
     TestBed.inject(HttpTestingController).expectNone((r) => r.method === 'POST');
   });
-  it('falls back to the first owned account for invalid account links', async () => {
+  it('falls back to the first owned account when the saved one is not owned', async () => {
     const fixture = await setup('aapl', '', '999');
     expect(fixture.componentInstance['accountStore'].selectedAccountId()).toBe(1);
   });
