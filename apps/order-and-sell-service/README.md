@@ -3,6 +3,7 @@
 Spring Boot (Java 21) service that submits, validates, and executes buy and sell orders, and serves instrument reference data and order history. It is the trading half of the backend; accounts, cash, and holdings reads belong to the [Holdings and Trade Service](../holdings-and-trade-service/README.md).
 
 - Port 8081, Swagger UI at http://localhost:8081/swagger-ui.html
+- Compiles source it shares with the Holdings and Trade Service from [packages/trading-java-common](../../packages/trading-java-common/README.md): the market feed, token verification wiring, and the base classes its entities extend.
 - Shares the `trading_season` database. The schema comes from [db/migrations](../../db/migrations); Hibernate never alters it.
 - Authenticates callers by verifying RS256 tokens from the [Auth Service](../auth-service/README.md) against its cached JWKS. The caller is always the token's `sub`.
 - Publishes one Kafka `trade-events` message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`) and runs the `order-status-pusher` consumer group, which forwards each change to the owner's open `GET /api/orders/stream` connections. The other two groups live in the [Holdings and Trade Service](../holdings-and-trade-service/README.md) and the [Reporting Service](../reporting-service/README.md).

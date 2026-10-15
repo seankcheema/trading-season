@@ -15,6 +15,8 @@ A trading simulation platform: an Angular client, two Spring Boot services for t
 | Market Data | [apps/market-data](apps/market-data/README.md) | - | Synthetic market data generation and import |
 | Database | [db](db/README.md) | 5432 | Migrations and schema for the shared `trading_season` database, and the tools that publish its history to Kafka and seed demo history |
 
+Java code that both Spring Boot services need is held once in [packages/trading-java-common](packages/trading-java-common/README.md) and compiled into each.
+
 ## Architecture
 
 ```mermaid
@@ -191,7 +193,7 @@ flowchart LR
         T7["Reporting UI"]
         T8["Reporting feed tools"]
     end
-    Tests --> Docs["Javadocs"] --> Sonar["SonarQube analysis<br/>and quality gate"] --> E2E["Playwright E2E"] --> Stack["Build local<br/>Docker stack"] --> Flow["Kafka end-to-end<br/>flow"]
+    Tests --> Docs["Javadocs"] --> E2E["Playwright E2E"] --> Stack["Build local<br/>Docker stack"] --> Flow["Kafka end-to-end<br/>flow"] --> Sonar["SonarQube analysis<br/>and quality gate"]
 ```
 
 ## Getting started
