@@ -9,8 +9,16 @@ import { defineConfig } from 'vitest/config';
 // fork avoids racing other processes for CPU to spin up workers, and the
 // Angular CLI loads this file only because `runnerConfig: true` is set in
 // angular.json.
+//
+// The same contention stretches individual tests. The dashboard suite runs in
+// about 5 seconds on an idle machine but 58 seconds on the agent, and one
+// synchronous test (a tab toggle) stalled for 23 seconds and failed Vitest's
+// default 5 second limit although it passed on every other run. Nothing in it
+// waits on a timer or the network, so the limit is raised to absorb CPU
+// starvation instead of the test being changed.
 export default defineConfig({
   test: {
+    testTimeout: 30_000,
     pool: 'forks',
     poolOptions: {
       forks: {
