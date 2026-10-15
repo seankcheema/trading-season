@@ -528,7 +528,7 @@ class OrderServiceTest {
     @Test void invalidEditRollsBackAndKeepsTheOriginalOpen() {
         Order open = typed("BUY", "LIMIT", "95", null, "100", "10");
         assertThrows(org.springframework.web.server.ResponseStatusException.class,
-                () -> orderService.replace(open.getOrderId(), replacement(open, "1000", "94"), user.getUserId()));
+                () -> orderService.replace(open.getOrderId(), replacement(open, "2000", "94"), user.getUserId()));
         Order original = orderRepository.findById(open.getOrderId()).orElseThrow();
         assertEquals("ACCEPTED", original.getStatus());
         assertEquals(0, new BigDecimal("950").compareTo(original.getReservedCash()));

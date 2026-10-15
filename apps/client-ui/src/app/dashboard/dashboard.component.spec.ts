@@ -493,7 +493,7 @@ describe('DashboardComponent', () => {
     fixture.detectChanges();
     const http = flushAccounts(fixture);
 
-    TestBed.inject(OrderService).pendingFilled.next(filledOrder({ accountId: 2 }));
+    TestBed.inject(OrderService).pendingResolved.next(filledOrder({ accountId: 2 }));
 
     http.expectOne('/api/users/me').flush({ ...PROFILE, availableFunds: 9_000 });
     http.expectOne('/api/accounts/2/holdings').flush(HOLDINGS[2]);
@@ -1773,7 +1773,7 @@ describe('DashboardComponent', () => {
 
       (
         element(fixture).querySelector(
-          '[aria-label="Rename Retirement Account"]',
+          '[aria-label="Settings for Retirement Account"]',
         ) as HTMLButtonElement
       ).click();
       fixture.detectChanges();

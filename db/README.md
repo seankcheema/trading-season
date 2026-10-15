@@ -12,6 +12,10 @@ The Reporting Service does not connect to it. What reporting shows is published 
 | [V008__Drop_account_status.sql](migrations/V008__Drop_account_status.sql) | Removes `user_accounts.account_status` |
 | [V009__Add_terms_acceptances.sql](migrations/V009__Add_terms_acceptances.sql) | `terms_acceptances`: one row per client and version of the platform terms they accepted |
 | [V009__Analyst_role.sql](migrations/V009__Analyst_role.sql) | Allows `ANALYST` in `user_accounts.user_role`, the role the Reporting Service serves its report runs to; `ADMIN`, allowed since V001, is served the console as well |
+| [V010__Portfolio_account_lifecycle.sql](migrations/V010__Portfolio_account_lifecycle.sql) | Account archival status and timestamp, retaining financial history |
+| [V011__Execution_preferences_and_order_types.sql](migrations/V011__Execution_preferences_and_order_types.sql) | Saved execution buffers, conditional orders, immutable quote context and reservations |
+| [V012__Stop_trigger_reference.sql](migrations/V012__Stop_trigger_reference.sql) | Latched stop activation quote |
+| [V013__Order_audit_lifecycle.sql](migrations/V013__Order_audit_lifecycle.sql) | Conditional-order, cancellation and expiry audit events |
 
 In Docker, `db-init` runs [infrastructure/docker/init-db.sh](../infrastructure/docker/init-db.sh), which applies each file once and records it in `public.schema_migrations`. For a local PostgreSQL, apply the files in order with `psql -v ON_ERROR_STOP=1 -f`. Never edit an applied migration; add a new one.
 

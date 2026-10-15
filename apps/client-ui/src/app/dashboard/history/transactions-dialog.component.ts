@@ -172,6 +172,7 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
                   </span>
                   <span
                     class="truncate text-right tabular-nums"
+                    data-testid="transaction-amount"
                     [class]="row.kind === 'cash' ? (row.positive ? 'text-gain' : 'text-loss') : ''"
                   >
                     {{ sign(row) }}{{ row.value | currency: 'USD' }}
@@ -360,6 +361,7 @@ export class TransactionsDialogComponent implements OnInit {
     if (this.auditEntries().has(row.orderId) || this.auditLoading().has(row.orderId)) {
       return;
     }
+    this.auditErrors.update((ids) => withoutId(ids, row.orderId!));
     this.auditLoading.update((ids) => new Set(ids).add(row.orderId!));
     this.orderService
       .orderAudit(row.orderId)

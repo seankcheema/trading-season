@@ -423,7 +423,7 @@ test.describe('deleting archives an empty portfolio', () => {
   }) => {
     await signIn({ loginPage, dashboardPage }, EXISTING_USER);
     await dashboardPage.accountMenu.click();
-    await page.getByRole('button', { name: 'Settings for Spare', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Settings for Spare', exact: true }).click();
     await page.getByRole('button', { name: 'Delete account', exact: true }).click();
     await expect(page.getByRole('dialog')).toContainText(
       'records stay in the database for reporting',
@@ -432,7 +432,7 @@ test.describe('deleting archives an empty portfolio', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(dashboardPage.accountMenu).toContainText('Keep');
     await dashboardPage.accountMenu.click();
-    await expect(page.getByRole('button', { name: 'Settings for Spare', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('menuitem', { name: 'Settings for Spare', exact: true })).toHaveCount(0);
     expect(
       api.requests.filter((r) => r.method === 'DELETE' && r.url.includes('/api/me/accounts/')),
     ).toHaveLength(1);

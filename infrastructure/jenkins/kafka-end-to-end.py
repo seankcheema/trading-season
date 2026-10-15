@@ -143,6 +143,55 @@ def assert_no_database():
                                      'its tables are an in-memory read model built from the event files')
 
 
+def check_conditional_orders_and_archival(token, instrument, snapshot, admin_token):
+    """Exercise reservations, cancellation and retained account history over real HTTP."""
+    status, account = call('POST', f'{HOLDINGS}/api/me/accounts', {'name': 'Lifecycle CI'}, token)
+    if status != 201:
+        fail('lifecycle account', f'creation answered {status}: {account}')
+    account_id = account['accountId']
+    # The fixture stays at $100, so these instructions must stay open for both
+    # immediate evaluation and the background evaluator until explicitly cancelled.
+    for execution_type, prices in (
+        ('LIMIT', {'limitPrice': 90}),
+        ('STOP', {'stopPrice': 110}),
+        ('STOP_LIMIT', {'stopPrice': 110, 'limitPrice': 105}),
+    ):
+        status, order = call('POST', f'{ORDERS}/api/orders', {
+            'accountId': account_id, 'instrumentId': instrument['instrumentId'],
+            'orderType': 'BUY', 'quantity': 1, 'executionType': execution_type,
+            'indicativePrice': 100, 'sessionId': snapshot['sessionId'],
+            'clientReference': str(uuid.uuid4()), **prices}, token)
+        if status != 201 or order.get('status') != 'ACCEPTED' or order.get('reservedCash', 0) <= 0:
+            fail('conditional order', f'{execution_type} answered {status}: {order}')
+        status, blocked = call('DELETE', f'{HOLDINGS}/api/me/accounts/{account_id}?confirmed=true', token=token)
+        if status != 409:
+            fail('archive with open order', f'expected 409, got {status}: {blocked}')
+        status, cancelled = call('POST', f'{ORDERS}/api/orders/{order["orderId"]}/cancel', token=token)
+        if status != 200 or cancelled.get('status') != 'CANCELLED' or cancelled.get('reservedCash') != 0:
+            fail('conditional cancellation', f'{execution_type} answered {status}: {cancelled}')
+        say('conditional cancellation', f'{execution_type} stayed open, blocked archival, then released its reservation')
+
+    status, body = call('DELETE', f'{HOLDINGS}/api/me/accounts/{account_id}', token=token)
+    if status != 400:
+        fail('archive confirmation', f'expected 400 without confirmation, got {status}: {body}')
+    status, body = call('DELETE', f'{HOLDINGS}/api/me/accounts/{account_id}?confirmed=true', token=token)
+    if status != 204:
+        fail('archive empty account', f'expected 204, got {status}: {body}')
+    status, active = call('GET', f'{HOLDINGS}/api/me/accounts', token=token)
+    if status != 200 or any(row['accountId'] == account_id for row in active):
+        fail('archived account hidden', f'active accounts answered {status}: {active}')
+    status, archived = call('GET', f'{HOLDINGS}/api/me/accounts/archived', token=token)
+    if status != 200 or not any(row['accountId'] == account_id for row in archived):
+        fail('archived history retained', f'archived accounts answered {status}: {archived}')
+
+    def retained_order():
+        status, detail = call('GET', f'{REPORTING}/api/reporting/orders/{order["orderId"]}', token=admin_token)
+        return detail if status == 200 and detail.get('status') == 'CANCELLED' else None
+
+    wait_for('cancelled order retained in reporting', retained_order)
+    say('account archival', 'confirmed deletion hides the empty account and retains cancelled order history in reporting')
+
+
 def main():
     assert_no_database()
     email = f'jenkins-{uuid.uuid4().hex[:8]}@example.com'
@@ -331,7 +380,8 @@ def main():
     say('console shows the order', f"order {order_id} is FILLED with audit trail {' > '.join(trail)}, cash "
                                    f"{ledger['cashBefore']} to {ledger['cashAfter']}, holding "
                                    f"{ledger['holdingBefore']} to {ledger['holdingAfter']}")
-    say('result', 'one order, two messages, three consumers, and a console built from Kafka alone: all verified')
+    check_conditional_orders_and_archival(token, instrument, snapshot, admin_token)
+    say('result', 'market fill, conditional cancellations, account archival, three consumers and retained reporting history: all verified')
 
 
 if __name__ == '__main__':

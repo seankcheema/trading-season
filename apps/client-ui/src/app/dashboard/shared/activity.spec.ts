@@ -39,6 +39,20 @@ function order(overrides: Partial<OrderResult> = {}): OrderResult {
 }
 
 describe('activity helpers', () => {
+  it('shows expired orders as cancelled without expiry explanations and retains rejection reasons', () => {
+    const expired = orderActivity(order({
+      status: 'CANCELLED',
+      rejectionCode: 'ORDER_EXPIRED',
+      rejectionReason: 'Day order expired at market close',
+    }), CATALOGUE);
+    expect(expired.status).toBe('CANCELLED');
+    expect(expired.detail).toBe('3 @ $10.00');
+    expect(expired.rejectionReason).toBeNull();
+    expect(orderActivity(order({
+      status: 'REJECTED', rejectionReason: 'Insufficient holdings',
+    }), CATALOGUE).rejectionReason).toBe('Insufficient holdings');
+  });
+
   it('dates an order by replay time, then resolution, then submission', () => {
     expect(orderDate(order({ simulatedAt: '2026-01-02T15:00:00Z' }))).toBe('2026-01-02T15:00:00Z');
     expect(orderDate(order({ simulatedAt: 'nonsense' }))).toBe('2026-01-05T16:00:05Z');

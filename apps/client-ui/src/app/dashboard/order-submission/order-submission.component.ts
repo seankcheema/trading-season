@@ -163,7 +163,7 @@ export class OrderSubmissionComponent {
 
   protected readonly maxShares = computed(() =>
     this.side() === 'buy'
-      ? affordableShares(this.cashBalance(), this.execution()?.reservationPrice() || this.activeInstrument().price)
+      ? affordableShares(this.cashBalance(), this.execution()?.reservationPriceFor(this.activeInstrument().price) ?? this.activeInstrument().price)
       : wholeShares(this.sharesHeld()),
   );
 

@@ -139,7 +139,12 @@ export class ExecutionControlsComponent {
     const raw = this.price() * (1 + (this.side() === 'buy' ? 1 : -1) * (this.buffer() ?? 1) / 100);
     return (this.side() === 'buy' ? Math.floor(raw * 1e6) : Math.ceil(raw * 1e6)) / 1e6;
   });
-  readonly reservationPrice = computed(() => this.hasLimit() ? (this.limitPrice() ?? 0) : this.price() * (1 + (this.buffer() ?? 1) / 100));
+  readonly reservationPrice = computed(() => this.reservationPriceFor(this.price()));
+  // Parents can calculate before child inputs have been bound, using their current quote.
+  reservationPriceFor(price: number): number {
+    if (!Number.isFinite(price) || price <= 0) return 0;
+    return this.hasLimit() ? (this.limitPrice() ?? 0) : price * (1 + (this.buffer() ?? 1) / 100);
+  }
   readonly valid = computed(() => this.buffer() !== null && !this.loadError()
     && (!this.hasLimit() || this.validPrice(this.limitPrice())) && (!this.hasStop() || this.validPrice(this.stopPrice())));
   readonly parameters = computed(() => ({ executionType: this.executionType(),

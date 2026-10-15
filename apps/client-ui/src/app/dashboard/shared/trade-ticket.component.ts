@@ -195,7 +195,7 @@ export class TradeTicketComponent {
 
   protected readonly maxShares = computed(() =>
     this.side() === 'buy'
-      ? affordableShares(this.cashBalance(), this.execution()?.reservationPrice() || this.price())
+      ? affordableShares(this.cashBalance(), this.execution()?.reservationPriceFor(this.price()) ?? this.price())
       : wholeShares(this.heldShares()),
   );
   protected readonly cashAfter = computed(() =>
@@ -209,7 +209,7 @@ export class TradeTicketComponent {
     side: this.side(),
     ...this.execution()?.parameters(),
     quantity: this.quantity(),
-    reservationPrice: this.execution()?.reservationPrice(),
+    reservationPrice: this.execution()?.reservationPriceFor(this.price()),
     estimatedValue: this.quantity() * this.price(),
     sessionId: this.sessionId(),
     marketTimestamp: this.marketTimestamp(),

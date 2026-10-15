@@ -244,6 +244,8 @@ The production [Dockerfile](Dockerfile) builds the app and serves it through unp
 
 Playwright specs in [e2e](e2e) drive the built app in Chromium against the real Reporting Service, so they check the screens, the service's read model and report run, and its access rules together. Only the two things the service does not itself provide are replaced: Kafka, and the Auth Service.
 
+[playwright.config.ts](playwright.config.ts) allows assertions up to ten seconds while both browser suites share the Jenkins agent. CI still fails on a flaky test that passes only on retry.
+
 ```mermaid
 flowchart LR
     Browser["Chromium<br/>(Playwright)"] -- "4390" --> UI["serve-ui.mjs<br/>production build, same path split as nginx.conf"]

@@ -25,6 +25,8 @@ describe('CancelOrderButtonComponent', () => {
     const second = TestBed.createComponent(CancelOrderButtonComponent);
     for (const fixture of [first, second]) {
       fixture.componentRef.setInput('orderLabel', 'AAPL');
+    }
+    for (const fixture of [first, second]) {
       fixture.detectChanges();
     }
     const firstMenu = first.nativeElement.querySelector('details') as HTMLDetailsElement;

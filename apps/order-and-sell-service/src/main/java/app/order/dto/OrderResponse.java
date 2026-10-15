@@ -17,23 +17,24 @@ import java.time.OffsetDateTime;
  * @param orderType        BUY or SELL
  * @param quantity         units requested
  * @param indicativePrice  the price the client submitted with the order
- * @param rejectionReason  set only when status is REJECTED
+ * @param bufferPercent    the owner's saved execution buffer snapshotted at acceptance
+ * @param rejectionReason  rejection or cancellation explanation, or null when none applies
  * @param submittedAt      when the order was received
  * @param simulatedAt      selected replay time, or null when real execution time should be displayed
  * @param resolvedAt       when the order reached a final status, if it has
  * @param executionType Market, Limit, Stop or Stop-Limit condition
- * @param limitPrice persisted limitPrice
- * @param stopPrice persisted stopPrice
+ * @param limitPrice immutable limit price for Limit and Stop-Limit orders, otherwise null
+ * @param stopPrice immutable activation price for Stop and Stop-Limit orders, otherwise null
  * @param referencePrice authoritative submission quote, null for legacy orders
- * @param referenceAt persisted referenceAt
- * @param sessionId persisted sessionId
+ * @param referenceAt simulated submission quote position, null for legacy orders
+ * @param sessionId immutable simulation session identifier, null for legacy orders
  * @param triggerPrice authoritative activation quote, null before triggering or for legacy orders
  * @param triggeredAt latched simulated stop activation position
  * @param evaluatedAt last successfully evaluated simulated position
- * @param reservedCash persisted reservedCash
- * @param reservedShares persisted reservedShares
+ * @param reservedCash cash held for this open BUY order; released on resolution
+ * @param reservedShares shares held for this open SELL order; released on resolution
  * @param executionPrice actual fill quote, null before filling
- * @param rejectionCode persisted rejectionCode
+ * @param rejectionCode machine-readable rejection or cancellation reason, or null
  */
 public record OrderResponse(
         Integer orderId,
@@ -44,6 +45,7 @@ public record OrderResponse(
         String orderType,
         BigDecimal quantity,
         BigDecimal indicativePrice,
+        BigDecimal bufferPercent,
         String rejectionReason,
         OffsetDateTime submittedAt,
         OffsetDateTime resolvedAt,
@@ -77,6 +79,7 @@ public record OrderResponse(
                 order.getOrderType(),
                 order.getQuantity(),
                 order.getIndicativePrice(),
+                order.getBufferPercent(),
                 order.getRejectionReason(),
                 order.getSubmittedAt(),
                 order.getResolvedAt(),

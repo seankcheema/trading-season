@@ -195,6 +195,6 @@ mvn test
 
 Tests use H2 with the `test` profile and mirror the source packages under `src/test/java/app`. The trade-event flow test starts an embedded Kafka broker; no external broker is needed. JaCoCo fails the build below 70 percent on every counter in any package (`coverage.minimum` in [pom.xml](pom.xml)); reports are in `target/site/jacoco/`.
 
-After changing Java code, regenerate the Javadocs; see [AGENTS.md](../../AGENTS.md).
+After changing Java code, regenerate the Javadocs; see [AGENTS.md](../../AGENTS.md). The pinned Maven Javadoc plugin fails generation on warnings as well as errors. Jenkins also provisions a disposable PostgreSQL database for the optional order concurrency contract, independently of the local stack.
 
 The execution conditions, reservations and replay behavior in [Order API](api.md) extend the acceptance/settlement sequence illustrated above.

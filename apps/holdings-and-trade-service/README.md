@@ -232,6 +232,6 @@ mvn test
 
 Tests use H2 with [application-test.properties](src/test/resources/application-test.properties), mirror the source packages under `src/test/java/app`, and cover cross-user isolation for every user-specific endpoint. The valuation-capture flow test starts an embedded Kafka broker; no external broker is needed. Use `@SpringBootTest` with `@Transactional` for repository tests; `@DataJpaTest` is not available. JaCoCo fails the build below 85 percent on every counter in any package (`coverage.minimum` in [pom.xml](pom.xml)); reports are in `target/site/jacoco/`.
 
-Keep HTTP validation in controllers, business logic in services, and persistence in repositories. After changing Java code, regenerate the Javadocs; see [AGENTS.md](../../AGENTS.md).
+Keep HTTP validation in controllers, business logic in services, and persistence in repositories. After changing Java code, regenerate the Javadocs; see [AGENTS.md](../../AGENTS.md). The pinned Maven Javadoc plugin fails generation on warnings as well as errors.
 
 Trading preferences, reservation-aware buying power and available shares are documented in [the API contract](api.md#trading-preferences). Holdings and Trade owns preference writes; Order and Sell reads that saved profile value and owns order reservations.

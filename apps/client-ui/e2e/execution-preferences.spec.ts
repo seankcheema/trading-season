@@ -6,20 +6,23 @@ test.use({ stubOptions: { accounts: [{ ...credentials, hasProfile: true, availab
 
 test('saves trading protection across reloads and keeps conditional controls compact', async ({ page, loginPage }) => {
   await loginPage.goto(); await loginPage.signIn(credentials.email, credentials.password);
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('Open profile menu').click();
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
   const settings = page.getByRole('dialog', { name: 'Settings' });
   const buffer = settings.getByLabel('Execution buffer (%)');
   await expect(buffer).toHaveValue('1'); await buffer.fill('10.01');
   await expect(settings.getByRole('button', { name: 'Save execution buffer' })).toBeDisabled();
   await buffer.fill('2.25'); await settings.getByRole('button', { name: 'Save execution buffer' }).click();
   await expect(settings.getByText('Saved successfully')).toBeVisible();
-  await page.reload(); await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.reload();
+  await page.getByLabel('Open profile menu').click();
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
   await expect(page.getByLabel('Execution buffer (%)')).toHaveValue('2.25');
   await page.getByRole('button', { name: 'Close settings' }).click();
   await page.getByRole('combobox', { name: 'Search instruments' }).fill('AAPL');
   await page.getByRole('option').first().click();
   const dialog = page.getByRole('dialog', { name: 'New Order' });
-  const type = dialog.getByRole('button', { name: 'Order type', exact: true });
+  const type = dialog.locator('summary[aria-label="Order type"]');
   await expect(dialog.locator('summary[aria-label="Order type"]')).toHaveText('Market');
   await expect(dialog.getByText('% buffer', { exact: false })).toHaveCount(0);
   await type.click(); await dialog.getByRole('menuitemradio', { name: 'Limit', exact: true }).click(); await expect(dialog.getByLabel('Limit price', { exact: true })).toBeVisible();
@@ -29,7 +32,7 @@ test('saves trading protection across reloads and keeps conditional controls com
   expect(width).toBeLessThanOrEqual(896);
   await dialog.getByRole('link', { name: 'Open full screen market chart' }).click();
   const ticket = page.getByRole('region', { name: 'Order execution' });
-  await ticket.getByRole('button', { name: 'Order type', exact: true }).click();
+  await ticket.locator('summary[aria-label="Order type"]').click();
   await ticket.getByRole('menuitemradio', { name: 'Stop', exact: true }).click();
   await expect(ticket.getByLabel('Stop price', { exact: true })).toBeVisible();
   await expect(ticket.getByLabel('Limit price', { exact: true })).toHaveCount(0);
@@ -39,7 +42,7 @@ test('keeps a limit order open, reserves cash and releases it on cancellation', 
   await loginPage.goto(); await loginPage.signIn(credentials.email, credentials.password);
   await page.getByRole('combobox', { name: 'Search instruments' }).fill('AAPL'); await page.getByRole('option').first().click();
   const dialog = page.getByRole('dialog', { name: 'New Order' });
-  await dialog.getByRole('button', { name: 'Order type', exact: true }).click();
+  await dialog.locator('summary[aria-label="Order type"]').click();
   await dialog.getByRole('menuitemradio', { name: 'Limit', exact: true }).click();
   await dialog.getByLabel('Limit price', { exact: true }).fill('1'); await dialog.locator('#order-shares').fill('2');
   const response = page.waitForResponse((r) => r.url().endsWith('/api/orders') && r.request().method() === 'POST');
@@ -48,7 +51,7 @@ test('keeps a limit order open, reserves cash and releases it on cancellation', 
   await expect(page.getByText('Limit buy order placed for 2 AAPL.', { exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Close order submission' }).click();
   const cancelled = page.waitForResponse((r) => r.url().endsWith(`/api/orders/${order.orderId}/cancel`));
-  await page.getByRole('button', { name: 'Order actions', exact: true }).first().click();
+  await page.locator('summary[aria-label="Order actions"]').first().click();
   await page.getByRole('menuitem', { name: 'Cancel order', exact: true }).first().click();
   const confirmation = page.getByRole('dialog', { name: 'Cancel this order?' });
   await expect(confirmation).toBeVisible();

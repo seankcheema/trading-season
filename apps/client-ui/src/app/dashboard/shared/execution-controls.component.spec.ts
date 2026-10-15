@@ -30,6 +30,20 @@ describe('ExecutionControlsComponent', () => {
     fixture.componentRef.setInput('side', 'sell'); fixture.detectChanges();
     expect(component.bound()).toBe(98); expect(fixture.nativeElement.textContent).not.toContain('or higher');
   });
+  it('calculates from the parent quote before child inputs bind and after the quote changes', () => {
+    TestBed.configureTestingModule({ providers: [{ provide: ExecutionSettingsService, useValue: {
+      load: () => of({ executionBufferPercent: 2 }),
+    } }] });
+    const fixture = TestBed.createComponent(ExecutionControlsComponent);
+    const component = fixture.componentInstance;
+    expect(component.reservationPriceFor(100)).toBe(102);
+    expect(component.reservationPriceFor(200)).toBe(204);
+    for (const price of [0, -1, Infinity, NaN]) expect(component.reservationPriceFor(price)).toBe(0);
+    component.executionType.set('LIMIT');
+    expect(component.reservationPriceFor(100)).toBe(0);
+    component.limitPrice.set(95);
+    expect(component.reservationPriceFor(200)).toBe(95);
+  });
   it('requires only the selected conditional fields and never sends stale hidden prices', () => {
     const fixture = setup(); const component = fixture.componentInstance;
     component.executionType.set('STOP_LIMIT'); fixture.detectChanges(); expect(component.valid()).toBe(false);
@@ -41,6 +55,17 @@ describe('ExecutionControlsComponent', () => {
     expect(fixture.nativeElement.textContent).not.toContain('quote at submission');
     component.executionType.set('MARKET');
     expect(component.parameters()).toEqual({ executionType: 'MARKET' });
+  });
+  it('reads conditional prices from the visible fields and clears empty values', () => {
+    const fixture = setup(); const component = fixture.componentInstance;
+    component.executionType.set('STOP_LIMIT'); fixture.detectChanges();
+    for (const [label, field] of [['Limit price', component.limitPrice], ['Stop price', component.stopPrice]] as const) {
+      const input = fixture.nativeElement.querySelector(`[aria-label="${label}"]`) as HTMLInputElement;
+      input.value = '105.25'; input.dispatchEvent(new Event('input')); fixture.detectChanges();
+      expect(field()).toBe(105.25);
+      input.value = ''; input.dispatchEvent(new Event('input')); fixture.detectChanges();
+      expect(field()).toBeNull();
+    }
   });
   it('rejects invalid prices and gates submission while preferences are unavailable', () => {
     const fixture = setup(); const component = fixture.componentInstance;

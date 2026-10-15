@@ -46,11 +46,11 @@ export function orderActivity(
     accountId: order.accountId,
     value: order.quantity * orderDisplayPrice(order),
     label: orderSymbol(order, catalogue),
-    detail: `${order.quantity} @ ${USD.format(orderDisplayPrice(order))}${order.executionType ? ` · ${order.executionType.replaceAll('_', '-')}` : ''}${orderPriceDetail(order) ? ` · ${orderPriceDetail(order)}` : ''}${order.triggeredAt ? ' · Triggered' : ''}${order.rejectionCode === 'ORDER_EXPIRED' ? ' · Expired at close' : ''}`,
+    detail: `${order.quantity} @ ${USD.format(orderDisplayPrice(order))}${order.executionType ? ` · ${order.executionType.replaceAll('_', '-')}` : ''}${orderPriceDetail(order) ? ` · ${orderPriceDetail(order)}` : ''}${order.triggeredAt ? ' · Triggered' : ''}`,
     type: order.orderType,
     status: order.status,
     positive: order.orderType === 'SELL',
-    rejectionReason: order.rejectionReason,
+    rejectionReason: order.rejectionCode === 'ORDER_EXPIRED' ? null : order.rejectionReason,
   };
 }
 
