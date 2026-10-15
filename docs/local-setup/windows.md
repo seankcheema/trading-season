@@ -9,7 +9,7 @@ the host. Docker Compose is not required.
 - JDK 21, Maven 3.9+
 - Python 3.14 with the Windows `py` launcher
 - PostgreSQL 16 running locally, with `psql` and `pg_isready` on `PATH`
-- Apache Kafka 4.1.1, unpacked locally, if reporting is needed
+- Apache Kafka 4.1.2, unpacked locally, if reporting is needed
 
 Run these commands from the repository root. Change `$password` and
 `$kafkaHome` if your installation uses different values:
@@ -17,7 +17,7 @@ Run these commands from the repository root. Change `$password` and
 ```powershell
 $password = 'password'
 $databaseUrl = "postgresql://trading_season:$([uri]::EscapeDataString($password))@localhost:5432/trading_season"
-$kafkaHome = 'C:\tools\kafka_2.13-4.1.1'
+$kafkaHome = 'C:\tools\kafka_2.13-4.1.2'
 ```
 
 Keep this PowerShell window open so these variables remain available. If you
@@ -133,6 +133,14 @@ overwrite an existing demo identity. See the [market data guide](../../apps/mark
 
 ## 4. Start the services
 
+The Kafka path must contain a `libs` directory. Check it before starting:
+
+```powershell
+Test-Path (Join-Path $kafkaHome 'libs') # Must print True
+```
+
+The launcher uses IPv4 for the local Kafka JVM and broker connections.
+
 Start Kafka and create its topics through the launcher, then start all
 services:
 
@@ -168,7 +176,7 @@ Reporting reads Kafka and nothing else, so everything the Reporting UI shows nee
 | Neither | Sets `app.events.enabled=false` on both Java services and `EVENTS_ENABLED=false` on the auth service, does not start the consumer, and warns that the Reporting UI shows nothing new |
 
 ```powershell
-.\scripts\start-local.ps1 -KafkaHome C:\tools\kafka_2.13-4.1.1
+.\scripts\start-local.ps1 -KafkaHome C:\tools\kafka_2.13-4.1.2
 ```
 
 Only what the services do while a broker is running is published. The consumer writes a report when it starts and then every minute (`-ReportIntervalMinutes`; the Compose stack uses 15), so an order placed in the Client UI appears on the Reporting UI's console within seconds and in its report runs within that time. `-SkipReporting` starts the stack without the Reporting Service and its consumer, for a machine without Python. See [Reporting Service](../../apps/reporting-service/README.md).

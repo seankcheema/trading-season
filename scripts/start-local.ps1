@@ -269,7 +269,7 @@ function Start-KafkaBroker {
     }
 
     $broker = Start-LocalService -Name 'kafka' -FilePath $java -WorkingDirectory $kafkaRoot -ArgumentList @(
-        '-Xmx512m', '-Xms256m', '-cp', "`"$kafkaClasspath`"",
+        '-Xmx512m', '-Xms256m', '-Djava.net.preferIPv4Stack=true', '-cp', "`"$kafkaClasspath`"",
         "`"-Dlog4j2.configurationFile=$kafkaLogConfig`"", 'kafka.Kafka', "`"$configFile`"")
 
     for ($attempt = 0; $attempt -lt 60 -and -not (Test-PortOpen -Port $brokerPort); $attempt++) {
