@@ -374,24 +374,6 @@ pipeline {
             }
         }
 
-        stage('Java API Documentation') {
-            when { expression { currentBuild.currentResult == 'SUCCESS' } }
-            steps {
-                sh '''
-                    set -eu
-                    for service in holdings-and-trade-service order-and-sell-service; do
-                        sh "$WORKSPACE/infrastructure/jenkins/maven-retry.sh" -B -Dmaven.repo.local="$WORKSPACE/.m2/$service" -f "apps/$service/pom.xml" org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc
-                        test -s "apps/$service/target/reports/apidocs/index.html"
-                    done
-                '''
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'apps/*/target/reports/apidocs/**/*', allowEmptyArchive: false
-                }
-            }
-        }
-
         stage('SonarQube Analysis') {
             when { expression { currentBuild.currentResult == 'SUCCESS' } }
             steps {
@@ -464,7 +446,23 @@ pipeline {
             }
         }
 
-
+        stage('Java API Documentation') {
+            when { expression { currentBuild.currentResult == 'SUCCESS' } }
+            steps {
+                sh '''
+                    set -eu
+                    for service in holdings-and-trade-service order-and-sell-service; do
+                        sh "$WORKSPACE/infrastructure/jenkins/maven-retry.sh" -B -Dmaven.repo.local="$WORKSPACE/.m2/$service" -f "apps/$service/pom.xml" org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc
+                        test -s "apps/$service/target/reports/apidocs/index.html"
+                    done
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'apps/*/target/reports/apidocs/**/*', allowEmptyArchive: false
+                }
+            }
+        }
 
         stage('Pre-E2E Disk Cleanup') {
             steps {
