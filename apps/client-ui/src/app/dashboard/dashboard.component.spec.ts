@@ -143,6 +143,8 @@ function createDashboard(): ComponentFixture<DashboardComponent> {
 
 describe('DashboardComponent', () => {
   beforeEach(async () => {
+    // The first-run tour would cover the dashboard; it has its own tests below.
+    localStorage.setItem('ts.tour.done', '1');
     await TestBed.configureTestingModule({
       imports: [DashboardComponent],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
@@ -555,8 +557,12 @@ describe('DashboardComponent', () => {
 
     expect(trigger.className).toContain('rounded-full');
     expect(trigger.textContent?.trim()).toBe('');
-    expect(items.map((item) => item.textContent?.trim())).toEqual(['Settings', 'Log out']);
-    expect(items[1].className).toContain('text-loss');
+    expect(items.map((item) => item.textContent?.trim())).toEqual([
+      'Settings',
+      'Take the tour',
+      'Log out',
+    ]);
+    expect(items[2].className).toContain('text-loss');
     expect(fixture.nativeElement.querySelector('[aria-label="Sign out"]')).toBeNull();
   });
 
@@ -566,10 +572,12 @@ describe('DashboardComponent', () => {
     fixture.detectChanges();
     openDropdown(fixture, 'profile-dropdown');
 
-    const items = fixture.nativeElement.querySelectorAll(
-      '[data-testid="profile-dropdown"] button[role="menuitem"]',
-    ) as NodeListOf<HTMLButtonElement>;
-    items[1].click();
+    const items = [
+      ...fixture.nativeElement.querySelectorAll(
+        '[data-testid="profile-dropdown"] button[role="menuitem"]',
+      ),
+    ] as HTMLButtonElement[];
+    items.find((item) => item.textContent?.trim() === 'Log out')!.click();
     fixture.detectChanges();
 
     expect(navigate).toHaveBeenCalledWith('/login');
@@ -2038,6 +2046,153 @@ describe('DashboardComponent', () => {
 
       expect(navigate).toHaveBeenCalledWith('/login');
       TestBed.inject(HttpTestingController).expectNone('/api/users/me/terms-acceptance');
+    });
+  });
+
+  describe('first-run tour', () => {
+    const NOT_ACCEPTED = { ...PROFILE, termsAccepted: false };
+
+    beforeEach(() => {
+      localStorage.removeItem('ts.tour.done');
+      localStorage.removeItem('ts.tour.step');
+    });
+    afterEach(() => {
+      localStorage.removeItem('ts.tour.done');
+      localStorage.removeItem('ts.tour.step');
+    });
+
+    function tour(fixture: ComponentFixture<DashboardComponent>) {
+      return (fixture.nativeElement as HTMLElement).querySelector('app-dashboard-tour');
+    }
+
+    function content(fixture: ComponentFixture<DashboardComponent>) {
+      return (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="dashboard-content"]',
+      ) as HTMLElement;
+    }
+
+    function tourButton(fixture: ComponentFixture<DashboardComponent>, name: string) {
+      return [...(tour(fixture)?.querySelectorAll('button') ?? [])].find(
+        (button) => button.textContent?.trim() === name,
+      ) as HTMLButtonElement;
+    }
+
+    it('marks every element it spotlights', () => {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture);
+      const page = fixture.nativeElement as HTMLElement;
+
+      for (const target of ['search', 'net-worth', 'account', 'portfolio', 'assets']) {
+        expect(page.querySelector(`[data-tour="${target}"]`)).not.toBeNull();
+      }
+    });
+
+    it('opens by itself once the accounts and profile load, with the dashboard inert', () => {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      expect(tour(fixture)).toBeNull();
+
+      flushAccounts(fixture);
+
+      expect(tour(fixture)?.textContent).toContain('Welcome to TradingSeason');
+      expect(content(fixture).hasAttribute('inert')).toBe(true);
+    });
+
+    it('waits until the terms are accepted', () => {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture, ACCOUNTS, { profile: NOT_ACCEPTED });
+
+      expect(tour(fixture)).toBeNull();
+    });
+
+    it('does not open by itself once finished or skipped', () => {
+      localStorage.setItem('ts.tour.done', '1');
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture);
+
+      expect(tour(fixture)).toBeNull();
+    });
+
+    it('closes on Skip and gives the dashboard back', async () => {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture);
+
+      tourButton(fixture, 'Skip').click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(tour(fixture)).toBeNull();
+      expect(content(fixture).hasAttribute('inert')).toBe(false);
+      expect(localStorage.getItem('ts.tour.done')).toBe('1');
+    });
+
+    it('starts again from the first step from the profile menu, and returns focus there', async () => {
+      localStorage.setItem('ts.tour.done', '1');
+      localStorage.setItem('ts.tour.step', '4');
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture);
+      openDropdown(fixture, 'profile-dropdown');
+
+      (
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="start-tour"]',
+        ) as HTMLButtonElement
+      ).click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(dropdownDetails(fixture, 'profile-dropdown').open).toBe(false);
+      expect(tour(fixture)?.textContent).toContain('Welcome to TradingSeason');
+
+      tourButton(fixture, 'Skip').click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(document.activeElement).toBe(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="profile-dropdown"] summary',
+        ),
+      );
+    });
+
+    it('hands over to the stock search when finished', async () => {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture);
+      // Reopen at the last step.
+      fixture.componentInstance['tourOpen'].set(false);
+      fixture.detectChanges();
+      localStorage.setItem('ts.tour.step', '6');
+      fixture.componentInstance['tourOpen'].set(true);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      tourButton(fixture, 'Find a stock').click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(tour(fixture)).toBeNull();
+      expect(document.activeElement).toBe(
+        (fixture.nativeElement as HTMLElement).querySelector('[data-tour="search"] input'),
+      );
+    });
+
+    it('closes when the profile turns out to need the terms accepted', () => {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      fixture.componentInstance['startTour']();
+      fixture.detectChanges();
+      expect(tour(fixture)).not.toBeNull();
+
+      flushAccounts(fixture, ACCOUNTS, { profile: NOT_ACCEPTED });
+
+      expect(tour(fixture)).toBeNull();
+      expect(localStorage.getItem('ts.tour.done')).toBeNull();
     });
   });
 });

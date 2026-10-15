@@ -16,10 +16,12 @@ import {
   ChangeDetectionStrategy,
   Component,
   HostListener,
+  Injector,
   OnDestroy,
   OnInit,
   NgZone,
   PLATFORM_ID,
+  afterNextRender,
   computed,
   effect,
   inject,
@@ -30,6 +32,7 @@ import {
   lucideCalendarClock,
   lucideCheck,
   lucideChevronDown,
+  lucideCompass,
   lucideLogOut,
   lucidePencil,
   lucidePiggyBank,
@@ -67,6 +70,8 @@ import { RecentInstrumentsService } from './shared/recent-instruments.service';
 import { PriceChartComponent } from './shared/price-chart.component';
 import { SignedPercentPipe } from './shared/signed-percent.pipe';
 import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
+import { DashboardTourComponent, TourExit } from './tour/dashboard-tour.component';
+import { TourProgressService } from './tour/tour-progress.service';
 
 type HeaderDropdown = 'account' | 'market-clock' | 'profile';
 type TickAnimation = {
@@ -95,6 +100,7 @@ type AccountDialog =
     CurrencyPipe,
     TransactionsDialogComponent,
     DashboardHeaderDropdownComponent,
+    DashboardTourComponent,
     DailySparklineComponent,
     InstrumentSearchComponent,
     NgIcon,
@@ -111,6 +117,7 @@ type AccountDialog =
       lucideCalendarClock,
       lucideCheck,
       lucideChevronDown,
+      lucideCompass,
       lucideLogOut,
       lucidePencil,
       lucidePiggyBank,
@@ -134,6 +141,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private marketGeneration = 0;
   private readonly _authService = inject(AuthService);
   private readonly _router = inject(Router);
+  private readonly _injector = inject(Injector);
+  private readonly _tourProgress = inject(TourProgressService);
 
   // Only ever the signed-in user's own accounts; see AccountStore. Each account's portfolio
   // is its holdings, and the user's cash is shared by all of them.
@@ -249,7 +258,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.historyDialog.set(null);
       this.assetsDialogOpen.set(false);
       this.accountDialog.set(null);
+      this.tourOpen.set(false);
     });
+  });
+
+  // The first-run tour. It opens by itself once per visit, when the accounts and profile have
+  // loaded and no terms are waiting, until the user has finished or skipped it; the profile
+  // menu starts it again. The dashboard is inert behind it.
+  protected readonly tourOpen = signal(false);
+  private tourOffered = false;
+  private tourFromMenu = false;
+  private readonly offerTour = effect(() => {
+    if (this.accountStore.status() !== 'ready' || this.termsRequired() || this.tourOffered) {
+      return;
+    }
+    this.tourOffered = true;
+    if (!this._tourProgress.isDone()) {
+      untracked(() => this.tourOpen.set(true));
+    }
   });
   private readonly recentInstruments = inject(RecentInstrumentsService);
 
@@ -811,6 +837,35 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   protected closeSettings(): void {
     this.settingsOpen.set(false);
+  }
+
+  protected startTour(): void {
+    this.openHeaderDropdown.set(null);
+    this._tourProgress.saveStep(0);
+    this.tourFromMenu = true;
+    this.tourOpen.set(true);
+  }
+
+  // Focus waits for the dashboard to stop being inert. Finishing hands over to the search;
+  // closing a tour started from the profile menu returns to the menu's button.
+  protected onTourFinished(exit: TourExit): void {
+    const fromMenu = this.tourFromMenu;
+    this.tourFromMenu = false;
+    this.tourOpen.set(false);
+    afterNextRender(
+      () => {
+        const selector =
+          exit === 'find-stock'
+            ? '[data-tour="search"] input'
+            : fromMenu
+              ? '[data-testid="profile-dropdown"] summary'
+              : null;
+        if (selector) {
+          this.document.querySelector<HTMLElement>(selector)?.focus();
+        }
+      },
+      { injector: this._injector },
+    );
   }
 
   protected onSignOut(): void {
