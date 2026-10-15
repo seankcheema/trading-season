@@ -4,7 +4,7 @@
 // must equal UserService.CURRENT_TERMS_VERSION in Holdings and Trade Service, which refuses any
 // other version. Change both together whenever a section below changes, so that every user is
 // asked to accept the new wording.
-export const TERMS_VERSION = '2026-10-12';
+export const TERMS_VERSION = '2026-10-15';
 
 export interface TermsSection {
   title: string;
@@ -44,6 +44,7 @@ export const TERMS_SECTIONS: readonly TermsSection[] = [
     title: '5. Records and platform controls',
     paragraphs: [
       'The platform records your acceptance of this version of the terms, together with the time you accepted. If the terms change, you will be asked to accept the new version before continuing.',
+      'Every order you confirm, the simulated price it is filled at, and the resulting changes to your simulated cash and holdings are recorded permanently against your account, with the time each occurred. A recorded order cannot be edited or deleted, and the name, date of birth, and sign-in email it is attributed to cannot be changed through the platform.',
       'The operator may suspend access, invalidate sessions, or restrict features where necessary to protect users, data integrity, or service operations.',
     ],
   },

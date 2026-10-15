@@ -19,7 +19,7 @@ public class UserService {
      * Change it whenever the wording of the terms changes: every client then has
      * no acceptance for the new version and is asked to accept again.
      */
-    public static final String CURRENT_TERMS_VERSION = "2026-10-12";
+    public static final String CURRENT_TERMS_VERSION = "2026-10-15";
 
     private final UserRepository userRepository;
     private final UserAccountRepository userAccountRepository;
