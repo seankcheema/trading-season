@@ -207,7 +207,7 @@ services:
       dockerfile: Dockerfile
     container_name: holdings-and-trade-service
     ports:
-      - "8081:8081"
+      - "8082:8082"
     depends_on:
       db-init:
         condition: service_completed_successfully
@@ -234,7 +234,7 @@ services:
       dockerfile: Dockerfile
     container_name: order-and-sell-service
     ports:
-      - "8082:8082"
+      - "8081:8081"
     depends_on:
       db-init:
         condition: service_completed_successfully

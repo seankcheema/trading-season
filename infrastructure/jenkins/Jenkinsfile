@@ -305,6 +305,7 @@ pipeline {
                                       -e EXECUTION_MIGRATION_DISPOSABLE_DATABASE_URL \
                                       -e PYTHONDONTWRITEBYTECODE=1 \
                                       -v "$(pwd)":/app \
+                                      -v "$(pwd)/../migrations":/migrations:ro \
                                       -w /app \
                                       python:3.14-slim \
                                       bash -c "
