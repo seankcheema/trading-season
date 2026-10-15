@@ -1000,6 +1000,10 @@ components:
             sessionId:
               type: integer
               nullable: true
+            triggerPrice:
+              type: number
+              nullable: true
+              description: First stop activation quote; submission reference remains unchanged.
             triggeredAt:
               type: string
               nullable: true

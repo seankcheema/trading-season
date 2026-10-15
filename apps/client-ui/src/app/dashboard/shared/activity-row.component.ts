@@ -1,3 +1,4 @@
+import { CancelOrderButtonComponent } from './cancel-order-button.component';
 import { OrderService } from '../orders/order.service';
 import { AccountStore } from '../accounts/account-store.service';
 import { CurrencyPipe, DatePipe } from '@angular/common';
@@ -15,7 +16,7 @@ export interface ActivityItem {
   date: string;
   value: number;
   label: string;
-  // Extra text after the date, such as a trade's quantity and price. Empty for cash.
+  // Details below the label, such as a trade's quantity and price. Empty for cash.
   detail: string;
   type: ActivityType;
   status: ActivityStatus;
@@ -37,12 +38,12 @@ export const ACTIVITY_STATUS_LABELS: Record<ActivityStatus, string> = {
   COMPLETED: 'Cash Transaction',
 };
 
-// Classes for each status: green filled, red rejected, yellow pending, cyan completed cash.
+// Status badge colors used by the transaction history table.
 export const ACTIVITY_STATUS_CLASSES: Record<ActivityStatus, string> = {
   FILLED: 'bg-gain/15 text-gain',
   REJECTED: 'bg-loss/15 text-loss',
   PENDING: 'bg-amber-400/15 text-amber-400',
-  ACCEPTED: 'bg-amber-400/15 text-amber-400',
+  ACCEPTED: 'bg-primary/15 text-primary',
   CANCELLED: 'bg-muted text-muted-foreground',
   COMPLETED: 'bg-primary/15 text-primary',
 };
@@ -58,7 +59,7 @@ export const ACTIVITY_TYPE_CLASSES: Record<ActivityType, string> = {
 @Component({
   selector: 'li[app-activity-row]',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CurrencyPipe, DatePipe],
+  imports: [CurrencyPipe, DatePipe, CancelOrderButtonComponent],
   host: {
     class:
       'border-border/60 flex items-center justify-between gap-3 border-b py-2.5 text-sm last:border-b-0',
@@ -67,32 +68,34 @@ export const ACTIVITY_TYPE_CLASSES: Record<ActivityType, string> = {
     '[attr.data-status]': 'transaction().status',
   },
   template: ` <span class="min-w-0">
-      <span class="font-medium">{{ transaction().label }}</span>
-      <span
-        class="ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
-        data-testid="activity-tag"
-        [class]="tagClass()"
-      >
-        {{ transaction().type.toLowerCase() }}
-      </span>
-      <span class="text-muted-foreground block text-xs">
-        {{ transaction().date | date: 'MMM d, y, h:mm a' : '' : 'en-US' }}
-      </span>
-    </span>
-    <span class="shrink-0 text-right tabular-nums">
-      <span class="block" data-testid="activity-value">
-        {{ sign() }}{{ transaction().value | currency: 'USD' }}
+      <span class="flex items-center gap-2">
+        <span class="font-medium">{{ transaction().label }}</span>
+        <span
+          class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
+          data-testid="activity-tag"
+          [class]="tagClass()"
+        >
+          {{ transaction().type.toLowerCase() }}
+        </span>
       </span>
       <span class="text-muted-foreground block text-xs">
         @if (transaction().detail) {
           <span data-testid="activity-detail">{{ transaction().detail }}</span> ·
         }
-        <span data-testid="activity-status">{{ statusLabel() }}</span>
+        <span data-testid="activity-status">{{ cancelling() ? 'Cancelling…' : statusLabel() }}</span>
       </span>
     </span>
-    @if (transaction().status === 'ACCEPTED' && transaction().orderId) {
-      <button type="button" class="text-primary text-xs underline" [disabled]="cancelling()" (click)="cancel()">Cancel order</button>
-    }
+    <span class="flex shrink-0 self-stretch items-stretch gap-2">
+      <span class="text-right tabular-nums">
+        <span class="block" data-testid="activity-value">{{ sign() }}{{ transaction().value | currency: 'USD' }}</span>
+        <span class="text-muted-foreground block text-xs">
+          {{ transaction().date | date: 'MMM d, y, h:mm a' : '' : 'en-US' }}
+        </span>
+      </span>
+      @if (transaction().status === 'ACCEPTED' && transaction().orderId) {
+        <app-cancel-order-button [orderLabel]="transaction().label" [busy]="cancelling()" (confirmed)="cancel()" (edited)="orders.editOrder(transaction().orderId!)" />
+      }
+    </span>
     @if (cancelError()) { <p role="alert" class="text-loss text-xs">{{ cancelError() }}</p> }
     @if (transaction().rejectionReason) {
       <p class="text-loss mt-1 w-full text-xs">{{ transaction().rejectionReason }}</p>
@@ -110,7 +113,7 @@ export const ACTIVITY_TYPE_CLASSES: Record<ActivityType, string> = {
   ],
 })
 export class ActivityRowComponent {
-  private readonly orders = inject(OrderService);
+  protected readonly orders = inject(OrderService);
   private readonly accounts = inject(AccountStore);
   protected readonly cancelling = signal(false);
   protected readonly cancelError = signal('');

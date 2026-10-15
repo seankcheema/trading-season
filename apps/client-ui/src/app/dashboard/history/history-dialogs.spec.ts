@@ -203,8 +203,8 @@ describe('history dialogs', () => {
       const placeholders = rows(fixture, 'transactions-row-skeleton');
 
       expect(placeholders).toHaveLength(6);
-      // One block under each of the seven columns, hidden from a screen reader, which is told instead.
-      expect(placeholders[0].children).toHaveLength(7);
+      // Seven data placeholders, with reserved audit and action columns on either side.
+      expect(placeholders[0].children).toHaveLength(9);
       expect(placeholders[0].getAttribute('aria-hidden')).toBe('true');
       expect(table.querySelector('[role="status"]')?.textContent).toContain('Loading transactions…');
       expect(table.textContent).not.toContain('No transactions match these filters.');

@@ -36,7 +36,8 @@ import java.time.OffsetDateTime;
  *
  * <p>Prices come from the authoritative Holdings and Trade replay cursor. Limits
  * remain open until eligible; stops latch once triggered. Market executions
- * enforce the immutable submission quote and saved buffer before any ledger write.
+ * enforce the saved buffer against the submission quote for Market orders and the
+ * first triggering quote for Stop orders before any ledger write.
  * Cancellation and competing evaluations serialize under owner and order locks.
  *
  * <p><b>Funds:</b> cash belongs to the user, not to an account, so a BUY
@@ -128,7 +129,7 @@ public class OrderExecutionService {
      * @param orderId persisted order
      * @param instrument traded instrument
      * @param quote authoritative tick in the order's fixed session
-     * @return current, filled or rejected order
+     * @return current, filled, rejected, or day-expired cancelled order
      * @throws org.springframework.dao.DataAccessException if settlement rolls back */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Order evaluate(Integer orderId, Instrument instrument, ExecutionQuoteSource.Quote quote) {
@@ -144,7 +145,13 @@ public class OrderExecutionService {
                 || !order.getSessionId().equals(quote.sessionId())
                 || quote.timestamp().isBefore(order.getReferenceAt())
                 || (order.getEvaluatedAt() != null && quote.timestamp().isBefore(order.getEvaluatedAt()))) return order;
-        if (order.getRetryAfter() != null && OffsetDateTime.now().isBefore(order.getRetryAfter())) return order;
+        if (!quote.timestamp().isBefore(ExecutionPolicy.expiresAt(order))) {
+            return expire(order, instrument);
+        }
+        if (order.getRetryAfter() != null && OffsetDateTime.now().isBefore(order.getRetryAfter())) {
+            return !quote.timestamp().plusSeconds(1).isBefore(ExecutionPolicy.expiresAt(order))
+                    ? expire(order, instrument) : order;
+        }
         if (credentials.findById(user.getUserId()).isEmpty()) return reject(order, instrument, "Credential account does not exist");
         boolean isBuy = Order.TYPE_BUY.equals(order.getOrderType());
         BigDecimal fillPrice = quote.price();
@@ -153,19 +160,22 @@ public class OrderExecutionService {
         boolean stop = "STOP".equals(order.getExecutionType()) || "STOP_LIMIT".equals(order.getExecutionType());
         boolean newlyTriggered = false;
         if (stop && order.getTriggeredAt() == null) {
-            if (!ExecutionPolicy.triggers(order.getOrderType(), fillPrice, order.getStopPrice())) return orderRepository.save(order);
+            if (!ExecutionPolicy.triggers(order.getOrderType(), fillPrice, order.getStopPrice())) return keepOpenOrExpire(order, instrument, quote);
             order.setTriggeredAt(quote.timestamp());
+            order.setTriggerPrice(fillPrice);
             auditTrailService.record(orderId, "TRIGGERED", "Stop triggered at " + fillPrice);
             newlyTriggered = true;
         }
         if (order.getLimitPrice() != null) {
             if (!ExecutionPolicy.within(order.getOrderType(), fillPrice, order.getLimitPrice())) {
-                orderRepository.save(order);
-                if (newlyTriggered) events.publishEvent(OrderStatusEvent.from(order, instrument));
-                return order;
+                Order remaining = keepOpenOrExpire(order, instrument, quote);
+                if (newlyTriggered && Order.STATUS_ACCEPTED.equals(remaining.getStatus())) events.publishEvent(OrderStatusEvent.from(remaining, instrument));
+                return remaining;
             }
         } else if (!ExecutionPolicy.within(order.getOrderType(), fillPrice,
-                ExecutionPolicy.boundary(order.getOrderType(), order.getReferencePrice(), order.getBufferPercent()))) {
+                ExecutionPolicy.boundary(order.getOrderType(),
+                        "STOP".equals(order.getExecutionType()) && order.getTriggerPrice() != null
+                                ? order.getTriggerPrice() : order.getReferencePrice(), order.getBufferPercent()))) {
             order.setRejectionCode("EXECUTION_BUFFER_EXCEEDED");
             return reject(order, instrument, "Execution buffer exceeded: market price " + fillPrice
                     + " is outside your " + order.getBufferPercent() + "% protection");
@@ -244,6 +254,27 @@ public class OrderExecutionService {
                 cashTransaction.getCashTransactionId(), cashDelta, user.getAvailableFunds(),
                 movement.getHoldingMovementId(), quantityDelta, holding.getQuantity())));
         return savedOrder;
+    }
+
+    // The seeded market has one-second ticks; let the final tick fill before expiring.
+    private Order keepOpenOrExpire(Order order, Instrument instrument, ExecutionQuoteSource.Quote quote) {
+        return !quote.timestamp().plusSeconds(1).isBefore(ExecutionPolicy.expiresAt(order))
+                ? expire(order, instrument) : orderRepository.save(order);
+    }
+
+    private Order expire(Order order, Instrument instrument) {
+        order.setStatus(Order.STATUS_CANCELLED);
+        order.setRejectionCode("ORDER_EXPIRED");
+        order.setRejectionReason("Day order expired at market close");
+        order.setResolvedAt(OffsetDateTime.now());
+        order.setEvaluatedAt(ExecutionPolicy.expiresAt(order));
+        order.setReservedCash(BigDecimal.ZERO);
+        order.setReservedShares(BigDecimal.ZERO);
+        order.setRetryAfter(null);
+        orderRepository.save(order);
+        auditTrailService.record(order.getOrderId(), Order.STATUS_CANCELLED, "Day order expired at market close");
+        events.publishEvent(OrderStatusEvent.from(order, instrument));
+        return order;
     }
 
     private Order reject(Order order, Instrument instrument, String reason) {

@@ -14,7 +14,7 @@ import { ExecutionSettingsService } from '../settings-dialog/execution-settings.
   providers: [provideIcons({ lucideCheck, lucideChevronDown, lucideZap, lucideTrendingUp, lucideCircleStop, lucideGitBranch })],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="space-y-3 text-xs">
+    <div class="grid gap-3 text-xs">
       <div class="flex items-center justify-between gap-3">
         <span class="text-muted-foreground text-sm">Order type</span>
         <app-dashboard-header-dropdown

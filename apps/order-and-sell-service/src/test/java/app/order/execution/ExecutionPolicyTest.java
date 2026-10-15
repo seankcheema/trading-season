@@ -8,6 +8,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ExecutionPolicyTest {
     @ParameterizedTest
+    @CsvSource({"2026-01-05T15:00:00Z,2026-01-05T21:00:00Z", "2026-07-06T14:00:00Z,2026-07-06T20:00:00Z"})
+    void dayExpiryUsesChicagoMarketCloseAcrossDaylightSaving(String submitted, String expected) {
+        var order = new app.order.Order();
+        order.setReferenceAt(java.time.OffsetDateTime.parse(submitted));
+        assertEquals(java.time.OffsetDateTime.parse(expected).toInstant(), ExecutionPolicy.expiresAt(order).toInstant());
+    }
+    @ParameterizedTest
     @CsvSource({"BUY,100,2,102", "SELL,100,2,98", "BUY,100,0,100", "SELL,100,0,100", "BUY,100,10,110", "SELL,100,10,90"})
     void computesProtectedBoundary(String side, String quote, String percent, String expected) {
         assertEquals(0, new BigDecimal(expected).compareTo(ExecutionPolicy.boundary(side, new BigDecimal(quote), new BigDecimal(percent))));

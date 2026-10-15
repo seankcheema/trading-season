@@ -27,6 +27,7 @@ import java.time.OffsetDateTime;
  * @param referencePrice authoritative submission quote, null for legacy orders
  * @param referenceAt persisted referenceAt
  * @param sessionId persisted sessionId
+ * @param triggerPrice authoritative activation quote, null before triggering or for legacy orders
  * @param triggeredAt latched simulated stop activation position
  * @param evaluatedAt last successfully evaluated simulated position
  * @param reservedCash persisted reservedCash
@@ -54,6 +55,7 @@ public record OrderResponse(
         OffsetDateTime referenceAt,
         Long sessionId,
         OffsetDateTime triggeredAt,
+        BigDecimal triggerPrice,
         OffsetDateTime evaluatedAt,
         BigDecimal reservedCash,
         BigDecimal reservedShares,
@@ -86,6 +88,7 @@ public record OrderResponse(
                 order.getReferenceAt(),
                 order.getSessionId(),
                 order.getTriggeredAt(),
+                order.getTriggerPrice(),
                 order.getEvaluatedAt(),
                 order.getReservedCash(),
                 order.getReservedShares(),

@@ -1,16 +1,26 @@
 import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { of, throwError, Subject } from 'rxjs';
 import { ExecutionSettingsService } from '../settings-dialog/execution-settings.service';
 import { ExecutionControlsComponent } from './execution-controls.component';
 
 describe('ExecutionControlsComponent', () => {
-  function setup(load = () => of({ executionBufferPercent: 2 })) {
+  function setup(load: () => import('rxjs').Observable<{ executionBufferPercent: number }> = () => of({ executionBufferPercent: 2 })) {
     TestBed.configureTestingModule({ providers: [{ provide: ExecutionSettingsService, useValue: { load } }] });
     const fixture = TestBed.createComponent(ExecutionControlsComponent);
     fixture.componentRef.setInput('price', 100); fixture.componentRef.setInput('side', 'buy');
     fixture.componentRef.setInput('quantity', 3); fixture.detectChanges();
     return fixture;
   }
+  it('keeps preference loading status out of spaced document flow', () => {
+    const settings = new Subject<{ executionBufferPercent: number }>();
+    const fixture = setup(() => settings);
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.firstElementChild?.classList.contains('grid')).toBe(true);
+    expect(root.firstElementChild?.classList.contains('space-y-3')).toBe(false);
+    expect(root.querySelector('[role=status]')?.classList.contains('sr-only')).toBe(true);
+    settings.next({ executionBufferPercent: 1 }); fixture.detectChanges();
+    expect(root.firstElementChild?.classList.contains('grid')).toBe(true);
+  });
   it('shows Market immediately while retaining internal protection calculations', () => {
     const fixture = setup(); const component = fixture.componentInstance;
     expect(component.bound()).toBe(102); expect(component.reservationPrice()).toBe(102);

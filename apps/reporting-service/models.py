@@ -133,6 +133,7 @@ class Order(db.Model):
     reference_price = Column(Numeric(24, 6), nullable=True)
     reference_at = Column(DateTime(timezone=True), nullable=True)
     session_id = Column(Integer, nullable=True)
+    trigger_price = Column(Numeric(24, 6), nullable=True)
     triggered_at = Column(DateTime(timezone=True), nullable=True)
     evaluated_at = Column(DateTime(timezone=True), nullable=True)
     reserved_cash = Column(Numeric(24, 6), nullable=True)

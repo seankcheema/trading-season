@@ -36,7 +36,7 @@ Quantity must be positive whole shares. Prices must be positive, with at most si
 
 The server snapshots the user's saved percentage and the Holdings and Trade market quote at submission. BUY maximum is `referencePrice * (1 + bufferPercent / 100)`; SELL minimum is `referencePrice * (1 - bufferPercent / 100)`. The boundary is inclusive; favorable prices remain eligible. BUY bounds round down and SELL bounds round up to six decimal places. Cash postings round to cents with HALF_UP, matching the cash ledger precision.
 
-The buffer applies to Market and triggered Stop orders. A Stop retains its original submission quote, so a gap at triggering can reject it. Limit and Stop-Limit use their explicit limits. Preference changes affect new orders only.
+The buffer applies to Market and triggered Stop orders. A Stop latches `triggerPrice` from the first authoritative quote meeting its stop condition and applies its buffer to that quote. `referencePrice` and `referenceAt` remain the original submission quote for auditing. A gap is measured from the triggering quote, not the stop threshold. Retries retain the first committed trigger price; legacy triggered orders without it retain submission-based protection. The initial cash reservation remains based on the submission quote; settlement rechecks available cash and can reject a gap that is unaffordable. Limit and Stop-Limit use their explicit limits. Preference changes affect new orders only.
 
 BUY orders reserve quantity times the limit or protected BUY maximum. SELL orders reserve shares within the selected account. Shared cash reservations span all of a user's accounts. Acceptance does not move balances or holdings. Filling, rejection and cancellation release the reservation; only a fill posts cash and holding movements.
 
@@ -59,6 +59,7 @@ BUY orders reserve quantity times the limit or protected BUY maximum. SELL order
   "referenceAt": "2026-01-05T15:00:00Z",
   "sessionId": 1,
   "triggeredAt": null,
+  "triggerPrice": null,
   "evaluatedAt": "2026-01-05T15:00:00Z",
   "reservedCash": 950,
   "reservedShares": 0,
@@ -93,10 +94,24 @@ Missing and foreign order IDs return 404. Repeated cancellation returns the canc
 
 `EXECUTION_MARKET_URL` points to Holdings and Trade (default `http://localhost:8082`; Compose uses its service hostname). Its replay clock is authoritative for both the UI and execution. `app.execution.poll-millis` defaults to 1000; `app.execution.enabled=false` disables background evaluation for isolated tests.
 
-The evaluator reads accepted orders without a browser connection, loads the fixed session's PostgreSQL or Parquet ticks, and processes chronological batches of at most 1000 ticks per order per poll. Forward movement, including observed forward seeks, evaluates crossed ticks; rewinds neither undo fills nor reprocess earlier positions. Open orders resume from stored watermarks after restart. Missing data keeps orders and reservations open until recovery or cancellation. Orders have no expiry, amendments, partial fills, or fractional shares.
+The evaluator reads accepted orders without a browser connection, loads the fixed session's PostgreSQL or Parquet ticks, and processes chronological batches of at most 1000 ticks per order per poll. Forward movement, including observed forward seeks, evaluates crossed ticks; rewinds neither undo fills nor reprocess earlier positions. Open orders resume from stored watermarks after restart. Missing data keeps orders and reservations open until recovery or cancellation. Orders expire at the submission day's regular market close; partial fills and fractional shares remain unsupported; edits use atomic replacement as described below.
 
 Committed lifecycle events carry execution context to Kafka, including an updated ACCEPTED snapshot when a Stop latches. Audit entries also reach `platform-records`. Reporting reads these messages alone; [history republishing](../../db/README.md#reporting-feed-tools) includes the same execution fields.
 
 ## Validation
 
 Run the service's Maven tests and both Java Javadoc commands from [repository instructions](../../AGENTS.md). The normal H2 suite covers lifecycle and concurrent races. `PostgresOrderConcurrencyTest` repeats those cases only when `ORDER_TEST_DISPOSABLE_POSTGRES_URL` is set to a JDBC PostgreSQL URL; set `ORDER_TEST_POSTGRES_USER` and `ORDER_TEST_POSTGRES_PASSWORD` too. This opt-in test uses Hibernate `create-drop`: the named database must be explicitly disposable and dedicated to the test.
+
+### Day orders and replay time
+
+Orders default to DAY: any remaining open quantity expires at the submission simulation day's regular market close (15:00 America/Chicago, including daylight saving time). The final seeded one-second tick can fill an eligible order before remaining orders expire. Expiry uses `CANCELLED` with `rejectionCode: ORDER_EXPIRED` and an explanatory reason, releases all reservations atomically, and emits the cancellation audit/event. Manual cancellation remains idempotent and available without a quote.
+
+A forward seek processes crossed ticks chronologically through the original day's close before expiring an unfilled order; bounded batches resume on subsequent polls. Later-day prices cannot fill an expired day order. Rewinds never undo fills, triggers, cancellations, or expiry, and never reprocess positions before the order's persisted watermark. Orders remain isolated to their submission simulation session. Expiry cannot advance while the authoritative market cursor is unavailable.
+
+Apply [V013](../../db/migrations/V013__Order_audit_lifecycle.sql) to permit the `TRIGGERED` and `CANCELLED` audit events on PostgreSQL. Without this migration those transitions roll back under the original audit constraint.
+
+### Editing an open order
+
+`POST /api/orders/{orderId}/replace` accepts the same validated body as submission, with a new `clientReference` and the original account, instrument, BUY/SELL side, and session. Quantity, execution type, and conditional prices may change. The server locks the owner, account and original order, releases its reservation, and validates/reserves the replacement in one transaction. A validation failure rolls everything back, preserving the original order. Foreign orders return 404; terminal, expired, or future-watermark orders return 409.
+
+A successful edit returns 200 with the replacement outcome. The original is CANCELLED with `ORDER_REPLACED` and a replacement-order reference. Its submission quote and history are preserved. The new order snapshots the current server quote, saved buffer and simulation submission day, resets triggering, and settles in the normal separate execution transaction. Repeating the same replacement key returns the recorded replacement. Committed events and historical Kafka republishing retain both rows and their audit history.

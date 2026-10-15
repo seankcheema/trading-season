@@ -7,9 +7,17 @@ import java.math.RoundingMode;
 /** Pure, inclusive stock execution conditions and adverse-price protection. */
 public final class ExecutionPolicy {
     private ExecutionPolicy() { }
+    /** Returns the submission day's regular market close, independent of wall-clock time.
+     * @param order instruction with an authoritative submission position
+     * @return 15:00 America/Chicago on that simulation date */
+    public static java.time.OffsetDateTime expiresAt(Order order) {
+        var zone = java.time.ZoneId.of("America/Chicago");
+        return order.getReferenceAt().atZoneSameInstant(zone).toLocalDate()
+                .atTime(15, 0).atZone(zone).toOffsetDateTime();
+    }
     /** Computes the adverse execution boundary at database price precision.
      * @param side BUY or SELL
-     * @param reference authoritative submission quote
+     * @param reference authoritative submission quote for Market, or activation quote for Stop
      * @param percent saved percentage
      * @return maximum BUY or minimum SELL price */
     public static BigDecimal boundary(String side, BigDecimal reference, BigDecimal percent) {

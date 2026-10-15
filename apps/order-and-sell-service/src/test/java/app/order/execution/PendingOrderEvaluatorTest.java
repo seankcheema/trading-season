@@ -54,7 +54,7 @@ class PendingOrderEvaluatorTest {
         when(quotes.current(instrument, 1L)).thenThrow(new ExecutionQuoteSource.QuoteUnavailableException());
         evaluator.evaluate(); verifyNoInteractions(execution, submissions);
         var failure = new IllegalStateException("storage unavailable");
-        when(quotes.current(instrument, 1L)).thenThrow(failure);
+        doThrow(failure).when(quotes).current(instrument, 1L);
         evaluator.evaluate(); verify(submissions).recordExecutionFailure(1, failure);
     }
     @Test void stopsEvaluatingOnceAnOrderReachesATerminalState() {
@@ -68,4 +68,38 @@ class PendingOrderEvaluatorTest {
         verify(execution).evaluate(1, instrument, new ExecutionQuoteSource.Quote(BigDecimal.TEN, 1L, at.plusSeconds(2)));
         verifyNoInteractions(ticks);
     }
+    @Test void rewindNeverReplaysTicksBehindTheWatermark() {
+        order.setEvaluatedAt(at.plusHours(1));
+        evaluator.evaluate();
+        verify(ticks).between(1L, "AAPL", at.plusHours(1), at.plusSeconds(2));
+        verifyNoInteractions(execution);
+    }
+    @Test void sessionMismatchNeverEvaluatesOrExpiresAnOrder() {
+        when(quotes.current(instrument, 1L)).thenReturn(new ExecutionQuoteSource.Quote(BigDecimal.TEN, 2L, at.plusDays(1)));
+        evaluator.evaluate(); verifyNoInteractions(execution, ticks);
+    }
+    @Test void forwardSeekProcessesPreCloseTicksBeforeExpiry() {
+        order.setEvaluatedAt(at.plusSeconds(1));
+        var current = new ExecutionQuoteSource.Quote(BigDecimal.TEN, 1L, at.plusDays(1));
+        var crossed = new ExecutionQuoteSource.Quote(BigDecimal.TEN, 1L, at.plusSeconds(2));
+        when(quotes.current(instrument, 1L)).thenReturn(current);
+        when(ticks.between(eq(1L), eq("AAPL"), any(), any())).thenReturn(List.of(crossed));
+        when(execution.evaluate(1, instrument, crossed)).thenAnswer(call -> { order.setEvaluatedAt(crossed.timestamp()); return order; });
+        evaluator.evaluate();
+        var sequence = inOrder(execution);
+        sequence.verify(execution).evaluate(1, instrument, crossed);
+        sequence.verify(execution).evaluate(1, instrument, current);
+        verify(ticks).between(1L, "AAPL", at.plusSeconds(1), ExecutionPolicy.expiresAt(order).minusNanos(1));
+    }
+    @Test void fullCatchUpBatchDoesNotExpireBeforeRemainingTicks() {
+        order.setEvaluatedAt(at.plusSeconds(1));
+        var current = new ExecutionQuoteSource.Quote(BigDecimal.TEN, 1L, at.plusDays(1));
+        var crossed = new ExecutionQuoteSource.Quote(BigDecimal.TEN, 1L, at.plusSeconds(2));
+        when(quotes.current(instrument, 1L)).thenReturn(current);
+        when(ticks.between(anyLong(), anyString(), any(), any())).thenReturn(java.util.Collections.nCopies(1000, crossed));
+        when(execution.evaluate(1, instrument, crossed)).thenAnswer(call -> { order.setEvaluatedAt(crossed.timestamp()); return order; });
+        evaluator.evaluate();
+        verify(execution, never()).evaluate(1, instrument, current);
+    }
+
 }

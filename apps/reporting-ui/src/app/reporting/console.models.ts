@@ -148,6 +148,7 @@ export interface OrderDetail extends OrderRow {
   referencePrice?: number | null;
   referenceAt?: string | null;
   sessionId?: number | null;
+  triggerPrice?: number | null;
   triggeredAt?: string | null;
   evaluatedAt?: string | null;
   reservedCash?: number | null;

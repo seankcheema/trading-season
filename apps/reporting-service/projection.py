@@ -227,6 +227,7 @@ def apply_trade_event(session, event):
     order['limit_price'] = _decimal(detail.get('limitPrice'), 'order.limitPrice', required=False)
     order['stop_price'] = _decimal(detail.get('stopPrice'), 'order.stopPrice', required=False)
     order['reference_price'] = _decimal(detail.get('referencePrice'), 'order.referencePrice', required=False)
+    order['trigger_price'] = _decimal(detail.get('triggerPrice'), 'order.triggerPrice', required=False)
     order['reference_at'] = _time(detail.get('referenceAt'), 'order.referenceAt', required=False)
     order['session_id'] = _integer(detail.get('sessionId'), 'order.sessionId', required=False)
     order['triggered_at'] = _time(detail.get('triggeredAt'), 'order.triggeredAt', required=False)
@@ -243,7 +244,7 @@ def apply_trade_event(session, event):
     _upsert(session, Instrument, ['instrument_id'], instrument)
     orders = Order.__table__
     current = _run(session, 'order status',
-                   lambda: select(orders.c.status, orders.c.evaluated_at, orders.c.triggered_at).where(orders.c.order_id == bindparam('order')),
+                   lambda: select(orders.c.status, orders.c.evaluated_at, orders.c.triggered_at, orders.c.trigger_price).where(orders.c.order_id == bindparam('order')),
                    {'order': order_id}).first()
     apply_order = current is None
     if current is not None:
@@ -258,6 +259,8 @@ def apply_trade_event(session, event):
                 new_position.replace(tzinfo=None) >= old_position.replace(tzinfo=None)))
             if current.triggered_at is not None and order['triggered_at'] is None:
                 apply_order = False
+    if current is not None and current.trigger_price is not None and order['trigger_price'] is None:
+        order['trigger_price'] = current.trigger_price
     if apply_order:
         _upsert(session, Order, ['order_id'], order)
     if execution is not None:

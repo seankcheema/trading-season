@@ -64,6 +64,25 @@ describe('activity helpers', () => {
     expect(orderActivity(order({ instrumentId: 99 }), []).label).toBe('Order #1');
   });
 
+  it.each([
+    { executionType: 'LIMIT' as const, limitPrice: 95, expected: 95 },
+    { executionType: 'STOP' as const, stopPrice: 105, expected: 105 },
+    { executionType: 'STOP_LIMIT' as const, stopPrice: 105, limitPrice: 106, expected: 106 },
+  ])('shows entered prices for open $executionType orders in both views', ({ expected, ...prices }) => {
+    const pending = order({ ...prices, status: 'ACCEPTED', indicativePrice: 100 });
+    expect(orderActivity(pending, CATALOGUE).value).toBe(3 * expected);
+    const history = orderHistoryRow(pending, CATALOGUE, 'Primary');
+    expect(history.price).toBe(expected);
+    if (prices.stopPrice != null) expect(history.priceDetail).toContain('Stop $105.00');
+    if (prices.limitPrice != null) expect(history.priceDetail).toContain('Limit');
+  });
+
+  it('retains the actual fill and the original conditional price', () => {
+    const filled = order({ executionType: 'LIMIT', limitPrice: 95, executionPrice: 94 });
+    expect(orderHistoryRow(filled, CATALOGUE, 'Primary').price).toBe(94);
+    expect(orderActivity(filled, CATALOGUE).detail).toContain('Limit $95.00');
+  });
+
   it('types cash transfers by direction and marks them completed', () => {
     const base = { cashTransactionId: 4, amount: 25, createdAt: '2026-01-05T16:00:00Z' };
     expect(cashActivity({ ...base, reason: 'DEPOSIT' })).toMatchObject({

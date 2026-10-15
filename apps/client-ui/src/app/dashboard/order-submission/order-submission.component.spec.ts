@@ -148,6 +148,35 @@ describe('OrderSubmissionComponent', () => {
     http.verify();
   });
 
+  it.each(['LIMIT', 'STOP', 'STOP_LIMIT'] as const)('shows a placement toast for an accepted %s order without inline status text', (type) => {
+    const http = TestBed.inject(HttpTestingController);
+    const fixture = setup();
+    const component = fixture.componentInstance;
+    component.execution()!.executionType.set(type);
+    component.execution()!.limitPrice.set(300);
+    component.execution()!.stopPrice.set(320);
+    component['shares'].set(2);
+    component['submit']();
+    http.expectOne('/api/instruments').flush(CATALOGUE);
+    http.expectOne('/api/orders').flush(filledOrder({ status: 'ACCEPTED', executionType: type }));
+    fixture.detectChanges();
+    expect(TestBed.inject(ToastService).messages()[0].message).toContain('buy order placed for 2 AAPL');
+    expect(fixture.nativeElement.textContent).not.toContain('Order open.');
+    http.verify();
+  });
+
+  it('prefills an edited order and offers Save changes', () => {
+    const fixture = setup();
+    fixture.componentRef.setInput('editOrder', filledOrder({ orderId: 9, status: 'ACCEPTED', executionType: 'STOP_LIMIT', stopPrice: 325, limitPrice: 330, quantity: 2 }));
+    fixture.detectChanges();
+    const component = fixture.componentInstance;
+    expect(component.execution()!.executionType()).toBe('STOP_LIMIT');
+    expect(component.execution()!.stopPrice()).toBe(325);
+    expect(component.execution()!.limitPrice()).toBe(330);
+    expect(component['shares']()).toBe(2);
+    expect(fixture.nativeElement.textContent).toContain('Save changes');
+  });
+
   it('keeps the submitted symbol in the notification after the dialog is destroyed', () => {
     const http = TestBed.inject(HttpTestingController);
     const fixture = setup();

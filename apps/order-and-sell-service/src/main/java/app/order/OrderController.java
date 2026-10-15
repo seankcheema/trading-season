@@ -122,5 +122,16 @@ public class OrderController {
     @Operation(summary = "Cancel an open order")
     public OrderResponse cancel(@PathVariable Integer orderId, @AuthenticationPrincipal Jwt jwt) {
         return OrderResponse.from(orderService.cancel(orderId, AuthenticatedUser.from(jwt).userId()));
+    }    /** Replaces an owned open order without losing it on validation failure.
+     * @param orderId original order
+     * @param request validated replacement instruction
+     * @param jwt verified caller
+     * @return replacement outcome */
+    @PostMapping("/{orderId}/replace")
+    @Operation(summary = "Edit an open order by atomic replacement")
+    public OrderResponse replace(@PathVariable Integer orderId, @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody OrderRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        return OrderResponse.from(orderService.replace(orderId, request, AuthenticatedUser.from(jwt).userId()));
     }
+
 }

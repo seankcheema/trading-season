@@ -973,3 +973,5 @@
 @if (termsRequired()) {
   <app-terms-dialog [signatureName]="termsSignatureName()" (declined)="onSignOut()" />
 }
+
+<app-order-editor [instruments]="instruments()" [sessionId]="sessionId()" [marketTimestamp]="marketTimestamp()" />

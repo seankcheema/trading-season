@@ -449,6 +449,7 @@ def order_detail(session, order_id):
         'limitPrice': _number(order.limit_price, 6),
         'stopPrice': _number(order.stop_price, 6),
         'referencePrice': _number(order.reference_price, 6),
+        'triggerPrice': _number(order.trigger_price, 6),
         'referenceAt': _iso(order.reference_at),
         'sessionId': order.session_id,
         'triggeredAt': _iso(order.triggered_at),

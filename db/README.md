@@ -288,3 +288,7 @@ The client's Delete action archives; it never deletes rows or cascades financial
 Orders gain execution type and conditional prices, immutable reference quote/session/preference context, trigger and evaluation positions, reservations, execution price, rejection code and retry bookkeeping. Historical orders default to MARKET with unknown reference context left null; fills supply historical execution prices. Legacy ACCEPTED orders without context are not evaluated automatically. CANCELLED joins the status constraint. The existing unique fill-per-order constraint prevents duplicate execution. Apply migrations before deploying either Java service. See the [Order API](../apps/order-and-sell-service/api.md) for lifecycle and locking behavior.
 
 The migration contract test in `db/tools/tests/test_execution_migration.py` runs only with `EXECUTION_MIGRATION_DISPOSABLE_DATABASE_URL` set to an explicitly disposable PostgreSQL database. It creates an isolated temporary schema and verifies atomic rejection of invalid historical preferences, defaults, preservation of nonzero values, and historical order backfill.
+
+[V012](migrations/V012__Stop_trigger_reference.sql) adds the latched Stop activation quote. Submission quote columns remain unchanged for auditing; untriggered historical orders capture the activation quote when they trigger.
+
+[V013](migrations/V013__Order_audit_lifecycle.sql) permits TRIGGERED and CANCELLED audit entries. This fixes PostgreSQL rollbacks on Stop triggering, manual cancellation, and day-order expiry.

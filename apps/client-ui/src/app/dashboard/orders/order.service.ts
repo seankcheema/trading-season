@@ -1,3 +1,4 @@
+import { ToastService } from '../../notifications/toast.service';
 import { TokenStorageService } from '../../core/auth/token-storage.service';
 import { HttpClient } from '@angular/common/http';
 import { DestroyRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
@@ -34,6 +35,7 @@ export const PENDING_ORDER_POLL_MS = 5_000;
 @Injectable({ providedIn: 'root' })
 export class OrderService {
   private readonly _http = inject(HttpClient);
+  private readonly toasts = inject(ToastService);
   private readonly _apiUrl = inject(BACKEND_API_URL);
 
   // The catalogue does not change while the app is open, so it is fetched once and shared.
@@ -41,6 +43,15 @@ export class OrderService {
   private revision = 0;
   private readonly cancelled = new Subject<void>();
   private historyRequest?: Observable<OrderResult[]>;
+  readonly editingOrder = signal<OrderResult | null>(null);
+  editOrder(orderId: number): void {
+    const order = this._orders().find((item) => item.orderId === orderId);
+    if (order?.status !== 'ACCEPTED') return;
+    this.instruments().subscribe({
+      next: () => this.editingOrder.set(order),
+      error: () => this.toasts.show('Unable to load the order editor. Please try again.', 'error'),
+    });
+  }
   readonly refreshing = signal(false);
   readonly historyError = signal('');
   // Retains the fill-only notification and also reports all terminal resolutions so views
@@ -56,6 +67,7 @@ export class OrderService {
       this.historyRequest = undefined;
       this._instruments = null;
       this._orders.set([]);
+      this.editingOrder.set(null);
       this._catalogue.set([]);
       this.historyStatus.set('idle');
       this.historyError.set('');
@@ -97,6 +109,8 @@ export class OrderService {
   // process at all fails this observable.
   submitOrder(order: {
     accountId: number;
+    replacesOrderId?: number;
+    instrumentId?: number;
     executionType?: ExecutionType;
     limitPrice?: number;
     stopPrice?: number;
@@ -109,7 +123,9 @@ export class OrderService {
   }): Observable<OrderResult> {
     return this.instruments().pipe(
       switchMap((instruments) => {
-        const instrument = findInstrumentBySymbol(instruments, order.symbol);
+        const instrument = order.instrumentId !== undefined
+          ? instruments.find((item) => item.instrumentId === order.instrumentId)
+          : findInstrumentBySymbol(instruments, order.symbol);
         if (!instrument) {
           return throwError(() => new UnknownInstrumentError(order.symbol));
         }
@@ -126,7 +142,7 @@ export class OrderService {
           clientReference: newClientReference(),
           ...(order.simulatedAt ? { simulatedAt: order.simulatedAt } : {}),
         };
-        return this._http.post<OrderResult>(`${this._apiUrl}/orders`, submission);
+        return this._http.post<OrderResult>(order.replacesOrderId ? `${this._apiUrl}/orders/${order.replacesOrderId}/replace` : `${this._apiUrl}/orders`, submission);
       }),
       takeUntil(this.cancelled),
       // A fill moves funds and holdings, so the history the dashboard shows is stale
@@ -136,7 +152,8 @@ export class OrderService {
         this.historyRequest = undefined;
         this._orders.update((orders) => [
           result,
-          ...orders.filter((order) => order.orderId !== result.orderId),
+          ...orders.filter((item) => item.orderId !== result.orderId).map((item) => item.orderId === order.replacesOrderId
+            ? { ...item, status: 'CANCELLED' as const, reservedCash: 0, reservedShares: 0, rejectionCode: 'ORDER_REPLACED', rejectionReason: `Replaced by order #${result.orderId}` } : item),
         ]);
       }),
     );
@@ -223,7 +240,14 @@ export class OrderService {
         for (const order of orders) {
           if (['FILLED', 'REJECTED', 'CANCELLED'].includes(order.status) && pending.has(order.orderId)) {
             this.pendingResolved.next(order);
-            if (order.status === 'FILLED') this.pendingFilled.next(order);
+            if (order.status === 'FILLED') {
+              this.pendingFilled.next(order);
+              const instrument = this._catalogue().find((item) => item.instrumentId === order.instrumentId);
+              const symbol = instrument?.simulatedStockSymbol ?? instrument?.ticker ?? `order #${order.orderId}`;
+              const price = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
+                .format(order.executionPrice ?? order.indicativePrice);
+              this.toasts.show(`Filled ${order.quantity} ${symbol} at ${price}.`, 'success');
+            }
           }
         }
       },

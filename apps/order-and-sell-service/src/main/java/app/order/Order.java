@@ -397,6 +397,16 @@ public class Order {
     /** Sets sessionId.
      * @param value new sessionId */
     public void setSessionId(Long value) { this.sessionId = value; }
+    /** Authoritative activation quote, distinct from the immutable submission quote. */
+    @Column(name = "trigger_price", precision = 24, scale = 6)
+    private BigDecimal triggerPrice;
+    /** Returns the latched stop activation quote.
+     * @return trigger quote, or null before activation or for legacy orders */
+    public BigDecimal getTriggerPrice() { return triggerPrice; }
+    /** Records the first stop activation quote.
+     * @param value authoritative trigger price */
+    public void setTriggerPrice(BigDecimal value) { this.triggerPrice = value; }
+
     @Column(name = "triggered_at")
     private OffsetDateTime triggeredAt = null;
     /** Returns triggeredAt.

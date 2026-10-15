@@ -23,6 +23,17 @@ export function orderSymbol(order: OrderResult, catalogue: readonly InstrumentRe
   return instrument?.simulatedStockSymbol ?? instrument?.ticker ?? `Order #${order.orderId}`;
 }
 
+// Open orders display the user's instruction; filled orders retain their actual execution price.
+export function orderDisplayPrice(order: OrderResult): number {
+  if (order.status === 'FILLED') return order.executionPrice ?? order.indicativePrice;
+  return order.limitPrice ?? order.stopPrice ?? order.executionPrice ?? order.indicativePrice;
+}
+
+export function orderPriceDetail(order: OrderResult): string {
+  return [order.stopPrice != null ? `Stop ${USD.format(order.stopPrice)}` : '',
+    order.limitPrice != null ? `Limit ${USD.format(order.limitPrice)}` : ''].filter(Boolean).join(' · ');
+}
+
 export function orderActivity(
   order: OrderResult,
   catalogue: readonly InstrumentRef[],
@@ -33,9 +44,9 @@ export function orderActivity(
     date: orderDate(order),
     orderId: order.orderId,
     accountId: order.accountId,
-    value: order.quantity * (order.executionPrice ?? order.indicativePrice),
+    value: order.quantity * orderDisplayPrice(order),
     label: orderSymbol(order, catalogue),
-    detail: `${order.quantity} @ ${USD.format(order.executionPrice ?? order.indicativePrice)}${order.executionType ? ` · ${order.executionType.replaceAll('_', '-')}` : ''}${order.triggeredAt ? ' · Triggered' : ''}`,
+    detail: `${order.quantity} @ ${USD.format(orderDisplayPrice(order))}${order.executionType ? ` · ${order.executionType.replaceAll('_', '-')}` : ''}${orderPriceDetail(order) ? ` · ${orderPriceDetail(order)}` : ''}${order.triggeredAt ? ' · Triggered' : ''}${order.rejectionCode === 'ORDER_EXPIRED' ? ' · Expired at close' : ''}`,
     type: order.orderType,
     status: order.status,
     positive: order.orderType === 'SELL',
@@ -73,6 +84,7 @@ export interface HistoryRow {
   side: 'Buy' | 'Sell' | 'Deposit' | 'Withdrawal';
   shares: number | null;
   price: number | null;
+  priceDetail?: string;
   value: number;
   positive: boolean;
   rejectionReason: string | null;
@@ -102,7 +114,8 @@ export function orderHistoryRow(
     status: order.status,
     side: order.orderType === 'BUY' ? 'Buy' : 'Sell',
     shares: order.quantity,
-    price: order.executionPrice ?? order.indicativePrice,
+    price: orderDisplayPrice(order),
+    priceDetail: orderPriceDetail(order),
     value: item.value,
     positive: item.positive,
     rejectionReason: order.rejectionReason,

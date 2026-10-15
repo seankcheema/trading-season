@@ -200,7 +200,7 @@ class TestOrderEvents:
             'acceptedAt': '2026-10-05T09:30:00+00:00', 'resolvedAt': '2026-10-05T09:30:00+00:00',
             'simulatedAt': None, **{key: None for key in (
                 'executionType', 'limitPrice', 'stopPrice', 'referencePrice', 'referenceAt',
-                'sessionId', 'triggeredAt', 'evaluatedAt', 'reservedCash', 'reservedShares',
+                'sessionId', 'triggeredAt', 'triggerPrice', 'evaluatedAt', 'reservedCash', 'reservedShares',
                 'executionPrice', 'rejectionCode')}}
 
     def test_a_fill_carries_both_postings_and_the_balances_they_left(self, snapshot):
@@ -390,10 +390,11 @@ class TestCommandLine:
 def test_republished_orders_include_immutable_execution_context(snapshot):
     row = snapshot['orders'][0]
     row.update(execution_type='STOP', stop_price=Decimal('105'), reference_price=Decimal('100'),
-               reference_at=row['submitted_at'], session_id=1, reserved_cash=Decimal('1010'),
+               reference_at=row['submitted_at'], trigger_price=Decimal('106'), session_id=1, reserved_cash=Decimal('1010'),
                reserved_shares=Decimal('0'), rejection_code='EXECUTION_BUFFER_EXCEEDED')
     message = next(m for m in build_messages(snapshot) if m.topic == TRADE_EVENTS)
     assert message.body['order']['executionType'] == 'STOP'
     assert message.body['order']['referencePrice'] == 100
+    assert message.body['order']['triggerPrice'] == 106
     assert message.body['order']['reservedCash'] == 1010
     assert message.body['order']['rejectionCode'] == 'EXECUTION_BUFFER_EXCEEDED'

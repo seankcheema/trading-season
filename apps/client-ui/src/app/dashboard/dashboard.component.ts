@@ -1,3 +1,4 @@
+import { OrderEditorComponent } from './shared/order-editor.component';
 import { WatchlistStore } from './watchlist/watchlist-store.service';
 import {
   ActivityItem,
@@ -85,6 +86,7 @@ type AccountDialog =
   selector: 'app-dashboard',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    OrderEditorComponent,
     ActivityRowComponent,
     ActivityRowSkeletonComponent,
     AccountDialogComponent,

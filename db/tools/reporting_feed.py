@@ -62,7 +62,7 @@ QUERIES = {
     'orders': '''SELECT o.order_id, o.account_id, o.instrument_id, o.client_reference, o.order_type, o.status,
                         o.quantity, o.indicative_price, o.buffer_percent, o.rejection_reason, o.submitted_at,
                         o.accepted_at, o.resolved_at, o.simulated_at,
-                        o.execution_type, o.limit_price, o.stop_price, o.reference_price, o.reference_at, o.session_id, o.triggered_at, o.evaluated_at, o.reserved_cash, o.reserved_shares, o.execution_price, o.rejection_code, i.ticker, i.name AS instrument_name,
+                        o.execution_type, o.limit_price, o.stop_price, o.reference_price, o.reference_at, o.session_id, o.triggered_at, o.trigger_price, o.evaluated_at, o.reserved_cash, o.reserved_shares, o.execution_price, o.rejection_code, i.ticker, i.name AS instrument_name,
                         f.fill_id, f.quote_price, f.quantity AS fill_quantity, f.filled_at
                  FROM orders o
                  JOIN instruments i ON i.instrument_id = o.instrument_id
@@ -251,6 +251,7 @@ def _order_event(row, owner, cash_of_fill, movement_of_fill, cash_after, holding
             'referenceAt': iso(row.get('reference_at')),
             'sessionId': row.get('session_id'),
             'triggeredAt': iso(row.get('triggered_at')),
+            'triggerPrice': number(row.get('trigger_price')),
             'evaluatedAt': iso(row.get('evaluated_at')),
             'reservedCash': number(row.get('reserved_cash')),
             'reservedShares': number(row.get('reserved_shares')),

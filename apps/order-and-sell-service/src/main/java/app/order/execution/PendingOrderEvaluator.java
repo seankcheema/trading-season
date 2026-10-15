@@ -35,11 +35,14 @@ public class PendingOrderEvaluator {
     @Scheduled(fixedDelayString = "${app.execution.poll-millis:1000}")
     public void evaluate() {
         for (var order : orders.findExecutableOrders()) {
-            if (order.getRetryAfter() != null && OffsetDateTime.now().isBefore(order.getRetryAfter())) continue;
             try {
                 var instrument = instruments.findById(order.getInstrumentId()).orElseThrow();
                 var current = quotes.current(instrument, order.getSessionId());
-                if (current.timestamp().isBefore(order.getReferenceAt())) continue;
+                if (current.sessionId() != order.getSessionId()
+                        || current.timestamp().isBefore(order.getReferenceAt())) continue;
+                var expiry = ExecutionPolicy.expiresAt(order);
+                boolean expired = !current.timestamp().plusSeconds(1).isBefore(expiry);
+                if (!expired && order.getRetryAfter() != null && OffsetDateTime.now().isBefore(order.getRetryAfter())) continue;
                 if ("MARKET".equals(order.getExecutionType())) {
                     execution.evaluate(order.getOrderId(), instrument, current);
                     continue;
@@ -50,9 +53,19 @@ public class PendingOrderEvaluator {
                     var initial = new ExecutionQuoteSource.Quote(order.getReferencePrice(), order.getSessionId(), order.getReferenceAt());
                     if (!"ACCEPTED".equals(execution.evaluate(order.getOrderId(), instrument, initial).getStatus())) continue;
                 }
-                for (var tick : ticks.between(order.getSessionId(), instrument.getSimulatedStockSymbol(), after, current.timestamp())) {
-                    if (!"ACCEPTED".equals(execution.evaluate(order.getOrderId(), instrument, tick).getStatus())) break;
+                var through = expired ? expiry.minusNanos(1) : current.timestamp();
+                var batch = ticks.between(order.getSessionId(), instrument.getSimulatedStockSymbol(), after, through);
+                boolean terminal = false;
+                for (var tick : batch) {
+                    var evaluated = execution.evaluate(order.getOrderId(), instrument, tick);
+                    if (!"ACCEPTED".equals(evaluated.getStatus())) { terminal = true; break; }
+                    // A retry backoff must not skip an unprocessed historical tick.
+                    if (evaluated.getEvaluatedAt() == null || evaluated.getEvaluatedAt().isBefore(tick.timestamp())) {
+                        terminal = true; break;
+                    }
                 }
+                // A full batch may have more pre-close ticks. Resume next poll before expiring.
+                if (expired && !terminal && batch.size() < 1000) execution.evaluate(order.getOrderId(), instrument, current);
             } catch (ExecutionQuoteSource.QuoteUnavailableException ignored) {
                 // No synthetic price or reservation release on a transient outage.
             } catch (RuntimeException failure) {

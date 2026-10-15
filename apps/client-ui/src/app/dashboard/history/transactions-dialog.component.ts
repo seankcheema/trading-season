@@ -1,3 +1,4 @@
+import { CancelOrderButtonComponent } from '../shared/cancel-order-button.component';
 import { CurrencyPipe, DatePipe, NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -43,7 +44,7 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
 @Component({
   selector: 'app-transactions-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CurrencyPipe, DashboardDialogComponent, DatePipe, NgTemplateOutlet, SortHeaderComponent],
+  imports: [CancelOrderButtonComponent, CurrencyPipe, DashboardDialogComponent, DatePipe, NgTemplateOutlet, SortHeaderComponent],
   template: `
     <app-dashboard-dialog
       dialogTitle="Recent Transactions"
@@ -110,28 +111,21 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
                 (toggled)="sortBy(column.key)"
               ></button>
             }
+            <span><span class="sr-only">Actions</span></span>
           </div>
           <ul class="dash-scroll h-[min(60vh,32.5rem)] overflow-y-auto pb-4">
             @for (row of rows(); track row.key) {
               <li data-testid="transactions-row" [attr.data-status]="row.status">
                 @if (row.kind === 'trade' && row.orderId !== null) {
-                <button
-                  type="button"
-                  class="history-grid hover:bg-muted/50 grid w-full cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-2 py-2.5 text-left text-sm transition-colors"
-                  [attr.aria-expanded]="expandedOrderId() === row.orderId"
-                  [attr.aria-label]="'Show audit trail for ' + row.label"
-                  [attr.data-testid]="'transactions-order-' + row.orderId"
-                  (click)="toggleAudit(row)"
-                >
-                  <span class="text-muted-foreground flex h-4 w-4 items-center justify-center transition-transform" [class.rotate-90]="expandedOrderId() === row.orderId" [class.text-primary]="expandedOrderId() === row.orderId" aria-hidden="true">
-                    <svg viewBox="0 0 16 16" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5" /></svg>
-                  </span>
+                <div class="history-grid hover:bg-muted/50 grid w-full items-center gap-2 rounded-md px-2 py-2.5 text-left text-sm transition-colors">
+                  <button type="button" class="text-muted-foreground flex h-4 w-4 items-center justify-center transition-transform"
+                    [class.rotate-90]="expandedOrderId() === row.orderId" [class.text-primary]="expandedOrderId() === row.orderId"
+                    [attr.aria-expanded]="expandedOrderId() === row.orderId" [attr.aria-label]="'Show audit trail for ' + row.label"
+                    [attr.data-testid]="'transactions-order-' + row.orderId" (click)="toggleAudit(row)">
+                    <svg viewBox="0 0 16 16" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" /></svg>
+                  </button>
                   <ng-container [ngTemplateOutlet]="rowCells" [ngTemplateOutletContext]="{ $implicit: row }"></ng-container>
-                </button>
-                @if (row.status === 'ACCEPTED') {
-                  <button type="button" class="text-primary mb-2 ml-8 text-xs underline" [disabled]="cancelling().has(row.orderId!)"
-                    (click)="cancelOrder(row)">Cancel order</button>
-                }
+                </div>
                 @if (expandedOrderId() === row.orderId) {
                   <section class="audit-trail mb-2 ml-8 mr-2 border-l-2 border-white/50 py-1 pl-3 text-[#e5e7eb]" [attr.data-testid]="'audit-trail-' + row.orderId" aria-label="Order audit trail">
                     @if (auditLoading().has(row.orderId)) {
@@ -170,18 +164,22 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
                     </span>
                   </span>
                   <span class="truncate text-right tabular-nums">{{ row.shares ?? '—' }}</span>
-                  <span class="truncate text-right tabular-nums">
-                    @if (row.price !== null) {
-                      {{ row.price | currency: 'USD' }}
-                    } @else {
-                      —
-                    }
+                  <span class="text-right tabular-nums">
+                    <span>
+                      @if (row.price !== null) { {{ row.price | currency: 'USD' }} } @else { — }
+                    </span>
+                    @if (row.priceDetail) { <span class="text-muted-foreground block text-[10px]">{{ row.priceDetail }}</span> }
                   </span>
                   <span
                     class="truncate text-right tabular-nums"
                     [class]="row.kind === 'cash' ? (row.positive ? 'text-gain' : 'text-loss') : ''"
                   >
                     {{ sign(row) }}{{ row.value | currency: 'USD' }}
+                  </span>
+                  <span class="flex self-stretch items-center justify-end" data-testid="transaction-actions">
+                    @if (row.status === 'ACCEPTED' && row.orderId !== null) {
+                      <app-cancel-order-button [orderLabel]="row.label" [busy]="cancelling().has(row.orderId)" (confirmed)="cancelOrder(row)" (edited)="orderService.editOrder(row.orderId!)" />
+                    }
                   </span>
                 </ng-template>
               </li>
@@ -194,6 +192,7 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
                     aria-hidden="true"
                     data-testid="transactions-row-skeleton"
                   >
+                    <span></span>
                     <span class="skeleton h-5 w-4/5"></span>
                     @for (cell of [1, 2, 3]; track cell) {
                       <span class="skeleton h-5 w-3/5"></span>
@@ -201,6 +200,7 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
                     @for (cell of [1, 2, 3]; track cell) {
                       <span class="skeleton ml-auto h-5 w-3/5"></span>
                     }
+                    <span></span>
                   </li>
                 }
               } @else {
@@ -218,7 +218,7 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
 })
 export class TransactionsDialogComponent implements OnInit {
   private readonly accountStore = inject(AccountStore);
-  private readonly orderService = inject(OrderService);
+  protected readonly orderService = inject(OrderService);
   private readonly destroyRef = inject(DestroyRef);
 
   // The simulated clock in milliseconds, or null when there is none. Orders after it are hidden.

@@ -1,3 +1,4 @@
+import { OrderEditorComponent } from '../dashboard/shared/order-editor.component';
 import { WatchlistStore } from '../dashboard/watchlist/watchlist-store.service';
 import { WatchlistStarComponent } from '../dashboard/watchlist/watchlist-star.component';
 import { DestroyRef } from '@angular/core';
@@ -133,6 +134,7 @@ interface MarketStats {
   selector: 'app-market-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    OrderEditorComponent,
     WatchlistStarComponent,
     DashboardHeaderDropdownComponent,
     SettingsDialogComponent,
@@ -510,7 +512,8 @@ export class MarketPageComponent implements OnInit, OnDestroy {
             this.toasts.show(message, 'error');
           } else {
             this.refreshBalances(accountId);
-            this.orderMessage.set('Order open. Resources reserved until execution or cancellation.');
+            const type = (draft.executionType ?? 'MARKET').replaceAll('_', '-').toLowerCase();
+            this.toasts.show(`${type.charAt(0).toUpperCase() + type.slice(1)} ${draft.side} order placed for ${result.quantity} ${draft.symbol}.`, 'success');
           }
         },
         error: (error: unknown) => {

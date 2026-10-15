@@ -440,7 +440,7 @@ def test_execution_snapshot_survives_old_accepted_replay(customer):
     apply_trade_event(customer, original)
     import copy
     triggered = copy.deepcopy(original)
-    triggered['order'].update(triggeredAt='2026-10-05T09:31:00Z', evaluatedAt='2026-10-05T09:31:00Z')
+    triggered['order'].update(triggerPrice=105, triggeredAt='2026-10-05T09:31:00Z', evaluatedAt='2026-10-05T09:31:00Z')
     apply_trade_event(customer, triggered)
     apply_trade_event(customer, original)
     current = customer.get(Order, 70)
@@ -448,6 +448,7 @@ def test_execution_snapshot_survives_old_accepted_replay(customer):
     assert current.reference_price == Decimal('100')
     assert current.reserved_cash == Decimal('1020')
     assert stored(current.triggered_at) == utc(2026, 10, 5, 9, 31)
+    assert current.trigger_price == 105
     cancelled = copy.deepcopy(triggered)
     cancelled['status'] = 'CANCELLED'
     cancelled['order'].update(reservedCash=0, resolvedAt='2026-10-05T09:32:00Z')

@@ -7,19 +7,16 @@
 }
 
 .order-dialog {
-  animation: order-pop-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 2rem);
+  overflow: hidden;
+  animation: order-fade-in 150ms ease-out both;
 }
 
 @keyframes order-fade-in {
   from {
     opacity: 0;
-  }
-}
-
-@keyframes order-pop-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.98);
   }
 }
 
@@ -105,11 +102,25 @@ input[type='number'] {
 }
 
 .order-chart {
+  height: 14rem;
   min-height: 14rem;
 }
 
 @media (min-width: 768px) {
   .order-chart {
+    height: auto;
+    min-height: 0;
+    flex: 1 1 0%;
+  }
+}
+
+.order-dialog > header {
+  flex-shrink: 0;
+}
+
+@media (max-width: 767px) {
+  .order-instrument-edit .order-chart {
+    height: 18rem;
     min-height: 18rem;
   }
 }

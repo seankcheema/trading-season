@@ -180,6 +180,80 @@ public class OrderService {
         }
     }
 
+    /** Atomically replaces an owned open order, then settles the replacement separately.
+     * A validation failure rolls back cancellation and preserves the original reservation.
+     * @param orderId original open instruction
+     * @param request replacement quantity, execution type, and prices
+     * @param callerId authenticated owner
+     * @return replacement outcome, or the prior outcome on an idempotent retry
+     * @throws app.account.AccountNotFoundException if the original is absent or foreign
+     * @throws org.springframework.web.server.ResponseStatusException if the order is terminal,
+     *         outside its simulation day, or replacement validation fails */
+    public Order replace(Integer orderId, OrderRequest request, UUID callerId) {
+        Acceptance replacement = transactions.execute(tx -> {
+            Order visible = getOwnOrder(orderId, callerId);
+            userRepository.findByIdForUpdate(callerId).orElseThrow();
+            accountRepository.findByIdForUpdate(visible.getAccountId()).orElseThrow();
+            Order original = orderRepository.findByIdForUpdate(orderId).orElseThrow();
+            entityManager.refresh(original);
+            if (!original.getAccountId().equals(request.accountId())
+                    || !original.getInstrumentId().equals(request.instrumentId())
+                    || !original.getOrderType().equals(request.orderType())
+                    || !java.util.Objects.equals(original.getSessionId(), request.sessionId())) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST, "Account, stock, side and session cannot be changed");
+            }
+            var prior = orderRepository.findByAccountIdAndClientReference(request.accountId(), request.clientReference());
+            if (prior.isPresent() && "ORDER_REPLACED".equals(original.getRejectionCode())
+                    && ("Replaced by order #" + prior.get().getOrderId()).equals(original.getRejectionReason())) {
+                return new Acceptance(prior.get(), null, false);
+            }
+            if (!Order.STATUS_ACCEPTED.equals(original.getStatus()) || prior.isPresent()) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.CONFLICT, "Only open orders can be edited");
+            }
+            Instrument stock = instrumentRepository.findById(original.getInstrumentId()).orElseThrow();
+            var current = quotes.current(stock, original.getSessionId());
+            if (original.getReferenceAt() == null || current.timestamp().isBefore(original.getReferenceAt())
+                    || (original.getEvaluatedAt() != null && current.timestamp().isBefore(original.getEvaluatedAt()))
+                    || !current.timestamp().isBefore(app.order.execution.ExecutionPolicy.expiresAt(original).minusSeconds(1))) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.CONFLICT, "The order cannot be edited at this simulation time");
+            }
+            original.setStatus(Order.STATUS_CANCELLED);
+            original.setReservedCash(BigDecimal.ZERO);
+            original.setReservedShares(BigDecimal.ZERO);
+            original.setRetryAfter(null);
+            original.setResolvedAt(OffsetDateTime.now());
+            orderRepository.saveAndFlush(original);
+            Acceptance accepted = accept(request, callerId);
+            if (!Order.STATUS_ACCEPTED.equals(accepted.order().getStatus())) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST, accepted.order().getRejectionReason());
+            }
+            if (accepted.order().getReferenceAt().isBefore(original.getEvaluatedAt() == null
+                    ? original.getReferenceAt() : original.getEvaluatedAt())
+                    || !accepted.order().getReferenceAt().isBefore(app.order.execution.ExecutionPolicy.expiresAt(original).minusSeconds(1))) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.CONFLICT, "Simulation time changed while editing; original order was retained");
+            }
+            original.setRejectionCode("ORDER_REPLACED");
+            original.setRejectionReason("Replaced by order #" + accepted.order().getOrderId());
+            orderRepository.save(original);
+            auditTrailService.record(orderId, Order.STATUS_CANCELLED, original.getRejectionReason());
+            auditTrailService.record(accepted.order().getOrderId(), Order.STATUS_ACCEPTED, "Replaces order #" + orderId);
+            events.publishEvent(OrderStatusEvent.from(original, stock));
+            return accepted;
+        });
+        if (!replacement.executable()) return replacement.order();
+        try {
+            return orderExecutionService.execute(replacement.order(), replacement.instrument());
+        } catch (RuntimeException failure) {
+            recordExecutionFailure(replacement.order().getOrderId(), failure);
+            return orderRepository.findById(replacement.order().getOrderId()).orElse(replacement.order());
+        }
+    }
+
     /** What the acceptance transaction committed, and whether execution should follow. */
     private record Acceptance(Order order, Instrument instrument, boolean executable) {
     }
@@ -397,6 +471,7 @@ public class OrderService {
                     org.springframework.http.HttpStatus.CONFLICT, "Only open orders can be cancelled");
         }
         order.setStatus(Order.STATUS_CANCELLED);
+        order.setRetryAfter(null);
         order.setResolvedAt(OffsetDateTime.now());
         order.setReservedCash(BigDecimal.ZERO);
         order.setReservedShares(BigDecimal.ZERO);

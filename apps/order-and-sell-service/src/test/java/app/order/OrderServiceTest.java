@@ -219,6 +219,7 @@ class OrderServiceTest {
 
     @Test
     void buyOrderThatExactlyMatchesAvailableFundsIsFilled() {
+        user.setExecutionBufferPercent(BigDecimal.ZERO);
         user.setAvailableFunds(new BigDecimal("5000.00"));
         userRepository.save(user);
 
@@ -273,7 +274,7 @@ class OrderServiceTest {
         assertEquals(account.getAccountId(), order.getAccountId());
         assertEquals(instrument.getInstrumentId(), order.getInstrumentId());
         assertEquals("BUY", order.getOrderType());
-        assertEquals(new BigDecimal("100"), order.getQuantity());
+        assertEquals(0, new BigDecimal("100").compareTo(order.getQuantity()));
         assertEquals(new BigDecimal("50.00"), order.getIndicativePrice());
         assertEquals(0, user.getExecutionBufferPercent().compareTo(order.getBufferPercent()));
         assertNotNull(order.getSubmittedAt());
@@ -480,15 +481,113 @@ class OrderServiceTest {
         assertEquals("FILLED", tick(open, "94", 3).getStatus());
         assertEquals(1, fillRepository.count());
     }
-    @Test void stopGapRejectsAgainstSubmissionBoundAndReleasesReservation() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"BUY,LIMIT,95,", "SELL,LIMIT,105,", "BUY,STOP,,105", "SELL,STOP,,95", "BUY,STOP_LIMIT,102,105", "SELL,STOP_LIMIT,98,95"})
+    void everyConditionalOrderExpiresAndReleasesResources(String side, String type, String limit, String stop) {
+        if ("SELL".equals(side)) holdingRepository.save(holdingOf("10"));
+        Order open = typed(side, type, limit, stop, "100", "1");
+        var expiry = app.order.execution.ExecutionPolicy.expiresAt(open);
+        var quote = new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal("100"), 1L, expiry);
+        Order expired = execution.evaluate(open.getOrderId(), instrument, quote);
+        assertEquals("CANCELLED", expired.getStatus());
+        assertEquals("ORDER_EXPIRED", expired.getRejectionCode());
+        assertEquals(0, expired.getReservedCash().signum());
+        assertEquals(0, expired.getReservedShares().signum());
+        assertEquals("CANCELLED", tick(open, "100", 1).getStatus());
+        assertEquals(0, fillRepository.count());
+        assertEquals("CANCELLED", orderService.cancel(open.getOrderId(), user.getUserId()).getStatus());
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"BUY,LIMIT,95,,95", "SELL,LIMIT,105,,105", "BUY,STOP,,105,106", "SELL,STOP,,95,94", "BUY,STOP_LIMIT,106,105,106", "SELL,STOP_LIMIT,94,95,94"})
+    void conditionalExecutionsRemainTerminalAfterRewindsAndDuplicateTicks(String side, String type, String limit, String stop, String fillPrice) {
+        if ("SELL".equals(side)) holdingRepository.save(holdingOf("10"));
+        Order open = typed(side, type, limit, stop, "100", "1");
+        assertEquals("FILLED", tick(open, fillPrice, 3600).getStatus());
+        assertEquals("FILLED", tick(open, "100", 1).getStatus());
+        assertEquals("FILLED", tick(open, fillPrice, 3600).getStatus());
+        assertEquals(1, fillRepository.count());
+    }
+    private OrderRequest replacement(Order original, String quantity, String limit) {
+        return new OrderRequest(original.getAccountId(), original.getInstrumentId(), original.getOrderType(),
+                new BigDecimal(quantity), new BigDecimal("100"), null, UUID.randomUUID(), null,
+                "LIMIT", new BigDecimal(limit), null, original.getSessionId());
+    }
+    @Test void editReleasesOnlyTheOriginalReservationAndRetriesIdempotently() {
+        Order open = typed("BUY", "LIMIT", "95", null, "100", "10");
+        OrderRequest request = replacement(open, "20", "94");
+        Order updated = orderService.replace(open.getOrderId(), request, user.getUserId());
+        assertEquals("ACCEPTED", updated.getStatus());
+        assertEquals(0, new BigDecimal("1880").compareTo(updated.getReservedCash()));
+        Order original = orderRepository.findById(open.getOrderId()).orElseThrow();
+        assertEquals("CANCELLED", original.getStatus());
+        assertEquals("ORDER_REPLACED", original.getRejectionCode());
+        assertEquals(0, original.getReservedCash().signum());
+        assertEquals(updated.getOrderId(), orderService.replace(open.getOrderId(), request, user.getUserId()).getOrderId());
+        assertEquals(2, orderRepository.count());
+    }
+    @Test void invalidEditRollsBackAndKeepsTheOriginalOpen() {
+        Order open = typed("BUY", "LIMIT", "95", null, "100", "10");
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> orderService.replace(open.getOrderId(), replacement(open, "1000", "94"), user.getUserId()));
+        Order original = orderRepository.findById(open.getOrderId()).orElseThrow();
+        assertEquals("ACCEPTED", original.getStatus());
+        assertEquals(0, new BigDecimal("950").compareTo(original.getReservedCash()));
+        assertEquals(1, orderRepository.count());
+    }
+    @Test void editCannotReachAnotherUserOrReviveACancelledOrder() {
+        Order open = typed("BUY", "LIMIT", "95", null, "100", "1");
+        assertThrows(AccountNotFoundException.class,
+                () -> orderService.replace(open.getOrderId(), replacement(open, "1", "94"), UUID.randomUUID()));
+        orderService.cancel(open.getOrderId(), user.getUserId());
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> orderService.replace(open.getOrderId(), replacement(open, "1", "94"), user.getUserId()));
+    }
+    @Test void editRejectsARewindBehindTheOrdersWatermark() {
+        Order open = typed("BUY", "LIMIT", "95", null, "100", "1");
+        tick(open, "100", 10);
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> orderService.replace(open.getOrderId(), replacement(open, "1", "94"), user.getUserId()));
+        assertEquals("ACCEPTED", orderRepository.findById(open.getOrderId()).orElseThrow().getStatus());
+    }
+    @Test void finalSeededTickCanFillButUnmetOrdersExpire() {
+        Order eligible = typed("BUY", "LIMIT", "95", null, "100", "1");
+        var last = app.order.execution.ExecutionPolicy.expiresAt(eligible).minusSeconds(1);
+        assertEquals("FILLED", execution.evaluate(eligible.getOrderId(), instrument,
+                new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal("95"), 1L, last)).getStatus());
+        Order waiting = typed("BUY", "LIMIT", "90", null, "100", "1");
+        assertEquals("CANCELLED", execution.evaluate(waiting.getOrderId(), instrument,
+                new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal("95"), 1L, last)).getStatus());
+    }
+    @Test void stopGapUsesTriggerQuoteAndPreservesSubmissionAudit() {
         Order open = typed("BUY", "STOP", null, "105", "100", "10");
         assertEquals("ACCEPTED", open.getStatus());
-        Order rejected = tick(open, "106", 1);
+        Order filled = tick(open, "106", 1);
+        assertEquals("FILLED", filled.getStatus());
+        assertEquals(0, new BigDecimal("106").compareTo(filled.getTriggerPrice()));
+        assertEquals(0, new BigDecimal("100").compareTo(filled.getReferencePrice()));
+        assertNotNull(filled.getTriggeredAt());
+        assertEquals(0, filled.getReservedCash().signum());
+        assertEquals(1, fillRepository.count());
+    }
+    @Test void stopRetryKeepsItsFirstTriggerReferenceAndRejectsFurtherAdverseMovement() {
+        user.setExecutionBufferPercent(BigDecimal.ONE); userRepository.save(user);
+        Order open = typed("BUY", "STOP", null, "105", "100", "1");
+        open.setTriggeredAt(open.getReferenceAt().plusSeconds(1));
+        open.setTriggerPrice(new BigDecimal("105"));
+        orderRepository.saveAndFlush(open);
+        Order rejected = tick(open, "106.050001", 2);
         assertEquals("REJECTED", rejected.getStatus());
         assertEquals("EXECUTION_BUFFER_EXCEEDED", rejected.getRejectionCode());
-        assertNotNull(rejected.getTriggeredAt());
+        assertEquals(0, new BigDecimal("105").compareTo(rejected.getTriggerPrice()));
         assertEquals(0, rejected.getReservedCash().signum());
-        assertEquals(0, fillRepository.count());
+    }
+    @Test void stopRetryCanFillExactlyAtTriggerBasedBoundary() {
+        user.setExecutionBufferPercent(BigDecimal.ONE); userRepository.save(user);
+        Order open = typed("BUY", "STOP", null, "105", "100", "1");
+        open.setTriggeredAt(open.getReferenceAt().plusSeconds(1));
+        open.setTriggerPrice(new BigDecimal("105"));
+        orderRepository.saveAndFlush(open);
+        assertEquals("FILLED", tick(open, "106.05", 2).getStatus());
     }
     @Test void stopLimitLatchesAndCanFillAfterPriceRetreatsBelowTheStop() {
         Order open = typed("BUY", "STOP_LIMIT", "102", "105", "100", "10");
@@ -508,12 +607,15 @@ class OrderServiceTest {
         assertThrows(AccountNotFoundException.class, () -> orderService.cancel(open.getOrderId(), UUID.randomUUID()));
     }
     @Test void preferenceUpdatesOnlyAffectNewOrdersAndNeverClientIndicativePrices() {
+        user.setExecutionBufferPercent(BigDecimal.ONE); userRepository.save(user);
         Order first = typed("BUY", "STOP", null, "105", "100", "1");
         user.setExecutionBufferPercent(new BigDecimal("10"));
         userRepository.save(user);
         Order second = typed("BUY", "STOP", null, "105", "100", "1");
         assertEquals(0, new BigDecimal("100").compareTo(first.getReferencePrice()));
-        assertEquals("REJECTED", tick(first, "106", 1).getStatus());
+        assertEquals(0, new BigDecimal("1").compareTo(first.getBufferPercent()));
+        assertEquals(0, new BigDecimal("10").compareTo(second.getBufferPercent()));
+        assertEquals("FILLED", tick(first, "106", 1).getStatus());
         assertEquals("FILLED", tick(second, "106", 1).getStatus());
     }
     @Test void reservationsPreventOverspendingAcrossAccounts() {
@@ -573,7 +675,7 @@ class OrderServiceTest {
         Order stop = typed("SELL", "STOP", null, "95", "100", "2");
         assertEquals("FILLED", tick(stop, "95", 1).getStatus());
         Order gap = typed("SELL", "STOP", null, "95", "100", "2");
-        assertEquals("REJECTED", tick(gap, "94.999999", 1).getStatus());
+        assertEquals("FILLED", tick(gap, "94.999999", 1).getStatus());
         Order stopLimit = typed("SELL", "STOP_LIMIT", "96", "95", "100", "2");
         assertEquals("ACCEPTED", tick(stopLimit, "94", 1).getStatus());
         assertEquals("FILLED", tick(stopLimit, "96", 2).getStatus());

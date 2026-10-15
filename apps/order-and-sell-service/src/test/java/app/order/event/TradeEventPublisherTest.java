@@ -58,7 +58,7 @@ class TradeEventPublisherTest {
                 new BigDecimal("100"), new BigDecimal("50.00"), null, RESOLVED_AT,
                 new OrderStatusEvent.OrderRecord(REFERENCE, 3, "Test Corp", new BigDecimal("50.00"),
                         new BigDecimal("0.50"), RESOLVED_AT.minusSeconds(2), RESOLVED_AT.minusSeconds(1),
-                        RESOLVED_AT, null, "MARKET", null, null, null, null, null, null, null, BigDecimal.ZERO, BigDecimal.ZERO, null, null),
+                        RESOLVED_AT, null, "MARKET", null, null, null, null, null, null, null, null, BigDecimal.ZERO, BigDecimal.ZERO, null, null),
                 new OrderStatusEvent.Execution(OWNER, 9, new BigDecimal("50.00"), new BigDecimal("100"), RESOLVED_AT,
                         14, new BigDecimal("-5000.00"), new BigDecimal("5000.00"),
                         11, new BigDecimal("100"), new BigDecimal("100")));

@@ -345,6 +345,7 @@ export class OrderDetailComponent {
         { label: 'Reference quote', value: money(order.referencePrice ?? null) },
         { label: 'Limit price', value: money(order.limitPrice ?? null) },
         { label: 'Stop price', value: money(order.stopPrice ?? null) },
+        { label: 'Trigger price', value: money(order.triggerPrice ?? null) },
         { label: 'Triggered', value: daySeconds(order.triggeredAt ?? null) },
         { label: 'Reserved cash', value: money(order.reservedCash ?? null) },
         { label: 'Reserved shares', value: order.reservedShares == null ? '—' : count(order.reservedShares) },

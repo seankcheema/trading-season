@@ -74,6 +74,7 @@ public record OrderStatusEvent(
      * @param referencePrice persisted referencePrice
      * @param referenceAt persisted referenceAt
      * @param sessionId persisted sessionId
+     * @param triggerPrice authoritative activation quote, null before triggering or for legacy orders
      * @param triggeredAt persisted triggeredAt
      * @param evaluatedAt persisted evaluatedAt
      * @param reservedCash persisted reservedCash
@@ -98,6 +99,7 @@ public record OrderStatusEvent(
             OffsetDateTime referenceAt,
             Long sessionId,
             OffsetDateTime triggeredAt,
+            BigDecimal triggerPrice,
             OffsetDateTime evaluatedAt,
             BigDecimal reservedCash,
             BigDecimal reservedShares,
@@ -187,6 +189,7 @@ public record OrderStatusEvent(
                         order.getReferenceAt(),
                         order.getSessionId(),
                         order.getTriggeredAt(),
+                        order.getTriggerPrice(),
                         order.getEvaluatedAt(),
                         order.getReservedCash(),
                         order.getReservedShares(),

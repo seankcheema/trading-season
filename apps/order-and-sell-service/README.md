@@ -10,7 +10,7 @@ Spring Boot (Java 21) service that submits, validates, and executes buy and sell
 
 ## Endpoints
 
-See [Order API](api.md#read-and-cancel) for detail reads and cancellation.
+See [Order API](api.md#read-and-cancel) for detail reads and cancellation, and [editing orders](api.md#editing-an-open-order) for atomic replacement.
 
 All require a bearer token except the public market reads.
 
@@ -27,7 +27,7 @@ All require a bearer token except the public market reads.
 
 The canonical [Order API](api.md) documents the request/response fields, Market/Limit/Stop/Stop-Limit execution, immutable buffer preferences, shared-cash and share reservations, cancellation, authoritative replay quotes, retries, and optional disposable-PostgreSQL concurrency tests.
 
-Orders fill at server market quotes. `indicativePrice` is display/audit context. `orderType` remains BUY/SELL; `executionType` selects execution behavior. ACCEPTED orders can remain open until their conditions are met or the owner cancels them. Execution failures retain reservations and retry with bounded backoff. Apply the [V011 migration](../../db/migrations/V011__Execution_preferences_and_order_types.sql) before starting the updated services.
+Orders fill at server market quotes. `indicativePrice` is display/audit context. `orderType` remains BUY/SELL; `executionType` selects execution behavior. ACCEPTED orders can remain open until their conditions are met, the owner cancels them, or their simulation trading day closes. Execution failures retain reservations and retry with bounded backoff. Apply the [V011 migration](../../db/migrations/V011__Execution_preferences_and_order_types.sql) before starting the updated services. Also apply [V012](../../db/migrations/V012__Stop_trigger_reference.sql) for Stop activation quotes, and [V013](../../db/migrations/V013__Order_audit_lifecycle.sql) for conditional-order and cancellation audit events.
 
 ## Design
 

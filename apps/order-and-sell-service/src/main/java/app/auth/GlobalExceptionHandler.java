@@ -106,6 +106,14 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
     }
 
+    /** Returns safe service validation and lifecycle conflict messages.
+     * @param ex status and domain explanation
+     * @return requested HTTP status with a consistent error body */
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    public ResponseEntity<Map<String, String>> handleStatus(org.springframework.web.server.ResponseStatusException ex) {
+        return ResponseEntity.status(ex.getStatusCode()).body(Map.of("error", ex.getReason() == null ? "Order operation failed" : ex.getReason()));
+    }
+
     private static ResponseEntity<Map<String, String>> error(HttpStatus status, String message) {
         return ResponseEntity.status(status).body(Map.of("error", message));
     }

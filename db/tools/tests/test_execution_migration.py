@@ -45,3 +45,25 @@ def test_buffer_migration_is_atomic_and_preserves_history():
             connection.execute('ROLLBACK')
             connection.execute('SET search_path TO public')
             connection.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(schema)))
+
+
+@pytest.mark.skipif(not os.environ.get('EXECUTION_MIGRATION_DISPOSABLE_DATABASE_URL'),
+                   reason='requires an explicitly disposable PostgreSQL migration database')
+def test_conditional_order_audit_events_are_allowed_after_migration():
+    psycopg = pytest.importorskip('psycopg')
+    from psycopg import sql
+    migration = Path(__file__).resolve().parents[2] / 'migrations' / 'V013__Order_audit_lifecycle.sql'
+    schema = 'order_audit_' + uuid4().hex
+    with psycopg.connect(os.environ['EXECUTION_MIGRATION_DISPOSABLE_DATABASE_URL'], autocommit=True) as connection:
+        connection.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(schema)))
+        try:
+            connection.execute(sql.SQL('SET search_path TO {}').format(sql.Identifier(schema)))
+            connection.execute("CREATE TABLE audit_trail (event_type text CONSTRAINT audit_trail_event_type_check CHECK (event_type IN ('ACCEPTED','FILLED')))")
+            connection.execute(migration.read_text(encoding='utf-8'))
+            for event in ('ACCEPTED', 'FILLED', 'TRIGGERED', 'CANCELLED', 'EXECUTION_FAILED'):
+                connection.execute('INSERT INTO audit_trail VALUES (%s)', (event,))
+            with pytest.raises(psycopg.errors.CheckViolation):
+                connection.execute("INSERT INTO audit_trail VALUES ('UNKNOWN')")
+        finally:
+            connection.execute('SET search_path TO public')
+            connection.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(schema)))
