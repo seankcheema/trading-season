@@ -1,6 +1,6 @@
 import { CurrencyPipe, NgTemplateOutlet } from '@angular/common';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideCheck, lucideChevronDown } from '@ng-icons/lucide';
+import { lucideCheck, lucideChevronDown, lucideZap, lucideTrendingUp, lucideCircleStop, lucideGitBranch } from '@ng-icons/lucide';
 import { DashboardHeaderDropdownComponent } from './dashboard-header-dropdown.component';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, inject, input, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -11,7 +11,7 @@ import { ExecutionSettingsService } from '../settings-dialog/execution-settings.
 @Component({
   selector: 'app-execution-controls',
   imports: [CurrencyPipe, NgTemplateOutlet, NgIcon, DashboardHeaderDropdownComponent],
-  providers: [provideIcons({ lucideCheck, lucideChevronDown })],
+  providers: [provideIcons({ lucideCheck, lucideChevronDown, lucideZap, lucideTrendingUp, lucideCircleStop, lucideGitBranch })],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="space-y-3 text-xs">
@@ -22,7 +22,10 @@ import { ExecutionSettingsService } from '../settings-dialog/execution-settings.
           (openChange)="typeOpen.set($event)" containerClass="w-40" panelClass="w-full"
         >
           <span dropdownTrigger class="flex w-full items-center justify-between gap-2">
-            <span>{{ executionLabel() }}</span>
+            <span class="flex items-center gap-2">
+              <ng-icon [name]="executionIcon()" aria-hidden="true" class="text-primary text-[16px]" />
+              {{ executionLabel() }}
+            </span>
             <ng-icon name="lucideChevronDown" class="text-muted-foreground text-[14px]" />
           </span>
           <div role="menu" aria-label="Order types">
@@ -30,7 +33,10 @@ import { ExecutionSettingsService } from '../settings-dialog/execution-settings.
               <button type="button" role="menuitemradio"
                 class="hover:bg-muted flex h-9 w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2 text-left text-sm transition-colors"
                 [attr.aria-checked]="executionType() === option.value" (click)="selectType(option.value)">
-                {{ option.label }}
+                <span class="flex items-center gap-2">
+                  <ng-icon [name]="option.icon" aria-hidden="true" class="text-primary text-[16px]" />
+                  {{ option.label }}
+                </span>
                 @if (executionType() === option.value) {
                   <ng-icon name="lucideCheck" class="text-primary text-[16px]" />
                 }
@@ -115,11 +121,12 @@ export class ExecutionControlsComponent {
   readonly executionType = signal<ExecutionType>('MARKET');
   private readonly typeMenu = viewChild<DashboardHeaderDropdownComponent, ElementRef<HTMLElement>>('typeMenu', { read: ElementRef });
   protected readonly typeOpen = signal(false);
-  protected readonly types: readonly { value: ExecutionType; label: string }[] = [
-    { value: 'MARKET', label: 'Market' }, { value: 'LIMIT', label: 'Limit' },
-    { value: 'STOP', label: 'Stop' }, { value: 'STOP_LIMIT', label: 'Stop-Limit' },
+  protected readonly types: readonly { value: ExecutionType; label: string; icon: string }[] = [
+    { value: 'MARKET', label: 'Market', icon: 'lucideZap' }, { value: 'LIMIT', label: 'Limit', icon: 'lucideTrendingUp' },
+    { value: 'STOP', label: 'Stop', icon: 'lucideCircleStop' }, { value: 'STOP_LIMIT', label: 'Stop-Limit', icon: 'lucideGitBranch' },
   ];
   readonly executionLabel = computed(() => this.types.find((option) => option.value === this.executionType())!.label);
+  readonly executionIcon = computed(() => this.types.find((option) => option.value === this.executionType())!.icon);
   readonly limitPrice = signal<number | null>(null);
   readonly stopPrice = signal<number | null>(null);
   readonly buffer = signal<number | null>(null);
