@@ -11,17 +11,18 @@ import java.time.OffsetDateTime;
 
 /**
  * One row per order-lifecycle event. Permanent record (BR-14/15, section
- * 9.4) — the application's database role should have INSERT/SELECT only on
- * this table, never UPDATE/DELETE, so nothing in this codebase should ever
- * modify an {@code AuditTrail} row after creating it.
+ * 9.4): migration V010 rejects any UPDATE, DELETE or TRUNCATE on this table,
+ * so nothing in this codebase may modify an {@code AuditTrail} row after
+ * creating it. Each row's detail is written to stand on its own as the
+ * record of that event, without needing any other row to interpret it.
  */
 @Entity
 @Table(name = &quot;audit_trail&quot;)
 public class AuditTrail {
 
     /** Creates an instance of this class. */
-<span class="fc" id="L23">    public AuditTrail() {</span>
-<span class="fc" id="L24">    }</span>
+<span class="fc" id="L24">    public AuditTrail() {</span>
+<span class="fc" id="L25">    }</span>
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -46,7 +47,7 @@ public class AuditTrail {
      * @return the audit ID
      */
     public Integer getAuditId() {
-<span class="fc" id="L49">        return auditId;</span>
+<span class="fc" id="L50">        return auditId;</span>
     }
 
     /**
@@ -55,8 +56,8 @@ public class AuditTrail {
      * @param auditId the audit ID
      */
     public void setAuditId(Integer auditId) {
-<span class="fc" id="L58">        this.auditId = auditId;</span>
-<span class="fc" id="L59">    }</span>
+<span class="fc" id="L59">        this.auditId = auditId;</span>
+<span class="fc" id="L60">    }</span>
 
     /**
      * Returns the order ID.
@@ -64,7 +65,7 @@ public class AuditTrail {
      * @return the order ID
      */
     public Integer getOrderId() {
-<span class="fc" id="L67">        return orderId;</span>
+<span class="fc" id="L68">        return orderId;</span>
     }
 
     /**
@@ -73,8 +74,8 @@ public class AuditTrail {
      * @param orderId the order ID
      */
     public void setOrderId(Integer orderId) {
-<span class="fc" id="L76">        this.orderId = orderId;</span>
-<span class="fc" id="L77">    }</span>
+<span class="fc" id="L77">        this.orderId = orderId;</span>
+<span class="fc" id="L78">    }</span>
 
     /**
      * Returns the event type.
@@ -82,7 +83,7 @@ public class AuditTrail {
      * @return the event type
      */
     public String getEventType() {
-<span class="fc" id="L85">        return eventType;</span>
+<span class="fc" id="L86">        return eventType;</span>
     }
 
     /**
@@ -91,8 +92,8 @@ public class AuditTrail {
      * @param eventType the event type
      */
     public void setEventType(String eventType) {
-<span class="fc" id="L94">        this.eventType = eventType;</span>
-<span class="fc" id="L95">    }</span>
+<span class="fc" id="L95">        this.eventType = eventType;</span>
+<span class="fc" id="L96">    }</span>
 
     /**
      * Returns the detail.
@@ -100,7 +101,7 @@ public class AuditTrail {
      * @return the detail
      */
     public String getDetail() {
-<span class="fc" id="L103">        return detail;</span>
+<span class="fc" id="L104">        return detail;</span>
     }
 
     /**
@@ -109,8 +110,8 @@ public class AuditTrail {
      * @param detail the detail
      */
     public void setDetail(String detail) {
-<span class="fc" id="L112">        this.detail = detail;</span>
-<span class="fc" id="L113">    }</span>
+<span class="fc" id="L113">        this.detail = detail;</span>
+<span class="fc" id="L114">    }</span>
 
     /**
      * Returns the recorded at.
@@ -118,7 +119,7 @@ public class AuditTrail {
      * @return the recorded at
      */
     public OffsetDateTime getRecordedAt() {
-<span class="fc" id="L121">        return recordedAt;</span>
+<span class="fc" id="L122">        return recordedAt;</span>
     }
 
     /**
@@ -127,8 +128,8 @@ public class AuditTrail {
      * @param recordedAt the recorded at
      */
     public void setRecordedAt(OffsetDateTime recordedAt) {
-<span class="fc" id="L130">        this.recordedAt = recordedAt;</span>
-<span class="fc" id="L131">    }</span>
+<span class="fc" id="L131">        this.recordedAt = recordedAt;</span>
+<span class="fc" id="L132">    }</span>
 }
 
 

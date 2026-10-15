@@ -38,17 +38,18 @@ public class AuditTrailService {
      *
      * @param orderId   the order the event belongs to
      * @param eventType one of {@link app.order.Order}'s STATUS_* constants
-     * @param detail    optional human-readable context, e.g. a rejection reason
+     * @param detail    optional human-readable context, e.g. the submitted terms,
+     *                  the pricing decision, or a rejection reason
      */
     public void record(Integer orderId, String eventType, String detail) {
-<span class="fc" id="L44">        AuditTrail entry = new AuditTrail();</span>
-<span class="fc" id="L45">        entry.setOrderId(orderId);</span>
-<span class="fc" id="L46">        entry.setEventType(eventType);</span>
-<span class="fc" id="L47">        entry.setDetail(detail);</span>
-<span class="fc" id="L48">        entry.setRecordedAt(OffsetDateTime.now());</span>
-<span class="fc" id="L49">        auditTrailRepository.save(entry);</span>
-<span class="fc" id="L50">        events.publishEvent(AuditEntryRecord.from(entry));</span>
-<span class="fc" id="L51">    }</span>
+<span class="fc" id="L45">        AuditTrail entry = new AuditTrail();</span>
+<span class="fc" id="L46">        entry.setOrderId(orderId);</span>
+<span class="fc" id="L47">        entry.setEventType(eventType);</span>
+<span class="fc" id="L48">        entry.setDetail(detail);</span>
+<span class="fc" id="L49">        entry.setRecordedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L50">        auditTrailRepository.save(entry);</span>
+<span class="fc" id="L51">        events.publishEvent(AuditEntryRecord.from(entry));</span>
+<span class="fc" id="L52">    }</span>
 }
 
 
