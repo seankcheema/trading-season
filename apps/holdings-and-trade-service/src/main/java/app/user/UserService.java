@@ -23,8 +23,6 @@ public class UserService extends UserLookupService {
 
     @org.springframework.beans.factory.annotation.Autowired
     private app.account.AccountRepository accounts;
-    private final UserRepository userRepository;
-    private final UserAccountRepository userAccountRepository;
     private final TermsAcceptanceRepository termsAcceptanceRepository;
 
     /**
@@ -44,7 +42,7 @@ public class UserService extends UserLookupService {
     /**
      * Loads the account belonging to the given user. Callers pass the id from the
      * verified token, never an id supplied in the request, so a client can only
-     * read its own account.
+     * read its own account. Includes cash reserved by open buy orders.
      *
      * @param userId the caller's user id from the token's sub claim
      * @return the caller's account
@@ -56,21 +54,6 @@ public class UserService extends UserLookupService {
                 .orElseThrow(() -> new UserNotFoundException("Account is not registered"));
         user.setReservedCash(java.util.Objects.requireNonNullElse(accounts.reservedCash(userId), java.math.BigDecimal.ZERO));
         return user;
-    }
-
-    /**
-     * Loads the credential record for the given user, so callers can report the
-     * role and status as they stand rather than as the caller's token describes
-     * them.
-     *
-     * @param userId the caller's user id from the token's sub claim
-     * @return the credential record the auth service owns
-     * @throws UserNotFoundException if no account exists for the id
-     */
-    @Transactional(readOnly = true)
-    public UserAccount getUserAccount(UUID userId) {
-        return userAccountRepository.findById(userId)
-                .orElseThrow(() -> new UserNotFoundException("Account is not registered"));
     }
 
     /**

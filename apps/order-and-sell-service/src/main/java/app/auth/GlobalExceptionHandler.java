@@ -47,19 +47,6 @@ public class GlobalExceptionHandler extends ApiExceptionHandler {
         return error(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
-    /**
-     * Handles request validation failures, collecting all field errors into one message.
-     *
-     * @param ex the validation failure
-     * @return 400 listing each invalid field
-     */
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, String>> handleValidation(MethodArgumentNotValidException ex) {
-        String message = ex.getBindingResult().getFieldErrors().stream()
-                .map(fieldError -> fieldError.getField() + ": " + fieldError.getDefaultMessage())
-                .collect(Collectors.joining("; "));
-        return error(HttpStatus.BAD_REQUEST, message);
-    }
 
     /** Maps temporary market outages without recording an order.
      * @param ex unavailable quote
@@ -77,9 +64,6 @@ public class GlobalExceptionHandler extends ApiExceptionHandler {
         return ResponseEntity.status(ex.getStatusCode()).body(Map.of("error", ex.getReason() == null ? "Order operation failed" : ex.getReason()));
     }
 
-    private static ResponseEntity<Map<String, String>> error(HttpStatus status, String message) {
-        return ResponseEntity.status(status).body(Map.of("error", message));
-    }
 }
 
 
