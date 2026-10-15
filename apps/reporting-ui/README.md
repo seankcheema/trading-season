@@ -238,6 +238,8 @@ The production [Dockerfile](Dockerfile) builds the app and serves it through unp
 ## Tests
 
 `*.spec.ts` beside the code under `src`, on the Angular unit-test builder with Vitest. The run fails below 90 percent on statements, branches, functions, or lines (`coverageThresholds` in [angular.json](angular.json)). Add `--coverage` for the report. Shared test data and DOM helpers live in [src/testing](src/testing) and are excluded from the application build.
+
+[vitest.config.ts](vitest.config.ts) limits the fork pool with Vitest 4's `maxWorkers: 1` and disables file parallelism. Jenkins runs this suite alongside other CPU-heavy stages; keeping test files sequential avoids competing workers causing test timeouts.
 ### Integration tests
 
 Playwright specs in [e2e](e2e) drive the built app in Chromium against the real Reporting Service, so they check the screens, the service's read model and report run, and its access rules together. Only the two things the service does not itself provide are replaced: Kafka, and the Auth Service.
