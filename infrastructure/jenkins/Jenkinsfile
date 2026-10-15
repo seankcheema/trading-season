@@ -402,6 +402,26 @@ pipeline {
                     // server under Manage Jenkins > System; the project key and
                     // name are in sonar-project.properties.
                     withSonarQubeEnv('SonarQube') {
+                        // The SonarQube container shares this host's Docker daemon
+                        // and may be stopped; start it, then wait for it to be ready.
+                        sh '''
+                            set -eu
+                            if [ "$(docker inspect --format '{{.State.Running}}' sonarqube 2>/dev/null || echo missing)" != "true" ]; then
+                                echo "SonarQube container is not running; starting it."
+                                docker start sonarqube
+                            fi
+                            STATUS_URL="${SONAR_HOST_URL:-http://localhost:9000}/api/system/status"
+                            for attempt in $(seq 1 60); do
+                                if curl --silent --max-time 10 "$STATUS_URL" | grep -q '"status":"UP"'; then
+                                    echo "SonarQube is up."
+                                    exit 0
+                                fi
+                                echo "Waiting for SonarQube to start (attempt $attempt of 60)."
+                                sleep 5
+                            done
+                            echo "SonarQube did not report UP within 5 minutes." >&2
+                            exit 1
+                        '''
                         sh """
                             set -eu
                             node infrastructure/jenkins/jacoco-to-sonar-coverage.mjs \
