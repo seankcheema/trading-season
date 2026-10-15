@@ -46,6 +46,10 @@ docker compose --project-name trading-season-local -f infrastructure/docker-comp
 - Opt-in profiles: `initialize` (first-time empty database) and `seed` (market data steps 0002 to 0004; see [apps/market-data](../apps/market-data/README.md)).
 - For Linux VMs, `scripts/setup-local.sh` at the repository root reuses a local PostgreSQL or starts `db`, `kafka` and `kafka-init` from this Compose file, and runs the applications on the host against `localhost:29092`. With a local PostgreSQL it starts no broker, and it never starts the reporting service or its consumer.
 
+### Java service images
+
+The two Java service images build from the repository root: both Compose files use `context: ../..` and name each service's Dockerfile by path, because the build compiles [packages/trading-java-common](../packages/trading-java-common/README.md) together with the service. To build one by hand, run `docker build -f apps/<service>/Dockerfile .` from the repository root; building from inside the service folder fails because the shared source is outside it.
+
 ## Jenkins
 
 The pipeline needs a Linux agent with Docker and Compose, JDK 21 at `/usr/lib/jvm/java-21-amazon-corretto`, a Maven tool named `Maven`, and a NodeJS tool named `NodeJS` running 24.8 or later. It requires 5 GiB of free workspace storage.
@@ -69,6 +73,8 @@ Before scanning, the analysis stage runs `docker start sonarqube` if the contain
 | Manage Jenkins > System | A SonarQube server named `SonarQube` with the server URL typed in and a Secret text credential holding the project analysis token. A blank URL field still lets the scan run against the `http://localhost:9000` default, but the quality gate stage then fails with `Expected URL scheme 'http' or 'https'` |
 | SonarQube > Administration > Webhooks | A webhook to `<jenkins-url>/sonarqube-webhook/`; without it the quality gate stage waits until it times out |
 | SonarQube project | Key and name `DuaLeapa-Project`, as set in [sonar-project.properties](jenkins/sonar-project.properties) |
+
+The analysis reads `apps` and `packages`. A class in [packages/trading-java-common](../packages/trading-java-common/README.md) is compiled and tested in both Java services, so [jacoco-to-sonar-coverage.mjs](jenkins/jacoco-to-sonar-coverage.mjs) merges the two reports for it (covered in either service counts as covered) and writes it once, into the first service's `sonar-coverage.xml`.
 
 The Jenkinsfile holds no server URL or token; both come from the `SonarQube` server entry. Language rules come from the quality profiles assigned to the project in SonarQube, not from this repository.
 

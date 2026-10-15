@@ -92,6 +92,7 @@ import {
 } from '../dashboard/shared/market-chart.models';
 import { PriceChartComponent } from '../dashboard/shared/price-chart.component';
 import { SignedPercentPipe } from '../dashboard/shared/signed-percent.pipe';
+import { TickAnimations } from '../dashboard/shared/tick-animations';
 import { TimeframeToggleComponent } from '../dashboard/shared/timeframe-toggle.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
 
@@ -101,11 +102,6 @@ type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
 type InsightTab = 'overview' | 'news' | 'ai' | 'recent-orders';
 
 type ToolbarMenu = 'indicators' | 'chart-mode' | 'comparison';
-type TickAnimation = {
-  direction: 'gain' | 'loss';
-  durationMs: number;
-  revision: number;
-};
 
 interface AiMessage {
   role: 'user' | 'assistant';
@@ -202,7 +198,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   private routeSubscription?: Subscription;
   private disconnectMarket?: () => void;
   private readonly openingPrices = new Map<string, number>();
-  private readonly tickAnimationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly tickAnimator = new TickAnimations();
   protected readonly accountStore = inject(AccountStore);
 
   protected readonly orders = inject(OrderService);
@@ -545,7 +541,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   }
 
   protected readonly symbol = signal('');
-  protected readonly tickAnimations = signal(new Map<string, TickAnimation>());
+  protected readonly tickAnimations = this.tickAnimator.current;
   protected readonly instruments = signal<Instrument[]>([]);
   protected readonly instrument = computed(
     () => findInstrument(this.symbol(), this.instruments()) ?? null,
@@ -1010,39 +1006,14 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       for (const [symbol, price] of prices) {
         const previousPrice = previousPrices.get(symbol);
         if (previousPrice !== undefined && previousPrice !== price) {
-          this.animateTick(symbol, price > previousPrice ? 'gain' : 'loss');
+          this.tickAnimator.start(symbol, price > previousPrice ? 'gain' : 'loss');
         }
       }
     });
   }
 
-  private animateTick(symbol: string, direction: TickAnimation['direction']): void {
-    const existingTimer = this.tickAnimationTimers.get(symbol);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
-    }
-    const durationMs = 500 + Math.floor(Math.random() * 501);
-    this.tickAnimations.update((animations) => {
-      const next = new Map(animations);
-      const revision = (next.get(symbol)?.revision ?? 0) + 1;
-      next.set(symbol, { direction, durationMs, revision });
-      return next;
-    });
-    const timer = setTimeout(() => {
-      this.tickAnimationTimers.delete(symbol);
-      this.tickAnimations.update((animations) => {
-        const next = new Map(animations);
-        next.delete(symbol);
-        return next;
-      });
-    }, durationMs);
-    this.tickAnimationTimers.set(symbol, timer);
-  }
-
   private clearTickAnimations(): void {
-    this.tickAnimationTimers.forEach(clearTimeout);
-    this.tickAnimationTimers.clear();
-    this.tickAnimations.set(new Map());
+    this.tickAnimator.clear();
   }
 
   private calculateMarketStats(

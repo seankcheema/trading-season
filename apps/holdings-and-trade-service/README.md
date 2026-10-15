@@ -3,6 +3,7 @@
 Spring Boot (Java 21) service for the signed-in user's own data: profile, accounts, holdings, shared cash, saved watchlist, and portfolio value history. It also serves the simulated market feed. Order submission and execution belong to the [Order and Sell Service](../order-and-sell-service/README.md).
 
 - Port 8082, Swagger UI at http://localhost:8082/swagger-ui.html
+- Compiles source it shares with the Order and Sell Service from [packages/trading-java-common](../../packages/trading-java-common/README.md): the market feed, token verification wiring, and the base classes its entities extend.
 - Shares the `trading_season` database. The schema comes from [db/migrations](../../db/migrations); Hibernate never alters it.
 - Authenticates callers by verifying RS256 tokens from the [Auth Service](../auth-service/README.md) against its cached JWKS. Every user-specific endpoint resolves the owner from the token's `sub`; no path or body field can name another user. An account that belongs to someone else is 403 and a missing one is 404.
 - Runs the `portfolio-valuation-capture` Kafka consumer group on `trade-events`: when an order fills, it records a portfolio valuation for that account, so the portfolio chart gets a point at the moment of the trade even with no dashboard open.

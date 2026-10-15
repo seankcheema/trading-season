@@ -12,7 +12,7 @@ import java.util.UUID;
  * acceptance of the platform terms.
  */
 @Service
-public class UserService {
+public class UserService extends UserLookupService {
 
     /**
      * The version of the platform terms in force, named by its effective date.
@@ -21,8 +21,6 @@ public class UserService {
      */
     public static final String CURRENT_TERMS_VERSION = "2026-10-12";
 
-    private final UserRepository userRepository;
-    private final UserAccountRepository userAccountRepository;
     private final TermsAcceptanceRepository termsAcceptanceRepository;
 
     /**
@@ -35,39 +33,8 @@ public class UserService {
      */
     public UserService(UserRepository userRepository, UserAccountRepository userAccountRepository,
                        TermsAcceptanceRepository termsAcceptanceRepository) {
-        this.userRepository = userRepository;
-        this.userAccountRepository = userAccountRepository;
+        super(userRepository, userAccountRepository);
         this.termsAcceptanceRepository = termsAcceptanceRepository;
-    }
-
-    /**
-     * Loads the account belonging to the given user. Callers pass the id from the
-     * verified token, never an id supplied in the request, so a client can only
-     * read its own account.
-     *
-     * @param userId the caller's user id from the token's sub claim
-     * @return the caller's account
-     * @throws UserNotFoundException if the caller has not registered a business account
-     */
-    @Transactional(readOnly = true)
-    public User getOwnAccount(UUID userId) {
-        return userRepository.findById(userId)
-                .orElseThrow(() -> new UserNotFoundException("Account is not registered"));
-    }
-
-    /**
-     * Loads the credential record for the given user, so callers can report the
-     * role and status as they stand rather than as the caller's token describes
-     * them.
-     *
-     * @param userId the caller's user id from the token's sub claim
-     * @return the credential record the auth service owns
-     * @throws UserNotFoundException if no account exists for the id
-     */
-    @Transactional(readOnly = true)
-    public UserAccount getUserAccount(UUID userId) {
-        return userAccountRepository.findById(userId)
-                .orElseThrow(() -> new UserNotFoundException("Account is not registered"));
     }
 
     /**
