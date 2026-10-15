@@ -193,7 +193,7 @@ flowchart LR
         T7["Reporting UI"]
         T8["Reporting feed tools"]
     end
-    Tests --> Docs["Javadocs"] --> Sonar["SonarQube analysis<br/>and quality gate"] --> E2E["Playwright E2E"] --> Stack["Build local<br/>Docker stack"] --> Flow["Kafka end-to-end<br/>flow"]
+    Tests --> Docs["Javadocs"] --> E2E["Playwright E2E"] --> Stack["Build local<br/>Docker stack"] --> Flow["Kafka end-to-end<br/>flow"] --> Sonar["SonarQube analysis<br/>and quality gate"]
 ```
 
 ## Getting started
