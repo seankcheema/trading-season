@@ -1,3 +1,5 @@
+import { ExecutionSettingsService } from '../settings-dialog/execution-settings.service';
+import { of } from 'rxjs';
 import { vi, afterEach } from 'vitest';
 import { ToastService } from '../../notifications/toast.service';
 import { TestBed } from '@angular/core/testing';
@@ -64,6 +66,7 @@ describe('OrderSubmissionComponent', () => {
     fixture.componentRef.setInput('accountId', ACCOUNT_ID);
     fixture.componentRef.setInput('cashBalance', 10_000);
     fixture.componentRef.setInput('positions', positions);
+    fixture.detectChanges();
     return fixture;
   }
 
@@ -73,7 +76,7 @@ describe('OrderSubmissionComponent', () => {
     vi.useFakeTimers();
     await TestBed.configureTestingModule({
       imports: [OrderSubmissionComponent],
-      providers: [OrderService, provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      providers: [{ provide: ExecutionSettingsService, useValue: { load: () => of({ executionBufferPercent: 0 }), save: (executionBufferPercent: number) => of({ executionBufferPercent }) } },OrderService, provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     }).compileComponents();
   });
 

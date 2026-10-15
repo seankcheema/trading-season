@@ -13,8 +13,7 @@ import java.time.OffsetDateTime;
  * @param orderId          the created order's id
  * @param accountId        owned account, for projecting its simulated positions
  * @param instrumentId     instrument traded, for matching execution history to the catalogue
- * @param status           PENDING, FILLED, or REJECTED (KAN-93); a response
- *                         to a submission is always FILLED or REJECTED
+ * @param status           validation, open, filled, rejected or cancelled lifecycle state
  * @param orderType        BUY or SELL
  * @param quantity         units requested
  * @param indicativePrice  the price the client submitted with the order
@@ -22,11 +21,24 @@ import java.time.OffsetDateTime;
  * @param submittedAt      when the order was received
  * @param simulatedAt      selected replay time, or null when real execution time should be displayed
  * @param resolvedAt       when the order reached a final status, if it has
+ * @param executionType Market, Limit, Stop or Stop-Limit condition
+ * @param limitPrice persisted limitPrice
+ * @param stopPrice persisted stopPrice
+ * @param referencePrice authoritative submission quote, null for legacy orders
+ * @param referenceAt persisted referenceAt
+ * @param sessionId persisted sessionId
+ * @param triggeredAt latched simulated stop activation position
+ * @param evaluatedAt last successfully evaluated simulated position
+ * @param reservedCash persisted reservedCash
+ * @param reservedShares persisted reservedShares
+ * @param executionPrice actual fill quote, null before filling
+ * @param rejectionCode persisted rejectionCode
  */
 public record OrderResponse(
         Integer orderId,
         Integer instrumentId,
         Integer accountId,
+        @io.swagger.v3.oas.annotations.media.Schema(allowableValues = {"PENDING", "ACCEPTED", "FILLED", "REJECTED", "CANCELLED"})
         String status,
         String orderType,
         BigDecimal quantity,
@@ -34,7 +46,19 @@ public record OrderResponse(
         String rejectionReason,
         OffsetDateTime submittedAt,
         OffsetDateTime resolvedAt,
-        OffsetDateTime simulatedAt
+        OffsetDateTime simulatedAt,
+        String executionType,
+        BigDecimal limitPrice,
+        BigDecimal stopPrice,
+        BigDecimal referencePrice,
+        OffsetDateTime referenceAt,
+        Long sessionId,
+        OffsetDateTime triggeredAt,
+        OffsetDateTime evaluatedAt,
+        BigDecimal reservedCash,
+        BigDecimal reservedShares,
+        BigDecimal executionPrice,
+        String rejectionCode
 ) {
     /**
      * Builds a response from a persisted order.
@@ -54,7 +78,19 @@ public record OrderResponse(
                 order.getRejectionReason(),
                 order.getSubmittedAt(),
                 order.getResolvedAt(),
-                order.getSimulatedAt()
+                order.getSimulatedAt(),
+                order.getExecutionType(),
+                order.getLimitPrice(),
+                order.getStopPrice(),
+                order.getReferencePrice(),
+                order.getReferenceAt(),
+                order.getSessionId(),
+                order.getTriggeredAt(),
+                order.getEvaluatedAt(),
+                order.getReservedCash(),
+                order.getReservedShares(),
+                order.getExecutionPrice(),
+                order.getRejectionCode()
         );
     }
 }

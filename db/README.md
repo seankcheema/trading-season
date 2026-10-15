@@ -280,3 +280,11 @@ erDiagram
 [V010__Portfolio_account_lifecycle.sql](migrations/V010__Portfolio_account_lifecycle.sql) adds `accounts.status` (ACTIVE or ARCHIVED) and `archived_at`. A check constraint requires an archive timestamp exactly when status is ARCHIVED. Existing accounts become ACTIVE.
 
 The client's Delete action archives; it never deletes rows or cascades financial history. Account identities and every ledger relationship remain intact. Holdings and Trade publishes `status` and `archivedAt` in TRADING_ACCOUNT records after commit, and [reporting_feed.py](tools/reporting_feed.py) republishes the same fields for existing rows. Reporting retains the lifecycle state without connecting to the trading database. Apply migrations before running the republisher against the new schema. The [lifecycle API](../apps/holdings-and-trade-service/api.md) documents eligibility and the shared cash behavior.
+
+## Execution preferences and order reservations
+
+[V011](migrations/V011__Execution_preferences_and_order_types.sql) changes the profile buffer default to 1%, replaces existing zero defaults with 1%, and enforces 0-10%. It aborts if an existing preference lies outside that range; correct those values before rerunning the migration.
+
+Orders gain execution type and conditional prices, immutable reference quote/session/preference context, trigger and evaluation positions, reservations, execution price, rejection code and retry bookkeeping. Historical orders default to MARKET with unknown reference context left null; fills supply historical execution prices. Legacy ACCEPTED orders without context are not evaluated automatically. CANCELLED joins the status constraint. The existing unique fill-per-order constraint prevents duplicate execution. Apply migrations before deploying either Java service. See the [Order API](../apps/order-and-sell-service/api.md) for lifecycle and locking behavior.
+
+The migration contract test in `db/tools/tests/test_execution_migration.py` runs only with `EXECUTION_MIGRATION_DISPOSABLE_DATABASE_URL` set to an explicitly disposable PostgreSQL database. It creates an isolated temporary schema and verifies atomic rejection of invalid historical preferences, defaults, preservation of nonzero values, and historical order backfill.

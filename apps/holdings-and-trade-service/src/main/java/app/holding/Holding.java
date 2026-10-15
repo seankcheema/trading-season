@@ -132,6 +132,14 @@ public class Holding {
     public void setUpdatedAt(OffsetDateTime updatedAt) {
         this.updatedAt = updatedAt;
     }
+    @jakarta.persistence.Transient
+    private BigDecimal reservedShares = BigDecimal.ZERO;
+    /** Returns shares reserved by open sells.
+     * @return reserved shares */
+    public BigDecimal getReservedShares() { return reservedShares; }
+    /** Attaches open order reservations.
+     * @param value reserved shares */
+    public void setReservedShares(BigDecimal value) { reservedShares = value; }
 }
 
 

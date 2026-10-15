@@ -1,11 +1,13 @@
+import { OrderService } from '../orders/order.service';
+import { AccountStore } from '../accounts/account-store.service';
 import { CurrencyPipe, DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, inject, signal } from '@angular/core';
 
 // What a row is: the side of a trade or the direction of a cash transfer.
 export type ActivityType = 'BUY' | 'SELL' | 'DEPOSIT' | 'WITHDRAWAL';
 
 // Where a row stands. Cash transfers have no lifecycle and always read as completed.
-export type ActivityStatus = 'FILLED' | 'REJECTED' | 'PENDING' | 'COMPLETED';
+export type ActivityStatus = 'FILLED' | 'REJECTED' | 'PENDING' | 'ACCEPTED' | 'CANCELLED' | 'COMPLETED';
 
 export interface ActivityItem {
   kind: 'cash' | 'trade';
@@ -20,6 +22,8 @@ export interface ActivityItem {
   // Money in (a sell or a deposit) versus money out (a buy or a withdrawal). The row only shows
   // it as a +/- sign on cash transfers.
   positive: boolean;
+  orderId?: number;
+  accountId?: number;
   rejectionReason?: string | null;
 }
 
@@ -28,6 +32,8 @@ export const ACTIVITY_STATUS_LABELS: Record<ActivityStatus, string> = {
   FILLED: 'Filled',
   REJECTED: 'Rejected',
   PENDING: 'Pending',
+  ACCEPTED: 'Open',
+  CANCELLED: 'Cancelled',
   COMPLETED: 'Cash Transaction',
 };
 
@@ -36,6 +42,8 @@ export const ACTIVITY_STATUS_CLASSES: Record<ActivityStatus, string> = {
   FILLED: 'bg-gain/15 text-gain',
   REJECTED: 'bg-loss/15 text-loss',
   PENDING: 'bg-amber-400/15 text-amber-400',
+  ACCEPTED: 'bg-amber-400/15 text-amber-400',
+  CANCELLED: 'bg-muted text-muted-foreground',
   COMPLETED: 'bg-primary/15 text-primary',
 };
 
@@ -82,6 +90,10 @@ export const ACTIVITY_TYPE_CLASSES: Record<ActivityType, string> = {
         <span data-testid="activity-status">{{ statusLabel() }}</span>
       </span>
     </span>
+    @if (transaction().status === 'ACCEPTED' && transaction().orderId) {
+      <button type="button" class="text-primary text-xs underline" [disabled]="cancelling()" (click)="cancel()">Cancel order</button>
+    }
+    @if (cancelError()) { <p role="alert" class="text-loss text-xs">{{ cancelError() }}</p> }
     @if (transaction().rejectionReason) {
       <p class="text-loss mt-1 w-full text-xs">{{ transaction().rejectionReason }}</p>
     }`,
@@ -98,6 +110,23 @@ export const ACTIVITY_TYPE_CLASSES: Record<ActivityType, string> = {
   ],
 })
 export class ActivityRowComponent {
+  private readonly orders = inject(OrderService);
+  private readonly accounts = inject(AccountStore);
+  protected readonly cancelling = signal(false);
+  protected readonly cancelError = signal('');
+  protected cancel(): void {
+    const item = this.transaction();
+    if (!item.orderId || this.cancelling()) return;
+    this.cancelling.set(true);
+    this.cancelError.set('');
+    this.orders.cancelOrder(item.orderId).subscribe({
+      next: () => {
+        this.cancelling.set(false);
+        if (item.accountId) this.accounts.refreshAfterTrade(item.accountId).subscribe({error: () => this.cancelError.set('Cancelled. Retry refreshing balances.')});
+      },
+      error: () => { this.cancelling.set(false); this.cancelError.set('Unable to cancel order. Refresh and try again.'); },
+    });
+  }
   readonly transaction = input.required<ActivityItem>();
   // Only cash transfers carry a sign; a trade's amount is the plain notional value.
   protected readonly sign = computed(() => {

@@ -198,7 +198,10 @@ class TestOrderEvents:
             'clientReference': str(REFERENCE), 'instrumentId': 3, 'instrumentName': 'Apple Inc.',
             'indicativePrice': 100.0, 'bufferPercent': 0.5, 'submittedAt': '2026-10-05T09:30:00+00:00',
             'acceptedAt': '2026-10-05T09:30:00+00:00', 'resolvedAt': '2026-10-05T09:30:00+00:00',
-            'simulatedAt': None}
+            'simulatedAt': None, **{key: None for key in (
+                'executionType', 'limitPrice', 'stopPrice', 'referencePrice', 'referenceAt',
+                'sessionId', 'triggeredAt', 'evaluatedAt', 'reservedCash', 'reservedShares',
+                'executionPrice', 'rejectionCode')}}
 
     def test_a_fill_carries_both_postings_and_the_balances_they_left(self, snapshot):
         first, second, _rejected = self.orders(snapshot)
@@ -382,3 +385,15 @@ class TestCommandLine:
             republish_history.parse_arguments([])
 
         assert '--database-url or DATABASE_URL is required' in capsys.readouterr().err
+
+
+def test_republished_orders_include_immutable_execution_context(snapshot):
+    row = snapshot['orders'][0]
+    row.update(execution_type='STOP', stop_price=Decimal('105'), reference_price=Decimal('100'),
+               reference_at=row['submitted_at'], session_id=1, reserved_cash=Decimal('1010'),
+               reserved_shares=Decimal('0'), rejection_code='EXECUTION_BUFFER_EXCEEDED')
+    message = next(m for m in build_messages(snapshot) if m.topic == TRADE_EVENTS)
+    assert message.body['order']['executionType'] == 'STOP'
+    assert message.body['order']['referencePrice'] == 100
+    assert message.body['order']['reservedCash'] == 1010
+    assert message.body['order']['rejectionCode'] == 'EXECUTION_BUFFER_EXCEEDED'

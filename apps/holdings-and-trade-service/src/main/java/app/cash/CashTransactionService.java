@@ -94,7 +94,7 @@ public class CashTransactionService {
      * @return the recorded ledger row
      * @throws UserNotFoundException      if the caller has not registered a profile
      * @throws AccountNotFoundException   if the caller has no account to book the row against
-     * @throws InsufficientFundsException if a withdrawal exceeds the available funds
+     * @throws InsufficientFundsException if a withdrawal exceeds cash less open BUY reservations
      * @throws IllegalArgumentException   if the amount is not positive or the reason is unknown
      */
     @Transactional
@@ -121,7 +121,7 @@ public class CashTransactionService {
         account = accountRepository.findByIdForUpdate(account.getAccountId()).orElseThrow();
 
         BigDecimal available = user.getAvailableFunds();
-        if (!deposit && amount.compareTo(available) > 0) {
+        if (!deposit && amount.compareTo(available.subtract(java.util.Objects.requireNonNullElse(accountRepository.reservedCash(userId), BigDecimal.ZERO))) > 0) {
             throw new InsufficientFundsException("Insufficient funds");
         }
 

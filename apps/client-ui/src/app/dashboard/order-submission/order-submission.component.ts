@@ -1,3 +1,4 @@
+import { ExecutionControlsComponent } from '../shared/execution-controls.component';
 import { WatchlistStarComponent } from '../watchlist/watchlist-star.component';
 import { ToastService } from '../../notifications/toast.service';
 import { affordableShares, boundedShares, wholeShares } from '../shared/share-limits';
@@ -5,6 +6,7 @@ import { CurrencyPipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  viewChild,
   DestroyRef,
   computed,
   effect,
@@ -35,6 +37,7 @@ const ORDER_REJECTED = 'The order was rejected.';
   selector: 'app-order-submission',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ExecutionControlsComponent,
     WatchlistStarComponent,
     CurrencyPipe,
     NgIcon,
@@ -50,6 +53,7 @@ const ORDER_REJECTED = 'The order was rejected.';
   styleUrl: './order-submission.component.css',
 })
 export class OrderSubmissionComponent {
+  readonly execution = viewChild(ExecutionControlsComponent);
   private readonly marketData = inject(MarketDataService);
   private readonly orders = inject(OrderService);
   private readonly toasts = inject(ToastService);
@@ -156,7 +160,7 @@ export class OrderSubmissionComponent {
 
   protected readonly maxShares = computed(() =>
     this.side() === 'buy'
-      ? affordableShares(this.cashBalance(), this.activeInstrument().price)
+      ? affordableShares(this.cashBalance(), this.execution()?.reservationPrice() || this.activeInstrument().price)
       : wholeShares(this.sharesHeld()),
   );
 
@@ -226,7 +230,7 @@ export class OrderSubmissionComponent {
   }
 
   protected submit(): void {
-    if (!this.canSubmit()) {
+    if (!this.canSubmit() || !this.execution()?.valid()) {
       return;
     }
     const accountId = Number(this.accountId());
@@ -249,6 +253,8 @@ export class OrderSubmissionComponent {
         accountId,
         symbol,
         orderType: this.side() === 'buy' ? 'BUY' : 'SELL',
+        ...this.execution()!.parameters(),
+        ...(this.sessionId() !== null ? { sessionId: this.sessionId()! } : {}),
         quantity: this.shares(),
         indicativePrice: this.activeInstrument().price,
         simulatedAt: Number.isFinite(Date.parse(this.marketTimestamp()))
@@ -263,7 +269,7 @@ export class OrderSubmissionComponent {
             const price = new Intl.NumberFormat('en-US', {
               style: 'currency',
               currency: 'USD',
-            }).format(result.indicativePrice);
+            }).format(result.executionPrice ?? result.indicativePrice);
             this.toasts.show(`Filled ${result.quantity} ${symbol} at ${price}.`, 'success');
           }
           if (result.status === 'REJECTED') {

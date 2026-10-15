@@ -1,3 +1,5 @@
+import { ExecutionSettingsService } from './settings-dialog/execution-settings.service';
+import { of as savedExecutionPreference } from 'rxjs';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -145,7 +147,7 @@ describe('DashboardComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [DashboardComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      providers: [{ provide: ExecutionSettingsService, useValue: { load: () => savedExecutionPreference({ executionBufferPercent: 0 }) } },provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     }).compileComponents();
   });
 

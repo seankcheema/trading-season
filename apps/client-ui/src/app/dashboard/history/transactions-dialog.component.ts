@@ -128,6 +128,10 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
                   </span>
                   <ng-container [ngTemplateOutlet]="rowCells" [ngTemplateOutletContext]="{ $implicit: row }"></ng-container>
                 </button>
+                @if (row.status === 'ACCEPTED') {
+                  <button type="button" class="text-primary mb-2 ml-8 text-xs underline" [disabled]="cancelling().has(row.orderId!)"
+                    (click)="cancelOrder(row)">Cancel order</button>
+                }
                 @if (expandedOrderId() === row.orderId) {
                   <section class="audit-trail mb-2 ml-8 mr-2 border-l-2 border-white/50 py-1 pl-3 text-[#e5e7eb]" [attr.data-testid]="'audit-trail-' + row.orderId" aria-label="Order audit trail">
                     @if (auditLoading().has(row.orderId)) {
@@ -243,6 +247,15 @@ export class TransactionsDialogComponent implements OnInit {
   // How many placeholder rows stand in for the table while it loads.
   protected readonly skeletonRows = [1, 2, 3, 4, 5, 6] as const;
   protected readonly loadError = signal(false);
+  protected readonly cancelling = signal<ReadonlySet<number>>(new Set());
+  protected cancelOrder(row: HistoryRow): void {
+    if (row.orderId === null || this.cancelling().has(row.orderId)) return;
+    this.cancelling.update((ids) => new Set(ids).add(row.orderId!));
+    this.orderService.cancelOrder(row.orderId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: () => { this.cancelling.update((ids) => withoutId(ids, row.orderId!)); this.accountStore.load(true); },
+      error: () => { this.cancelling.update((ids) => withoutId(ids, row.orderId!)); this.loadError.set(true); },
+    });
+  }
   protected readonly expandedOrderId = signal<number | null>(null);
   protected readonly auditEntries = signal<ReadonlyMap<number, readonly OrderAuditEntry[]>>(new Map());
   protected readonly auditLoading = signal<ReadonlySet<number>>(new Set());

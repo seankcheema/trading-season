@@ -22,7 +22,9 @@ import java.util.UUID;
  * is written and the user's available funds and the account's holdings have
  * moved, or {@code ACCEPTED -> REJECTED} if the re-check under the row lock
  * fails. Execution runs in a separate transaction, so an order whose
- * execution fails unexpectedly stays {@code ACCEPTED} on record. This entity
+ * execution fails unexpectedly stays {@code ACCEPTED} on record, with its reservation,
+ * for bounded-backoff retry. Conditional orders also remain ACCEPTED until eligible
+ * or cancelled; triggering is recorded separately from status. This entity
  * is persisted as {@code PENDING} the moment a request is received, before
  * the trading-rule pipeline runs, so a rejected order still leaves a record.
  */
@@ -44,7 +46,7 @@ public class Order {
     /**
      * Passed the trading rules and committed as a firm commitment before
      * execution (BR-06). Execution follows in its own transaction; an order
-     * stays here if that execution fails unexpectedly.
+     * stays here while conditions are unmet or settlement is retryable.
      */
     public static final String STATUS_ACCEPTED = "ACCEPTED";
     /**
@@ -83,7 +85,7 @@ public class Order {
     @Column(name = "indicative_price", updatable = false)
     private BigDecimal indicativePrice;
 
-    /** KAN-100: the trader's execution price tolerance, acquired from the client. */
+    /** The saved user execution preference snapshotted at submission. */
     @Column(name = "buffer_percent", updatable = false)
     private BigDecimal bufferPercent;
 
@@ -345,6 +347,118 @@ public class Order {
     public void setResolvedAt(OffsetDateTime resolvedAt) {
         this.resolvedAt = resolvedAt;
     }
+    /** Final state of an order cancelled before execution. */
+    public static final String STATUS_CANCELLED = "CANCELLED";
+    @Column(name = "execution_type")
+    private String executionType = "MARKET";
+    /** Returns executionType.
+     * @return persisted executionType */
+    public String getExecutionType() { return executionType; }
+    /** Sets executionType.
+     * @param value new executionType */
+    public void setExecutionType(String value) { this.executionType = value; }
+    @Column(name = "limit_price", precision = 18, scale = 6)
+    private BigDecimal limitPrice = null;
+    /** Returns limitPrice.
+     * @return persisted limitPrice */
+    public BigDecimal getLimitPrice() { return limitPrice; }
+    /** Sets limitPrice.
+     * @param value new limitPrice */
+    public void setLimitPrice(BigDecimal value) { this.limitPrice = value; }
+    @Column(name = "stop_price", precision = 18, scale = 6)
+    private BigDecimal stopPrice = null;
+    /** Returns stopPrice.
+     * @return persisted stopPrice */
+    public BigDecimal getStopPrice() { return stopPrice; }
+    /** Sets stopPrice.
+     * @param value new stopPrice */
+    public void setStopPrice(BigDecimal value) { this.stopPrice = value; }
+    @Column(name = "reference_price", precision = 18, scale = 6)
+    private BigDecimal referencePrice = null;
+    /** Returns referencePrice.
+     * @return persisted referencePrice */
+    public BigDecimal getReferencePrice() { return referencePrice; }
+    /** Sets referencePrice.
+     * @param value new referencePrice */
+    public void setReferencePrice(BigDecimal value) { this.referencePrice = value; }
+    @Column(name = "reference_at")
+    private OffsetDateTime referenceAt = null;
+    /** Returns referenceAt.
+     * @return persisted referenceAt */
+    public OffsetDateTime getReferenceAt() { return referenceAt; }
+    /** Sets referenceAt.
+     * @param value new referenceAt */
+    public void setReferenceAt(OffsetDateTime value) { this.referenceAt = value; }
+    @Column(name = "session_id")
+    private Long sessionId = null;
+    /** Returns sessionId.
+     * @return persisted sessionId */
+    public Long getSessionId() { return sessionId; }
+    /** Sets sessionId.
+     * @param value new sessionId */
+    public void setSessionId(Long value) { this.sessionId = value; }
+    @Column(name = "triggered_at")
+    private OffsetDateTime triggeredAt = null;
+    /** Returns triggeredAt.
+     * @return persisted triggeredAt */
+    public OffsetDateTime getTriggeredAt() { return triggeredAt; }
+    /** Sets triggeredAt.
+     * @param value new triggeredAt */
+    public void setTriggeredAt(OffsetDateTime value) { this.triggeredAt = value; }
+    @Column(name = "evaluated_at")
+    private OffsetDateTime evaluatedAt = null;
+    /** Returns evaluatedAt.
+     * @return persisted evaluatedAt */
+    public OffsetDateTime getEvaluatedAt() { return evaluatedAt; }
+    /** Sets evaluatedAt.
+     * @param value new evaluatedAt */
+    public void setEvaluatedAt(OffsetDateTime value) { this.evaluatedAt = value; }
+    @Column(name = "reserved_cash", precision = 24, scale = 6)
+    private BigDecimal reservedCash = BigDecimal.ZERO;
+    /** Returns reservedCash.
+     * @return persisted reservedCash */
+    public BigDecimal getReservedCash() { return reservedCash; }
+    /** Sets reservedCash.
+     * @param value new reservedCash */
+    public void setReservedCash(BigDecimal value) { this.reservedCash = value; }
+    @Column(name = "reserved_shares", precision = 14, scale = 4)
+    private BigDecimal reservedShares = BigDecimal.ZERO;
+    /** Returns reservedShares.
+     * @return persisted reservedShares */
+    public BigDecimal getReservedShares() { return reservedShares; }
+    /** Sets reservedShares.
+     * @param value new reservedShares */
+    public void setReservedShares(BigDecimal value) { this.reservedShares = value; }
+    @Column(name = "execution_price", precision = 18, scale = 6)
+    private BigDecimal executionPrice = null;
+    /** Returns executionPrice.
+     * @return persisted executionPrice */
+    public BigDecimal getExecutionPrice() { return executionPrice; }
+    /** Sets executionPrice.
+     * @param value new executionPrice */
+    public void setExecutionPrice(BigDecimal value) { this.executionPrice = value; }
+    @Column(name = "rejection_code")
+    private String rejectionCode = null;
+    /** Returns rejectionCode.
+     * @return persisted rejectionCode */
+    public String getRejectionCode() { return rejectionCode; }
+    /** Sets rejectionCode.
+     * @param value new rejectionCode */
+    public void setRejectionCode(String value) { this.rejectionCode = value; }
+    @Column(name = "retry_after")
+    private OffsetDateTime retryAfter = null;
+    /** Returns retryAfter.
+     * @return persisted retryAfter */
+    public OffsetDateTime getRetryAfter() { return retryAfter; }
+    /** Sets retryAfter.
+     * @param value new retryAfter */
+    public void setRetryAfter(OffsetDateTime value) { this.retryAfter = value; }
+    @Column(name = "execution_attempts")
+    private Integer executionAttempts = 0;
+    /** Returns executionAttempts.
+     * @return persisted executionAttempts */
+    public Integer getExecutionAttempts() { return executionAttempts; }
+    /** Sets executionAttempts.
+     * @param value new executionAttempts */
+    public void setExecutionAttempts(Integer value) { this.executionAttempts = value; }
 }
-
-

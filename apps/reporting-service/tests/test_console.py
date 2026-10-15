@@ -178,7 +178,8 @@ class TestActivity:
         assert sum(point['value'] for point in points) == report['notional']['total'] == 440.0
         assert report['statuses'] == [
             {'status': 'FILLED', 'count': 1}, {'status': 'PENDING', 'count': 0},
-            {'status': 'ACCEPTED', 'count': 1}, {'status': 'REJECTED', 'count': 1}]
+            {'status': 'ACCEPTED', 'count': 1}, {'status': 'REJECTED', 'count': 1},
+            {'status': 'CANCELLED', 'count': 0}]
         assert report['sessionId'] == 12
         assert report['range'] == 'today'
         assert report['from'] == '2026-10-08T00:00:00+00:00'

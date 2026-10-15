@@ -98,6 +98,14 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.BAD_REQUEST, message);
     }
 
+    /** Maps temporary market outages without recording an order.
+     * @param ex unavailable quote
+     * @return 503 and a safe reason */
+    @ExceptionHandler(app.order.execution.ExecutionQuoteSource.QuoteUnavailableException.class)
+    public ResponseEntity<Map<String, String>> handleQuoteUnavailable(app.order.execution.ExecutionQuoteSource.QuoteUnavailableException ex) {
+        return error(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+    }
+
     private static ResponseEntity<Map<String, String>> error(HttpStatus status, String message) {
         return ResponseEntity.status(status).body(Map.of("error", message));
     }

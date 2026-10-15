@@ -103,3 +103,13 @@ input[type='number'] {
 @media (prefers-reduced-motion: reduce) {
   .order-spinner { animation: none; }
 }
+
+.order-chart {
+  min-height: 14rem;
+}
+
+@media (min-width: 768px) {
+  .order-chart {
+    min-height: 18rem;
+  }
+}

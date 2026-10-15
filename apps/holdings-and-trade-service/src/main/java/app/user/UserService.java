@@ -21,6 +21,8 @@ public class UserService {
      */
     public static final String CURRENT_TERMS_VERSION = "2026-10-12";
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private app.account.AccountRepository accounts;
     private final UserRepository userRepository;
     private final UserAccountRepository userAccountRepository;
     private final TermsAcceptanceRepository termsAcceptanceRepository;
@@ -51,8 +53,10 @@ public class UserService {
      */
     @Transactional(readOnly = true)
     public User getOwnAccount(UUID userId) {
-        return userRepository.findById(userId)
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("Account is not registered"));
+        user.setReservedCash(java.util.Objects.requireNonNullElse(accounts.reservedCash(userId), java.math.BigDecimal.ZERO));
+        return user;
     }
 
     /**
@@ -109,5 +113,18 @@ public class UserService {
         if (!termsAcceptanceRepository.existsById(id)) {
             termsAcceptanceRepository.save(new TermsAcceptance(userId, termsVersion, OffsetDateTime.now()));
         }
+    }
+    /** Saves the authenticated owner's trading preference under the cash/profile lock.
+     * @param userId verified owner
+     * @param settings validated percentage
+     * @return persisted preference
+     * @throws UserNotFoundException if the profile does not exist */
+    @Transactional
+    public ExecutionSettings saveExecutionSettings(UUID userId, ExecutionSettings settings) {
+        User user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new UserNotFoundException("Account is not registered"));
+        user.setExecutionBufferPercent(settings.executionBufferPercent());
+        userRepository.save(user);
+        return new ExecutionSettings(user.getExecutionBufferPercent());
     }
 }

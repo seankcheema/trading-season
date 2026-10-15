@@ -1,3 +1,5 @@
+import { ExecutionSettingsService } from '../dashboard/settings-dialog/execution-settings.service';
+import { of as savedExecutionPreference } from 'rxjs';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { OrderResult } from '../dashboard/orders/order.models';
@@ -87,7 +89,7 @@ describe('MarketPageComponent', () => {
   ): Promise<ComponentFixture<MarketPageComponent>> {
     await TestBed.configureTestingModule({
       imports: [MarketPageComponent],
-      providers: [
+      providers: [{ provide: ExecutionSettingsService, useValue: { load: () => savedExecutionPreference({ executionBufferPercent: 0 }) } },
         provideRouter([]),
         provideHttpClient(),
         provideHttpClientTesting(),

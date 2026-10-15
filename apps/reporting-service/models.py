@@ -127,6 +127,18 @@ class Order(db.Model):
     accepted_at = Column(DateTime(timezone=True), nullable=True)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
     simulated_at = Column(DateTime(timezone=True), nullable=True)
+    execution_type = Column(Text, nullable=True)
+    limit_price = Column(Numeric(24, 6), nullable=True)
+    stop_price = Column(Numeric(24, 6), nullable=True)
+    reference_price = Column(Numeric(24, 6), nullable=True)
+    reference_at = Column(DateTime(timezone=True), nullable=True)
+    session_id = Column(Integer, nullable=True)
+    triggered_at = Column(DateTime(timezone=True), nullable=True)
+    evaluated_at = Column(DateTime(timezone=True), nullable=True)
+    reserved_cash = Column(Numeric(24, 6), nullable=True)
+    reserved_shares = Column(Numeric(24, 6), nullable=True)
+    execution_price = Column(Numeric(24, 6), nullable=True)
+    rejection_code = Column(Text, nullable=True)
 
 
 class Fill(db.Model):

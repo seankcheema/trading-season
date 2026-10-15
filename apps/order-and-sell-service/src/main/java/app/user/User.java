@@ -60,7 +60,7 @@ public class User {
     private Integer sessionTimeoutMinutes = 10;
 
     @Column(name = "execution_buffer_percent", nullable = false)
-    private BigDecimal executionBufferPercent = BigDecimal.ZERO;
+    private BigDecimal executionBufferPercent = BigDecimal.ONE;
 
     @Column(name = "last_activity_at")
     private OffsetDateTime lastActivityAt;

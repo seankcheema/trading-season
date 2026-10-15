@@ -325,7 +325,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   );
 
   // Trading balances include every completed fill, regardless of the replay cursor.
-  protected readonly tradingCashBalance = this.accountStore.cashBalance;
+  protected readonly tradingCashBalance = this.accountStore.spendableFunds;
   private readonly tradeTicket = viewChild(TradeTicketComponent);
   protected readonly availableCash = computed(() => {
     const draft = this.tradeTicket()?.draft();
@@ -335,7 +335,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   });
   protected readonly heldShares = computed(
     () =>
-      this.accountStore.selectedHoldings().find((h) => h.symbol === this.symbol())?.quantity ?? 0,
+      ((holding) => holding?.availableQuantity ?? holding?.quantity ?? 0)(this.accountStore.selectedHoldings().find((h) => h.symbol === this.symbol())),
   );
 
   protected readonly portfolioValues = computed(
@@ -461,7 +461,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
 
     const maximum =
       draft.side === 'buy'
-        ? Math.floor(this.tradingCashBalance() / price)
+        ? Math.floor(this.tradingCashBalance() / (draft.reservationPrice ?? price))
         : Math.floor(this.heldShares());
 
     if (!Number.isFinite(price) || price <= 0 || draft.quantity > maximum) {
@@ -483,6 +483,10 @@ export class MarketPageComponent implements OnInit, OnDestroy {
         accountId,
         symbol: draft.symbol,
         orderType: draft.side === 'buy' ? 'BUY' : 'SELL',
+        executionType: draft.executionType,
+        limitPrice: draft.limitPrice,
+        stopPrice: draft.stopPrice,
+        ...(draft.sessionId !== null ? { sessionId: draft.sessionId } : {}),
         quantity: draft.quantity,
         indicativePrice: price,
         simulatedAt: Number.isFinite(Date.parse(simulated))
@@ -496,7 +500,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
           this.submitting.set(false);
 
           if (result.status === 'FILLED') {
-            const message = `Filled ${result.quantity} ${draft.symbol} at ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(result.indicativePrice)}.`;
+            const message = `Filled ${result.quantity} ${draft.symbol} at ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(result.executionPrice ?? result.indicativePrice)}.`;
 
             this.toasts.show(message, 'success');
             this.refreshBalances(accountId);
@@ -505,7 +509,8 @@ export class MarketPageComponent implements OnInit, OnDestroy {
             this.orderError.set(message);
             this.toasts.show(message, 'error');
           } else {
-            this.orderMessage.set('Order pending.');
+            this.refreshBalances(accountId);
+            this.orderMessage.set('Order open. Resources reserved until execution or cancellation.');
           }
         },
         error: (error: unknown) => {
@@ -756,6 +761,11 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly watchlist = inject(WatchlistStore);
 
   ngOnInit(): void {
+    this.orders.pendingResolved.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((order) => {
+      const accountId = order.accountId ?? this.accountStore.selectedAccountId();
+      if (accountId !== null) this.refreshBalances(accountId);
+      if (order.status === 'REJECTED') this.toasts.show(order.rejectionReason ?? 'Order rejected.', 'error');
+    });
     if (!isPlatformBrowser(this.platformId)) {
       return;
     }

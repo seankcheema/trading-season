@@ -278,3 +278,5 @@ In the [Jenkins pipeline](../../infrastructure/README.md#jenkins) the suite runs
 - Report runs counts an order in a range by when it resolved and Activity by when it was placed, and Report runs stops at the run's generation time, so the two screens can differ by the orders of the last minutes. Today is a single column of Trades per day, where Activity plots it by the hour. A new run can replace the one on screen up to 30 seconds before the page learns of it; a chart downloaded in that gap is taken from the new run, and the page moves on to it.
 - Trades per day plots the days that have a resolved order, side by side. A day without one is left out, not drawn as a gap.
 - Users are not signed out for inactivity, unlike the Client UI.
+
+Order detail includes execution conditions, submission reference quote, trigger time and outstanding reservations. Order filters include CANCELLED. These values come from the Reporting Service contract and Kafka projection.

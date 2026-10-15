@@ -60,7 +60,7 @@ public class User {
     private Integer sessionTimeoutMinutes = 10;
 
     @Column(name = "execution_buffer_percent", nullable = false)
-    private BigDecimal executionBufferPercent = BigDecimal.ZERO;
+    private BigDecimal executionBufferPercent = BigDecimal.ONE;
 
     @Column(name = "last_activity_at")
     private OffsetDateTime lastActivityAt;
@@ -304,6 +304,14 @@ public class User {
     public void setCreatedAt(OffsetDateTime createdAt) {
         this.createdAt = createdAt;
     }
+    @jakarta.persistence.Transient
+    private BigDecimal reservedCash = BigDecimal.ZERO;
+    /** Returns cash committed to open BUY orders.
+     * @return reserved cash */
+    public BigDecimal getReservedCash() { return reservedCash; }
+    /** Attaches the order reservation read model.
+     * @param value reserved cash */
+    public void setReservedCash(BigDecimal value) { reservedCash = value; }
 }
 
 

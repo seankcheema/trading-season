@@ -5,16 +5,18 @@ Spring Boot (Java 21) service that submits, validates, and executes buy and sell
 - Port 8081, Swagger UI at http://localhost:8081/swagger-ui.html
 - Shares the `trading_season` database. The schema comes from [db/migrations](../../db/migrations); Hibernate never alters it.
 - Authenticates callers by verifying RS256 tokens from the [Auth Service](../auth-service/README.md) against its cached JWKS. The caller is always the token's `sub`.
-- Publishes one Kafka `trade-events` message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`) and runs the `order-status-pusher` consumer group, which forwards each change to the owner's open `GET /api/orders/stream` connections. The other two groups live in the [Holdings and Trade Service](../holdings-and-trade-service/README.md) and the [Reporting Service](../reporting-service/README.md).
+- Publishes one Kafka `trade-events` message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`, `CANCELLED`) and runs the `order-status-pusher` consumer group, which forwards each change to the owner's open `GET /api/orders/stream` connections. The other two groups live in the [Holdings and Trade Service](../holdings-and-trade-service/README.md) and the [Reporting Service](../reporting-service/README.md).
 - Publishes every audit trail entry to the Kafka `platform-records` topic. The Reporting Service has no database connection: these two topics are how it knows about orders.
 
 ## Endpoints
+
+See [Order API](api.md#read-and-cancel) for detail reads and cancellation.
 
 All require a bearer token except the public market reads.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| POST | `/api/orders` | Submit a buy or sell order. Returns 201 with the outcome (`FILLED`, `REJECTED`, or `ACCEPTED` when execution failed and the order stays on record) |
+| POST | `/api/orders` | Submit a buy or sell order. Returns 201 with the outcome (`FILLED`, `REJECTED`, or `ACCEPTED` while open) |
 | GET | `/api/orders` | The caller's orders across all their accounts, newest first |
 | GET | `/api/orders/{orderId}/audit` | One of the caller's orders as its audit trail, oldest first: `eventType`, `price` (the order's indicative price), `occurredAt`, `detail`. Another caller's order is 404, the same as a missing one |
 | GET | `/api/orders/stream` | Server-Sent Events: an `order-status` event with each committed status change's JSON body, and a `heartbeat` every 15 seconds |
@@ -23,19 +25,9 @@ All require a bearer token except the public market reads.
 | GET | `/api/market/snapshot`, `/candles`, `/stream` | Public market data (snapshot, OHLCV candles, SSE ticks) |
 | PUT | `/api/market/clock` | Move the shared replay cursor |
 
-Order request: `accountId`, `instrumentId`, `orderType` (`BUY` or `SELL`), `quantity`, `indicativePrice`, `clientReference` (UUID idempotency key), and optional `bufferPercent` and `simulatedAt`.
+The canonical [Order API](api.md) documents the request/response fields, Market/Limit/Stop/Stop-Limit execution, immutable buffer preferences, shared-cash and share reservations, cancellation, authoritative replay quotes, retries, and optional disposable-PostgreSQL concurrency tests.
 
-Behavior worth knowing:
-
-- A rule failure is a normal outcome: the response is still 201 with `status: REJECTED` and a `rejectionReason`.
-- Resubmitting the same `accountId` and `clientReference` returns the original outcome without executing again.
-- Another user's account is 403 and a missing account is 404, checked before the idempotency lookup. An unknown `instrumentId` is 400.
-- A caller who has not accepted the platform terms in force is 403 with `Accept the platform terms before placing an order`, and nothing is recorded for the attempt. Acceptances are recorded by [Holdings and Trade Service](../holdings-and-trade-service/README.md) in `terms_acceptances`, which this service only reads; the version in force is `TermsAcceptance.CURRENT_VERSION` and must match that service's. A resubmission of an order already on record still returns it.
-- New orders require an ACTIVE portfolio account. Acceptance takes the account row lock before checking status, so archiving cannot race a new order. Archived account submissions return 403; existing idempotency-key replays and historical order reads remain available. See [account lifecycle](../holdings-and-trade-service/api.md).
-- Cash belongs to the user, not the account: a fill moves `users.available_funds`. Orders fill at `indicativePrice`.
-- `simulatedAt` records the replay time chosen in the UI. `submittedAt`, `resolvedAt`, and fill times are always real server times.
-- `GET /api/orders/stream` needs the bearer header, which the browser's native `EventSource` cannot send; use `fetch` or an SSE client that sets headers. Only the caller's own order events are pushed.
-- Errors use `{"error": "..."}`.
+Orders fill at server market quotes. `indicativePrice` is display/audit context. `orderType` remains BUY/SELL; `executionType` selects execution behavior. ACCEPTED orders can remain open until their conditions are met or the owner cancels them. Execution failures retain reservations and retry with bounded backoff. Apply the [V011 migration](../../db/migrations/V011__Execution_preferences_and_order_types.sql) before starting the updated services.
 
 ## Design
 
@@ -114,16 +106,16 @@ sequenceDiagram
     else New
         S->>DB: Caller accepted the terms in force (else 403)
         S->>DB: Load user and instrument (400 if instrument unknown)
-        S->>DB: Insert order PENDING and audit entry
+        S->>DB: Snapshot authoritative quote and saved buffer; insert PENDING
         S->>P: run(request, user, account, instrument)
         alt A rule fails
             S->>DB: Mark REJECTED with reason and audit entry, commit
             S->>K: REJECTED (after commit)
         else All rules pass
-            S->>DB: Mark ACCEPTED and audit entry, commit
+            S->>DB: Reserve resources; mark ACCEPTED and audit entry, commit
             S->>K: ACCEPTED (after commit)
             Note over E,DB: Transaction 2: execution (REQUIRES_NEW)
-            S->>E: execute(order, instrument)
+            S->>E: Evaluate execution conditions (now or later)
             E->>DB: Lock user row and holding row
             alt Funds or holdings changed since validation
                 E->>DB: Mark REJECTED, commit
@@ -139,7 +131,7 @@ sequenceDiagram
     end
 ```
 
-Acceptance and execution are separate transactions (BR-06). The accepted order is committed before any ledger row is written, and the fill, cash transaction, holding movement, holding update and FILLED status commit together or not at all (BR-09). If execution throws, only the execution rolls back: the order stays `ACCEPTED`, an `EXECUTION_FAILED` audit entry records the cause (truncated to 255 characters), and the response returns the order in that state. Nothing retries it automatically.
+Acceptance and execution are separate transactions (BR-06). The accepted order is committed with reservations before any ledger row is written, and the fill, cash transaction, holding movement, holding update and FILLED status commit together or not at all (BR-09). If execution throws, only the execution rolls back: the order stays `ACCEPTED`, an `EXECUTION_FAILED` audit entry records the cause (truncated to 255 characters), and the response returns the order in that state. The evaluator retries with bounded backoff while retaining reservations.
 
 Each `trade-events` message is published by `TradeEventPublisher` from an `AFTER_COMMIT` transactional event listener, so a consumer never sees a status the database does not hold. The message key is the account id as a string; the body is JSON with `orderId`, `status`, `symbol`, `side`, `quantity`, `price`, `rejectionReason` and `occurredAt`. A send failure is logged and never fails the order.
 
@@ -149,7 +141,7 @@ The Reporting Service reads Kafka, not the database, so everything it shows of a
 
 | Field | When | Contents |
 | --- | --- | --- |
-| `order` | Always | The order row as committed with this status: `clientReference`, `instrumentId`, `instrumentName`, `indicativePrice`, `bufferPercent`, `submittedAt`, `acceptedAt`, `resolvedAt`, `simulatedAt` |
+| `order` | Always | The order row and the execution fields documented in [Order API](api.md), including: `clientReference`, `instrumentId`, `instrumentName`, `indicativePrice`, `bufferPercent`, `submittedAt`, `acceptedAt`, `resolvedAt`, `simulatedAt` |
 | `execution` | `FILLED` only, otherwise null | What executing the order wrote: `userId`, `fillId`, `price`, `quantity`, `filledAt`; the cash posting `cashTransactionId` and `cashAmount` with the owner's `availableFunds` after it; the holding movement `holdingMovementId` and `quantityDelta` with the `holdingQuantity` it left |
 
 The frames on `GET /api/orders/stream` are these same bodies.
@@ -165,14 +157,15 @@ stateDiagram-v2
     [*] --> PENDING: submitted
     PENDING --> REJECTED: rule fails
     PENDING --> ACCEPTED: all rules pass (committed)
-    ACCEPTED --> REJECTED: funds or holdings changed
+    ACCEPTED --> REJECTED: buffer or resources fail
+    ACCEPTED --> CANCELLED: owner cancels; reservations released
     ACCEPTED --> FILLED: fill and ledger written
-    ACCEPTED --> ACCEPTED: execution failed (EXECUTION_FAILED audit)
+    ACCEPTED --> ACCEPTED: waiting for conditions, stop triggered, or retryable execution failure
     REJECTED --> [*]
     FILLED --> [*]
 ```
 
-Every transition is recorded in `audit_trail` and published to `platform-records`, and every committed `ACCEPTED`, `FILLED` and `REJECTED` status is also published to `trade-events`. A new validation rule is a new `OrderValidator` class; the pipeline discovers it automatically and stops at the first rejection.
+Every transition is recorded in `audit_trail` and published to `platform-records`, and every committed `ACCEPTED`, `FILLED`, `REJECTED` and `CANCELLED` status is also published to `trade-events`. A new validation rule is a new `OrderValidator` class; the pipeline discovers it automatically and stops at the first rejection.
 
 ## Configuration
 
@@ -203,3 +196,5 @@ mvn test
 Tests use H2 with the `test` profile and mirror the source packages under `src/test/java/app`. The trade-event flow test starts an embedded Kafka broker; no external broker is needed. JaCoCo fails the build below 70 percent on every counter in any package (`coverage.minimum` in [pom.xml](pom.xml)); reports are in `target/site/jacoco/`.
 
 After changing Java code, regenerate the Javadocs; see [AGENTS.md](../../AGENTS.md).
+
+The execution conditions, reservations and replay behavior in [Order API](api.md) extend the acceptance/settlement sequence illustrated above.

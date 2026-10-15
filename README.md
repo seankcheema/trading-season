@@ -24,6 +24,7 @@ flowchart LR
     UI -- "/api/orders, /api/instruments" --> OS["Order and Sell Service<br/>Spring Boot :8081"]
     UI -- "all other /api/*" --> HT["Holdings and Trade Service<br/>Spring Boot :8082"]
 
+    OS -- "authoritative replay quotes" --> HT
     OS -. "cached JWKS" .-> Auth
     HT -. "cached JWKS" .-> Auth
     RS["Reporting Service<br/>Flask :8083"] -. "cached JWKS" .-> Auth
@@ -52,7 +53,7 @@ flowchart LR
 
 The UI reaches both Java services through one relative `/api` prefix that the dev proxy and the Nginx image split by path. The Java services never call the Auth Service per request: they verify tokens locally against its cached public keys. The Reporting UI calls the Auth Service and the Reporting Service through a proxy on its own origin. It never reads Kafka or the database itself, and neither does the Reporting Service read the database: its report runs are what the reporting consumer has built from `trade-events`, and its activity, customers and orders screens are answered from a read model the service builds out of the two topics' files. The report runs are served to accounts with the `ANALYST` or `ADMIN` role and the other screens to `ADMIN` only, so traders cannot use any of it; see [roles](apps/auth-service/README.md#roles).
 
-The Order and Sell Service publishes one `trade-events` message after each committed order status change (ACCEPTED, FILLED or REJECTED), keyed by account id. Three consumer groups read the topic independently:
+The Order and Sell Service publishes one `trade-events` message after each committed order status change (ACCEPTED, FILLED, REJECTED or CANCELLED), keyed by account id. A latched Stop also publishes an updated ACCEPTED snapshot. Three consumer groups read the topic independently:
 
 | Consumer group | Lives in | On each event |
 | --- | --- | --- |
@@ -128,24 +129,25 @@ sequenceDiagram
     participant K as Kafka trade-events
 
     UI->>OS: POST /api/orders
-    OS->>DB: Transaction 1: insert order as PENDING, run validation rules
+    OS->>DB: Transaction 1: snapshot quote/preference, insert PENDING, validate
     alt A rule fails
         OS->>DB: Mark REJECTED, write audit entry, commit
         OS->>K: REJECTED
     else All rules pass
-        OS->>DB: Mark ACCEPTED, commit
+        OS->>DB: Reserve resources, mark ACCEPTED, commit
         OS->>K: ACCEPTED
-        OS->>DB: Transaction 2: fill, cash, holding movement, holding, audit, mark FILLED, commit
+        Note over OS,DB: Conditional orders wait for eligible ticks or cancellation
+        OS->>DB: Transaction 2 when eligible: fill, ledger, release reservation, mark FILLED
         OS->>K: FILLED
     end
     OS-->>UI: 201 with the order outcome
 ```
 
-Acceptance and execution are separate transactions, so an order is never recorded as FILLED before its execution has committed. If execution fails, the order stays ACCEPTED with an `EXECUTION_FAILED` audit entry and the response carries that state; nothing retries it automatically. Each message is published only after its transaction commits, so a consumer never sees a status the database does not hold.
+Acceptance and execution are separate transactions, so an order is never recorded as FILLED before its execution has committed. If execution fails, the order stays ACCEPTED with an `EXECUTION_FAILED` audit entry and the response carries that state; the evaluator retries it with bounded backoff. Each message is published only after its transaction commits, so a consumer never sees a status the database does not hold.
 
 ## Data ownership
 
-Every service writes only its own tables. The schema is defined once, in [db/migrations](db/migrations), and no service runs migrations itself.
+Every service writes only its own tables. The [Order API](apps/order-and-sell-service/api.md) describes conditional execution, immutable buffers and reservations; [trading preferences](apps/holdings-and-trade-service/api.md#trading-preferences) belong to Holdings and Trade. The schema is defined once, in [db/migrations](db/migrations), and no service runs migrations itself.
 
 ```mermaid
 flowchart TB

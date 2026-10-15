@@ -136,6 +136,7 @@ export class OrderBrowserComponent {
     'FILLED',
     'PENDING',
     'ACCEPTED',
+    'CANCELLED',
     'REJECTED',
     TRANSFER_STATUS,
   ];

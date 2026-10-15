@@ -14,4 +14,10 @@ public class AccountOrderState {
     private Integer accountId;
     @jakarta.persistence.Column(nullable = false)
     private String status;
+    @jakarta.persistence.Column(name = "instrument_id")
+    private Integer instrumentId;
+    @jakarta.persistence.Column(name = "reserved_cash", precision = 24, scale = 6)
+    private java.math.BigDecimal reservedCash;
+    @jakarta.persistence.Column(name = "reserved_shares", precision = 14, scale = 4)
+    private java.math.BigDecimal reservedShares;
 }

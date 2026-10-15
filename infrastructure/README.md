@@ -93,3 +93,7 @@ docker system df
 Never run `docker volume prune` or `docker system prune --volumes` on the agent: unattached volumes may hold Jenkins home, databases, or archives. Rerun through Jenkins so files keep the agent's ownership. If cleanup logs show every build removing all caches, give the agent more storage.
 
 An `Operation not permitted` failure under `apps/reporting-service` or `db/tools` means a root-owned file from a pytest container survived; the Checkout stage repairs permissions, but a workspace stuck by an older build must be removed once by hand.
+
+Order execution polls Holdings and Trade as the authoritative replay clock. Set `EXECUTION_MARKET_URL` to that service origin; local Compose configures `http://holdings-and-trade-service:8082`. Apply database V011 before starting the updated Java services. Quote outages leave open orders reserved and retryable; owners can cancel them.
+
+The Kafka end-to-end check verifies a new trader defaults to a 1% execution buffer, saves 2%, submits against an authoritative simulated stock quote, and checks cash from the returned actual fill price. It requires seeded market data and the Holdings and Trade market endpoint.

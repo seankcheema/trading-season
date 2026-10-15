@@ -261,4 +261,19 @@ class CashTransactionServiceUnitTest {
         user.setAvailableFunds(funds);
         return user;
     }
+
+    @Test void withdrawalCannotSpendCashReservedForOpenBuyOrders() {
+        User user = user(new BigDecimal("100.00")); givenUserWithAccount(user, 7);
+        when(accountRepository.reservedCash(USER_ID)).thenReturn(new BigDecimal("80.00"));
+        assertThrows(InsufficientFundsException.class, () -> service.move(USER_ID, new BigDecimal("20.01"), "WITHDRAWAL"));
+        assertEquals(new BigDecimal("100.00"), user.getAvailableFunds());
+        verify(cashTransactionRepository, never()).save(any(CashTransaction.class));
+    }
+    @Test void withdrawalAtUnreservedBoundarySucceeds() {
+        User user = user(new BigDecimal("100.00")); givenUserWithAccount(user, 7);
+        when(accountRepository.reservedCash(USER_ID)).thenReturn(new BigDecimal("80.00"));
+        when(cashTransactionRepository.save(any(CashTransaction.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        service.move(USER_ID, new BigDecimal("20.00"), "WITHDRAWAL");
+        assertEquals(new BigDecimal("80.00"), user.getAvailableFunds());
+    }
 }

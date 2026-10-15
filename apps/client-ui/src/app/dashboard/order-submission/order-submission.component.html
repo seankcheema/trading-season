@@ -89,7 +89,7 @@
         }
         @if (chartPoints().length) {
           <app-price-chart
-            class="mt-1 h-56"
+            class="order-chart mt-3 min-h-56 flex-1"
             [points]="chartPoints()"
             [timeframe]="chartTimeframe()"
             timezone="America/Chicago"
@@ -125,8 +125,8 @@
           }
         </div>
 
-        <div class="border-border mt-4 rounded-xl border p-4">
-          <div class="flex items-center justify-between gap-4">
+        <app-execution-controls class="mt-3 block" [price]="activeInstrument().price" [side]="side()" [quantity]="shares()">
+          <div shareHeader class="flex items-center justify-between gap-4">
             <label
               for="order-shares"
               class="text-muted-foreground text-xs font-medium tracking-wide uppercase"
@@ -141,7 +141,7 @@
               }
             </span>
           </div>
-          <input
+          <input shareQuantity
             id="order-shares"
             step="1"
             type="number"
@@ -152,10 +152,10 @@
             [disabled]="maxShares() === 0"
             (input)="onSharesInput($event)"
           />
-          <input
+          <input shareSlider
             type="range"
             aria-label="Shares"
-            class="share-slider mt-3 w-full"
+            class="share-slider w-full"
             [class.share-slider-sell]="side() === 'sell'"
             min="0"
             [max]="maxShares()"
@@ -165,13 +165,7 @@
             [disabled]="maxShares() === 0"
             (input)="onSharesInput($event)"
           />
-        </div>
-
-        <dl class="bg-muted/60 mt-4 space-y-2 rounded-xl p-4 text-sm">
-          <div class="flex justify-between gap-4">
-            <dt class="text-muted-foreground">Market price</dt>
-            <dd class="tabular-nums">{{ activeInstrument().price | currency: 'USD' }}</dd>
-          </div>
+        <div orderSummary class="contents space-y-2">
           <div class="flex justify-between gap-4">
             <dt class="text-muted-foreground">Shares</dt>
             <dd class="tabular-nums">{{ shares() }}</dd>
@@ -188,7 +182,8 @@
             <dt>Estimated {{ side() === 'buy' ? 'cost' : 'proceeds' }}</dt>
             <dd class="tabular-nums">{{ orderValue() | currency: 'USD' }}</dd>
           </div>
-        </dl>
+        </div>
+        </app-execution-controls>
 
         <div class="min-h-4 flex-1"></div>
 
@@ -201,7 +196,7 @@
               : 'bg-loss hover:bg-loss/85 text-white'
           "
           [attr.aria-busy]="busy()"
-          [disabled]="!canSubmit()"
+          [disabled]="!canSubmit() || !execution()?.valid()"
           (click)="submit()"
         >
           @if (busy()) {
@@ -209,6 +204,12 @@
           }
           {{ submitLabel() }}
         </button>
+        @if (outcome()?.status === 'ACCEPTED') {
+          <p role="status" class="text-muted-foreground mt-2 text-xs">Order open. Resources are reserved until execution or cancellation.</p>
+        }
+        @if (rejectionReason() || errorMessage()) {
+          <p role="alert" class="text-loss mt-2 text-xs">{{ rejectionReason() || errorMessage() }}</p>
+        }
       </div>
     </div>
   </section>

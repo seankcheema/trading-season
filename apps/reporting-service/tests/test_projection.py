@@ -430,3 +430,29 @@ class TestAccountLifecycle:
         with pytest.raises(Unusable):
             apply_record(customer, dict(account(), archivedAt='2026-10-15T12:00:00Z'))
         assert customer.get(Account, 1).status == 'ACTIVE'
+
+
+def test_execution_snapshot_survives_old_accepted_replay(customer):
+    original = order_event(70, 'ACCEPTED', accepted_at='2026-10-05T09:30:00Z')
+    original['order'].update(executionType='STOP_LIMIT', referencePrice=100, sessionId=1,
+                             referenceAt='2026-10-05T09:30:00Z', evaluatedAt='2026-10-05T09:30:00Z',
+                             limitPrice=102, stopPrice=105, reservedCash=1020, reservedShares=0)
+    apply_trade_event(customer, original)
+    import copy
+    triggered = copy.deepcopy(original)
+    triggered['order'].update(triggeredAt='2026-10-05T09:31:00Z', evaluatedAt='2026-10-05T09:31:00Z')
+    apply_trade_event(customer, triggered)
+    apply_trade_event(customer, original)
+    current = customer.get(Order, 70)
+    assert current.execution_type == 'STOP_LIMIT'
+    assert current.reference_price == Decimal('100')
+    assert current.reserved_cash == Decimal('1020')
+    assert stored(current.triggered_at) == utc(2026, 10, 5, 9, 31)
+    cancelled = copy.deepcopy(triggered)
+    cancelled['status'] = 'CANCELLED'
+    cancelled['order'].update(reservedCash=0, resolvedAt='2026-10-05T09:32:00Z')
+    apply_trade_event(customer, cancelled)
+    apply_trade_event(customer, triggered)
+    customer.expire_all()
+    assert customer.get(Order, 70).status == 'CANCELLED'
+    assert customer.get(Order, 70).reserved_cash == Decimal('0')

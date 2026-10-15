@@ -17,6 +17,8 @@ export interface Account {
 export interface AccountHolding {
   symbol: string;
   quantity: number;
+  reservedShares?: number;
+  availableQuantity?: number;
   // Average price paid per share.
   averageCost: number;
 }
@@ -38,6 +40,8 @@ export interface UserProfile {
   firstName: string;
   lastName: string;
   availableFunds: number;
+  reservedCash?: number;
+  spendableFunds?: number;
   termsAccepted: boolean;
 }
 

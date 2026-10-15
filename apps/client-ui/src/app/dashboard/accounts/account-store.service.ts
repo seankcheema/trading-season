@@ -105,6 +105,7 @@ export class AccountStore {
 
   readonly accounts = this._accounts.asReadonly();
   // Shared by every account.
+  readonly spendableFunds = computed(() => this._profile()?.spendableFunds ?? this._cashBalance());
   readonly cashBalance = this._cashBalance.asReadonly();
   readonly cashTransactions = this._cashTransactions.asReadonly();
   readonly profile = this._profile.asReadonly();

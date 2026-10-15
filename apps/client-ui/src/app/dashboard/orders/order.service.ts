@@ -16,6 +16,7 @@ import {
 import { BACKEND_API_URL } from '../../core/api.config';
 import { UnknownInstrumentError } from './order-error';
 import {
+  ExecutionType,
   InstrumentRef,
   OrderAuditEntry,
   OrderResult,
@@ -42,9 +43,10 @@ export class OrderService {
   private historyRequest?: Observable<OrderResult[]>;
   readonly refreshing = signal(false);
   readonly historyError = signal('');
-  // Emits an order the moment a poll finds it filled after it had been pending, so views can
-  // reload the cash and holdings it moved.
+  // Retains the fill-only notification and also reports all terminal resolutions so views
+  // can refresh filled balances or released reservations.
   readonly pendingFilled = new Subject<OrderResult>();
+  readonly pendingResolved = new Subject<OrderResult>();
   private pollTimer?: ReturnType<typeof setInterval>;
 
   constructor() {
@@ -75,7 +77,7 @@ export class OrderService {
   // The caller's orders, newest first. Empty until loadOrders() succeeds.
   readonly orders = this._orders.asReadonly();
   private readonly hasPendingOrders = computed(() =>
-    this._orders().some((order) => order.status === 'PENDING'),
+    this._orders().some((order) => (order.status === 'PENDING' || order.status === 'ACCEPTED')),
   );
 
   // Every instrument, ordered by ticker. Repeated calls share one request.
@@ -95,6 +97,10 @@ export class OrderService {
   // process at all fails this observable.
   submitOrder(order: {
     accountId: number;
+    executionType?: ExecutionType;
+    limitPrice?: number;
+    stopPrice?: number;
+    sessionId?: number;
     simulatedAt?: string;
     symbol: string;
     orderType: OrderType;
@@ -112,6 +118,10 @@ export class OrderService {
           instrumentId: instrument.instrumentId,
           orderType: order.orderType,
           quantity: order.quantity,
+          executionType: order.executionType ?? 'MARKET',
+          ...(order.limitPrice !== undefined ? { limitPrice: order.limitPrice } : {}),
+          ...(order.stopPrice !== undefined ? { stopPrice: order.stopPrice } : {}),
+          ...(order.sessionId !== undefined ? { sessionId: order.sessionId } : {}),
           indicativePrice: order.indicativePrice,
           clientReference: newClientReference(),
           ...(order.simulatedAt ? { simulatedAt: order.simulatedAt } : {}),
@@ -178,6 +188,17 @@ export class OrderService {
       .pipe(takeUntil(this.cancelled));
   }
 
+  cancelOrder(orderId: number): Observable<OrderResult> {
+    return this._http.post<OrderResult>(`${this._apiUrl}/orders/${orderId}/cancel`, {}).pipe(
+      takeUntil(this.cancelled),
+      tap((result) => {
+        this.revision++;
+        this.historyRequest = undefined;
+        this._orders.update((orders) => orders.map((order) => order.orderId === orderId ? result : order));
+      }),
+    );
+  }
+
   private startPolling(): void {
     this.pollTimer ??= setInterval(() => this.pollPending(), PENDING_ORDER_POLL_MS);
   }
@@ -194,14 +215,15 @@ export class OrderService {
     }
     const pending = new Set(
       this._orders()
-        .filter((order) => order.status === 'PENDING')
+        .filter((order) => (order.status === 'PENDING' || order.status === 'ACCEPTED'))
         .map((order) => order.orderId),
     );
     this.loadOrders().subscribe({
       next: (orders) => {
         for (const order of orders) {
-          if (order.status === 'FILLED' && pending.has(order.orderId)) {
-            this.pendingFilled.next(order);
+          if (['FILLED', 'REJECTED', 'CANCELLED'].includes(order.status) && pending.has(order.orderId)) {
+            this.pendingResolved.next(order);
+            if (order.status === 'FILLED') this.pendingFilled.next(order);
           }
         }
       },

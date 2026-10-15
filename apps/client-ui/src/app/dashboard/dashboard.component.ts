@@ -346,10 +346,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   );
 
   // Replay changes the portfolio view, while orders spend the persisted balances.
-  protected readonly tradingCashBalance = this.accountStore.cashBalance;
+  protected readonly tradingCashBalance = this.accountStore.spendableFunds;
   protected readonly tradingPositions = computed(() =>
     Object.fromEntries(
-      this.accountStore.selectedHoldings().map((holding) => [holding.symbol, holding.quantity]),
+      this.accountStore.selectedHoldings().map((holding) => [holding.symbol, holding.availableQuantity ?? holding.quantity]),
     ),
   );
 
@@ -447,7 +447,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   constructor() {
     // A pending order that fills moves cash and holdings on the backend without the user doing
     // anything, so reload them as a trade the user just made would.
-    this.orderService.pendingFilled
+    this.orderService.pendingResolved
       .pipe(takeUntilDestroyed())
       .subscribe((order) => this.refreshAfterFill(order.accountId ?? this.selectedAccountId()));
     effect(() => {
@@ -600,7 +600,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // The dialog owns the submission and stays open to show the outcome, so this only reacts
   // to what a trade changed. A rejection changed nothing, so there is nothing to reload.
   protected onOrderSubmitted(order: OrderResult): void {
-    if (order.status !== 'FILLED') {
+    if (order.status !== 'FILLED' && order.status !== 'ACCEPTED') {
       return;
     }
     this.refreshAfterFill(this.accountStore.selectedAccountId());

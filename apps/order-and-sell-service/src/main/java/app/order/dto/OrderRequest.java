@@ -1,61 +1,87 @@
 package app.order.dto;
 
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Positive;
-import jakarta.validation.constraints.PositiveOrZero;
-
+import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
-import java.util.UUID;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
-/**
- * A client's order submission (KAN-95 acceptance criterion: "acquire
- * trading rules from the client"). {@code indicativePrice} and
- * {@code bufferPercent} are the trading rule itself, not just order
- * details — they're what {@code PriceBufferValidator} checks execution
- * against (BR-13, KAN-100).
- *
- * <p>{@code accountId} is included directly here as a stopgap: business-backend
- * does not yet resolve the calling account from an authenticated session
- * (see {@link app.order.OrderController}). Once that's wired
- * up, this field should come from the session instead of the request body,
- * and {@code OrderService} must verify it belongs to the caller.
- *
- * @param accountId        the account the order is placed against (temporary — see above)
- * @param instrumentId     the instrument being bought or sold
- * @param orderType        {@code BUY} or {@code SELL}
- * @param quantity         units to trade, must be positive
- * @param indicativePrice  the price shown to the trader before submission (BR-13)
- * @param bufferPercent    execution price tolerance for this order (KAN-100); when
- *                         omitted, falls back to the user's {@code execution_buffer_percent}
- * @param simulatedAt      selected simulation time, optional; audit timestamps remain real time
- * @param clientReference  client-generated idempotency key; retried submissions
- *                         with the same key return the original order's outcome
- */
+/** Authenticated stock instruction. Server quotes and saved preferences determine protection.
+ * @param accountId owned account
+ * @param instrumentId traded instrument
+ * @param orderType BUY or SELL
+ * @param quantity positive whole shares
+ * @param indicativePrice client display price, never the execution source
+ * @param bufferPercent obsolete override; must be absent
+ * @param clientReference account-scoped idempotency key
+ * @param simulatedAt client display time, never the authoritative cursor
+ * @param executionType MARKET, LIMIT, STOP or STOP_LIMIT; defaults to MARKET
+ * @param limitPrice required only for limit-bearing orders
+ * @param stopPrice required only for stop-bearing orders
+ * @param sessionId optional simulation session */
 public record OrderRequest(
         @NotNull Integer accountId,
         @NotNull Integer instrumentId,
         @NotNull @Pattern(regexp = "BUY|SELL") String orderType,
-        @NotNull @Positive BigDecimal quantity,
-        @NotNull @Positive BigDecimal indicativePrice,
-        @PositiveOrZero BigDecimal bufferPercent,
+        @NotNull @Positive @Digits(integer = 10, fraction = 0) BigDecimal quantity,
+        @NotNull @Positive @Digits(integer = 12, fraction = 6) BigDecimal indicativePrice,
+        @Null(message = "Configure the execution buffer in trading settings") BigDecimal bufferPercent,
         @NotNull UUID clientReference,
-        OffsetDateTime simulatedAt
-) {
-    /** Creates a submission without a simulation timestamp for existing callers.
+        OffsetDateTime simulatedAt,
+        @io.swagger.v3.oas.annotations.media.Schema(allowableValues = {"MARKET", "LIMIT", "STOP", "STOP_LIMIT"}, defaultValue = "MARKET")
+        @Pattern(regexp = "MARKET|LIMIT|STOP|STOP_LIMIT") String executionType,
+        @io.swagger.v3.oas.annotations.media.Schema(description = "Required only for LIMIT and STOP_LIMIT")
+        @Positive @Digits(integer = 12, fraction = 6) BigDecimal limitPrice,
+        @io.swagger.v3.oas.annotations.media.Schema(description = "Required only for STOP and STOP_LIMIT")
+        @Positive @Digits(integer = 12, fraction = 6) BigDecimal stopPrice,
+        @Positive Long sessionId) {
+    /** Defaults legacy submissions to market instructions.
      * @param accountId owned account
      * @param instrumentId traded instrument
-     * @param orderType buy or sell
-     * @param quantity units requested
-     * @param indicativePrice submitted price
-     * @param bufferPercent optional price tolerance
+     * @param orderType BUY or SELL
+     * @param quantity positive whole shares
+     * @param indicativePrice display price
+     * @param bufferPercent obsolete override
      * @param clientReference idempotency key
-     */
-    public OrderRequest(Integer accountId, Integer instrumentId, String orderType,
-            BigDecimal quantity, BigDecimal indicativePrice, BigDecimal bufferPercent, UUID clientReference) {
+     * @param simulatedAt display cursor
+     * @param executionType execution condition
+     * @param limitPrice conditional limit
+     * @param stopPrice conditional stop
+     * @param sessionId optional session */
+    public OrderRequest {
+        executionType = executionType == null ? "MARKET" : executionType;
+    }
+    /** Checks conditional price fields.
+     * @return whether required and forbidden prices match the execution type */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @AssertTrue(message = "Limit and stop prices must match the execution type")
+    public boolean isPriceConfigurationValid() {
+        return (limitPrice != null) == ("LIMIT".equals(executionType) || "STOP_LIMIT".equals(executionType))
+            && (stopPrice != null) == ("STOP".equals(executionType) || "STOP_LIMIT".equals(executionType));
+    }
+    /** Legacy Java caller constructor.
+     * @param accountId owned account
+     * @param instrumentId instrument
+     * @param orderType side
+     * @param quantity shares
+     * @param indicativePrice display price
+     * @param bufferPercent obsolete override
+     * @param clientReference key
+     * @param simulatedAt display cursor */
+    public OrderRequest(Integer accountId, Integer instrumentId, String orderType, BigDecimal quantity,
+            BigDecimal indicativePrice, BigDecimal bufferPercent, UUID clientReference, OffsetDateTime simulatedAt) {
+        this(accountId, instrumentId, orderType, quantity, indicativePrice, bufferPercent, clientReference, simulatedAt,
+                "MARKET", null, null, null);
+    }
+    /** Legacy Java caller constructor without display cursor.
+     * @param accountId owned account
+     * @param instrumentId instrument
+     * @param orderType side
+     * @param quantity shares
+     * @param indicativePrice display price
+     * @param bufferPercent obsolete override
+     * @param clientReference key */
+    public OrderRequest(Integer accountId, Integer instrumentId, String orderType, BigDecimal quantity,
+            BigDecimal indicativePrice, BigDecimal bufferPercent, UUID clientReference) {
         this(accountId, instrumentId, orderType, quantity, indicativePrice, bufferPercent, clientReference, null);
     }
 }
-
-

@@ -182,6 +182,7 @@ public class AccountService {
             return List.of();
         }
 
+        holdings.forEach(holding -> holding.setReservedShares(java.util.Objects.requireNonNullElse(accountRepository.reservedShares(accountId, holding.getInstrumentId()), BigDecimal.ZERO)));
         // Two batched lookups rather than one query per position.
         Map<Integer, Instrument> instruments = instrumentRepository
                 .findByInstrumentIdIn(holdings.stream().map(Holding::getInstrumentId).toList())

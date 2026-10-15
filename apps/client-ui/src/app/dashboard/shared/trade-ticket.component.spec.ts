@@ -1,7 +1,10 @@
+import { ExecutionSettingsService } from '../settings-dialog/execution-settings.service';
+import { of } from 'rxjs';
 import { TestBed } from '@angular/core/testing';
 import { TradeTicketComponent } from './trade-ticket.component';
 
 describe('Market preview quantities', () => {
+  beforeEach(() => TestBed.configureTestingModule({providers: [{ provide: ExecutionSettingsService, useValue: { load: () => of({ executionBufferPercent: 0 }), save: (executionBufferPercent: number) => of({ executionBufferPercent }) } }]}));
   function setup() {
     const fixture = TestBed.createComponent(TradeTicketComponent);
     fixture.componentRef.setInput('symbol', 'AAPL');

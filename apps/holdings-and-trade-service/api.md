@@ -86,3 +86,11 @@ Errors use `{"error":"explanation"}`.
 Specific 409 messages include `Account contains cash`, `Account contains active holdings`, `Pending orders must be resolved.`, `Account is already archived`. Multiple blockers are separated by semicolons. Repeated archive/delete requests safely return 409 without changing the original archive timestamp. Archived-account order submissions return 403, and existing idempotency-key replays still return the original order.
 
 Apply the [lifecycle migration](../../db/migrations/V010__Portfolio_account_lifecycle.sql) before deploying the Java services. Deploy both updated Java services before enabling the client action, so every order writer enforces the lifecycle lock and status check. [Database documentation](../../db/README.md) owns the schema and reporting feed instructions.
+
+## Trading preferences
+
+Authenticated `GET /api/users/me/execution-settings` returns `{"executionBufferPercent": 1}`. `PUT` to the same path accepts that shape and returns the persisted preference. Values range from 0 through 10 inclusive, with at most two decimal places. Invalid or missing percentages return 400; unauthenticated requests return 401. The owner is always the token subject; no request field or path selects another user. The preference persists on the business profile across sessions and devices.
+
+New profiles default to 1%. Migration V011 replaces the historical 0% default with 1% for existing profiles while retaining valid nonzero values. Orders snapshot the preference at acceptance, so changes affect new orders only. See the [Order API](../order-and-sell-service/api.md) for buffer rules and order types.
+
+`GET /api/users/me` retains `availableFunds` as total cash and adds `reservedCash` and `spendableFunds`. The latter equals total cash minus all open BUY reservations across the owner's accounts. Withdrawals enforce this spendable amount under the user lock. Holdings responses retain total `quantity` and add `reservedShares` and `availableQuantity`; valuations continue to use total cash and positions. Order and Sell alone writes reservations on orders.

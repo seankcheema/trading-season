@@ -38,6 +38,16 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest
 @ActiveProfiles("test")
 class OrderServiceTest {
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private app.order.execution.ExecutionQuoteSource quoteSource;
+
+    private Order submit(app.order.dto.OrderRequest request, java.util.UUID owner) {
+        org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(request.indicativePrice(), 1L,
+                        java.time.OffsetDateTime.parse("2026-01-05T15:00:00Z")));
+        return orderService.submitOrder(request, owner);
+    }
+
 
     private static final BigDecimal STARTING_FUNDS = new BigDecimal("100000.00");
 
@@ -134,8 +144,7 @@ class OrderServiceTest {
                 orderType,
                 new BigDecimal(quantity),
                 new BigDecimal(price),
-                new BigDecimal("2.0"),
-                UUID.randomUUID()
+                null, UUID.randomUUID()
         );
     }
 
@@ -162,7 +171,7 @@ class OrderServiceTest {
 
     @Test
     void buyOrderIsCreatedPendingAndEndsFilled() {
-        Order order = orderService.submitOrder(order("BUY", "100", "50.00"), user.getUserId());
+        Order order = submit(order("BUY", "100", "50.00"), user.getUserId());
 
         assertEquals(Order.STATUS_FILLED, order.getStatus());
         assertNull(order.getRejectionReason());
@@ -173,7 +182,7 @@ class OrderServiceTest {
 
     @Test
     void buyOrderDecreasesUsersAvailableFunds() {
-        orderService.submitOrder(order("BUY", "100", "50.00"), user.getUserId());
+        submit(order("BUY", "100", "50.00"), user.getUserId());
 
         assertEquals(0, new BigDecimal("95000.00").compareTo(availableFunds()));
         assertEquals(1, fillRepository.count());
@@ -185,7 +194,7 @@ class OrderServiceTest {
 
     @Test
     void buyOrderAddsToHoldings() {
-        orderService.submitOrder(order("BUY", "100", "50.00"), user.getUserId());
+        submit(order("BUY", "100", "50.00"), user.getUserId());
 
         Holding holding = holdingRepository
                 .findByAccountIdAndInstrumentId(account.getAccountId(), instrument.getInstrumentId())
@@ -198,7 +207,7 @@ class OrderServiceTest {
         user.setAvailableFunds(new BigDecimal("1000.00"));
         userRepository.save(user);
 
-        Order order = orderService.submitOrder(order("BUY", "100", "50.00"), user.getUserId());
+        Order order = submit(order("BUY", "100", "50.00"), user.getUserId());
 
         assertEquals(Order.STATUS_REJECTED, order.getStatus());
         assertTrue(order.getRejectionReason().contains("BR-09"));
@@ -213,7 +222,7 @@ class OrderServiceTest {
         user.setAvailableFunds(new BigDecimal("5000.00"));
         userRepository.save(user);
 
-        Order order = orderService.submitOrder(order("BUY", "100", "50.00"), user.getUserId());
+        Order order = submit(order("BUY", "100", "50.00"), user.getUserId());
 
         assertEquals(Order.STATUS_FILLED, order.getStatus());
         assertEquals(0, BigDecimal.ZERO.compareTo(availableFunds()));
@@ -223,7 +232,7 @@ class OrderServiceTest {
     void sellOrderAddsFundsBackToUser() {
         holdingOf("50");
 
-        Order order = orderService.submitOrder(order("SELL", "50", "100.00"), user.getUserId());
+        Order order = submit(order("SELL", "50", "100.00"), user.getUserId());
 
         assertEquals(Order.STATUS_FILLED, order.getStatus());
         assertEquals(0, new BigDecimal("105000.00").compareTo(availableFunds()));
@@ -238,7 +247,7 @@ class OrderServiceTest {
     void sellOrderWithoutEnoughHoldingsIsRejected() {
         holdingOf("10");
 
-        Order order = orderService.submitOrder(order("SELL", "50", "100.00"), user.getUserId());
+        Order order = submit(order("SELL", "50", "100.00"), user.getUserId());
 
         assertEquals(Order.STATUS_REJECTED, order.getStatus());
         assertNotNull(order.getRejectionReason());
@@ -254,11 +263,10 @@ class OrderServiceTest {
                 "BUY",
                 new BigDecimal("100"),
                 new BigDecimal("50.00"),
-                new BigDecimal("2.0"),
-                UUID.randomUUID()
+                null, UUID.randomUUID()
         );
 
-        Order order = orderService.submitOrder(request, user.getUserId());
+        Order order = submit(request, user.getUserId());
 
         assertNotNull(order);
         assertNotNull(order.getOrderId());
@@ -267,7 +275,7 @@ class OrderServiceTest {
         assertEquals("BUY", order.getOrderType());
         assertEquals(new BigDecimal("100"), order.getQuantity());
         assertEquals(new BigDecimal("50.00"), order.getIndicativePrice());
-        assertEquals(new BigDecimal("2.0"), order.getBufferPercent());
+        assertEquals(0, user.getExecutionBufferPercent().compareTo(order.getBufferPercent()));
         assertNotNull(order.getSubmittedAt());
     }
 
@@ -283,7 +291,7 @@ class OrderServiceTest {
                 UUID.randomUUID()
         );
 
-        Order order = orderService.submitOrder(request, user.getUserId());
+        Order order = submit(request, user.getUserId());
 
         assertNotNull(order);
         assertEquals(0, user.getExecutionBufferPercent().compareTo(order.getBufferPercent()));
@@ -298,11 +306,10 @@ class OrderServiceTest {
                 "BUY",
                 new BigDecimal("100"),
                 new BigDecimal("50.00"),
-                new BigDecimal("2.0"),
-                clientRef
+                null, clientRef
         );
 
-        Order firstOrder = orderService.submitOrder(request1, user.getUserId());
+        Order firstOrder = submit(request1, user.getUserId());
         Integer firstOrderId = firstOrder.getOrderId();
 
         // Submit with same client reference
@@ -312,11 +319,10 @@ class OrderServiceTest {
                 "BUY",
                 new BigDecimal("100"),
                 new BigDecimal("50.00"),
-                new BigDecimal("2.0"),
-                clientRef
+                null, clientRef
         );
 
-        Order secondOrder = orderService.submitOrder(request2, user.getUserId());
+        Order secondOrder = submit(request2, user.getUserId());
         assertEquals(firstOrderId, secondOrder.getOrderId());
     }
 
@@ -328,11 +334,10 @@ class OrderServiceTest {
                 "BUY",
                 new BigDecimal("100"),
                 new BigDecimal("50.00"),
-                new BigDecimal("2.0"),
-                UUID.randomUUID()
+                null, UUID.randomUUID()
         );
 
-        assertThrows(AccountNotFoundException.class, () -> orderService.submitOrder(request, user.getUserId()));
+        assertThrows(AccountNotFoundException.class, () -> submit(request, user.getUserId()));
     }
 
     @Test
@@ -343,11 +348,10 @@ class OrderServiceTest {
                 "BUY",
                 new BigDecimal("100"),
                 new BigDecimal("50.00"),
-                new BigDecimal("2.0"),
-                UUID.randomUUID()
+                null, UUID.randomUUID()
         );
 
-        assertThrows(InstrumentNotFoundException.class, () -> orderService.submitOrder(request, user.getUserId()));
+        assertThrows(InstrumentNotFoundException.class, () -> submit(request, user.getUserId()));
     }
 
     @Test
@@ -358,11 +362,10 @@ class OrderServiceTest {
                 "BUY",
                 new BigDecimal("200"),
                 new BigDecimal("75.50"),
-                new BigDecimal("3.0"),
-                UUID.randomUUID()
+                null, UUID.randomUUID()
         );
 
-        Order order = orderService.submitOrder(request, user.getUserId());
+        Order order = submit(request, user.getUserId());
 
         Optional<Order> retrieved = orderRepository.findById(order.getOrderId());
         assertTrue(retrieved.isPresent());
@@ -378,12 +381,11 @@ class OrderServiceTest {
                 "SELL",
                 new BigDecimal("75"),
                 new BigDecimal("80.00"),
-                new BigDecimal("2.5"),
-                UUID.randomUUID()
+                null, UUID.randomUUID()
         );
 
         OffsetDateTime beforeSubmit = OffsetDateTime.now();
-        Order order = orderService.submitOrder(request, user.getUserId());
+        Order order = submit(request, user.getUserId());
         OffsetDateTime afterSubmit = OffsetDateTime.now();
 
         assertNotNull(order.getSubmittedAt());
@@ -394,12 +396,12 @@ class OrderServiceTest {
     @Test
     void archivedAccountsRejectNewOrdersAndPreserveHistoryReplays() {
         OrderRequest original = order("BUY", "1", "10.00");
-        Order placed = orderService.submitOrder(original, user.getUserId());
+        Order placed = submit(original, user.getUserId());
         account.setStatus("ARCHIVED"); account.setArchivedAt(java.time.Instant.now());
         accountRepository.saveAndFlush(account);
         assertThrows(ForbiddenException.class,
-                () -> orderService.submitOrder(order("BUY", "1", "10.00"), user.getUserId()));
-        assertEquals(placed.getOrderId(), orderService.submitOrder(original, user.getUserId()).getOrderId());
+                () -> submit(order("BUY", "1", "10.00"), user.getUserId()));
+        assertEquals(placed.getOrderId(), submit(original, user.getUserId()).getOrderId());
         assertEquals(1, orderRepository.count());
     }
 
@@ -408,7 +410,7 @@ class OrderServiceTest {
         OrderRequest request = order("BUY", "1", "10.00");
 
         assertThrows(ForbiddenException.class,
-                () -> orderService.submitOrder(request, UUID.randomUUID()));
+                () -> submit(request, UUID.randomUUID()));
         // Refused before anything is written: no order row, so no PENDING to explain later.
         assertTrue(orderRepository.findAll().isEmpty());
     }
@@ -416,7 +418,7 @@ class OrderServiceTest {
     @Test
     void submitOrderRefusesAnotherUsersIdempotencyKeyBeforeAnsweringIt() {
         // The key belongs to this account, and its outcome is this owner's to read.
-        Order placed = orderService.submitOrder(order("BUY", "10", "20.00"), user.getUserId());
+        Order placed = submit(order("BUY", "10", "20.00"), user.getUserId());
         OrderRequest replay = new OrderRequest(
                 account.getAccountId(),
                 instrument.getInstrumentId(),
@@ -428,12 +430,12 @@ class OrderServiceTest {
         );
 
         assertThrows(ForbiddenException.class,
-                () -> orderService.submitOrder(replay, UUID.randomUUID()));
+                () -> submit(replay, UUID.randomUUID()));
     }
 
     @Test
     void submitOrderAnswersTheOwnersOwnReplayWithTheOriginalOutcome() {
-        Order placed = orderService.submitOrder(order("BUY", "10", "20.00"), user.getUserId());
+        Order placed = submit(order("BUY", "10", "20.00"), user.getUserId());
         OrderRequest replay = new OrderRequest(
                 account.getAccountId(),
                 instrument.getInstrumentId(),
@@ -444,9 +446,165 @@ class OrderServiceTest {
                 placed.getClientReference()
         );
 
-        Order replayed = orderService.submitOrder(replay, user.getUserId());
+        Order replayed = submit(replay, user.getUserId());
 
         assertEquals(placed.getOrderId(), replayed.getOrderId());
         assertEquals(1, orderRepository.findAll().size());
+    }
+
+    @Autowired private app.order.execution.OrderExecutionService execution;
+
+    private Order typed(String side, String type, String limit, String stop, String quote, String quantity) {
+        var request = new OrderRequest(account.getAccountId(), instrument.getInstrumentId(), side,
+                new BigDecimal(quantity), new BigDecimal("0.01"), null, UUID.randomUUID(), null, type,
+                limit == null ? null : new BigDecimal(limit), stop == null ? null : new BigDecimal(stop), 1L);
+        org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal(quote), 1L,
+                        OffsetDateTime.parse("2026-01-05T15:00:00Z")));
+        return orderService.submitOrder(request, user.getUserId());
+    }
+    private Order tick(Order order, String price, int seconds) {
+        return execution.evaluate(order.getOrderId(), instrument,
+                new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal(price), 1L, order.getReferenceAt().plusSeconds(seconds)));
+    }
+    @Test void limitReservesUntilEligibleThenFillsOnceAtTheMarketQuote() {
+        Order open = typed("BUY", "LIMIT", "95", null, "100", "10");
+        assertEquals("ACCEPTED", open.getStatus());
+        assertEquals(0, new BigDecimal("950").compareTo(open.getReservedCash()));
+        assertEquals(0, fillRepository.count());
+        assertEquals("ACCEPTED", tick(open, "96", 1).getStatus());
+        Order filled = tick(open, "95", 2);
+        assertEquals("FILLED", filled.getStatus());
+        assertEquals(0, new BigDecimal("95").compareTo(filled.getExecutionPrice()));
+        assertEquals(0, filled.getReservedCash().signum());
+        assertEquals("FILLED", tick(open, "94", 3).getStatus());
+        assertEquals(1, fillRepository.count());
+    }
+    @Test void stopGapRejectsAgainstSubmissionBoundAndReleasesReservation() {
+        Order open = typed("BUY", "STOP", null, "105", "100", "10");
+        assertEquals("ACCEPTED", open.getStatus());
+        Order rejected = tick(open, "106", 1);
+        assertEquals("REJECTED", rejected.getStatus());
+        assertEquals("EXECUTION_BUFFER_EXCEEDED", rejected.getRejectionCode());
+        assertNotNull(rejected.getTriggeredAt());
+        assertEquals(0, rejected.getReservedCash().signum());
+        assertEquals(0, fillRepository.count());
+    }
+    @Test void stopLimitLatchesAndCanFillAfterPriceRetreatsBelowTheStop() {
+        Order open = typed("BUY", "STOP_LIMIT", "102", "105", "100", "10");
+        Order triggered = tick(open, "106", 1);
+        assertEquals("ACCEPTED", triggered.getStatus());
+        assertNotNull(triggered.getTriggeredAt());
+        Order filled = tick(open, "102", 2);
+        assertEquals("FILLED", filled.getStatus());
+        assertEquals(triggered.getTriggeredAt(), filled.getTriggeredAt());
+    }
+    @Test void cancellationIsIdempotentAndTerminalOrdersCannotExecute() {
+        Order open = typed("BUY", "LIMIT", "95", null, "100", "10");
+        assertEquals("CANCELLED", orderService.cancel(open.getOrderId(), user.getUserId()).getStatus());
+        assertEquals("CANCELLED", orderService.cancel(open.getOrderId(), user.getUserId()).getStatus());
+        assertEquals("CANCELLED", tick(open, "90", 1).getStatus());
+        assertEquals(0, fillRepository.count());
+        assertThrows(AccountNotFoundException.class, () -> orderService.cancel(open.getOrderId(), UUID.randomUUID()));
+    }
+    @Test void preferenceUpdatesOnlyAffectNewOrdersAndNeverClientIndicativePrices() {
+        Order first = typed("BUY", "STOP", null, "105", "100", "1");
+        user.setExecutionBufferPercent(new BigDecimal("10"));
+        userRepository.save(user);
+        Order second = typed("BUY", "STOP", null, "105", "100", "1");
+        assertEquals(0, new BigDecimal("100").compareTo(first.getReferencePrice()));
+        assertEquals("REJECTED", tick(first, "106", 1).getStatus());
+        assertEquals("FILLED", tick(second, "106", 1).getStatus());
+    }
+    @Test void reservationsPreventOverspendingAcrossAccounts() {
+        user.setAvailableFunds(new BigDecimal("1000")); userRepository.save(user);
+        Order first = typed("BUY", "LIMIT", "95", null, "100", "10");
+        Account another = new Account(); another.setUserId(user.getUserId()); another.setOpenedDate(LocalDate.now());
+        another = accountRepository.save(another);
+        var request = new OrderRequest(another.getAccountId(), instrument.getInstrumentId(), "BUY", BigDecimal.ONE,
+                new BigDecimal("100"), null, UUID.randomUUID(), null, "LIMIT", new BigDecimal("95"), null, 1L);
+        Order second = orderService.submitOrder(request, user.getUserId());
+        assertEquals("ACCEPTED", first.getStatus()); assertEquals("REJECTED", second.getStatus());
+        orderService.cancel(first.getOrderId(), user.getUserId());
+        assertEquals(0, orderRepository.findReservations(user.getUserId()).size());
+    }
+    @Test void mismatchedSessionsAndRewindsDoNotExecute() {
+        Order open = typed("BUY", "LIMIT", "95", null, "100", "1");
+        var foreign = new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal("90"), 2L, open.getReferenceAt().plusSeconds(1));
+        assertEquals("ACCEPTED", execution.evaluate(open.getOrderId(), instrument, foreign).getStatus());
+        assertEquals("ACCEPTED", tick(open, "90", -1).getStatus());
+        assertEquals(0, fillRepository.count());
+    }
+    @Test void concurrentDuplicateSubmissionsReturnOneOrderAndOneFill() throws Exception {
+        OrderRequest request = order("BUY", "1", "50");
+        org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal("50"), 1L,
+                        OffsetDateTime.parse("2026-01-05T15:00:00Z")));
+        try (var workers = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var gate = new java.util.concurrent.CountDownLatch(1);
+            java.util.concurrent.Callable<Order> task = () -> { gate.await(); return orderService.submitOrder(request, user.getUserId()); };
+            var one = workers.submit(task); var two = workers.submit(task); gate.countDown();
+            assertEquals(one.get(10, java.util.concurrent.TimeUnit.SECONDS).getOrderId(), two.get(10, java.util.concurrent.TimeUnit.SECONDS).getOrderId());
+            assertEquals(1, orderRepository.count()); assertEquals(1, fillRepository.count());
+        }
+    }
+    @Test void simultaneousFillAndCancelHaveExactlyOneTerminalOutcome() throws Exception {
+        Order open = typed("BUY", "LIMIT", "95", null, "100", "1");
+        try (var workers = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var gate = new java.util.concurrent.CountDownLatch(1);
+            var fill = workers.submit(() -> { gate.await(); return tick(open, "95", 1); });
+            var cancel = workers.submit(() -> { gate.await(); try { return orderService.cancel(open.getOrderId(), user.getUserId()); }
+                catch (org.springframework.web.server.ResponseStatusException conflict) { assertEquals(409, conflict.getStatusCode().value()); return null; } });
+            gate.countDown(); fill.get(10, java.util.concurrent.TimeUnit.SECONDS); cancel.get(10, java.util.concurrent.TimeUnit.SECONDS);
+            Order terminal = orderRepository.findById(open.getOrderId()).orElseThrow();
+            assertTrue(java.util.Set.of("FILLED", "CANCELLED").contains(terminal.getStatus()));
+            assertEquals("FILLED".equals(terminal.getStatus()) ? 1 : 0, fillRepository.count());
+            assertEquals(0, terminal.getReservedCash().signum());
+        }
+    }
+
+    @Test void sellLimitAndStopsReserveSharesAndUseInclusiveBounds() {
+        holdingRepository.save(holdingOf("10"));
+        Order limit = typed("SELL", "LIMIT", "105", null, "100", "3");
+        assertEquals("ACCEPTED", limit.getStatus());
+        assertEquals(0, new BigDecimal("3").compareTo(limit.getReservedShares()));
+        assertEquals("ACCEPTED", tick(limit, "104", 1).getStatus());
+        assertEquals("FILLED", tick(limit, "105", 2).getStatus());
+        Order stop = typed("SELL", "STOP", null, "95", "100", "2");
+        assertEquals("FILLED", tick(stop, "95", 1).getStatus());
+        Order gap = typed("SELL", "STOP", null, "95", "100", "2");
+        assertEquals("REJECTED", tick(gap, "94.999999", 1).getStatus());
+        Order stopLimit = typed("SELL", "STOP_LIMIT", "96", "95", "100", "2");
+        assertEquals("ACCEPTED", tick(stopLimit, "94", 1).getStatus());
+        assertEquals("FILLED", tick(stopLimit, "96", 2).getStatus());
+    }
+    @Test void pendingSellReservationsPreventOversellingAndCancellationReleasesThem() {
+        holdingRepository.save(holdingOf("5"));
+        Order first = typed("SELL", "LIMIT", "110", null, "100", "4");
+        Order second = typed("SELL", "LIMIT", "110", null, "100", "2");
+        assertEquals("ACCEPTED", first.getStatus()); assertEquals("REJECTED", second.getStatus());
+        orderService.cancel(first.getOrderId(), user.getUserId());
+        assertEquals("ACCEPTED", typed("SELL", "LIMIT", "110", null, "100", "5").getStatus());
+    }
+    @Test void concurrentTickDeliveryCannotCreateDuplicateFills() throws Exception {
+        Order open = typed("BUY", "LIMIT", "95", null, "100", "1");
+        try (var workers = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var gate = new java.util.concurrent.CountDownLatch(1);
+            java.util.concurrent.Callable<Order> task = () -> { gate.await(); return tick(open, "95", 1); };
+            var one = workers.submit(task); var two = workers.submit(task); gate.countDown();
+            assertEquals("FILLED", one.get(10, java.util.concurrent.TimeUnit.SECONDS).getStatus());
+            assertEquals("FILLED", two.get(10, java.util.concurrent.TimeUnit.SECONDS).getStatus());
+            assertEquals(1, fillRepository.count());
+        }
+    }
+
+    @Test void removingCredentialsRejectsAnOpenOrderAndReleasesItsReservation() {
+        Order open = typed("BUY", "LIMIT", "95", null, "100", "1");
+        jdbcTemplate.update("DELETE FROM user_accounts WHERE user_id = ?", user.getUserId());
+        Order rejected = tick(open, "95", 1);
+        assertEquals("REJECTED", rejected.getStatus());
+        assertEquals("Credential account does not exist", rejected.getRejectionReason());
+        assertEquals(0, rejected.getReservedCash().signum());
+        assertEquals(0, fillRepository.count());
     }
 }

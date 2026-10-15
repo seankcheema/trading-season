@@ -32,6 +32,7 @@ code is non-zero on the first failed step.
 """
 
 import json
+from decimal import Decimal, ROUND_HALF_UP
 import logging
 import sys
 import threading
@@ -56,7 +57,6 @@ ADMIN_EMAIL = 'reporting-admin@example.com'
 ADMIN_PASSWORD = 'admin123'
 OPENING_FUNDS = 50000.00
 ORDER_QUANTITY = 10
-ORDER_PRICE = 25.00
 
 # The chart library comments on string axis labels at INFO level; keep the
 # checklist readable.
@@ -171,11 +171,23 @@ def main():
     account_id = accounts[0]['accountId']
     say('register trader profile', f'profile created, default account {account_id}')
 
+    status, settings = call('GET', f'{HOLDINGS}/api/users/me/execution-settings', token=token)
+    if status != 200 or settings.get('executionBufferPercent') != 1:
+        fail('default execution buffer', f'new trader preference was {status}: {settings}')
+    status, settings = call('PUT', f'{HOLDINGS}/api/users/me/execution-settings', {'executionBufferPercent': 2}, token)
+    if status != 200 or settings.get('executionBufferPercent') != 2:
+        fail('save execution buffer', f'preference update was {status}: {settings}')
+    say('save execution buffer', 'default 1% changed to persisted 2% for this trader')
+    status, snapshot = call('GET', f'{HOLDINGS}/api/market/snapshot')
+    if status != 200:
+        fail('market quote', f'authoritative snapshot was {status}: {snapshot}')
+    quotes = {stock['symbol']: stock['price'] for stock in snapshot['stocks']}
     status, instruments = call('GET', f'{ORDERS}/api/instruments', token=token)
-    tradable = [i for i in instruments if i.get('tradable')] if status == 200 else []
+    tradable = [i for i in instruments if i.get('tradable') and i.get('simulatedStockSymbol') in quotes] if status == 200 else []
     if not tradable:
         fail('instrument', f'no tradable instrument; order-and-sell-service answered {status}: {instruments}')
     instrument = tradable[0]
+    displayed_price = quotes[instrument['simulatedStockSymbol']]
     say('instrument', f"{instrument['ticker']} (id {instrument['instrumentId']}) is tradable")
 
     stream = StreamReader(token)
@@ -187,11 +199,14 @@ def main():
 
     status, order = call('POST', f'{ORDERS}/api/orders', {
         'accountId': account_id, 'instrumentId': instrument['instrumentId'], 'orderType': 'BUY',
-        'quantity': ORDER_QUANTITY, 'indicativePrice': ORDER_PRICE, 'clientReference': str(uuid.uuid4())}, token)
+        'quantity': ORDER_QUANTITY, 'executionType': 'MARKET', 'indicativePrice': displayed_price,
+        'sessionId': snapshot['sessionId'], 'clientReference': str(uuid.uuid4())}, token)
     if status != 201 or order.get('status') != 'FILLED':
         fail('place order', f'order-and-sell-service answered {status}: {order}')
+    if order.get('bufferPercent') != 2 or order.get('referencePrice') is None:
+        fail('order protection snapshot', f'missing persisted execution protection: {order}')
     order_id = order['orderId']
-    say('place order', f'order {order_id}: BUY 10 {instrument["ticker"]} at 25.00, status {order["status"]}')
+    say('place order', f'order {order_id}: BUY 10 {instrument["ticker"]} at {order["executionPrice"]}, status {order["status"]}')
     print(f'[KAFKA-E2E] orderId={order_id} accountId={account_id}', flush=True)
 
     stream.join(WAIT_SECONDS)
@@ -285,7 +300,8 @@ def main():
     admin_token = body['accessToken']
     say('admin sign-in', f'{ADMIN_EMAIL} signed in with the ADMIN role')
 
-    funds_left = OPENING_FUNDS - ORDER_QUANTITY * ORDER_PRICE
+    settled_cost = (Decimal(str(order['executionPrice'])) * ORDER_QUANTITY).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    funds_left = float(Decimal(str(OPENING_FUNDS)) - settled_cost)
 
     def customer_in_console():
         status, listed = call('GET', f'{REPORTING}/api/reporting/customers', token=admin_token)

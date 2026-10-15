@@ -7,6 +7,7 @@ const USD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' 
 // When an order took effect: the selected replay time, else when the backend resolved it, else
 // (for an order still pending) when it was submitted.
 export function orderDate(order: OrderResult): string {
+  if (order.evaluatedAt && Number.isFinite(Date.parse(order.evaluatedAt)) && order.status === 'FILLED') return order.evaluatedAt;
   if (order.simulatedAt && Number.isFinite(Date.parse(order.simulatedAt))) {
     return order.simulatedAt;
   }
@@ -30,9 +31,11 @@ export function orderActivity(
     kind: 'trade',
     key: `order-${order.orderId}`,
     date: orderDate(order),
-    value: order.quantity * order.indicativePrice,
+    orderId: order.orderId,
+    accountId: order.accountId,
+    value: order.quantity * (order.executionPrice ?? order.indicativePrice),
     label: orderSymbol(order, catalogue),
-    detail: `${order.quantity} @ ${USD.format(order.indicativePrice)}`,
+    detail: `${order.quantity} @ ${USD.format(order.executionPrice ?? order.indicativePrice)}${order.executionType ? ` · ${order.executionType.replaceAll('_', '-')}` : ''}${order.triggeredAt ? ' · Triggered' : ''}`,
     type: order.orderType,
     status: order.status,
     positive: order.orderType === 'SELL',
@@ -99,7 +102,7 @@ export function orderHistoryRow(
     status: order.status,
     side: order.orderType === 'BUY' ? 'Buy' : 'Sell',
     shares: order.quantity,
-    price: order.indicativePrice,
+    price: order.executionPrice ?? order.indicativePrice,
     value: item.value,
     positive: item.positive,
     rejectionReason: order.rejectionReason,
