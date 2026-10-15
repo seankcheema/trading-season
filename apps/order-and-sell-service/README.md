@@ -33,7 +33,7 @@ Behavior worth knowing:
 - A caller who has not accepted the platform terms in force is 403 with `Accept the platform terms before placing an order`, and nothing is recorded for the attempt. Acceptances are recorded by [Holdings and Trade Service](../holdings-and-trade-service/README.md) in `terms_acceptances`, which this service only reads; the version in force is `TermsAcceptance.CURRENT_VERSION` and must match that service's. A resubmission of an order already on record still returns it.
 - Cash belongs to the user, not the account: a fill moves `users.available_funds`. Orders fill at `indicativePrice`.
 - `simulatedAt` records the replay time chosen in the UI. `submittedAt`, `resolvedAt`, and fill times are always real server times.
-- `GET /api/orders/stream` needs the bearer header, which the browser's native `EventSource` cannot send; use `fetch` or an SSE client that sets headers. Only the caller's own order events are pushed.
+- `GET /api/orders/stream` needs the bearer header, which the browser's native `EventSource` cannot send; the Client UI reads it through `fetch` with the header set (see [its README](../client-ui/README.md#order-status)). Only the caller's own order events are pushed.
 - Errors use `{"error": "..."}`.
 
 ## Design

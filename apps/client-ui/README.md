@@ -13,6 +13,14 @@ Live prices, candles, and the tick stream come from the Java market API. Metrics
 
 A user who has not accepted the platform terms in force sees them on the dashboard and on the market page in a dialog that cannot be dismissed, with everything behind it inert. They sign by typing their name and accept, or sign out. The wording and its version are in [terms-content.ts](src/app/dashboard/terms/terms-content.ts); the version must match the one [Holdings and Trade Service](../holdings-and-trade-service/README.md) and [Order and Sell Service](../order-and-sell-service/README.md) have in force, which a test in each of them checks. After changing the wording, run `npm --prefix apps/client-ui run terms:pdf` to regenerate [the PDF](../../docs/terms-and-conditions.pdf) from it.
 
+## Order status
+
+An order's status changes on screen without a refresh (BR-07). While signed in, [OrderService](src/app/dashboard/orders/order.service.ts) holds `GET /api/orders/stream` open and applies each `order-status` event the [Order and Sell Service](../order-and-sell-service/README.md) pushes from Kafka: the order's row moves to `ACCEPTED`, `FILLED` or `REJECTED` the moment the backend commits it, and a fill triggers the same cash and holdings refresh the dashboard already does after a submission. The stream needs the bearer header, which the browser's `EventSource` cannot send, so the service reads it through `fetch` and the same token renewal the HTTP interceptor uses.
+
+A status never moves backwards, so an `ACCEPTED` event arriving after the submission response already said `FILLED` changes nothing. An event for an order the page has not loaded re-reads the order history. If the stream drops, the service reopens it after 2 s, doubling to a 10 s cap, and re-reads the history once on reconnection because the backend replays nothing. The stream closes on sign-out and reopens on the next sign-in. The Nginx image turns proxy buffering off for `/api/orders` so frames are forwarded as they arrive.
+
+The dashboard and market page show `Accepted` in blue for an order that is committed on record but whose execution did not complete; it is the one state a submission response can carry besides `FILLED` and `REJECTED`.
+
 ## Architecture
 
 ```mermaid
