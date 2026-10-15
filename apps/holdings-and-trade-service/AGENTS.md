@@ -24,6 +24,8 @@ Order creation, validation and execution live in [Order and Sell Service](../ord
 - `instrument/` - Read access to tradable asset definitions, for naming a holding
 - `market/` - Shared market data services
 
+Classes both Java services need (the market feed, token verification wiring, the base classes of shared entities) live in [packages/trading-java-common](../../packages/trading-java-common/README.md), not here. Change them there and run both services' tests.
+
 ## Architecture
 
 - Shares the database schema with Order and Sell Service. Each service maps only the tables it reads, so the same table can be mapped in both.

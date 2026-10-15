@@ -3,15 +3,19 @@
 # Naming this stage "build" lets the runtime stage reference it with COPY --from=build.
 FROM maven:3.9-eclipse-temurin-21 AS build
 
-WORKDIR /app
+# The build context is the repository root, because the service compiles the
+# classes in packages/trading-java-common with its own. The directory layout is
+# kept so the pom's ../../packages path resolves the same as it does locally.
+WORKDIR /app/apps/holdings-and-trade-service
 
 # The BuildKit cache mount keeps the Maven repository between builds without
 # storing it in an image layer, so a pom.xml change downloads only the new
 # artifacts. Both Java services share the mount; `locked` stops their parallel
 # Compose builds from writing to it at the same time. Resolving through
 # `package` alone skips the site and report plugins that go-offline fetched.
-COPY pom.xml .
-COPY src/ src/
+COPY apps/holdings-and-trade-service/pom.xml ./
+COPY apps/holdings-and-trade-service/src/ src/
+COPY packages/trading-java-common/ /app/packages/trading-java-common/
 RUN --mount=type=cache,target=/root/.m2,sharing=locked     mvn -B package -DskipTests
 
 # ── Stage 2: Runtime ───────────────────────────────────────────────────────────
@@ -30,7 +34,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
 
 # Copy only the compiled jar from the build stage. Nothing else.
-COPY --from=build /app/target/holdings-and-trade-service.jar app.jar
+COPY --from=build /app/apps/holdings-and-trade-service/target/holdings-and-trade-service.jar app.jar
 
 EXPOSE 8081
 ENTRYPOINT ["java", "-jar", "app.jar"]

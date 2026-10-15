@@ -1,9 +1,6 @@
 package app.config;
 
 import io.swagger.v3.oas.models.OpenAPI;
-import io.swagger.v3.oas.models.info.Info;
-import io.swagger.v3.oas.models.security.SecurityScheme;
-import io.swagger.v3.oas.models.security.SecurityRequirement;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -24,20 +21,9 @@ public class OpenApiConfig {
      */
     @Bean
     public OpenAPI customOpenAPI() {
-        return new OpenAPI()
-                .info(new Info()
-                        .title("Order and Sell Service API")
-                        .description("Manages order placement, validation, and execution for the DuaLEAPa platform. "
-                                + "Publishes one message per committed order status change to the Kafka topic trade-events "
-                                + "and streams those changes to the owning trader over GET /api/orders/stream.")
-                        .version("1.0"))
-                .addSecurityItem(new SecurityRequirement().addList("bearerAuth"))
-                .components(new io.swagger.v3.oas.models.Components()
-                        .addSecuritySchemes("bearerAuth",
-                                new SecurityScheme()
-                                        .type(SecurityScheme.Type.HTTP)
-                                        .scheme("bearer")
-                                        .bearerFormat("JWT")
-                                        .description("JWT access token issued by Auth Service")));
+        return OpenApiSupport.describe("Order and Sell Service API",
+                "Manages order placement, validation, and execution for the DuaLEAPa platform. "
+                        + "Publishes one message per committed order status change to the Kafka topic trade-events "
+                        + "and streams those changes to the owning trader over GET /api/orders/stream.");
     }
 }

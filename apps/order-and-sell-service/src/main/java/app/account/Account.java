@@ -1,15 +1,7 @@
 package app.account;
 
-import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.UUID;
 
 /**
  * A brokerage/child account: the unit orders and holdings attach to/
@@ -21,11 +13,9 @@ import java.util.UUID;
  * matching ledger row. Since KAN-93 order execution does not move it: buy and
  * sell orders debit and credit the owning user's {@code availableFunds}.
  */
-
 @Entity
 @Table(name = "accounts")
-
-public class Account {
+public class Account extends AccountBase {
 
     /** Creates an instance of this class. */
     public Account() {

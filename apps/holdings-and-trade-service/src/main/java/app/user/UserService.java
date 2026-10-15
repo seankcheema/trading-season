@@ -12,7 +12,7 @@ import java.util.UUID;
  * acceptance of the platform terms.
  */
 @Service
-public class UserService {
+public class UserService extends UserLookupService {
 
     /**
      * The version of the platform terms in force, named by its effective date.
@@ -37,8 +37,7 @@ public class UserService {
      */
     public UserService(UserRepository userRepository, UserAccountRepository userAccountRepository,
                        TermsAcceptanceRepository termsAcceptanceRepository) {
-        this.userRepository = userRepository;
-        this.userAccountRepository = userAccountRepository;
+        super(userRepository, userAccountRepository);
         this.termsAcceptanceRepository = termsAcceptanceRepository;
     }
 

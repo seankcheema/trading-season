@@ -2,14 +2,7 @@ package app.account;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.UUID;
 
 /**
  * A brokerage/child account: the unit orders and holdings attach to/
@@ -17,14 +10,15 @@ import java.util.UUID;
  * Represents an account with an ID, name, balance, and ACTIVE or ARCHIVED lifecycle.
  * Archived accounts retain their identity and history but reject new financial activity.
  * <p>{@code cashBalance} is a cache (BR-10) reconciled against
- * {@code cash_transactions} - order execution must update it by 
+ * {@code cash_transactions} - order execution must update it by
  * inserting a ledger row, never by writing this field directly.
  */
-
 @Entity
 @Table(name = "accounts")
+public class Account extends AccountBase {
 
-public class Account {
+    @Column(nullable = false)
+    private String name;
 
     /** Creates an instance of this class. */
     public Account() {
@@ -169,24 +163,4 @@ public class Account {
     public void setName(String name) {
         this.name = name;
     }
-
-    /**
-     * Returns the currency.
-     *
-     * @return the currency
-     */
-    public String getCurrency() {
-        return currency;
-    }
-
-    /**
-     * Sets the currency.
-     *
-     * @param currency the currency
-     */
-    public void setCurrency(String currency) {
-        this.currency = currency;
-    }
 }
-
-

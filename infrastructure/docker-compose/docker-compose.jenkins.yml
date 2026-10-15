@@ -203,8 +203,9 @@ services:
   # Holdings and Trade Service
   holdings-and-trade-service:
     build:
-      context: ../../apps/holdings-and-trade-service
-      dockerfile: Dockerfile
+      # Repository root: the service also needs packages/trading-java-common.
+      context: ../..
+      dockerfile: apps/holdings-and-trade-service/Dockerfile
     container_name: holdings-and-trade-service
     ports:
       - "8082:8082"
@@ -230,8 +231,9 @@ services:
   # Order and Sell Service
   order-and-sell-service:
     build:
-      context: ../../apps/order-and-sell-service
-      dockerfile: Dockerfile
+      # Repository root: the service also needs packages/trading-java-common.
+      context: ../..
+      dockerfile: apps/order-and-sell-service/Dockerfile
     container_name: order-and-sell-service
     ports:
       - "8081:8081"
