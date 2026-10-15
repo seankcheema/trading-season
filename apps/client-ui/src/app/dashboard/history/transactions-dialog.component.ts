@@ -336,20 +336,30 @@ export class TransactionsDialogComponent implements OnInit {
   }
 
   protected auditMarkerClass(entry: OrderAuditEntry): string {
-    if (entry.eventType === 'FILLED') return 'bg-[#2ee87b]';
-    if (entry.eventType === 'REJECTED' || entry.eventType === 'EXECUTION_FAILED') return 'bg-[#fb7185]';
-    if (entry.eventType === 'PENDING') return 'bg-[#fac320]';
+    if (entry.eventType === 'FILLED') {
+      return 'bg-[#2ee87b]';
+    }
+    if (entry.eventType === 'REJECTED' || entry.eventType === 'EXECUTION_FAILED') {
+      return 'bg-[#fb7185]';
+    }
+    if (entry.eventType === 'PENDING') {
+      return 'bg-[#fac320]';
+    }
     return 'bg-[#16b9f2]';
   }
 
   protected toggleAudit(row: HistoryRow): void {
-    if (row.orderId === null) return;
+    if (row.orderId === null) {
+      return;
+    }
     if (this.expandedOrderId() === row.orderId) {
       this.expandedOrderId.set(null);
       return;
     }
     this.expandedOrderId.set(row.orderId);
-    if (this.auditEntries().has(row.orderId) || this.auditLoading().has(row.orderId)) return;
+    if (this.auditEntries().has(row.orderId) || this.auditLoading().has(row.orderId)) {
+      return;
+    }
     this.auditLoading.update((ids) => new Set(ids).add(row.orderId!));
     this.orderService
       .orderAudit(row.orderId)

@@ -402,6 +402,26 @@ pipeline {
                     // server under Manage Jenkins > System; the project key and
                     // name are in sonar-project.properties.
                     withSonarQubeEnv('SonarQube') {
+                        // The SonarQube container shares this host's Docker daemon
+                        // and may be stopped; start it, then wait for it to be ready.
+                        sh '''
+                            set -eu
+                            if [ "$(docker inspect --format '{{.State.Running}}' sonarqube 2>/dev/null || echo missing)" != "true" ]; then
+                                echo "SonarQube container is not running; starting it."
+                                docker start sonarqube
+                            fi
+                            STATUS_URL="${SONAR_HOST_URL:-http://localhost:9000}/api/system/status"
+                            for attempt in $(seq 1 60); do
+                                if curl --silent --max-time 10 "$STATUS_URL" | grep -q '"status":"UP"'; then
+                                    echo "SonarQube is up."
+                                    exit 0
+                                fi
+                                echo "Waiting for SonarQube to start (attempt $attempt of 60)."
+                                sleep 5
+                            done
+                            echo "SonarQube did not report UP within 5 minutes." >&2
+                            exit 1
+                        '''
                         sh """
                             set -eu
                             node infrastructure/jenkins/jacoco-to-sonar-coverage.mjs \
@@ -457,82 +477,102 @@ pipeline {
             environment {
                 CI = 'true'
             }
-            steps {
-                script {
-                    env.E2E_TEST_CONTAINER = 'trading-season-e2e-' + sh(
-                        script: 'printf %s "$BUILD_TAG" | sha256sum | cut -c1-16',
-                        returnStdout: true
-                    ).trim()
+            stages {
+                stage('Prepare Playwright Image') {
+                    steps {
+                        script {
+                            env.E2E_TEST_CONTAINER = 'trading-season-e2e-' + sh(
+                                script: 'printf %s "$BUILD_TAG" | sha256sum | cut -c1-16',
+                                returnStdout: true
+                            ).trim()
+                            // The suite stages below start from this name.
+                            env.PW_IMAGE = 'trading-season-playwright:' + sh(
+                                script: '''cd apps/client-ui && node -p "require('@playwright/test/package.json').version"''',
+                                returnStdout: true
+                            ).trim() + '-python3'
+                        }
+                        // Chromium needs system libraries the agent lacks and the
+                        // jenkins user cannot install, so the suites run in a slim
+                        // Chromium-only image tagged with the @playwright/test version.
+                        // Python is in it too, for the Reporting Service.
+                        sh '''
+                            set -eu
+                            PW_VERSION="$(cd apps/client-ui && node -p "require('@playwright/test/package.json').version")"
+                            REPORTING_PW_VERSION="$(cd apps/reporting-ui && node -p "require('@playwright/test/package.json').version")"
+                            if [ "$PW_VERSION" != "$REPORTING_PW_VERSION" ]; then
+                                echo "Client UI uses @playwright/test $PW_VERSION and Reporting UI $REPORTING_PW_VERSION; the image holds browsers for one version, so they must match." >&2
+                                exit 1
+                            fi
+                            test "$PW_IMAGE" = "trading-season-playwright:${PW_VERSION}-python3"
+                            if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
+                                docker build --build-arg PLAYWRIGHT_VERSION="$PW_VERSION" \
+                                    -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
+                            fi
+                        '''
+                    }
                 }
-                // Two suites share one image: the Client UI's, against an in-memory
-                // API stand-in, and the Reporting UI's, against the real Reporting
-                // Service. Both always run, so a failure in the first does not hide
-                // the second; the stage fails if either did.
-                sh '''
-                    set -eu
-                    # Chromium needs system libraries the agent lacks and the
-                    # jenkins user cannot install, so the suites run in a slim
-                    # Chromium-only image tagged with the @playwright/test version.
-                    # Python is in it too, for the Reporting Service.
-                    PW_VERSION="$(cd apps/client-ui && node -p "require('@playwright/test/package.json').version")"
-                    REPORTING_PW_VERSION="$(cd apps/reporting-ui && node -p "require('@playwright/test/package.json').version")"
-                    if [ "$PW_VERSION" != "$REPORTING_PW_VERSION" ]; then
-                        echo "Client UI uses @playwright/test $PW_VERSION and Reporting UI $REPORTING_PW_VERSION; the image holds browsers for one version, so they must match." >&2
-                        exit 1
-                    fi
-                    PW_IMAGE="trading-season-playwright:${PW_VERSION}-python3"
-                    if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
-                        docker build --build-arg PLAYWRIGHT_VERSION="$PW_VERSION" \
-                            -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
-                    fi
-                    # The workspace (with node_modules) and the Jenkins Node are
-                    # mounted in. --user keeps output owned by jenkins and
-                    # --ipc=host avoids Chromium crashes from the small /dev/shm.
-                    NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
-                    client_status=0
-                    reporting_status=0
-
-                    # The API is stubbed, so no backend or database is needed.
-                    docker run --rm --name "$E2E_TEST_CONTAINER" \
-                        --user "$(id -u):$(id -g)" \
-                        --ipc=host \
-                        -v "$WORKSPACE:/workspace" \
-                        -v "$NODE_HOME:/opt/node:ro" \
-                        -e HOME=/tmp \
-                        -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-                        -e CI=true \
-                        -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
-                        -w /workspace/apps/client-ui \
-                        "$PW_IMAGE" \
-                        npm run e2e || client_status=$?
-
-                    # The suite starts the real Reporting Service, the Auth Service
-                    # stand-in and the built app inside this one container, on
-                    # loopback ports of its own. The service's requirements go into
-                    # a venv first, as in the Reporting Service Tests stage; Kafka and
-                    # the database are not needed, the service reads seeded files.
-                    docker run --rm --name "$E2E_TEST_CONTAINER" \
-                        --user "$(id -u):$(id -g)" \
-                        --ipc=host \
-                        -v "$WORKSPACE:/workspace" \
-                        -v "$NODE_HOME:/opt/node:ro" \
-                        -e HOME=/tmp \
-                        -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-                        -e CI=true \
-                        -e PYTHONDONTWRITEBYTECODE=1 \
-                        -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
-                        -e E2E_PYTHON=/tmp/reporting-venv/bin/python \
-                        -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
-                        -w /workspace/apps/reporting-ui \
-                        "$PW_IMAGE" \
-                        sh -c "python3 -m venv /tmp/reporting-venv && /tmp/reporting-venv/bin/pip install -q -r /workspace/apps/reporting-service/requirements.txt && npm run e2e" \
-                        || reporting_status=$?
-
-                    echo "Client UI end-to-end exit status: $client_status; Reporting UI: $reporting_status"
-                    if [ "$client_status" -ne 0 ] || [ "$reporting_status" -ne 0 ]; then
-                        exit 1
-                    fi
-                '''
+                // The suites run side by side in separate containers, each with its
+                // own network namespace, so their loopback ports cannot collide.
+                // Neither stops the other on failure (no failFast), so a failure in
+                // one does not hide the second; the stage fails if either did.
+                stage('Suites') {
+                    parallel {
+                        stage('Client UI E2E') {
+                            steps {
+                                // The API is stubbed, so no backend or database is needed.
+                                // The workspace (with node_modules) and the Jenkins Node
+                                // are mounted in. --user keeps output owned by jenkins
+                                // and --ipc=host avoids Chromium crashes from the small
+                                // /dev/shm.
+                                sh '''
+                                    set -eu
+                                    NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
+                                    docker run --rm --name "${E2E_TEST_CONTAINER}-client" \
+                                        --user "$(id -u):$(id -g)" \
+                                        --ipc=host \
+                                        -v "$WORKSPACE:/workspace" \
+                                        -v "$NODE_HOME:/opt/node:ro" \
+                                        -e HOME=/tmp \
+                                        -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+                                        -e CI=true \
+                                        -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
+                                        -w /workspace/apps/client-ui \
+                                        "$PW_IMAGE" \
+                                        npm run e2e
+                                '''
+                            }
+                        }
+                        stage('Reporting UI E2E') {
+                            steps {
+                                // The suite starts the real Reporting Service, the Auth
+                                // Service stand-in and the built app inside this one
+                                // container, on loopback ports of its own. The service's
+                                // requirements go into a venv first, as in the Reporting
+                                // Service Tests stage; Kafka and the database are not
+                                // needed, the service reads seeded files.
+                                sh '''
+                                    set -eu
+                                    NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
+                                    docker run --rm --name "${E2E_TEST_CONTAINER}-reporting" \
+                                        --user "$(id -u):$(id -g)" \
+                                        --ipc=host \
+                                        -v "$WORKSPACE:/workspace" \
+                                        -v "$NODE_HOME:/opt/node:ro" \
+                                        -e HOME=/tmp \
+                                        -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+                                        -e CI=true \
+                                        -e PYTHONDONTWRITEBYTECODE=1 \
+                                        -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
+                                        -e E2E_PYTHON=/tmp/reporting-venv/bin/python \
+                                        -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
+                                        -w /workspace/apps/reporting-ui \
+                                        "$PW_IMAGE" \
+                                        sh -c "python3 -m venv /tmp/reporting-venv && /tmp/reporting-venv/bin/pip install -q -r /workspace/apps/reporting-service/requirements.txt && npm run e2e"
+                                '''
+                            }
+                        }
+                    }
+                }
             }
             post {
                 always {
@@ -852,7 +892,8 @@ pipeline {
                             fi
                         }
                         if [ -n "${E2E_TEST_CONTAINER:-}" ]; then
-                            remove_resource container "$E2E_TEST_CONTAINER" -f
+                            remove_resource container "${E2E_TEST_CONTAINER}-client" -f
+                            remove_resource container "${E2E_TEST_CONTAINER}-reporting" -f
                         fi
                         if [ -n "${MARKET_TEST_TAG:-}" ]; then
                             remove_resource container "${MARKET_TEST_TAG}-db" -f
