@@ -99,6 +99,15 @@ This works better because calm and stormy periods tend to last for weeks. A mode
 
 What it means: the model is a reasonable gauge of **how much** AAPL is likely to move, not **which way**. That is useful for risk (for example, sizing a position smaller before a likely big-move day), but it is not a buy or sell signal.
 
+## A calmer stock: SPY
+
+**`symbol_comparison.png`**: the same models, with the same settings, run on SPY (an S&P 500 index fund, which moves about 40% less than AAPL each day). Each bar is the six-year walk-forward average; the dashed line is that stock's bar to clear.
+
+- **Direction (left):** still a coin flip on SPY. The LSTM scored 54.6% against 54.5% for "always up".
+- **Volatility (right):** better on SPY. The LSTM averaged 64.1% against a bar of 59.1%, and was at least 58.8% in every year. Its probabilities improved on the historical rate by about twice as much as on AAPL (Brier skill 0.10 against 0.05).
+
+The pattern held: a calmer, broader market is easier to read for how much it will move, not which way. A simple logistic regression did almost as well (63.7%), so most of the skill comes from the inputs, not the LSTM.
+
 ## The earlier return model
 
 **`lstm_loss.png`**: the same learning chart for the LSTM that predicts the size of tomorrow's move.

@@ -49,6 +49,10 @@ A second track predicts how big tomorrow's move will be instead of its direction
 
 `scripts/extra-volatility-experiments.py` compares `VOLATILITY_FEATURES` with `EXTENDED_VOLATILITY_FEATURES`, which add the intraday range, its 10-day mean, and 20- and 60-day volatility from `data.add_range_features`. By default it scores validation with `EXPERIMENT_SEEDS` seeds and their average; `--walk-forward` retrains each walk-forward year. The extended inputs improved validation (63.3% against about 61%) but not walk-forward (59.5% against 59.8%), so they are not adopted.
 
+## Other symbols
+
+`scripts/compare-symbols.py` runs both tracks on every symbol in `COMPARISON_SYMBOLS` (AAPL and SPY, whose snapshots are already saved) with the settings chosen for AAPL, so nothing is retuned per symbol. When SPY is the stock being predicted, `symbols.inputs_for` drops the SPY market columns, which would copy its own returns. It scores validation and walk-forward only and writes `reports/symbol_comparison.csv` and `.png`; `--no-lstm` runs the regressions alone in seconds. Another symbol needs its own one-time snapshot added to `SYMBOL_CSVS`.
+
 `market-conditions.py` is descriptive: the next-day up-rate and mean next-day return after conditions such as a 2% drop or high volatility, in training and validation side by side, with thresholds cut from training rows only. It also writes the lag 1 to 5 autocorrelation of daily returns, the standard mean-reversion check. It never reads the test years.
 
 ## Data and splits
@@ -100,6 +104,7 @@ Run from `apps/stock-forecast` with the virtual environment active.
 | 8 | `python scripts/0004-walk-forward.py --with-lstm --with-direction-lstm` | `reports/walk_forward.csv`, chart | Week 3 |
 | 9 | `python scripts/0003-train-lstm.py --task volatility --sweep` | `models/lstm-volatility/`, `reports/volatility_results.csv`, volatility confidence, probability and loss charts | Week 3 |
 | 10 | `python scripts/0004-walk-forward.py --task volatility --with-volatility-lstm` | `reports/walk_forward_volatility.csv`, chart | Week 3 |
+| 10b | `python scripts/compare-symbols.py` | `reports/symbol_comparison.csv` and `.png` | Week 3, about 5 minutes |
 | 11 | `python scripts/0005-export-scorecard.py --model lstm-direction` | `reports/test_results.csv`, `reports/test_direction_results.csv`, test confidence charts, real `scorecard.json` | Once, Oct 22, after the final review |
 | 12 | `python scripts/0005-export-scorecard.py --model lstm-volatility` | `reports/test_volatility_results.csv`, test volatility charts; no scorecard | Once, Oct 22, after the final review |
 

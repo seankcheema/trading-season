@@ -374,6 +374,41 @@ def plot_market_conditions(table: pd.DataFrame, path: Path, title: str) -> Path:
     return _save(fig, path)
 
 
+def plot_symbol_comparison(summary: pd.DataFrame, path: Path, title: str) -> Path:
+    """Walk-forward average accuracy per symbol, one panel per task, with each symbol's bar to clear."""
+    tasks = list(dict.fromkeys(summary["task"]))
+    fig, axes = plt.subplots(1, len(tasks), figsize=(5 * len(tasks), 4.5), squeeze=False)
+    for ax, task in zip(axes[0], tasks):
+        rows = summary[summary["task"] == task]
+        symbols = list(dict.fromkeys(rows["symbol"]))
+        models = list(dict.fromkeys(rows["model"]))
+        width = 0.8 / len(models)
+        for i, model in enumerate(models):
+            values = [rows[(rows["symbol"] == s) & (rows["model"] == model)]["accuracy"].iloc[0] * 100 for s in symbols]
+            ax.bar(np.arange(len(symbols)) + (i - (len(models) - 1) / 2) * width, values, width=width, label=model,
+                   color=_model_color(model))
+        for j, symbol in enumerate(symbols):
+            bar = rows[rows["symbol"] == symbol]["bar_to_clear"].iloc[0] * 100
+            ax.hlines(bar, j - 0.45, j + 0.45, colors="black", linestyles="--", linewidth=1.5,
+                      label="Bar to clear" if j == 0 else None)
+        ax.set_xticks(np.arange(len(symbols)), symbols)
+        ax.set_ylim(40, 70)
+        ax.set_ylabel("Walk-forward average accuracy (%)")
+        ax.set_title(task.capitalize())
+        ax.legend(fontsize=8, loc="upper left")
+    fig.suptitle(title)
+    return _save(fig, path)
+
+
+def _model_color(model: str) -> str:
+    """One colour per kind of model, so the same kind matches across panels."""
+    if model.startswith("LSTM"):
+        return "#2f5bd3"
+    if model.startswith("Logistic"):
+        return "#d98a2b"
+    return "#9aa3ad"
+
+
 def _save(fig: plt.Figure, path: Path) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

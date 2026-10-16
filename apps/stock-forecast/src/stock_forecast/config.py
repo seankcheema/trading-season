@@ -73,6 +73,10 @@ VOLATILITY_MODEL_DIR = MODELS_DIR / "lstm-volatility"
 REPORTS_DIR = ROOT / "reports"
 PRICES_CSV = DATA_DIR / "aapl_daily.csv"
 MARKET_CSV = DATA_DIR / "spy_daily.csv"
+# Snapshots that compare-symbols.py can use as the stock to predict.
+SYMBOL_CSVS = {TICKER: PRICES_CSV, MARKET_TICKER: MARKET_CSV}
+COMPARISON_SYMBOLS = [TICKER, MARKET_TICKER]
+SYMBOL_COMPARISON_CSV = REPORTS_DIR / "symbol_comparison.csv"
 RESULTS_CSV = REPORTS_DIR / "results.csv"
 TEST_RESULTS_CSV = REPORTS_DIR / "test_results.csv"
 WALK_FORWARD_CSV = REPORTS_DIR / "walk_forward.csv"
