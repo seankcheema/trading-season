@@ -98,21 +98,21 @@ test('executes a trade and shows recent orders within the full-screen layout', a
     const searchHost = await page.locator('.market-nav app-instrument-search').boundingBox();
     expect(searchHost!.height).toBe(searchBounds!.height);
     expect(searchHost!.y).toBe(searchBounds!.y);
-    expect(pickerBounds!.height).toBe(46);
+    expect(pickerBounds!.height).toBe(36);
     expect(backBounds!.height).toBe(searchBounds!.height);
     expect(pickerBounds!.y + pickerBounds!.height / 2).toBe(
       searchBounds!.y + searchBounds!.height / 2,
     );
     for (const id of ['notifications-dropdown', 'profile-dropdown']) {
       const iconBounds = await page.getByTestId(id).locator('summary').boundingBox();
-      expect(iconBounds!.height).toBe(46);
+      expect(iconBounds!.height).toBe(36);
       expect(iconBounds!.y + iconBounds!.height / 2).toBe(
         searchBounds!.y + searchBounds!.height / 2,
       );
     }
     for (const id of ['market-clock-dropdown', 'account-dropdown']) {
       const trigger = await page.getByTestId(id).locator('summary').boundingBox();
-      expect(trigger!.height).toBe(46);
+      expect(trigger!.height).toBe(36);
       expect(trigger!.y + trigger!.height / 2).toBe(searchBounds!.y + searchBounds!.height / 2);
     }
     expect(ticketBounds!.y).toBeGreaterThanOrEqual(accountBounds!.y + accountBounds!.height);
@@ -122,6 +122,7 @@ test('executes a trade and shows recent orders within the full-screen layout', a
       await expect(page.locator('app-trade-ticket')).toBeHidden();
     }
     await page.getByRole('tab', { name: 'Trading', exact: true }).click();
+    await expect(page.locator('.trading-content')).toBeVisible();
     await expect(page.locator('#future-trade-quantity')).toHaveValue('2');
     if (viewport.height === 900) {
       const ticket = page.locator('app-trade-ticket');
