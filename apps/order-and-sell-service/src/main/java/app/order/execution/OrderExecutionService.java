@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 
 /**
@@ -34,15 +35,14 @@ import java.time.OffsetDateTime;
  * and the balances they left, because the reporting service reads none of
  * those tables.
  *
- * <p><b>Simplification:</b> this fills at the order's client-submitted
- * {@code indicativePrice} rather than a live market quote — business-backend
- * doesn't yet read the {@code quotes}/{@code market_ticks} tables FMS
- * writes. BR-08 calls for the quote price prevailing at execution time, and
- * KAN-100's buffer_percent tolerance only means something once there's a
- * live price to compare the indicative price against. Wiring that up is
- * follow-on work (plausibly KAN-129) — {@code fillPrice} below is the one
- * line to change once a quote source exists; everything downstream of it
- * (ledger writes, balance/holding updates) doesn't need to change.
+ * <p><b>Price (BR-08):</b> the fill is priced at the instrument's current
+ * market quote, read from {@link ExecutionQuoteSource} immediately before the
+ * funds re-check, never at the client-submitted {@code indicativePrice}. With
+ * no quote available the order is rejected. A positive {@code bufferPercent}
+ * (KAN-100) is the trader's tolerance: a quote further from the indicative
+ * price than that percentage rejects the order; a zero or absent buffer
+ * accepts the market price whatever it is. The audit entry for the fill names
+ * both prices.
  *
  * <p><b>Funds:</b> cash belongs to the user, not to an account, so a BUY
  * debits and a SELL credits the owning user's {@code availableFunds}
@@ -68,6 +68,7 @@ public class OrderExecutionService {
     private final HoldingMovementRepository holdingMovementRepository;
     private final AuditTrailService auditTrailService;
     private final ApplicationEventPublisher events;
+    private final ExecutionQuoteSource quoteSource;
 
     /**
      * Creates the service.
@@ -81,6 +82,7 @@ public class OrderExecutionService {
      * @param holdingMovementRepository position ledger persistence
      * @param auditTrailService lifecycle event recorder
      * @param events publisher of the {@link app.order.event.OrderStatusEvent} raised when execution commits
+     * @param quoteSource current market price lookup the fill is priced at (BR-08)
      */
     public OrderExecutionService(AccountRepository accountRepository,
                                   UserRepository userRepository,
@@ -90,7 +92,8 @@ public class OrderExecutionService {
                                   CashTransactionRepository cashTransactionRepository,
                                   HoldingMovementRepository holdingMovementRepository,
                                   AuditTrailService auditTrailService,
-                                  ApplicationEventPublisher events) {
+                                  ApplicationEventPublisher events,
+                                  ExecutionQuoteSource quoteSource) {
         this.accountRepository = accountRepository;
         this.userRepository = userRepository;
         this.holdingRepository = holdingRepository;
@@ -100,6 +103,7 @@ public class OrderExecutionService {
         this.holdingMovementRepository = holdingMovementRepository;
         this.auditTrailService = auditTrailService;
         this.events = events;
+        this.quoteSource = quoteSource;
     }
 
     /**
@@ -107,8 +111,10 @@ public class OrderExecutionService {
      *
      * @param order      the {@code ACCEPTED} order to execute
      * @param instrument the instrument being traded
-     * @return the order as {@code FILLED}, or {@code REJECTED} if funds or
-     *         holdings were no longer sufficient under the row lock
+     * @return the order as {@code FILLED}, with its market fill price set, or
+     *         {@code REJECTED} if no market quote was available, the quote fell
+     *         outside the order's price buffer, or funds or holdings were no
+     *         longer sufficient under the row lock
      * @throws IllegalStateException if the account or its owning user no longer exists
      * @throws org.springframework.dao.DataAccessException if a ledger write fails; this
      *         transaction rolls back and the order stays {@code ACCEPTED}
@@ -116,7 +122,17 @@ public class OrderExecutionService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Order execute(Order order, Instrument instrument) {
         boolean isBuy = Order.TYPE_BUY.equals(order.getOrderType());
-        BigDecimal fillPrice = order.getIndicativePrice();
+        BigDecimal fillPrice = quoteSource.currentPrice(instrument).orElse(null);
+        if (fillPrice == null) {
+            return reject(order, instrument, "BR-08: no current market quote for "
+                    + ExecutionQuoteSource.quotedSymbol(instrument));
+        }
+        BigDecimal buffer = order.getBufferPercent();
+        if (buffer != null && buffer.signum() > 0
+                && deviationPercent(fillPrice, order.getIndicativePrice()).compareTo(buffer) > 0) {
+            return reject(order, instrument, "BR-08: market price " + fillPrice + " is outside the " + buffer
+                    + "% buffer around " + order.getIndicativePrice());
+        }
         BigDecimal tradeValue = order.getQuantity().multiply(fillPrice);
 
         Account account = accountRepository.findById(order.getAccountId())
@@ -181,13 +197,21 @@ public class OrderExecutionService {
         order.setStatus(Order.STATUS_FILLED);
         order.setResolvedAt(now);
         final Order savedOrder = orderRepository.save(order);
+        savedOrder.setFillPrice(fillPrice);
         auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_FILLED,
-                "Filled " + savedOrder.getQuantity() + " @ " + fillPrice);
+                "Filled " + savedOrder.getQuantity() + " @ " + fillPrice
+                        + " (market quote; indicative " + savedOrder.getIndicativePrice() + ")");
         events.publishEvent(OrderStatusEvent.from(savedOrder, instrument, new OrderStatusEvent.Execution(
                 user.getUserId(), fill.getFillId(), fillPrice, savedOrder.getQuantity(), now,
                 cashTransaction.getCashTransactionId(), cashDelta, user.getAvailableFunds(),
                 movement.getHoldingMovementId(), quantityDelta, holding.getQuantity())));
         return savedOrder;
+    }
+
+    private static BigDecimal deviationPercent(BigDecimal quote, BigDecimal indicative) {
+        return quote.subtract(indicative).abs()
+                .multiply(BigDecimal.valueOf(100))
+                .divide(indicative, 6, RoundingMode.HALF_UP);
     }
 
     private Order reject(Order order, Instrument instrument, String reason) {

@@ -11,6 +11,7 @@ import app.order.OrderService;
 import app.order.audit.AuditTrailRepository;
 import app.order.dto.OrderRequest;
 import app.order.execution.CashTransactionRepository;
+import app.order.execution.ExecutionQuoteSource;
 import app.order.execution.FillRepository;
 import app.order.execution.HoldingMovementRepository;
 import app.record.AuditEntryRecord;
@@ -38,6 +39,7 @@ import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.kafka.test.utils.ContainerTestUtils;
 import org.springframework.kafka.test.utils.KafkaTestUtils;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -49,11 +51,14 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 /**
  * Runs the real path from {@code OrderService} through the after-commit
@@ -115,6 +120,9 @@ class TradeEventFlowIntegrationTest {
     private ObjectMapper objectMapper;
     @Autowired
     private OrderStatusStreamRegistry streams;
+    /** BR-08: execution prices fills from the market replay, which the test database does not seed. */
+    @MockitoBean
+    private ExecutionQuoteSource quoteSource;
 
     private User user;
     private Account account;
@@ -162,6 +170,7 @@ class TradeEventFlowIntegrationTest {
         instrument.setCurrency("USD");
         instrument.setTradable(true);
         instrument = instrumentRepository.save(instrument);
+        when(quoteSource.currentPrice(any())).thenReturn(Optional.of(new BigDecimal("50.00")));
 
         // The consumer group must own all three partitions before an order is
         // placed, or an event could be published before anyone is subscribed.

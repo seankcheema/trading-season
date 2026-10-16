@@ -13,8 +13,9 @@ import java.time.OffsetDateTime;
  * A client's order submission (KAN-95 acceptance criterion: "acquire
  * trading rules from the client"). {@code indicativePrice} and
  * {@code bufferPercent} are the trading rule itself, not just order
- * details — they're what {@code PriceBufferValidator} checks execution
- * against (BR-13, KAN-100).
+ * details: execution fills at the current market quote and rejects the
+ * order when that quote is further from {@code indicativePrice} than
+ * {@code bufferPercent} allows (BR-08, BR-13, KAN-100).
  *
  * <p>{@code accountId} is included directly here as a stopgap: business-backend
  * does not yet resolve the calling account from an authenticated session
@@ -27,8 +28,9 @@ import java.time.OffsetDateTime;
  * @param orderType        {@code BUY} or {@code SELL}
  * @param quantity         units to trade, must be positive
  * @param indicativePrice  the price shown to the trader before submission (BR-13)
- * @param bufferPercent    execution price tolerance for this order (KAN-100); when
- *                         omitted, falls back to the user's {@code execution_buffer_percent}
+ * @param bufferPercent    execution price tolerance in percent (KAN-100); when
+ *                         omitted, falls back to the user's {@code execution_buffer_percent};
+ *                         zero means the market price is accepted whatever it is
  * @param simulatedAt      selected simulation time, optional; audit timestamps remain real time
  * @param clientReference  client-generated idempotency key; retried submissions
  *                         with the same key return the original order's outcome

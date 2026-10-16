@@ -17,6 +17,7 @@ class OrderResponseTest {
         order.setStatus("FILLED");
         order.setQuantity(new BigDecimal("2.5"));
         order.setIndicativePrice(new BigDecimal("100.50"));
+        order.setFillPrice(new BigDecimal("101.00"));
         OffsetDateTime executionTime = OffsetDateTime.parse("2026-10-01T18:00:00Z");
         order.setSubmittedAt(executionTime.minusSeconds(1));
         order.setResolvedAt(executionTime);
@@ -29,5 +30,6 @@ class OrderResponseTest {
         assertEquals(executionTime, response.resolvedAt());
         assertEquals(new BigDecimal("2.5"), response.quantity());
         assertEquals(new BigDecimal("100.50"), response.indicativePrice());
+        assertEquals(new BigDecimal("101.00"), response.fillPrice());
     }
 }

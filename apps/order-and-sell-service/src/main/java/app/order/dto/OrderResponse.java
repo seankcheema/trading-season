@@ -18,6 +18,8 @@ import java.time.OffsetDateTime;
  * @param orderType        BUY or SELL
  * @param quantity         units requested
  * @param indicativePrice  the price the client submitted with the order
+ * @param fillPrice        the market price the order filled at (BR-08); set only on the
+ *                         response to a submission that was FILLED, null otherwise
  * @param rejectionReason  set only when status is REJECTED
  * @param submittedAt      when the order was received
  * @param simulatedAt      selected replay time, or null when real execution time should be displayed
@@ -31,6 +33,7 @@ public record OrderResponse(
         String orderType,
         BigDecimal quantity,
         BigDecimal indicativePrice,
+        BigDecimal fillPrice,
         String rejectionReason,
         OffsetDateTime submittedAt,
         OffsetDateTime resolvedAt,
@@ -51,6 +54,7 @@ public record OrderResponse(
                 order.getOrderType(),
                 order.getQuantity(),
                 order.getIndicativePrice(),
+                order.getFillPrice(),
                 order.getRejectionReason(),
                 order.getSubmittedAt(),
                 order.getResolvedAt(),

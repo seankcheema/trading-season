@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -83,9 +84,22 @@ public class Order {
     @Column(name = "indicative_price", updatable = false)
     private BigDecimal indicativePrice;
 
-    /** KAN-100: the trader's execution price tolerance, acquired from the client. */
+    /**
+     * KAN-100: the trader's execution price tolerance in percent, acquired from
+     * the client or defaulted from the user. Execution rejects the order when
+     * the market quote is further than this from {@code indicativePrice}; zero
+     * or null means no tolerance check (BR-08).
+     */
     @Column(name = "buffer_percent", updatable = false)
     private BigDecimal bufferPercent;
+
+    /**
+     * BR-08: the market price this order filled at. Set in memory by execution
+     * so the submission response can report it; the persisted copy is the
+     * fill's {@code quote_price}.
+     */
+    @Transient
+    private BigDecimal fillPrice;
 
     /** Set only when {@code status} is {@link #STATUS_REJECTED}. */
     @Column(name = "rejection_reason")
@@ -272,6 +286,24 @@ public class Order {
      */
     public void setBufferPercent(BigDecimal bufferPercent) {
         this.bufferPercent = bufferPercent;
+    }
+
+    /**
+     * Returns the market price this order filled at.
+     *
+     * @return the fill price, or null unless this instance came back from execution as {@code FILLED}
+     */
+    public BigDecimal getFillPrice() {
+        return fillPrice;
+    }
+
+    /**
+     * Sets the market price this order filled at.
+     *
+     * @param fillPrice the fill price
+     */
+    public void setFillPrice(BigDecimal fillPrice) {
+        this.fillPrice = fillPrice;
     }
 
     /**

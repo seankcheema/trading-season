@@ -49,6 +49,7 @@ class OrderExecutionServiceTest {
     private final HoldingMovementRepository holdingMovementRepository = mock(HoldingMovementRepository.class);
     private final AuditTrailService auditTrailService = mock(AuditTrailService.class);
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
+    private final ExecutionQuoteSource quoteSource = mock(ExecutionQuoteSource.class);
 
     private OrderExecutionService service;
     private Account account;
@@ -57,7 +58,8 @@ class OrderExecutionServiceTest {
     @BeforeEach
     void setUp() {
         service = new OrderExecutionService(accountRepository, userRepository, holdingRepository, orderRepository,
-                fillRepository, cashTransactionRepository, holdingMovementRepository, auditTrailService, events);
+                fillRepository, cashTransactionRepository, holdingMovementRepository, auditTrailService, events,
+                quoteSource);
         account = new Account();
         account.setId(ACCOUNT_ID);
         account.setUserId(USER_ID);
@@ -65,6 +67,7 @@ class OrderExecutionServiceTest {
         user = new User();
         user.setUserId(USER_ID);
         user.setAvailableFunds(new BigDecimal("1000.00"));
+        quote("25.00");
         when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account));
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
         when(holdingRepository.findByAccountIdAndInstrumentIdForUpdate(ACCOUNT_ID, INSTRUMENT_ID))
@@ -78,13 +81,14 @@ class OrderExecutionServiceTest {
     }
 
     @Test
-    void buyFillsAtTheIndicativePriceAndOpensAHolding() {
+    void buyFillsAtTheMarketQuoteAndOpensAHolding() {
         Order order = order(Order.TYPE_BUY, "10", "25.00");
 
         Order result = service.execute(order, new Instrument());
 
         assertEquals(Order.STATUS_FILLED, result.getStatus());
         assertNotNull(result.getResolvedAt());
+        assertEquals(new BigDecimal("25.00"), result.getFillPrice());
 
         Fill fill = savedFill();
         assertEquals(FILL_ID, fill.getFillId());
@@ -115,7 +119,74 @@ class OrderExecutionServiceTest {
         assertEquals(INSTRUMENT_ID, holding.getInstrumentId());
         assertEquals(new BigDecimal("10"), holding.getQuantity());
 
-        verify(auditTrailService).record(order.getOrderId(), Order.STATUS_FILLED, "Filled 10 @ 25.00");
+        verify(auditTrailService).record(order.getOrderId(), Order.STATUS_FILLED,
+                "Filled 10 @ 25.00 (market quote; indicative 25.00)");
+    }
+
+    @Test
+    void fillsAtTheMarketQuoteNotTheIndicativePrice() {
+        quote("26.00");
+        Order order = order(Order.TYPE_BUY, "10", "25.00");
+
+        Order result = service.execute(order, new Instrument());
+
+        assertEquals(Order.STATUS_FILLED, result.getStatus());
+        assertEquals(new BigDecimal("26.00"), result.getFillPrice());
+        assertEquals(new BigDecimal("25.00"), result.getIndicativePrice());
+        assertEquals(new BigDecimal("26.00"), savedFill().getQuotePrice());
+        assertEquals(new BigDecimal("-260.00"), savedCashTransaction().getAmount());
+        assertEquals(new BigDecimal("740.00"), user.getAvailableFunds());
+        verify(auditTrailService).record(order.getOrderId(), Order.STATUS_FILLED,
+                "Filled 10 @ 26.00 (market quote; indicative 25.00)");
+    }
+
+    @Test
+    void rejectsWhenNoMarketQuoteIsAvailable() {
+        when(quoteSource.currentPrice(any())).thenReturn(Optional.empty());
+        Instrument instrument = new Instrument();
+        instrument.setTicker("TEST");
+
+        Order result = service.execute(order(Order.TYPE_BUY, "10", "25.00"), instrument);
+
+        assertFailed(result, "BR-08: no current market quote for TEST");
+        assertEquals(new BigDecimal("1000.00"), user.getAvailableFunds());
+        verify(userRepository, never()).findByIdForUpdate(any());
+    }
+
+    @Test
+    void rejectsWhenTheQuoteIsOutsideThePriceBuffer() {
+        quote("25.60");
+        Order order = order(Order.TYPE_BUY, "10", "25.00");
+        order.setBufferPercent(new BigDecimal("2.0"));
+
+        Order result = service.execute(order, new Instrument());
+
+        assertFailed(result, "BR-08: market price 25.60 is outside the 2.0% buffer around 25.00");
+    }
+
+    @Test
+    void fillsWhenTheQuoteIsWithinThePriceBuffer() {
+        quote("25.50");
+        Order order = order(Order.TYPE_BUY, "10", "25.00");
+        order.setBufferPercent(new BigDecimal("2.0"));
+
+        Order result = service.execute(order, new Instrument());
+
+        assertEquals(Order.STATUS_FILLED, result.getStatus());
+        assertEquals(new BigDecimal("25.50"), result.getFillPrice());
+    }
+
+    @Test
+    void aZeroBufferAcceptsTheMarketPriceWhateverItIs() {
+        quote("50.00");
+        Order order = order(Order.TYPE_BUY, "10", "25.00");
+        order.setBufferPercent(BigDecimal.ZERO);
+
+        Order result = service.execute(order, new Instrument());
+
+        assertEquals(Order.STATUS_FILLED, result.getStatus());
+        assertEquals(new BigDecimal("50.00"), result.getFillPrice());
+        assertEquals(new BigDecimal("500.00"), user.getAvailableFunds());
     }
 
     @Test
@@ -139,6 +210,7 @@ class OrderExecutionServiceTest {
         Instrument instrument = new Instrument();
         instrument.setTicker("TEST");
         instrument.setName("Test Instrument");
+        quote("40.00");
 
         service.execute(order(Order.TYPE_SELL, "3", "40.00"), instrument);
 
@@ -172,6 +244,7 @@ class OrderExecutionServiceTest {
         existing.setQuantity(new BigDecimal("8"));
         when(holdingRepository.findByAccountIdAndInstrumentIdForUpdate(ACCOUNT_ID, INSTRUMENT_ID))
                 .thenReturn(Optional.of(existing));
+        quote("40.00");
 
         Order result = service.execute(order(Order.TYPE_SELL, "3", "40.00"), new Instrument());
 
@@ -230,6 +303,10 @@ class OrderExecutionServiceTest {
         verify(fillRepository, never()).save(any());
         verify(cashTransactionRepository, never()).save(any());
         verify(auditTrailService).record(result.getOrderId(), Order.STATUS_REJECTED, reason);
+    }
+
+    private void quote(String price) {
+        when(quoteSource.currentPrice(any())).thenReturn(Optional.of(new BigDecimal(price)));
     }
 
     private static Order order(String type, String quantity, String price) {

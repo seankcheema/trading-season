@@ -13,6 +13,7 @@ import app.order.audit.AuditTrail;
 import app.order.audit.AuditTrailRepository;
 import app.order.dto.OrderRequest;
 import app.order.execution.CashTransactionRepository;
+import app.order.execution.ExecutionQuoteSource;
 import app.order.execution.FillRepository;
 import app.order.execution.HoldingMovementRepository;
 import app.support.UserAccountFixture;
@@ -24,6 +25,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -34,6 +36,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -70,6 +74,10 @@ class OrderServiceTest {
 
     @Autowired
     private AuditTrailRepository auditTrailRepository;
+
+    /** BR-08: execution prices fills from the market replay, which the test database does not seed. */
+    @MockitoBean
+    private ExecutionQuoteSource quoteSource;
 
     private Account account;
     @Autowired
@@ -125,6 +133,16 @@ class OrderServiceTest {
         instrument.setCurrency("USD");
         instrument.setTradable(true);
         instrument = instrumentRepository.save(instrument);
+
+        // Unless a test says otherwise, the market quotes the price the trader saw.
+        quote("50.00");
+    }
+
+    private void quote(String... prices) {
+        var stubbing = when(quoteSource.currentPrice(any()));
+        for (String price : prices) {
+            stubbing = stubbing.thenReturn(Optional.of(new BigDecimal(price)));
+        }
     }
 
     private OrderRequest order(String orderType, String quantity, String price) {
@@ -209,6 +227,43 @@ class OrderServiceTest {
     }
 
     @Test
+    void buyOrderIsRejectedWithoutAMarketQuote() {
+        when(quoteSource.currentPrice(any())).thenReturn(Optional.empty());
+
+        Order order = orderService.submitOrder(order("BUY", "100", "50.00"), user.getUserId());
+
+        assertEquals(Order.STATUS_REJECTED, order.getStatus());
+        assertEquals("BR-08: no current market quote for TEST", order.getRejectionReason());
+        assertEquals(0, STARTING_FUNDS.compareTo(availableFunds()));
+        assertEquals(0, fillRepository.count());
+        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_ACCEPTED, Order.STATUS_REJECTED), auditEventsFor(order));
+    }
+
+    @Test
+    void buyOrderFillsAtTheMarketQuoteWhenItIsWithinTheBuffer() {
+        quote("50.50");
+
+        Order order = orderService.submitOrder(order("BUY", "100", "50.00"), user.getUserId());
+
+        assertEquals(Order.STATUS_FILLED, order.getStatus());
+        assertEquals(0, new BigDecimal("50.50").compareTo(order.getFillPrice()));
+        assertEquals(0, new BigDecimal("94950.00").compareTo(availableFunds()));
+        assertEquals(0, new BigDecimal("50.50").compareTo(fillRepository.findAll().get(0).getQuotePrice()));
+    }
+
+    @Test
+    void buyOrderIsRejectedWhenTheMarketQuoteIsOutsideTheBuffer() {
+        quote("52.00");
+
+        Order order = orderService.submitOrder(order("BUY", "100", "50.00"), user.getUserId());
+
+        assertEquals(Order.STATUS_REJECTED, order.getStatus());
+        assertEquals("BR-08: market price 52.00 is outside the 2.0% buffer around 50.00", order.getRejectionReason());
+        assertEquals(0, STARTING_FUNDS.compareTo(availableFunds()));
+        assertEquals(0, fillRepository.count());
+    }
+
+    @Test
     void buyOrderThatExactlyMatchesAvailableFundsIsFilled() {
         user.setAvailableFunds(new BigDecimal("5000.00"));
         userRepository.save(user);
@@ -221,6 +276,7 @@ class OrderServiceTest {
 
     @Test
     void sellOrderAddsFundsBackToUser() {
+        quote("100.00");
         holdingOf("50");
 
         Order order = orderService.submitOrder(order("SELL", "50", "100.00"), user.getUserId());
@@ -236,6 +292,7 @@ class OrderServiceTest {
 
     @Test
     void sellOrderWithoutEnoughHoldingsIsRejected() {
+        quote("100.00");
         holdingOf("10");
 
         Order order = orderService.submitOrder(order("SELL", "50", "100.00"), user.getUserId());
@@ -273,6 +330,7 @@ class OrderServiceTest {
 
     @Test
     void submitOrderUsesUserDefaultBufferWhenNotSpecified() {
+        quote("100.00");
         OrderRequest request = new OrderRequest(
                 account.getAccountId(),
                 instrument.getInstrumentId(),
@@ -352,6 +410,7 @@ class OrderServiceTest {
 
     @Test
     void submitOrderPersistsToRepository() {
+        quote("75.50");
         OrderRequest request = new OrderRequest(
                 account.getAccountId(),
                 instrument.getInstrumentId(),
@@ -372,6 +431,7 @@ class OrderServiceTest {
 
     @Test
     void submitOrderRecordsSubmittedTimestamp() {
+        quote("80.00");
         OrderRequest request = new OrderRequest(
                 account.getAccountId(),
                 instrument.getInstrumentId(),
@@ -403,6 +463,7 @@ class OrderServiceTest {
 
     @Test
     void submitOrderRefusesAnotherUsersIdempotencyKeyBeforeAnsweringIt() {
+        quote("20.00");
         // The key belongs to this account, and its outcome is this owner's to read.
         Order placed = orderService.submitOrder(order("BUY", "10", "20.00"), user.getUserId());
         OrderRequest replay = new OrderRequest(
@@ -421,6 +482,7 @@ class OrderServiceTest {
 
     @Test
     void submitOrderAnswersTheOwnersOwnReplayWithTheOriginalOutcome() {
+        quote("20.00");
         Order placed = orderService.submitOrder(order("BUY", "10", "20.00"), user.getUserId());
         OrderRequest replay = new OrderRequest(
                 account.getAccountId(),
