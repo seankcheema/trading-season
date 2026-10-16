@@ -62,7 +62,7 @@ Cleanup always removes the build-scoped test containers, volumes, and images, te
 
 ### SonarQube
 
-The analysis stage is the last stage of the pipeline. It imports the coverage reports and compiled classes the test suites left behind, which the disk cleanup before the end-to-end stage preserves, and the quality gate stage logs the returned SonarQube status before aborting the build when the gate fails.
+The analysis stage runs right after the parallel test suites, before the Java API documentation, the disk cleanup and the end-to-end stages. It imports the coverage reports and compiled classes the test suites left behind, and the quality gate stage logs the returned SonarQube status before aborting the build when the gate fails, so a failed gate stops the pipeline before the end-to-end tests and the local stack build.
 
 Before scanning, the analysis stage runs `docker start sonarqube` if the container named `sonarqube` is not running, then polls `/api/system/status` for up to 5 minutes until it reports `UP`. The Jenkins agent must reach the Docker daemon of the host that runs that container, and the container must be named `sonarqube`.
 
