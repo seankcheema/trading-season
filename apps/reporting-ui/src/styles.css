@@ -3,35 +3,84 @@
 /* Tailwind CSS v4 */
 @import 'tailwindcss';
 
-/* TradingSeason design system tokens. The values are the design system's
-   tokens/colors.css, which are the dark theme of apps/client-ui/src/styles.css;
-   the product is dark-only, so they sit on :root. Change a value here only
-   together with the client UI, so the two apps stay one brand. */
+/* TradingSeason design system tokens, in the two themes of
+   apps/client-ui/src/styles.css: light on :root, and dark, the design system's
+   tokens/colors.css, on :root.dark. ThemeService (src/app/core/theme) switches the
+   class, and a script in index.html applies the saved choice before the first
+   paint. Change a value here only together with the client UI, so the two apps
+   stay one brand.
+
+   The dark tokens apply on screen only. Everything this app hands out is light
+   whatever the theme on screen: Export PDF prints with the light tokens, and the
+   Reporting Service draws its chart PNGs light. */
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
   --radius: 0.625rem;
-  --background: #0e0e0e;
-  --foreground: #eefaff;
-  --card: #141414;
-  --card-foreground: #eefaff;
-  --popover: #141414;
-  --popover-foreground: #eefaff;
-  --primary: #00bbff;
-  --primary-foreground: #0e0e0e;
-  --secondary: #1a1a1a;
-  --secondary-foreground: #eefaff;
-  --muted: #1a1a1a;
-  --muted-foreground: rgba(238, 250, 255, 0.5);
-  --accent: #1a1a1a;
-  --accent-foreground: #eefaff;
-  --destructive: #ff3d5a;
-  --border: rgba(238, 250, 255, 0.15);
-  --input: rgba(238, 250, 255, 0.15);
-  --ring: #00bbff;
-  --sidebar: #141414;
-  --sidebar-foreground: #eefaff;
-  --sidebar-border: rgba(238, 250, 255, 0.1);
+  --background: #f4f7f9;
+  --foreground: #0e0e0e;
+  --card: #ffffff;
+  --card-foreground: #0e0e0e;
+  --popover: #ffffff;
+  --popover-foreground: #0e0e0e;
+  --primary: #0072ab;
+  --primary-foreground: #ffffff;
+  --secondary: #eaeff2;
+  --secondary-foreground: #0e0e0e;
+  --muted: #eaeff2;
+  --muted-foreground: rgba(14, 14, 14, 0.62);
+  --accent: #eaeff2;
+  --accent-foreground: #0e0e0e;
+  --destructive: #d1153a;
+  --border: rgba(14, 14, 14, 0.12);
+  --input: rgba(14, 14, 14, 0.18);
+  --ring: #0072ab;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0e0e0e;
+  --sidebar-border: rgba(14, 14, 14, 0.1);
+
+  /* The hero card: a cyan glow over a gradient. */
+  --hero-border: rgba(0, 114, 171, 0.2);
+  --hero-glow: rgba(0, 187, 255, 0.16);
+  --hero-from: #ffffff;
+  --hero-to: #dcf1fa;
+}
+
+@media screen {
+  :root.dark {
+    color-scheme: dark;
+
+    --background: #0e0e0e;
+    --foreground: #eefaff;
+    --card: #141414;
+    --card-foreground: #eefaff;
+    --popover: #141414;
+    --popover-foreground: #eefaff;
+    --primary: #00bbff;
+    --primary-foreground: #0e0e0e;
+    --secondary: #1a1a1a;
+    --secondary-foreground: #eefaff;
+    --muted: #1a1a1a;
+    --muted-foreground: rgba(238, 250, 255, 0.5);
+    --accent: #1a1a1a;
+    --accent-foreground: #eefaff;
+    --destructive: #ff3d5a;
+    --border: rgba(238, 250, 255, 0.15);
+    --input: rgba(238, 250, 255, 0.15);
+    --ring: #00bbff;
+    --sidebar: #141414;
+    --sidebar-foreground: #eefaff;
+    --sidebar-border: rgba(238, 250, 255, 0.1);
+
+    --color-gain: #25eb69;
+    --color-loss: #ff3d5a;
+    --color-pending: #fac320;
+
+    --hero-border: rgba(0, 187, 255, 0.2);
+    --hero-glow: rgba(0, 187, 255, 0.28);
+    --hero-from: #10161a;
+    --hero-to: #0b2f3e;
+  }
 }
 
 /* Maps the tokens onto Tailwind color utilities (`bg-card`, `text-muted-foreground`,
@@ -62,11 +111,12 @@
 }
 
 /* Market up/down colors, e.g. `text-gain`, `bg-loss/15`. Filled orders take the
-   gain color, rejected orders the loss color, and pending orders the pending color. */
+   gain color, rejected orders the loss color, and pending orders the pending color.
+   These are the light theme's; `:root.dark` above sets the dark ones. */
 @theme {
-  --color-gain: #25eb69;
-  --color-loss: #ff3d5a;
-  --color-pending: #fac320;
+  --color-gain: #08783e;
+  --color-loss: #d1153a;
+  --color-pending: #8f5c00;
   --font-sans:
     'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
     'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
@@ -175,6 +225,15 @@
   }
 }
 
+/* Set by ThemeService for the instant the theme changes, so every color switches at
+   once. Unlayered and important, so it outranks the transition utilities. */
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
+}
+
 /* The dashboard vocabulary from the client UI (dashboard.component.css), shared
    by every reporting screen. In `@layer components` so utilities in a template
    still win. */
@@ -209,11 +268,11 @@
   /* The one hero card of a screen: a cyan glow over a deep-sea gradient. */
   .net-worth-card {
     min-width: 0;
-    border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
+    border: 1px solid var(--hero-border);
     border-radius: 0.875rem;
     background:
-      radial-gradient(100% 120% at 100% 100%, rgba(0, 187, 255, 0.28) 0%, transparent 60%),
-      linear-gradient(135deg, #10161a 0%, #0b2f3e 100%);
+      radial-gradient(100% 120% at 100% 100%, var(--hero-glow) 0%, transparent 60%),
+      linear-gradient(135deg, var(--hero-from) 0%, var(--hero-to) 100%);
   }
 
   /* A whole table row that opens something. */
@@ -429,45 +488,46 @@
    fits paper. Everything that clips or scrolls is opened up, and controls that
    do nothing on paper are dropped. */
 @media print {
-  /* The browser paints the page margins its own dark canvas, a shade off the
-     app's background, which frames every page. The margin boxes cover them in
-     the app's own: an edge box with no neighbors spans its whole edge. The
-     color is --background, which a page context cannot read. */
+  /* The browser paints the page margins its own canvas, a shade off the app's
+     background, which frames every page. The margin boxes cover them in the
+     app's own: an edge box with no neighbors spans its whole edge. The color is
+     the light theme's --background, which a page context cannot read; a
+     printout is always light. */
   @page {
     size: 1376px 973px;
     margin: 36px 40px;
 
     @top-left-corner {
       content: '';
-      background: #0e0e0e;
+      background: #f4f7f9;
     }
     @top-center {
       content: '';
-      background: #0e0e0e;
+      background: #f4f7f9;
     }
     @top-right-corner {
       content: '';
-      background: #0e0e0e;
+      background: #f4f7f9;
     }
     @left-middle {
       content: '';
-      background: #0e0e0e;
+      background: #f4f7f9;
     }
     @right-middle {
       content: '';
-      background: #0e0e0e;
+      background: #f4f7f9;
     }
     @bottom-left-corner {
       content: '';
-      background: #0e0e0e;
+      background: #f4f7f9;
     }
     @bottom-center {
       content: '';
-      background: #0e0e0e;
+      background: #f4f7f9;
     }
     @bottom-right-corner {
       content: '';
-      background: #0e0e0e;
+      background: #f4f7f9;
     }
   }
 

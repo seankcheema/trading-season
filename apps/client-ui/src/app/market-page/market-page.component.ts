@@ -29,7 +29,6 @@ import {
   NgTemplateOutlet,
   CurrencyPipe,
   DecimalPipe,
-  TitleCasePipe,
   isPlatformBrowser,
 } from '@angular/common';
 import {
@@ -52,7 +51,6 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideActivity,
-  lucideBell,
   lucideSettings,
   lucideLogOut,
   lucideChevronDown,
@@ -64,18 +62,12 @@ import {
   lucideChartLine,
   lucideChartNoAxesColumn,
   lucideCrosshair,
-  lucideBotMessageSquare,
-  lucideMessageSquareText,
   lucidePanelRightClose,
   lucidePanelRightOpen,
   lucideGitCompare,
   lucidePercent,
-  lucideSendHorizontal,
-  lucideShieldCheck,
   lucideSlidersHorizontal,
-  lucideTrendingUp,
   lucideUserRound,
-  lucideUsersRound,
   lucideX,
 } from '@ng-icons/lucide';
 import { Subscription } from 'rxjs';
@@ -102,25 +94,14 @@ import { SignedPercentPipe } from '../dashboard/shared/signed-percent.pipe';
 import { TickAnimations } from '../dashboard/shared/tick-animations';
 import { TimeframeToggleComponent } from '../dashboard/shared/timeframe-toggle.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
+import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
 
-type InsightTab = 'trading' | 'overview' | 'news' | 'ai' | 'recent-orders';
+type InsightTab = 'trading' | 'recent-orders';
 
 type ToolbarMenu = 'indicators' | 'chart-mode' | 'comparison';
-
-interface AiMessage {
-  role: 'user' | 'assistant';
-  text: string;
-}
-
-interface DemoNewsStory {
-  age: string;
-  category: string;
-  title: string;
-  includeSymbol?: boolean;
-}
 
 interface MarketStats {
   bid: number;
@@ -136,6 +117,7 @@ interface MarketStats {
   selector: 'app-market-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ThemeToggleComponent,
     NgTemplateOutlet,
     OrderEditorComponent,
     WatchlistStarComponent,
@@ -157,7 +139,6 @@ interface MarketStats {
     PriceChartComponent,
     RouterLink,
     SignedPercentPipe,
-    TitleCasePipe,
     TimeframeToggleComponent,
     TradeTicketComponent,
     TermsDialogComponent,
@@ -167,7 +148,6 @@ interface MarketStats {
 
     provideIcons({
       lucideActivity,
-      lucideBell,
       lucideSettings,
       lucideLogOut,
       lucideChevronDown,
@@ -179,18 +159,12 @@ interface MarketStats {
       lucideChartLine,
       lucideChartNoAxesColumn,
       lucideCrosshair,
-      lucideBotMessageSquare,
-      lucideMessageSquareText,
       lucidePanelRightClose,
       lucidePanelRightOpen,
       lucideGitCompare,
       lucidePercent,
-      lucideSendHorizontal,
-      lucideShieldCheck,
       lucideSlidersHorizontal,
-      lucideTrendingUp,
       lucideUserRound,
-      lucideUsersRound,
       lucideX,
     }),
   ],
@@ -248,17 +222,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       this.settingsOpen.set(false);
       this.accountDialog.set(null);
     });
-  });
-
-  private readonly requestedAccountId = signal<number | null>(null);
-  private appliedAccountId: number | null = null;
-  private readonly selectRequestedAccount = effect(() => {
-    const id = this.requestedAccountId();
-
-    if (this.accountStore.status() === 'ready' && id !== null && id !== this.appliedAccountId) {
-      this.appliedAccountId = id;
-      this.accountStore.selectAccount(id);
-    }
   });
 
   protected readonly submitting = signal(false);
@@ -410,21 +373,11 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       });
   }
 
+  // The store keeps the choice for the dashboard and this tab; the URL never carries it.
   protected selectAccount(id: number): void {
-    if (!this.accountStore.selectAccount(id)) {
-      return;
+    if (this.accountStore.selectAccount(id)) {
+      this.openHeaderDropdown.set(null);
     }
-
-    this.requestedAccountId.set(id);
-
-    this.openHeaderDropdown.set(null);
-
-    void this.router.navigate([], {
-      relativeTo: this.route,
-      queryParams: { accountId: id },
-      queryParamsHandling: 'merge',
-      replaceUrl: true,
-    });
   }
 
   protected openCreateAccount(): void {
@@ -592,36 +545,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     () => this.chartModes.find((option) => option.value === this.chartMode()) ?? this.chartModes[0],
   );
   protected readonly insightTab = signal<InsightTab>('trading');
-  protected readonly demoNews: readonly DemoNewsStory[] = [
-    {
-      age: '12 min ago',
-      category: 'Market update',
-      title: 'holds near its session high as trading activity increases.',
-      includeSymbol: true,
-    },
-    {
-      age: '48 min ago',
-      category: 'Sector watch',
-      title: 'Large-cap peers trade higher as investors favor established companies.',
-    },
-    {
-      age: '2 hr ago',
-      category: 'Company outlook',
-      title: 'Analysts continue to focus on demand, margins, and the next earnings update.',
-    },
-    {
-      age: '4 hr ago',
-      category: 'Macroeconomy',
-      title: 'Treasury yields ease as markets assess latest economic data.',
-    },
-    {
-      age: '5 hr ago',
-      category: 'Earnings',
-      title: 'Tech stocks extend gains ahead of key earnings reports this week.',
-    },
-  ];
-  protected readonly aiDraft = signal('');
-  protected readonly aiMessages = signal<AiMessage[]>([]);
   protected readonly toolsCollapsed = signal(false);
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
   protected readonly enabledIndicators = signal<readonly TechnicalIndicator[]>([]);
@@ -809,12 +732,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     );
     this.routeSubscription.add(
       this.route.queryParamMap.subscribe((params) => {
-        const accountId = Number(params.get('accountId'));
-
-        this.requestedAccountId.set(
-          Number.isInteger(accountId) && accountId > 0 ? accountId : null,
-        );
-
         const rawSymbol = params.get('compare') ?? '';
         const symbol = normalizeMarketSymbol(rawSymbol);
         this.comparisonSymbol.set(symbol);
@@ -847,7 +764,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     void this.router.navigate(['/dashboard/markets', marketSymbolSlug(instrument.symbol)], {
       queryParams: {
         compare: compare && compare !== instrument.symbol ? marketSymbolSlug(compare) : null,
-        accountId: this.accountStore.selectedAccountId(),
       },
 
       queryParamsHandling: 'merge',
@@ -913,23 +829,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
         ? enabled.filter((candidate) => candidate !== indicator)
         : [...enabled, indicator],
     );
-  }
-
-  protected submitAiPrompt(event: Event, symbol: string): void {
-    event.preventDefault();
-    const prompt = this.aiDraft().trim();
-    if (!prompt) {
-      return;
-    }
-    this.aiMessages.update((messages) => [
-      ...messages,
-      { role: 'user', text: prompt },
-      {
-        role: 'assistant',
-        text: `${symbol} is in a simulated session. I can help explain its price, range, volume, and chart in plain language.`,
-      },
-    ]);
-    this.aiDraft.set('');
   }
 
   @HostListener('document:click', ['$event'])

@@ -31,7 +31,7 @@ async function openMarketPage(page: Page, loginPage: LoginPage): Promise<void> {
   await expect(dialog.getByRole('link', { name: 'Open full screen market chart' })).toBeVisible();
 
   await dialog.getByRole('link', { name: 'Open full screen market chart' }).click();
-  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl\?accountId=\d+$/);
+  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl$/);
   await expect(page.getByRole('heading', { name: 'AAPL', exact: true })).toBeVisible();
 }
 
@@ -103,7 +103,7 @@ test('executes a trade and shows recent orders within the full-screen layout', a
     expect(pickerBounds!.y + pickerBounds!.height / 2).toBe(
       searchBounds!.y + searchBounds!.height / 2,
     );
-    for (const id of ['notifications-dropdown', 'profile-dropdown']) {
+    for (const id of ['profile-dropdown']) {
       const iconBounds = await page.getByTestId(id).locator('summary').boundingBox();
       expect(iconBounds!.height).toBe(36);
       expect(iconBounds!.y + iconBounds!.height / 2).toBe(
@@ -117,7 +117,7 @@ test('executes a trade and shows recent orders within the full-screen layout', a
     }
     expect(ticketBounds!.y).toBeGreaterThanOrEqual(accountBounds!.y + accountBounds!.height);
     await page.locator('#future-trade-quantity').fill('2');
-    for (const name of ['Overview', 'News', 'AI', 'Recent Orders']) {
+    for (const name of ['Recent Orders']) {
       await page.getByRole('tab', { name, exact: true }).click();
       await expect(page.locator('app-trade-ticket')).toBeHidden();
     }
@@ -183,7 +183,7 @@ test('changes chart tools and keeps the selected comparison in the URL', async (
   await comparisonPicker.getByRole('combobox', { name: 'Search instruments' }).fill('MSFT');
   await comparisonPicker.getByRole('option', { name: /MSFT/ }).click();
 
-  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl\?accountId=\d+&compare=msft$/);
+  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl\?compare=msft$/);
   await expect(page.getByRole('region', { name: 'AAPL price chart' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'MSFT price chart' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Remove comparison', exact: true })).toBeVisible();
@@ -194,6 +194,13 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   loginPage,
   api,
 }) => {
+  // The selected account is kept by the app for this tab, never in the URL.
+  const visited: string[] = [];
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) {
+      visited.push(frame.url());
+    }
+  });
   await loginPage.goto();
   await loginPage.signIn(USER.email, USER.password);
   await page.getByTestId('account-dropdown').locator('summary').click();
@@ -201,6 +208,8 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   await page.getByRole('combobox', { name: 'Search instruments' }).fill('AAPL');
   await page.getByRole('option', { name: /AAPL/ }).first().click();
   await page.getByRole('link', { name: 'Open full screen market chart' }).click();
+  await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');
+  await page.reload();
   await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');
   const buy = page.getByRole('button', { name: 'Buy 2 AAPL', exact: true });
   // The ticket zeroes the quantity when the account input settles, so refill until the click lands.
@@ -230,6 +239,40 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   ).toHaveLength(1);
   await page.getByRole('link', { name: 'Back to dashboard' }).click();
   await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');
+  await expect(page).toHaveURL(/\/dashboard$/);
+  expect(visited.length).toBeGreaterThan(3);
+  expect(visited.filter((url) => /accountId/i.test(url))).toEqual([]);
+});
+
+test('opens an old link that named an account without the account in the URL', async ({
+  page,
+  loginPage,
+}) => {
+  await loginPage.goto();
+  await loginPage.signIn(USER.email, USER.password);
+  await expect(page).toHaveURL(/\/dashboard$/);
+
+  await page.goto('/dashboard/markets/aapl?accountId=2&compare=msft');
+
+  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl\?compare=msft$/);
+  await expect(page.getByRole('heading', { name: 'AAPL', exact: true })).toBeVisible();
+});
+
+test('covers the header with a dialog backdrop on the market page', async ({
+  page,
+  loginPage,
+}) => {
+  await openMarketPage(page, loginPage);
+  await page.getByTestId('profile-dropdown').locator('summary').click();
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Settings', exact: true })).toBeVisible();
+
+  const back = await page.getByRole('link', { name: 'Back to dashboard' }).boundingBox();
+  const topElementIsBackdrop = await page.evaluate(
+    ({ x, y }) => !!document.elementFromPoint(x, y)?.closest('.settings-backdrop'),
+    { x: back!.x + back!.width / 2, y: back!.y + back!.height / 2 },
+  );
+  expect(topElementIsBackdrop).toBe(true);
 });
 
 test('creates and renames accounts from the reused market dropdown', async ({
@@ -289,10 +332,10 @@ test('keeps comparison headers and chart controls separate at every layout', asy
     await page.getByRole('menuitemcheckbox', { name, exact: true }).click();
   }
   await page.getByRole('button', { name: /Indicators/ }).click();
-  await expect(page.locator('[aria-controls="indicator-picker"] span')).toHaveCSS(
-    'color',
-    'rgb(0, 0, 0)',
-  );
+  // The count reads in the filled button's own ink, so it stays legible in both themes.
+  const indicatorsButton = page.locator('[aria-controls="indicator-picker"]');
+  await expect(indicatorsButton).toHaveCSS('color', 'rgb(14, 14, 14)');
+  await expect(indicatorsButton.locator('span')).toHaveCSS('color', 'rgb(14, 14, 14)');
   const charts = page.locator('.comparison-chart');
   await expect(charts).toHaveCount(2);
   for (const width of [1440, 901, 900, 640, 390]) {

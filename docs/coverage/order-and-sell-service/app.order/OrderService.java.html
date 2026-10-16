@@ -515,8 +515,8 @@ public class OrderService {
 <span class="fc" id="L515">        Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow();</span>
 <span class="fc" id="L516">        entityManager.refresh(order);</span>
 <span class="fc bfc" id="L517" title="All 2 branches covered.">        if (Order.STATUS_CANCELLED.equals(order.getStatus())) return order;</span>
-<span class="fc bfc" id="L518" title="All 2 branches covered.">        if (!Order.STATUS_ACCEPTED.equals(order.getStatus())) {</span>
-<span class="fc" id="L519">            throw new org.springframework.web.server.ResponseStatusException(</span>
+<span class="pc bpc" id="L518" title="1 of 2 branches missed.">        if (!Order.STATUS_ACCEPTED.equals(order.getStatus())) {</span>
+<span class="nc" id="L519">            throw new org.springframework.web.server.ResponseStatusException(</span>
                     org.springframework.http.HttpStatus.CONFLICT, &quot;Only open orders can be cancelled&quot;);
         }
 <span class="fc" id="L522">        order.setStatus(Order.STATUS_CANCELLED);</span>

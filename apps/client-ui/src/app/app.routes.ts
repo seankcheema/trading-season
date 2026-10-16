@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard, guestGuard } from './core/auth/auth.guard';
+import { dropAccountIdGuard } from './core/drop-account-id.guard';
 import { LoginComponent } from './login/login.component';
 import { RegisterComponent } from './register/register.component';
 
@@ -13,13 +14,13 @@ export const routes: Routes = [
   { path: 'register', component: RegisterComponent, canActivate: [guestGuard] },
   {
     path: 'dashboard/markets/:symbol',
-    canActivate: [authGuard],
+    canActivate: [dropAccountIdGuard, authGuard],
     loadComponent: () =>
       import('./market-page/market-page.component').then((m) => m.MarketPageComponent),
   },
   {
     path: 'dashboard',
-    canActivate: [authGuard],
+    canActivate: [dropAccountIdGuard, authGuard],
     loadComponent: () =>
       import('./dashboard/dashboard.component').then((m) => m.DashboardComponent),
   },

@@ -9,9 +9,9 @@ Angular 21 single-page app with standalone components, signals, reactive forms, 
 | `/dashboard` | signed in | Accounts, holdings, portfolio history, watchlist, market ticker, order dialog, recent transactions |
 | `/dashboard/markets/:symbol` | signed in | Full-screen instrument page: chart modes and indicators, account and simulation-time controls, order ticket, recent orders |
 
-The market page places the account selector beside the simulation-time control. Its right panel matches the chart column's height on desktop and scrolls internally. Trading is the default tab, with Available Cash and Portfolio Value above Order Execution; Overview, News, AI, and Recent Orders share that panel. Compact cash and portfolio cards sit above the order ticket. The Buy/Sell action sits at the bottom, with flexible space after the estimated cost or proceeds. The account and simulation-time dropdowns and the profile and notification buttons are 46px tall and vertically centered beside the search field and back button. Switching tabs preserves the order draft. Smaller screens stack the chart and tools.
+The market page places the account selector beside the simulation-time control. Its right panel matches the chart column's height on desktop and scrolls internally. Trading is the default tab, with Available Cash and Portfolio Value above Order Execution; Recent Orders shares that panel. Compact cash and portfolio cards sit above the order ticket. The Buy/Sell action sits at the bottom, with flexible space after the estimated cost or proceeds. The account and simulation-time dropdowns and the profile button are 46px tall and vertically centered beside the search field and back button. Switching tabs preserves the order draft. Smaller screens stack the chart and tools.
 
-Live prices, candles, and the tick stream come from the Java market API. Metrics, news, and AI commentary on the market page are demo data. Users are signed out after a period of inactivity, 10 minutes by default and configurable in settings.
+Live prices, candles, and the tick stream come from the Java market API. Metrics on the market page are demo data. Users are signed out after a period of inactivity, 10 minutes by default and configurable in settings.
 
 A user who has not accepted the platform terms in force sees them on the dashboard and on the market page in a dialog that cannot be dismissed, with everything behind it inert. They sign by typing their name and accept, or sign out. The wording and its version are in [terms-content.ts](src/app/dashboard/terms/terms-content.ts); the version must match the one [Holdings and Trade Service](../holdings-and-trade-service/README.md) and [Order and Sell Service](../order-and-sell-service/README.md) have in force, which a test in each of them checks. After changing the wording, run `npm --prefix apps/client-ui run terms:pdf` to regenerate [the PDF](../../docs/pdf/terms-and-conditions.pdf) from it.
 
@@ -96,6 +96,10 @@ sequenceDiagram
 
 Network and refresh-service failures keep the credentials so the request can be retried; sign-out happens on explicit logout, inactivity, or missing or rejected refresh credentials.
 
+### Selected account
+
+The account chosen in the header is never part of a URL, where it would reach browser history, server logs and shared links. [AccountStore](src/app/dashboard/accounts/account-store.service.ts) holds it for the dashboard and the market page, and keeps it in this tab's `sessionStorage` under `ts.accounts.selected`, so moving between the two pages or reloading keeps it, and a new tab starts on the first account. Sign-out forgets it, and a saved id that is not one of the user's accounts selects the first one. Links made before this carried `?accountId=`; [dropAccountIdGuard](src/app/core/drop-account-id.guard.ts) opens them without it.
+
 ## Loading states
 
 Recent activity rows show order details and plain-text status beneath the transaction label, with the timestamp beneath the amount. Buy, Sell, Deposit and Withdrawal badges appear immediately to the right of the ticker or transaction label, vertically centered on that line. The dashboard and market page share these rows.
@@ -118,6 +122,19 @@ While data is on its way, the part of the screen that waits for it shows placeho
 | Market page | Rows of Recent Orders | The orders and the accounts arrive |
 
 A placeholder is the `skeleton` class in [src/styles.css](src/styles.css), sized with utilities; a list row has its own in [activity-row.component.ts](src/app/dashboard/shared/activity-row.component.ts). The blocks are hidden from assistive technology, and a visually hidden status beside them says what is loading, so a screen reader hears "Loading accounts" as before. The pulse stops under `prefers-reduced-motion`. A load that fails shows its error and retry in place of the placeholder, and a refresh of data already on screen leaves it there. The [Reporting UI](../reporting-ui/README.md#design-system) declares the same class; keep the two alike.
+
+## Themes
+
+The app comes in the design system's dark theme, which is the default, and a light one. The switch is the sun or moon button in the header of the landing page, the dashboard and the market page, and at the top right of the sign-in and registration pages.
+
+| Piece | What it does |
+| --- | --- |
+| [src/styles.css](src/styles.css) | The light tokens on `:root`, the dark ones on `:root.dark`. Light keeps the brand's ink and cyan but deepens each color used as text, primary, gain, loss and pending, until it reads at 4.5:1 on a white card. Besides the SpartanNG tokens there are tokens for the hero card, the surfaces the trading charts float, and the chart indicators |
+| [ThemeService](src/app/core/theme/theme.service.ts) | Adds or removes the `dark` class on `<html>`, keeps the choice in this browser's `localStorage` under `ts.settings.theme`, and follows a choice made in another open tab. On the server it changes nothing but the class |
+| [ThemeToggleComponent](src/app/core/theme/theme-toggle.component.ts) | The switch. Its label names the theme a click gives |
+| [src/index.html](src/index.html) | Ships `class="dark"` and a script that removes it when light was saved, before the first paint, so a reload or a prerendered page does not flash dark |
+
+Use a token, not a literal color, in new markup: a literal looks right in one theme only. The [Reporting UI](../reporting-ui/README.md#theme) declares the same values and has its own switch; the choice is kept per origin, so each app remembers its own.
 
 ## Commands
 

@@ -194,7 +194,7 @@ interface TooltipPosition {
             {{ showIndicatorLabels() ? 'Reset' : '↺' }}
           </button>
           @if (showIndicatorLabels()) {
-            <span class="px-1 text-[10px] font-semibold tabular-nums text-[#eefaff]/70"
+            <span class="px-1 text-[10px] font-semibold tabular-nums text-foreground/70"
               >{{ visiblePoints().length }} bars</span
             >
           }
@@ -539,21 +539,21 @@ interface TooltipPosition {
   `,
   styles: `
     .chart-control-bar {
-      border-color: rgba(238, 250, 255, 0.28);
-      background: #242424;
+      border-color: color-mix(in srgb, var(--foreground) 28%, transparent);
+      background: var(--raised);
     }
     .chart-control {
       min-width: 1.5rem;
       height: 1.5rem;
       border-radius: 0.375rem;
-      color: rgba(238, 250, 255, 0.9);
+      color: color-mix(in srgb, var(--foreground) 90%, transparent);
       font-size: 0.8125rem;
       font-weight: 600;
       line-height: 1;
       cursor: pointer;
     }
     .chart-control:hover:not(:disabled) {
-      background: rgba(238, 250, 255, 0.1);
+      background: color-mix(in srgb, var(--foreground) 10%, transparent);
     }
     .chart-control:disabled {
       opacity: 0.4;
@@ -606,13 +606,13 @@ interface TooltipPosition {
       font-weight: 600;
     }
     .chart-indicator-key span[data-indicator='sma'] {
-      color: #f6c453;
+      color: var(--indicator-sma);
     }
     .chart-indicator-key span[data-indicator='ema'] {
-      color: #b784ff;
+      color: var(--indicator-ema);
     }
     .chart-indicator-key span[data-indicator='bollinger'] {
-      color: #ff8f66;
+      color: var(--indicator-bollinger);
     }
     .price-hover-label {
       max-width: 12rem;
@@ -658,18 +658,18 @@ interface TooltipPosition {
       pointer-events: none;
     }
     .chart-indicator-sma {
-      stroke: #f6c453;
+      stroke: var(--indicator-sma);
     }
     .chart-indicator-ema {
-      stroke: #b784ff;
+      stroke: var(--indicator-ema);
     }
     .chart-indicator-bollinger {
-      stroke: #ff8f66;
+      stroke: var(--indicator-bollinger);
       stroke-width: 1;
       stroke-dasharray: 4 3;
     }
     .chart-bollinger-area {
-      fill: rgba(255, 143, 102, 0.08);
+      fill: color-mix(in srgb, var(--indicator-bollinger) 8%, transparent);
       pointer-events: none;
     }
     .rsi-pane {
@@ -690,14 +690,14 @@ interface TooltipPosition {
       text-transform: uppercase;
     }
     .rsi-header strong {
-      color: #42d3ff;
+      color: var(--indicator-rsi);
       font-size: 0.6875rem;
     }
     .rsi-header em {
       border-radius: 999px;
-      background: rgba(66, 211, 255, 0.12);
+      background: color-mix(in srgb, var(--indicator-rsi) 12%, transparent);
       padding: 0.1rem 0.35rem;
-      color: #42d3ff;
+      color: var(--indicator-rsi);
       font-size: 0.5rem;
       font-style: normal;
     }
@@ -712,7 +712,7 @@ interface TooltipPosition {
       position: relative;
       min-width: 0;
       min-height: 0;
-      background: rgba(238, 250, 255, 0.015);
+      background: color-mix(in srgb, var(--foreground) 1.5%, transparent);
     }
     .rsi-plot svg {
       position: absolute;
@@ -722,13 +722,13 @@ interface TooltipPosition {
       overflow: visible;
     }
     .rsi-guide {
-      stroke: rgba(238, 250, 255, 0.2);
+      stroke: color-mix(in srgb, var(--foreground) 20%, transparent);
       stroke-width: 0.5;
       stroke-dasharray: 3 3;
       vector-effect: non-scaling-stroke;
     }
     .rsi-line {
-      stroke: #42d3ff;
+      stroke: var(--indicator-rsi);
       stroke-width: 1.5;
       stroke-linecap: round;
       stroke-linejoin: round;
