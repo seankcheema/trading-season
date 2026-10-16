@@ -17,14 +17,16 @@ All require a bearer token except the public market reads.
 | --- | --- | --- |
 | POST | `/api/orders` | Submit a buy or sell order. Returns 201 with the outcome (`FILLED`, `REJECTED`, or `ACCEPTED` when execution failed and the order stays on record) |
 | GET | `/api/orders` | The caller's orders across all their accounts, newest first |
-| GET | `/api/orders/{orderId}/audit` | One of the caller's orders as its audit trail, oldest first: `eventType`, `price` (the order's indicative price), `occurredAt`, `detail`. Another caller's order is 404, the same as a missing one |
+| GET | `/api/orders/{orderId}/audit` | One of the caller's orders as its audit trail, oldest first: `eventType`, `price` (the order's indicative price), `occurredAt`, `detail` (for `FILLED`, `Filled <quantity> @ <market price> (market quote; indicative <price>)`). Another caller's order is 404, the same as a missing one |
 | GET | `/api/orders/stream` | Server-Sent Events: an `order-status` event with each committed status change's JSON body, and a `heartbeat` every 15 seconds |
 | GET | `/api/instruments` | Every instrument (UK, US and Indian equities, FX pairs and crypto assets, as seeded by the [market data import](../market-data/README.md#universe)) with `assetClass`, `market`, `currency`, `tradable` and `simulatedStockSymbol` |
 | GET | `/api/users/me` | The caller's profile, without the SSN |
 | GET | `/api/market/snapshot`, `/candles`, `/stream` | Public market data (snapshot, OHLCV candles, SSE ticks) |
 | PUT | `/api/market/clock` | Move the shared replay cursor |
 
-Order request: `accountId`, `instrumentId`, `orderType` (`BUY` or `SELL`), `quantity`, `indicativePrice`, `clientReference` (UUID idempotency key), and optional `bufferPercent` and `simulatedAt`.
+Order request: `accountId`, `instrumentId`, `orderType` (`BUY` or `SELL`), `quantity`, `indicativePrice`, `clientReference` (UUID idempotency key), and optional `bufferPercent` (tolerance in percent between `indicativePrice` and the market quote at execution; defaults to the user's `execution_buffer_percent`) and `simulatedAt`.
+
+Order response: `orderId`, `instrumentId`, `accountId`, `status`, `orderType`, `quantity`, `indicativePrice`, `fillPrice` (the market price a `FILLED` submission executed at; null otherwise, including on `GET /api/orders`), `rejectionReason`, `submittedAt`, `resolvedAt` and `simulatedAt`.
 
 Behavior worth knowing:
 
@@ -32,7 +34,8 @@ Behavior worth knowing:
 - Resubmitting the same `accountId` and `clientReference` returns the original outcome without executing again.
 - Another user's account is 403 and a missing account is 404, checked before the idempotency lookup. An unknown `instrumentId` is 400.
 - A caller who has not accepted the platform terms in force is 403 with `Accept the platform terms before placing an order`, and nothing is recorded for the attempt. Acceptances are recorded by [Holdings and Trade Service](../holdings-and-trade-service/README.md) in `terms_acceptances`, which this service only reads; the version in force is `TermsAcceptance.CURRENT_VERSION` and must match that service's. A resubmission of an order already on record still returns it.
-- Cash belongs to the user, not the account: a fill moves `users.available_funds`. Orders fill at `indicativePrice`.
+- Cash belongs to the user, not the account: a fill moves `users.available_funds`.
+- An order fills at the instrument's current market quote, not at `indicativePrice` (BR-08). `ExecutionQuoteSource` reads the quote from the shared market replay at its cursor, the same price `GET /api/market/snapshot` shows, under the instrument's `simulatedStockSymbol` or else its ticker. With no quote (no seeded session, or a symbol the replay does not carry) the order is rejected with `BR-08: no current market quote for <symbol>`. A positive `bufferPercent` rejects a quote further than that percentage from `indicativePrice`; zero or null accepts the market price whatever it is. The `FILLED` audit entry records both prices, and the response carries the fill price as `fillPrice`.
 - `simulatedAt` records the replay time chosen in the UI. `submittedAt`, `resolvedAt`, and fill times are always real server times.
 - `GET /api/orders/stream` needs the bearer header, which the browser's native `EventSource` cannot send; the Client UI reads it through `fetch` with the header set (see [its README](../client-ui/README.md#order-status)). Only the caller's own order events are pushed.
 - Errors use `{"error": "..."}`.
@@ -86,6 +89,8 @@ flowchart TB
     IC --> E2
     UC --> E2
     MC --> MR[MarketReplayService]
+    OE --> QS[ExecutionQuoteSource]
+    QS --> MR
     OS -. "OrderStatusEvent after commit" .-> TP
     OE -. "OrderStatusEvent after commit" .-> TP
     TP --> K
@@ -102,6 +107,7 @@ sequenceDiagram
     participant S as OrderService
     participant P as ValidationPipeline
     participant E as OrderExecutionService
+    participant Q as ExecutionQuoteSource
     participant DB as PostgreSQL
     participant K as Kafka trade-events
 
@@ -124,22 +130,28 @@ sequenceDiagram
             S->>K: ACCEPTED (after commit)
             Note over E,DB: Transaction 2: execution (REQUIRES_NEW)
             S->>E: execute(order, instrument)
-            E->>DB: Lock user row and holding row
-            alt Funds or holdings changed since validation
+            E->>Q: Current market quote for the instrument
+            alt No quote, or quote outside bufferPercent
                 E->>DB: Mark REJECTED, commit
                 E->>K: REJECTED (after commit)
-            else Still valid
-                E->>DB: Insert fill, cash transaction, holding movement
-                E->>DB: Update available funds and holding
-                E->>DB: Mark FILLED and audit entry, commit
-                E->>K: FILLED (after commit)
+            else Quote accepted
+                E->>DB: Lock user row and holding row
+                alt Funds or holdings changed since validation
+                    E->>DB: Mark REJECTED, commit
+                    E->>K: REJECTED (after commit)
+                else Still valid
+                    E->>DB: Insert fill, cash transaction, holding movement at the quote
+                    E->>DB: Update available funds and holding
+                    E->>DB: Mark FILLED and audit entry, commit
+                    E->>K: FILLED (after commit)
+                end
             end
         end
         S-->>C: Order in its final status
     end
 ```
 
-Acceptance and execution are separate transactions (BR-06). The accepted order is committed before any ledger row is written, and the fill, cash transaction, holding movement, holding update and FILLED status commit together or not at all (BR-09). If execution throws, only the execution rolls back: the order stays `ACCEPTED`, an `EXECUTION_FAILED` audit entry records the cause (truncated to 255 characters), and the response returns the order in that state. Nothing retries it automatically.
+Acceptance and execution are separate transactions (BR-06). The accepted order is committed before any ledger row is written, and the fill, cash transaction, holding movement, holding update and FILLED status commit together or not at all (BR-09). Execution prices the fill at the market quote read at that moment (BR-08), so the fill's `quote_price`, the cash moved and the `FILLED` message's `price` can differ from `indicativePrice`. If execution throws, only the execution rolls back: the order stays `ACCEPTED`, an `EXECUTION_FAILED` audit entry records the cause (truncated to 255 characters), and the response returns the order in that state. Nothing retries it automatically.
 
 Each `trade-events` message is published by `TradeEventPublisher` from an `AFTER_COMMIT` transactional event listener, so a consumer never sees a status the database does not hold. The message key is the account id as a string; the body is JSON with `orderId`, `status`, `symbol`, `side`, `quantity`, `price`, `rejectionReason` and `occurredAt`. For a `FILLED` message `price` is the fill's quote price, the price the trade settled at (BR-08, BR-15), which is what reporting values filled orders by; for every other status it is the indicative price the trader saw. A send failure is logged and never fails the order.
 
@@ -165,7 +177,7 @@ stateDiagram-v2
     [*] --> PENDING: submitted
     PENDING --> REJECTED: rule fails
     PENDING --> ACCEPTED: all rules pass (committed)
-    ACCEPTED --> REJECTED: funds or holdings changed
+    ACCEPTED --> REJECTED: no market quote, quote outside the buffer, or funds or holdings changed
     ACCEPTED --> FILLED: fill and ledger written
     ACCEPTED --> ACCEPTED: execution failed (EXECUTION_FAILED audit)
     REJECTED --> [*]

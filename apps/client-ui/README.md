@@ -21,6 +21,8 @@ A status never moves backwards, so an `ACCEPTED` event arriving after the submis
 
 The dashboard and market page show `Accepted` in blue for an order that is committed on record but whose execution did not complete; it is the one state a submission response can carry besides `FILLED` and `REJECTED`.
 
+A fill's notification shows `fillPrice`, the market price the Order and Sell Service executed at (BR-08), which can differ from the price on the ticket; a response without the field falls back to that indicative price.
+
 ## Architecture
 
 ```mermaid
