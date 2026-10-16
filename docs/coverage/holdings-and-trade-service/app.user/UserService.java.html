@@ -12,7 +12,7 @@ import java.util.UUID;
  * acceptance of the platform terms.
  */
 @Service
-public class UserService {
+public class UserService extends UserLookupService {
 
     /**
      * The version of the platform terms in force, named by its effective date.
@@ -21,8 +21,8 @@ public class UserService {
      */
     public static final String CURRENT_TERMS_VERSION = &quot;2026-10-12&quot;;
 
-    private final UserRepository userRepository;
-    private final UserAccountRepository userAccountRepository;
+    @org.springframework.beans.factory.annotation.Autowired
+    private app.account.AccountRepository accounts;
     private final TermsAcceptanceRepository termsAcceptanceRepository;
 
     /**
@@ -34,16 +34,15 @@ public class UserService {
      * @param termsAcceptanceRepository persistence for accepted terms
      */
     public UserService(UserRepository userRepository, UserAccountRepository userAccountRepository,
-<span class="fc" id="L37">                       TermsAcceptanceRepository termsAcceptanceRepository) {</span>
-<span class="fc" id="L38">        this.userRepository = userRepository;</span>
-<span class="fc" id="L39">        this.userAccountRepository = userAccountRepository;</span>
-<span class="fc" id="L40">        this.termsAcceptanceRepository = termsAcceptanceRepository;</span>
-<span class="fc" id="L41">    }</span>
+                       TermsAcceptanceRepository termsAcceptanceRepository) {
+<span class="fc" id="L38">        super(userRepository, userAccountRepository);</span>
+<span class="fc" id="L39">        this.termsAcceptanceRepository = termsAcceptanceRepository;</span>
+<span class="fc" id="L40">    }</span>
 
     /**
      * Loads the account belonging to the given user. Callers pass the id from the
      * verified token, never an id supplied in the request, so a client can only
-     * read its own account.
+     * read its own account. Includes cash reserved by open buy orders.
      *
      * @param userId the caller's user id from the token's sub claim
      * @return the caller's account
@@ -51,23 +50,10 @@ public class UserService {
      */
     @Transactional(readOnly = true)
     public User getOwnAccount(UUID userId) {
-<span class="fc" id="L54">        return userRepository.findById(userId)</span>
-<span class="fc" id="L55">                .orElseThrow(() -&gt; new UserNotFoundException(&quot;Account is not registered&quot;));</span>
-    }
-
-    /**
-     * Loads the credential record for the given user, so callers can report the
-     * role and status as they stand rather than as the caller's token describes
-     * them.
-     *
-     * @param userId the caller's user id from the token's sub claim
-     * @return the credential record the auth service owns
-     * @throws UserNotFoundException if no account exists for the id
-     */
-    @Transactional(readOnly = true)
-    public UserAccount getUserAccount(UUID userId) {
-<span class="fc" id="L69">        return userAccountRepository.findById(userId)</span>
-<span class="fc" id="L70">                .orElseThrow(() -&gt; new UserNotFoundException(&quot;Account is not registered&quot;));</span>
+<span class="fc" id="L53">        User user = userRepository.findById(userId)</span>
+<span class="fc" id="L54">                .orElseThrow(() -&gt; new UserNotFoundException(&quot;Account is not registered&quot;));</span>
+<span class="fc" id="L55">        user.setReservedCash(java.util.Objects.requireNonNullElse(accounts.reservedCash(userId), java.math.BigDecimal.ZERO));</span>
+<span class="fc" id="L56">        return user;</span>
     }
 
     /**
@@ -79,7 +65,7 @@ public class UserService {
      */
     @Transactional(readOnly = true)
     public boolean hasAcceptedCurrentTerms(UUID userId) {
-<span class="fc" id="L82">        return termsAcceptanceRepository.existsById(new TermsAcceptanceId(userId, CURRENT_TERMS_VERSION));</span>
+<span class="fc" id="L68">        return termsAcceptanceRepository.existsById(new TermsAcceptanceId(userId, CURRENT_TERMS_VERSION));</span>
     }
 
     /**
@@ -100,15 +86,28 @@ public class UserService {
      */
     @Transactional
     public void acceptTerms(UUID userId, String termsVersion) {
-<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (!CURRENT_TERMS_VERSION.equals(termsVersion)) {</span>
-<span class="fc" id="L104">            throw new ConflictException(&quot;The terms have changed. Reload to read the current version.&quot;);</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (!CURRENT_TERMS_VERSION.equals(termsVersion)) {</span>
+<span class="fc" id="L90">            throw new ConflictException(&quot;The terms have changed. Reload to read the current version.&quot;);</span>
         }
-<span class="fc" id="L106">        userRepository.findByIdForUpdate(userId)</span>
-<span class="fc" id="L107">                .orElseThrow(() -&gt; new UserNotFoundException(&quot;Account is not registered&quot;));</span>
-<span class="fc" id="L108">        TermsAcceptanceId id = new TermsAcceptanceId(userId, termsVersion);</span>
-<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (!termsAcceptanceRepository.existsById(id)) {</span>
-<span class="fc" id="L110">            termsAcceptanceRepository.save(new TermsAcceptance(userId, termsVersion, OffsetDateTime.now()));</span>
+<span class="fc" id="L92">        userRepository.findByIdForUpdate(userId)</span>
+<span class="fc" id="L93">                .orElseThrow(() -&gt; new UserNotFoundException(&quot;Account is not registered&quot;));</span>
+<span class="fc" id="L94">        TermsAcceptanceId id = new TermsAcceptanceId(userId, termsVersion);</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (!termsAcceptanceRepository.existsById(id)) {</span>
+<span class="fc" id="L96">            termsAcceptanceRepository.save(new TermsAcceptance(userId, termsVersion, OffsetDateTime.now()));</span>
         }
-<span class="fc" id="L112">    }</span>
+<span class="fc" id="L98">    }</span>
+    /** Saves the authenticated owner's trading preference under the cash/profile lock.
+     * @param userId verified owner
+     * @param settings validated percentage
+     * @return persisted preference
+     * @throws UserNotFoundException if the profile does not exist */
+    @Transactional
+    public ExecutionSettings saveExecutionSettings(UUID userId, ExecutionSettings settings) {
+<span class="fc" id="L106">        User user = userRepository.findByIdForUpdate(userId)</span>
+<span class="pc" id="L107">                .orElseThrow(() -&gt; new UserNotFoundException(&quot;Account is not registered&quot;));</span>
+<span class="fc" id="L108">        user.setExecutionBufferPercent(settings.executionBufferPercent());</span>
+<span class="fc" id="L109">        userRepository.save(user);</span>
+<span class="fc" id="L110">        return new ExecutionSettings(user.getExecutionBufferPercent());</span>
+    }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

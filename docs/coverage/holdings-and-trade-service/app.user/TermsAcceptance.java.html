@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TermsAcceptance.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.user</a> &gt; <span class="el_source">TermsAcceptance.java</span></div><h1>TermsAcceptance.java</h1><pre class="source lang-java linenums">package app.user;
 
-import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
 import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Immutable;
@@ -25,24 +23,13 @@ import java.util.UUID;
 @Immutable
 @IdClass(TermsAcceptanceId.class)
 @Table(name = &quot;terms_acceptances&quot;)
-public class TermsAcceptance {
-
-    @Id
-    @Column(name = &quot;user_id&quot;, updatable = false, nullable = false)
-    private UUID userId;
-
-    @Id
-    @Column(name = &quot;terms_version&quot;, updatable = false, nullable = false)
-    private String termsVersion;
-
-    @Column(name = &quot;accepted_at&quot;, updatable = false, nullable = false)
-    private OffsetDateTime acceptedAt;
+public class TermsAcceptance extends TermsAcceptanceBase {
 
     /**
      * Required by Hibernate.
      */
-<span class="fc" id="L44">    protected TermsAcceptance() {</span>
-<span class="fc" id="L45">    }</span>
+<span class="fc" id="L31">    protected TermsAcceptance() {</span>
+<span class="fc" id="L32">    }</span>
 
     /**
      * Creates an acceptance.
@@ -51,37 +38,8 @@ public class TermsAcceptance {
      * @param termsVersion the version of the terms the client accepted
      * @param acceptedAt   when the client accepted
      */
-<span class="fc" id="L54">    public TermsAcceptance(UUID userId, String termsVersion, OffsetDateTime acceptedAt) {</span>
-<span class="fc" id="L55">        this.userId = userId;</span>
-<span class="fc" id="L56">        this.termsVersion = termsVersion;</span>
-<span class="fc" id="L57">        this.acceptedAt = acceptedAt;</span>
-<span class="fc" id="L58">    }</span>
-
-    /**
-     * Returns the client's user id.
-     *
-     * @return the user id
-     */
-    public UUID getUserId() {
-<span class="fc" id="L66">        return userId;</span>
-    }
-
-    /**
-     * Returns the version of the terms the client accepted.
-     *
-     * @return the terms version
-     */
-    public String getTermsVersion() {
-<span class="fc" id="L75">        return termsVersion;</span>
-    }
-
-    /**
-     * Returns when the client accepted.
-     *
-     * @return the acceptance time
-     */
-    public OffsetDateTime getAcceptedAt() {
-<span class="fc" id="L84">        return acceptedAt;</span>
-    }
+    public TermsAcceptance(UUID userId, String termsVersion, OffsetDateTime acceptedAt) {
+<span class="fc" id="L42">        super(userId, termsVersion, acceptedAt);</span>
+<span class="fc" id="L43">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

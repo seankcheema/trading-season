@@ -67,9 +67,29 @@ public class UserController {
 <span class="fc" id="L67">        return profileOf(userId);</span>
     }
 
+    /** Reads the caller's saved buffer.
+     * @param jwt verified token
+     * @return saved execution preference */
+    @GetMapping(&quot;/me/execution-settings&quot;)
+    @Operation(summary = &quot;Get trading execution settings&quot;)
+    public ExecutionSettings executionSettings(@AuthenticationPrincipal Jwt jwt) {
+<span class="fc" id="L76">        return new ExecutionSettings(userService.getOwnAccount(AuthenticatedUser.from(jwt).userId()).getExecutionBufferPercent());</span>
+    }
+
+    /** Saves the caller's buffer; existing orders retain their snapshot.
+     * @param settings percentage from zero through ten
+     * @param jwt verified token
+     * @return saved execution preference */
+    @PutMapping(&quot;/me/execution-settings&quot;)
+    @Operation(summary = &quot;Update trading execution settings&quot;)
+    public ExecutionSettings saveExecutionSettings(@Valid @RequestBody ExecutionSettings settings,
+            @AuthenticationPrincipal Jwt jwt) {
+<span class="fc" id="L87">        return userService.saveExecutionSettings(AuthenticatedUser.from(jwt).userId(), settings);</span>
+    }
+
     private UserProfileResponse profileOf(UUID userId) {
-<span class="fc" id="L71">        return UserProfileResponse.from(userService.getOwnAccount(userId),</span>
-<span class="fc" id="L72">                userService.getUserAccount(userId), userService.hasAcceptedCurrentTerms(userId));</span>
+<span class="fc" id="L91">        return UserProfileResponse.from(userService.getOwnAccount(userId),</span>
+<span class="fc" id="L92">                userService.getUserAccount(userId), userService.hasAcceptedCurrentTerms(userId));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

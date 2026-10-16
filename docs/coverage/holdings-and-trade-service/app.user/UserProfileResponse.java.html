@@ -16,13 +16,15 @@ import java.util.UUID;
  * @param address        mailing address
  * @param dateOfBirth    date of birth
  * @param traderLevel    BEGINNER, INTERMEDIATE or ADVANCED
- * @param availableFunds cash available for trading
+ * @param availableFunds total cash balance
+ * @param reservedCash cash reserved for open BUY orders
+ * @param spendableFunds cash available for new orders and withdrawals
  * @param userRole       ADMIN, TRADER or ANALYST
  * @param createdAt      when the account was registered
  * @param termsAccepted  whether the caller has accepted the platform terms
  *                       currently in force
  */
-<span class="fc" id="L25">public record UserProfileResponse(</span>
+<span class="fc" id="L27">public record UserProfileResponse(</span>
         UUID userId,
         String email,
         String firstName,
@@ -34,7 +36,9 @@ import java.util.UUID;
         BigDecimal availableFunds,
         String userRole,
         OffsetDateTime createdAt,
-        boolean termsAccepted
+        boolean termsAccepted,
+        BigDecimal reservedCash,
+        BigDecimal spendableFunds
 ) {
 
     /**
@@ -52,10 +56,11 @@ import java.util.UUID;
      * @return the profile response
      */
     public static UserProfileResponse from(User user, UserAccount account, boolean termsAccepted) {
-<span class="fc" id="L55">        return new UserProfileResponse(user.getUserId(), account.getEmail(),</span>
-<span class="fc" id="L56">                user.getFirstName(), user.getMiddleName(), user.getLastName(), user.getAddress(),</span>
-<span class="fc" id="L57">                user.getDateOfBirth(), user.getTraderLevel(), user.getAvailableFunds(),</span>
-<span class="fc" id="L58">                account.getUserRole(), user.getCreatedAt(), termsAccepted);</span>
+<span class="fc" id="L59">        return new UserProfileResponse(user.getUserId(), account.getEmail(),</span>
+<span class="fc" id="L60">                user.getFirstName(), user.getMiddleName(), user.getLastName(), user.getAddress(),</span>
+<span class="fc" id="L61">                user.getDateOfBirth(), user.getTraderLevel(), user.getAvailableFunds(),</span>
+<span class="fc" id="L62">                account.getUserRole(), user.getCreatedAt(), termsAccepted, user.getReservedCash(),</span>
+<span class="fc" id="L63">                user.getAvailableFunds().subtract(user.getReservedCash()));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
