@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -84,25 +85,34 @@ public class CashTransactionService {
      *
      * <p>The balance row is locked before it is read, so two concurrent
      * withdrawals cannot both pass the funds check against the same balance.
+     * The lock also serialises retries: a {@code clientReference} the user has
+     * already booked returns that row and moves nothing (section 9.1), and the
+     * column's unique constraint rejects a concurrent repeat that slipped past
+     * the lookup.
      *
-     * @param userId the authenticated user's UUID from the token's sub claim
-     * @param amount how much to move, positive
-     * @param reason {@link CashTransaction#REASON_DEPOSIT} or
-     *               {@link CashTransaction#REASON_WITHDRAWAL}
-     * @return the recorded ledger row
+     * @param userId          the authenticated user's UUID from the token's sub claim
+     * @param amount          how much to move, positive
+     * @param reason          {@link CashTransaction#REASON_DEPOSIT} or
+     *                        {@link CashTransaction#REASON_WITHDRAWAL}
+     * @param clientReference the client's idempotency key for this movement
+     * @return the recorded ledger row, or the row an earlier call with the same key recorded
      * @throws UserNotFoundException      if the caller has not registered a profile
      * @throws AccountNotFoundException   if the caller has no account to book the row against
      * @throws InsufficientFundsException if a withdrawal exceeds the available funds
-     * @throws IllegalArgumentException   if the amount is not positive or the reason is unknown
+     * @throws IllegalArgumentException   if the amount is not positive, the reason is unknown
+     *                                    or the client reference is missing
      */
     @Transactional
-    public CashTransaction move(UUID userId, BigDecimal amount, String reason) {
+    public CashTransaction move(UUID userId, BigDecimal amount, String reason, UUID clientReference) {
         if (amount == null || amount.signum() <= 0) {
             throw new IllegalArgumentException("Amount must be greater than 0");
         }
         boolean deposit = CashTransaction.REASON_DEPOSIT.equals(reason);
         if (!deposit && !CashTransaction.REASON_WITHDRAWAL.equals(reason)) {
             throw new IllegalArgumentException("Reason must be DEPOSIT or WITHDRAWAL");
+        }
+        if (clientReference == null) {
+            throw new IllegalArgumentException("Client reference is required");
         }
 
         // Locked before the balance is read, because the funds check below decides
@@ -114,6 +124,17 @@ public class CashTransactionService {
         // of their accounts would do; the first is the default opened at sign-up.
         Account account = accountRepository.findFirstByUserIdOrderByOpenedDateAscIdAsc(userId)
                 .orElseThrow(() -> new AccountNotFoundException("No account is open for this user"));
+
+        // A retry of a movement this user already booked is answered with that
+        // movement. A key booked by someone else is not theirs to replay, so it
+        // falls through and the unique constraint refuses the second row.
+        Optional<CashTransaction> repeated = cashTransactionRepository.findByClientReference(clientReference)
+                .filter(existing -> accountRepository.findById(existing.getAccountId())
+                        .map(owner -> userId.equals(owner.getUserId()))
+                        .orElse(false));
+        if (repeated.isPresent()) {
+            return repeated.get();
+        }
 
         BigDecimal available = user.getAvailableFunds();
         if (!deposit && amount.compareTo(available) > 0) {
@@ -128,6 +149,7 @@ public class CashTransactionService {
         transaction.setAccountId(account.getAccountId());
         transaction.setAmount(signed);
         transaction.setReason(reason);
+        transaction.setClientReference(clientReference);
         transaction.setCreatedAt(OffsetDateTime.now());
         CashTransaction saved = cashTransactionRepository.save(transaction);
         events.publishEvent(CashTransferRecord.from(saved, userId, user.getAvailableFunds()));
