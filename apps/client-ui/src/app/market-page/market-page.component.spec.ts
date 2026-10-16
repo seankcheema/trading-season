@@ -89,7 +89,11 @@ describe('MarketPageComponent', () => {
   ): Promise<ComponentFixture<MarketPageComponent>> {
     await TestBed.configureTestingModule({
       imports: [MarketPageComponent],
-      providers: [{ provide: ExecutionSettingsService, useValue: { load: () => savedExecutionPreference({ executionBufferPercent: 0 }) } },
+      providers: [
+        {
+          provide: ExecutionSettingsService,
+          useValue: { load: () => savedExecutionPreference({ executionBufferPercent: 0 }) },
+        },
         provideRouter([]),
         provideHttpClient(),
         provideHttpClientTesting(),
@@ -171,7 +175,9 @@ describe('MarketPageComponent', () => {
       serverTimestamp: '2026-01-05T15:01:10Z',
       prices: [{ symbol: 'AAPL', price: 230, sequenceNumber: 2 }],
     });
-    expect(fixture.componentInstance['instruments']().find((stock) => stock.symbol === 'AAPL')?.price).toBe(230);
+    expect(
+      fixture.componentInstance['instruments']().find((stock) => stock.symbol === 'AAPL')?.price,
+    ).toBe(230);
     fixture.destroy();
     expect(disconnect).toHaveBeenCalledTimes(2);
   });
@@ -183,9 +189,12 @@ describe('MarketPageComponent', () => {
     marketData.candles.mockImplementationOnce(() => pending);
     fixture.componentInstance['candleRevision'].update((revision) => revision + 1);
     fixture.detectChanges();
-    expect(fixture.debugElement.query(By.directive(PriceChartComponent)).componentInstance).toBe(chart);
-    const status = [...fixture.nativeElement.querySelectorAll('[role="status"]')]
-      .find((element: HTMLElement) => element.textContent?.includes('Updating chart'));
+    expect(fixture.debugElement.query(By.directive(PriceChartComponent)).componentInstance).toBe(
+      chart,
+    );
+    const status = [...fixture.nativeElement.querySelectorAll('[role="status"]')].find(
+      (element: HTMLElement) => element.textContent?.includes('Updating chart'),
+    );
     expect(status?.classList.contains('sr-only')).toBe(true);
     pending.complete();
     fixture.destroy();
@@ -230,13 +239,33 @@ describe('MarketPageComponent', () => {
     expect(fixture.componentInstance['openHeaderDropdown']()).toBeNull();
 
     const logout = vi.spyOn(TestBed.inject(AuthService), 'logout').mockReturnValue(of(undefined));
-    const navigateToLogin = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+    const navigateToLogin = vi
+      .spyOn(TestBed.inject(Router), 'navigateByUrl')
+      .mockResolvedValue(true);
     profile.querySelectorAll('button')[1].click();
     expect(logout).toHaveBeenCalledOnce();
     expect(navigateToLogin).toHaveBeenCalledWith('/login');
   });
 
-  it('shows shared cash and the selected portfolio in the account box above execution', async () => {
+  it('preserves the order draft while switching away from Trading', async () => {
+    const fixture = await setup();
+    const root = fixture.nativeElement as HTMLElement;
+    const ticket = root.querySelector('app-trade-ticket');
+    const quantity = root.querySelector('#future-trade-quantity') as HTMLInputElement;
+    quantity.value = '3';
+    quantity.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    fixture.componentInstance['insightTab'].set('news');
+    fixture.detectChanges();
+    expect(root.querySelector('app-trade-ticket')).toBe(ticket);
+    expect((root.querySelector('.trading-content') as HTMLElement).hidden).toBe(true);
+    fixture.componentInstance['insightTab'].set('trading');
+    fixture.detectChanges();
+    expect(quantity.value).toBe('3');
+    expect((root.querySelector('.trading-content') as HTMLElement).hidden).toBe(false);
+  });
+
+  it('shows shared cash and the selected portfolio in the Trading tab', async () => {
     const fixture = await setup();
     const panel = fixture.nativeElement.querySelector('[data-testid="account-value-panel"]');
     expect(panel.querySelector('[data-testid="available-cash"]').textContent).toContain(
@@ -245,8 +274,13 @@ describe('MarketPageComponent', () => {
     expect(panel.querySelector('[data-testid="account-portfolio-value"]').textContent).toContain(
       '$1,129.00',
     );
-    expect(fixture.nativeElement.querySelector('header app-account-control')).toBeNull();
-    expect(panel.querySelector('app-account-control')).not.toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('app-market-clock-control').nextElementSibling.tagName,
+    ).toBe('APP-ACCOUNT-CONTROL');
+    expect(panel.querySelector('app-account-control')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[role=tab][aria-selected=true]').textContent.trim(),
+    ).toBe('Trading');
     fixture.componentInstance['selectAccount'](2);
     fixture.detectChanges();
     expect(panel.querySelector('[data-testid="account-portfolio-value"]').textContent).toContain(
@@ -498,6 +532,8 @@ describe('MarketPageComponent', () => {
 
   it('renders overview and news feeds plus an empty AI chat state', async () => {
     const fixture = await setup();
+    fixture.componentInstance['insightTab'].set('overview');
+    fixture.detectChanges();
     expect(fixture.nativeElement.textContent).not.toContain('Current market read');
     expect(fixture.nativeElement.textContent).toContain('Short-term risk');
     expect(fixture.nativeElement.textContent).toContain('Popularity');
@@ -624,6 +660,29 @@ describe('MarketPageComponent', () => {
     const charts = fixture.debugElement.queryAll(By.directive(PriceChartComponent));
     expect(charts).toHaveLength(2);
     expect(charts.every((chart) => chart.componentInstance.candles().length === 1)).toBe(true);
+  });
+
+  it.each([2.04, -3.5, 0])('formats comparison dollar changes for %s', async (change) => {
+    marketData.snapshot.mockReturnValueOnce(
+      of({
+        ...SNAPSHOT,
+        stocks: SNAPSHOT.stocks.map((stock) => ({ ...stock, change })),
+      }),
+    );
+    const fixture = await setup('aapl', 'msft');
+    const sections = fixture.nativeElement.querySelectorAll('.comparison-chart');
+    expect(sections).toHaveLength(2);
+    const expected = change === 0 ? '$0.00' : change < 0 ? '-$3.50' : '$2.04';
+    sections.forEach((section: HTMLElement, index: number) => {
+      const header = section.querySelector(
+        '.comparison-price-label-left, .comparison-price-label-right',
+      );
+      expect(header?.closest('.chart-toolbar')).not.toBeNull();
+      expect(section.querySelector('.chart-indicator-key')).toBeNull();
+      expect(header?.textContent).toContain(index === 0 ? 'AAPL' : 'MSFT');
+      expect(header?.textContent).toContain(expected);
+      expect(header?.textContent).toContain('%');
+    });
   });
 
   it('opens the comparison picker and writes the selected peer to the URL', async () => {
@@ -805,7 +864,7 @@ describe('MarketPageComponent', () => {
     expect(skeleton.querySelector('.tools-column')?.getAttribute('aria-hidden')).toBe('true');
     expect(skeleton.querySelectorAll('.market-metrics > div')).toHaveLength(7);
     expect(skeleton.querySelector('.chart-stage .skeleton')).not.toBeNull();
-    expect(skeleton.querySelectorAll('[data-testid="activity-row-skeleton"]')).toHaveLength(5);
+    expect(skeleton.querySelector('[data-testid="trading-skeleton"]')).not.toBeNull();
     expect(root.querySelector('app-price-chart')).toBeNull();
     expect(root.querySelector('app-trade-ticket')).toBeNull();
 
@@ -837,7 +896,14 @@ describe('MarketPageComponent', () => {
       timeframe: '1D',
       marketTimestamp: SNAPSHOT.marketTimestamp,
       points: [
-        { timestamp: '2026-01-05T15:00:00Z', open: 224, high: 226, low: 223, close: 225, volume: 1000 },
+        {
+          timestamp: '2026-01-05T15:00:00Z',
+          open: 224,
+          high: 226,
+          low: 223,
+          close: 225,
+          volume: 1000,
+        },
       ],
     });
     fixture.detectChanges();
@@ -1199,9 +1265,12 @@ describe('MarketPageComponent', () => {
       fixture.detectChanges();
 
       (termsDialog(fixture)!.querySelector('button[type="submit"]') as HTMLButtonElement).click();
-      TestBed.inject(HttpTestingController)
-        .expectOne('/api/users/me/terms-acceptance')
-        .flush({ firstName: 'Ada', lastName: 'Lovelace', availableFunds: 10000, termsAccepted: true });
+      TestBed.inject(HttpTestingController).expectOne('/api/users/me/terms-acceptance').flush({
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        availableFunds: 10000,
+        termsAccepted: true,
+      });
       fixture.detectChanges();
 
       expect(termsDialog(fixture)).toBeNull();

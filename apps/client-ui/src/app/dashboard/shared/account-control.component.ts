@@ -39,6 +39,7 @@ import { Account } from '../accounts/account.models';
 
   template: `
     <app-dashboard-header-dropdown
+      class="block"
       iconName="lucideBriefcaseBusiness"
       [label]="label()"
       [loading]="loading()"
@@ -50,7 +51,7 @@ import { Account } from '../accounts/account.models';
       [triggerClass]="
         expanded()
           ? 'border-border bg-card hover:bg-muted h-10 w-full gap-3 rounded-lg border px-3 text-sm'
-          : ''
+          : triggerClass()
       "
     >
       <div class="p-1" role="menu" aria-label="Accounts">
@@ -144,6 +145,7 @@ import { Account } from '../accounts/account.models';
 export class AccountControlComponent {
   readonly store = input.required<AccountStore>();
   readonly expanded = input(false);
+  readonly triggerClass = input('');
   readonly portfolioValues = input<ReadonlyMap<number, number>>(new Map());
   readonly open = input(false);
   readonly openChange = output<boolean>();

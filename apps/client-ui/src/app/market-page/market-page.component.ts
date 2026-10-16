@@ -25,7 +25,13 @@ import {
 } from '../dashboard/shared/activity-row.component';
 import { orderActivity } from '../dashboard/shared/activity';
 import { TradeTicketDraft } from '../dashboard/shared/trade-ticket.component';
-import { CurrencyPipe, DecimalPipe, TitleCasePipe, isPlatformBrowser } from '@angular/common';
+import {
+  NgTemplateOutlet,
+  CurrencyPipe,
+  DecimalPipe,
+  TitleCasePipe,
+  isPlatformBrowser,
+} from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -100,7 +106,7 @@ import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
 
-type InsightTab = 'overview' | 'news' | 'ai' | 'recent-orders';
+type InsightTab = 'trading' | 'overview' | 'news' | 'ai' | 'recent-orders';
 
 type ToolbarMenu = 'indicators' | 'chart-mode' | 'comparison';
 
@@ -130,6 +136,7 @@ interface MarketStats {
   selector: 'app-market-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    NgTemplateOutlet,
     OrderEditorComponent,
     WatchlistStarComponent,
     DashboardHeaderDropdownComponent,
@@ -331,9 +338,10 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       ? Math.max(0, this.cashBalance() - draft.estimatedValue)
       : this.cashBalance();
   });
-  protected readonly heldShares = computed(
-    () =>
-      ((holding) => holding?.availableQuantity ?? holding?.quantity ?? 0)(this.accountStore.selectedHoldings().find((h) => h.symbol === this.symbol())),
+  protected readonly heldShares = computed(() =>
+    ((holding) => holding?.availableQuantity ?? holding?.quantity ?? 0)(
+      this.accountStore.selectedHoldings().find((h) => h.symbol === this.symbol()),
+    ),
   );
 
   protected readonly portfolioValues = computed(
@@ -509,7 +517,10 @@ export class MarketPageComponent implements OnInit, OnDestroy {
           } else {
             this.refreshBalances(accountId);
             const type = (draft.executionType ?? 'MARKET').replaceAll('_', '-').toLowerCase();
-            this.toasts.show(`${type.charAt(0).toUpperCase() + type.slice(1)} ${draft.side} order placed for ${result.quantity} ${draft.symbol}.`, 'success');
+            this.toasts.show(
+              `${type.charAt(0).toUpperCase() + type.slice(1)} ${draft.side} order placed for ${result.quantity} ${draft.symbol}.`,
+              'success',
+            );
           }
         },
         error: (error: unknown) => {
@@ -580,7 +591,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly selectedChartMode = computed(
     () => this.chartModes.find((option) => option.value === this.chartMode()) ?? this.chartModes[0],
   );
-  protected readonly insightTab = signal<InsightTab>('overview');
+  protected readonly insightTab = signal<InsightTab>('trading');
   protected readonly demoNews: readonly DemoNewsStory[] = [
     {
       age: '12 min ago',
@@ -763,7 +774,8 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     this.orders.pendingResolved.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((order) => {
       const accountId = order.accountId ?? this.accountStore.selectedAccountId();
       if (accountId !== null) this.refreshBalances(accountId);
-      if (order.status === 'REJECTED') this.toasts.show(order.rejectionReason ?? 'Order rejected.', 'error');
+      if (order.status === 'REJECTED')
+        this.toasts.show(order.rejectionReason ?? 'Order rejected.', 'error');
     });
     if (!isPlatformBrowser(this.platformId)) {
       return;
