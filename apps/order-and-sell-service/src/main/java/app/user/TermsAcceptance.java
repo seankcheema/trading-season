@@ -1,14 +1,9 @@
 package app.user;
 
-import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
 import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Immutable;
-
-import java.time.OffsetDateTime;
-import java.util.UUID;
 
 /**
  * A read-only view of a client's acceptance of one version of the platform
@@ -26,7 +21,7 @@ import java.util.UUID;
 @Immutable
 @IdClass(TermsAcceptanceId.class)
 @Table(name = "terms_acceptances")
-public class TermsAcceptance {
+public class TermsAcceptance extends TermsAcceptanceBase {
 
     /**
      * The version of the platform terms in force, named by its effective date.
@@ -35,17 +30,6 @@ public class TermsAcceptance {
      * together whenever the wording of the terms changes.
      */
     public static final String CURRENT_VERSION = "2026-10-12";
-
-    @Id
-    @Column(name = "user_id", updatable = false, nullable = false)
-    private UUID userId;
-
-    @Id
-    @Column(name = "terms_version", updatable = false, nullable = false)
-    private String termsVersion;
-
-    @Column(name = "accepted_at", updatable = false, nullable = false)
-    private OffsetDateTime acceptedAt;
 
     /**
      * Required by Hibernate.

@@ -66,14 +66,10 @@ import {
 import { RecentInstrumentsService } from './shared/recent-instruments.service';
 import { PriceChartComponent } from './shared/price-chart.component';
 import { SignedPercentPipe } from './shared/signed-percent.pipe';
+import { TickAnimations } from './shared/tick-animations';
 import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
 
 type HeaderDropdown = 'account' | 'market-clock' | 'profile';
-type TickAnimation = {
-  direction: 'gain' | 'loss';
-  durationMs: number;
-  revision: number;
-};
 
 // The account or cash dialog currently open over the dashboard, if any. An account dialog
 // with an account renames it; without one it creates a new, empty account.
@@ -128,7 +124,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private readonly document = inject(DOCUMENT);
   private readonly zone = inject(NgZone);
   private disconnectMarket?: () => void;
-  private readonly tickAnimationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly tickAnimator = new TickAnimations();
   private readonly openingPrices = new Map<string, number>();
   private readonly assetChartSubscriptions = new Map<string, Subscription>();
   private marketGeneration = 0;
@@ -217,7 +213,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected refreshWatchlist(): void {
     this.watchlist.load(true).subscribe({ error: () => undefined });
   }
-  protected readonly tickAnimations = signal(new Map<string, TickAnimation>());
+  protected readonly tickAnimations = this.tickAnimator.current;
   protected readonly portfolioTimeframe = signal<Timeframe>('1D');
   protected readonly marketSessionId = this.clock.marketSessionId;
   protected readonly currentMarketTimestamp = this.clock.currentMarketTimestamp;
@@ -771,37 +767,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
       }),
     );
     if (previousPrice !== undefined && previousPrice !== price) {
-      this.animateTick(symbol, price > previousPrice ? 'gain' : 'loss');
+      this.tickAnimator.start(symbol, price > previousPrice ? 'gain' : 'loss');
     }
   }
 
   private clearQueuedUpdates(): void {
-    this.tickAnimationTimers.forEach(clearTimeout);
-    this.tickAnimationTimers.clear();
-    this.tickAnimations.set(new Map());
-  }
-
-  private animateTick(symbol: string, direction: TickAnimation['direction']): void {
-    const existingTimer = this.tickAnimationTimers.get(symbol);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
-    }
-    const durationMs = 500 + Math.floor(Math.random() * 501);
-    this.tickAnimations.update((animations) => {
-      const next = new Map(animations);
-      const revision = (next.get(symbol)?.revision ?? 0) + 1;
-      next.set(symbol, { direction, durationMs, revision });
-      return next;
-    });
-    const timer = setTimeout(() => {
-      this.tickAnimationTimers.delete(symbol);
-      this.tickAnimations.update((animations) => {
-        const next = new Map(animations);
-        next.delete(symbol);
-        return next;
-      });
-    }, durationMs);
-    this.tickAnimationTimers.set(symbol, timer);
+    this.tickAnimator.clear();
   }
 
   protected onSettings(): void {

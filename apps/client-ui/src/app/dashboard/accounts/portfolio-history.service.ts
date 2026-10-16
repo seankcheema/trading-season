@@ -159,24 +159,11 @@ export class PortfolioHistoryService {
           )
       : history();
     this.request = load.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: (values) => {
-        this.points.set(
+      next: (values) =>
+        this.showPoints(
           values.map((point) => ({ time: new Date(point.timestamp), value: point.value })),
-        );
-        this.displayedTimeframe.set(this.timeframe);
-        this.remember();
-        this.refreshing.set(false);
-        this.status.set('ready');
-      },
-      error: () => {
-        this.pendingSignature = undefined;
-        const cached = this.cache.get(this.cacheKey());
-        if (cached) {
-          cached.expiresAt = 0;
-        }
-        this.refreshing.set(false);
-        this.status.set('error');
-      },
+        ),
+      error: () => this.showError(),
     });
   }
   private loadSimulation(context: SimulationPortfolio): void {
@@ -254,22 +241,30 @@ export class PortfolioHistoryService {
       )
       .subscribe({
         next: (points) => {
-          this.points.set(points);
           this.pendingCaptures.delete(context.accountId);
-          this.displayedTimeframe.set(this.timeframe);
-          this.remember();
-          this.refreshing.set(false);
-          this.status.set('ready');
+          this.showPoints(points);
         },
-        error: () => {
-          this.pendingSignature = undefined;
-          const cached = this.cache.get(this.cacheKey());
-          if (cached) {
-            cached.expiresAt = 0;
-          }
-          this.refreshing.set(false);
-          this.status.set('error');
-        },
+        error: () => this.showError(),
       });
+  }
+
+  /** Shows a finished load: the points, the timeframe they cover, and a settled state. */
+  private showPoints(points: PricePoint[]): void {
+    this.points.set(points);
+    this.displayedTimeframe.set(this.timeframe);
+    this.remember();
+    this.refreshing.set(false);
+    this.status.set('ready');
+  }
+
+  /** Shows a failed load and makes the cached entry for this view stale so the next read retries. */
+  private showError(): void {
+    this.pendingSignature = undefined;
+    const cached = this.cache.get(this.cacheKey());
+    if (cached) {
+      cached.expiresAt = 0;
+    }
+    this.refreshing.set(false);
+    this.status.set('error');
   }
 }
