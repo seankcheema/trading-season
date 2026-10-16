@@ -16,6 +16,7 @@ import {
   throwError,
 } from 'rxjs';
 import { BACKEND_API_URL } from '../../core/api.config';
+import { newClientReference } from '../../core/client-reference';
 import { NotOwnedError } from './account-error';
 import {
   Account,
@@ -287,8 +288,11 @@ export class AccountStore {
   }
 
   private postCashTransaction(amount: number, reason: CashTransactionReason): Observable<void> {
+    // One key per submission: the backend returns the original transaction if this request is
+    // retried, so a lost response can never move the cash twice.
+    const clientReference = newClientReference();
     return this._http
-      .post<unknown>(`${this._apiUrl}/me/cash-transactions`, { amount, reason })
+      .post<unknown>(`${this._apiUrl}/me/cash-transactions`, { amount, reason, clientReference })
       .pipe(
         takeUntil(this.cancelled),
         tap(() => this.invalidate()),

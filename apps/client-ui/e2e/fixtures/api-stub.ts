@@ -78,6 +78,8 @@ export interface StoredCashTransaction {
   amount: number;
   reason: 'DEPOSIT' | 'WITHDRAWAL';
   createdAt: string;
+  // The idempotency key the page sent; absent on seeded rows.
+  clientReference?: string;
 }
 
 interface OwnedTradingAccount extends TradingAccount {
@@ -659,6 +661,19 @@ export class ApiStub {
     }
 
     account.profile = profile;
+    // The backend books the opening funds as the first deposit, so the ledger shows them.
+    const openingFunds = Number(profile['availableFunds'] ?? 0);
+    if (openingFunds > 0) {
+      this.cashTransactions.set(account.id, [
+        ...(this.cashTransactions.get(account.id) ?? []),
+        {
+          cashTransactionId: this.nextId++,
+          amount: openingFunds,
+          reason: 'DEPOSIT',
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    }
     await this.json(route, 201, { userId: account.id, email: account.email });
   }
 
@@ -937,6 +952,7 @@ export class ApiStub {
     const body = this.body(route);
     const amount = body['amount'];
     const reason = body['reason'];
+    const clientReference = body['clientReference'];
     const funds = Number(user.profile['availableFunds'] ?? 0);
     if (typeof amount !== 'number' || amount <= 0 || amount > MAX_CASH_AMOUNT) {
       await this.json(route, 400, { error: 'amount: must be greater than 0' });
@@ -944,6 +960,16 @@ export class ApiStub {
     }
     if (reason !== 'DEPOSIT' && reason !== 'WITHDRAWAL') {
       await this.json(route, 400, { error: 'reason: must be DEPOSIT or WITHDRAWAL' });
+      return;
+    }
+    if (typeof clientReference !== 'string' || !clientReference) {
+      await this.json(route, 400, { error: 'clientReference: must be a UUID' });
+      return;
+    }
+    // A retried request returns the original transaction and moves nothing, as the backend does.
+    const repeated = ledger.find((entry) => entry.clientReference === clientReference);
+    if (repeated) {
+      await this.json(route, 201, repeated);
       return;
     }
     if (reason === 'WITHDRAWAL' && amount > funds) {
@@ -955,6 +981,7 @@ export class ApiStub {
       amount,
       reason,
       createdAt: new Date().toISOString(),
+      clientReference,
     };
     this.cashTransactions.set(ownerId, [...ledger, transaction]);
     user.profile['availableFunds'] =
