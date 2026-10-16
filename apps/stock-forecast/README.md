@@ -47,6 +47,8 @@ Inputs (`DIRECTION_FEATURES`): today's return, SPY's return, volume change, 10-d
 
 A second track predicts how big tomorrow's move will be instead of its direction. A big-move day is one whose return, up or down, is larger than `BIG_MOVE_QUANTILE` (the median) of training-day moves; `pipeline.big_move_threshold` cuts that threshold from training labels only and reuses it unchanged. Walk-forward folds cut their own threshold from their training years. The metrics are the direction ones under generic names (`accuracy`, `call_rate`, `event_rate`); the bar to clear each year is the better of answering "big" or "calm" every day. Inputs (`VOLATILITY_FEATURES`) add `abs_ret` and `spy_abs_ret`, today's AAPL and SPY move sizes. Volatility runs log to `reports/volatility_results.csv`, not `results.csv`, whose columns are return and direction metrics.
 
+`scripts/extra-volatility-experiments.py` compares `VOLATILITY_FEATURES` with `EXTENDED_VOLATILITY_FEATURES`, which add the intraday range, its 10-day mean, and 20- and 60-day volatility from `data.add_range_features`. By default it scores validation with `EXPERIMENT_SEEDS` seeds and their average; `--walk-forward` retrains each walk-forward year. The extended inputs improved validation (63.3% against about 61%) but not walk-forward (59.5% against 59.8%), so they are not adopted.
+
 `market-conditions.py` is descriptive: the next-day up-rate and mean next-day return after conditions such as a 2% drop or high volatility, in training and validation side by side, with thresholds cut from training rows only. It also writes the lag 1 to 5 autocorrelation of daily returns, the standard mean-reversion check. It never reads the test years.
 
 ## Data and splits

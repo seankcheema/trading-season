@@ -55,6 +55,10 @@ CONFIDENCE_BUCKETS = 5
 # days. At the median, about half of training days are big-move days.
 BIG_MOVE_QUANTILE = 0.5
 VOLATILITY_FEATURES = ["abs_ret", "spy_abs_ret", "ret", "volume_change", "volatility_10", "momentum_20"]
+# Tried by extra-volatility-experiments.py on Oct 16 and not adopted: it helped on
+# validation but not in walk-forward (see reports/README.md).
+EXTENDED_VOLATILITY_FEATURES = VOLATILITY_FEATURES + ["range", "range_10", "volatility_20", "volatility_60"]
+EXPERIMENT_SEEDS = 5
 # Chosen by 0003-train-lstm.py --task volatility --sweep on Oct 16: lowest validation log loss.
 VOLATILITY_LOOKBACK = 60
 VOLATILITY_UNITS = 64

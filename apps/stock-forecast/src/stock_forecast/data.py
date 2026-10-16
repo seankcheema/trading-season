@@ -120,6 +120,22 @@ def add_indicators(
     return indicators.dropna()
 
 
+def add_range_features(dataset: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
+    """Add intraday-range and longer-volatility inputs, used by the volatility experiments.
+
+    range is day t's (high - low) / close, known at its close; range_10 is
+    its 10-day mean; volatility_20 and volatility_60 are the standard
+    deviations of the last 20 and 60 returns. Warm-up rows are dropped.
+    """
+    extended = dataset.copy()
+    # Align by date so a missing price row can never shift ranges onto the wrong day.
+    extended["range"] = ((prices["High"] - prices["Low"]) / prices["Close"]).reindex(dataset.index)
+    extended["range_10"] = extended["range"].rolling(10).mean()
+    extended["volatility_20"] = dataset["ret"].rolling(20).std()
+    extended["volatility_60"] = dataset["ret"].rolling(60).std()
+    return extended.dropna()
+
+
 def split_by_date(
     dataset: pd.DataFrame,
     train_end: str = config.TRAIN_END,

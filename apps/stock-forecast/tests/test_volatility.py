@@ -5,7 +5,7 @@ import unittest
 
 import numpy as np
 
-from stock_forecast.data import add_indicators, split_by_date
+from stock_forecast.data import add_indicators, add_range_features, split_by_date
 from stock_forecast.evaluate import direction_metrics, event_confidence_buckets, event_metrics, plot_event_probability
 from stock_forecast.pipeline import (big_move_days, big_move_threshold, volatility_baselines, volatility_fold,
                                      volatility_row)
@@ -42,6 +42,22 @@ class BigMoveDefinitionTests(unittest.TestCase):
     def test_abs_return_columns_are_todays_move_size(self):
         np.testing.assert_allclose(self.splits.val["abs_ret"], self.splits.val["ret"].abs())
         np.testing.assert_allclose(self.splits.val["spy_abs_ret"], self.splits.val["spy_ret"].abs())
+
+
+class RangeFeatureTests(unittest.TestCase):
+    def test_range_inputs_look_back_and_align_by_date(self):
+        from tests.helpers import make_prices
+
+        dataset = add_indicators(make_dataset())
+        prices = make_prices()
+        extended = add_range_features(dataset, prices.iloc[::-1])  # reversed rows must still align by date
+        day = extended.index[100]
+        self.assertAlmostEqual(extended.loc[day, "range"],
+                               (prices.loc[day, "High"] - prices.loc[day, "Low"]) / prices.loc[day, "Close"])
+        position = dataset.index.get_loc(day)
+        self.assertAlmostEqual(extended.loc[day, "volatility_60"], dataset["ret"].iloc[position - 59 : position + 1].std())
+        self.assertFalse(extended.isna().any().any())
+        self.assertEqual(extended.index[-1], dataset.index[-1])
 
 
 class EventMetricTests(unittest.TestCase):
