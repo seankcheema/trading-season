@@ -17,13 +17,13 @@ import tools.jackson.databind.node.ObjectNode;
  *
  * &lt;p&gt;The reporting service has no database connection: this topic and
  * {@code trade-events} are its only sources. The message key is the record's
- * type and id, {@code ORDER_AUDIT:17}, so every state of one row lands on the
+ * type and id, {@code TRADING_ACCOUNT:17}, so every state of one row lands on the
  * same partition in order and the topic can be compacted down to the latest
  * state of each row. The body is the record as JSON with its {@code type}
  * added.
  *
  * &lt;p&gt;Publishing can never change the outcome of the write it reports. Like
- * {@link app.order.event.TradeEventPublisher}, this catches everything the
+ * the publisher of {@code trade-events} in the Order and Sell Service, this catches everything the
  * send can throw synchronously and logs it, and logs an asynchronous failure
  * in the completion callback. A record raised outside a transaction is sent
  * at once.

@@ -23,9 +23,10 @@ import java.math.BigDecimal;
 @Component
 public class SufficientFundsValidator implements OrderValidator {
 
-    /** Creates an instance of this class. */
+    /** Creates a stateless validator with no dependencies to initialize. */
 <span class="fc" id="L27">    public SufficientFundsValidator() {</span>
-<span class="fc" id="L28">    }</span>
+        // No initialization is needed; validation uses only the supplied arguments.
+<span class="fc" id="L29">    }</span>
 
     /**
      * Passes every SELL, and every BUY whose {@code quantity * indicativePrice}
@@ -39,14 +40,14 @@ public class SufficientFundsValidator implements OrderValidator {
      */
     @Override
     public ValidationResult validate(OrderRequest request, User user, Account account, Instrument instrument) {
-<span class="fc bfc" id="L42" title="All 2 branches covered.">        if (!Order.TYPE_BUY.equals(request.orderType())) {</span>
-<span class="fc" id="L43">            return ValidationResult.pass();</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (!Order.TYPE_BUY.equals(request.orderType())) {</span>
+<span class="fc" id="L44">            return ValidationResult.pass();</span>
         }
-<span class="fc" id="L45">        BigDecimal cost = request.quantity().multiply(request.indicativePrice());</span>
-<span class="fc bfc" id="L46" title="All 2 branches covered.">        if (cost.compareTo(user.getAvailableFunds()) &gt; 0) {</span>
-<span class="fc" id="L47">            return ValidationResult.reject(&quot;BR-09: insufficient funds for this order&quot;);</span>
+<span class="fc" id="L46">        BigDecimal cost = request.quantity().multiply(request.indicativePrice());</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        if (cost.compareTo(user.getAvailableFunds()) &gt; 0) {</span>
+<span class="fc" id="L48">            return ValidationResult.reject(&quot;BR-09: insufficient funds for this order&quot;);</span>
         }
-<span class="fc" id="L49">        return ValidationResult.pass();</span>
+<span class="fc" id="L50">        return ValidationResult.pass();</span>
     }
 }
 

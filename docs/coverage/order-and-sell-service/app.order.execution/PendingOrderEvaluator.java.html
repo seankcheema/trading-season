@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PendingOrderEvaluator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.order.execution</a> &gt; <span class="el_source">PendingOrderEvaluator.java</span></div><h1>PendingOrderEvaluator.java</h1><pre class="source lang-java linenums">package app.order.execution;
+
+import app.order.OrderRepository;
+import app.order.OrderService;
+import app.instrument.InstrumentRepository;
+import app.market.ExecutionTickSource;
+import org.springframework.stereotype.Component;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import java.time.OffsetDateTime;
+
+/** Evaluates persistent open orders independently of browsers, with restart-safe watermarks. */
+@Component
+@ConditionalOnProperty(name = &quot;app.execution.enabled&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)
+public class PendingOrderEvaluator {
+    private final OrderRepository orders;
+    private final InstrumentRepository instruments;
+    private final ExecutionQuoteSource quotes;
+    private final ExecutionTickSource ticks;
+    private final OrderExecutionService execution;
+    private final OrderService submissions;
+    /** Wires the durable evaluator.
+     * @param orders open orders
+     * @param instruments stock catalogue
+     * @param quotes authoritative cursor
+     * @param ticks chronological storage adapter
+     * @param execution atomic settlement
+     * @param submissions failure audit recorder */
+    public PendingOrderEvaluator(OrderRepository orders, InstrumentRepository instruments, ExecutionQuoteSource quotes,
+<span class="fc" id="L30">            ExecutionTickSource ticks, OrderExecutionService execution, OrderService submissions) {</span>
+<span class="fc" id="L31">        this.orders = orders; this.instruments = instruments; this.quotes = quotes;</span>
+<span class="fc" id="L32">        this.ticks = ticks; this.execution = execution; this.submissions = submissions;</span>
+<span class="fc" id="L33">    }</span>
+    /** Processes bounded tick batches; quote outages leave reservations intact. */
+    @Scheduled(fixedDelayString = &quot;${app.execution.poll-millis:1000}&quot;)
+    public void evaluate() {
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        for (var order : orders.findExecutableOrders()) {</span>
+            try {
+<span class="fc" id="L39">                var instrument = instruments.findById(order.getInstrumentId()).orElseThrow();</span>
+<span class="fc" id="L40">                var current = quotes.current(instrument, order.getSessionId());</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">                if (current.sessionId() != order.getSessionId()</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">                        || current.timestamp().isBefore(order.getReferenceAt())) continue;</span>
+<span class="fc" id="L43">                var expiry = ExecutionPolicy.expiresAt(order);</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">                boolean expired = !current.timestamp().plusSeconds(1).isBefore(expiry);</span>
+<span class="pc bpc" id="L45" title="1 of 6 branches missed.">                if (!expired &amp;&amp; order.getRetryAfter() != null &amp;&amp; OffsetDateTime.now().isBefore(order.getRetryAfter())) continue;</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">                if (&quot;MARKET&quot;.equals(order.getExecutionType())) {</span>
+<span class="fc" id="L47">                    execution.evaluate(order.getOrderId(), instrument, current);</span>
+<span class="fc" id="L48">                    continue;</span>
+                }
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">                var after = order.getEvaluatedAt() == null ? order.getReferenceAt() : order.getEvaluatedAt();</span>
+                // Retry the submission position after a failed initial attempt, without using a later price.
+<span class="fc bfc" id="L52" title="All 2 branches covered.">                if (after.equals(order.getReferenceAt())) {</span>
+<span class="fc" id="L53">                    var initial = new ExecutionQuoteSource.Quote(order.getReferencePrice(), order.getSessionId(), order.getReferenceAt());</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">                    if (!&quot;ACCEPTED&quot;.equals(execution.evaluate(order.getOrderId(), instrument, initial).getStatus())) continue;</span>
+                }
+<span class="fc bfc" id="L56" title="All 2 branches covered.">                var through = expired ? expiry.minusNanos(1) : current.timestamp();</span>
+<span class="fc" id="L57">                var batch = ticks.between(order.getSessionId(), instrument.getSimulatedStockSymbol(), after, through);</span>
+<span class="fc" id="L58">                boolean terminal = false;</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">                for (var tick : batch) {</span>
+<span class="fc" id="L60">                    var evaluated = execution.evaluate(order.getOrderId(), instrument, tick);</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">                    if (!&quot;ACCEPTED&quot;.equals(evaluated.getStatus())) { terminal = true; break; }</span>
+                    // A retry backoff must not skip an unprocessed historical tick.
+<span class="pc bpc" id="L63" title="1 of 4 branches missed.">                    if (evaluated.getEvaluatedAt() == null || evaluated.getEvaluatedAt().isBefore(tick.timestamp())) {</span>
+<span class="fc" id="L64">                        terminal = true; break;</span>
+                    }
+<span class="fc" id="L66">                }</span>
+                // A full batch may have more pre-close ticks. Resume next poll before expiring.
+<span class="pc bpc" id="L68" title="1 of 6 branches missed.">                if (expired &amp;&amp; !terminal &amp;&amp; batch.size() &lt; 1000) execution.evaluate(order.getOrderId(), instrument, current);</span>
+<span class="fc" id="L69">            } catch (ExecutionQuoteSource.QuoteUnavailableException ignored) {</span>
+                // No synthetic price or reservation release on a transient outage.
+<span class="fc" id="L71">            } catch (RuntimeException failure) {</span>
+<span class="fc" id="L72">                submissions.recordExecutionFailure(order.getOrderId(), failure);</span>
+<span class="fc" id="L73">            }</span>
+<span class="fc" id="L74">        }</span>
+<span class="fc" id="L75">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

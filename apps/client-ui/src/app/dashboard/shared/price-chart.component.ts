@@ -409,6 +409,8 @@ interface TooltipPosition {
           @if (showsPriceIndicators()) {
             @if (bollingerAreaPath()) {
               <path class="chart-bollinger-area" [attr.d]="bollingerAreaPath()" />
+            }
+            @if (bollingerUpperPath()) {
               <path
                 class="chart-indicator-line chart-indicator-bollinger"
                 [attr.d]="bollingerUpperPath()"

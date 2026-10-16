@@ -256,6 +256,11 @@ function Start-KafkaBroker {
         'share.coordinator.state.topic.min.isr=1'
         'group.initial.rebalance.delay.ms=0'
         'auto.create.topics.enable=false'
+        # Windows cannot rename the memory-mapped index files the log cleaner
+        # swaps in, so the first compaction fails and Kafka shuts the broker
+        # down. Compaction only saves disk here; the consumer tolerates the
+        # extra duplicates.
+        'log.cleaner.enable=false'
     ) | Set-Content -LiteralPath $configFile -Encoding Ascii
 
     if (-not (Test-Path -LiteralPath (Join-Path $dataDirectory 'meta.properties') -PathType Leaf)) {

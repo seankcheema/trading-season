@@ -491,7 +491,7 @@ describe('PriceChartComponent', () => {
     expect(plot.contains(tooltip)).toBe(true);
   });
 
-  it('should keep chart controls in the plot overlay when interactive', () => {
+  it('should keep chart controls in the toolbar above the plot when interactive', () => {
     const points = Array.from({ length: 120 }, (_, index) => ({
       time: new Date(2026, 0, 1, 9, index),
       value: 100 + index,
@@ -501,8 +501,9 @@ describe('PriceChartComponent', () => {
       .querySelector('[aria-label="Zoom out"]')
       ?.closest('div');
 
-    expect(controlsContainer?.classList).toContain('absolute');
-    expect(controlsContainer?.classList).toContain('z-30');
+    expect(controlsContainer?.classList).toContain('chart-control-bar');
+    expect(controlsContainer?.classList).not.toContain('absolute');
+    expect(controlsContainer?.parentElement?.classList).toContain('chart-toolbar');
     expect(fixture.nativeElement.querySelector('[aria-label="Zoom out"]')).not.toBeNull();
   });
 

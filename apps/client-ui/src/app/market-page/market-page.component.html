@@ -18,14 +18,12 @@
       <div class="market-header-controls flex flex-wrap items-center justify-end gap-2">
         <app-market-clock-control
           data-testid="market-clock-dropdown"
-          triggerClass="border-border bg-card hover:bg-muted focus-visible:border-ring h-11 w-full gap-2 rounded-lg border px-3 text-sm"
           [open]="openHeaderDropdown() === 'market-clock'"
           (openChange)="openHeaderDropdown.set($event ? 'market-clock' : null)"
           (snapshotApplied)="onClockSnapshot($event)"
         />
         <app-account-control
           data-testid="account-dropdown"
-          triggerClass="border-border bg-card hover:bg-muted focus-visible:border-ring h-11 w-full gap-2 rounded-lg border px-3 text-sm"
           [store]="accountStore"
           [portfolioValues]="portfolioValues()"
           [open]="openHeaderDropdown() === 'account'"
@@ -40,7 +38,7 @@
           [open]="openHeaderDropdown() === 'notifications'"
           (openChange)="openHeaderDropdown.set($event ? 'notifications' : null)"
           containerClass="shrink-0"
-          triggerClass="text-muted-foreground hover:bg-muted hover:text-foreground size-12 justify-center rounded-full"
+          triggerClass="text-muted-foreground hover:bg-muted hover:text-foreground size-9 justify-center rounded-full"
           panelClass="w-64 p-3"
         >
           <ng-icon dropdownTrigger name="lucideBell" class="text-lg" />
@@ -55,7 +53,7 @@
           [open]="openHeaderDropdown() === 'profile'"
           (openChange)="openHeaderDropdown.set($event ? 'profile' : null)"
           containerClass="shrink-0"
-          triggerClass="bg-primary/15 text-primary hover:bg-primary/25 size-12 justify-center rounded-full text-xs font-semibold"
+          triggerClass="bg-primary/15 text-primary hover:bg-primary/25 size-9 justify-center rounded-full text-xs font-semibold"
           panelClass="w-48 p-1"
         >
           <span dropdownTrigger data-testid="profile-initials">{{ profileInitials() }}</span>

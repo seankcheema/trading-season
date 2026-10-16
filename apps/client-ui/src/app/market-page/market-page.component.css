@@ -1021,7 +1021,7 @@
 
 .market-header-controls > app-dashboard-header-dropdown {
   display: block;
-  height: 46px;
+  height: 36px;
 }
 .trading-content .account-value-panel {
   flex: 0 0 auto;
