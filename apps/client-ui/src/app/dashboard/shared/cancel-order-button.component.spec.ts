@@ -20,6 +20,19 @@ describe('CancelOrderButtonComponent', () => {
     expect(menu.open).toBe(false);
   });
 
+  it('ignores a confirmation while the cancellation is already in progress', () => {
+    const fixture = TestBed.createComponent(CancelOrderButtonComponent);
+    fixture.componentRef.setInput('orderLabel', 'AAPL');
+    fixture.componentRef.setInput('busy', true);
+    fixture.detectChanges();
+    const cancelled = vi.fn();
+    fixture.componentInstance.confirmed.subscribe(cancelled);
+
+    fixture.componentInstance['confirm']();
+
+    expect(cancelled).not.toHaveBeenCalled();
+  });
+
   it('closes the previous menu when another order menu is clicked', () => {
     const first = TestBed.createComponent(CancelOrderButtonComponent);
     const second = TestBed.createComponent(CancelOrderButtonComponent);

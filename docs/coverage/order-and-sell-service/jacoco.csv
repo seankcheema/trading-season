@@ -30,7 +30,7 @@ order-and-sell-service,app.cash,CashTransactionBase,0,45,0,0,0,20,0,13,0,13
 order-and-sell-service,app.order.dto,OrderAuditEntryResponse,0,26,0,0,0,3,0,2,0,2
 order-and-sell-service,app.order.dto,OrderResponse,0,132,0,0,0,27,0,2,0,2
 order-and-sell-service,app.order.dto,OrderRequest,0,115,0,18,0,9,0,13,0,4
-order-and-sell-service,app.order,OrderService,72,1032,21,59,10,195,24,37,3,18
+order-and-sell-service,app.order,OrderService,39,1139,10,78,5,215,13,63,3,29
 order-and-sell-service,app.order,OrderController,28,54,0,0,3,12,3,5,3,5
 order-and-sell-service,app.order,OrderService.Acceptance,0,12,0,0,0,1,0,1,0,1
 order-and-sell-service,app.order,Order,0,252,0,0,0,89,0,59,0,59
@@ -39,7 +39,7 @@ order-and-sell-service,app.market,MarketReplayService.Subscriber,0,9,0,0,0,1,0,1
 order-and-sell-service,app.market,MarketModels.Session,0,12,0,0,0,1,0,1,0,1
 order-and-sell-service,app.market,MarketResponses.TickPrice,0,12,0,0,0,1,0,1,0,1
 order-and-sell-service,app.market,MarketResponses.StockSnapshot,0,21,0,0,0,1,0,1,0,1
-order-and-sell-service,app.market,ExecutionTickSource,0,131,2,20,0,19,2,11,0,2
+order-and-sell-service,app.market,ExecutionTickSource,0,149,2,24,0,27,2,15,0,4
 order-and-sell-service,app.market,MarketDataRepository,10,498,2,18,3,73,2,33,0,25
 order-and-sell-service,app.market,MarketWebConfig,0,81,0,0,0,9,0,4,0,4
 order-and-sell-service,app.market,MarketResponses.ClockRequest,0,6,0,0,0,1,0,1,0,1
@@ -77,11 +77,11 @@ order-and-sell-service,app.auth,SecurityConfig,0,15,0,0,0,4,0,2,0,2
 order-and-sell-service,app.auth,AuthenticatedUser,0,32,0,2,0,7,0,4,0,3
 order-and-sell-service,app.order.execution,HoldingMovement,0,10,0,0,0,5,0,3,0,3
 order-and-sell-service,app.order.execution,ExecutionQuoteSource.Quote,0,12,0,0,0,1,0,1,0,1
-order-and-sell-service,app.order.execution,OrderExecutionService,29,734,12,66,2,141,11,38,1,9
-order-and-sell-service,app.order.execution,ExecutionQuoteSource,0,124,2,18,0,18,2,11,0,3
+order-and-sell-service,app.order.execution,OrderExecutionService,10,858,6,84,0,156,7,57,1,18
+order-and-sell-service,app.order.execution,ExecutionQuoteSource,0,134,2,20,0,19,2,13,0,4
 order-and-sell-service,app.order.execution,ExecutionPolicy,0,95,0,18,0,11,0,14,0,5
 order-and-sell-service,app.order.execution,Fill,0,38,0,0,0,17,0,11,0,11
-order-and-sell-service,app.order.execution,PendingOrderEvaluator,6,221,5,33,0,35,5,16,0,2
+order-and-sell-service,app.order.execution,PendingOrderEvaluator,5,235,5,33,0,37,5,19,0,5
 order-and-sell-service,app.order.execution,CashTransaction,0,3,0,0,0,2,0,1,0,1
 order-and-sell-service,app.order.execution,ExecutionQuoteSource.QuoteUnavailableException,0,4,0,0,0,1,0,1,0,1
 order-and-sell-service,app.account,AccountNotFoundException,0,9,0,0,0,4,0,2,0,2

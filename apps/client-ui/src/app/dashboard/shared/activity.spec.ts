@@ -59,6 +59,14 @@ describe('activity helpers', () => {
     expect(orderDate(order({ status: 'PENDING', resolvedAt: null }))).toBe('2026-01-05T16:00:00Z');
   });
 
+  it('dates a fill by its valid evaluation time and no other status', () => {
+    expect(orderDate(order({ evaluatedAt: '2026-01-05T16:00:03Z' }))).toBe('2026-01-05T16:00:03Z');
+    expect(orderDate(order({ evaluatedAt: 'nonsense' }))).toBe('2026-01-05T16:00:05Z');
+    expect(orderDate(order({ status: 'CANCELLED', evaluatedAt: '2026-01-05T16:00:03Z' }))).toBe(
+      '2026-01-05T16:00:05Z',
+    );
+  });
+
   it('types orders by side and reports their status', () => {
     const buy = orderActivity(order(), CATALOGUE);
     expect(buy).toMatchObject({

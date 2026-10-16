@@ -190,222 +190,271 @@ public class OrderService {
      * @throws org.springframework.web.server.ResponseStatusException if the order is terminal,
      *         outside its simulation day, or replacement validation fails */
     public Order replace(Integer orderId, OrderRequest request, UUID callerId) {
-<span class="fc" id="L193">        Acceptance replacement = transactions.execute(tx -&gt; {</span>
-<span class="fc" id="L194">            Order visible = getOwnOrder(orderId, callerId);</span>
-<span class="fc" id="L195">            userRepository.findByIdForUpdate(callerId).orElseThrow();</span>
-<span class="fc" id="L196">            accountRepository.findByIdForUpdate(visible.getAccountId()).orElseThrow();</span>
-<span class="fc" id="L197">            Order original = orderRepository.findByIdForUpdate(orderId).orElseThrow();</span>
-<span class="fc" id="L198">            entityManager.refresh(original);</span>
-<span class="pc bpc" id="L199" title="1 of 2 branches missed.">            if (!original.getAccountId().equals(request.accountId())</span>
-<span class="pc bpc" id="L200" title="1 of 2 branches missed.">                    || !original.getInstrumentId().equals(request.instrumentId())</span>
-<span class="pc bpc" id="L201" title="1 of 2 branches missed.">                    || !original.getOrderType().equals(request.orderType())</span>
-<span class="pc bpc" id="L202" title="1 of 2 branches missed.">                    || !java.util.Objects.equals(original.getSessionId(), request.sessionId())) {</span>
-<span class="nc" id="L203">                throw new org.springframework.web.server.ResponseStatusException(</span>
-                        org.springframework.http.HttpStatus.BAD_REQUEST, &quot;Account, stock, side and session cannot be changed&quot;);
-            }
-<span class="fc" id="L206">            var prior = orderRepository.findByAccountIdAndClientReference(request.accountId(), request.clientReference());</span>
-<span class="pc bpc" id="L207" title="1 of 4 branches missed.">            if (prior.isPresent() &amp;&amp; &quot;ORDER_REPLACED&quot;.equals(original.getRejectionCode())</span>
-<span class="pc bpc" id="L208" title="1 of 2 branches missed.">                    &amp;&amp; (&quot;Replaced by order #&quot; + prior.get().getOrderId()).equals(original.getRejectionReason())) {</span>
-<span class="fc" id="L209">                return new Acceptance(prior.get(), null, false);</span>
-            }
-<span class="pc bpc" id="L211" title="1 of 4 branches missed.">            if (!Order.STATUS_ACCEPTED.equals(original.getStatus()) || prior.isPresent()) {</span>
-<span class="fc" id="L212">                throw new org.springframework.web.server.ResponseStatusException(</span>
-                        org.springframework.http.HttpStatus.CONFLICT, &quot;Only open orders can be edited&quot;);
-            }
-<span class="fc" id="L215">            Instrument stock = instrumentRepository.findById(original.getInstrumentId()).orElseThrow();</span>
-<span class="fc" id="L216">            var current = quotes.current(stock, original.getSessionId());</span>
-<span class="pc bpc" id="L217" title="2 of 4 branches missed.">            if (original.getReferenceAt() == null || current.timestamp().isBefore(original.getReferenceAt())</span>
-<span class="pc bpc" id="L218" title="1 of 4 branches missed.">                    || (original.getEvaluatedAt() != null &amp;&amp; current.timestamp().isBefore(original.getEvaluatedAt()))</span>
-<span class="pc bpc" id="L219" title="1 of 2 branches missed.">                    || !current.timestamp().isBefore(app.order.execution.ExecutionPolicy.expiresAt(original).minusSeconds(1))) {</span>
-<span class="fc" id="L220">                throw new org.springframework.web.server.ResponseStatusException(</span>
-                        org.springframework.http.HttpStatus.CONFLICT, &quot;The order cannot be edited at this simulation time&quot;);
-            }
-<span class="fc" id="L223">            original.setStatus(Order.STATUS_CANCELLED);</span>
-<span class="fc" id="L224">            original.setReservedCash(BigDecimal.ZERO);</span>
-<span class="fc" id="L225">            original.setReservedShares(BigDecimal.ZERO);</span>
-<span class="fc" id="L226">            original.setRetryAfter(null);</span>
-<span class="fc" id="L227">            original.setResolvedAt(OffsetDateTime.now());</span>
-<span class="fc" id="L228">            orderRepository.saveAndFlush(original);</span>
-<span class="fc" id="L229">            Acceptance accepted = accept(request, callerId);</span>
-<span class="fc bfc" id="L230" title="All 2 branches covered.">            if (!Order.STATUS_ACCEPTED.equals(accepted.order().getStatus())) {</span>
-<span class="fc" id="L231">                throw new org.springframework.web.server.ResponseStatusException(</span>
-<span class="fc" id="L232">                        org.springframework.http.HttpStatus.BAD_REQUEST, accepted.order().getRejectionReason());</span>
-            }
-<span class="pc bpc" id="L234" title="2 of 4 branches missed.">            if (accepted.order().getReferenceAt().isBefore(original.getEvaluatedAt() == null</span>
-<span class="pc" id="L235">                    ? original.getReferenceAt() : original.getEvaluatedAt())</span>
-<span class="pc bpc" id="L236" title="1 of 2 branches missed.">                    || !accepted.order().getReferenceAt().isBefore(app.order.execution.ExecutionPolicy.expiresAt(original).minusSeconds(1))) {</span>
-<span class="nc" id="L237">                throw new org.springframework.web.server.ResponseStatusException(</span>
-                        org.springframework.http.HttpStatus.CONFLICT, &quot;Simulation time changed while editing; original order was retained&quot;);
-            }
-<span class="fc" id="L240">            original.setRejectionCode(&quot;ORDER_REPLACED&quot;);</span>
-<span class="fc" id="L241">            original.setRejectionReason(&quot;Replaced by order #&quot; + accepted.order().getOrderId());</span>
-<span class="fc" id="L242">            orderRepository.save(original);</span>
-<span class="fc" id="L243">            auditTrailService.record(orderId, Order.STATUS_CANCELLED, original.getRejectionReason());</span>
-<span class="fc" id="L244">            auditTrailService.record(accepted.order().getOrderId(), Order.STATUS_ACCEPTED, &quot;Replaces order #&quot; + orderId);</span>
-<span class="fc" id="L245">            events.publishEvent(OrderStatusEvent.from(original, stock));</span>
-<span class="fc" id="L246">            return accepted;</span>
-        });
-<span class="fc bfc" id="L248" title="All 2 branches covered.">        if (!replacement.executable()) return replacement.order();</span>
+<span class="fc" id="L193">        Acceptance replacement = transactions.execute(tx -&gt; replaceInTransaction(orderId, request, callerId));</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        if (!replacement.executable()) return replacement.order();</span>
         try {
-<span class="fc" id="L250">            return orderExecutionService.execute(replacement.order(), replacement.instrument());</span>
-<span class="nc" id="L251">        } catch (RuntimeException failure) {</span>
-<span class="nc" id="L252">            recordExecutionFailure(replacement.order().getOrderId(), failure);</span>
-<span class="nc" id="L253">            return orderRepository.findById(replacement.order().getOrderId()).orElse(replacement.order());</span>
+<span class="fc" id="L196">            return orderExecutionService.execute(replacement.order(), replacement.instrument());</span>
+<span class="fc" id="L197">        } catch (RuntimeException failure) {</span>
+<span class="fc" id="L198">            recordExecutionFailure(replacement.order().getOrderId(), failure);</span>
+<span class="fc" id="L199">            return orderRepository.findById(replacement.order().getOrderId()).orElse(replacement.order());</span>
         }
     }
 
+    private Acceptance replaceInTransaction(Integer orderId, OrderRequest request, UUID callerId) {
+<span class="fc" id="L204">        Order visible = getOwnOrder(orderId, callerId);</span>
+<span class="fc" id="L205">        userRepository.findByIdForUpdate(callerId).orElseThrow();</span>
+<span class="fc" id="L206">        accountRepository.findByIdForUpdate(visible.getAccountId()).orElseThrow();</span>
+<span class="fc" id="L207">        Order original = orderRepository.findByIdForUpdate(orderId).orElseThrow();</span>
+<span class="fc" id="L208">        entityManager.refresh(original);</span>
+<span class="fc" id="L209">        requireSameOrderIdentity(original, request);</span>
+<span class="fc" id="L210">        var prior = orderRepository.findByAccountIdAndClientReference(request.accountId(), request.clientReference());</span>
+<span class="fc bfc" id="L211" title="All 4 branches covered.">        if (prior.isPresent() &amp;&amp; isReplacedBy(original, prior.get())) {</span>
+<span class="fc" id="L212">            return new Acceptance(prior.get(), null, false);</span>
+        }
+<span class="fc bfc" id="L214" title="All 4 branches covered.">        if (!Order.STATUS_ACCEPTED.equals(original.getStatus()) || prior.isPresent()) {</span>
+<span class="fc" id="L215">            throw new org.springframework.web.server.ResponseStatusException(</span>
+                    org.springframework.http.HttpStatus.CONFLICT, &quot;Only open orders can be edited&quot;);
+        }
+<span class="fc" id="L218">        Instrument stock = instrumentRepository.findById(original.getInstrumentId()).orElseThrow();</span>
+<span class="fc" id="L219">        requireEditableAt(original, quotes.current(stock, original.getSessionId()).timestamp());</span>
+<span class="fc" id="L220">        cancelForReplacement(original);</span>
+<span class="fc" id="L221">        Acceptance accepted = accept(request, callerId);</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        if (!Order.STATUS_ACCEPTED.equals(accepted.order().getStatus())) {</span>
+<span class="fc" id="L223">            throw new org.springframework.web.server.ResponseStatusException(</span>
+<span class="fc" id="L224">                    org.springframework.http.HttpStatus.BAD_REQUEST, accepted.order().getRejectionReason());</span>
+        }
+<span class="fc" id="L226">        requireSimulationUnchanged(original, accepted.order());</span>
+<span class="fc" id="L227">        original.setRejectionCode(&quot;ORDER_REPLACED&quot;);</span>
+<span class="fc" id="L228">        original.setRejectionReason(&quot;Replaced by order #&quot; + accepted.order().getOrderId());</span>
+<span class="fc" id="L229">        orderRepository.save(original);</span>
+<span class="fc" id="L230">        auditTrailService.record(orderId, Order.STATUS_CANCELLED, original.getRejectionReason());</span>
+<span class="fc" id="L231">        auditTrailService.record(accepted.order().getOrderId(), Order.STATUS_ACCEPTED,</span>
+                &quot;Replaces order #&quot; + orderId);
+<span class="fc" id="L233">        events.publishEvent(OrderStatusEvent.from(original, stock));</span>
+<span class="fc" id="L234">        return accepted;</span>
+    }
+
+    private static void requireSameOrderIdentity(Order original, OrderRequest request) {
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        boolean sameStock = original.getAccountId().equals(request.accountId())</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">                &amp;&amp; original.getInstrumentId().equals(request.instrumentId())</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">                &amp;&amp; original.getOrderType().equals(request.orderType());</span>
+<span class="fc bfc" id="L241" title="All 4 branches covered.">        if (!sameStock || !java.util.Objects.equals(original.getSessionId(), request.sessionId())) {</span>
+<span class="fc" id="L242">            throw new org.springframework.web.server.ResponseStatusException(</span>
+                    org.springframework.http.HttpStatus.BAD_REQUEST, &quot;Account, stock, side and session cannot be changed&quot;);
+        }
+<span class="fc" id="L245">    }</span>
+
+    /** True when the original was already cancelled in favor of the order sharing the retried reference. */
+    private static boolean isReplacedBy(Order original, Order prior) {
+<span class="fc bfc" id="L249" title="All 2 branches covered.">        return &quot;ORDER_REPLACED&quot;.equals(original.getRejectionCode())</span>
+<span class="pc bpc" id="L250" title="1 of 2 branches missed.">                &amp;&amp; (&quot;Replaced by order #&quot; + prior.getOrderId()).equals(original.getRejectionReason());</span>
+    }
+
+    private static void requireEditableAt(Order original, OffsetDateTime at) {
+<span class="pc bpc" id="L254" title="1 of 4 branches missed.">        boolean beforeOrder = original.getReferenceAt() == null || at.isBefore(original.getReferenceAt());</span>
+<span class="fc bfc" id="L255" title="All 4 branches covered.">        boolean beforeEvaluation = original.getEvaluatedAt() != null &amp;&amp; at.isBefore(original.getEvaluatedAt());</span>
+<span class="fc bfc" id="L256" title="All 4 branches covered.">        if (beforeOrder || beforeEvaluation</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">                || !at.isBefore(app.order.execution.ExecutionPolicy.expiresAt(original).minusSeconds(1))) {</span>
+<span class="fc" id="L258">            throw new org.springframework.web.server.ResponseStatusException(</span>
+                    org.springframework.http.HttpStatus.CONFLICT, &quot;The order cannot be edited at this simulation time&quot;);
+        }
+<span class="fc" id="L261">    }</span>
+
+    private void cancelForReplacement(Order original) {
+<span class="fc" id="L264">        original.setStatus(Order.STATUS_CANCELLED);</span>
+<span class="fc" id="L265">        original.setReservedCash(BigDecimal.ZERO);</span>
+<span class="fc" id="L266">        original.setReservedShares(BigDecimal.ZERO);</span>
+<span class="fc" id="L267">        original.setRetryAfter(null);</span>
+<span class="fc" id="L268">        original.setResolvedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L269">        orderRepository.saveAndFlush(original);</span>
+<span class="fc" id="L270">    }</span>
+
+    private static void requireSimulationUnchanged(Order original, Order replacement) {
+<span class="fc bfc" id="L273" title="All 2 branches covered.">        OffsetDateTime floor = original.getEvaluatedAt() == null ? original.getReferenceAt() : original.getEvaluatedAt();</span>
+<span class="fc" id="L274">        OffsetDateTime at = replacement.getReferenceAt();</span>
+<span class="fc bfc" id="L275" title="All 4 branches covered.">        if (at.isBefore(floor) || !at.isBefore(app.order.execution.ExecutionPolicy.expiresAt(original).minusSeconds(1))) {</span>
+<span class="fc" id="L276">            throw new org.springframework.web.server.ResponseStatusException(</span>
+                    org.springframework.http.HttpStatus.CONFLICT, &quot;Simulation time changed while editing; original order was retained&quot;);
+        }
+<span class="fc" id="L279">    }</span>
+
     /** What the acceptance transaction committed, and whether execution should follow. */
-<span class="fc" id="L258">    private record Acceptance(Order order, Instrument instrument, boolean executable) {</span>
+<span class="fc" id="L282">    private record Acceptance(Order order, Instrument instrument, boolean executable) {</span>
     }
 
     private Acceptance accept(OrderRequest request, UUID callerId) {
-<span class="fc" id="L262">        Account visibleAccount = accountRepository.findById(request.accountId())</span>
-<span class="fc" id="L263">                .orElseThrow(() -&gt; new AccountNotFoundException(&quot;No account &quot; + request.accountId()));</span>
-<span class="fc bfc" id="L264" title="All 2 branches covered.">        if (!visibleAccount.getUserId().equals(callerId)) throw new ForbiddenException(&quot;You do not have access to this account&quot;);</span>
-<span class="fc" id="L265">        userRepository.findByIdForUpdate(callerId)</span>
-<span class="pc" id="L266">                .orElseThrow(() -&gt; new IllegalStateException(&quot;Profile is not registered&quot;));</span>
-<span class="fc" id="L267">        Account account = accountRepository.findByIdForUpdate(request.accountId())</span>
-<span class="pc" id="L268">                .orElseThrow(() -&gt; new AccountNotFoundException(&quot;No account &quot; + request.accountId()));</span>
-<span class="fc" id="L269">        entityManager.refresh(account);</span>
-<span class="pc bpc" id="L270" title="1 of 2 branches missed.">        if (!account.getUserId().equals(callerId)) {</span>
-<span class="nc" id="L271">            throw new ForbiddenException(&quot;You do not have access to this account&quot;);</span>
-        }
+<span class="fc" id="L286">        Account account = lockOwnedAccount(request.accountId(), callerId);</span>
 
-<span class="fc" id="L274">        Optional&lt;Order&gt; existing = orderRepository</span>
-<span class="fc" id="L275">                .findByAccountIdAndClientReference(request.accountId(), request.clientReference());</span>
-<span class="fc bfc" id="L276" title="All 2 branches covered.">        if (existing.isPresent()) {</span>
+<span class="fc" id="L288">        Optional&lt;Order&gt; existing = orderRepository</span>
+<span class="fc" id="L289">                .findByAccountIdAndClientReference(request.accountId(), request.clientReference());</span>
+<span class="fc bfc" id="L290" title="All 2 branches covered.">        if (existing.isPresent()) {</span>
             // Same idempotency key already processed (or in flight) for this account —
             // return its outcome rather than validating or executing a second time.
             // The owner/account locks serialize duplicate submissions; the unique
             // (account_id, client_reference) constraint remains the database backstop.
-<span class="fc" id="L281">            return new Acceptance(existing.get(), null, false);</span>
+<span class="fc" id="L295">            return new Acceptance(existing.get(), null, false);</span>
         }
 
-<span class="fc bfc" id="L284" title="All 2 branches covered.">        if (!&quot;ACTIVE&quot;.equals(account.getStatus())) {</span>
-<span class="fc" id="L285">            throw new ForbiddenException(&quot;Archived accounts cannot trade&quot;);</span>
-        }
+<span class="fc" id="L298">        requireTradingAllowed(account, callerId);</span>
 
-<span class="fc bfc" id="L288" title="All 2 branches covered.">        if (!termsAcceptanceRepository.existsById(</span>
-                new TermsAcceptanceId(callerId, TermsAcceptance.CURRENT_VERSION))) {
-<span class="fc" id="L290">            throw new ForbiddenException(&quot;Accept the platform terms before placing an order&quot;);</span>
-        }
+<span class="fc" id="L300">        User user = userRepository.findById(account.getUserId())</span>
+<span class="pc" id="L301">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+<span class="nc" id="L302">                        &quot;Account &quot; + account.getAccountId() + &quot; has no owning user&quot;));</span>
+<span class="fc" id="L303">        Instrument instrument = instrumentRepository.findById(request.instrumentId())</span>
+<span class="fc" id="L304">                .orElseThrow(() -&gt; new InstrumentNotFoundException(&quot;No instrument &quot; + request.instrumentId()));</span>
 
-<span class="fc" id="L293">        User user = userRepository.findById(account.getUserId())</span>
-<span class="pc" id="L294">                .orElseThrow(() -&gt; new IllegalStateException(</span>
-<span class="nc" id="L295">                        &quot;Account &quot; + account.getAccountId() + &quot; has no owning user&quot;));</span>
-<span class="fc" id="L296">        Instrument instrument = instrumentRepository.findById(request.instrumentId())</span>
-<span class="fc" id="L297">                .orElseThrow(() -&gt; new InstrumentNotFoundException(&quot;No instrument &quot; + request.instrumentId()));</span>
-
-<span class="fc" id="L299">        BigDecimal bufferPercent = user.getExecutionBufferPercent();</span>
-<span class="pc bpc" id="L300" title="2 of 4 branches missed.">        if (request.bufferPercent() != null || !request.isPriceConfigurationValid()</span>
-<span class="pc bpc" id="L301" title="1 of 2 branches missed.">                || request.quantity().stripTrailingZeros().scale() &gt; 0) {</span>
-<span class="nc" id="L302">            throw new org.springframework.web.server.ResponseStatusException(</span>
+<span class="pc bpc" id="L306" title="2 of 4 branches missed.">        if (request.bufferPercent() != null || !request.isPriceConfigurationValid()</span>
+<span class="pc bpc" id="L307" title="1 of 2 branches missed.">                || request.quantity().stripTrailingZeros().scale() &gt; 0) {</span>
+<span class="nc" id="L308">            throw new org.springframework.web.server.ResponseStatusException(</span>
                     org.springframework.http.HttpStatus.BAD_REQUEST, &quot;Invalid stock order parameters&quot;);
         }
-<span class="fc" id="L305">        var quote = quotes.current(instrument, request.sessionId());</span>
+<span class="fc" id="L311">        var quote = quotes.current(instrument, request.sessionId());</span>
 
-<span class="fc" id="L307">        OffsetDateTime now = OffsetDateTime.now();</span>
-<span class="fc" id="L308">        Order order = new Order();</span>
-<span class="fc" id="L309">        order.setAccountId(account.getAccountId());</span>
-<span class="fc" id="L310">        order.setInstrumentId(instrument.getInstrumentId());</span>
-<span class="fc" id="L311">        order.setClientReference(request.clientReference());</span>
-<span class="fc" id="L312">        order.setOrderType(request.orderType());</span>
-<span class="fc" id="L313">        order.setQuantity(request.quantity());</span>
-<span class="fc" id="L314">        order.setIndicativePrice(request.indicativePrice());</span>
-<span class="fc" id="L315">        order.setBufferPercent(bufferPercent);</span>
-<span class="fc" id="L316">        order.setExecutionType(request.executionType());</span>
-<span class="fc" id="L317">        order.setLimitPrice(request.limitPrice());</span>
-<span class="fc" id="L318">        order.setStopPrice(request.stopPrice());</span>
-<span class="fc" id="L319">        order.setReferencePrice(quote.price());</span>
-<span class="fc" id="L320">        order.setReferenceAt(quote.timestamp());</span>
-<span class="fc" id="L321">        order.setEvaluatedAt(quote.timestamp());</span>
-<span class="fc" id="L322">        order.setSessionId(quote.sessionId());</span>
-<span class="fc" id="L323">        order.setSimulatedAt(quote.timestamp());</span>
-<span class="fc" id="L324">        order.setStatus(Order.STATUS_PENDING);</span>
-<span class="fc" id="L325">        order.setSubmittedAt(now);</span>
-
-<span class="fc" id="L327">        order = orderRepository.save(order);</span>
-<span class="fc" id="L328">        auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, null);</span>
+<span class="fc" id="L313">        Order order = orderRepository.save(pendingOrder(request, account, instrument, user.getExecutionBufferPercent(), quote));</span>
+<span class="fc" id="L314">        auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, null);</span>
 
         // Existing rules see authoritative cost rather than an untrusted client estimate.
-<span class="fc" id="L331">        var checkedRequest = new OrderRequest(request.accountId(), request.instrumentId(), request.orderType(),</span>
-<span class="fc" id="L332">                request.quantity(), app.order.execution.ExecutionPolicy.reservationPrice(order), null,</span>
-<span class="fc" id="L333">                request.clientReference(), order.getSimulatedAt());</span>
-<span class="fc" id="L334">        ValidationResult result = validationPipeline.run(checkedRequest, user, account, instrument);</span>
-<span class="fc" id="L335">        var reservations = orderRepository.findReservations(callerId);</span>
-<span class="fc" id="L336">        BigDecimal reservedCash = reservations.stream().map(Order::getReservedCash).reduce(BigDecimal.ZERO, BigDecimal::add);</span>
-<span class="fc" id="L337">        BigDecimal reservedShares = reservations.stream()</span>
-<span class="pc bpc" id="L338" title="1 of 4 branches missed.">                .filter(o -&gt; o.getAccountId().equals(account.getAccountId()) &amp;&amp; o.getInstrumentId().equals(instrument.getInstrumentId()))</span>
-<span class="fc" id="L339">                .map(Order::getReservedShares).reduce(BigDecimal.ZERO, BigDecimal::add);</span>
-<span class="fc bfc" id="L340" title="All 2 branches covered.">        if (result.passed()) {</span>
-<span class="fc bfc" id="L341" title="All 2 branches covered.">            if (Order.TYPE_BUY.equals(order.getOrderType())) {</span>
-<span class="fc" id="L342">                BigDecimal required = order.getQuantity().multiply(app.order.execution.ExecutionPolicy.reservationPrice(order));</span>
-<span class="fc bfc" id="L343" title="All 2 branches covered.">                if (required.compareTo(user.getAvailableFunds().subtract(reservedCash)) &gt; 0)</span>
-<span class="fc" id="L344">                    result = ValidationResult.reject(&quot;Insufficient available buying power&quot;);</span>
-<span class="fc" id="L345">                else order.setReservedCash(required);</span>
-<span class="fc" id="L346">            } else {</span>
-<span class="fc" id="L347">                BigDecimal held = holdings.findByAccountIdAndInstrumentId(account.getAccountId(), instrument.getInstrumentId())</span>
-<span class="fc" id="L348">                        .map(app.holding.Holding::getQuantity).orElse(BigDecimal.ZERO);</span>
-<span class="fc bfc" id="L349" title="All 2 branches covered.">                if (order.getQuantity().compareTo(held.subtract(reservedShares)) &gt; 0)</span>
-<span class="fc" id="L350">                    result = ValidationResult.reject(&quot;Insufficient available shares&quot;);</span>
-<span class="fc" id="L351">                else order.setReservedShares(order.getQuantity());</span>
-            }
+<span class="fc" id="L317">        var checkedRequest = new OrderRequest(request.accountId(), request.instrumentId(), request.orderType(),</span>
+<span class="fc" id="L318">                request.quantity(), app.order.execution.ExecutionPolicy.reservationPrice(order), null,</span>
+<span class="fc" id="L319">                request.clientReference(), order.getSimulatedAt());</span>
+<span class="fc" id="L320">        ValidationResult result = validationPipeline.run(checkedRequest, user, account, instrument);</span>
+<span class="fc" id="L321">        var reservations = orderRepository.findReservations(callerId);</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">        if (result.passed()) {</span>
+<span class="fc" id="L323">            result = reserve(result, order, user, account, instrument, reservations);</span>
         }
-<span class="fc bfc" id="L354" title="All 2 branches covered.">        if (!result.passed()) {</span>
-<span class="fc" id="L355">            order.setStatus(Order.STATUS_REJECTED);</span>
-<span class="fc" id="L356">            order.setRejectionReason(result.reason());</span>
-<span class="fc" id="L357">            order.setRejectionCode(&quot;TRADING_RULE_FAILED&quot;);</span>
-<span class="fc" id="L358">            order.setReservedCash(BigDecimal.ZERO);</span>
-<span class="fc" id="L359">            order.setReservedShares(BigDecimal.ZERO);</span>
-<span class="fc" id="L360">            order.setResolvedAt(OffsetDateTime.now());</span>
-<span class="fc" id="L361">            order = orderRepository.save(order);</span>
-<span class="fc" id="L362">            auditTrailService.record(order.getOrderId(), Order.STATUS_REJECTED, result.reason());</span>
-<span class="fc" id="L363">            events.publishEvent(OrderStatusEvent.from(order, instrument));</span>
-<span class="fc" id="L364">            return new Acceptance(order, instrument, false);</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">        if (!result.passed()) {</span>
+<span class="fc" id="L326">            return rejectedAcceptance(order, instrument, result);</span>
         }
 
         // The rules passed (BR-05). Commit the order as ACCEPTED before anything
         // executes: this is the record of intent BR-06 requires, and it survives
         // whatever happens in the execution transaction.
-<span class="fc" id="L370">        order.setStatus(Order.STATUS_ACCEPTED);</span>
-<span class="fc" id="L371">        order.setAcceptedAt(OffsetDateTime.now());</span>
-<span class="fc" id="L372">        order = orderRepository.save(order);</span>
-<span class="fc" id="L373">        auditTrailService.record(order.getOrderId(), Order.STATUS_ACCEPTED, null);</span>
-<span class="fc" id="L374">        events.publishEvent(OrderStatusEvent.from(order, instrument));</span>
-<span class="fc" id="L375">        return new Acceptance(order, instrument, true);</span>
+<span class="fc" id="L332">        order.setStatus(Order.STATUS_ACCEPTED);</span>
+<span class="fc" id="L333">        order.setAcceptedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L334">        order = orderRepository.save(order);</span>
+<span class="fc" id="L335">        auditTrailService.record(order.getOrderId(), Order.STATUS_ACCEPTED, null);</span>
+<span class="fc" id="L336">        events.publishEvent(OrderStatusEvent.from(order, instrument));</span>
+<span class="fc" id="L337">        return new Acceptance(order, instrument, true);</span>
+    }
+
+    /** Locks the caller's profile and the account, proving the caller owns it. */
+    private Account lockOwnedAccount(Integer accountId, UUID callerId) {
+<span class="fc" id="L342">        Account visibleAccount = accountRepository.findById(accountId)</span>
+<span class="fc" id="L343">                .orElseThrow(() -&gt; new AccountNotFoundException(&quot;No account &quot; + accountId));</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        if (!visibleAccount.getUserId().equals(callerId)) throw new ForbiddenException(&quot;You do not have access to this account&quot;);</span>
+<span class="fc" id="L345">        userRepository.findByIdForUpdate(callerId)</span>
+<span class="pc" id="L346">                .orElseThrow(() -&gt; new IllegalStateException(&quot;Profile is not registered&quot;));</span>
+<span class="fc" id="L347">        Account account = accountRepository.findByIdForUpdate(accountId)</span>
+<span class="pc" id="L348">                .orElseThrow(() -&gt; new AccountNotFoundException(&quot;No account &quot; + accountId));</span>
+<span class="fc" id="L349">        entityManager.refresh(account);</span>
+<span class="pc bpc" id="L350" title="1 of 2 branches missed.">        if (!account.getUserId().equals(callerId)) {</span>
+<span class="nc" id="L351">            throw new ForbiddenException(&quot;You do not have access to this account&quot;);</span>
+        }
+<span class="fc" id="L353">        return account;</span>
+    }
+
+    private void requireTradingAllowed(Account account, UUID callerId) {
+<span class="fc bfc" id="L357" title="All 2 branches covered.">        if (!&quot;ACTIVE&quot;.equals(account.getStatus())) {</span>
+<span class="fc" id="L358">            throw new ForbiddenException(&quot;Archived accounts cannot trade&quot;);</span>
+        }
+
+<span class="fc bfc" id="L361" title="All 2 branches covered.">        if (!termsAcceptanceRepository.existsById(</span>
+                new TermsAcceptanceId(callerId, TermsAcceptance.CURRENT_VERSION))) {
+<span class="fc" id="L363">            throw new ForbiddenException(&quot;Accept the platform terms before placing an order&quot;);</span>
+        }
+<span class="fc" id="L365">    }</span>
+
+    private static Order pendingOrder(OrderRequest request, Account account, Instrument instrument,
+            BigDecimal bufferPercent, app.order.execution.ExecutionQuoteSource.Quote quote) {
+<span class="fc" id="L369">        Order order = new Order();</span>
+<span class="fc" id="L370">        order.setAccountId(account.getAccountId());</span>
+<span class="fc" id="L371">        order.setInstrumentId(instrument.getInstrumentId());</span>
+<span class="fc" id="L372">        order.setClientReference(request.clientReference());</span>
+<span class="fc" id="L373">        order.setOrderType(request.orderType());</span>
+<span class="fc" id="L374">        order.setQuantity(request.quantity());</span>
+<span class="fc" id="L375">        order.setIndicativePrice(request.indicativePrice());</span>
+<span class="fc" id="L376">        order.setBufferPercent(bufferPercent);</span>
+<span class="fc" id="L377">        order.setExecutionType(request.executionType());</span>
+<span class="fc" id="L378">        order.setLimitPrice(request.limitPrice());</span>
+<span class="fc" id="L379">        order.setStopPrice(request.stopPrice());</span>
+<span class="fc" id="L380">        order.setReferencePrice(quote.price());</span>
+<span class="fc" id="L381">        order.setReferenceAt(quote.timestamp());</span>
+<span class="fc" id="L382">        order.setEvaluatedAt(quote.timestamp());</span>
+<span class="fc" id="L383">        order.setSessionId(quote.sessionId());</span>
+<span class="fc" id="L384">        order.setSimulatedAt(quote.timestamp());</span>
+<span class="fc" id="L385">        order.setStatus(Order.STATUS_PENDING);</span>
+<span class="fc" id="L386">        order.setSubmittedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L387">        return order;</span>
+    }
+
+    /** Reserves buying power or shares for a validated order, or rejects it when they are short. */
+    private ValidationResult reserve(ValidationResult validated, Order order, User user, Account account,
+            Instrument instrument, List&lt;Order&gt; reservations) {
+<span class="fc bfc" id="L393" title="All 2 branches covered.">        if (Order.TYPE_BUY.equals(order.getOrderType())) {</span>
+<span class="fc" id="L394">            BigDecimal reservedCash = reservations.stream().map(Order::getReservedCash).reduce(BigDecimal.ZERO, BigDecimal::add);</span>
+<span class="fc" id="L395">            BigDecimal required = order.getQuantity().multiply(app.order.execution.ExecutionPolicy.reservationPrice(order));</span>
+<span class="fc bfc" id="L396" title="All 2 branches covered.">            if (required.compareTo(user.getAvailableFunds().subtract(reservedCash)) &gt; 0) {</span>
+<span class="fc" id="L397">                return ValidationResult.reject(&quot;Insufficient available buying power&quot;);</span>
+            }
+<span class="fc" id="L399">            order.setReservedCash(required);</span>
+<span class="fc" id="L400">            return validated;</span>
+        }
+<span class="fc" id="L402">        BigDecimal reservedShares = reservations.stream()</span>
+<span class="pc bpc" id="L403" title="2 of 4 branches missed.">                .filter(o -&gt; o.getAccountId().equals(account.getAccountId()) &amp;&amp; o.getInstrumentId().equals(instrument.getInstrumentId()))</span>
+<span class="fc" id="L404">                .map(Order::getReservedShares).reduce(BigDecimal.ZERO, BigDecimal::add);</span>
+<span class="fc" id="L405">        BigDecimal held = holdings.findByAccountIdAndInstrumentId(account.getAccountId(), instrument.getInstrumentId())</span>
+<span class="fc" id="L406">                .map(app.holding.Holding::getQuantity).orElse(BigDecimal.ZERO);</span>
+<span class="fc bfc" id="L407" title="All 2 branches covered.">        if (order.getQuantity().compareTo(held.subtract(reservedShares)) &gt; 0) {</span>
+<span class="fc" id="L408">            return ValidationResult.reject(&quot;Insufficient available shares&quot;);</span>
+        }
+<span class="fc" id="L410">        order.setReservedShares(order.getQuantity());</span>
+<span class="fc" id="L411">        return validated;</span>
+    }
+
+    private Acceptance rejectedAcceptance(Order pending, Instrument instrument, ValidationResult result) {
+<span class="fc" id="L415">        pending.setStatus(Order.STATUS_REJECTED);</span>
+<span class="fc" id="L416">        pending.setRejectionReason(result.reason());</span>
+<span class="fc" id="L417">        pending.setRejectionCode(&quot;TRADING_RULE_FAILED&quot;);</span>
+<span class="fc" id="L418">        pending.setReservedCash(BigDecimal.ZERO);</span>
+<span class="fc" id="L419">        pending.setReservedShares(BigDecimal.ZERO);</span>
+<span class="fc" id="L420">        pending.setResolvedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L421">        Order rejected = orderRepository.save(pending);</span>
+<span class="fc" id="L422">        auditTrailService.record(rejected.getOrderId(), Order.STATUS_REJECTED, result.reason());</span>
+<span class="fc" id="L423">        events.publishEvent(OrderStatusEvent.from(rejected, instrument));</span>
+<span class="fc" id="L424">        return new Acceptance(rejected, instrument, false);</span>
     }
 
     /** Records a rolled-back execution and schedules bounded-backoff retry.
      * @param orderId failed order
      * @param failure settlement failure */
     public void recordExecutionFailure(Integer orderId, RuntimeException failure) {
-<span class="fc" id="L382">        String detail = describe(failure);</span>
+<span class="fc" id="L431">        String detail = describe(failure);</span>
         try {
-<span class="fc" id="L384">            transactions.executeWithoutResult(status -&gt; {</span>
-<span class="fc" id="L385">                Order visible = orderRepository.findById(orderId).orElseThrow();</span>
-<span class="fc" id="L386">                Account account = accountRepository.findById(visible.getAccountId()).orElseThrow();</span>
-<span class="fc" id="L387">                userRepository.findByIdForUpdate(account.getUserId()).orElseThrow();</span>
-<span class="fc" id="L388">                accountRepository.findByIdForUpdate(account.getAccountId()).orElseThrow();</span>
-<span class="fc" id="L389">                Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow();</span>
-<span class="fc" id="L390">                entityManager.refresh(order);</span>
-<span class="pc bpc" id="L391" title="1 of 2 branches missed.">                if (!Order.STATUS_ACCEPTED.equals(order.getStatus())) return;</span>
-<span class="fc" id="L392">                int attempts = order.getExecutionAttempts() + 1;</span>
-<span class="fc" id="L393">                order.setExecutionAttempts(attempts);</span>
-<span class="fc" id="L394">                order.setRetryAfter(OffsetDateTime.now().plusSeconds(Math.min(60, 1L &lt;&lt; Math.min(attempts, 6))));</span>
-<span class="fc" id="L395">                orderRepository.save(order);</span>
-<span class="fc" id="L396">                auditTrailService.record(orderId, AUDIT_EXECUTION_FAILED, detail);</span>
-<span class="fc" id="L397">            });</span>
-<span class="nc" id="L398">        } catch (RuntimeException auditFailure) {</span>
-<span class="nc" id="L399">            log.error(&quot;Could not record the execution failure of order {}&quot;, orderId, auditFailure);</span>
-<span class="fc" id="L400">        }</span>
-<span class="fc" id="L401">    }</span>
+<span class="fc" id="L433">            transactions.executeWithoutResult(status -&gt; {</span>
+<span class="fc" id="L434">                Order visible = orderRepository.findById(orderId).orElseThrow();</span>
+<span class="fc" id="L435">                Account account = accountRepository.findById(visible.getAccountId()).orElseThrow();</span>
+<span class="fc" id="L436">                userRepository.findByIdForUpdate(account.getUserId()).orElseThrow();</span>
+<span class="fc" id="L437">                accountRepository.findByIdForUpdate(account.getAccountId()).orElseThrow();</span>
+<span class="fc" id="L438">                Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow();</span>
+<span class="fc" id="L439">                entityManager.refresh(order);</span>
+<span class="pc bpc" id="L440" title="1 of 2 branches missed.">                if (!Order.STATUS_ACCEPTED.equals(order.getStatus())) return;</span>
+<span class="fc" id="L441">                int attempts = order.getExecutionAttempts() + 1;</span>
+<span class="fc" id="L442">                order.setExecutionAttempts(attempts);</span>
+<span class="fc" id="L443">                order.setRetryAfter(OffsetDateTime.now().plusSeconds(Math.min(60, 1L &lt;&lt; Math.min(attempts, 6))));</span>
+<span class="fc" id="L444">                orderRepository.save(order);</span>
+<span class="fc" id="L445">                auditTrailService.record(orderId, AUDIT_EXECUTION_FAILED, detail);</span>
+<span class="fc" id="L446">            });</span>
+<span class="nc" id="L447">        } catch (RuntimeException auditFailure) {</span>
+<span class="nc" id="L448">            log.error(&quot;Could not record the execution failure of order {}&quot;, orderId, auditFailure);</span>
+<span class="fc" id="L449">        }</span>
+<span class="fc" id="L450">    }</span>
 
     private static String describe(RuntimeException failure) {
-<span class="pc bpc" id="L404" title="1 of 2 branches missed.">        String message = failure.getMessage() == null ? &quot;&quot; : failure.getMessage();</span>
-<span class="fc" id="L405">        String detail = failure.getClass().getSimpleName() + &quot;: &quot; + message;</span>
-<span class="fc bfc" id="L406" title="All 2 branches covered.">        return detail.length() &lt;= MAX_FAILURE_DETAIL_LENGTH</span>
-<span class="fc" id="L407">                ? detail</span>
-<span class="fc" id="L408">                : detail.substring(0, MAX_FAILURE_DETAIL_LENGTH);</span>
+<span class="pc bpc" id="L453" title="1 of 2 branches missed.">        String message = failure.getMessage() == null ? &quot;&quot; : failure.getMessage();</span>
+<span class="fc" id="L454">        String detail = failure.getClass().getSimpleName() + &quot;: &quot; + message;</span>
+<span class="fc bfc" id="L455" title="All 2 branches covered.">        return detail.length() &lt;= MAX_FAILURE_DETAIL_LENGTH</span>
+<span class="fc" id="L456">                ? detail</span>
+<span class="fc" id="L457">                : detail.substring(0, MAX_FAILURE_DETAIL_LENGTH);</span>
     }
 
     /**
@@ -419,7 +468,7 @@ public class OrderService {
      */
     @Transactional(readOnly = true)
     public List&lt;Order&gt; getOwnOrders(UUID userId) {
-<span class="fc" id="L422">        return orderRepository.findAllByOwningUserId(userId);</span>
+<span class="fc" id="L471">        return orderRepository.findAllByOwningUserId(userId);</span>
     }
 
     /**
@@ -433,8 +482,8 @@ public class OrderService {
      */
     @Transactional(readOnly = true)
     public Order getOwnOrder(Integer orderId, UUID userId) {
-<span class="fc" id="L436">        return orderRepository.findByOrderIdAndOwningUserId(orderId, userId)</span>
-<span class="fc" id="L437">                .orElseThrow(() -&gt; new AccountNotFoundException(&quot;No order &quot; + orderId));</span>
+<span class="fc" id="L485">        return orderRepository.findByOrderIdAndOwningUserId(orderId, userId)</span>
+<span class="fc" id="L486">                .orElseThrow(() -&gt; new AccountNotFoundException(&quot;No order &quot; + orderId));</span>
     }
 
     /**
@@ -449,8 +498,8 @@ public class OrderService {
      */
     @Transactional(readOnly = true)
     public List&lt;AuditTrail&gt; getOwnOrderAudit(Integer orderId, UUID userId) {
-<span class="fc" id="L452">        Order order = getOwnOrder(orderId, userId);</span>
-<span class="fc" id="L453">        return auditTrailRepository.findAllByOrderIdOrderByRecordedAtAscAuditIdAsc(order.getOrderId());</span>
+<span class="fc" id="L501">        Order order = getOwnOrder(orderId, userId);</span>
+<span class="fc" id="L502">        return auditTrailRepository.findAllByOrderIdOrderByRecordedAtAscAuditIdAsc(order.getOrderId());</span>
     }
     /** Cancels an owned open instruction and releases its reservations atomically.
      * @param orderId order identifier
@@ -460,25 +509,25 @@ public class OrderService {
      * @throws org.springframework.web.server.ResponseStatusException if already filled or rejected */
     @Transactional
     public Order cancel(Integer orderId, UUID userId) {
-<span class="fc" id="L463">        Order visible = getOwnOrder(orderId, userId);</span>
-<span class="fc" id="L464">        userRepository.findByIdForUpdate(userId).orElseThrow();</span>
-<span class="fc" id="L465">        accountRepository.findByIdForUpdate(visible.getAccountId()).orElseThrow();</span>
-<span class="fc" id="L466">        Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow();</span>
-<span class="fc" id="L467">        entityManager.refresh(order);</span>
-<span class="fc bfc" id="L468" title="All 2 branches covered.">        if (Order.STATUS_CANCELLED.equals(order.getStatus())) return order;</span>
-<span class="fc bfc" id="L469" title="All 2 branches covered.">        if (!Order.STATUS_ACCEPTED.equals(order.getStatus())) {</span>
-<span class="fc" id="L470">            throw new org.springframework.web.server.ResponseStatusException(</span>
+<span class="fc" id="L512">        Order visible = getOwnOrder(orderId, userId);</span>
+<span class="fc" id="L513">        userRepository.findByIdForUpdate(userId).orElseThrow();</span>
+<span class="fc" id="L514">        accountRepository.findByIdForUpdate(visible.getAccountId()).orElseThrow();</span>
+<span class="fc" id="L515">        Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow();</span>
+<span class="fc" id="L516">        entityManager.refresh(order);</span>
+<span class="fc bfc" id="L517" title="All 2 branches covered.">        if (Order.STATUS_CANCELLED.equals(order.getStatus())) return order;</span>
+<span class="fc bfc" id="L518" title="All 2 branches covered.">        if (!Order.STATUS_ACCEPTED.equals(order.getStatus())) {</span>
+<span class="fc" id="L519">            throw new org.springframework.web.server.ResponseStatusException(</span>
                     org.springframework.http.HttpStatus.CONFLICT, &quot;Only open orders can be cancelled&quot;);
         }
-<span class="fc" id="L473">        order.setStatus(Order.STATUS_CANCELLED);</span>
-<span class="fc" id="L474">        order.setRetryAfter(null);</span>
-<span class="fc" id="L475">        order.setResolvedAt(OffsetDateTime.now());</span>
-<span class="fc" id="L476">        order.setReservedCash(BigDecimal.ZERO);</span>
-<span class="fc" id="L477">        order.setReservedShares(BigDecimal.ZERO);</span>
-<span class="fc" id="L478">        orderRepository.save(order);</span>
-<span class="fc" id="L479">        auditTrailService.record(orderId, Order.STATUS_CANCELLED, &quot;Cancelled by owner&quot;);</span>
-<span class="fc" id="L480">        events.publishEvent(OrderStatusEvent.from(order, instrumentRepository.findById(order.getInstrumentId()).orElseThrow()));</span>
-<span class="fc" id="L481">        return order;</span>
+<span class="fc" id="L522">        order.setStatus(Order.STATUS_CANCELLED);</span>
+<span class="fc" id="L523">        order.setRetryAfter(null);</span>
+<span class="fc" id="L524">        order.setResolvedAt(OffsetDateTime.now());</span>
+<span class="fc" id="L525">        order.setReservedCash(BigDecimal.ZERO);</span>
+<span class="fc" id="L526">        order.setReservedShares(BigDecimal.ZERO);</span>
+<span class="fc" id="L527">        orderRepository.save(order);</span>
+<span class="fc" id="L528">        auditTrailService.record(orderId, Order.STATUS_CANCELLED, &quot;Cancelled by owner&quot;);</span>
+<span class="fc" id="L529">        events.publishEvent(OrderStatusEvent.from(order, instrumentRepository.findById(order.getInstrumentId()).orElseThrow()));</span>
+<span class="fc" id="L530">        return order;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

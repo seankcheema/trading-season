@@ -232,6 +232,14 @@ describe('AccountDialogComponent', () => {
     });
   });
 
+  it('does nothing when closure is confirmed without an account or a chosen action', () => {
+    const { fixture } = render(BROKERAGE);
+
+    fixture.componentInstance['confirmClosure']();
+
+    expect(deleteAccount).not.toHaveBeenCalled();
+  });
+
   it('closes from Cancel and from the close button', () => {
     const { element, closed } = render();
 

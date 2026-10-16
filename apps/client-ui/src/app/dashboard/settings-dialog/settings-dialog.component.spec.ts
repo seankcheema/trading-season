@@ -100,4 +100,15 @@ describe('SettingsDialogComponent', () => {
     (element.querySelector('.settings-backdrop') as HTMLElement).click();
     expect(closed).toHaveBeenCalledTimes(1);
   });
+  it('ignores a save request while one has just succeeded', () => {
+    const fixture = TestBed.createComponent(SettingsDialogComponent);
+    fixture.detectChanges();
+    const component = fixture.componentInstance;
+    component['saved'].set(true);
+
+    component['saveBuffer']();
+
+    expect(component['saving']()).toBe(false);
+  });
+
 });

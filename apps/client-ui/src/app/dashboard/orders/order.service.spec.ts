@@ -90,6 +90,17 @@ describe('OrderService', () => {
     expect(service.orders()[0].orderId).toBe(2);
   });
 
+  it('does not open the editor for an order that is missing or no longer open', () => {
+    service.loadOrders().subscribe();
+    http.expectOne('/api/orders').flush([order({ status: 'FILLED' })]);
+
+    service.editOrder(1);
+    service.editOrder(404);
+
+    http.expectNone('/api/instruments');
+    expect(service.editingOrder()).toBeNull();
+  });
+
   it('retains the original cached order when a replacement is refused', () => {
     const original = order({ status: 'ACCEPTED', reservedCash: 200 });
     service.loadOrders().subscribe(); http.expectOne('/api/orders').flush([original]);

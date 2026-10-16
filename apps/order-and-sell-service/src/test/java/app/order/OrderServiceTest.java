@@ -549,6 +549,86 @@ class OrderServiceTest {
                 () -> orderService.replace(open.getOrderId(), replacement(open, "1", "94"), user.getUserId()));
         assertEquals("ACCEPTED", orderRepository.findById(open.getOrderId()).orElseThrow().getStatus());
     }
+    private app.order.execution.ExecutionQuoteSource.Quote quoteAt(OffsetDateTime at) {
+        return new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal("100"), 1L, at);
+    }
+    private void quotesAt(OffsetDateTime first, OffsetDateTime... later) {
+        org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(quoteAt(first), java.util.Arrays.stream(later).map(this::quoteAt)
+                        .toArray(app.order.execution.ExecutionQuoteSource.Quote[]::new));
+    }
+    private void assertEditRefused(Order open, OrderRequest request, int status) {
+        var refusal = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> orderService.replace(open.getOrderId(), request, user.getUserId()));
+        assertEquals(status, refusal.getStatusCode().value());
+        assertEquals("ACCEPTED", orderRepository.findById(open.getOrderId()).orElseThrow().getStatus());
+        assertEquals(1, orderRepository.count());
+    }
+    private OrderRequest limitRequest(Integer accountId, Integer instrumentId, String side, UUID reference, Long sessionId) {
+        return new OrderRequest(accountId, instrumentId, side, BigDecimal.ONE, new BigDecimal("100"), null, reference, null,
+                "LIMIT", new BigDecimal("94"), null, sessionId);
+    }
+    @Test void editCannotChangeTheAccountStockSideOrSession() {
+        Order open = typed("BUY", "LIMIT", "95", null, "100", "1");
+        Integer account = open.getAccountId();
+        Integer stock = open.getInstrumentId();
+        assertEditRefused(open, limitRequest(account + 1, stock, "BUY", UUID.randomUUID(), open.getSessionId()), 400);
+        assertEditRefused(open, limitRequest(account, stock + 1, "BUY", UUID.randomUUID(), open.getSessionId()), 400);
+        assertEditRefused(open, limitRequest(account, stock, "SELL", UUID.randomUUID(), open.getSessionId()), 400);
+        assertEditRefused(open, limitRequest(account, stock, "BUY", UUID.randomUUID(), 99L), 400);
+    }
+    @Test void editCannotReuseAnotherOrdersClientReference() {
+        Order open = typed("BUY", "LIMIT", "95", null, "100", "1");
+        assertEditRefused(open, limitRequest(open.getAccountId(), open.getInstrumentId(), "BUY", open.getClientReference(),
+                open.getSessionId()), 409);
+    }
+    @Test void editIsRefusedOutsideTheOrdersSimulationWindow() {
+        Order open = typed("BUY", "LIMIT", "95", null, "100", "1");
+        OrderRequest request = replacement(open, "1", "94");
+        quotesAt(open.getReferenceAt().minusSeconds(1));
+        assertEditRefused(open, request, 409);
+        quotesAt(app.order.execution.ExecutionPolicy.expiresAt(open));
+        assertEditRefused(open, request, 409);
+    }
+    @Test void editIsRefusedWhenTheSimulationMovesWhileTheReplacementIsAccepted() {
+        Order open = typed("BUY", "LIMIT", "95", null, "100", "1");
+        OrderRequest request = replacement(open, "1", "94");
+        var start = open.getReferenceAt();
+        quotesAt(start, start.minusSeconds(1));
+        assertEditRefused(open, request, 409);
+        quotesAt(start, app.order.execution.ExecutionPolicy.expiresAt(open));
+        assertEditRefused(open, request, 409);
+        open.setEvaluatedAt(null);
+        orderRepository.saveAndFlush(open);
+        quotesAt(start, start.minusSeconds(1));
+        assertEditRefused(open, request, 409);
+    }
+    @Test void aRetryBackoffHoldsTheOrderUntilTheFinalSecondThenExpiresIt() {
+        Order open = typed("BUY", "LIMIT", "95", null, "100", "1");
+        open.setRetryAfter(OffsetDateTime.now().plusHours(1));
+        orderRepository.saveAndFlush(open);
+        assertEquals("ACCEPTED", tick(open, "90", 1).getStatus());
+        assertEquals(0, fillRepository.count());
+        var last = app.order.execution.ExecutionPolicy.expiresAt(open).minusSeconds(1);
+        assertEquals("CANCELLED", execution.evaluate(open.getOrderId(), instrument, quoteAt(last)).getStatus());
+    }
+    @Test void anOrderWithoutAReferencePriceOrWatermarkIsEvaluatedSafely() {
+        Order open = typed("BUY", "LIMIT", "95", null, "100", "1");
+        open.setEvaluatedAt(null);
+        orderRepository.saveAndFlush(open);
+        assertEquals("FILLED", tick(open, "95", 1).getStatus());
+        Order legacy = typed("BUY", "LIMIT", "95", null, "100", "1");
+        legacy.setReferencePrice(null);
+        orderRepository.saveAndFlush(legacy);
+        assertEquals("ACCEPTED", tick(legacy, "90", 1).getStatus());
+        assertEquals(1, fillRepository.count());
+    }
+    @Test void aLatchedStopWithoutATriggerPriceUsesTheSubmissionQuoteForItsBuffer() {
+        Order open = typed("BUY", "STOP", null, "105", "100", "1");
+        open.setTriggeredAt(open.getReferenceAt().plusSeconds(1));
+        orderRepository.saveAndFlush(open);
+        assertEquals("FILLED", tick(open, "101", 2).getStatus());
+    }
     @Test void finalSeededTickCanFillButUnmetOrdersExpire() {
         Order eligible = typed("BUY", "LIMIT", "95", null, "100", "1");
         var last = app.order.execution.ExecutionPolicy.expiresAt(eligible).minusSeconds(1);

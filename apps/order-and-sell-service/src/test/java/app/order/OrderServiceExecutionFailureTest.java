@@ -133,6 +133,23 @@ class OrderServiceExecutionFailureTest {
     }
 
     @Test
+    void aReplacementWhoseExecutionFailsStaysAcceptedAndRecordsTheFailure() {
+        OrderRequest original = limit(UUID.randomUUID(), "45");
+        Order open = submit(original, user.getUserId());
+
+        Order replaced = orderService.replace(open.getOrderId(), limit(UUID.randomUUID(), "44"), user.getUserId());
+
+        assertEquals("ACCEPTED", replaced.getStatus());
+        assertEquals("CANCELLED", orderRepository.findById(open.getOrderId()).orElseThrow().getStatus());
+        assertEquals(OrderService.AUDIT_EXECUTION_FAILED, auditEventsFor(replaced).getLast());
+    }
+
+    private OrderRequest limit(UUID clientReference, String limitPrice) {
+        return new OrderRequest(account.getAccountId(), instrument.getInstrumentId(), "BUY", new BigDecimal("10"),
+                new BigDecimal("50.00"), null, clientReference, null, "LIMIT", new BigDecimal(limitPrice), null, 1L);
+    }
+
+    @Test
     void anExecutionFailureLeavesTheAcceptedOrderOnRecord() {
         UUID clientReference = UUID.randomUUID();
         OrderRequest request = new OrderRequest(account.getAccountId(), instrument.getInstrumentId(), "BUY",

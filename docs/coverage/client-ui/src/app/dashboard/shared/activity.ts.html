@@ -23,16 +23,16 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">91.17% </span>
+                <span class="strong">94.11% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>31/34</span>
+                <span class='fraction'>32/34</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">82.75% </span>
+                <span class="strong">87.93% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>48/58</span>
+                <span class='fraction'>51/58</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">93.33% </span>
+                <span class="strong">93.75% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>28/30</span>
+                <span class='fraction'>30/32</span>
             </div>
         
             
@@ -233,7 +233,15 @@
 <a name='L168'></a><a href='#L168'>168</a>
 <a name='L169'></a><a href='#L169'>169</a>
 <a name='L170'></a><a href='#L170'>170</a>
-<a name='L171'></a><a href='#L171'>171</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L171'></a><a href='#L171'>171</a>
+<a name='L172'></a><a href='#L172'>172</a>
+<a name='L173'></a><a href='#L173'>173</a>
+<a name='L174'></a><a href='#L174'>174</a>
+<a name='L175'></a><a href='#L175'>175</a>
+<a name='L176'></a><a href='#L176'>176</a>
+<a name='L177'></a><a href='#L177'>177</a>
+<a name='L178'></a><a href='#L178'>178</a>
+<a name='L179'></a><a href='#L179'>179</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -242,11 +250,17 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">148x</span>
-<span class="cline-any cline-yes">148x</span>
+<span class="cline-any cline-yes">151x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">150x</span>
 <span class="cline-any cline-yes">65x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">83x</span>
+<span class="cline-any cline-yes">85x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -261,6 +275,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">308x</span>
+<span class="cline-any cline-yes">177x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">131x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -412,7 +428,13 @@ const USD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' 
 // When an order took effect: the selected replay time, else when the backend resolved it, else
 // (for an order still pending) when it was submitted.
 export function orderDate(order: OrderResult): string {
-  <span class="missing-if-branch" title="if path not taken" >I</span>if (order.evaluatedAt &amp;&amp; <span class="branch-1 cbranch-no" title="branch not covered" >Number.isFinite(Date.parse(order.evaluatedAt)) &amp;&amp; <span class="branch-2 cbranch-no" title="branch not covered" >o</span>rder.status === 'FILLED') <span class="cstat-no" title="statement not covered" >r</span>eturn order.evaluatedAt;</span>
+  if (
+    order.evaluatedAt &amp;&amp;
+    Number.isFinite(Date.parse(order.evaluatedAt)) &amp;&amp;
+    order.status === 'FILLED'
+  ) {
+    return order.evaluatedAt;
+  }
   if (order.simulatedAt &amp;&amp; Number.isFinite(Date.parse(order.simulatedAt))) {
     return order.simulatedAt;
   }
@@ -430,7 +452,9 @@ export function orderSymbol(order: OrderResult, catalogue: readonly InstrumentRe
 &nbsp;
 // Open orders display the user's instruction; filled orders retain their actual execution price.
 export function orderDisplayPrice(order: OrderResult): number {
-  if (order.status === 'FILLED') return order.executionPrice ?? order.indicativePrice;
+  if (order.status === 'FILLED') {
+    return order.executionPrice ?? order.indicativePrice;
+  }
   return order.limitPrice ?? order.stopPrice ?? order.executionPrice ?? order.indicativePrice;
 }
 &nbsp;
@@ -580,7 +604,7 @@ export function sortHistoryRows(
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-10-16T19:19:14.566Z
+                at 2026-10-16T19:53:48.696Z
             </div>
         <script src="../../../../prettify.js"></script>
         <script>

@@ -177,6 +177,14 @@ describe('OrderSubmissionComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Save changes');
   });
 
+  it('labels the button Saving while an edit is being submitted', () => {
+    const fixture = setup();
+    fixture.componentRef.setInput('editOrder', filledOrder({ orderId: 9, status: 'ACCEPTED' }));
+    fixture.componentInstance['submitting'].set(true);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Saving…');
+  });
+
   it('keeps the submitted symbol in the notification after the dialog is destroyed', () => {
     const http = TestBed.inject(HttpTestingController);
     const fixture = setup();

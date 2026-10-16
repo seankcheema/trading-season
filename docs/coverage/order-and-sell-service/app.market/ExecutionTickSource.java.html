@@ -2,6 +2,7 @@
 
 import app.order.execution.ExecutionQuoteSource.Quote;
 import org.springframework.stereotype.Component;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.ZoneId;
@@ -11,10 +12,11 @@ import java.util.List;
 /** Reuses PostgreSQL/Parquet tick storage for ordered execution catch-up. */
 @Component
 public class ExecutionTickSource {
+    private static final int MAX_BATCH = 1000;
     private final MarketDataSource source;
     /** Creates the storage adapter.
      * @param source existing market storage */
-<span class="fc" id="L17">    public ExecutionTickSource(MarketDataSource source) { this.source = source; }</span>
+<span class="fc" id="L19">    public ExecutionTickSource(MarketDataSource source) { this.source = source; }</span>
     /** Returns a bounded chronological batch after the last evaluated position.
      * @param sessionId fixed order session
      * @param symbol simulated symbol
@@ -22,25 +24,46 @@ public class ExecutionTickSource {
      * @param through inclusive authoritative cursor
      * @return at most one thousand matching ticks */
     public List&lt;Quote&gt; between(long sessionId, String symbol, OffsetDateTime after, OffsetDateTime through) {
-<span class="fc bfc" id="L25" title="All 2 branches covered.">        if (!through.isAfter(after)) return List.of();</span>
-<span class="fc" id="L26">        var session = source.resolveSession(sessionId);</span>
-<span class="fc" id="L27">        var zone = ZoneId.of(&quot;America/Chicago&quot;);</span>
-<span class="fc" id="L28">        var first = after.atZoneSameInstant(zone).toLocalDate();</span>
-<span class="fc" id="L29">        var last = through.atZoneSameInstant(zone).toLocalDate();</span>
-<span class="fc" id="L30">        List&lt;Quote&gt; result = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L31" title="All 2 branches covered.">        for (var day : source.tradingDays(sessionId).stream().sorted().toList()) {</span>
-<span class="pc bpc" id="L32" title="1 of 4 branches missed.">            if (day.isBefore(first) || day.isAfter(last)) continue;</span>
-<span class="fc bfc" id="L33" title="All 2 branches covered.">            for (var frame : source.ticksForDay(session, day)) {</span>
-<span class="fc bfc" id="L34" title="All 4 branches covered.">                if (!frame.timestamp().isAfter(after.toInstant()) || frame.timestamp().isAfter(through.toInstant())) continue;</span>
-<span class="fc bfc" id="L35" title="All 2 branches covered.">                for (var tick : frame.prices()) {</span>
-<span class="pc bpc" id="L36" title="1 of 4 branches missed.">                    if (symbol.equals(tick.symbol()) &amp;&amp; tick.price().signum() &gt; 0) {</span>
-<span class="fc" id="L37">                        result.add(new Quote(tick.price(), sessionId, tick.timestamp().atOffset(ZoneOffset.UTC)));</span>
-<span class="fc bfc" id="L38" title="All 2 branches covered.">                        if (result.size() &gt;= 1000) return result;</span>
-                    }
-<span class="fc" id="L40">                }</span>
-<span class="fc" id="L41">            }</span>
-<span class="fc" id="L42">        }</span>
-<span class="fc" id="L43">        return result;</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        if (!through.isAfter(after)) {</span>
+<span class="fc" id="L28">            return List.of();</span>
+        }
+<span class="fc" id="L30">        var session = source.resolveSession(sessionId);</span>
+<span class="fc" id="L31">        var zone = ZoneId.of(&quot;America/Chicago&quot;);</span>
+<span class="fc" id="L32">        var first = after.atZoneSameInstant(zone).toLocalDate();</span>
+<span class="fc" id="L33">        var last = through.atZoneSameInstant(zone).toLocalDate();</span>
+<span class="fc" id="L34">        List&lt;Quote&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        for (var day : source.tradingDays(sessionId).stream().sorted().toList()) {</span>
+<span class="pc bpc" id="L36" title="1 of 4 branches missed.">            if (day.isBefore(first) || day.isAfter(last)) {</span>
+<span class="fc" id="L37">                continue;</span>
+            }
+<span class="fc bfc" id="L39" title="All 2 branches covered.">            for (var frame : source.ticksForDay(session, day)) {</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">                if (isOutsideWindow(frame.timestamp(), after, through)) {</span>
+<span class="fc" id="L41">                    continue;</span>
+                }
+<span class="fc bfc" id="L43" title="All 2 branches covered.">                if (collect(result, frame.prices(), symbol, sessionId)) {</span>
+<span class="fc" id="L44">                    return result;</span>
+                }
+<span class="fc" id="L46">            }</span>
+<span class="fc" id="L47">        }</span>
+<span class="fc" id="L48">        return result;</span>
+    }
+
+    private static boolean isOutsideWindow(Instant at, OffsetDateTime after, OffsetDateTime through) {
+<span class="fc bfc" id="L52" title="All 4 branches covered.">        return !at.isAfter(after.toInstant()) || at.isAfter(through.toInstant());</span>
+    }
+
+    /** Adds the symbol's positive prices from one frame, stopping at the batch limit.
+     * @return true once the batch is full */
+    private static boolean collect(List&lt;Quote&gt; result, List&lt;MarketModels.Tick&gt; ticks, String symbol, long sessionId) {
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        for (var tick : ticks) {</span>
+<span class="pc bpc" id="L59" title="1 of 4 branches missed.">            if (symbol.equals(tick.symbol()) &amp;&amp; tick.price().signum() &gt; 0) {</span>
+<span class="fc" id="L60">                result.add(new Quote(tick.price(), sessionId, tick.timestamp().atOffset(ZoneOffset.UTC)));</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">                if (result.size() &gt;= MAX_BATCH) {</span>
+<span class="fc" id="L62">                    return true;</span>
+                }
+            }
+<span class="fc" id="L65">        }</span>
+<span class="fc" id="L66">        return false;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

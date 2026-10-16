@@ -4,8 +4,15 @@ import app.auth.AuthenticatedUser;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.web.bind.annotation.*;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /** Authenticated account lifecycle endpoints; ownership always comes from the token. */
@@ -23,7 +30,7 @@ public class AccountLifecycleController {
      * Creates the lifecycle controller.
      * @param service transactional lifecycle validation
      */
-<span class="fc" id="L26">    public AccountLifecycleController(AccountLifecycleService service) { this.service = service; }</span>
+<span class="fc" id="L33">    public AccountLifecycleController(AccountLifecycleService service) { this.service = service; }</span>
 
     /**
      * Lists archived history accounts.
@@ -33,7 +40,7 @@ public class AccountLifecycleController {
     @GetMapping(&quot;/archived&quot;)
     @Operation(summary = &quot;List archived accounts&quot;, description = &quot;Read-only historical accounts owned by the caller&quot;)
     public List&lt;AccountResponse&gt; archived(@AuthenticationPrincipal Jwt jwt) {
-<span class="fc" id="L36">        return service.archived(AuthenticatedUser.from(jwt).userId()).stream().map(AccountResponse::from).toList();</span>
+<span class="fc" id="L43">        return service.archived(AuthenticatedUser.from(jwt).userId()).stream().map(AccountResponse::from).toList();</span>
     }
 
     /**
@@ -45,7 +52,7 @@ public class AccountLifecycleController {
     @GetMapping(&quot;/{accountId}/eligibility&quot;)
     @Operation(summary = &quot;Explain archive and delete eligibility&quot;)
     public AccountLifecycleService.Eligibility eligibility(@PathVariable Integer accountId, @AuthenticationPrincipal Jwt jwt) {
-<span class="nc" id="L48">        return service.eligibility(accountId, AuthenticatedUser.from(jwt).userId());</span>
+<span class="nc" id="L55">        return service.eligibility(accountId, AuthenticatedUser.from(jwt).userId());</span>
     }
 
     /**
@@ -57,7 +64,7 @@ public class AccountLifecycleController {
     @PostMapping(&quot;/{accountId}/archive&quot;)
     @Operation(summary = &quot;Archive account&quot;, description = &quot;Requires zero cash, zero shares, no open orders. Retains financial history. Returns 409 for unmet requirements.&quot;)
     public AccountResponse archive(@PathVariable Integer accountId, @AuthenticationPrincipal Jwt jwt) {
-<span class="fc" id="L60">        return AccountResponse.from(service.archive(accountId, AuthenticatedUser.from(jwt).userId()));</span>
+<span class="fc" id="L67">        return AccountResponse.from(service.archive(accountId, AuthenticatedUser.from(jwt).userId()));</span>
     }
 
     /**
@@ -71,7 +78,7 @@ public class AccountLifecycleController {
     @Operation(summary = &quot;Delete account from active view&quot;, description = &quot;Soft deletion: archives the account and retains every database record for reporting. Requires confirmed=true and archive eligibility. Returns 400 without confirmation, 409 for assets, open orders or archived state, 403 for unowned, 404 for missing.&quot;)
     public void delete(@PathVariable Integer accountId, @RequestParam(defaultValue = &quot;false&quot;) boolean confirmed,
             @AuthenticationPrincipal Jwt jwt) {
-<span class="fc" id="L74">        service.delete(accountId, AuthenticatedUser.from(jwt).userId(), confirmed);</span>
-<span class="fc" id="L75">    }</span>
+<span class="fc" id="L81">        service.delete(accountId, AuthenticatedUser.from(jwt).userId(), confirmed);</span>
+<span class="fc" id="L82">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -56,4 +56,20 @@ describe('Market preview quantities', () => {
       expect(fixture.componentInstance['maxShares']()).toBe(0);
     }
   });
+  it('refuses to submit more shares than can be traded', () => {
+    const fixture = setup();
+    fixture.componentRef.setInput('ready', true);
+    fixture.detectChanges();
+    const submitted = vi.fn();
+    fixture.componentInstance.submitted.subscribe(submitted);
+
+    fixture.componentInstance['quantity'].set(50);
+    fixture.componentInstance['submitOrder']();
+    expect(submitted).not.toHaveBeenCalled();
+
+    fixture.componentInstance['quantity'].set(2);
+    fixture.componentInstance['submitOrder']();
+    expect(submitted).toHaveBeenCalledOnce();
+  });
+
 });
