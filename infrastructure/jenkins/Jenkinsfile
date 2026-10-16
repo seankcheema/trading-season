@@ -378,29 +378,83 @@ pipeline {
             }
         }
 
-        stage('Java API Documentation') {
+        stage('SonarQube Analysis') {
             when { expression { currentBuild.currentResult == 'SUCCESS' } }
             steps {
-                sh '''
-                    set -eu
-                    for service in holdings-and-trade-service order-and-sell-service; do
-                        sh "$WORKSPACE/infrastructure/jenkins/maven-retry.sh" -B -Dmaven.repo.local="$WORKSPACE/.m2/$service" -f "apps/$service/pom.xml" org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc
-                        test -s "apps/$service/target/reports/apidocs/index.html"
-                    done
-                '''
+                script {
+                    def scannerHome = tool(env.SONAR_SCANNER_TOOL ?: 'SonarScanner')
+
+                    // The server URL and analysis token come from the 'SonarQube'
+                    // server under Manage Jenkins > System; the project key and
+                    // name are in sonar-project.properties.
+                    withSonarQubeEnv('SonarQube') {
+                        // The SonarQube container shares this host's Docker daemon
+                        // and may be stopped; start it, then wait for it to be ready.
+                        sh '''
+                            set -eu
+                            if [ "$(docker inspect --format '{{.State.Running}}' sonarqube 2>/dev/null || echo missing)" != "true" ]; then
+                                echo "SonarQube container is not running; starting it."
+                                docker start sonarqube
+                            fi
+                            STATUS_URL="${SONAR_HOST_URL:-http://localhost:9000}/api/system/status"
+                            for attempt in $(seq 1 60); do
+                                if curl --silent --max-time 10 "$STATUS_URL" | grep -q '"status":"UP"'; then
+                                    echo "SonarQube is up."
+                                    exit 0
+                                fi
+                                echo "Waiting for SonarQube to start (attempt $attempt of 60)."
+                                sleep 5
+                            done
+                            echo "SonarQube did not report UP within 5 minutes." >&2
+                            exit 1
+                        '''
+                        sh """
+                            set -eu
+                            node infrastructure/jenkins/jacoco-to-sonar-coverage.mjs \
+                              apps/holdings-and-trade-service apps/order-and-sell-service
+                            "${scannerHome}/bin/sonar-scanner" \
+                              -Dproject.settings=infrastructure/jenkins/sonar-project.properties \
+                              -Dsonar.projectVersion="\$BUILD_NUMBER"
+                        """
+                    }
+                }
             }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'apps/*/target/reports/apidocs/**/*', allowEmptyArchive: false
+        }
+
+        stage('Quality Gate') {
+            when { expression { currentBuild.currentResult == 'SUCCESS' } }
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    script {
+                        def qualityGate = waitForQualityGate abortPipeline: false
+                        echo "SonarQube quality gate status: ${qualityGate.status}"
+                        if (qualityGate.status != 'OK') {
+                            withSonarQubeEnv('SonarQube') {
+                                sh '''
+                                    set -eu
+                                    QUALITY_GATE_FILE="${WORKSPACE}/sonar-quality-gate.json"
+                                    curl --fail --silent --show-error \
+                                      --user "${SONAR_AUTH_TOKEN}:" \
+                                      "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=DuaLeapa-Project" \
+                                      > "$QUALITY_GATE_FILE"
+                                    node -e 'const fs = require("node:fs"); const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); for (const condition of report.projectStatus?.conditions ?? []) console.log(`SonarQube condition: ${condition.metricKey} status=${condition.status} actual=${condition.actualValue ?? "-"} threshold=${condition.errorThreshold ?? "-"}`);' "$QUALITY_GATE_FILE"
+                                    rm -f "$QUALITY_GATE_FILE"
+                                '''
+                            }
+                        }
+                        if (qualityGate.status != 'OK') {
+                            error "SonarQube quality gate failed with status: ${qualityGate.status}"
+                        }
+                    }
                 }
             }
         }
 
         stage('Pre-E2E Disk Cleanup') {
             steps {
-                // Reports were archived by their own stages. SonarQube Analysis is
-                // the last stage, so keep what it imports: each Java service's
-                // compiled classes and JaCoCo XML, and the UIs' lcov files.
+                // Reports were archived by their own stages, and SonarQube Analysis
+                // has already imported its inputs. Each Java service's compiled
+                // classes and JaCoCo XML, and the UIs' lcov files, are still kept.
                 sh '''
                     set -eu
                     for service in holdings-and-trade-service order-and-sell-service; do
@@ -814,78 +868,6 @@ pipeline {
             post {
                 always {
                     archiveArtifacts artifacts: 'reports/kafka-end-to-end/**/*', allowEmptyArchive: true
-                }
-            }
-        }
-
-        stage('SonarQube Analysis') {
-            when { expression { currentBuild.currentResult == 'SUCCESS' } }
-            steps {
-                script {
-                    def scannerHome = tool(env.SONAR_SCANNER_TOOL ?: 'SonarScanner')
-
-                    // The server URL and analysis token come from the 'SonarQube'
-                    // server under Manage Jenkins > System; the project key and
-                    // name are in sonar-project.properties.
-                    withSonarQubeEnv('SonarQube') {
-                        // The SonarQube container shares this host's Docker daemon
-                        // and may be stopped; start it, then wait for it to be ready.
-                        sh '''
-                            set -eu
-                            if [ "$(docker inspect --format '{{.State.Running}}' sonarqube 2>/dev/null || echo missing)" != "true" ]; then
-                                echo "SonarQube container is not running; starting it."
-                                docker start sonarqube
-                            fi
-                            STATUS_URL="${SONAR_HOST_URL:-http://localhost:9000}/api/system/status"
-                            for attempt in $(seq 1 60); do
-                                if curl --silent --max-time 10 "$STATUS_URL" | grep -q '"status":"UP"'; then
-                                    echo "SonarQube is up."
-                                    exit 0
-                                fi
-                                echo "Waiting for SonarQube to start (attempt $attempt of 60)."
-                                sleep 5
-                            done
-                            echo "SonarQube did not report UP within 5 minutes." >&2
-                            exit 1
-                        '''
-                        sh """
-                            set -eu
-                            node infrastructure/jenkins/jacoco-to-sonar-coverage.mjs \
-                              apps/holdings-and-trade-service apps/order-and-sell-service
-                            "${scannerHome}/bin/sonar-scanner" \
-                              -Dproject.settings=infrastructure/jenkins/sonar-project.properties \
-                              -Dsonar.projectVersion="\$BUILD_NUMBER"
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Quality Gate') {
-            when { expression { currentBuild.currentResult == 'SUCCESS' } }
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    script {
-                        def qualityGate = waitForQualityGate abortPipeline: false
-                        echo "SonarQube quality gate status: ${qualityGate.status}"
-                        if (qualityGate.status != 'OK') {
-                            withSonarQubeEnv('SonarQube') {
-                                sh '''
-                                    set -eu
-                                    QUALITY_GATE_FILE="${WORKSPACE}/sonar-quality-gate.json"
-                                    curl --fail --silent --show-error \
-                                      --user "${SONAR_AUTH_TOKEN}:" \
-                                      "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=DuaLeapa-Project" \
-                                      > "$QUALITY_GATE_FILE"
-                                    node -e 'const fs = require("node:fs"); const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); for (const condition of report.projectStatus?.conditions ?? []) console.log(`SonarQube condition: ${condition.metricKey} status=${condition.status} actual=${condition.actualValue ?? "-"} threshold=${condition.errorThreshold ?? "-"}`);' "$QUALITY_GATE_FILE"
-                                    rm -f "$QUALITY_GATE_FILE"
-                                '''
-                            }
-                        }
-                        if (qualityGate.status != 'OK') {
-                            error "SonarQube quality gate failed with status: ${qualityGate.status}"
-                        }
-                    }
                 }
             }
         }
