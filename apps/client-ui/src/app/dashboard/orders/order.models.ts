@@ -45,7 +45,8 @@ export interface OrderSubmission {
   instrumentId: number;
   orderType: OrderType;
   quantity: number;
-  // The price shown to the trader before they submitted (BR-13). Orders currently fill at it.
+  // The price shown to the trader before they submitted (BR-13). Execution fills at the
+  // current market quote and reports that as fillPrice (BR-08).
   indicativePrice: number;
   // Idempotency key. Resubmitting it returns the original order's outcome.
   clientReference: string;
@@ -61,6 +62,9 @@ export interface OrderResult {
   orderType: OrderType;
   quantity: number;
   indicativePrice: number;
+  // The market price the order filled at (BR-08). Set on the response to a FILLED
+  // submission; absent from listings and from older backends.
+  fillPrice?: number | null;
   // Set only when the status is REJECTED.
   rejectionReason: string | null;
   submittedAt: string;

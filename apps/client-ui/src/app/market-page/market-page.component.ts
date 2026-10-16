@@ -492,7 +492,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
           this.submitting.set(false);
 
           if (result.status === 'FILLED') {
-            const message = `Filled ${result.quantity} ${draft.symbol} at ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(result.indicativePrice)}.`;
+            const message = `Filled ${result.quantity} ${draft.symbol} at ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(result.fillPrice ?? result.indicativePrice)}.`;
 
             this.toasts.show(message, 'success');
             this.refreshBalances(accountId);

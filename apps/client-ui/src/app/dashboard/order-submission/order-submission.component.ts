@@ -263,7 +263,7 @@ export class OrderSubmissionComponent {
             const price = new Intl.NumberFormat('en-US', {
               style: 'currency',
               currency: 'USD',
-            }).format(result.indicativePrice);
+            }).format(result.fillPrice ?? result.indicativePrice);
             this.toasts.show(`Filled ${result.quantity} ${symbol} at ${price}.`, 'success');
           }
           if (result.status === 'REJECTED') {

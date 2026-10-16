@@ -394,6 +394,7 @@ export class ApiStub {
       orderType: side,
       quantity,
       indicativePrice: price,
+      fillPrice: reason ? null : price,
       status: reason ? 'REJECTED' : 'FILLED',
       rejectionReason: reason,
       submittedAt: now,

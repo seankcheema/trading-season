@@ -145,6 +145,17 @@ describe('OrderSubmissionComponent', () => {
     http.verify();
   });
 
+  it('tells the trader the price the order filled at, not the price they saw', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const component = setup().componentInstance;
+    component['shares'].set(2);
+    component['submit']();
+    http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
+    http.expectOne({ method: 'POST', url: '/api/orders' }).flush(filledOrder({ fillPrice: 320.1 }));
+    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 2 AAPL at $320.10.');
+    http.verify();
+  });
+
   it('keeps the submitted symbol in the notification after the dialog is destroyed', () => {
     const http = TestBed.inject(HttpTestingController);
     const fixture = setup();
