@@ -12,7 +12,7 @@ import java.util.UUID;
  * acceptance of the platform terms.
  */
 @Service
-public class UserService {
+public class UserService extends UserLookupService {
 
     /**
      * The version of the platform terms in force, named by its effective date.
@@ -21,8 +21,8 @@ public class UserService {
      */
     public static final String CURRENT_TERMS_VERSION = "2026-10-12";
 
-    private final UserRepository userRepository;
-    private final UserAccountRepository userAccountRepository;
+    @org.springframework.beans.factory.annotation.Autowired
+    private app.account.AccountRepository accounts;
     private final TermsAcceptanceRepository termsAcceptanceRepository;
 
     /**
@@ -35,15 +35,14 @@ public class UserService {
      */
     public UserService(UserRepository userRepository, UserAccountRepository userAccountRepository,
                        TermsAcceptanceRepository termsAcceptanceRepository) {
-        this.userRepository = userRepository;
-        this.userAccountRepository = userAccountRepository;
+        super(userRepository, userAccountRepository);
         this.termsAcceptanceRepository = termsAcceptanceRepository;
     }
 
     /**
      * Loads the account belonging to the given user. Callers pass the id from the
      * verified token, never an id supplied in the request, so a client can only
-     * read its own account.
+     * read its own account. Includes cash reserved by open buy orders.
      *
      * @param userId the caller's user id from the token's sub claim
      * @return the caller's account
@@ -51,23 +50,10 @@ public class UserService {
      */
     @Transactional(readOnly = true)
     public User getOwnAccount(UUID userId) {
-        return userRepository.findById(userId)
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("Account is not registered"));
-    }
-
-    /**
-     * Loads the credential record for the given user, so callers can report the
-     * role and status as they stand rather than as the caller's token describes
-     * them.
-     *
-     * @param userId the caller's user id from the token's sub claim
-     * @return the credential record the auth service owns
-     * @throws UserNotFoundException if no account exists for the id
-     */
-    @Transactional(readOnly = true)
-    public UserAccount getUserAccount(UUID userId) {
-        return userAccountRepository.findById(userId)
-                .orElseThrow(() -> new UserNotFoundException("Account is not registered"));
+        user.setReservedCash(java.util.Objects.requireNonNullElse(accounts.reservedCash(userId), java.math.BigDecimal.ZERO));
+        return user;
     }
 
     /**
@@ -109,5 +95,18 @@ public class UserService {
         if (!termsAcceptanceRepository.existsById(id)) {
             termsAcceptanceRepository.save(new TermsAcceptance(userId, termsVersion, OffsetDateTime.now()));
         }
+    }
+    /** Saves the authenticated owner's trading preference under the cash/profile lock.
+     * @param userId verified owner
+     * @param settings validated percentage
+     * @return persisted preference
+     * @throws UserNotFoundException if the profile does not exist */
+    @Transactional
+    public ExecutionSettings saveExecutionSettings(UUID userId, ExecutionSettings settings) {
+        User user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new UserNotFoundException("Account is not registered"));
+        user.setExecutionBufferPercent(settings.executionBufferPercent());
+        userRepository.save(user);
+        return new ExecutionSettings(user.getExecutionBufferPercent());
     }
 }

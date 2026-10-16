@@ -86,15 +86,16 @@ public class PortfolioValuationService {
      * @param accountId owned account
      * @param userId verified caller
      * @param scheduled whether unchanged captures in the same minute should be coalesced
-     * @return observation, or null when the account has never bought shares
+     * @return observation, or null when archived or when the account has never bought shares
      * @throws AccountNotFoundException for a missing account
      * @throws app.auth.ForbiddenException for another user's account
      */
     @Transactional
     public Point capture(Integer accountId, UUID userId, boolean scheduled) {
         accounts.getAccountForUser(accountId, userId);
-        accountRepository.findByIdForUpdate(accountId)
+        Account locked = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new AccountNotFoundException(accountId));
+        if (!"ACTIVE".equals(locked.getStatus())) return null;
         if (!movements.hasAcquisitions(accountId)) return null;
         Instant now = clock.instant();
         Optional<PortfolioValuation> previous = valuations

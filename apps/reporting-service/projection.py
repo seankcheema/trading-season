@@ -35,7 +35,7 @@ from models import (Account, AuditTrail, CashTransaction, Fill, FundsBalance, Ho
 logger = logging.getLogger(__name__)
 
 # How far along an order is. A status event never replaces one further along.
-STATUS_RANK = {'PENDING': 0, 'ACCEPTED': 1, 'FILLED': 2, 'REJECTED': 2}
+STATUS_RANK = {'PENDING': 0, 'ACCEPTED': 1, 'FILLED': 2, 'REJECTED': 2, 'CANCELLED': 2}
 ORDER_FILL = 'ORDER_FILL'
 
 
@@ -223,6 +223,19 @@ def apply_trade_event(session, event):
         'resolved_at': _time(detail.get('resolvedAt'), 'order.resolvedAt', required=False),
         'simulated_at': _time(detail.get('simulatedAt'), 'order.simulatedAt', required=False),
     }
+    order['execution_type'] = _text(detail.get('executionType'), 'order.executionType', required=False)
+    order['limit_price'] = _decimal(detail.get('limitPrice'), 'order.limitPrice', required=False)
+    order['stop_price'] = _decimal(detail.get('stopPrice'), 'order.stopPrice', required=False)
+    order['reference_price'] = _decimal(detail.get('referencePrice'), 'order.referencePrice', required=False)
+    order['trigger_price'] = _decimal(detail.get('triggerPrice'), 'order.triggerPrice', required=False)
+    order['reference_at'] = _time(detail.get('referenceAt'), 'order.referenceAt', required=False)
+    order['session_id'] = _integer(detail.get('sessionId'), 'order.sessionId', required=False)
+    order['triggered_at'] = _time(detail.get('triggeredAt'), 'order.triggeredAt', required=False)
+    order['evaluated_at'] = _time(detail.get('evaluatedAt'), 'order.evaluatedAt', required=False)
+    order['reserved_cash'] = _decimal(detail.get('reservedCash'), 'order.reservedCash', required=False)
+    order['reserved_shares'] = _decimal(detail.get('reservedShares'), 'order.reservedShares', required=False)
+    order['execution_price'] = _decimal(detail.get('executionPrice'), 'order.executionPrice', required=False)
+    order['rejection_code'] = _text(detail.get('rejectionCode'), 'order.rejectionCode', required=False)
     instrument = {'instrument_id': instrument_id, 'ticker': ticker,
                   'name': _text(detail.get('instrumentName'), 'order.instrumentName', required=False) or ticker,
                   'is_tradable': True}
@@ -231,9 +244,24 @@ def apply_trade_event(session, event):
     _upsert(session, Instrument, ['instrument_id'], instrument)
     orders = Order.__table__
     current = _run(session, 'order status',
-                   lambda: select(orders.c.status).where(orders.c.order_id == bindparam('order')),
-                   {'order': order_id}).scalar()
-    if current is None or STATUS_RANK.get(status, 0) >= STATUS_RANK.get(current, 0):
+                   lambda: select(orders.c.status, orders.c.evaluated_at, orders.c.triggered_at, orders.c.trigger_price).where(orders.c.order_id == bindparam('order')),
+                   {'order': order_id}).first()
+    apply_order = current is None
+    if current is not None:
+        old_rank = STATUS_RANK.get(current.status, 0)
+        new_rank = STATUS_RANK.get(status, 0)
+        apply_order = new_rank > old_rank
+        if new_rank == old_rank and current.status == status:
+            # Protect trigger latches and watermarks against older ACCEPTED replays.
+            new_position = order['evaluated_at']
+            old_position = current.evaluated_at
+            apply_order = (old_position is None or (new_position is not None and
+                new_position.replace(tzinfo=None) >= old_position.replace(tzinfo=None)))
+            if current.triggered_at is not None and order['triggered_at'] is None:
+                apply_order = False
+    if current is not None and current.trigger_price is not None and order['trigger_price'] is None:
+        order['trigger_price'] = current.trigger_price
+    if apply_order:
         _upsert(session, Order, ['order_id'], order)
     if execution is not None:
         _upsert(session, Fill, ['fill_id'], execution['fill'])
@@ -292,13 +320,25 @@ def _customer_profile(session, record):
 
 def _trading_account(session, record):
     opened = record.get('openedDate')
-    _upsert(session, Account, ['account_id'], {
+    status = record.get('status', 'ACTIVE')
+    if status not in ('ACTIVE', 'ARCHIVED'):
+        raise Unusable('Unknown account lifecycle status')
+    archived_at = _time(record.get('archivedAt'), 'archivedAt') if record.get('archivedAt') else None
+    if (status == 'ARCHIVED') != (archived_at is not None):
+        raise Unusable('Archive timestamp must match account status')
+    values = {
         'account_id': _integer(record.get('accountId'), 'accountId'),
         'user_id': _uuid(record.get('userId'), 'userId'),
         'name': _text(record.get('name'), 'name'),
         'opened_date': _date(opened, 'openedDate') if opened is not None else datetime.now(timezone.utc).date(),
         'currency': _text(record.get('currency'), 'currency', required=False) or 'USD',
-    })
+        'status': status, 'archived_at': archived_at,
+    }
+    # Restoration is not supported; replaying an older account cannot undo archiving.
+    existing = session.get(Account, values['account_id'])
+    if existing and existing.status == 'ARCHIVED' and status == 'ACTIVE':
+        return
+    _upsert(session, Account, ['account_id'], values)
 
 
 def _cash_transfer(session, record):

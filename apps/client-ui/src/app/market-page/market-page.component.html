@@ -21,6 +21,16 @@
           (openChange)="openHeaderDropdown.set($event ? 'market-clock' : null)"
           (snapshotApplied)="onClockSnapshot($event)"
         />
+        <app-account-control
+          data-testid="account-dropdown"
+          [store]="accountStore"
+          [portfolioValues]="portfolioValues()"
+          [open]="openHeaderDropdown() === 'account'"
+          (openChange)="openHeaderDropdown.set($event ? 'account' : null)"
+          (selected)="selectAccount($event)"
+          (create)="openCreateAccount()"
+          (rename)="openRenameAccount($event)"
+        />
         <app-theme-toggle />
         <app-dashboard-header-dropdown
           data-testid="notifications-dropdown"
@@ -114,24 +124,23 @@
               <div class="border-border border-b pb-2">
                 <span class="skeleton h-8 w-4/5"></span>
               </div>
-              <ul class="insight-content pt-3">
-                @for (row of skeletonRows; track row) {
-                  <li app-activity-row-skeleton></li>
-                }
-              </ul>
-            </section>
-            <section class="account-value-panel">
-              <span class="skeleton h-10 w-full rounded-lg"></span>
-              <div class="account-value-balances">
-                @for (card of [1, 2]; track card) {
-                  <div class="overview-card account-balance-card">
-                    <span class="skeleton h-3 w-20"></span>
-                    <span class="skeleton mt-1.5 h-7 w-24"></span>
-                  </div>
-                }
+              <div class="trading-content insight-content" data-testid="trading-skeleton">
+                <div class="account-value-balances">
+                  @for (card of [1, 2]; track card) {
+                    <div class="overview-card account-balance-card">
+                      <span class="skeleton h-3 w-20"></span>
+                      <span class="skeleton mt-1.5 h-7 w-24"></span>
+                    </div>
+                  }
+                </div>
+                <div class="flex flex-1 flex-col gap-3 rounded-xl border border-border p-3">
+                  <span class="skeleton h-9 w-full"></span>
+                  <span class="skeleton h-9 w-full"></span>
+                  <span class="skeleton h-16 w-full"></span>
+                  <span class="skeleton mt-auto h-11 w-full"></span>
+                </div>
               </div>
             </section>
-            <span class="skeleton h-[24.5rem] w-full shrink-0 rounded-xl"></span>
           </aside>
         </div>
       }
@@ -246,9 +255,11 @@
                 class="chart-panel border-border bg-card rounded-xl border p-3"
                 [class.chart-panel-with-rsi]="rsiEnabled()"
               >
-                <div class="chart-toolbar"
+                <div
+                  class="chart-toolbar"
                   [style.--picker-left]="toolbarMenuPosition().left + 'px'"
-                  [style.--picker-top]="toolbarMenuPosition().top + 'px'">
+                  [style.--picker-top]="toolbarMenuPosition().top + 'px'"
+                >
                   <div class="flex flex-wrap items-center justify-start gap-1.5">
                     <div class="indicator-dropdown">
                       <button
@@ -265,7 +276,7 @@
                         <ng-icon name="lucideSlidersHorizontal" /> Indicators
                         @if (enabledIndicators().length) {
                           <span
-                            class="text-primary bg-primary/15 inline-flex size-4 items-center justify-center rounded-full text-[9px]"
+                            class="text-black bg-primary/15 inline-flex size-4 items-center justify-center rounded-full text-[9px]"
                             >{{ enabledIndicators().length }}</span
                           >
                         }
@@ -401,67 +412,44 @@
                 </div>
                 <div class="chart-stage" [class.chart-stage-comparing]="comparisonInstrument()">
                   @if (comparisonInstrument(); as compared) {
-                    <div class="comparison-price-label-left">
-                      <span class="text-xs font-semibold">{{ active.symbol }}</span>
-                      <span
-                        class="tick-price text-xs font-semibold tabular-nums"
-                        [class.tick-price-gain]="
-                          tickAnimations().get(active.symbol)?.direction === 'gain'
-                        "
-                        [class.tick-price-loss]="
-                          tickAnimations().get(active.symbol)?.direction === 'loss'
-                        "
-                        [class.tick-animation-even]="
-                          (tickAnimations().get(active.symbol)?.revision ?? 1) % 2 === 0
-                        "
-                        [style.animation-duration.ms]="
-                          tickAnimations().get(active.symbol)?.durationMs
-                        "
-                      >
-                        {{ active.price | currency: 'USD' : 'symbol' : '1.2-2' }}
-                      </span>
-                      <span
-                        class="text-xs font-semibold tabular-nums"
-                        [class]="active.change >= 0 ? 'text-gain' : 'text-loss'"
-                      >
-                        {{ active.change | number: '1.1-1' }} ({{
-                          active.changePercent | signedPercent
-                        }})
-                      </span>
-                    </div>
-                    <div class="comparison-price-label-right">
-                      <span class="text-xs font-semibold">{{ compared.symbol }}</span>
-                      <span
-                        class="tick-price text-xs font-semibold tabular-nums"
-                        [class.tick-price-gain]="
-                          tickAnimations().get(compared.symbol)?.direction === 'gain'
-                        "
-                        [class.tick-price-loss]="
-                          tickAnimations().get(compared.symbol)?.direction === 'loss'
-                        "
-                        [class.tick-animation-even]="
-                          (tickAnimations().get(compared.symbol)?.revision ?? 1) % 2 === 0
-                        "
-                        [style.animation-duration.ms]="
-                          tickAnimations().get(compared.symbol)?.durationMs
-                        "
-                      >
-                        {{ compared.price | currency: 'USD' : 'symbol' : '1.2-2' }}
-                      </span>
-                      <span
-                        class="text-xs font-semibold tabular-nums"
-                        [class]="compared.change >= 0 ? 'text-gain' : 'text-loss'"
-                      >
-                        {{ compared.change | number: '1.1-1' }} ({{
-                          compared.changePercent | signedPercent
-                        }})
-                      </span>
-                    </div>
                     <div class="comparison-charts">
                       <section
                         class="comparison-chart"
                         [attr.aria-label]="active.symbol + ' price chart'"
                       >
+                        <ng-template #comparisonHeaderLeft>
+                          <div class="comparison-price-label-left">
+                            <span class="text-xs font-semibold">{{ active.symbol }}</span>
+                            <span
+                              class="tick-price text-xs font-semibold tabular-nums"
+                              [class.tick-price-gain]="
+                                tickAnimations().get(active.symbol)?.direction === 'gain'
+                              "
+                              [class.tick-price-loss]="
+                                tickAnimations().get(active.symbol)?.direction === 'loss'
+                              "
+                              [class.tick-animation-even]="
+                                (tickAnimations().get(active.symbol)?.revision ?? 1) % 2 === 0
+                              "
+                              [style.animation-duration.ms]="
+                                tickAnimations().get(active.symbol)?.durationMs
+                              "
+                            >
+                              {{ active.price | currency: 'USD' : 'symbol' : '1.2-2' }}
+                            </span>
+                            <span
+                              class="text-xs font-semibold tabular-nums"
+                              [class]="active.change >= 0 ? 'text-gain' : 'text-loss'"
+                            >
+                              {{ active.change | currency: 'USD' : 'symbol' : '1.2-2' }} ({{
+                                active.changePercent | signedPercent
+                              }})
+                            </span>
+                          </div>
+                        </ng-template>
+                        @if (chartStatus() !== 'ready') {
+                          <ng-container [ngTemplateOutlet]="comparisonHeaderLeft" />
+                        }
                         @switch (chartStatus()) {
                           @case ('ready') {
                             <app-price-chart
@@ -475,12 +463,21 @@
                               [enabledIndicators]="enabledIndicators()"
                               [timeframe]="chartTimeframe()"
                               timezone="America/Chicago"
-                            />
+                              [showIndicatorLabels]="false"
+                            >
+                              <ng-container
+                                chart-summary
+                                [ngTemplateOutlet]="comparisonHeaderLeft"
+                              />
+                            </app-price-chart>
                           }
                           @case ('loading') {
                             <div class="chart-message" role="status" aria-busy="true">
                               <span class="sr-only">Loading {{ active.symbol }} candles…</span>
-                              <span class="skeleton flex-1 self-stretch rounded-lg" aria-hidden="true"></span>
+                              <span
+                                class="skeleton flex-1 self-stretch rounded-lg"
+                                aria-hidden="true"
+                              ></span>
                             </div>
                           }
                           @case ('empty') {
@@ -499,6 +496,39 @@
                         class="comparison-chart"
                         [attr.aria-label]="compared.symbol + ' price chart'"
                       >
+                        <ng-template #comparisonHeaderRight>
+                          <div class="comparison-price-label-right">
+                            <span class="text-xs font-semibold">{{ compared.symbol }}</span>
+                            <span
+                              class="tick-price text-xs font-semibold tabular-nums"
+                              [class.tick-price-gain]="
+                                tickAnimations().get(compared.symbol)?.direction === 'gain'
+                              "
+                              [class.tick-price-loss]="
+                                tickAnimations().get(compared.symbol)?.direction === 'loss'
+                              "
+                              [class.tick-animation-even]="
+                                (tickAnimations().get(compared.symbol)?.revision ?? 1) % 2 === 0
+                              "
+                              [style.animation-duration.ms]="
+                                tickAnimations().get(compared.symbol)?.durationMs
+                              "
+                            >
+                              {{ compared.price | currency: 'USD' : 'symbol' : '1.2-2' }}
+                            </span>
+                            <span
+                              class="text-xs font-semibold tabular-nums"
+                              [class]="compared.change >= 0 ? 'text-gain' : 'text-loss'"
+                            >
+                              {{ compared.change | currency: 'USD' : 'symbol' : '1.2-2' }} ({{
+                                compared.changePercent | signedPercent
+                              }})
+                            </span>
+                          </div>
+                        </ng-template>
+                        @if (comparisonChartStatus() !== 'ready') {
+                          <ng-container [ngTemplateOutlet]="comparisonHeaderRight" />
+                        }
                         @switch (comparisonChartStatus()) {
                           @case ('ready') {
                             <app-price-chart
@@ -512,12 +542,21 @@
                               [enabledIndicators]="enabledIndicators()"
                               [timeframe]="comparisonTimeframe()"
                               timezone="America/Chicago"
-                            />
+                              [showIndicatorLabels]="false"
+                            >
+                              <ng-container
+                                chart-summary
+                                [ngTemplateOutlet]="comparisonHeaderRight"
+                              />
+                            </app-price-chart>
                           }
                           @case ('loading') {
                             <div class="chart-message" role="status" aria-busy="true">
                               <span class="sr-only">Loading {{ compared.symbol }} candles…</span>
-                              <span class="skeleton flex-1 self-stretch rounded-lg" aria-hidden="true"></span>
+                              <span
+                                class="skeleton flex-1 self-stretch rounded-lg"
+                                aria-hidden="true"
+                              ></span>
                             </div>
                           }
                           @case ('empty') {
@@ -552,7 +591,10 @@
                       @case ('loading') {
                         <div class="chart-message" role="status" aria-busy="true">
                           <span class="sr-only">Loading candles…</span>
-                          <span class="skeleton flex-1 self-stretch rounded-lg" aria-hidden="true"></span>
+                          <span
+                            class="skeleton flex-1 self-stretch rounded-lg"
+                            aria-hidden="true"
+                          ></span>
                         </div>
                       }
                       @case ('empty') {
@@ -583,11 +625,14 @@
                       <ng-icon class="chevron-rotate" name="lucideChevronRight" />
                     </button>
                     <div
-                      class="bg-muted flex gap-0.5 rounded-lg p-0.5"
+                      class="insight-tabs bg-muted flex gap-0.5 rounded-lg p-0.5"
                       role="tablist"
                       aria-label="Instrument tools"
                     >
-                      @for (tab of ['overview', 'news', 'ai', 'recent-orders']; track tab) {
+                      @for (
+                        tab of ['trading', 'overview', 'news', 'ai', 'recent-orders'];
+                        track tab
+                      ) {
                         <button
                           type="button"
                           role="tab"
@@ -611,6 +656,101 @@
                       }
                     </div>
                   </div>
+                </div>
+                <div
+                  class="trading-content insight-content"
+                  role="tabpanel"
+                  aria-label="Trading"
+                  [hidden]="insightTab() !== 'trading'"
+                >
+                  <section
+                    class="account-value-panel"
+                    aria-label="Trading account"
+                    data-testid="account-value-panel"
+                  >
+                    <dl class="account-value-balances">
+                      <div class="overview-card account-balance-card account-cash-card">
+                        <dt class="text-muted-foreground text-xs">Available cash</dt>
+                        <dd class="text-xl font-semibold tabular-nums" data-testid="available-cash">
+                          @if (accountStore.status() === 'ready') {
+                            {{ availableCash() | currency: 'USD' }}
+                          } @else if (accountsLoading()) {
+                            <span class="skeleton h-7 w-24" aria-hidden="true"></span>
+                          } @else {
+                            <span aria-label="Balance unavailable">—</span>
+                          }
+                        </dd>
+                      </div>
+                      <div class="overview-card account-balance-card account-portfolio-card">
+                        <dt class="text-muted-foreground text-xs">Portfolio value</dt>
+                        <dd
+                          class="text-xl font-semibold tabular-nums"
+                          data-testid="account-portfolio-value"
+                        >
+                          @if (
+                            accountStore.status() === 'ready' && accountStore.selectedAccount()
+                          ) {
+                            {{
+                              portfolioValues().get(accountStore.selectedAccountId()!) ?? 0
+                                | currency: 'USD'
+                            }}
+                          } @else if (accountsLoading()) {
+                            <span class="skeleton h-7 w-24" aria-hidden="true"></span>
+                          } @else {
+                            <span aria-label="Balance unavailable">—</span>
+                          }
+                        </dd>
+                      </div>
+                    </dl>
+                    @if (accountsLoading()) {
+                      <p class="sr-only" role="status">Loading account balances…</p>
+                    }
+                    @if (accountStore.status() === 'error') {
+                      <p class="text-loss text-xs" role="alert">
+                        Accounts unavailable.
+                        <button type="button" class="text-primary" (click)="accountStore.load()">
+                          Retry accounts
+                        </button>
+                      </p>
+                    }
+                    @if (accountStore.status() === 'ready' && !accountStore.selectedAccount()) {
+                      <button
+                        type="button"
+                        class="text-primary text-xs"
+                        (click)="openCreateAccount()"
+                      >
+                        Create an account to trade
+                      </button>
+                    }
+                  </section>
+                  @if (orders.historyStatus() === 'error' || catalogueStatus() === 'error') {
+                    <button type="button" class="text-primary text-xs" (click)="loadTradingData()">
+                      Retry trading data
+                    </button>
+                  }
+                  @if (
+                    accountStore.status() === 'loading' ||
+                    catalogueStatus() === 'loading' ||
+                    orders.historyStatus() === 'loading'
+                  ) {
+                    <p class="text-muted-foreground text-xs">Loading trading data…</p>
+                  }
+                  <app-trade-ticket
+                    [symbol]="active.symbol"
+                    [price]="active.price"
+                    [accountId]="accountStore.selectedAccountId()?.toString() ?? ''"
+                    [cashBalance]="tradingCashBalance()"
+                    [heldShares]="heldShares()"
+                    [ready]="tradeReady()"
+                    [busy]="busy()"
+                    [message]="orderMessage()"
+                    [error]="orderError()"
+                    [refreshFailed]="refreshAccountId() !== null"
+                    (submitted)="submitOrder($event)"
+                    (refresh)="retryBalances()"
+                    [sessionId]="sessionId()"
+                    [marketTimestamp]="marketTimestamp()"
+                  />
                 </div>
                 @switch (insightTab()) {
                   @case ('recent-orders') {
@@ -855,101 +995,6 @@
                   }
                 }
               </section>
-
-              <section
-                class="account-value-panel"
-                aria-label="Trading account"
-                data-testid="account-value-panel"
-              >
-                <app-account-control
-                  data-testid="account-dropdown"
-                  class="account-control-expanded"
-                  [expanded]="true"
-                  [store]="accountStore"
-                  [portfolioValues]="portfolioValues()"
-                  [open]="openHeaderDropdown() === 'account'"
-                  (openChange)="openHeaderDropdown.set($event ? 'account' : null)"
-                  (selected)="selectAccount($event)"
-                  (create)="openCreateAccount()"
-                  (rename)="openRenameAccount($event)"
-                />
-                <dl class="account-value-balances">
-                  <div class="overview-card account-balance-card account-cash-card">
-                    <dt class="text-muted-foreground text-xs">Available cash</dt>
-                    <dd class="text-xl font-semibold tabular-nums" data-testid="available-cash">
-                      @if (accountStore.status() === 'ready') {
-                        {{ availableCash() | currency: 'USD' }}
-                      } @else if (accountsLoading()) {
-                        <span class="skeleton h-7 w-24" aria-hidden="true"></span>
-                      } @else {
-                        <span aria-label="Balance unavailable">—</span>
-                      }
-                    </dd>
-                  </div>
-                  <div class="overview-card account-balance-card account-portfolio-card">
-                    <dt class="text-muted-foreground text-xs">Portfolio value</dt>
-                    <dd
-                      class="text-xl font-semibold tabular-nums"
-                      data-testid="account-portfolio-value"
-                    >
-                      @if (accountStore.status() === 'ready' && accountStore.selectedAccount()) {
-                        {{
-                          portfolioValues().get(accountStore.selectedAccountId()!) ?? 0
-                            | currency: 'USD'
-                        }}
-                      } @else if (accountsLoading()) {
-                        <span class="skeleton h-7 w-24" aria-hidden="true"></span>
-                      } @else {
-                        <span aria-label="Balance unavailable">—</span>
-                      }
-                    </dd>
-                  </div>
-                </dl>
-                @if (accountsLoading()) {
-                  <p class="sr-only" role="status">Loading account balances…</p>
-                }
-                @if (accountStore.status() === 'error') {
-                  <p class="text-loss text-xs" role="alert">
-                    Accounts unavailable.
-                    <button type="button" class="text-primary" (click)="accountStore.load()">
-                      Retry accounts
-                    </button>
-                  </p>
-                }
-                @if (accountStore.status() === 'ready' && !accountStore.selectedAccount()) {
-                  <button type="button" class="text-primary text-xs" (click)="openCreateAccount()">
-                    Create an account to trade
-                  </button>
-                }
-              </section>
-              @if (orders.historyStatus() === 'error' || catalogueStatus() === 'error') {
-                <button type="button" class="text-primary text-xs" (click)="loadTradingData()">
-                  Retry trading data
-                </button>
-              }
-              @if (
-                accountStore.status() === 'loading' ||
-                catalogueStatus() === 'loading' ||
-                orders.historyStatus() === 'loading'
-              ) {
-                <p class="text-muted-foreground text-xs">Loading trading data…</p>
-              }
-              <app-trade-ticket
-                [symbol]="active.symbol"
-                [price]="active.price"
-                [accountId]="accountStore.selectedAccountId()?.toString() ?? ''"
-                [cashBalance]="tradingCashBalance()"
-                [heldShares]="heldShares()"
-                [ready]="tradeReady()"
-                [busy]="busy()"
-                [message]="orderMessage()"
-                [error]="orderError()"
-                [refreshFailed]="refreshAccountId() !== null"
-                (submitted)="submitOrder($event)"
-                (refresh)="retryBalances()"
-                [sessionId]="sessionId()"
-                [marketTimestamp]="marketTimestamp()"
-              />
             </aside>
           </div>
         }
@@ -973,3 +1018,9 @@
 @if (termsRequired()) {
   <app-terms-dialog [signatureName]="termsSignatureName()" (declined)="onSignOut()" />
 }
+
+<app-order-editor
+  [instruments]="instruments()"
+  [sessionId]="sessionId()"
+  [marketTimestamp]="marketTimestamp()"
+/>

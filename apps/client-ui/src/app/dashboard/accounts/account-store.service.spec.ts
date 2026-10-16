@@ -67,6 +67,50 @@ describe('AccountStore', () => {
     http.expectOne(isCashTransactions).flush([]);
   }
 
+  describe('deleting archives from active accounts', () => {
+    it('requests eligibility without interpreting financial history', () => {
+      const next = vi.fn();
+      store.eligibility(1).subscribe(next);
+      const result = { archiveBlockers: [], deleteBlockers: [] };
+      http.expectOne('/api/me/accounts/1/eligibility').flush(result);
+      expect(next).toHaveBeenCalledWith(result);
+    });
+    it('confirms Delete, removes the active account, and refreshes shared balances', () => {
+      load();
+      store.selectAccount(1, false);
+      const next = vi.fn();
+      store.deleteAccount(1).subscribe(next);
+      const request = http.expectOne('/api/me/accounts/1?confirmed=true');
+      expect(request.request.method).toBe('DELETE');
+      request.flush(null, { status: 204, statusText: 'No Content' });
+      expect(store.accounts().map((a) => a.accountId)).toEqual([2]);
+      expect(store.selectedAccountId()).toBe(2);
+      http.expectOne('/api/me/accounts').flush([ACCOUNTS[1]]);
+      http
+        .expectOne('/api/users/me')
+        .flush({ firstName: 'Ada', lastName: 'Lovelace', availableFunds: 5000 });
+      http.expectOne(isCashTransactions).flush([]);
+      expect(next).toHaveBeenCalledWith(undefined);
+      expect(store.cashBalance()).toBe(5000);
+    });
+    it('rejects a client attempt on an unknown account', () => {
+      const error = vi.fn();
+      store.deleteAccount(99).subscribe({ error });
+      expect(error.mock.calls[0][0]).toBeInstanceOf(NotOwnedError);
+      http.expectNone('/api/me/accounts/99?confirmed=true');
+    });
+    it('does not remove an account after a backend refusal', () => {
+      load();
+      const error = vi.fn();
+      store.deleteAccount(1).subscribe({ error });
+      http
+        .expectOne('/api/me/accounts/1?confirmed=true')
+        .flush({ error: 'Account contains cash' }, { status: 409, statusText: 'Conflict' });
+      expect(error).toHaveBeenCalled();
+      expect(store.accounts()).toEqual(ACCOUNTS);
+    });
+  });
+
   describe('loading', () => {
     it('starts idle with nothing selected and no cash', () => {
       expect(store.status()).toBe('idle');
@@ -478,5 +522,4 @@ describe('AccountStore', () => {
     expect(store.cashBalance()).toBe(4700);
     expect(store.holdingsOf(1)[0].quantity).toBe(5);
   });
-
 });

@@ -117,7 +117,9 @@ describe('PriceChartComponent', () => {
     coords.forEach((coord, index) => {
       component['onPointerMove']({ clientX: coord.x * 4 } as PointerEvent, plot);
       expect(component['hoverIndex']()).toBe(index);
-      expect(component['hovered']()?.valueLabel).toBe(component['formatValue'](points[index].value));
+      expect(component['hovered']()?.valueLabel).toBe(
+        component['formatValue'](points[index].value),
+      );
       expect(component['hovered']()?.timeLabel).toBe(labels[index]);
     });
     component['_plotWidth'].set(800);
@@ -225,12 +227,28 @@ describe('PriceChartComponent', () => {
     expect(fixture.nativeElement.querySelector('.rsi-pane')).toBeNull();
   });
 
-  it('shows a labeled demo RSI fallback for a short candle series', () => {
+  it('shows real indicators for a short candle series', () => {
     const fixture = setupIndicatorCandles(10);
-    expect(fixture.nativeElement.querySelector('.chart-indicator-line')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.chart-indicator-line')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.rsi-line')).not.toBeNull();
-    expect(fixture.nativeElement.textContent).toContain('Demo');
-    expect(fixture.componentInstance['latestRsi']()).toBe(57);
+    expect(fixture.nativeElement.textContent).not.toContain('Demo');
+    expect(fixture.componentInstance['latestRsi']()).toBeGreaterThanOrEqual(0);
+  });
+
+  it('draws all indicators for the first candle', () => {
+    const fixture = setupIndicatorCandles(1);
+    expect(fixture.nativeElement.querySelectorAll('.chart-indicator-line')).toHaveLength(4);
+    expect(fixture.nativeElement.querySelector('.rsi-line')).not.toBeNull();
+    expect(fixture.componentInstance['latestRsi']()).toBe(50);
+  });
+
+  it('hides comparison badges without hiding indicators', () => {
+    const fixture = setupIndicatorCandles();
+    fixture.componentRef.setInput('showIndicatorLabels', false);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.chart-indicator-key')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.chart-indicator-sma')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.rsi-pane')).not.toBeNull();
   });
 
   it('keeps indicator paths on the same visible range while zooming', () => {
@@ -268,12 +286,17 @@ describe('PriceChartComponent', () => {
     expect(component['describePoint'](3)?.changePercent).toBe(0);
     fixture.componentRef.setInput('changeBaseline', 'first-positive');
     fixture.detectChanges();
-    for (const [index, expected] of [[2, 0], [3, 50], [4, -50]]) {
+    for (const [index, expected] of [
+      [2, 0],
+      [3, 50],
+      [4, -50],
+    ]) {
       component['hoverIndex'].set(index);
       fixture.detectChanges();
       expect(component['hovered']()?.changePercent).toBe(expected);
-      expect(fixture.nativeElement.querySelector('.price-hover-label').textContent)
-        .toContain(`${expected >= 0 ? '+' : ''}${expected.toFixed(2)}%`);
+      expect(fixture.nativeElement.querySelector('.price-hover-label').textContent).toContain(
+        `${expected >= 0 ? '+' : ''}${expected.toFixed(2)}%`,
+      );
     }
   });
 
@@ -468,7 +491,7 @@ describe('PriceChartComponent', () => {
     expect(plot.contains(tooltip)).toBe(true);
   });
 
-  it('should keep chart controls in the plot overlay when interactive', () => {
+  it('should keep chart controls in the toolbar above the plot when interactive', () => {
     const points = Array.from({ length: 120 }, (_, index) => ({
       time: new Date(2026, 0, 1, 9, index),
       value: 100 + index,
@@ -478,8 +501,9 @@ describe('PriceChartComponent', () => {
       .querySelector('[aria-label="Zoom out"]')
       ?.closest('div');
 
-    expect(controlsContainer?.classList).toContain('absolute');
-    expect(controlsContainer?.classList).toContain('z-30');
+    expect(controlsContainer?.classList).toContain('chart-control-bar');
+    expect(controlsContainer?.classList).not.toContain('absolute');
+    expect(controlsContainer?.parentElement?.classList).toContain('chart-toolbar');
     expect(fixture.nativeElement.querySelector('[aria-label="Zoom out"]')).not.toBeNull();
   });
 
@@ -555,6 +579,25 @@ describe('PriceChartComponent', () => {
     expect(component['atLatest']()).toBe(false);
     component['goLatest']();
     expect(component['atLatest']()).toBe(true);
+  });
+
+  it('keeps Latest beside the indicator labels and works without indicators', () => {
+    const fixture = setupIndicatorCandles(120, true);
+    const component = fixture.componentInstance;
+    component['pan'](-0.5);
+    fixture.detectChanges();
+    const row = fixture.nativeElement.querySelector('.chart-top-right');
+    expect(row.parentElement.classList.contains('chart-toolbar')).toBe(true);
+    expect(row.parentElement.querySelector('.chart-control-bar')).not.toBeNull();
+    expect(row.querySelector('.chart-indicator-key')).not.toBeNull();
+    expect(row.querySelector('button').textContent).toContain('Latest');
+    fixture.componentRef.setInput('enabledIndicators', []);
+    fixture.detectChanges();
+    expect(row.querySelector('.chart-indicator-key')).toBeNull();
+    row.querySelector('button').click();
+    fixture.detectChanges();
+    expect(component['atLatest']()).toBe(true);
+    expect(row.querySelector('button')).toBeNull();
   });
 
   it('should preserve the original full-series chart when interaction is disabled', () => {

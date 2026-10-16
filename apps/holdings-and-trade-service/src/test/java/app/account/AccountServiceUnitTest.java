@@ -78,7 +78,7 @@ class AccountServiceUnitTest {
     @Test
     void aRenamedAccountIsRaisedForReportingUnderTheSameKey() {
         Account account = createAccount(4, USER_ID, "Old Name");
-        when(accountRepository.findByIdAndUserId(4, USER_ID)).thenReturn(Optional.of(account));
+        when(accountRepository.findByIdForUpdate(4)).thenReturn(Optional.of(account));
         when(accountRepository.save(any(Account.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         accountService.updateAccountName(4, USER_ID, "New Name");
@@ -238,7 +238,7 @@ class AccountServiceUnitTest {
     @Test
     void updateAccountNameUpdatesWhenOwned() {
         Account account = createAccount(1, USER_ID, "Old Name");
-        when(accountRepository.findByIdAndUserId(1, USER_ID))
+        when(accountRepository.findByIdForUpdate(1))
                 .thenReturn(Optional.of(account));
         when(accountRepository.save(any(Account.class)))
                 .thenReturn(account);
@@ -255,10 +255,8 @@ class AccountServiceUnitTest {
 
     @Test
     void updateAccountNameThrowsForbiddenWhenNotOwned() {
-        when(accountRepository.findByIdAndUserId(1, USER_ID))
-                .thenReturn(Optional.empty());
-        when(accountRepository.existsById(1))
-                .thenReturn(true);
+        when(accountRepository.findByIdForUpdate(1))
+                .thenReturn(Optional.of(createAccount(1, OTHER_USER_ID, "Other")));
 
         assertThrows(ForbiddenException.class, 
                 () -> accountService.updateAccountName(1, USER_ID, "New Name"));
@@ -380,7 +378,7 @@ class AccountServiceUnitTest {
     @Test
     void updateAccountNameToEmptyString() {
         Account account = createAccount(1, USER_ID, "Original");
-        when(accountRepository.findByIdAndUserId(1, USER_ID))
+        when(accountRepository.findByIdForUpdate(1))
                 .thenReturn(Optional.of(account));
         when(accountRepository.save(any(Account.class)))
                 .thenReturn(account);
@@ -398,7 +396,7 @@ class AccountServiceUnitTest {
     void updateAccountNameToVeryLongString() {
         Account account = createAccount(1, USER_ID, "Original");
         String longName = "A".repeat(500);
-        when(accountRepository.findByIdAndUserId(1, USER_ID))
+        when(accountRepository.findByIdForUpdate(1))
                 .thenReturn(Optional.of(account));
         when(accountRepository.save(any(Account.class)))
                 .thenReturn(account);
@@ -467,10 +465,8 @@ class AccountServiceUnitTest {
 
     @Test
     void updateAccountNameThrowsNotFoundWhenAccountDoesNotExist() {
-        when(accountRepository.findByIdAndUserId(999, USER_ID))
+        when(accountRepository.findByIdForUpdate(999))
                 .thenReturn(Optional.empty());
-        when(accountRepository.existsById(999))
-                .thenReturn(false);
 
         assertThrows(AccountNotFoundException.class, 
                 () -> accountService.updateAccountName(999, USER_ID, "New Name"));

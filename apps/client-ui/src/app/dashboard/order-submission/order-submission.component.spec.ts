@@ -1,3 +1,5 @@
+import { ExecutionSettingsService } from '../settings-dialog/execution-settings.service';
+import { of } from 'rxjs';
 import { vi, afterEach } from 'vitest';
 import { ToastService } from '../../notifications/toast.service';
 import { TestBed } from '@angular/core/testing';
@@ -64,6 +66,7 @@ describe('OrderSubmissionComponent', () => {
     fixture.componentRef.setInput('accountId', ACCOUNT_ID);
     fixture.componentRef.setInput('cashBalance', 10_000);
     fixture.componentRef.setInput('positions', positions);
+    fixture.detectChanges();
     return fixture;
   }
 
@@ -73,7 +76,7 @@ describe('OrderSubmissionComponent', () => {
     vi.useFakeTimers();
     await TestBed.configureTestingModule({
       imports: [OrderSubmissionComponent],
-      providers: [OrderService, provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      providers: [{ provide: ExecutionSettingsService, useValue: { load: () => of({ executionBufferPercent: 0 }), save: (executionBufferPercent: number) => of({ executionBufferPercent }) } },OrderService, provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     }).compileComponents();
   });
 
@@ -143,6 +146,43 @@ describe('OrderSubmissionComponent', () => {
     expect(component['filled']()).toBe(true);
     expect(emitted).toEqual([filledOrder()]);
     http.verify();
+  });
+
+  it.each(['LIMIT', 'STOP', 'STOP_LIMIT'] as const)('shows a placement toast for an accepted %s order without inline status text', (type) => {
+    const http = TestBed.inject(HttpTestingController);
+    const fixture = setup();
+    const component = fixture.componentInstance;
+    component.execution()!.executionType.set(type);
+    component.execution()!.limitPrice.set(300);
+    component.execution()!.stopPrice.set(320);
+    component['shares'].set(2);
+    component['submit']();
+    http.expectOne('/api/instruments').flush(CATALOGUE);
+    http.expectOne('/api/orders').flush(filledOrder({ status: 'ACCEPTED', executionType: type }));
+    fixture.detectChanges();
+    expect(TestBed.inject(ToastService).messages()[0].message).toContain('buy order placed for 2 AAPL');
+    expect(fixture.nativeElement.textContent).not.toContain('Order open.');
+    http.verify();
+  });
+
+  it('prefills an edited order and offers Save changes', () => {
+    const fixture = setup();
+    fixture.componentRef.setInput('editOrder', filledOrder({ orderId: 9, status: 'ACCEPTED', executionType: 'STOP_LIMIT', stopPrice: 325, limitPrice: 330, quantity: 2 }));
+    fixture.detectChanges();
+    const component = fixture.componentInstance;
+    expect(component.execution()!.executionType()).toBe('STOP_LIMIT');
+    expect(component.execution()!.stopPrice()).toBe(325);
+    expect(component.execution()!.limitPrice()).toBe(330);
+    expect(component['shares']()).toBe(2);
+    expect(fixture.nativeElement.textContent).toContain('Save changes');
+  });
+
+  it('labels the button Saving while an edit is being submitted', () => {
+    const fixture = setup();
+    fixture.componentRef.setInput('editOrder', filledOrder({ orderId: 9, status: 'ACCEPTED' }));
+    fixture.componentInstance['submitting'].set(true);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Saving…');
   });
 
   it('keeps the submitted symbol in the notification after the dialog is destroyed', () => {

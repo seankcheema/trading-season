@@ -14,8 +14,8 @@
 }
 .nav-back {
   display: flex;
-  height: 2.5rem;
-  width: 2.5rem;
+  height: 2.75rem;
+  width: 2.75rem;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -258,22 +258,12 @@
 
 .comparison-price-label-left,
 .comparison-price-label-right {
-  position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
-  z-index: 20;
   display: flex;
-  gap: 0.5rem;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
   align-items: center;
-  pointer-events: none;
-}
-.comparison-price-label-left {
-  right: calc(50% + 0.75rem);
-}
-
-.chart-stage ::ng-deep .chart-controls {
-  right: 0.75rem !important;
-  left: auto !important;
+  padding-block: 0.25rem;
 }
 
 .chart-message {
@@ -492,15 +482,15 @@
   align-items: center;
   gap: 0.5rem;
 }
-.insight-panel .bg-muted {
+.insight-tabs {
   margin-right: auto;
   gap: 0.25rem !important;
   padding: 0.35rem !important;
 }
-.insight-panel .bg-muted button.bg-primary {
+.insight-tabs button.bg-primary {
   flex: 1;
-  padding-left: 0.85rem !important;
-  padding-right: 0.85rem !important;
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
 }
 .insight-content {
   min-height: 0;
@@ -993,4 +983,66 @@
 .comparison-picker app-instrument-search ::ng-deep input:hover,
 .comparison-picker app-instrument-search ::ng-deep input:focus {
   border-bottom: none !important;
+}
+
+.trading-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow-y: auto;
+  padding-top: 0.75rem;
+}
+.trading-content[hidden] {
+  display: none;
+}
+.insight-tabs {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.insight-tabs button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.insight-panel > div:first-child > div {
+  width: 100%;
+}
+@media (max-width: 540px) {
+  .market-header-controls > app-market-clock-control,
+  .market-header-controls > app-account-control {
+    flex: 1 1 calc(50% - 0.25rem);
+    min-width: 0;
+  }
+}
+
+.trading-content app-trade-ticket {
+  display: grid;
+  flex: 1 0 auto;
+}
+
+.market-header-controls > app-dashboard-header-dropdown {
+  display: block;
+  height: 36px;
+}
+.trading-content .account-value-panel {
+  flex: 0 0 auto;
+}
+.trading-content .account-value-balances {
+  flex: 1;
+  gap: 0.75rem;
+}
+.trading-content .account-balance-card {
+  min-height: 5rem;
+  align-content: center;
+  gap: 0.25rem;
+  padding: 0.625rem 0.75rem;
+}
+.trading-content .account-balance-card dd {
+  font-size: 1.5rem;
+  line-height: 1.25;
+}
+
+/* Position menus from the bottom of their triggers, with room below the button. */
+:host ::ng-deep .market-header-controls app-market-clock-control .header-dropdown > div,
+:host ::ng-deep .market-header-controls app-account-control .header-dropdown > div {
+  top: calc(100% + 6px);
 }

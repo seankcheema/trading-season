@@ -39,13 +39,13 @@ public class AccountController {
 <span class="fc" id="L39">    }</span>
 
     /**
-     * Returns all accounts belonging to the authenticated caller.
+     * Returns ACTIVE accounts belonging to the authenticated caller.
      *
      * @param jwt the verified access token
      * @return a list of the caller's accounts
      */
     @GetMapping(&quot;/me/accounts&quot;)
-    @Operation(summary = &quot;List user accounts&quot;, description = &quot;Retrieves all accounts owned by the authenticated user&quot;)
+    @Operation(summary = &quot;List user accounts&quot;, description = &quot;Retrieves ACTIVE accounts owned by the authenticated user; archived accounts remain in history&quot;)
     public List&lt;AccountResponse&gt; listAccounts(@AuthenticationPrincipal Jwt jwt) {
 <span class="fc" id="L50">        AuthenticatedUser caller = AuthenticatedUser.from(jwt);</span>
 <span class="fc" id="L51">        return accountService.getAccountsForUser(caller.userId())</span>

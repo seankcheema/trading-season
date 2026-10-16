@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExecutionPolicy.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.order.execution</a> &gt; <span class="el_source">ExecutionPolicy.java</span></div><h1>ExecutionPolicy.java</h1><pre class="source lang-java linenums">package app.order.execution;
+
+import app.order.Order;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
+/** Pure, inclusive stock execution conditions and adverse-price protection. */
+public final class ExecutionPolicy {
+    private ExecutionPolicy() { }
+    /** Returns the submission day's regular market close, independent of wall-clock time.
+     * @param order instruction with an authoritative submission position
+     * @return 15:00 America/Chicago on that simulation date */
+    public static java.time.OffsetDateTime expiresAt(Order order) {
+<span class="fc" id="L14">        var zone = java.time.ZoneId.of(&quot;America/Chicago&quot;);</span>
+<span class="fc" id="L15">        return order.getReferenceAt().atZoneSameInstant(zone).toLocalDate()</span>
+<span class="fc" id="L16">                .atTime(15, 0).atZone(zone).toOffsetDateTime();</span>
+    }
+    /** Computes the adverse execution boundary at database price precision.
+     * @param side BUY or SELL
+     * @param reference authoritative submission quote for Market, or activation quote for Stop
+     * @param percent saved percentage
+     * @return maximum BUY or minimum SELL price */
+    public static BigDecimal boundary(String side, BigDecimal reference, BigDecimal percent) {
+<span class="fc" id="L24">        boolean buy = Order.TYPE_BUY.equals(side);</span>
+<span class="fc" id="L25">        BigDecimal fraction = percent.movePointLeft(2);</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        return reference.multiply(buy ? BigDecimal.ONE.add(fraction) : BigDecimal.ONE.subtract(fraction))</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">                .setScale(6, buy ? RoundingMode.FLOOR : RoundingMode.CEILING);</span>
+    }
+    /** Checks a limit, allowing favorable execution.
+     * @param side BUY or SELL
+     * @param price current quote
+     * @param limit explicit limit or buffer boundary
+     * @return whether execution respects the bound */
+    public static boolean within(String side, BigDecimal price, BigDecimal limit) {
+<span class="fc bfc" id="L35" title="All 6 branches covered.">        return Order.TYPE_BUY.equals(side) ? price.compareTo(limit) &lt;= 0 : price.compareTo(limit) &gt;= 0;</span>
+    }
+    /** Checks the stop activation condition.
+     * @param side BUY or SELL
+     * @param price current quote
+     * @param stop stop price
+     * @return whether the stop activates */
+    public static boolean triggers(String side, BigDecimal price, BigDecimal stop) {
+<span class="fc bfc" id="L43" title="All 6 branches covered.">        return Order.TYPE_BUY.equals(side) ? price.compareTo(stop) &gt;= 0 : price.compareTo(stop) &lt;= 0;</span>
+    }
+    /** Returns the maximum BUY reservation price.
+     * @param order snapshotted instruction
+     * @return explicit limit or protected BUY maximum */
+    public static BigDecimal reservationPrice(Order order) {
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        return order.getLimitPrice() != null ? order.getLimitPrice()</span>
+<span class="fc" id="L50">                : boundary(Order.TYPE_BUY, order.getReferencePrice(), order.getBufferPercent());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

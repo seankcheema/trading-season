@@ -1,8 +1,10 @@
 <div
-  class="order-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-12 backdrop-blur-sm md:items-center"
+  class="order-backdrop fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 px-4 py-4 backdrop-blur-sm"
   (click)="closed.emit()"
 >
   <section
+    cdkTrapFocus [cdkTrapFocusAutoCapture]="true"
+    (keydown.escape)="$event.stopPropagation(); closed.emit()"
     role="dialog"
     aria-modal="true"
     aria-labelledby="order-submission-title"
@@ -10,7 +12,7 @@
     (click)="$event.stopPropagation()"
   >
     <header class="border-border flex items-center justify-between gap-4 border-b px-5 py-3">
-      <h2 id="order-submission-title" class="text-sm font-semibold">New Order</h2>
+      <h2 id="order-submission-title" class="text-sm font-semibold">{{ editOrder() ? 'Edit Order' : 'New Order' }}</h2>
       <div class="flex items-center gap-1">
         <button
           type="button"
@@ -23,15 +25,14 @@
       </div>
     </header>
 
-    <div class="grid md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+    <div class="order-dialog-body min-h-0 flex-1 overflow-y-auto md:grid md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] md:overflow-hidden">
       <!-- Instrument details -->
-      <div class="md:border-border flex min-w-0 flex-col p-5 md:border-r">
-        <app-instrument-search
-          [instruments]="instruments()"
-          (selected)="activeSymbol.set($event.symbol)"
-        />
+      <div class="order-instrument md:border-border flex min-h-0 min-w-0 flex-col p-5 md:border-r" [class.order-instrument-edit]="editOrder() !== null">
+        @if (!editOrder()) {
+          <app-instrument-search [instruments]="instruments()" (selected)="activeSymbol.set($event.symbol)" />
+        }
 
-        <div class="mt-5 flex items-center justify-between gap-3">
+        <div class="flex shrink-0 items-center justify-between gap-3" [class.mt-5]="!editOrder()">
           <div class="flex items-center gap-3 min-w-0">
             <div
               class="bg-primary/15 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl text-xs font-semibold"
@@ -47,6 +48,7 @@
               <p class="text-muted-foreground truncate text-xs">{{ activeInstrument().name }}</p>
             </div>
           </div>
+          @if (!editOrder()) {
           <a
             [routerLink]="fullScreenUrl()"
             class="text-muted-foreground hover:bg-muted hover:text-primary flex h-8 items-center gap-2 rounded-lg px-2 transition-colors shrink-0"
@@ -56,6 +58,7 @@
             <ng-icon name="lucideExpand" class="text-[16px]" />
             <span class="text-xs font-medium">Full screen</span>
           </a>
+          }
         </div>
 
         <div class="mt-4 flex flex-wrap items-end justify-between gap-3">
@@ -77,33 +80,37 @@
           </p>
           <app-timeframe-toggle [(value)]="timeframe" />
         </div>
+        <div class="order-chart relative mt-3 flex flex-1 flex-col">
         @if (chartRefreshing()) {
           <p role="status" class="sr-only">Updating chart…</p>
         }
         @if (chartError()) {
-          <p role="status" class="text-loss text-xs">
+          <p role="status" class="text-loss absolute inset-x-0 top-0 z-10 text-xs">
             {{ chartError() }}
             <button type="button" class="underline" (click)="retryChart()">Retry</button>
           </p>
         }
         @if (chartPoints().length) {
           <app-price-chart
-            class="mt-1 h-56"
+            class="min-h-0 flex-1"
             [points]="chartPoints()"
             [timeframe]="chartTimeframe()"
             timezone="America/Chicago"
           />
-        } @else if (!chartRefreshing() && !chartError()) {
-          <p class="h-56 text-muted-foreground">No candle data is available for this range.</p>
+        } @else if (chartRefreshing()) {
+          <div class="skeleton min-h-0 flex-1 rounded-lg" aria-hidden="true"></div>
+        } @else if (!chartError()) {
+          <p class="text-muted-foreground">No candle data is available for this range.</p>
         }
+        </div>
       </div>
 
       <!-- Order ticket -->
-      <div class="flex min-w-0 flex-col p-5">
+      <div class="order-ticket flex min-h-0 min-w-0 flex-col p-5 md:overflow-y-auto">
         <div
           role="group"
           aria-label="Order side"
-          class="bg-muted grid grid-cols-2 gap-1 rounded-xl p-1"
+          class="bg-muted grid shrink-0 grid-cols-2 gap-1 rounded-xl p-1"
         >
           @for (option of sides; track option) {
             <button
@@ -117,6 +124,7 @@
                   : 'text-muted-foreground hover:text-foreground'
               "
               [attr.aria-pressed]="side() === option"
+              [disabled]="editOrder() !== null"
               (click)="side.set(option)"
             >
               {{ option }}
@@ -124,8 +132,8 @@
           }
         </div>
 
-        <div class="border-border mt-4 rounded-xl border p-4">
-          <div class="flex items-center justify-between gap-4">
+        <app-execution-controls class="mt-3 block shrink-0" [price]="activeInstrument().price" [side]="side()" [quantity]="shares()">
+          <div shareHeader class="flex items-center justify-between gap-4">
             <label
               for="order-shares"
               class="text-muted-foreground text-xs font-medium tracking-wide uppercase"
@@ -140,7 +148,7 @@
               }
             </span>
           </div>
-          <input
+          <input shareQuantity
             id="order-shares"
             step="1"
             type="number"
@@ -151,10 +159,10 @@
             [disabled]="maxShares() === 0"
             (input)="onSharesInput($event)"
           />
-          <input
+          <input shareSlider
             type="range"
             aria-label="Shares"
-            class="share-slider mt-3 w-full"
+            class="share-slider w-full"
             [class.share-slider-sell]="side() === 'sell'"
             min="0"
             [max]="maxShares()"
@@ -164,13 +172,7 @@
             [disabled]="maxShares() === 0"
             (input)="onSharesInput($event)"
           />
-        </div>
-
-        <dl class="bg-muted/60 mt-4 space-y-2 rounded-xl p-4 text-sm">
-          <div class="flex justify-between gap-4">
-            <dt class="text-muted-foreground">Market price</dt>
-            <dd class="tabular-nums">{{ activeInstrument().price | currency: 'USD' }}</dd>
-          </div>
+        <dl orderSummary class="space-y-2">
           <div class="flex justify-between gap-4">
             <dt class="text-muted-foreground">Shares</dt>
             <dd class="tabular-nums">{{ shares() }}</dd>
@@ -188,19 +190,20 @@
             <dd class="tabular-nums">{{ orderValue() | currency: 'USD' }}</dd>
           </div>
         </dl>
+        </app-execution-controls>
 
         <div class="min-h-4 flex-1"></div>
 
         <button
           type="button"
-          class="h-11 w-full cursor-pointer rounded-xl text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+          class="h-11 w-full shrink-0 cursor-pointer rounded-xl text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40"
           [class]="
             side() === 'buy'
               ? 'bg-primary text-primary-foreground hover:bg-primary/85'
               : 'bg-loss hover:bg-loss/85 text-white'
           "
           [attr.aria-busy]="busy()"
-          [disabled]="!canSubmit()"
+          [disabled]="!canSubmit() || !execution()?.valid()"
           (click)="submit()"
         >
           @if (busy()) {
@@ -208,6 +211,9 @@
           }
           {{ submitLabel() }}
         </button>
+        @if (rejectionReason() || errorMessage()) {
+          <p role="alert" class="text-loss mt-2 shrink-0 text-xs">{{ rejectionReason() || errorMessage() }}</p>
+        }
       </div>
     </div>
   </section>

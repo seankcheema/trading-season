@@ -27,7 +27,8 @@
     minmax(0, 0.6fr)
     minmax(0, 0.75fr)
     minmax(0, 0.85fr)
-    minmax(0, 1fr);
+    minmax(0, 1fr)
+    2rem;
 }
 
 .audit-entry:not(:last-child)::before {

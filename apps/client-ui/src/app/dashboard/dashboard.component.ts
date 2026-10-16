@@ -1,3 +1,4 @@
+import { OrderEditorComponent } from './shared/order-editor.component';
 import { WatchlistStore } from './watchlist/watchlist-store.service';
 import {
   ActivityItem,
@@ -66,15 +67,11 @@ import {
 import { RecentInstrumentsService } from './shared/recent-instruments.service';
 import { PriceChartComponent } from './shared/price-chart.component';
 import { SignedPercentPipe } from './shared/signed-percent.pipe';
+import { TickAnimations } from './shared/tick-animations';
 import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
 import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 
 type HeaderDropdown = 'account' | 'market-clock' | 'profile';
-type TickAnimation = {
-  direction: 'gain' | 'loss';
-  durationMs: number;
-  revision: number;
-};
 
 // The account or cash dialog currently open over the dashboard, if any. An account dialog
 // with an account renames it; without one it creates a new, empty account.
@@ -87,6 +84,7 @@ type AccountDialog =
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ThemeToggleComponent,
+    OrderEditorComponent,
     ActivityRowComponent,
     ActivityRowSkeletonComponent,
     AccountDialogComponent,
@@ -130,7 +128,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private readonly document = inject(DOCUMENT);
   private readonly zone = inject(NgZone);
   private disconnectMarket?: () => void;
-  private readonly tickAnimationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly tickAnimator = new TickAnimations();
   private readonly openingPrices = new Map<string, number>();
   private readonly assetChartSubscriptions = new Map<string, Subscription>();
   private marketGeneration = 0;
@@ -209,7 +207,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected refreshWatchlist(): void {
     this.watchlist.load(true).subscribe({ error: () => undefined });
   }
-  protected readonly tickAnimations = signal(new Map<string, TickAnimation>());
+  protected readonly tickAnimations = this.tickAnimator.current;
   protected readonly portfolioTimeframe = signal<Timeframe>('1D');
   protected readonly marketSessionId = this.clock.marketSessionId;
   protected readonly currentMarketTimestamp = this.clock.currentMarketTimestamp;
@@ -338,10 +336,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   );
 
   // Replay changes the portfolio view, while orders spend the persisted balances.
-  protected readonly tradingCashBalance = this.accountStore.cashBalance;
+  protected readonly tradingCashBalance = this.accountStore.spendableFunds;
   protected readonly tradingPositions = computed(() =>
     Object.fromEntries(
-      this.accountStore.selectedHoldings().map((holding) => [holding.symbol, holding.quantity]),
+      this.accountStore.selectedHoldings().map((holding) => [holding.symbol, holding.availableQuantity ?? holding.quantity]),
     ),
   );
 
@@ -439,7 +437,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   constructor() {
     // A pending order that fills moves cash and holdings on the backend without the user doing
     // anything, so reload them as a trade the user just made would.
-    this.orderService.pendingFilled
+    this.orderService.pendingResolved
       .pipe(takeUntilDestroyed())
       .subscribe((order) => this.refreshAfterFill(order.accountId ?? this.selectedAccountId()));
     effect(() => {
@@ -592,7 +590,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // The dialog owns the submission and stays open to show the outcome, so this only reacts
   // to what a trade changed. A rejection changed nothing, so there is nothing to reload.
   protected onOrderSubmitted(order: OrderResult): void {
-    if (order.status !== 'FILLED') {
+    if (order.status !== 'FILLED' && order.status !== 'ACCEPTED') {
       return;
     }
     this.refreshAfterFill(this.accountStore.selectedAccountId());
@@ -763,37 +761,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
       }),
     );
     if (previousPrice !== undefined && previousPrice !== price) {
-      this.animateTick(symbol, price > previousPrice ? 'gain' : 'loss');
+      this.tickAnimator.start(symbol, price > previousPrice ? 'gain' : 'loss');
     }
   }
 
   private clearQueuedUpdates(): void {
-    this.tickAnimationTimers.forEach(clearTimeout);
-    this.tickAnimationTimers.clear();
-    this.tickAnimations.set(new Map());
-  }
-
-  private animateTick(symbol: string, direction: TickAnimation['direction']): void {
-    const existingTimer = this.tickAnimationTimers.get(symbol);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
-    }
-    const durationMs = 500 + Math.floor(Math.random() * 501);
-    this.tickAnimations.update((animations) => {
-      const next = new Map(animations);
-      const revision = (next.get(symbol)?.revision ?? 0) + 1;
-      next.set(symbol, { direction, durationMs, revision });
-      return next;
-    });
-    const timer = setTimeout(() => {
-      this.tickAnimationTimers.delete(symbol);
-      this.tickAnimations.update((animations) => {
-        const next = new Map(animations);
-        next.delete(symbol);
-        return next;
-      });
-    }, durationMs);
-    this.tickAnimationTimers.set(symbol, timer);
+    this.tickAnimator.clear();
   }
 
   protected onSettings(): void {

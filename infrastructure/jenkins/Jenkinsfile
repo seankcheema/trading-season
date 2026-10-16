@@ -99,7 +99,7 @@ pipeline {
                         dir('apps/holdings-and-trade-service') {
                             sh '''
                                 set -eu
-                                mvn -B -Dmaven.repo.local="$WORKSPACE/.m2/holdings-and-trade-service" clean test
+                                sh "$WORKSPACE/infrastructure/jenkins/maven-retry.sh" -B -Dmaven.repo.local="$WORKSPACE/.m2/holdings-and-trade-service" clean test
                                 test -s target/site/jacoco/jacoco.xml
                             '''
                         }
@@ -120,7 +120,7 @@ pipeline {
                         dir('apps/order-and-sell-service') {
                             sh '''
                                 set -eu
-                                mvn -B -Dmaven.repo.local="$WORKSPACE/.m2/order-and-sell-service" clean test
+                                sh "$WORKSPACE/infrastructure/jenkins/maven-retry.sh" -B -Dmaven.repo.local="$WORKSPACE/.m2/order-and-sell-service" clean test
                                 test -s target/site/jacoco/jacoco.xml
                             '''
                         }
@@ -300,9 +300,11 @@ pipeline {
                             dir('db/tools') {
                                 sh '''
                                     set -eu
-                                    docker run --rm \
+                                    sh ../../infrastructure/jenkins/with-disposable-postgres.sh docker run --rm --network host \
+                                      -e EXECUTION_MIGRATION_DISPOSABLE_DATABASE_URL \
                                       -e PYTHONDONTWRITEBYTECODE=1 \
                                       -v "$(pwd)":/app \
+                                      -v "$(pwd)/../migrations":/migrations:ro \
                                       -w /app \
                                       python:3.14-slim \
                                       bash -c "
@@ -370,24 +372,6 @@ pipeline {
                             junit testResults: 'apps/reporting-ui/reports/junit/reporting-ui.xml', allowEmptyResults: false
                         }
                     }
-                }
-            }
-        }
-
-        stage('Java API Documentation') {
-            when { expression { currentBuild.currentResult == 'SUCCESS' } }
-            steps {
-                sh '''
-                    set -eu
-                    for service in holdings-and-trade-service order-and-sell-service; do
-                        mvn -B -Dmaven.repo.local="$WORKSPACE/.m2/$service" -f "apps/$service/pom.xml" org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc
-                        test -s "apps/$service/target/reports/apidocs/index.html"
-                    done
-                '''
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'apps/*/target/reports/apidocs/**/*', allowEmptyArchive: false
                 }
             }
         }
@@ -464,12 +448,26 @@ pipeline {
             }
         }
 
-
-
         stage('Pre-E2E Disk Cleanup') {
             steps {
-                // Reports were archived by their own stages.
-                sh 'rm -rf apps/holdings-and-trade-service/target apps/order-and-sell-service/target apps/client-ui/coverage apps/reporting-ui/coverage'
+                // Reports were archived by their own stages, and SonarQube Analysis
+                // has already imported its inputs. Each Java service's compiled
+                // classes and JaCoCo XML, and the UIs' lcov files, are still kept.
+                sh '''
+                    set -eu
+                    for service in holdings-and-trade-service order-and-sell-service; do
+                        target="apps/$service/target"
+                        [ -d "$target" ] || continue
+                        find "$target" -mindepth 1 -maxdepth 1 ! -name classes ! -name site -exec rm -rf {} +
+                        [ ! -d "$target/site" ] || find "$target/site" -mindepth 1 -maxdepth 1 ! -name jacoco -exec rm -rf {} +
+                        [ ! -d "$target/site/jacoco" ] || find "$target/site/jacoco" -mindepth 1 -maxdepth 1 ! -name jacoco.xml -exec rm -rf {} +
+                    done
+                    for coverage in apps/client-ui/coverage apps/reporting-ui/coverage; do
+                        [ -d "$coverage" ] || continue
+                        find "$coverage" -type f ! -name lcov.info -delete
+                        find "$coverage" -mindepth 1 -type d -empty -delete
+                    done
+                '''
             }
         }
 
@@ -797,10 +795,10 @@ pipeline {
 
                     note "===== Kafka end-to-end: one order through trade-events and its three consumers, and into a reporting service with no database ====="
 
-                    # The build database is empty, so give the order something to buy.
-                    compose exec -T db psql -U trading_season -d trading_season -v ON_ERROR_STOP=1 -q -c \
-                        "INSERT INTO instruments (ticker, name, asset_class, market, currency, is_tradable) VALUES ('CIEQ', 'CI Equity', 'Equity', 'US', 'USD', true);"
-                    note "[KAFKA-E2E] instrument: CIEQ inserted for this build"
+                    # Order acceptance now requires an authoritative replay quote.
+                    compose exec -T db psql -U trading_season -d trading_season -v ON_ERROR_STOP=1 -q \
+                        < infrastructure/jenkins/market-fixture.sql
+                    note "[KAFKA-E2E] market: CIEQ instrument, completed session, candle and constant-price ticks inserted"
 
                     # Registers a trader, opens the order stream, places the order and checks
                     # each consumer's effect from inside the stack network.

@@ -61,14 +61,15 @@ public class AccountService {
 <span class="fc" id="L61">    }</span>
 
     /**
-     * Retrieves all accounts belonging to the authenticated user.
+     * Retrieves active accounts belonging to the authenticated user.
      *
      * @param userId the authenticated user's UUID from the token's sub claim
-     * @return a list of the user's accounts ordered by opened date (newest first)
+     * @return a list of the user's active accounts ordered by opened date (newest first)
      */
     @Transactional(readOnly = true)
     public List&lt;Account&gt; getAccountsForUser(UUID userId) {
-<span class="fc" id="L71">        return accountRepository.findByUserIdOrderByOpenedDateDesc(userId);</span>
+<span class="fc" id="L71">        return accountRepository.findByUserIdOrderByOpenedDateDesc(userId).stream()</span>
+<span class="fc" id="L72">                .filter(account -&gt; &quot;ACTIVE&quot;.equals(account.getStatus())).toList();</span>
     }
 
     /**
@@ -82,16 +83,16 @@ public class AccountService {
      */
     @Transactional(readOnly = true)
     public Account getAccountForUser(Integer accountId, UUID userId) {
-<span class="fc" id="L85">        Account account = accountRepository.findByIdAndUserId(accountId, userId)</span>
-<span class="fc" id="L86">                .orElseThrow(() -&gt; {</span>
+<span class="fc" id="L86">        Account account = accountRepository.findByIdAndUserId(accountId, userId)</span>
+<span class="fc" id="L87">                .orElseThrow(() -&gt; {</span>
                     // Check if account exists at all to provide different error message
-<span class="fc bfc" id="L88" title="All 2 branches covered.">                    if (accountRepository.existsById(accountId)) {</span>
-<span class="fc" id="L89">                        return new ForbiddenException(&quot;You do not have access to this account&quot;);</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                    if (accountRepository.existsById(accountId)) {</span>
+<span class="fc" id="L90">                        return new ForbiddenException(&quot;You do not have access to this account&quot;);</span>
                     } else {
-<span class="fc" id="L91">                        return new AccountNotFoundException(accountId);</span>
+<span class="fc" id="L92">                        return new AccountNotFoundException(accountId);</span>
                     }
                 });
-<span class="fc" id="L94">        return account;</span>
+<span class="fc" id="L95">        return account;</span>
     }
 
     /**
@@ -103,7 +104,7 @@ public class AccountService {
      */
     @Transactional(readOnly = true)
     public boolean verifyAccountOwnership(Integer accountId, UUID userId) {
-<span class="fc" id="L106">        return accountRepository.findByIdAndUserId(accountId, userId).isPresent();</span>
+<span class="fc" id="L107">        return accountRepository.findByIdAndUserId(accountId, userId).isPresent();</span>
     }
 
     /**
@@ -115,15 +116,15 @@ public class AccountService {
      */
     @Transactional
     public Account createAccount(UUID userId, String name) {
-<span class="fc" id="L118">        Account account = new Account();</span>
-<span class="fc" id="L119">        account.setUserId(userId);</span>
-<span class="fc" id="L120">        account.setName(name);</span>
-<span class="fc" id="L121">        account.setOpenedDate(LocalDate.now());</span>
-<span class="fc" id="L122">        account.setCurrency(&quot;USD&quot;);</span>
+<span class="fc" id="L119">        Account account = new Account();</span>
+<span class="fc" id="L120">        account.setUserId(userId);</span>
+<span class="fc" id="L121">        account.setName(name);</span>
+<span class="fc" id="L122">        account.setOpenedDate(LocalDate.now());</span>
+<span class="fc" id="L123">        account.setCurrency(&quot;USD&quot;);</span>
 
-<span class="fc" id="L124">        Account saved = accountRepository.save(account);</span>
-<span class="fc" id="L125">        events.publishEvent(TradingAccountRecord.from(saved));</span>
-<span class="fc" id="L126">        return saved;</span>
+<span class="fc" id="L125">        Account saved = accountRepository.save(account);</span>
+<span class="fc" id="L126">        events.publishEvent(TradingAccountRecord.from(saved));</span>
+<span class="fc" id="L127">        return saved;</span>
     }
 
     /**
@@ -135,26 +136,30 @@ public class AccountService {
      */
     @Transactional
     public Account createDefaultAccountForUser(UUID userId) {
-<span class="fc" id="L138">        return createAccount(userId, &quot;Main Account&quot;);</span>
+<span class="fc" id="L139">        return createAccount(userId, &quot;Main Account&quot;);</span>
     }
 
     /**
-     * Updates the name of an account.
+     * Updates the name of an ACTIVE account under the lifecycle row lock.
      *
      * @param accountId the account ID
      * @param userId    the authenticated user's UUID
      * @param newName   the new account name
      * @return the updated account
+     * @throws AccountStateException if the account is archived
      * @throws AccountNotFoundException if the account does not exist
      * @throws ForbiddenException       if the account is owned by a different user
      */
     @Transactional
     public Account updateAccountName(Integer accountId, UUID userId, String newName) {
-<span class="fc" id="L153">        Account account = getAccountForUser(accountId, userId);</span>
-<span class="fc" id="L154">        account.setName(newName);</span>
-<span class="fc" id="L155">        Account saved = accountRepository.save(account);</span>
-<span class="fc" id="L156">        events.publishEvent(TradingAccountRecord.from(saved));</span>
-<span class="fc" id="L157">        return saved;</span>
+<span class="fc" id="L155">        Account account = accountRepository.findByIdForUpdate(accountId)</span>
+<span class="fc" id="L156">                .orElseThrow(() -&gt; new AccountNotFoundException(accountId));</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        if (!account.getUserId().equals(userId)) throw new ForbiddenException(&quot;You do not have access to this account&quot;);</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        if (!&quot;ACTIVE&quot;.equals(account.getStatus())) throw new AccountStateException(&quot;Archived accounts are read-only&quot;);</span>
+<span class="fc" id="L159">        account.setName(newName);</span>
+<span class="fc" id="L160">        Account saved = accountRepository.save(account);</span>
+<span class="fc" id="L161">        events.publishEvent(TradingAccountRecord.from(saved));</span>
+<span class="fc" id="L162">        return saved;</span>
     }
 
     /**
@@ -170,27 +175,28 @@ public class AccountService {
     @Transactional(readOnly = true)
     public List&lt;HoldingWithCost&gt; getHoldingsForAccount(Integer accountId, UUID userId) {
         // Verify ownership first
-<span class="fc" id="L173">        getAccountForUser(accountId, userId);</span>
+<span class="fc" id="L178">        getAccountForUser(accountId, userId);</span>
 
-<span class="fc" id="L175">        List&lt;Holding&gt; holdings = holdingRepository.findByAccountId(accountId);</span>
-<span class="fc bfc" id="L176" title="All 2 branches covered.">        if (holdings.isEmpty()) {</span>
-<span class="fc" id="L177">            return List.of();</span>
+<span class="fc" id="L180">        List&lt;Holding&gt; holdings = holdingRepository.findByAccountId(accountId);</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        if (holdings.isEmpty()) {</span>
+<span class="fc" id="L182">            return List.of();</span>
         }
 
+<span class="fc" id="L185">        holdings.forEach(holding -&gt; holding.setReservedShares(java.util.Objects.requireNonNullElse(accountRepository.reservedShares(accountId, holding.getInstrumentId()), BigDecimal.ZERO)));</span>
         // Two batched lookups rather than one query per position.
-<span class="fc" id="L181">        Map&lt;Integer, Instrument&gt; instruments = instrumentRepository</span>
-<span class="fc" id="L182">                .findByInstrumentIdIn(holdings.stream().map(Holding::getInstrumentId).toList())</span>
-<span class="fc" id="L183">                .stream()</span>
-<span class="fc" id="L184">                .collect(Collectors.toMap(Instrument::getInstrumentId, Function.identity()));</span>
-<span class="fc" id="L185">        Map&lt;Integer, BigDecimal&gt; averageCosts =</span>
-<span class="fc" id="L186">                CostBasis.averageCosts(holdingMovementRepository.pricedMovements(accountId));</span>
+<span class="fc" id="L187">        Map&lt;Integer, Instrument&gt; instruments = instrumentRepository</span>
+<span class="fc" id="L188">                .findByInstrumentIdIn(holdings.stream().map(Holding::getInstrumentId).toList())</span>
+<span class="fc" id="L189">                .stream()</span>
+<span class="fc" id="L190">                .collect(Collectors.toMap(Instrument::getInstrumentId, Function.identity()));</span>
+<span class="fc" id="L191">        Map&lt;Integer, BigDecimal&gt; averageCosts =</span>
+<span class="fc" id="L192">                CostBasis.averageCosts(holdingMovementRepository.pricedMovements(accountId));</span>
 
-<span class="fc" id="L188">        return holdings.stream()</span>
-<span class="fc" id="L189">                .map(holding -&gt; new HoldingWithCost(</span>
+<span class="fc" id="L194">        return holdings.stream()</span>
+<span class="fc" id="L195">                .map(holding -&gt; new HoldingWithCost(</span>
                         holding,
-<span class="fc" id="L191">                        instruments.get(holding.getInstrumentId()),</span>
-<span class="fc" id="L192">                        averageCosts.get(holding.getInstrumentId())))</span>
-<span class="fc" id="L193">                .toList();</span>
+<span class="fc" id="L197">                        instruments.get(holding.getInstrumentId()),</span>
+<span class="fc" id="L198">                        averageCosts.get(holding.getInstrumentId())))</span>
+<span class="fc" id="L199">                .toList();</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

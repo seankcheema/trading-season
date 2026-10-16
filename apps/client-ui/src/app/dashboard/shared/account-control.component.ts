@@ -5,7 +5,7 @@ import {
   lucideBriefcaseBusiness,
   lucideCheck,
   lucideChevronDown,
-  lucidePencil,
+  lucideEllipsis,
   lucidePlus,
 } from '@ng-icons/lucide';
 import { DashboardHeaderDropdownComponent } from './dashboard-header-dropdown.component';
@@ -32,13 +32,14 @@ import { Account } from '../accounts/account.models';
       lucideBriefcaseBusiness,
       lucideCheck,
       lucideChevronDown,
-      lucidePencil,
+      lucideEllipsis,
       lucidePlus,
     }),
   ],
 
   template: `
     <app-dashboard-header-dropdown
+      class="block"
       iconName="lucideBriefcaseBusiness"
       [label]="label()"
       [loading]="loading()"
@@ -50,7 +51,7 @@ import { Account } from '../accounts/account.models';
       [triggerClass]="
         expanded()
           ? 'border-border bg-card hover:bg-muted h-10 w-full gap-3 rounded-lg border px-3 text-sm'
-          : ''
+          : triggerClass()
       "
     >
       <div class="p-1" role="menu" aria-label="Accounts">
@@ -97,10 +98,10 @@ import { Account } from '../accounts/account.models';
                   type="button"
                   role="menuitem"
                   class="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors"
-                  [attr.aria-label]="'Rename ' + account.name"
+                  [attr.aria-label]="'Settings for ' + account.name"
                   (click)="rename.emit(account)"
                 >
-                  <ng-icon name="lucidePencil" class="text-[14px]" />
+                  <ng-icon name="lucideEllipsis" class="text-[14px]" />
                 </button>
               </div>
             } @empty {
@@ -144,6 +145,7 @@ import { Account } from '../accounts/account.models';
 export class AccountControlComponent {
   readonly store = input.required<AccountStore>();
   readonly expanded = input(false);
+  readonly triggerClass = input('');
   readonly portfolioValues = input<ReadonlyMap<number, number>>(new Map());
   readonly open = input(false);
   readonly openChange = output<boolean>();

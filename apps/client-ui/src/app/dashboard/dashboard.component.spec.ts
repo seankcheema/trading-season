@@ -1,3 +1,5 @@
+import { ExecutionSettingsService } from './settings-dialog/execution-settings.service';
+import { of as savedExecutionPreference } from 'rxjs';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -146,7 +148,7 @@ describe('DashboardComponent', () => {
     sessionStorage.clear();
     await TestBed.configureTestingModule({
       imports: [DashboardComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      providers: [{ provide: ExecutionSettingsService, useValue: { load: () => savedExecutionPreference({ executionBufferPercent: 0 }) } },provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     }).compileComponents();
   });
 
@@ -492,7 +494,7 @@ describe('DashboardComponent', () => {
     fixture.detectChanges();
     const http = flushAccounts(fixture);
 
-    TestBed.inject(OrderService).pendingFilled.next(filledOrder({ accountId: 2 }));
+    TestBed.inject(OrderService).pendingResolved.next(filledOrder({ accountId: 2 }));
 
     http.expectOne('/api/users/me').flush({ ...PROFILE, availableFunds: 9_000 });
     http.expectOne('/api/accounts/2/holdings').flush(HOLDINGS[2]);
@@ -1772,7 +1774,7 @@ describe('DashboardComponent', () => {
 
       (
         element(fixture).querySelector(
-          '[aria-label="Rename Retirement Account"]',
+          '[aria-label="Settings for Retirement Account"]',
         ) as HTMLButtonElement
       ).click();
       fixture.detectChanges();

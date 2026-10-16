@@ -249,9 +249,13 @@ The production [Dockerfile](Dockerfile) builds the app and serves it through unp
 ## Tests
 
 `*.spec.ts` beside the code under `src`, on the Angular unit-test builder with Vitest. The run fails below 90 percent on statements, branches, functions, or lines (`coverageThresholds` in [angular.json](angular.json)). Add `--coverage` for the report. Shared test data and DOM helpers live in [src/testing](src/testing) and are excluded from the application build.
+
+[vitest.config.ts](vitest.config.ts) limits the fork pool with Vitest 4's `maxWorkers: 1` and disables file parallelism. Jenkins runs this suite alongside other CPU-heavy stages; keeping test files sequential avoids competing workers causing test timeouts.
 ### Integration tests
 
 Playwright specs in [e2e](e2e) drive the built app in Chromium against the real Reporting Service, so they check the screens, the service's read model and report run, and its access rules together. Only the two things the service does not itself provide are replaced: Kafka, and the Auth Service.
+
+[playwright.config.ts](playwright.config.ts) allows assertions up to ten seconds while both browser suites share the Jenkins agent. CI still fails on a flaky test that passes only on retry.
 
 ```mermaid
 flowchart LR
@@ -287,3 +291,5 @@ In the [Jenkins pipeline](../../infrastructure/README.md#jenkins) the suite runs
 - Report runs counts an order in a range by when it resolved and Activity by when it was placed, and Report runs stops at the run's generation time, so the two screens can differ by the orders of the last minutes. Today is a single column of Trades per day, where Activity plots it by the hour. A new run can replace the one on screen up to 30 seconds before the page learns of it; a chart downloaded in that gap is taken from the new run, and the page moves on to it.
 - Trades per day plots the days that have a resolved order, side by side. A day without one is left out, not drawn as a gap.
 - Users are not signed out for inactivity, unlike the Client UI.
+
+Order detail includes execution conditions, submission reference quote, trigger time and outstanding reservations. Order filters include CANCELLED. These values come from the Reporting Service contract and Kafka projection.

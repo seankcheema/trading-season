@@ -1,4 +1,6 @@
 import { SELECTED_ACCOUNT_STORAGE_KEY } from '../dashboard/accounts/account-store.service';
+import { ExecutionSettingsService } from '../dashboard/settings-dialog/execution-settings.service';
+import { of as savedExecutionPreference } from 'rxjs';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { OrderResult } from '../dashboard/orders/order.models';
@@ -20,6 +22,7 @@ import { MarketPageComponent } from './market-page.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
 import { AuthService } from '../core/auth/auth.service';
 import { ToastService } from '../notifications/toast.service';
+import { OrderService } from '../dashboard/orders/order.service';
 
 const SNAPSHOT: MarketSnapshot = {
   sessionId: 7,
@@ -93,6 +96,10 @@ describe('MarketPageComponent', () => {
     await TestBed.configureTestingModule({
       imports: [MarketPageComponent],
       providers: [
+        {
+          provide: ExecutionSettingsService,
+          useValue: { load: () => savedExecutionPreference({ executionBufferPercent: 0 }) },
+        },
         provideRouter([]),
         provideHttpClient(),
         provideHttpClientTesting(),
@@ -175,7 +182,9 @@ describe('MarketPageComponent', () => {
       serverTimestamp: '2026-01-05T15:01:10Z',
       prices: [{ symbol: 'AAPL', price: 230, sequenceNumber: 2 }],
     });
-    expect(fixture.componentInstance['instruments']().find((stock) => stock.symbol === 'AAPL')?.price).toBe(230);
+    expect(
+      fixture.componentInstance['instruments']().find((stock) => stock.symbol === 'AAPL')?.price,
+    ).toBe(230);
     fixture.destroy();
     expect(disconnect).toHaveBeenCalledTimes(2);
   });
@@ -187,9 +196,12 @@ describe('MarketPageComponent', () => {
     marketData.candles.mockImplementationOnce(() => pending);
     fixture.componentInstance['candleRevision'].update((revision) => revision + 1);
     fixture.detectChanges();
-    expect(fixture.debugElement.query(By.directive(PriceChartComponent)).componentInstance).toBe(chart);
-    const status = [...fixture.nativeElement.querySelectorAll('[role="status"]')]
-      .find((element: HTMLElement) => element.textContent?.includes('Updating chart'));
+    expect(fixture.debugElement.query(By.directive(PriceChartComponent)).componentInstance).toBe(
+      chart,
+    );
+    const status = [...fixture.nativeElement.querySelectorAll('[role="status"]')].find(
+      (element: HTMLElement) => element.textContent?.includes('Updating chart'),
+    );
     expect(status?.classList.contains('sr-only')).toBe(true);
     pending.complete();
     fixture.destroy();
@@ -234,13 +246,33 @@ describe('MarketPageComponent', () => {
     expect(fixture.componentInstance['openHeaderDropdown']()).toBeNull();
 
     const logout = vi.spyOn(TestBed.inject(AuthService), 'logout').mockReturnValue(of(undefined));
-    const navigateToLogin = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+    const navigateToLogin = vi
+      .spyOn(TestBed.inject(Router), 'navigateByUrl')
+      .mockResolvedValue(true);
     profile.querySelectorAll('button')[1].click();
     expect(logout).toHaveBeenCalledOnce();
     expect(navigateToLogin).toHaveBeenCalledWith('/login');
   });
 
-  it('shows shared cash and the selected portfolio in the account box above execution', async () => {
+  it('preserves the order draft while switching away from Trading', async () => {
+    const fixture = await setup();
+    const root = fixture.nativeElement as HTMLElement;
+    const ticket = root.querySelector('app-trade-ticket');
+    const quantity = root.querySelector('#future-trade-quantity') as HTMLInputElement;
+    quantity.value = '3';
+    quantity.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    fixture.componentInstance['insightTab'].set('news');
+    fixture.detectChanges();
+    expect(root.querySelector('app-trade-ticket')).toBe(ticket);
+    expect((root.querySelector('.trading-content') as HTMLElement).hidden).toBe(true);
+    fixture.componentInstance['insightTab'].set('trading');
+    fixture.detectChanges();
+    expect(quantity.value).toBe('3');
+    expect((root.querySelector('.trading-content') as HTMLElement).hidden).toBe(false);
+  });
+
+  it('shows shared cash and the selected portfolio in the Trading tab', async () => {
     const fixture = await setup();
     const panel = fixture.nativeElement.querySelector('[data-testid="account-value-panel"]');
     expect(panel.querySelector('[data-testid="available-cash"]').textContent).toContain(
@@ -249,8 +281,13 @@ describe('MarketPageComponent', () => {
     expect(panel.querySelector('[data-testid="account-portfolio-value"]').textContent).toContain(
       '$1,129.00',
     );
-    expect(fixture.nativeElement.querySelector('header app-account-control')).toBeNull();
-    expect(panel.querySelector('app-account-control')).not.toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('app-market-clock-control').nextElementSibling.tagName,
+    ).toBe('APP-ACCOUNT-CONTROL');
+    expect(panel.querySelector('app-account-control')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[role=tab][aria-selected=true]').textContent.trim(),
+    ).toBe('Trading');
     fixture.componentInstance['selectAccount'](2);
     fixture.detectChanges();
     expect(panel.querySelector('[data-testid="account-portfolio-value"]').textContent).toContain(
@@ -458,6 +495,49 @@ describe('MarketPageComponent', () => {
     expect(fixture.nativeElement.querySelector('#chart-mode-picker')).not.toBeNull();
   });
 
+  it('positions the comparison menu under its trigger', async () => {
+    const fixture = await setup();
+    (
+      fixture.nativeElement.querySelector('[aria-controls="comparison-picker"]') as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+
+    fixture.componentInstance['positionToolbarMenu']();
+
+    expect(fixture.componentInstance['openToolbarMenu']()).toBe('comparison');
+    expect(fixture.componentInstance['toolbarMenuPosition']().top).toBeGreaterThanOrEqual(0);
+  });
+
+  it('refreshes balances and reports a rejection when a pending order resolves', async () => {
+    const fixture = await setup('aapl', '', '2');
+    const refresh = stubRefresh(fixture);
+    const resolved = TestBed.inject(OrderService).pendingResolved;
+
+    resolved.next(order({ accountId: 1, status: 'FILLED' }));
+    expect(refresh).toHaveBeenLastCalledWith(1);
+    expect(TestBed.inject(ToastService).messages()).toHaveLength(0);
+
+    resolved.next(
+      order({ accountId: undefined, status: 'REJECTED', rejectionReason: 'Out of funds' }),
+    );
+    expect(refresh).toHaveBeenLastCalledWith(2);
+    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Out of funds');
+
+    resolved.next(order({ accountId: undefined, status: 'REJECTED', rejectionReason: null }));
+    expect(TestBed.inject(ToastService).messages().at(-1)?.message).toBe('Order rejected.');
+  });
+
+  it('skips the balance refresh when a resolved order has no account to refresh', async () => {
+    const fixture = await setup();
+    const store = fixture.componentInstance['accountStore'];
+    vi.spyOn(store, 'selectedAccountId').mockReturnValue(null);
+    const refresh = stubRefresh(fixture);
+
+    TestBed.inject(OrderService).pendingResolved.next(order({ accountId: undefined }));
+
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
   it('renders the streamlined header and demo market metrics', async () => {
     const fixture = await setup();
     const text = fixture.nativeElement.textContent as string;
@@ -502,6 +582,8 @@ describe('MarketPageComponent', () => {
 
   it('renders overview and news feeds plus an empty AI chat state', async () => {
     const fixture = await setup();
+    fixture.componentInstance['insightTab'].set('overview');
+    fixture.detectChanges();
     expect(fixture.nativeElement.textContent).not.toContain('Current market read');
     expect(fixture.nativeElement.textContent).toContain('Short-term risk');
     expect(fixture.nativeElement.textContent).toContain('Popularity');
@@ -628,6 +710,29 @@ describe('MarketPageComponent', () => {
     const charts = fixture.debugElement.queryAll(By.directive(PriceChartComponent));
     expect(charts).toHaveLength(2);
     expect(charts.every((chart) => chart.componentInstance.candles().length === 1)).toBe(true);
+  });
+
+  it.each([2.04, -3.5, 0])('formats comparison dollar changes for %s', async (change) => {
+    marketData.snapshot.mockReturnValueOnce(
+      of({
+        ...SNAPSHOT,
+        stocks: SNAPSHOT.stocks.map((stock) => ({ ...stock, change })),
+      }),
+    );
+    const fixture = await setup('aapl', 'msft');
+    const sections = fixture.nativeElement.querySelectorAll('.comparison-chart');
+    expect(sections).toHaveLength(2);
+    const expected = change === 0 ? '$0.00' : change < 0 ? '-$3.50' : '$2.04';
+    sections.forEach((section: HTMLElement, index: number) => {
+      const header = section.querySelector(
+        '.comparison-price-label-left, .comparison-price-label-right',
+      );
+      expect(header?.closest('.chart-toolbar')).not.toBeNull();
+      expect(section.querySelector('.chart-indicator-key')).toBeNull();
+      expect(header?.textContent).toContain(index === 0 ? 'AAPL' : 'MSFT');
+      expect(header?.textContent).toContain(expected);
+      expect(header?.textContent).toContain('%');
+    });
   });
 
   it('opens the comparison picker and writes the selected peer to the URL', async () => {
@@ -809,7 +914,7 @@ describe('MarketPageComponent', () => {
     expect(skeleton.querySelector('.tools-column')?.getAttribute('aria-hidden')).toBe('true');
     expect(skeleton.querySelectorAll('.market-metrics > div')).toHaveLength(7);
     expect(skeleton.querySelector('.chart-stage .skeleton')).not.toBeNull();
-    expect(skeleton.querySelectorAll('[data-testid="activity-row-skeleton"]')).toHaveLength(5);
+    expect(skeleton.querySelector('[data-testid="trading-skeleton"]')).not.toBeNull();
     expect(root.querySelector('app-price-chart')).toBeNull();
     expect(root.querySelector('app-trade-ticket')).toBeNull();
 
@@ -841,7 +946,14 @@ describe('MarketPageComponent', () => {
       timeframe: '1D',
       marketTimestamp: SNAPSHOT.marketTimestamp,
       points: [
-        { timestamp: '2026-01-05T15:00:00Z', open: 224, high: 226, low: 223, close: 225, volume: 1000 },
+        {
+          timestamp: '2026-01-05T15:00:00Z',
+          open: 224,
+          high: 226,
+          low: 223,
+          close: 225,
+          volume: 1000,
+        },
       ],
     });
     fixture.detectChanges();
@@ -924,6 +1036,10 @@ describe('MarketPageComponent', () => {
       ...overrides,
     };
   }
+  function stubRefresh(fixture: ComponentFixture<MarketPageComponent>) {
+    const page = fixture.componentInstance as unknown as { refreshBalances(id: number): void };
+    return vi.spyOn(page, 'refreshBalances').mockImplementation(() => undefined);
+  }
   function editQuantity(fixture: ComponentFixture<MarketPageComponent>, quantity: string) {
     const input = fixture.nativeElement.querySelector('#future-trade-quantity') as HTMLInputElement;
     input.value = quantity;
@@ -964,6 +1080,20 @@ describe('MarketPageComponent', () => {
     expect(fixture.componentInstance['orderMessage']()).toBe('');
     expect(fixture.nativeElement.querySelector('app-trade-ticket [role="status"]')).toBeNull();
     expect(TestBed.inject(ToastService).messages()[0].message).toContain('Filled 2 AAPL');
+    http.verify();
+  });
+  it('reports an accepted order that is still open', async () => {
+    const fixture = await setup('aapl', '', '2');
+    const http = TestBed.inject(HttpTestingController);
+    editQuantity(fixture, '2');
+    buy(fixture);
+    http.expectOne('/api/orders').flush(order({ accountId: 2, status: 'ACCEPTED' }));
+    http.expectOne('/api/accounts/2/holdings').flush([]);
+    http.expectOne('/api/users/me').flush({ availableFunds: 9000 });
+    fixture.detectChanges();
+    expect(TestBed.inject(ToastService).messages()[0].message).toBe(
+      'Market buy order placed for 2 AAPL.',
+    );
     http.verify();
   });
   it('sells all owned shares and displays the execution immediately', async () => {
@@ -1203,9 +1333,12 @@ describe('MarketPageComponent', () => {
       fixture.detectChanges();
 
       (termsDialog(fixture)!.querySelector('button[type="submit"]') as HTMLButtonElement).click();
-      TestBed.inject(HttpTestingController)
-        .expectOne('/api/users/me/terms-acceptance')
-        .flush({ firstName: 'Ada', lastName: 'Lovelace', availableFunds: 10000, termsAccepted: true });
+      TestBed.inject(HttpTestingController).expectOne('/api/users/me/terms-acceptance').flush({
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        availableFunds: 10000,
+        termsAccepted: true,
+      });
       fixture.detectChanges();
 
       expect(termsDialog(fixture)).toBeNull();

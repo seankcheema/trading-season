@@ -2,9 +2,13 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { AccountStore } from '../accounts/account-store.service';
+import { CashTransaction } from '../accounts/account.models';
 import { InstrumentRef, OrderResult } from '../orders/order.models';
 import { OrderService } from '../orders/order.service';
 import { TransactionsDialogComponent } from './transactions-dialog.component';
+import { Subject, throwError } from 'rxjs';
+import { vi } from 'vitest';
+import { orderHistoryRow, cashHistoryRow } from '../shared/activity';
 
 const CATALOGUE: InstrumentRef[] = ['AAPL', 'MSFT'].map((symbol, index) => ({
   instrumentId: 7 + index,
@@ -74,7 +78,7 @@ describe('history dialogs', () => {
   afterEach(() => http.verify());
 
   describe('TransactionsDialogComponent', () => {
-    const CASH = [
+    const CASH: CashTransaction[] = [
       { cashTransactionId: 1, amount: 500, reason: 'DEPOSIT', createdAt: '2026-01-05T15:00:00Z' },
       { cashTransactionId: 2, amount: 50, reason: 'WITHDRAWAL', createdAt: '2026-01-05T19:00:00Z' },
     ];
@@ -139,10 +143,65 @@ describe('history dialogs', () => {
       expect(typed('all')).toBe(5);
     });
 
+    it('searches asset labels and toggles sorting in both directions', () => {
+      seedOrders(); const fixture = open(); const component = fixture.componentInstance;
+      const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+      input.value = ' aapl '; input.dispatchEvent(new Event('input')); fixture.detectChanges();
+      expect(rows(fixture, 'transactions-row')).toHaveLength(2);
+      component['sortBy']('date'); expect(component['sortDirection']()).toBe('asc');
+      component['sortBy']('date'); expect(component['sortDirection']()).toBe('desc');
+      component['sortBy']('shares'); expect(component['sortKey']()).toBe('shares');
+      input.value = 'unknown'; input.dispatchEvent(new Event('input')); fixture.detectChanges();
+      expect(rows(fixture, 'transactions-row')).toHaveLength(0);
+    });
+
+    it('prevents duplicate cancellation, refreshes balances and reports failures', () => {
+      seedOrders(); const fixture = open(); const component = fixture.componentInstance;
+      const service = TestBed.inject(OrderService); const store = TestBed.inject(AccountStore);
+      const pending = new Subject<OrderResult>();
+      const cancel = vi.spyOn(service, 'cancelOrder').mockReturnValue(pending);
+      const reload = vi.spyOn(store, 'load').mockImplementation(() => {});
+      const row = orderHistoryRow(order({ status: 'ACCEPTED' }), CATALOGUE, 'Main');
+      component['cancelOrder'](cashHistoryRow(CASH[0])); expect(cancel).not.toHaveBeenCalled();
+      component['cancelOrder'](row); component['cancelOrder'](row);
+      expect(cancel).toHaveBeenCalledOnce(); expect(component['cancelling']().has(1)).toBe(true);
+      pending.next(order({ status: 'CANCELLED' }));
+      expect(component['cancelling']().size).toBe(0); expect(reload).toHaveBeenCalledWith(true);
+      cancel.mockReturnValue(throwError(() => new Error('offline')));
+      component['cancelOrder'](row); expect(component['loadError']()).toBe(true);
+      expect(component['cancelling']().size).toBe(0);
+    });
+
+    it('loads audit once, ignores cash and retries failed audit requests', () => {
+      seedOrders(); const fixture = open(); const component = fixture.componentInstance;
+      const audit = vi.spyOn(TestBed.inject(OrderService), 'orderAudit');
+      const row = orderHistoryRow(order(), CATALOGUE, 'Main');
+      component['toggleAudit'](cashHistoryRow(CASH[0])); expect(audit).not.toHaveBeenCalled();
+      component['toggleAudit'](row);
+      component['toggleAudit'](row); component['toggleAudit'](row);
+      expect(audit).toHaveBeenCalledOnce();
+      http.expectOne('/api/orders/1/audit').flush({}, { status: 503, statusText: 'Unavailable' });
+      fixture.detectChanges(); expect(component['auditErrors']().has(1)).toBe(true);
+      expect(fixture.nativeElement.textContent).toContain('Unable to load this order');
+      component['toggleAudit'](row); component['toggleAudit'](row);
+      http.expectOne('/api/orders/1/audit').flush([]); fixture.detectChanges();
+      expect(component['auditLoading']().size).toBe(0);
+      expect(component['auditErrors']().size).toBe(0);
+      expect(fixture.nativeElement.textContent).toContain('No audit events were recorded');
+      component['toggleAudit'](row); component['toggleAudit'](row);
+      expect(audit).toHaveBeenCalledTimes(2);
+    });
+
+    it.each(['REJECTED', 'EXECUTION_FAILED'])('marks %s audit failures in the loss color', (eventType) => {
+      const fixture = open();
+      expect(fixture.componentInstance['auditMarkerClass']({ eventType, price: 100, occurredAt: '', detail: null }))
+        .toBe('bg-[#fb7185]');
+    });
+
     it('colors and signs only cash amounts', () => {
       seedOrders();
       const fixture = open();
-      const amount = (row: HTMLElement) => row.firstElementChild!.lastElementChild as HTMLElement;
+      const amount = (row: HTMLElement) => row.querySelector('[data-testid="transaction-amount"]') as HTMLElement;
       for (const row of rows(fixture, 'transactions-row')) {
         const cell = amount(row);
         if (row.dataset['status'] === 'COMPLETED') {
@@ -204,8 +263,8 @@ describe('history dialogs', () => {
       const placeholders = rows(fixture, 'transactions-row-skeleton');
 
       expect(placeholders).toHaveLength(6);
-      // One block under each of the seven columns, hidden from a screen reader, which is told instead.
-      expect(placeholders[0].children).toHaveLength(7);
+      // Seven data placeholders, with reserved audit and action columns on either side.
+      expect(placeholders[0].children).toHaveLength(9);
       expect(placeholders[0].getAttribute('aria-hidden')).toBe('true');
       expect(table.querySelector('[role="status"]')?.textContent).toContain('Loading transactions…');
       expect(table.textContent).not.toContain('No transactions match these filters.');

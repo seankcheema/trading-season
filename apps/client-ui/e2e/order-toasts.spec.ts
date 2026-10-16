@@ -72,9 +72,10 @@ for (const viewport of [
     await page.getByRole('option').first().click();
     const dialog = page.getByRole('dialog', { name: 'New Order' });
     await dialog.getByLabel('Shares', { exact: true }).first().fill('999');
-    await expect(dialog.locator('#order-shares')).toHaveValue('22');
+    // $5,000 buys 21 shares at $225.80 after the default 1% buffer reservation.
+    await expect(dialog.locator('#order-shares')).toHaveValue('21');
     await dialog.locator('#order-shares').fill('999');
-    await expect(dialog.locator('#order-shares')).toHaveValue('22');
+    await expect(dialog.locator('#order-shares')).toHaveValue('21');
     await dialog.locator('#order-shares').fill('1');
     await dialog.getByRole('button', { name: 'Buy 1 AAPL', exact: true }).click();
 

@@ -51,7 +51,8 @@ import java.util.UUID;
  * <p>Each transaction raises an {@link OrderStatusEvent} for the status it
  * committed, published to Kafka after that commit by
  * {@link app.order.event.TradeEventPublisher}. A resubmission that returns an
- * existing order raises nothing.
+ * existing order raises nothing. New submissions lock the account and require ACTIVE
+ * status, serializing order acceptance with account archiving and deletion.
  */
 @Service
 public class OrderService {
@@ -68,6 +69,12 @@ public class OrderService {
 
     private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private app.order.execution.ExecutionQuoteSource quotes;
+    @org.springframework.beans.factory.annotation.Autowired
+    private app.holding.HoldingRepository holdings;
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
     private final OrderRepository orderRepository;
     private final AccountRepository accountRepository;
     private final InstrumentRepository instrumentRepository;
@@ -124,9 +131,10 @@ public class OrderService {
      * {@code PENDING}; it returns as {@code REJECTED} when a trading rule
      * fails, {@code FILLED} once the fill is written and the owning user's
      * available funds and the account's holdings have moved, or
-     * {@code ACCEPTED} when it passed the rules but execution failed
-     * unexpectedly, in which case the order stays on record and the failure
-     * is in its audit trail. Never throws for a trade that fails a trading
+     * {@code ACCEPTED} while conditional execution is pending or settlement is
+     * retryable. Acceptance snapshots the authoritative quote and saved profile
+     * buffer, and reserves cash or shares without posting a ledger movement.
+     * Failures remain in the audit trail and retain reservations for retry. Never throws for a trade that fails a trading
      * rule or whose execution fails; those are outcomes, reflected in the
      * returned order's status, not HTTP-level errors. It throws only when the
      * request names something that doesn't exist or isn't the caller's, or
@@ -153,6 +161,8 @@ public class OrderService {
      * @throws InstrumentNotFoundException if {@code instrumentId} does not exist
      * @throws org.springframework.dao.DataAccessException if the acceptance transaction itself
      *         fails to persist; nothing is then on record
+     * @throws app.order.execution.ExecutionQuoteSource.QuoteUnavailableException if no authoritative submission quote exists
+     * @throws org.springframework.web.server.ResponseStatusException if stock parameters are invalid
      * @throws IllegalStateException       if the account has no owning user
      */
     public Order submitOrder(OrderRequest request, UUID callerId) {
@@ -170,31 +180,122 @@ public class OrderService {
         }
     }
 
+    /** Atomically replaces an owned open order, then settles the replacement separately.
+     * A validation failure rolls back cancellation and preserves the original reservation.
+     * @param orderId original open instruction
+     * @param request replacement quantity, execution type, and prices
+     * @param callerId authenticated owner
+     * @return replacement outcome, or the prior outcome on an idempotent retry
+     * @throws app.account.AccountNotFoundException if the original is absent or foreign
+     * @throws org.springframework.web.server.ResponseStatusException if the order is terminal,
+     *         outside its simulation day, or replacement validation fails */
+    public Order replace(Integer orderId, OrderRequest request, UUID callerId) {
+        Acceptance replacement = transactions.execute(tx -> replaceInTransaction(orderId, request, callerId));
+        if (!replacement.executable()) return replacement.order();
+        try {
+            return orderExecutionService.execute(replacement.order(), replacement.instrument());
+        } catch (RuntimeException failure) {
+            recordExecutionFailure(replacement.order().getOrderId(), failure);
+            return orderRepository.findById(replacement.order().getOrderId()).orElse(replacement.order());
+        }
+    }
+
+    private Acceptance replaceInTransaction(Integer orderId, OrderRequest request, UUID callerId) {
+        Order visible = getOwnOrder(orderId, callerId);
+        userRepository.findByIdForUpdate(callerId).orElseThrow();
+        accountRepository.findByIdForUpdate(visible.getAccountId()).orElseThrow();
+        Order original = orderRepository.findByIdForUpdate(orderId).orElseThrow();
+        entityManager.refresh(original);
+        requireSameOrderIdentity(original, request);
+        var prior = orderRepository.findByAccountIdAndClientReference(request.accountId(), request.clientReference());
+        if (prior.isPresent() && isReplacedBy(original, prior.get())) {
+            return new Acceptance(prior.get(), null, false);
+        }
+        if (!Order.STATUS_ACCEPTED.equals(original.getStatus()) || prior.isPresent()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT, "Only open orders can be edited");
+        }
+        Instrument stock = instrumentRepository.findById(original.getInstrumentId()).orElseThrow();
+        requireEditableAt(original, quotes.current(stock, original.getSessionId()).timestamp());
+        cancelForReplacement(original);
+        Acceptance accepted = accept(request, callerId);
+        if (!Order.STATUS_ACCEPTED.equals(accepted.order().getStatus())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, accepted.order().getRejectionReason());
+        }
+        requireSimulationUnchanged(original, accepted.order());
+        original.setRejectionCode("ORDER_REPLACED");
+        original.setRejectionReason("Replaced by order #" + accepted.order().getOrderId());
+        orderRepository.save(original);
+        auditTrailService.record(orderId, Order.STATUS_CANCELLED, original.getRejectionReason());
+        auditTrailService.record(accepted.order().getOrderId(), Order.STATUS_ACCEPTED,
+                "Replaces order #" + orderId);
+        events.publishEvent(OrderStatusEvent.from(original, stock));
+        return accepted;
+    }
+
+    private static void requireSameOrderIdentity(Order original, OrderRequest request) {
+        boolean sameStock = original.getAccountId().equals(request.accountId())
+                && original.getInstrumentId().equals(request.instrumentId())
+                && original.getOrderType().equals(request.orderType());
+        if (!sameStock || !java.util.Objects.equals(original.getSessionId(), request.sessionId())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Account, stock, side and session cannot be changed");
+        }
+    }
+
+    /** True when the original was already cancelled in favor of the order sharing the retried reference. */
+    private static boolean isReplacedBy(Order original, Order prior) {
+        return "ORDER_REPLACED".equals(original.getRejectionCode())
+                && ("Replaced by order #" + prior.getOrderId()).equals(original.getRejectionReason());
+    }
+
+    private static void requireEditableAt(Order original, OffsetDateTime at) {
+        boolean beforeOrder = original.getReferenceAt() == null || at.isBefore(original.getReferenceAt());
+        boolean beforeEvaluation = original.getEvaluatedAt() != null && at.isBefore(original.getEvaluatedAt());
+        if (beforeOrder || beforeEvaluation
+                || !at.isBefore(app.order.execution.ExecutionPolicy.expiresAt(original).minusSeconds(1))) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT, "The order cannot be edited at this simulation time");
+        }
+    }
+
+    private void cancelForReplacement(Order original) {
+        original.setStatus(Order.STATUS_CANCELLED);
+        original.setReservedCash(BigDecimal.ZERO);
+        original.setReservedShares(BigDecimal.ZERO);
+        original.setRetryAfter(null);
+        original.setResolvedAt(OffsetDateTime.now());
+        orderRepository.saveAndFlush(original);
+    }
+
+    private static void requireSimulationUnchanged(Order original, Order replacement) {
+        OffsetDateTime floor = original.getEvaluatedAt() == null ? original.getReferenceAt() : original.getEvaluatedAt();
+        OffsetDateTime at = replacement.getReferenceAt();
+        if (at.isBefore(floor) || !at.isBefore(app.order.execution.ExecutionPolicy.expiresAt(original).minusSeconds(1))) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT, "Simulation time changed while editing; original order was retained");
+        }
+    }
+
     /** What the acceptance transaction committed, and whether execution should follow. */
     private record Acceptance(Order order, Instrument instrument, boolean executable) {
     }
 
     private Acceptance accept(OrderRequest request, UUID callerId) {
-        Account account = accountRepository.findById(request.accountId())
-                .orElseThrow(() -> new AccountNotFoundException("No account " + request.accountId()));
-        if (!account.getUserId().equals(callerId)) {
-            throw new ForbiddenException("You do not have access to this account");
-        }
+        Account account = lockOwnedAccount(request.accountId(), callerId);
 
         Optional<Order> existing = orderRepository
                 .findByAccountIdAndClientReference(request.accountId(), request.clientReference());
         if (existing.isPresent()) {
             // Same idempotency key already processed (or in flight) for this account —
             // return its outcome rather than validating or executing a second time.
-            // Note: a genuinely concurrent duplicate can still race past this check;
-            // the DB's UNIQUE (account_id, client_reference) constraint is the backstop.
+            // The owner/account locks serialize duplicate submissions; the unique
+            // (account_id, client_reference) constraint remains the database backstop.
             return new Acceptance(existing.get(), null, false);
         }
 
-        if (!termsAcceptanceRepository.existsById(
-                new TermsAcceptanceId(callerId, TermsAcceptance.CURRENT_VERSION))) {
-            throw new ForbiddenException("Accept the platform terms before placing an order");
-        }
+        requireTradingAllowed(account, callerId);
 
         User user = userRepository.findById(account.getUserId())
                 .orElseThrow(() -> new IllegalStateException(
@@ -202,34 +303,27 @@ public class OrderService {
         Instrument instrument = instrumentRepository.findById(request.instrumentId())
                 .orElseThrow(() -> new InstrumentNotFoundException("No instrument " + request.instrumentId()));
 
-        BigDecimal bufferPercent = request.bufferPercent() != null
-                ? request.bufferPercent()
-                : user.getExecutionBufferPercent();
+        if (request.bufferPercent() != null || !request.isPriceConfigurationValid()
+                || request.quantity().stripTrailingZeros().scale() > 0) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Invalid stock order parameters");
+        }
+        var quote = quotes.current(instrument, request.sessionId());
 
-        OffsetDateTime now = OffsetDateTime.now();
-        Order order = new Order();
-        order.setAccountId(account.getAccountId());
-        order.setInstrumentId(instrument.getInstrumentId());
-        order.setClientReference(request.clientReference());
-        order.setOrderType(request.orderType());
-        order.setQuantity(request.quantity());
-        order.setIndicativePrice(request.indicativePrice());
-        order.setBufferPercent(bufferPercent);
-        order.setStatus(Order.STATUS_PENDING);
-        order.setSubmittedAt(now);
-        order.setSimulatedAt(request.simulatedAt());
-        order = orderRepository.save(order);
+        Order order = orderRepository.save(pendingOrder(request, account, instrument, user.getExecutionBufferPercent(), quote));
         auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, null);
 
-        ValidationResult result = validationPipeline.run(request, user, account, instrument);
+        // Existing rules see authoritative cost rather than an untrusted client estimate.
+        var checkedRequest = new OrderRequest(request.accountId(), request.instrumentId(), request.orderType(),
+                request.quantity(), app.order.execution.ExecutionPolicy.reservationPrice(order), null,
+                request.clientReference(), order.getSimulatedAt());
+        ValidationResult result = validationPipeline.run(checkedRequest, user, account, instrument);
+        var reservations = orderRepository.findReservations(callerId);
+        if (result.passed()) {
+            result = reserve(result, order, user, account, instrument, reservations);
+        }
         if (!result.passed()) {
-            order.setStatus(Order.STATUS_REJECTED);
-            order.setRejectionReason(result.reason());
-            order.setResolvedAt(OffsetDateTime.now());
-            order = orderRepository.save(order);
-            auditTrailService.record(order.getOrderId(), Order.STATUS_REJECTED, result.reason());
-            events.publishEvent(OrderStatusEvent.from(order, instrument));
-            return new Acceptance(order, instrument, false);
+            return rejectedAcceptance(order, instrument, result);
         }
 
         // The rules passed (BR-05). Commit the order as ACCEPTED before anything
@@ -243,11 +337,113 @@ public class OrderService {
         return new Acceptance(order, instrument, true);
     }
 
-    private void recordExecutionFailure(Integer orderId, RuntimeException failure) {
+    /** Locks the caller's profile and the account, proving the caller owns it. */
+    private Account lockOwnedAccount(Integer accountId, UUID callerId) {
+        Account visibleAccount = accountRepository.findById(accountId)
+                .orElseThrow(() -> new AccountNotFoundException("No account " + accountId));
+        if (!visibleAccount.getUserId().equals(callerId)) throw new ForbiddenException("You do not have access to this account");
+        userRepository.findByIdForUpdate(callerId)
+                .orElseThrow(() -> new IllegalStateException("Profile is not registered"));
+        Account account = accountRepository.findByIdForUpdate(accountId)
+                .orElseThrow(() -> new AccountNotFoundException("No account " + accountId));
+        entityManager.refresh(account);
+        if (!account.getUserId().equals(callerId)) {
+            throw new ForbiddenException("You do not have access to this account");
+        }
+        return account;
+    }
+
+    private void requireTradingAllowed(Account account, UUID callerId) {
+        if (!"ACTIVE".equals(account.getStatus())) {
+            throw new ForbiddenException("Archived accounts cannot trade");
+        }
+
+        if (!termsAcceptanceRepository.existsById(
+                new TermsAcceptanceId(callerId, TermsAcceptance.CURRENT_VERSION))) {
+            throw new ForbiddenException("Accept the platform terms before placing an order");
+        }
+    }
+
+    private static Order pendingOrder(OrderRequest request, Account account, Instrument instrument,
+            BigDecimal bufferPercent, app.order.execution.ExecutionQuoteSource.Quote quote) {
+        Order order = new Order();
+        order.setAccountId(account.getAccountId());
+        order.setInstrumentId(instrument.getInstrumentId());
+        order.setClientReference(request.clientReference());
+        order.setOrderType(request.orderType());
+        order.setQuantity(request.quantity());
+        order.setIndicativePrice(request.indicativePrice());
+        order.setBufferPercent(bufferPercent);
+        order.setExecutionType(request.executionType());
+        order.setLimitPrice(request.limitPrice());
+        order.setStopPrice(request.stopPrice());
+        order.setReferencePrice(quote.price());
+        order.setReferenceAt(quote.timestamp());
+        order.setEvaluatedAt(quote.timestamp());
+        order.setSessionId(quote.sessionId());
+        order.setSimulatedAt(quote.timestamp());
+        order.setStatus(Order.STATUS_PENDING);
+        order.setSubmittedAt(OffsetDateTime.now());
+        return order;
+    }
+
+    /** Reserves buying power or shares for a validated order, or rejects it when they are short. */
+    private ValidationResult reserve(ValidationResult validated, Order order, User user, Account account,
+            Instrument instrument, List<Order> reservations) {
+        if (Order.TYPE_BUY.equals(order.getOrderType())) {
+            BigDecimal reservedCash = reservations.stream().map(Order::getReservedCash).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal required = order.getQuantity().multiply(app.order.execution.ExecutionPolicy.reservationPrice(order));
+            if (required.compareTo(user.getAvailableFunds().subtract(reservedCash)) > 0) {
+                return ValidationResult.reject("Insufficient available buying power");
+            }
+            order.setReservedCash(required);
+            return validated;
+        }
+        BigDecimal reservedShares = reservations.stream()
+                .filter(o -> o.getAccountId().equals(account.getAccountId()) && o.getInstrumentId().equals(instrument.getInstrumentId()))
+                .map(Order::getReservedShares).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal held = holdings.findByAccountIdAndInstrumentId(account.getAccountId(), instrument.getInstrumentId())
+                .map(app.holding.Holding::getQuantity).orElse(BigDecimal.ZERO);
+        if (order.getQuantity().compareTo(held.subtract(reservedShares)) > 0) {
+            return ValidationResult.reject("Insufficient available shares");
+        }
+        order.setReservedShares(order.getQuantity());
+        return validated;
+    }
+
+    private Acceptance rejectedAcceptance(Order pending, Instrument instrument, ValidationResult result) {
+        pending.setStatus(Order.STATUS_REJECTED);
+        pending.setRejectionReason(result.reason());
+        pending.setRejectionCode("TRADING_RULE_FAILED");
+        pending.setReservedCash(BigDecimal.ZERO);
+        pending.setReservedShares(BigDecimal.ZERO);
+        pending.setResolvedAt(OffsetDateTime.now());
+        Order rejected = orderRepository.save(pending);
+        auditTrailService.record(rejected.getOrderId(), Order.STATUS_REJECTED, result.reason());
+        events.publishEvent(OrderStatusEvent.from(rejected, instrument));
+        return new Acceptance(rejected, instrument, false);
+    }
+
+    /** Records a rolled-back execution and schedules bounded-backoff retry.
+     * @param orderId failed order
+     * @param failure settlement failure */
+    public void recordExecutionFailure(Integer orderId, RuntimeException failure) {
         String detail = describe(failure);
         try {
-            transactions.executeWithoutResult(status ->
-                    auditTrailService.record(orderId, AUDIT_EXECUTION_FAILED, detail));
+            transactions.executeWithoutResult(status -> {
+                Order visible = orderRepository.findById(orderId).orElseThrow();
+                Account account = accountRepository.findById(visible.getAccountId()).orElseThrow();
+                userRepository.findByIdForUpdate(account.getUserId()).orElseThrow();
+                accountRepository.findByIdForUpdate(account.getAccountId()).orElseThrow();
+                Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow();
+                entityManager.refresh(order);
+                if (!Order.STATUS_ACCEPTED.equals(order.getStatus())) return;
+                int attempts = order.getExecutionAttempts() + 1;
+                order.setExecutionAttempts(attempts);
+                order.setRetryAfter(OffsetDateTime.now().plusSeconds(Math.min(60, 1L << Math.min(attempts, 6))));
+                orderRepository.save(order);
+                auditTrailService.record(orderId, AUDIT_EXECUTION_FAILED, detail);
+            });
         } catch (RuntimeException auditFailure) {
             log.error("Could not record the execution failure of order {}", orderId, auditFailure);
         }
@@ -304,5 +500,33 @@ public class OrderService {
     public List<AuditTrail> getOwnOrderAudit(Integer orderId, UUID userId) {
         Order order = getOwnOrder(orderId, userId);
         return auditTrailRepository.findAllByOrderIdOrderByRecordedAtAscAuditIdAsc(order.getOrderId());
+    }
+    /** Cancels an owned open instruction and releases its reservations atomically.
+     * @param orderId order identifier
+     * @param userId verified owner
+     * @return cancelled order
+     * @throws app.account.AccountNotFoundException if absent or foreign
+     * @throws org.springframework.web.server.ResponseStatusException if already filled or rejected */
+    @Transactional
+    public Order cancel(Integer orderId, UUID userId) {
+        Order visible = getOwnOrder(orderId, userId);
+        userRepository.findByIdForUpdate(userId).orElseThrow();
+        accountRepository.findByIdForUpdate(visible.getAccountId()).orElseThrow();
+        Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow();
+        entityManager.refresh(order);
+        if (Order.STATUS_CANCELLED.equals(order.getStatus())) return order;
+        if (!Order.STATUS_ACCEPTED.equals(order.getStatus())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT, "Only open orders can be cancelled");
+        }
+        order.setStatus(Order.STATUS_CANCELLED);
+        order.setRetryAfter(null);
+        order.setResolvedAt(OffsetDateTime.now());
+        order.setReservedCash(BigDecimal.ZERO);
+        order.setReservedShares(BigDecimal.ZERO);
+        orderRepository.save(order);
+        auditTrailService.record(orderId, Order.STATUS_CANCELLED, "Cancelled by owner");
+        events.publishEvent(OrderStatusEvent.from(order, instrumentRepository.findById(order.getInstrumentId()).orElseThrow()));
+        return order;
     }
 }
