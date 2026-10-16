@@ -43,6 +43,35 @@ def build_lstm(
     return model
 
 
+def build_direction_lstm(
+    lookback: int = config.DIRECTION_LOOKBACK,
+    n_features: int = 1,
+    units: int = config.DIRECTION_UNITS,
+    dropout: float = config.LSTM_DROPOUT,
+    base_rate: float = 0.5,
+    seed: int = config.SEED,
+):
+    """One LSTM layer, dropout, one sigmoid output: the probability tomorrow is up.
+
+    The output bias starts at the training up-rate's log-odds, so an untrained
+    model already quotes the base rate and training only moves away from it
+    when the inputs carry information.
+    """
+    if not 0.0 < base_rate < 1.0:
+        raise ValueError(f"base_rate must be strictly between 0 and 1, got {base_rate}")
+    keras = _keras()
+    keras.utils.set_random_seed(seed)
+    log_odds = float(np.log(base_rate / (1 - base_rate)))
+    model = keras.Sequential([
+        keras.Input(shape=(lookback, n_features)),
+        keras.layers.LSTM(units),
+        keras.layers.Dropout(dropout),
+        keras.layers.Dense(1, activation="sigmoid", bias_initializer=keras.initializers.Constant(log_odds)),
+    ])
+    model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
+    return model
+
+
 def train_lstm(
     model,
     X_train: np.ndarray,
@@ -70,6 +99,11 @@ def predict_returns(model, X: np.ndarray, scalers: Scalers) -> np.ndarray:
     scaled = model.predict(X, verbose=0).reshape(-1, 1)
     # Metrics and scorecard values use ordinary returns, not standardized units.
     return scalers.target.inverse_transform(scaled)[:, 0]
+
+
+def predict_up_probability(model, X: np.ndarray) -> np.ndarray:
+    """The direction model's probability that each next day is up."""
+    return model.predict(X, verbose=0).reshape(-1)
 
 
 def save_artifacts(model, scalers: Scalers, directory: Path = config.MODELS_DIR) -> None:

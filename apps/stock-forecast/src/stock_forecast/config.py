@@ -40,18 +40,29 @@ SEED = 42
 # Indicator windows feed add_indicators(); every column ends at day t's close.
 VOLATILITY_WINDOW = 10
 MOMENTUM_WINDOW = 20
+DIRECTION_FEATURES = ["ret", "spy_ret", "volume_change", "volatility_10", "momentum_20"]
+# Chosen by 0003-train-lstm.py --task direction --sweep on Oct 16: lowest validation log loss.
+DIRECTION_LOOKBACK = 60
+DIRECTION_UNITS = 32
+DIRECTION_THRESHOLD = 0.5  # call "up" when the predicted probability is above this
+# Settings tried by 0003-train-lstm.py --task direction --sweep (validation only).
+DIRECTION_SWEEP_LOOKBACKS = [20, 30, 60]
+DIRECTION_SWEEP_UNITS = [16, 32, 64]
+CONFIDENCE_BUCKETS = 5
 
 # Paths. ROOT is apps/stock-forecast; REPO_ROOT is the trading-season checkout.
 ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = ROOT.parents[1]
 DATA_DIR = ROOT / "data"
 MODELS_DIR = ROOT / "models"
+DIRECTION_MODEL_DIR = MODELS_DIR / "lstm-direction"
 REPORTS_DIR = ROOT / "reports"
 PRICES_CSV = DATA_DIR / "aapl_daily.csv"
 MARKET_CSV = DATA_DIR / "spy_daily.csv"
 RESULTS_CSV = REPORTS_DIR / "results.csv"
 TEST_RESULTS_CSV = REPORTS_DIR / "test_results.csv"
 WALK_FORWARD_CSV = REPORTS_DIR / "walk_forward.csv"
+DIRECTION_RESULTS_CSV = REPORTS_DIR / "direction_results.csv"
 SCORECARD_JSON = REPO_ROOT / "apps" / "client-ui" / "public" / "forecast" / "scorecard.json"
 PRICE_CHART = REPORTS_DIR / "aapl_price.png"
 DAILY_RETURNS_CHART = REPORTS_DIR / "aapl_daily_returns.png"

@@ -88,3 +88,14 @@ def lag_matrix(
     values = rows[column].to_numpy()
     # Reverse each slice so column 0 is the newest return, matching model inputs.
     return np.stack([values[i - lookback + 1 : i + 1][::-1] for i in range(lookback - 1, len(rows))])
+
+
+def direction_labels(
+    part: pd.DataFrame, lookback: int = config.LOOKBACK, history: pd.DataFrame | None = None
+) -> np.ndarray:
+    """1.0 where the next day is up, else 0.0, aligned with make_windows' samples.
+
+    A next-day return of exactly zero counts as not-up, matching
+    evaluate.direction_accuracy.
+    """
+    return (aligned_rows(part, lookback, history)["target"].to_numpy() > 0).astype(float)

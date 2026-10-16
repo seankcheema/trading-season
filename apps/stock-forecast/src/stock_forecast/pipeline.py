@@ -14,12 +14,13 @@ import pandas as pd
 
 from . import config
 from .baselines import always_up, fit_linear, fit_logistic, mean_returns, moving_average_returns, naive_returns
-from .data import Splits, build_dataset, load_prices
-from .evaluate import score
-from .lstm_model import build_lstm, load_artifacts, predict_returns, train_lstm
+from .data import Splits, add_indicators, build_dataset, load_prices
+from .evaluate import direction_metrics, score
+from .lstm_model import (build_direction_lstm, build_lstm, load_artifacts, predict_returns, predict_up_probability,
+                         train_lstm)
 from .var_model import fit_var, one_step_forecasts, select_order
 from .walk_forward import Fold
-from .windows import Scalers, aligned_rows, fit_scalers, lag_matrix, make_windows
+from .windows import Scalers, aligned_rows, direction_labels, fit_scalers, lag_matrix, make_windows
 
 
 @dataclass
@@ -34,6 +35,11 @@ class Prediction:
 def load_dataset() -> pd.DataFrame:
     """Load the saved AAPL and SPY snapshots and build the model dataset."""
     return build_dataset(load_prices(config.PRICES_CSV), load_prices(config.MARKET_CSV))
+
+
+def load_direction_dataset() -> pd.DataFrame:
+    """The model dataset plus the backward-looking indicators the direction models use."""
+    return add_indicators(load_dataset())
 
 
 def classical_predictions(
@@ -121,6 +127,99 @@ def lstm_fold(fold: Fold) -> list[dict]:
     """Walk-forward step for the LSTM."""
     predicted, *_ = lstm_predictions(fold.train, fold.val, fold.test, history=fold.val)
     return [score("LSTM", fold.test["target"].to_numpy(), predicted, split=f"walk-forward {fold.year}")]
+
+
+@dataclass
+class DirectionRun:
+    """One trained direction LSTM and its up-probabilities for the scored split."""
+
+    prob_up: np.ndarray
+    model: object
+    scalers: Scalers
+    loss_history: dict
+    lookback: int
+
+
+def training_up_rate(train: pd.DataFrame) -> float:
+    """Share of up days among the training labels that stay inside the training split."""
+    # The last row's label is the next split's first day, so it is left out.
+    return float((train.iloc[:-1]["target"] > 0).mean())
+
+
+def direction_baselines(
+    train: pd.DataFrame, part: pd.DataFrame, history: pd.DataFrame,
+    feature_cols: tuple[str, ...] = tuple(config.DIRECTION_FEATURES),
+) -> dict[str, np.ndarray]:
+    """Up-probabilities from the simple direction models, for every day of part.
+
+    The base rate is "always up" written as a probability. The two logistic
+    regressions read today's indicator values and the last LOOKBACK returns.
+    """
+    fit_train = train.iloc[:-1]
+    y_up = fit_train["target"].to_numpy() > 0
+    probs = {"Always up (training up-rate)": np.full(len(part), training_up_rate(train))}
+    cols = list(feature_cols)
+    # Today's indicator row needs no history: every column already looks back.
+    indicators = fit_logistic(fit_train[cols].to_numpy(), y_up)
+    probs["Logistic regression (indicators)"] = indicators.predict_proba(part[cols].to_numpy())[:, 1]
+    lags = fit_logistic(lag_matrix(fit_train), aligned_rows(fit_train)["target"].to_numpy() > 0)
+    probs[f"Logistic regression ({config.LOOKBACK} returns)"] = lags.predict_proba(
+        lag_matrix(part, history=history))[:, 1]
+    return probs
+
+
+def direction_lstm_predictions(
+    train: pd.DataFrame,
+    val: pd.DataFrame,
+    part: pd.DataFrame,
+    history: pd.DataFrame,
+    feature_cols: tuple[str, ...] = tuple(config.DIRECTION_FEATURES),
+    lookback: int = config.DIRECTION_LOOKBACK,
+    units: int = config.DIRECTION_UNITS,
+    seed: int = config.SEED,
+    verbose: int = 0,
+) -> DirectionRun:
+    """Train a direction LSTM on train (early stopping on val); predict P(up) for each day of part.
+
+    The final row of train and of val carries a label from the next split, so
+    neither label is fitted or used for early stopping. Those rows still feed
+    the windows as past context, which leaks nothing.
+    """
+    fit_train, stop_val = train.iloc[:-1], val.iloc[:-1]
+    scalers = fit_scalers(fit_train, feature_cols)
+    X_train, _ = make_windows(fit_train, scalers, lookback)
+    y_train = direction_labels(fit_train, lookback)
+    X_val, _ = make_windows(stop_val, scalers, lookback, history=train)
+    y_val = direction_labels(stop_val, lookback, history=train)
+    assert X_train.shape == (len(y_train), lookback, len(feature_cols)), X_train.shape
+    assert X_val.shape == (len(y_val), lookback, len(feature_cols)), X_val.shape
+    model = build_direction_lstm(lookback, len(feature_cols), units, base_rate=float(y_train.mean()), seed=seed)
+    loss_history = train_lstm(model, X_train, y_train, X_val, y_val, verbose=verbose)
+    X_part, _ = make_windows(part, scalers, lookback, history=history)
+    assert len(X_part) == len(part)
+    return DirectionRun(predict_up_probability(model, X_part), model, scalers, loss_history, lookback)
+
+
+def direction_row(name: str, actual: np.ndarray, prob_up: np.ndarray, base_rate: float, split: str) -> dict:
+    """One results row for a direction model, in the results.csv layout plus direction metrics."""
+    return {"model": name, "split": split, "days": int(len(actual)), "return_rmse": None,
+            **direction_metrics(actual, prob_up, base_rate, config.DIRECTION_THRESHOLD)}
+
+
+def direction_fold(fold: Fold, with_lstm: bool = False) -> list[dict]:
+    """Walk-forward step for the direction models.
+
+    The regressions fit on train + val, like classical_fold; the LSTM fits on
+    train and early-stops on val. Brier skill uses one reference per year:
+    the up-rate of everything before the test year.
+    """
+    seen = pd.concat([fold.train, fold.val])
+    probs = direction_baselines(seen, fold.test, history=fold.val)
+    if with_lstm:
+        probs["LSTM direction"] = direction_lstm_predictions(fold.train, fold.val, fold.test, history=fold.val).prob_up
+    actual = fold.test["target"].to_numpy()
+    base_rate = training_up_rate(seen)
+    return [direction_row(name, actual, p, base_rate, f"walk-forward {fold.year}") for name, p in probs.items()]
 
 
 def final_test_prediction(model_key: str, splits: Splits) -> tuple[str, Prediction]:
