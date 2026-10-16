@@ -287,6 +287,24 @@ def plot_up_probability(
     return _save(fig, path)
 
 
+def plot_market_conditions(table: pd.DataFrame, path: Path, title: str) -> Path:
+    """Next-day up-rate after each market condition, one bar per period."""
+    periods = [c for c in table.columns if c.endswith("_up_rate")]
+    fig, ax = plt.subplots(figsize=(9, 0.55 * len(table) + 1.5))
+    height = 0.8 / len(periods)
+    positions = np.arange(len(table))
+    for i, column in enumerate(periods):
+        ax.barh(positions + i * height, table[column] * 100, height=height, label=column.removesuffix("_up_rate"))
+    ax.set_yticks(positions + height * (len(periods) - 1) / 2, table["condition"])
+    ax.invert_yaxis()
+    ax.axvline(50, color="grey", linestyle=":", linewidth=1)
+    ax.set_xlabel("Next-day up-rate (%)")
+    ax.set_xlim(30, 70)
+    ax.set_title(title)
+    ax.legend(fontsize=8)
+    return _save(fig, path)
+
+
 def _save(fig: plt.Figure, path: Path) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
