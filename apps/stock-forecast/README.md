@@ -36,7 +36,9 @@ The direction track is the headline. Each direction model outputs P(up) for the 
 
 Inputs (`DIRECTION_FEATURES`): today's return, SPY's return, volume change, 10-day volatility and 20-day momentum. `data.add_indicators` computes the last two from past rows only and drops the warm-up rows in early 2010. The final training and validation rows carry a label from the next split, so the direction models never fit or early-stop on those labels. Confidence buckets split the scored days into five equal groups by distance from 0.5; accuracy that does not rise with confidence means the probabilities do not tell you which days to trust.
 
-`market-conditions.py` is descriptive: the next-day up-rate after conditions such as a 2% drop or high volatility, in training and validation side by side, with thresholds cut from training rows only. It never reads the test years.
+[reports/README.md](reports/README.md) explains every chart for readers without a machine learning background.
+
+`market-conditions.py` is descriptive: the next-day up-rate and mean next-day return after conditions such as a 2% drop or high volatility, in training and validation side by side, with thresholds cut from training rows only. It also writes the lag 1 to 5 autocorrelation of daily returns, the standard mean-reversion check. It never reads the test years.
 
 ## Data and splits
 
@@ -82,7 +84,7 @@ Run from `apps/stock-forecast` with the virtual environment active.
 | 3 | `python scripts/0005-export-scorecard.py --placeholder` | Placeholder `scorecard.json` for the UI | Once, week 1 |
 | 4 | `python scripts/0002-evaluate-baselines.py` | `reports/results.csv`, direction chart | Week 1, again after changes |
 | 5 | `python scripts/0003-train-lstm.py` | `models/`, `reports/results.csv`, loss and lag charts | Week 2 |
-| 6 | `python scripts/market-conditions.py` | `reports/market_conditions.csv` and `.png` | Week 3 |
+| 6 | `python scripts/market-conditions.py` | `reports/market_conditions.csv` and `.png`, `reports/return_autocorrelation.csv` | Week 3 |
 | 7 | `python scripts/0003-train-lstm.py --task direction --sweep` | `models/lstm-direction/`, `reports/direction_results.csv`, confidence, probability and loss charts | Week 3 |
 | 8 | `python scripts/0004-walk-forward.py --with-lstm --with-direction-lstm` | `reports/walk_forward.csv`, chart | Week 3 |
 | 9 | `python scripts/0005-export-scorecard.py --model lstm-direction` | `reports/test_results.csv`, `reports/test_direction_results.csv`, test confidence charts, real `scorecard.json` | Once, Oct 22, after the final review |

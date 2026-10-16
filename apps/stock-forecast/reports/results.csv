@@ -48,3 +48,7 @@ logged_at,run,model,split,days,return_rmse,direction_accuracy
 2026-10-16T13:51:34+00:00,lstm-direction,Logistic regression (indicators),validation,501,,0.48502994011976047
 2026-10-16T13:51:34+00:00,lstm-direction,Logistic regression (30 returns),validation,501,,0.48502994011976047
 2026-10-16T13:51:34+00:00,lstm-direction,"LSTM direction (ret, spy_ret, volume_change, volatility_10, momentum_20; 60-day window, 32 units)",validation,501,,0.5528942115768463
+2026-10-16T15:15:44+00:00,lstm-direction,Always up (training up-rate),validation,501,,0.5129740518962076
+2026-10-16T15:15:44+00:00,lstm-direction,Logistic regression (indicators),validation,501,,0.48502994011976047
+2026-10-16T15:15:44+00:00,lstm-direction,Logistic regression (30 returns),validation,501,,0.48502994011976047
+2026-10-16T15:15:44+00:00,lstm-direction,"LSTM direction (ret, spy_ret, volume_change, volatility_10, momentum_20; 60-day window, 32 units)",validation,501,,0.5528942115768463

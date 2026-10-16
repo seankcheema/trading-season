@@ -95,7 +95,7 @@ def train_direction_model(features: list[str]) -> None:
                     "LSTM direction: accuracy by confidence, validation 2022-2023")
     plot_up_probability(splits.val.index, best.prob_up, actual, config.REPORTS_DIR / "direction_probability.png",
                         "LSTM direction: predicted vs actual up-days, validation 2022-2023")
-    plot_loss(best.loss_history, config.REPORTS_DIR / "lstm_direction_loss.png")
+    plot_loss(best.loss_history, config.REPORTS_DIR / "lstm_direction_loss.png", ylabel="Log loss (binary cross-entropy)")
 
     pd.set_option("display.width", 160)
     shown = ["model", "direction_accuracy", "balanced_accuracy", "up_call_rate", "auc", "brier_skill", "log_loss"]

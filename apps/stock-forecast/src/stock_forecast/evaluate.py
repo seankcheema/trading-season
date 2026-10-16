@@ -229,24 +229,42 @@ def plot_direction_accuracy(table: pd.DataFrame, always_up_rate: float, path: Pa
     return _save(fig, path)
 
 
-def plot_loss(history: dict, path: Path) -> Path:
+def plot_loss(history: dict, path: Path, ylabel: str = "Mean squared error (scaled)") -> Path:
     """Training vs validation loss by epoch. Diverging lines mean memorising."""
     fig, ax = plt.subplots(figsize=(8, 4))
     ax.plot(history["loss"], label="Training loss")
     ax.plot(history["val_loss"], label="Validation loss")
     ax.set_xlabel("Epoch")
-    ax.set_ylabel("Mean squared error (scaled)")
+    ax.set_ylabel(ylabel)
     ax.legend()
     return _save(fig, path)
 
 
-def plot_walk_forward(table: pd.DataFrame, path: Path) -> Path:
-    """Direction accuracy per test year, one line per model."""
+def plot_walk_forward(
+    table: pd.DataFrame, path: Path, highlight: tuple[str, ...] = ("LSTM direction", "LSTM")
+) -> Path:
+    """Direction accuracy per test year: always-up as the bar to clear, highlighted models in colour.
+
+    Every other model is drawn thin and grey, so the comparison that matters
+    stays readable while the rest remain visible for context.
+    """
     fig, ax = plt.subplots(figsize=(9, 4.5))
-    for model, rows in table.dropna(subset=["direction_accuracy"]).groupby("model"):
-        ax.plot(rows["year"], rows["direction_accuracy"] * 100, marker="o", label=model)
+    scored = table.dropna(subset=["direction_accuracy"])
+    for model, rows in scored.groupby("model"):
+        if model not in highlight:
+            ax.plot(rows["year"], rows["direction_accuracy"] * 100, color="lightgrey", linewidth=1, zorder=1)
+    if "always_up_rate" in table:
+        years = table.groupby("year")["always_up_rate"].first()
+        ax.plot(years.index, years * 100, color="black", linestyle="--", linewidth=2, marker="s",
+                label="Always up (bar to clear)", zorder=2)
+    for model in highlight:
+        rows = scored[scored["model"] == model]
+        if not rows.empty:
+            ax.plot(rows["year"], rows["direction_accuracy"] * 100, marker="o", linewidth=2, label=model, zorder=3)
+    ax.plot([], [], color="lightgrey", linewidth=1, label="Other baselines")
     ax.set_xlabel("Test year")
     ax.set_ylabel("Direction accuracy (%)")
+    ax.set_title("Walk-forward: direction accuracy per test year")
     ax.legend(fontsize=8)
     return _save(fig, path)
 
@@ -288,20 +306,32 @@ def plot_up_probability(
 
 
 def plot_market_conditions(table: pd.DataFrame, path: Path, title: str) -> Path:
-    """Next-day up-rate after each market condition, one bar per period."""
-    periods = [c for c in table.columns if c.endswith("_up_rate")]
+    """Next-day up-rate after each market condition, one bar per period.
+
+    Each period's dashed line is its "Every day" up-rate: the normal rate a
+    condition has to differ from. Error bars span one standard error, so a
+    bar whose error bar crosses its dashed line is within ordinary noise.
+    """
+    periods = [c.removesuffix("_up_rate") for c in table.columns if c.endswith("_up_rate")]
+    baseline = table.set_index("condition").loc["Every day"]
     fig, ax = plt.subplots(figsize=(9, 0.55 * len(table) + 1.5))
     height = 0.8 / len(periods)
     positions = np.arange(len(table))
-    for i, column in enumerate(periods):
-        ax.barh(positions + i * height, table[column] * 100, height=height, label=column.removesuffix("_up_rate"))
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    for i, period in enumerate(periods):
+        rate, days = table[f"{period}_up_rate"], table[f"{period}_days"]
+        # Standard error of a share: sqrt(p(1 - p) / n), in percentage points.
+        error = np.sqrt(rate * (1 - rate) / days.where(days > 0)) * 100
+        ax.barh(positions + i * height, rate * 100, height=height, xerr=error, capsize=2,
+                color=colors[i], error_kw={"elinewidth": 0.8, "ecolor": "black"},
+                label=f"{period} (every day: {baseline[f'{period}_up_rate']:.1%})")
+        ax.axvline(baseline[f"{period}_up_rate"] * 100, color=colors[i], linestyle="--", linewidth=1)
     ax.set_yticks(positions + height * (len(periods) - 1) / 2, table["condition"])
     ax.invert_yaxis()
-    ax.axvline(50, color="grey", linestyle=":", linewidth=1)
-    ax.set_xlabel("Next-day up-rate (%)")
+    ax.set_xlabel("Next-day up-rate (%); error bars = 1 standard error")
     ax.set_xlim(30, 70)
     ax.set_title(title)
-    ax.legend(fontsize=8)
+    ax.legend(fontsize=8, title="Dashed line = normal up-rate", title_fontsize=8)
     return _save(fig, path)
 
 

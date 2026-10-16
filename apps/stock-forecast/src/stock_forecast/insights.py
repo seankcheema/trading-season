@@ -40,7 +40,10 @@ def condition_rules(train: pd.DataFrame) -> dict[str, Condition]:
 
 
 def market_conditions(train: pd.DataFrame, periods: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """One row per condition: matching days and next-day up-rate in each period.
+    """One row per condition: matching days, next-day up-rate and mean next-day return in each period.
+
+    The up-rate counts days; the mean return also weighs how big the moves
+    were, which is what mean reversion is about.
 
     `periods` maps a label to a split, e.g. {"train": train, "validation": val}.
     Pass the test split only after the final test has been run.
@@ -50,8 +53,36 @@ def market_conditions(train: pd.DataFrame, periods: dict[str, pd.DataFrame]) -> 
         row: dict = {"condition": name}
         for label, part in periods.items():
             mask = rule(part).to_numpy()
-            up = part["target"].to_numpy()[mask] > 0
+            next_returns = part["target"].to_numpy()[mask]
             row[f"{label}_days"] = int(mask.sum())
-            row[f"{label}_up_rate"] = float(up.mean()) if mask.any() else np.nan
+            row[f"{label}_up_rate"] = float((next_returns > 0).mean()) if mask.any() else np.nan
+            row[f"{label}_mean_return"] = float(next_returns.mean()) if mask.any() else np.nan
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def return_autocorrelation(periods: dict[str, pd.DataFrame], lags: range = range(1, 6)) -> pd.DataFrame:
+    """Correlation between each day's return and the return `lag` days later, per period.
+
+    Negative values mean moves tend to partly reverse (mean reversion);
+    positive values mean they tend to continue (momentum). Under no
+    relationship, values fall within about two standard errors of zero,
+    where one standard error is roughly 1 / sqrt(days).
+    """
+    rows = []
+    for label, part in periods.items():
+        returns = part["ret"]
+        for lag in lags:
+            # Descriptive only, never a model input. Both series come from the same split,
+            # so no return from a later split is paired in.
+            pairs = pd.concat([returns, returns.shift(-lag)], axis=1).dropna()
+            rows.append({
+                "period": label,
+                "lag_days": lag,
+                "days": len(pairs),
+                "autocorrelation": float(pairs.iloc[:, 0].corr(pairs.iloc[:, 1])),
+                "standard_error": float(1 / np.sqrt(len(pairs))),
+            })
+    table = pd.DataFrame(rows)
+    table["beyond_noise"] = table["autocorrelation"].abs() > 2 * table["standard_error"]
+    return table
