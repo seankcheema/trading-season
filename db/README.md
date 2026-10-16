@@ -13,6 +13,7 @@ The Reporting Service does not connect to it. What reporting shows is published 
 | [V009__Add_terms_acceptances.sql](migrations/V009__Add_terms_acceptances.sql) | `terms_acceptances`: one row per client and version of the platform terms they accepted |
 | [V009__Analyst_role.sql](migrations/V009__Analyst_role.sql) | Allows `ANALYST` in `user_accounts.user_role`, the role the Reporting Service serves its report runs to; `ADMIN`, allowed since V001, is served the console as well |
 | [V012__Instrument_price_links.sql](migrations/V012__Instrument_price_links.sql) | Lets an instrument of any class link to its simulated price series through `instruments.simulated_stock_symbol`; V001 allowed the link for US equities only, so FX, crypto and UK or Indian equities could not be priced (BR-12). Numbered after the V010 and V011 that the permanent trade record work (DUA-68) adds |
+| [V013__Cash_transaction_client_reference.sql](migrations/V013__Cash_transaction_client_reference.sql) | `cash_transactions.client_reference`, unique when present: the key a client sends with a deposit or withdrawal so a retry posts once (BR-10, section 9.1). Order fills and older rows keep it null |
 
 In Docker, `db-init` runs [infrastructure/docker/init-db.sh](../infrastructure/docker/init-db.sh), which applies each file once and records it in `public.schema_migrations`. For a local PostgreSQL, apply the files in order with `psql -v ON_ERROR_STOP=1 -f`. Never edit an applied migration; add a new one.
 
@@ -260,6 +261,7 @@ erDiagram
         INTEGER fill_id FK
         NUMERIC amount
         TEXT reason
+        UUID client_reference UK
     }
     holding_movements {
         INTEGER holding_movement_id PK
