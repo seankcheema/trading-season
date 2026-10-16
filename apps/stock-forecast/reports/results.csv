@@ -14,3 +14,37 @@ logged_at,run,model,split,days,return_rmse,direction_accuracy
 2026-10-12T20:54:16+00:00,baselines,30-day average return,validation,501,0.018714082074756038,0.46706586826347307
 2026-10-12T20:54:16+00:00,baselines,Linear regression,validation,501,0.018439632603286456,0.5249500998003992
 2026-10-12T20:54:16+00:00,baselines,Logistic regression,validation,501,,0.4810379241516966
+2026-10-12T21:27:54+00:00,baselines,Naive (return = 0),validation,501,0.018351559034822263,
+2026-10-12T21:27:54+00:00,baselines,Always up,validation,501,,0.5129740518962076
+2026-10-12T21:27:54+00:00,baselines,Training-average return,validation,501,0.018378386353659383,0.5129740518962076
+2026-10-12T21:27:54+00:00,baselines,30-day average return,validation,501,0.018714082074756038,0.46706586826347307
+2026-10-12T21:27:54+00:00,baselines,Linear regression,validation,501,0.018439632603286456,0.5249500998003992
+2026-10-12T21:27:54+00:00,baselines,Logistic regression,validation,501,,0.4810379241516966
+2026-10-16T13:50:07+00:00,lstm-direction sweep,Always up (training up-rate),validation,501,,0.5129740518962076
+2026-10-16T13:50:07+00:00,lstm-direction sweep,Logistic regression (indicators),validation,501,,0.48502994011976047
+2026-10-16T13:50:07+00:00,lstm-direction sweep,Logistic regression (30 returns),validation,501,,0.48502994011976047
+2026-10-16T13:50:07+00:00,lstm-direction sweep,"LSTM direction (ret, spy_ret, volume_change, volatility_10, momentum_20; 20-day window, 16 units)",validation,501,,0.5029940119760479
+2026-10-16T13:50:07+00:00,lstm-direction sweep,"LSTM direction (ret, spy_ret, volume_change, volatility_10, momentum_20; 20-day window, 32 units)",validation,501,,0.5069860279441117
+2026-10-16T13:50:07+00:00,lstm-direction sweep,"LSTM direction (ret, spy_ret, volume_change, volatility_10, momentum_20; 20-day window, 64 units)",validation,501,,0.5069860279441117
+2026-10-16T13:50:07+00:00,lstm-direction sweep,"LSTM direction (ret, spy_ret, volume_change, volatility_10, momentum_20; 30-day window, 16 units)",validation,501,,0.5289421157684631
+2026-10-16T13:50:07+00:00,lstm-direction sweep,"LSTM direction (ret, spy_ret, volume_change, volatility_10, momentum_20; 30-day window, 32 units)",validation,501,,0.5209580838323353
+2026-10-16T13:50:07+00:00,lstm-direction sweep,"LSTM direction (ret, spy_ret, volume_change, volatility_10, momentum_20; 30-day window, 64 units)",validation,501,,0.5109780439121756
+2026-10-16T13:50:07+00:00,lstm-direction sweep,"LSTM direction (ret, spy_ret, volume_change, volatility_10, momentum_20; 60-day window, 16 units)",validation,501,,0.5249500998003992
+2026-10-16T13:50:07+00:00,lstm-direction sweep,"LSTM direction (ret, spy_ret, volume_change, volatility_10, momentum_20; 60-day window, 32 units)",validation,501,,0.5528942115768463
+2026-10-16T13:50:07+00:00,lstm-direction sweep,"LSTM direction (ret, spy_ret, volume_change, volatility_10, momentum_20; 60-day window, 64 units)",validation,501,,0.530938123752495
+2026-10-16T13:50:35+00:00,lstm-direction,Always up (training up-rate),validation,501,,0.5129740518962076
+2026-10-16T13:50:35+00:00,lstm-direction,Logistic regression (indicators),validation,501,,0.48502994011976047
+2026-10-16T13:50:35+00:00,lstm-direction,Logistic regression (30 returns),validation,501,,0.48502994011976047
+2026-10-16T13:50:35+00:00,lstm-direction,"LSTM direction (ret, spy_ret, volume_change, volatility_10, momentum_20; 60-day window, 32 units, seed 1)",validation,501,,0.5329341317365269
+2026-10-16T13:51:00+00:00,lstm-direction,Always up (training up-rate),validation,501,,0.5129740518962076
+2026-10-16T13:51:00+00:00,lstm-direction,Logistic regression (indicators),validation,501,,0.48502994011976047
+2026-10-16T13:51:00+00:00,lstm-direction,Logistic regression (30 returns),validation,501,,0.48502994011976047
+2026-10-16T13:51:00+00:00,lstm-direction,"LSTM direction (ret, spy_ret, volume_change, volatility_10, momentum_20; 60-day window, 32 units, seed 2)",validation,501,,0.5229540918163673
+2026-10-16T13:51:20+00:00,lstm-direction,Always up (training up-rate),validation,501,,0.5129740518962076
+2026-10-16T13:51:20+00:00,lstm-direction,Logistic regression (indicators),validation,501,,0.48502994011976047
+2026-10-16T13:51:20+00:00,lstm-direction,Logistic regression (30 returns),validation,501,,0.48502994011976047
+2026-10-16T13:51:20+00:00,lstm-direction,"LSTM direction (ret, spy_ret, volume_change, volatility_10, momentum_20; 60-day window, 32 units, seed 3)",validation,501,,0.5289421157684631
+2026-10-16T13:51:34+00:00,lstm-direction,Always up (training up-rate),validation,501,,0.5129740518962076
+2026-10-16T13:51:34+00:00,lstm-direction,Logistic regression (indicators),validation,501,,0.48502994011976047
+2026-10-16T13:51:34+00:00,lstm-direction,Logistic regression (30 returns),validation,501,,0.48502994011976047
+2026-10-16T13:51:34+00:00,lstm-direction,"LSTM direction (ret, spy_ret, volume_change, volatility_10, momentum_20; 60-day window, 32 units)",validation,501,,0.5528942115768463

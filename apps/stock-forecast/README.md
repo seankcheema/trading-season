@@ -1,6 +1,6 @@
 # Stock Forecast
 
-Offline Python pipeline that forecasts AAPL's next-day return and checks whether any model beats simple baselines. It trains on real daily prices from Yahoo Finance, not on the platform's synthetic market data, and it is not deployed. It prepares `apps/client-ui/public/forecast/scorecard.json` as the placeholder contract for planned market-page Trend card work; the UI does not consume it yet.
+Offline Python pipeline that forecasts whether AAPL's next trading day is up or down (and, as a secondary track, its next-day return) and checks whether any model beats simple baselines. It trains on real daily prices from Yahoo Finance, not on the platform's synthetic market data, and it is not deployed. It prepares `apps/client-ui/public/forecast/scorecard.json` as the placeholder contract for planned market-page Trend card work; the UI does not consume it yet.
 
 ## Models compared
 
@@ -16,6 +16,27 @@ Every model is scored on the same days with the same metrics.
 | Logistic regression | Up or down, from the last 30 returns | `baselines.py` |
 | VAR(p) | Return, jointly with SPY's return and AAPL's volume change, p chosen by AIC | `var_model.py` |
 | LSTM | Return, from 30-day windows of one or more columns | `lstm_model.py` |
+| Always up (training up-rate) | The training up-share as a probability, every day | `pipeline.py` |
+| Logistic regression (indicators) | Probability of an up day, from today's indicator values | `pipeline.py` |
+| Logistic regression (30 returns) | Probability of an up day, from the last 30 returns | `pipeline.py` |
+| LSTM direction | Probability of an up day, from windows of the direction features | `lstm_model.py` |
+
+## Direction models
+
+The direction track is the headline. Each direction model outputs P(up) for the next day and calls "up" when it is above `DIRECTION_THRESHOLD` (0.5). Accuracy alone flatters a model that calls "up" nearly every day, so each run also reports:
+
+| Metric | Meaning | No-skill value |
+| --- | --- | --- |
+| `direction_accuracy` | Share of days called correctly | The always-up rate on the same days |
+| `balanced_accuracy` | Mean of the up-day and down-day hit rates | 0.5 |
+| `up_call_rate` | Share of days called "up" | Near 1.0 means the model collapsed into always-up |
+| `auc` | Chance an up day got a higher probability than a down day | 0.5 |
+| `brier_skill` | Improvement in squared probability error over quoting the training up-rate | 0 or below |
+| `log_loss` | Cross-entropy of the probabilities; used to choose settings | The base rate's log loss |
+
+Inputs (`DIRECTION_FEATURES`): today's return, SPY's return, volume change, 10-day volatility and 20-day momentum. `data.add_indicators` computes the last two from past rows only and drops the warm-up rows in early 2010. The final training and validation rows carry a label from the next split, so the direction models never fit or early-stop on those labels. Confidence buckets split the scored days into five equal groups by distance from 0.5; accuracy that does not rise with confidence means the probabilities do not tell you which days to trust.
+
+`market-conditions.py` is descriptive: the next-day up-rate after conditions such as a 2% drop or high volatility, in training and validation side by side, with thresholds cut from training rows only. It never reads the test years.
 
 ## Data and splits
 
@@ -61,10 +82,12 @@ Run from `apps/stock-forecast` with the virtual environment active.
 | 3 | `python scripts/0005-export-scorecard.py --placeholder` | Placeholder `scorecard.json` for the UI | Once, week 1 |
 | 4 | `python scripts/0002-evaluate-baselines.py` | `reports/results.csv`, direction chart | Week 1, again after changes |
 | 5 | `python scripts/0003-train-lstm.py` | `models/`, `reports/results.csv`, loss and lag charts | Week 2 |
-| 6 | `python scripts/0004-walk-forward.py --with-lstm` | `reports/walk_forward.csv`, chart | Week 3 |
-| 7 | `python scripts/0005-export-scorecard.py --model lstm` | `reports/test_results.csv`, real `scorecard.json` | Once, Oct 22 |
+| 6 | `python scripts/market-conditions.py` | `reports/market_conditions.csv` and `.png` | Week 3 |
+| 7 | `python scripts/0003-train-lstm.py --task direction --sweep` | `models/lstm-direction/`, `reports/direction_results.csv`, confidence, probability and loss charts | Week 3 |
+| 8 | `python scripts/0004-walk-forward.py --with-lstm --with-direction-lstm` | `reports/walk_forward.csv`, chart | Week 3 |
+| 9 | `python scripts/0005-export-scorecard.py --model lstm-direction` | `reports/test_results.csv`, `reports/test_direction_results.csv`, test confidence charts, real `scorecard.json` | Once, Oct 22, after the final review |
 
-`0003-train-lstm.py --features ret spy_ret volume_change` trains on several columns. `0005` accepts `--model lstm`, `var` or `linear`, and refuses to rerun the test unless given `--force`.
+`0003-train-lstm.py --features ret spy_ret volume_change` trains the return LSTM on several columns. With `--task direction`, `--sweep` tries every `DIRECTION_SWEEP_LOOKBACKS` and `DIRECTION_SWEEP_UNITS` pair on validation and saves the lowest-log-loss run; without it, `--lookback`, `--units` and `--seed` train one model (use `--seed` to check that a result is not one lucky initialisation). Copy the chosen settings into `DIRECTION_LOOKBACK` and `DIRECTION_UNITS`, which walk-forward uses. `0005` accepts `--model lstm-direction`, `lstm`, `var` or `linear`, and refuses to rerun the test unless given `--force`.
 
 `0002-evaluate-baselines.py` scores six forecasts on the same 2022-2023
 validation dates: zero return, always up, 30-day average, training average,
@@ -103,4 +126,4 @@ The order is chosen by AIC on the training years only. Volume changes are strong
 - Tune on validation. Run the test once. Every run is appended to `reports/results.csv`, good or bad.
 - No fallbacks that invent data or predictions: a failed download or missing package stops the run.
 - `data/` and `reports/` are committed; `models/` is not (the scripts rebuild it).
-- `scorecard.py` defines the fields for the planned UI contract. Coordinate field changes with the client UI when its scorecard service and API documentation are added.
+- `scorecard.py` defines the fields for the planned UI contract. `modelReturnRmse` is `null` for a direction-only model. Coordinate field changes with the client UI when its scorecard service and API documentation are added.
