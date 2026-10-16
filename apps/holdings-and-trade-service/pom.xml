@@ -19,6 +19,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <test.tags></test.tags>
         <jacoco.version>0.8.15</jacoco.version>
+        <!-- Source shared with the other Java service; see packages/trading-java-common -->
+        <shared.directory>${project.basedir}/../../packages/trading-java-common</shared.directory>
         <!-- Minimum coverage for every JaCoCo counter in every package -->
         <coverage.minimum>0.85</coverage.minimum>
     </properties>
@@ -112,6 +114,39 @@
     <build>
         <finalName>holdings-and-trade-service</finalName>
         <plugins>
+            <plugin>
+                <!-- Compiles and tests the classes both Java services share from
+                     packages/trading-java-common alongside this service's own. -->
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <id>add-shared-sources</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${shared.directory}/src/main/java</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>add-shared-tests</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>add-test-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${shared.directory}/src/test/java</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
