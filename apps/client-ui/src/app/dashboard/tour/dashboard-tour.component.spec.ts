@@ -140,6 +140,9 @@ describe('DashboardTourComponent', () => {
   it('moves with the arrow keys and ignores them with a modifier', async () => {
     await render();
 
+    await press('a');
+    expect(title()).toBe('Welcome to TradingSeason');
+
     await press('ArrowRight');
     await press('ArrowRight');
     expect(title()).toBe('Your money');

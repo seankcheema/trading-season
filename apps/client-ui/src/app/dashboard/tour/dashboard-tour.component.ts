@@ -386,6 +386,8 @@ export class DashboardTourComponent implements OnDestroy {
         event.preventDefault();
         this.back();
         break;
+      default:
+        break;
     }
   }
 
