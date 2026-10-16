@@ -60,7 +60,7 @@ public class OrderController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = &quot;Submit an order&quot;, description = &quot;Submits a buy or sell order and returns its outcome: &quot;
-            + &quot;FILLED, REJECTED, or ACCEPTED when the order was accepted but its execution failed and it stays on record. &quot;
+            + &quot;FILLED, REJECTED, or ACCEPTED while conditions are unmet or settlement is retryable. &quot;
             + &quot;Each committed status change is also published to the Kafka topic trade-events and pushed to the caller's &quot;
             + &quot;open GET /api/orders/stream connections.&quot;)
     public OrderResponse submitOrder(@Valid @RequestBody OrderRequest request,
@@ -105,5 +105,34 @@ public class OrderController {
 <span class="fc" id="L105">                .map(entry -&gt; OrderAuditEntryResponse.from(entry, order.getIndicativePrice()))</span>
 <span class="fc" id="L106">                .toList();</span>
     }
+    /** Reads one owned instruction.
+     * @param orderId order identifier
+     * @param jwt verified caller
+     * @return current order */
+    @GetMapping(&quot;/{orderId}&quot;)
+    @Operation(summary = &quot;Get an owned order&quot;)
+    public OrderResponse getOrder(@PathVariable Integer orderId, @AuthenticationPrincipal Jwt jwt) {
+<span class="nc" id="L115">        return OrderResponse.from(orderService.getOwnOrder(orderId, AuthenticatedUser.from(jwt).userId()));</span>
+    }
+    /** Cancels an owned open instruction.
+     * @param orderId order identifier
+     * @param jwt verified caller
+     * @return cancelled order */
+    @PostMapping(&quot;/{orderId}/cancel&quot;)
+    @Operation(summary = &quot;Cancel an open order&quot;)
+    public OrderResponse cancel(@PathVariable Integer orderId, @AuthenticationPrincipal Jwt jwt) {
+<span class="nc" id="L124">        return OrderResponse.from(orderService.cancel(orderId, AuthenticatedUser.from(jwt).userId()));</span>
+    }    /** Replaces an owned open order without losing it on validation failure.
+     * @param orderId original order
+     * @param request validated replacement instruction
+     * @param jwt verified caller
+     * @return replacement outcome */
+    @PostMapping(&quot;/{orderId}/replace&quot;)
+    @Operation(summary = &quot;Edit an open order by atomic replacement&quot;)
+    public OrderResponse replace(@PathVariable Integer orderId, @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody OrderRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+<span class="nc" id="L134">        return OrderResponse.from(orderService.replace(orderId, request, AuthenticatedUser.from(jwt).userId()));</span>
+    }
+
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

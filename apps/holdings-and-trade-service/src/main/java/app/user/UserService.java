@@ -21,6 +21,8 @@ public class UserService extends UserLookupService {
      */
     public static final String CURRENT_TERMS_VERSION = "2026-10-12";
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private app.account.AccountRepository accounts;
     private final TermsAcceptanceRepository termsAcceptanceRepository;
 
     /**
@@ -35,6 +37,23 @@ public class UserService extends UserLookupService {
                        TermsAcceptanceRepository termsAcceptanceRepository) {
         super(userRepository, userAccountRepository);
         this.termsAcceptanceRepository = termsAcceptanceRepository;
+    }
+
+    /**
+     * Loads the account belonging to the given user. Callers pass the id from the
+     * verified token, never an id supplied in the request, so a client can only
+     * read its own account. Includes cash reserved by open buy orders.
+     *
+     * @param userId the caller's user id from the token's sub claim
+     * @return the caller's account
+     * @throws UserNotFoundException if the caller has not registered a business account
+     */
+    @Transactional(readOnly = true)
+    public User getOwnAccount(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("Account is not registered"));
+        user.setReservedCash(java.util.Objects.requireNonNullElse(accounts.reservedCash(userId), java.math.BigDecimal.ZERO));
+        return user;
     }
 
     /**
@@ -76,5 +95,18 @@ public class UserService extends UserLookupService {
         if (!termsAcceptanceRepository.existsById(id)) {
             termsAcceptanceRepository.save(new TermsAcceptance(userId, termsVersion, OffsetDateTime.now()));
         }
+    }
+    /** Saves the authenticated owner's trading preference under the cash/profile lock.
+     * @param userId verified owner
+     * @param settings validated percentage
+     * @return persisted preference
+     * @throws UserNotFoundException if the profile does not exist */
+    @Transactional
+    public ExecutionSettings saveExecutionSettings(UUID userId, ExecutionSettings settings) {
+        User user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new UserNotFoundException("Account is not registered"));
+        user.setExecutionBufferPercent(settings.executionBufferPercent());
+        userRepository.save(user);
+        return new ExecutionSettings(user.getExecutionBufferPercent());
     }
 }

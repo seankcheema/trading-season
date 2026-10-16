@@ -21,6 +21,8 @@ import java.time.OffsetDateTime;
  * @param name         the instrument's name
  * @param quantity     the quantity held
  * @param averageCost  average price paid per share, or zero when unknown
+ * @param reservedShares shares reserved by open SELL orders
+ * @param availableQuantity shares available for new SELL orders
  * @param updatedAt    when the holding was last updated
  */
 public record HoldingResponse(
@@ -31,7 +33,9 @@ public record HoldingResponse(
         String name,
         BigDecimal quantity,
         BigDecimal averageCost,
-        OffsetDateTime updatedAt
+        OffsetDateTime updatedAt,
+        BigDecimal reservedShares,
+        BigDecimal availableQuantity
 ) {
 
     /**
@@ -53,7 +57,9 @@ public record HoldingResponse(
                 instrument != null ? instrument.getName() : null,
                 holding.getQuantity(),
                 averageCost != null ? averageCost : BigDecimal.ZERO,
-                holding.getUpdatedAt()
+                holding.getUpdatedAt(),
+                holding.getReservedShares(),
+                holding.getQuantity().subtract(holding.getReservedShares())
         );
     }
 }

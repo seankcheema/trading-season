@@ -50,6 +50,7 @@ class OrderExecutionServiceTest {
     private final AuditTrailService auditTrailService = mock(AuditTrailService.class);
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
 
+    private final ExecutionQuoteSource quotes = mock(ExecutionQuoteSource.class);
     private OrderExecutionService service;
     private Account account;
     private User user;
@@ -58,6 +59,11 @@ class OrderExecutionServiceTest {
     void setUp() {
         service = new OrderExecutionService(accountRepository, userRepository, holdingRepository, orderRepository,
                 fillRepository, cashTransactionRepository, holdingMovementRepository, auditTrailService, events);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "quotes", quotes);
+        var credentials = mock(app.user.UserAccountRepository.class);
+        when(credentials.findById(USER_ID)).thenReturn(Optional.of(mock(app.user.UserAccount.class)));
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "credentials", credentials);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "entityManager", mock(jakarta.persistence.EntityManager.class));
         account = new Account();
         account.setId(ACCOUNT_ID);
         account.setUserId(USER_ID);
@@ -65,6 +71,7 @@ class OrderExecutionServiceTest {
         user = new User();
         user.setUserId(USER_ID);
         user.setAvailableFunds(new BigDecimal("1000.00"));
+        when(accountRepository.findByIdForUpdate(ACCOUNT_ID)).thenReturn(Optional.of(account));
         when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account));
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
         when(holdingRepository.findByAccountIdAndInstrumentIdForUpdate(ACCOUNT_ID, INSTRUMENT_ID))
@@ -232,7 +239,7 @@ class OrderExecutionServiceTest {
         verify(auditTrailService).record(result.getOrderId(), Order.STATUS_REJECTED, reason);
     }
 
-    private static Order order(String type, String quantity, String price) {
+    private Order order(String type, String quantity, String price) {
         Order order = new Order();
         order.setOrderId(500);
         order.setAccountId(ACCOUNT_ID);
@@ -240,7 +247,14 @@ class OrderExecutionServiceTest {
         order.setOrderType(type);
         order.setQuantity(new BigDecimal(quantity));
         order.setIndicativePrice(new BigDecimal(price));
-        order.setStatus(Order.STATUS_PENDING);
+        order.setStatus(Order.STATUS_ACCEPTED);
+        order.setReferencePrice(new BigDecimal(price));
+        order.setBufferPercent(BigDecimal.ONE);
+        order.setSessionId(1L);
+        order.setReferenceAt(java.time.OffsetDateTime.parse("2026-01-05T15:00:00Z"));
+        when(orderRepository.findById(500)).thenReturn(Optional.of(order));
+        when(orderRepository.findByIdForUpdate(500)).thenReturn(Optional.of(order));
+        when(quotes.current(any(), any())).thenReturn(new ExecutionQuoteSource.Quote(new BigDecimal(price), 1L, order.getReferenceAt()));
         return order;
     }
 

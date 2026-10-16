@@ -13,28 +13,56 @@ import java.time.OffsetDateTime;
  * @param orderId          the created order's id
  * @param accountId        owned account, for projecting its simulated positions
  * @param instrumentId     instrument traded, for matching execution history to the catalogue
- * @param status           PENDING, FILLED, or REJECTED (KAN-93); a response
- *                         to a submission is always FILLED or REJECTED
+ * @param status           validation, open, filled, rejected or cancelled lifecycle state
  * @param orderType        BUY or SELL
  * @param quantity         units requested
  * @param indicativePrice  the price the client submitted with the order
- * @param rejectionReason  set only when status is REJECTED
+ * @param bufferPercent    the owner's saved execution buffer snapshotted at acceptance
+ * @param rejectionReason  rejection or cancellation explanation, or null when none applies
  * @param submittedAt      when the order was received
  * @param simulatedAt      selected replay time, or null when real execution time should be displayed
  * @param resolvedAt       when the order reached a final status, if it has
+ * @param executionType Market, Limit, Stop or Stop-Limit condition
+ * @param limitPrice immutable limit price for Limit and Stop-Limit orders, otherwise null
+ * @param stopPrice immutable activation price for Stop and Stop-Limit orders, otherwise null
+ * @param referencePrice authoritative submission quote, null for legacy orders
+ * @param referenceAt simulated submission quote position, null for legacy orders
+ * @param sessionId immutable simulation session identifier, null for legacy orders
+ * @param triggerPrice authoritative activation quote, null before triggering or for legacy orders
+ * @param triggeredAt latched simulated stop activation position
+ * @param evaluatedAt last successfully evaluated simulated position
+ * @param reservedCash cash held for this open BUY order; released on resolution
+ * @param reservedShares shares held for this open SELL order; released on resolution
+ * @param executionPrice actual fill quote, null before filling
+ * @param rejectionCode machine-readable rejection or cancellation reason, or null
  */
-<span class="fc" id="L26">public record OrderResponse(</span>
+<span class="fc" id="L39">public record OrderResponse(</span>
         Integer orderId,
         Integer instrumentId,
         Integer accountId,
+        @io.swagger.v3.oas.annotations.media.Schema(allowableValues = {&quot;PENDING&quot;, &quot;ACCEPTED&quot;, &quot;FILLED&quot;, &quot;REJECTED&quot;, &quot;CANCELLED&quot;})
         String status,
         String orderType,
         BigDecimal quantity,
         BigDecimal indicativePrice,
+        BigDecimal bufferPercent,
         String rejectionReason,
         OffsetDateTime submittedAt,
         OffsetDateTime resolvedAt,
-        OffsetDateTime simulatedAt
+        OffsetDateTime simulatedAt,
+        String executionType,
+        BigDecimal limitPrice,
+        BigDecimal stopPrice,
+        BigDecimal referencePrice,
+        OffsetDateTime referenceAt,
+        Long sessionId,
+        OffsetDateTime triggeredAt,
+        BigDecimal triggerPrice,
+        OffsetDateTime evaluatedAt,
+        BigDecimal reservedCash,
+        BigDecimal reservedShares,
+        BigDecimal executionPrice,
+        String rejectionCode
 ) {
     /**
      * Builds a response from a persisted order.
@@ -43,18 +71,32 @@ import java.time.OffsetDateTime;
      * @return the response describing the order
      */
     public static OrderResponse from(Order order) {
-<span class="fc" id="L46">        return new OrderResponse(</span>
-<span class="fc" id="L47">                order.getOrderId(),</span>
-<span class="fc" id="L48">                order.getInstrumentId(),</span>
-<span class="fc" id="L49">                order.getAccountId(),</span>
-<span class="fc" id="L50">                order.getStatus(),</span>
-<span class="fc" id="L51">                order.getOrderType(),</span>
-<span class="fc" id="L52">                order.getQuantity(),</span>
-<span class="fc" id="L53">                order.getIndicativePrice(),</span>
-<span class="fc" id="L54">                order.getRejectionReason(),</span>
-<span class="fc" id="L55">                order.getSubmittedAt(),</span>
-<span class="fc" id="L56">                order.getResolvedAt(),</span>
-<span class="fc" id="L57">                order.getSimulatedAt()</span>
+<span class="fc" id="L74">        return new OrderResponse(</span>
+<span class="fc" id="L75">                order.getOrderId(),</span>
+<span class="fc" id="L76">                order.getInstrumentId(),</span>
+<span class="fc" id="L77">                order.getAccountId(),</span>
+<span class="fc" id="L78">                order.getStatus(),</span>
+<span class="fc" id="L79">                order.getOrderType(),</span>
+<span class="fc" id="L80">                order.getQuantity(),</span>
+<span class="fc" id="L81">                order.getIndicativePrice(),</span>
+<span class="fc" id="L82">                order.getBufferPercent(),</span>
+<span class="fc" id="L83">                order.getRejectionReason(),</span>
+<span class="fc" id="L84">                order.getSubmittedAt(),</span>
+<span class="fc" id="L85">                order.getResolvedAt(),</span>
+<span class="fc" id="L86">                order.getSimulatedAt(),</span>
+<span class="fc" id="L87">                order.getExecutionType(),</span>
+<span class="fc" id="L88">                order.getLimitPrice(),</span>
+<span class="fc" id="L89">                order.getStopPrice(),</span>
+<span class="fc" id="L90">                order.getReferencePrice(),</span>
+<span class="fc" id="L91">                order.getReferenceAt(),</span>
+<span class="fc" id="L92">                order.getSessionId(),</span>
+<span class="fc" id="L93">                order.getTriggeredAt(),</span>
+<span class="fc" id="L94">                order.getTriggerPrice(),</span>
+<span class="fc" id="L95">                order.getEvaluatedAt(),</span>
+<span class="fc" id="L96">                order.getReservedCash(),</span>
+<span class="fc" id="L97">                order.getReservedShares(),</span>
+<span class="fc" id="L98">                order.getExecutionPrice(),</span>
+<span class="fc" id="L99">                order.getRejectionCode()</span>
         );
     }
 }

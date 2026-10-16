@@ -12,15 +12,19 @@ import java.util.UUID;
  * @param name        the account name
  * @param cashBalance the current cash balance
  * @param openedDate  the date the account was opened
+ * @param status ACTIVE or ARCHIVED
+ * @param archivedAt archive timestamp, or null
  * @param currency    the account currency (e.g., &quot;USD&quot;)
  */
-<span class="fc" id="L17">public record AccountResponse(</span>
+<span class="fc" id="L19">public record AccountResponse(</span>
         Integer accountId,
         UUID userId,
         String name,
         BigDecimal cashBalance,
         LocalDate openedDate,
-        String currency
+        String currency,
+        String status,
+        java.time.Instant archivedAt
 ) {
 
     /**
@@ -30,13 +34,13 @@ import java.util.UUID;
      * @return the account response
      */
     public static AccountResponse from(Account account) {
-<span class="fc" id="L33">        return new AccountResponse(</span>
-<span class="fc" id="L34">                account.getAccountId(),</span>
-<span class="fc" id="L35">                account.getUserId(),</span>
-<span class="fc" id="L36">                account.getName(),</span>
-<span class="fc" id="L37">                account.getCashBalance(),</span>
-<span class="fc" id="L38">                account.getOpenedDate(),</span>
-<span class="fc" id="L39">                account.getCurrency()</span>
+<span class="fc" id="L37">        return new AccountResponse(</span>
+<span class="fc" id="L38">                account.getAccountId(),</span>
+<span class="fc" id="L39">                account.getUserId(),</span>
+<span class="fc" id="L40">                account.getName(),</span>
+<span class="fc" id="L41">                account.getCashBalance(),</span>
+<span class="fc" id="L42">                account.getOpenedDate(),</span>
+<span class="fc" id="L43">                account.getCurrency(), account.getStatus(), account.getArchivedAt()</span>
         );
     }
 }

@@ -69,4 +69,18 @@ public class GlobalExceptionHandler extends ApiExceptionHandler {
     public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException ex) {
         return error(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
+
+
+    /**
+     * Returns a lifecycle validation failure.
+     * @param ex unmet account requirement
+     * @return 409 with a specific explanation
+     */
+    @ExceptionHandler(app.account.AccountStateException.class)
+    public ResponseEntity<Map<String, String>> handleAccountState(app.account.AccountStateException ex) {
+        return error(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
 }
+
+

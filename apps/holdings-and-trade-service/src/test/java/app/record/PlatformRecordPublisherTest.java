@@ -89,7 +89,7 @@ class PlatformRecordPublisherTest {
     @Test
     void anAccountIsKeyedByItsIdAndNamesItsOwner() {
         JsonNode json = published(
-                new TradingAccountRecord(4, USER_ID, "Main Account", LocalDate.of(2026, 10, 5), "USD"),
+                new TradingAccountRecord(4, USER_ID, "Main Account", LocalDate.of(2026, 10, 5), "USD", "ACTIVE", null),
                 "TRADING_ACCOUNT:4");
 
         assertEquals("TRADING_ACCOUNT", json.get("type").stringValue());

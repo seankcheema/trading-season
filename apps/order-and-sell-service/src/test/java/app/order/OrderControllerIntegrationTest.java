@@ -61,6 +61,9 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppC
 @ActiveProfiles("test")
 @Tag("integration")
 class OrderControllerIntegrationTest {
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private app.order.execution.ExecutionQuoteSource quoteSource;
+
 
     @Autowired private WebApplicationContext webApplicationContext;
     @Autowired private UserRepository userRepository;
@@ -82,6 +85,9 @@ class OrderControllerIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal("20.00"), 1L,
+                        java.time.OffsetDateTime.parse("2026-01-05T15:00:00Z")));
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
         auditTrailRepository.deleteAll();
         holdingMovementRepository.deleteAll();
@@ -144,6 +150,8 @@ class OrderControllerIntegrationTest {
         for (String replayTime : List.of("2026-01-06T17:00:00Z", "2026-01-05T16:00:00Z")) {
             String payload = body("BUY", "1", "20.00").trim();
             payload = payload.substring(0, payload.length() - 1) + ", \"simulatedAt\": \"" + replayTime + "\"}";
+            org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                    .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal("20.00"), 1L, OffsetDateTime.parse(replayTime)));
             mockMvc.perform(post("/api/orders").with(tokenFor(user.getUserId()))
                     .contentType(MediaType.APPLICATION_JSON).content(payload))
                     .andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("FILLED"))
@@ -553,8 +561,11 @@ class OrderControllerIntegrationTest {
         return bodyFor(account.getAccountId(), instrument.getInstrumentId(), type, quantity, price);
     }
 
-    private static String bodyFor(Integer accountId, Integer instrumentId, String type,
+    private String bodyFor(Integer accountId, Integer instrumentId, String type,
                                   String quantity, String price) {
+        org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal(price), 1L,
+                        java.time.OffsetDateTime.parse("2026-01-05T15:00:00Z")));
         return """
                 {"accountId": %d, "instrumentId": %d, "orderType": "%s", "quantity": %s,
                  "indicativePrice": %s, "clientReference": "%s"}

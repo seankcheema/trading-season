@@ -116,8 +116,9 @@ test.describe('Activity', () => {
     const inWeek = ordersIn('7d');
 
     const statuses = card(page, 'Orders by status').locator('[data-statuses] > div');
-    await expect(statuses).toHaveCount(4);
-    for (const status of ['FILLED', 'PENDING', 'ACCEPTED', 'REJECTED']) {
+    const statusNames = ['FILLED', 'PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED'];
+    await expect(statuses).toHaveCount(statusNames.length);
+    for (const status of statusNames) {
       const count = inWeek.filter((order) => order.status === status).length;
       await expect(statuses.filter({ hasText: new RegExp(status, 'i') })).toContainText(
         new RegExp(`${status}\\s*${count}\\s`, 'i'),

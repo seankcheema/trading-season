@@ -60,7 +60,7 @@ public class OrderController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Submit an order", description = "Submits a buy or sell order and returns its outcome: "
-            + "FILLED, REJECTED, or ACCEPTED when the order was accepted but its execution failed and it stays on record. "
+            + "FILLED, REJECTED, or ACCEPTED while conditions are unmet or settlement is retryable. "
             + "Each committed status change is also published to the Kafka topic trade-events and pushed to the caller's "
             + "open GET /api/orders/stream connections.")
     public OrderResponse submitOrder(@Valid @RequestBody OrderRequest request,
@@ -105,4 +105,33 @@ public class OrderController {
                 .map(entry -> OrderAuditEntryResponse.from(entry, order.getIndicativePrice()))
                 .toList();
     }
+    /** Reads one owned instruction.
+     * @param orderId order identifier
+     * @param jwt verified caller
+     * @return current order */
+    @GetMapping("/{orderId}")
+    @Operation(summary = "Get an owned order")
+    public OrderResponse getOrder(@PathVariable Integer orderId, @AuthenticationPrincipal Jwt jwt) {
+        return OrderResponse.from(orderService.getOwnOrder(orderId, AuthenticatedUser.from(jwt).userId()));
+    }
+    /** Cancels an owned open instruction.
+     * @param orderId order identifier
+     * @param jwt verified caller
+     * @return cancelled order */
+    @PostMapping("/{orderId}/cancel")
+    @Operation(summary = "Cancel an open order")
+    public OrderResponse cancel(@PathVariable Integer orderId, @AuthenticationPrincipal Jwt jwt) {
+        return OrderResponse.from(orderService.cancel(orderId, AuthenticatedUser.from(jwt).userId()));
+    }    /** Replaces an owned open order without losing it on validation failure.
+     * @param orderId original order
+     * @param request validated replacement instruction
+     * @param jwt verified caller
+     * @return replacement outcome */
+    @PostMapping("/{orderId}/replace")
+    @Operation(summary = "Edit an open order by atomic replacement")
+    public OrderResponse replace(@PathVariable Integer orderId, @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody OrderRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        return OrderResponse.from(orderService.replace(orderId, request, AuthenticatedUser.from(jwt).userId()));
+    }
+
 }

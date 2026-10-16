@@ -1,3 +1,4 @@
+import { OrderEditorComponent } from '../dashboard/shared/order-editor.component';
 import { WatchlistStore } from '../dashboard/watchlist/watchlist-store.service';
 import { WatchlistStarComponent } from '../dashboard/watchlist/watchlist-star.component';
 import { DestroyRef } from '@angular/core';
@@ -24,7 +25,13 @@ import {
 } from '../dashboard/shared/activity-row.component';
 import { orderActivity } from '../dashboard/shared/activity';
 import { TradeTicketDraft } from '../dashboard/shared/trade-ticket.component';
-import { CurrencyPipe, DecimalPipe, TitleCasePipe, isPlatformBrowser } from '@angular/common';
+import {
+  NgTemplateOutlet,
+  CurrencyPipe,
+  DecimalPipe,
+  TitleCasePipe,
+  isPlatformBrowser,
+} from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -99,7 +106,7 @@ import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
 
-type InsightTab = 'overview' | 'news' | 'ai' | 'recent-orders';
+type InsightTab = 'trading' | 'overview' | 'news' | 'ai' | 'recent-orders';
 
 type ToolbarMenu = 'indicators' | 'chart-mode' | 'comparison';
 
@@ -129,6 +136,8 @@ interface MarketStats {
   selector: 'app-market-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    NgTemplateOutlet,
+    OrderEditorComponent,
     WatchlistStarComponent,
     DashboardHeaderDropdownComponent,
     SettingsDialogComponent,
@@ -321,7 +330,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   );
 
   // Trading balances include every completed fill, regardless of the replay cursor.
-  protected readonly tradingCashBalance = this.accountStore.cashBalance;
+  protected readonly tradingCashBalance = this.accountStore.spendableFunds;
   private readonly tradeTicket = viewChild(TradeTicketComponent);
   protected readonly availableCash = computed(() => {
     const draft = this.tradeTicket()?.draft();
@@ -329,9 +338,10 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       ? Math.max(0, this.cashBalance() - draft.estimatedValue)
       : this.cashBalance();
   });
-  protected readonly heldShares = computed(
-    () =>
-      this.accountStore.selectedHoldings().find((h) => h.symbol === this.symbol())?.quantity ?? 0,
+  protected readonly heldShares = computed(() =>
+    ((holding) => holding?.availableQuantity ?? holding?.quantity ?? 0)(
+      this.accountStore.selectedHoldings().find((h) => h.symbol === this.symbol()),
+    ),
   );
 
   protected readonly portfolioValues = computed(
@@ -457,7 +467,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
 
     const maximum =
       draft.side === 'buy'
-        ? Math.floor(this.tradingCashBalance() / price)
+        ? Math.floor(this.tradingCashBalance() / (draft.reservationPrice ?? price))
         : Math.floor(this.heldShares());
 
     if (!Number.isFinite(price) || price <= 0 || draft.quantity > maximum) {
@@ -479,6 +489,10 @@ export class MarketPageComponent implements OnInit, OnDestroy {
         accountId,
         symbol: draft.symbol,
         orderType: draft.side === 'buy' ? 'BUY' : 'SELL',
+        executionType: draft.executionType,
+        limitPrice: draft.limitPrice,
+        stopPrice: draft.stopPrice,
+        ...(draft.sessionId !== null ? { sessionId: draft.sessionId } : {}),
         quantity: draft.quantity,
         indicativePrice: price,
         simulatedAt: Number.isFinite(Date.parse(simulated))
@@ -492,7 +506,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
           this.submitting.set(false);
 
           if (result.status === 'FILLED') {
-            const message = `Filled ${result.quantity} ${draft.symbol} at ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(result.indicativePrice)}.`;
+            const message = `Filled ${result.quantity} ${draft.symbol} at ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(result.executionPrice ?? result.indicativePrice)}.`;
 
             this.toasts.show(message, 'success');
             this.refreshBalances(accountId);
@@ -501,7 +515,12 @@ export class MarketPageComponent implements OnInit, OnDestroy {
             this.orderError.set(message);
             this.toasts.show(message, 'error');
           } else {
-            this.orderMessage.set('Order pending.');
+            this.refreshBalances(accountId);
+            const type = (draft.executionType ?? 'MARKET').replaceAll('_', '-').toLowerCase();
+            this.toasts.show(
+              `${type.charAt(0).toUpperCase() + type.slice(1)} ${draft.side} order placed for ${result.quantity} ${draft.symbol}.`,
+              'success',
+            );
           }
         },
         error: (error: unknown) => {
@@ -572,7 +591,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly selectedChartMode = computed(
     () => this.chartModes.find((option) => option.value === this.chartMode()) ?? this.chartModes[0],
   );
-  protected readonly insightTab = signal<InsightTab>('overview');
+  protected readonly insightTab = signal<InsightTab>('trading');
   protected readonly demoNews: readonly DemoNewsStory[] = [
     {
       age: '12 min ago',
@@ -752,6 +771,15 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly watchlist = inject(WatchlistStore);
 
   ngOnInit(): void {
+    this.orders.pendingResolved.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((order) => {
+      const accountId = order.accountId ?? this.accountStore.selectedAccountId();
+      if (accountId !== null) {
+        this.refreshBalances(accountId);
+      }
+      if (order.status === 'REJECTED') {
+        this.toasts.show(order.rejectionReason ?? 'Order rejected.', 'error');
+      }
+    });
     if (!isPlatformBrowser(this.platformId)) {
       return;
     }
@@ -853,8 +881,14 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   @HostListener('window:resize')
   protected positionToolbarMenu(): void {
     const menu = this.openToolbarMenu();
-    const id = menu === 'indicators' ? 'indicator-picker' :
-      menu === 'chart-mode' ? 'chart-mode-picker' : 'comparison-picker';
+    let id: string;
+    if (menu === 'indicators') {
+      id = 'indicator-picker';
+    } else if (menu === 'chart-mode') {
+      id = 'chart-mode-picker';
+    } else {
+      id = 'comparison-picker';
+    }
     const toolbar = this.menuHost.nativeElement.querySelector('.chart-toolbar');
     const trigger = toolbar?.querySelector(`[aria-controls="${id}"]`);
     if (!menu || !toolbar || !trigger) {

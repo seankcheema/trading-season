@@ -12,7 +12,8 @@ import java.time.OffsetDateTime;
 
 /**
  * Cached current quantity an account holds of one instrument. This is a
- * cache (BR-15) — the source of truth is the append-only
+ * quantity preserves four decimal places, matching the shared schema so even a
+ * fractional position blocks account archiving. This is a cache (BR-15) — the source of truth is the append-only
  * {@code holding_movements} ledger it's reconciled against; order execution
  * must update it by inserting a movement row, never by writing this field
  * directly.
@@ -36,7 +37,7 @@ public class Holding {
     @Column(name = "instrument_id", nullable = false, updatable = false)
     private Integer instrumentId;
 
-    @Column(nullable = false)
+    @Column(nullable = false, precision = 14, scale = 4)
     private BigDecimal quantity = BigDecimal.ZERO;
 
     @Column(name = "updated_at", nullable = false)
@@ -131,6 +132,14 @@ public class Holding {
     public void setUpdatedAt(OffsetDateTime updatedAt) {
         this.updatedAt = updatedAt;
     }
+    @jakarta.persistence.Transient
+    private BigDecimal reservedShares = BigDecimal.ZERO;
+    /** Returns shares reserved by open sells.
+     * @return reserved shares */
+    public BigDecimal getReservedShares() { return reservedShares; }
+    /** Attaches open order reservations.
+     * @param value reserved shares */
+    public void setReservedShares(BigDecimal value) { reservedShares = value; }
 }
 
 

@@ -208,7 +208,7 @@ services:
       dockerfile: apps/holdings-and-trade-service/Dockerfile
     container_name: holdings-and-trade-service
     ports:
-      - "8081:8081"
+      - "8082:8082"
     depends_on:
       db-init:
         condition: service_completed_successfully
@@ -236,7 +236,7 @@ services:
       dockerfile: apps/order-and-sell-service/Dockerfile
     container_name: order-and-sell-service
     ports:
-      - "8082:8082"
+      - "8081:8081"
     depends_on:
       db-init:
         condition: service_completed_successfully
@@ -245,6 +245,7 @@ services:
       kafka-init:
         condition: service_completed_successfully
     environment:
+      EXECUTION_MARKET_URL: http://holdings-and-trade-service:8082
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
       SPRING_DATASOURCE_USERNAME: trading_season
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-changeme}

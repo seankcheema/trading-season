@@ -7,7 +7,8 @@ import jakarta.persistence.Table;
 /**
  * A brokerage/child account: the unit orders and holdings attach to/
  * A user can own more than one account (KAN-78, KAN-103/104)
- * Represents an account with an ID, name, and balance.
+ * Represents an account with an ID, name, balance, and ACTIVE or ARCHIVED lifecycle.
+ * Archived accounts retain their identity and history but reject new financial activity.
  * <p>{@code cashBalance} is a cache (BR-10) reconciled against
  * {@code cash_transactions} - order execution must update it by
  * inserting a ledger row, never by writing this field directly.

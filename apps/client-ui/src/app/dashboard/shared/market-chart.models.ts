@@ -72,7 +72,7 @@ export function percentChangePoints(candles: readonly MarketCandlePoint[]): Pric
   }));
 }
 
-/** Calculates a simple moving average and omits points before a complete window exists. */
+/** Calculates a simple moving average using available candles during warm-up. */
 export function simpleMovingAverage(
   candles: readonly MarketCandlePoint[],
   period: number,
@@ -87,14 +87,12 @@ export function simpleMovingAverage(
     if (index >= period) {
       sum -= candles[index - period].close;
     }
-    if (index >= period - 1) {
-      points.push({ time: candle.time, value: sum / period });
-    }
+    points.push({ time: candle.time, value: sum / Math.min(index + 1, period) });
   });
   return points;
 }
 
-/** Calculates an EMA seeded by the first complete period's simple moving average. */
+/** Calculates an EMA from the first close with a growing period during warm-up. */
 export function exponentialMovingAverage(
   candles: readonly MarketCandlePoint[],
   period: number,
@@ -102,11 +100,10 @@ export function exponentialMovingAverage(
   if (!validIndicatorInput(candles, period)) {
     return [];
   }
-  const seed = candles.slice(0, period).reduce((sum, candle) => sum + candle.close, 0) / period;
-  const multiplier = 2 / (period + 1);
-  let value = seed;
-  const points: PricePoint[] = [{ time: candles[period - 1].time, value }];
-  for (let index = period; index < candles.length; index++) {
+  let value = candles[0].close;
+  const points: PricePoint[] = [{ time: candles[0].time, value }];
+  for (let index = 1; index < candles.length; index++) {
+    const multiplier = 2 / (Math.min(index + 1, period) + 1);
     value = (candles[index].close - value) * multiplier + value;
     points.push({ time: candles[index].time, value });
   }
@@ -123,10 +120,11 @@ export function bollingerBands(
     return [];
   }
   const points: BollingerBandPoint[] = [];
-  for (let index = period - 1; index < candles.length; index++) {
-    const window = candles.slice(index - period + 1, index + 1);
-    const middle = window.reduce((sum, candle) => sum + candle.close, 0) / period;
-    const variance = window.reduce((sum, candle) => sum + (candle.close - middle) ** 2, 0) / period;
+  for (let index = 0; index < candles.length; index++) {
+    const window = candles.slice(Math.max(0, index - period + 1), index + 1);
+    const middle = window.reduce((sum, candle) => sum + candle.close, 0) / window.length;
+    const variance =
+      window.reduce((sum, candle) => sum + (candle.close - middle) ** 2, 0) / window.length;
     const offset = Math.sqrt(variance) * deviations;
     points.push({
       time: candles[index].time,
@@ -143,25 +141,17 @@ export function relativeStrengthIndex(
   candles: readonly MarketCandlePoint[],
   period: number,
 ): PricePoint[] {
-  if (!validIndicatorInput(candles, period) || candles.length <= period) {
+  if (!validIndicatorInput(candles, period)) {
     return [];
   }
-  let gains = 0;
-  let losses = 0;
-  for (let index = 1; index <= period; index++) {
+  let averageGain = 0;
+  let averageLoss = 0;
+  const points: PricePoint[] = [{ time: candles[0].time, value: 50 }];
+  for (let index = 1; index < candles.length; index++) {
     const change = candles[index].close - candles[index - 1].close;
-    gains += Math.max(change, 0);
-    losses += Math.max(-change, 0);
-  }
-  let averageGain = gains / period;
-  let averageLoss = losses / period;
-  const points: PricePoint[] = [
-    { time: candles[period].time, value: rsiValue(averageGain, averageLoss) },
-  ];
-  for (let index = period + 1; index < candles.length; index++) {
-    const change = candles[index].close - candles[index - 1].close;
-    averageGain = (averageGain * (period - 1) + Math.max(change, 0)) / period;
-    averageLoss = (averageLoss * (period - 1) + Math.max(-change, 0)) / period;
+    const count = Math.min(index, period);
+    averageGain = (averageGain * (count - 1) + Math.max(change, 0)) / count;
+    averageLoss = (averageLoss * (count - 1) + Math.max(-change, 0)) / count;
     points.push({ time: candles[index].time, value: rsiValue(averageGain, averageLoss) });
   }
   return points;
@@ -171,7 +161,7 @@ function validIndicatorInput(candles: readonly MarketCandlePoint[], period: numb
   return (
     Number.isInteger(period) &&
     period > 0 &&
-    candles.length >= period &&
+    candles.length > 0 &&
     candles.every((candle) => !Number.isNaN(candle.time.getTime()) && Number.isFinite(candle.close))
   );
 }

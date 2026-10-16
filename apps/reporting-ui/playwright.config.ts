@@ -58,6 +58,9 @@ export default defineConfig({
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 2 : 0,
   failOnFlakyTests: !!process.env['CI'],
+  // A cold read model can take more than five seconds while both browser suites
+  // run on the Jenkins agent. Keep assertions bounded and fail on retries.
+  expect: { timeout: 10_000 },
   workers: process.env['CI'] ? 2 : undefined,
   reporter: [
     ['list'],

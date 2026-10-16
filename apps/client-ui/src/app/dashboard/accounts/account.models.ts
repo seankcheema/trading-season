@@ -8,6 +8,8 @@
 export interface Account {
   accountId: number;
   name: string;
+  status?: 'ACTIVE' | 'ARCHIVED';
+  archivedAt?: string | null;
   // ISO date, YYYY-MM-DD.
   openedDate: string;
 }
@@ -15,6 +17,8 @@ export interface Account {
 export interface AccountHolding {
   symbol: string;
   quantity: number;
+  reservedShares?: number;
+  availableQuantity?: number;
   // Average price paid per share.
   averageCost: number;
 }
@@ -36,6 +40,8 @@ export interface UserProfile {
   firstName: string;
   lastName: string;
   availableFunds: number;
+  reservedCash?: number;
+  spendableFunds?: number;
   termsAccepted: boolean;
 }
 

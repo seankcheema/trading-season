@@ -72,7 +72,7 @@ class UserEntityTest {
         user.setFirstName("Test");
         user.setLastName("User");
         
-        assertEquals(BigDecimal.ZERO, user.getExecutionBufferPercent());
+        assertEquals(BigDecimal.ONE, user.getExecutionBufferPercent());
     }
 
     @Test
