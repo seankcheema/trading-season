@@ -98,6 +98,25 @@ def build_dataset(prices: pd.DataFrame, market: pd.DataFrame) -> pd.DataFrame:
     return dataset[["close", "ret", "spy_ret", "volume_change", "target"]]
 
 
+def add_indicators(
+    dataset: pd.DataFrame,
+    volatility_window: int = config.VOLATILITY_WINDOW,
+    momentum_window: int = config.MOMENTUM_WINDOW,
+) -> pd.DataFrame:
+    """Add backward-looking market indicators for the direction models.
+
+    volatility_10 is the standard deviation of the last 10 returns and
+    momentum_20 the price change over the last 20 trading days, both ending
+    at day t's close. The warm-up rows without a full window are dropped;
+    they all fall in early 2010, inside the training split.
+    """
+    indicators = dataset.copy()
+    # Rolling windows and positive shifts only look back; the target stays the only future value.
+    indicators[f"volatility_{volatility_window}"] = dataset["ret"].rolling(volatility_window).std()
+    indicators[f"momentum_{momentum_window}"] = dataset["close"].pct_change(momentum_window)
+    return indicators.dropna()
+
+
 def split_by_date(
     dataset: pd.DataFrame,
     train_end: str = config.TRAIN_END,

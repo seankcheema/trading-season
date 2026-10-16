@@ -36,6 +36,11 @@ LSTM_BATCH_SIZE = 32
 LSTM_PATIENCE = 10
 SEED = 42
 
+# Direction model: predicts the probability that tomorrow is an up day.
+# Indicator windows feed add_indicators(); every column ends at day t's close.
+VOLATILITY_WINDOW = 10
+MOMENTUM_WINDOW = 20
+
 # Paths. ROOT is apps/stock-forecast; REPO_ROOT is the trading-season checkout.
 ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = ROOT.parents[1]
