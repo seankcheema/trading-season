@@ -72,42 +72,59 @@ def score(
     }
 
 
+def event_metrics(
+    actual_event: np.ndarray, prob: np.ndarray, base_rate: float, threshold: float = 0.5
+) -> dict:
+    """Score the probabilities of a yes/no event, not just the calls made from them.
+
+    base_rate is the event's training share: quoting it every day is the
+    no-information forecast. brier_skill above 0 means the model's
+    probabilities beat that constant; at or below 0 it learned nothing usable.
+    call_rate shows when a model has collapsed into calling one answer every day.
+    """
+    actual = np.asarray(actual_event, dtype=bool)
+    prob = np.asarray(prob, dtype=float)
+    if actual.shape != prob.shape:
+        raise ValueError(f"Shape mismatch: {actual.shape} vs {prob.shape}")
+    if np.isnan(prob).any() or (prob < 0).any() or (prob > 1).any():
+        raise ValueError("Probabilities must be between 0 and 1 with no NaN")
+    called = prob > threshold
+    # Clip only for the log, so a confident miss costs a lot but stays finite.
+    clipped = np.clip(prob, 1e-7, 1 - 1e-7)
+    brier = float(np.mean((prob - actual) ** 2))
+    base_brier = float(np.mean((base_rate - actual) ** 2))
+    yes_days, no_days = actual.sum(), (~actual).sum()
+    return {
+        "accuracy": float(np.mean(called == actual)),
+        # Mean of the yes-day and no-day hit rates: 0.5 for any constant call.
+        "balanced_accuracy": float(np.mean([
+            called[actual].mean() if yes_days else np.nan,
+            (~called[~actual]).mean() if no_days else np.nan,
+        ])),
+        "call_rate": float(called.mean()),
+        "event_rate": float(actual.mean()),
+        "auc": _auc(actual, prob),
+        "brier": brier,
+        "brier_skill": 1 - brier / base_brier if base_brier > 0 else float("nan"),
+        "log_loss": float(-np.mean(actual * np.log(clipped) + (~actual) * np.log(1 - clipped))),
+    }
+
+
 def direction_metrics(
     actual_returns: np.ndarray, prob_up: np.ndarray, base_rate: float, threshold: float = 0.5
 ) -> dict:
-    """Score up-probabilities, not just the up/down calls made from them.
+    """event_metrics for "tomorrow is up", with the direction column names used in the reports.
 
-    base_rate is the training up-share: quoting it every day is the
-    probability version of "always up". brier_skill above 0 means the model's
-    probabilities beat that constant; at or below 0 it learned nothing usable.
-    up_call_rate shows when a model has collapsed into calling "up" every day.
+    base_rate is the training up-share; up_call_rate near 1 means the model
+    has collapsed into calling "up" every day.
     """
-    actual_up = np.asarray(actual_returns, dtype=float) > 0
-    prob = np.asarray(prob_up, dtype=float)
-    if actual_up.shape != prob.shape:
-        raise ValueError(f"Shape mismatch: {actual_up.shape} vs {prob.shape}")
-    if np.isnan(prob).any() or (prob < 0).any() or (prob > 1).any():
-        raise ValueError("Probabilities must be between 0 and 1 with no NaN")
-    called_up = prob > threshold
-    # Clip only for the log, so a confident miss costs a lot but stays finite.
-    clipped = np.clip(prob, 1e-7, 1 - 1e-7)
-    brier = float(np.mean((prob - actual_up) ** 2))
-    base_brier = float(np.mean((base_rate - actual_up) ** 2))
-    up_days, down_days = actual_up.sum(), (~actual_up).sum()
-    return {
-        "direction_accuracy": float(np.mean(called_up == actual_up)),
-        # Mean of the up-day and down-day hit rates: 0.5 for any constant call.
-        "balanced_accuracy": float(np.mean([
-            called_up[actual_up].mean() if up_days else np.nan,
-            (~called_up[~actual_up]).mean() if down_days else np.nan,
-        ])),
-        "up_call_rate": float(called_up.mean()),
-        "actual_up_rate": float(actual_up.mean()),
-        "auc": _auc(actual_up, prob),
-        "brier": brier,
-        "brier_skill": 1 - brier / base_brier if base_brier > 0 else float("nan"),
-        "log_loss": float(-np.mean(actual_up * np.log(clipped) + (~actual_up) * np.log(1 - clipped))),
-    }
+    metrics = event_metrics(np.asarray(actual_returns, dtype=float) > 0, prob_up, base_rate, threshold)
+    return _rename(metrics, {"accuracy": "direction_accuracy", "call_rate": "up_call_rate",
+                             "event_rate": "actual_up_rate"})
+
+
+def _rename(row: dict, names: dict) -> dict:
+    return {names.get(key, key): value for key, value in row.items()}
 
 
 def _auc(actual_up: np.ndarray, prob: np.ndarray) -> float:
@@ -119,8 +136,8 @@ def _auc(actual_up: np.ndarray, prob: np.ndarray) -> float:
     return float((ranks[actual_up].sum() - n_up * (n_up + 1) / 2) / (n_up * n_down))
 
 
-def confidence_buckets(
-    actual_returns: np.ndarray, prob_up: np.ndarray, buckets: int = 5, threshold: float = 0.5
+def event_confidence_buckets(
+    actual_event: np.ndarray, prob: np.ndarray, buckets: int = 5, threshold: float = 0.5
 ) -> pd.DataFrame:
     """Accuracy by how sure the model was, least confident bucket first.
 
@@ -128,24 +145,33 @@ def confidence_buckets(
     buckets. If accuracy does not rise with confidence, the probabilities are
     not telling you which days to trust.
     """
-    actual_up = np.asarray(actual_returns, dtype=float) > 0
-    prob = np.asarray(prob_up, dtype=float)
-    if actual_up.shape != prob.shape:
-        raise ValueError(f"Shape mismatch: {actual_up.shape} vs {prob.shape}")
+    actual = np.asarray(actual_event, dtype=bool)
+    prob = np.asarray(prob, dtype=float)
+    if actual.shape != prob.shape:
+        raise ValueError(f"Shape mismatch: {actual.shape} vs {prob.shape}")
     confidence = np.abs(prob - threshold)
     # Rank first so ties (a model quoting nearly one value) still give equal buckets.
     bucket = pd.qcut(pd.Series(confidence).rank(method="first"), buckets, labels=False)
     frame = pd.DataFrame({"bucket": bucket + 1, "confidence": confidence, "prob": prob,
-                          "called_up": prob > threshold, "actual_up": actual_up})
-    frame["correct"] = frame["called_up"] == frame["actual_up"]
+                          "called": prob > threshold, "actual": actual})
+    frame["correct"] = frame["called"] == frame["actual"]
     return frame.groupby("bucket").agg(
         days=("correct", "size"),
-        mean_prob_up=("prob", "mean"),
+        mean_prob=("prob", "mean"),
         min_confidence=("confidence", "min"),
         accuracy=("correct", "mean"),
-        up_call_rate=("called_up", "mean"),
-        actual_up_rate=("actual_up", "mean"),
+        call_rate=("called", "mean"),
+        event_rate=("actual", "mean"),
     ).reset_index()
+
+
+def confidence_buckets(
+    actual_returns: np.ndarray, prob_up: np.ndarray, buckets: int = 5, threshold: float = 0.5
+) -> pd.DataFrame:
+    """event_confidence_buckets for "tomorrow is up", with direction column names."""
+    table = event_confidence_buckets(np.asarray(actual_returns, dtype=float) > 0, prob_up, buckets, threshold)
+    return table.rename(columns={"mean_prob": "mean_prob_up", "call_rate": "up_call_rate",
+                                 "event_rate": "actual_up_rate"})
 
 
 def failed_run_row(error: Exception, split: str = "validation") -> dict:
@@ -241,18 +267,19 @@ def plot_loss(history: dict, path: Path, ylabel: str = "Mean squared error (scal
 
 
 def plot_walk_forward(
-    table: pd.DataFrame, path: Path, highlight: tuple[str, ...] = ("LSTM direction", "LSTM")
+    table: pd.DataFrame, path: Path, highlight: tuple[str, ...] = ("LSTM direction", "LSTM"),
+    metric: str = "direction_accuracy", title: str = "Walk-forward: direction accuracy per test year",
 ) -> Path:
-    """Direction accuracy per test year: always-up as the bar to clear, highlighted models in colour.
+    """Accuracy per test year: highlighted models in colour, plus always-up when the table has its rate.
 
     Every other model is drawn thin and grey, so the comparison that matters
     stays readable while the rest remain visible for context.
     """
     fig, ax = plt.subplots(figsize=(9, 4.5))
-    scored = table.dropna(subset=["direction_accuracy"])
+    scored = table.dropna(subset=[metric])
     for model, rows in scored.groupby("model"):
         if model not in highlight:
-            ax.plot(rows["year"], rows["direction_accuracy"] * 100, color="lightgrey", linewidth=1, zorder=1)
+            ax.plot(rows["year"], rows[metric] * 100, color="lightgrey", linewidth=1, zorder=1)
     if "always_up_rate" in table:
         years = table.groupby("year")["always_up_rate"].first()
         ax.plot(years.index, years * 100, color="black", linestyle="--", linewidth=2, marker="s",
@@ -260,24 +287,27 @@ def plot_walk_forward(
     for model in highlight:
         rows = scored[scored["model"] == model]
         if not rows.empty:
-            ax.plot(rows["year"], rows["direction_accuracy"] * 100, marker="o", linewidth=2, label=model, zorder=3)
+            ax.plot(rows["year"], rows[metric] * 100, marker="o", linewidth=2, label=model, zorder=3)
     ax.plot([], [], color="lightgrey", linewidth=1, label="Other baselines")
     ax.set_xlabel("Test year")
-    ax.set_ylabel("Direction accuracy (%)")
-    ax.set_title("Walk-forward: direction accuracy per test year")
+    ax.set_ylabel(f"{metric.replace('_', ' ').capitalize()} (%)")
+    ax.set_title(title)
     ax.legend(fontsize=8)
     return _save(fig, path)
 
 
-def plot_confidence(table: pd.DataFrame, always_up_rate: float, path: Path, title: str) -> Path:
-    """Accuracy per confidence bucket, with the always-up rate as the bar to clear."""
+def plot_confidence(
+    table: pd.DataFrame, always_up_rate: float, path: Path, title: str, baseline_label: str = "always up",
+    ylabel: str = "Direction accuracy (%)",
+) -> Path:
+    """Accuracy per confidence bucket, with a constant-answer rate as the bar to clear."""
     fig, ax = plt.subplots(figsize=(8, 4.5))
     labels = [f"{b}" for b in table["bucket"]]
     ax.bar(labels, table["accuracy"] * 100)
-    ax.axhline(always_up_rate * 100, linestyle="--", color="black", linewidth=1, label="always up")
+    ax.axhline(always_up_rate * 100, linestyle="--", color="black", linewidth=1, label=baseline_label)
     ax.axhline(50, linestyle=":", color="grey", linewidth=1, label="coin flip")
     ax.set_xlabel("Confidence bucket (1 = least sure, equal days in each)")
-    ax.set_ylabel("Direction accuracy (%)")
+    ax.set_ylabel(ylabel)
     lo = min(table["accuracy"].min(), always_up_rate, 0.5) * 100
     hi = max(table["accuracy"].max(), always_up_rate) * 100
     ax.set_ylim(max(0, lo - 5), min(100, hi + 5))
@@ -286,15 +316,16 @@ def plot_confidence(table: pd.DataFrame, always_up_rate: float, path: Path, titl
     return _save(fig, path)
 
 
-def plot_up_probability(
-    dates: pd.Index, prob_up: np.ndarray, actual_returns: np.ndarray, path: Path, title: str, window: int = 20
+def plot_event_probability(
+    dates: pd.Index, prob: np.ndarray, actual_event: np.ndarray, path: Path, title: str,
+    event: str = "up-day", window: int = 20,
 ) -> Path:
-    """The model's rolling up-probability against the rolling share of days that were up."""
-    prob = pd.Series(np.asarray(prob_up, dtype=float), index=dates)
-    actual = pd.Series((np.asarray(actual_returns, dtype=float) > 0).astype(float), index=dates)
+    """The model's rolling event probability against the rolling share of days the event happened."""
+    prob = pd.Series(np.asarray(prob, dtype=float), index=dates)
+    actual = pd.Series(np.asarray(actual_event, dtype=bool).astype(float), index=dates)
     fig, ax = plt.subplots(figsize=(10, 4.5))
-    ax.plot(dates, actual.rolling(window).mean() * 100, label=f"Actual up-day share, {window}-day", linewidth=1.5)
-    ax.plot(dates, prob.rolling(window).mean() * 100, label=f"Model up-probability, {window}-day mean",
+    ax.plot(dates, actual.rolling(window).mean() * 100, label=f"Actual {event} share, {window}-day", linewidth=1.5)
+    ax.plot(dates, prob.rolling(window).mean() * 100, label=f"Model {event} probability, {window}-day mean",
             linewidth=1.5, linestyle="--")
     ax.axhline(50, color="grey", linestyle=":", linewidth=1)
     ax.set_xlabel("Forecast made at the close of")
@@ -303,6 +334,14 @@ def plot_up_probability(
     ax.legend()
     fig.autofmt_xdate()
     return _save(fig, path)
+
+
+def plot_up_probability(
+    dates: pd.Index, prob_up: np.ndarray, actual_returns: np.ndarray, path: Path, title: str, window: int = 20
+) -> Path:
+    """The model's rolling up-probability against the rolling share of days that were up."""
+    return plot_event_probability(dates, prob_up, np.asarray(actual_returns, dtype=float) > 0, path, title,
+                                  event="up-day", window=window)
 
 
 def plot_market_conditions(table: pd.DataFrame, path: Path, title: str) -> Path:

@@ -83,6 +83,22 @@ The direction LSTM beat "always up" in only 2 of 6 years, averaging 52.8% agains
 
 **`lstm_direction_loss.png`**: how the model's error changed while it learned. Training error (blue) keeps falling, but validation error (orange) starts rising after about 8 rounds. That means the model began memorising the training years instead of learning something general, so training stopped and the best earlier version was kept.
 
+## Predicting big-move days instead
+
+Because up-or-down turned out to be close to a coin flip, a second model asks an easier, well-known question: **will tomorrow be a big-move day?** A big-move day is one where the price moves more than 0.87% in either direction, which is the typical move size in the training years, so about half of training days qualify.
+
+This works better because calm and stormy periods tend to last for weeks. A model that has seen the last few weeks can tell which kind of period it is in, even though it cannot tell which way the price will go.
+
+**`volatility_probability.png`**: the solid line is how often recent days were big-move days; the dashed line is the model's average forecast. Unlike the direction chart, the two lines move together: the model sees calm and stormy stretches coming.
+
+**`volatility_confidence_validation.png`**: the same five confidence groups as before. Here the model's most confident days were right 70 to 76% of the time, so its confidence is a useful guide. The dashed line is the score from giving the same answer every day.
+
+**`walk_forward_volatility.png`**: accuracy each test year from 2018 to 2023, retrained each year. Blue is the LSTM, orange the strongest simple model, green "same as today" (copy today's answer). The LSTM averaged 60% and was above 50% every year. In 2020 and 2022, about two-thirds of days were big-move days, so simply answering "big" every day scored higher (the grey peaks). Even then, the model's probabilities beat the historical rate in all six years, meaning it still told stormy days from calm ones better than a fixed guess.
+
+**`lstm_volatility_loss.png`**: the learning chart for this model, read the same way as the direction one.
+
+What it means: the model is a reasonable gauge of **how much** AAPL is likely to move, not **which way**. That is useful for risk (for example, sizing a position smaller before a likely big-move day), but it is not a buy or sell signal.
+
 ## The earlier return model
 
 **`lstm_loss.png`**: the same learning chart for the LSTM that predicts the size of tomorrow's move.
@@ -95,7 +111,8 @@ These appear only once the sealed 2024 to 2026 test has been run:
 
 - **`direction_confidence_test.png`**: the confidence chart for the test years.
 - **`direction_probability_test.png`**: the probability chart for the test years.
+- **`volatility_confidence_test.png`** and **`volatility_probability_test.png`**: the same two charts for the big-move model.
 
 ## The data files
 
-The CSV files hold the numbers behind the charts. `results.csv` and `direction_results.csv` log every experiment, including the bad ones, so nothing can be quietly left out.
+The CSV files hold the numbers behind the charts. `results.csv`, `direction_results.csv` and `volatility_results.csv` log every experiment, including the bad ones, so nothing can be quietly left out.

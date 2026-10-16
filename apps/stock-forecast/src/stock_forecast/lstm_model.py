@@ -51,7 +51,10 @@ def build_direction_lstm(
     base_rate: float = 0.5,
     seed: int = config.SEED,
 ):
-    """One LSTM layer, dropout, one sigmoid output: the probability tomorrow is up.
+    """One LSTM layer, dropout, one sigmoid output: the probability of a next-day event.
+
+    The event is an up day for the direction model and a big-move day for the
+    volatility model; base_rate is that event's training share.
 
     The output bias starts at the training up-rate's log-odds, so an untrained
     model already quotes the base rate and training only moves away from it

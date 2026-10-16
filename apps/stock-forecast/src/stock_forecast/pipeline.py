@@ -15,12 +15,12 @@ import pandas as pd
 from . import config
 from .baselines import always_up, fit_linear, fit_logistic, mean_returns, moving_average_returns, naive_returns
 from .data import Splits, add_indicators, build_dataset, load_prices
-from .evaluate import direction_metrics, score
+from .evaluate import direction_metrics, event_metrics, score
 from .lstm_model import (build_direction_lstm, build_lstm, load_artifacts, predict_returns, predict_up_probability,
                          train_lstm)
 from .var_model import fit_var, one_step_forecasts, select_order
 from .walk_forward import Fold
-from .windows import Scalers, aligned_rows, direction_labels, fit_scalers, lag_matrix, make_windows
+from .windows import Scalers, aligned_rows, event_labels, fit_scalers, lag_matrix, make_windows
 
 
 @dataclass
@@ -132,7 +132,10 @@ def lstm_fold(fold: Fold) -> list[dict]:
 
 @dataclass
 class DirectionRun:
-    """One trained direction LSTM and its up-probabilities for the scored split."""
+    """One trained event LSTM (direction or volatility) and its probabilities for the scored split.
+
+    prob_up holds the event probability: P(up) for direction, P(big move) for volatility.
+    """
 
     prob_up: np.ndarray
     model: object
@@ -180,18 +183,36 @@ def direction_lstm_predictions(
     seed: int = config.SEED,
     verbose: int = 0,
 ) -> DirectionRun:
-    """Train a direction LSTM on train (early stopping on val); predict P(up) for each day of part.
+    """Train a direction LSTM on train (early stopping on val); predict P(up) for each day of part."""
+    return event_lstm_predictions(train, val, part, history, feature_cols, lookback, units, seed, verbose)
 
-    The final row of train and of val carries a label from the next split, so
-    neither label is fitted or used for early stopping. Those rows still feed
-    the windows as past context, which leaks nothing.
+
+def event_lstm_predictions(
+    train: pd.DataFrame,
+    val: pd.DataFrame,
+    part: pd.DataFrame,
+    history: pd.DataFrame,
+    feature_cols: tuple[str, ...],
+    lookback: int,
+    units: int,
+    seed: int = config.SEED,
+    verbose: int = 0,
+    big_move: float | None = None,
+) -> DirectionRun:
+    """Train an LSTM classifier on train (early stopping on val); predict the event for each day of part.
+
+    The event is an up day, or a big-move day when big_move is given (see
+    windows.event_labels). The final row of train and of val carries a label
+    from the next split, so neither label is fitted or used for early
+    stopping. Those rows still feed the windows as past context, which leaks
+    nothing.
     """
     fit_train, stop_val = train.iloc[:-1], val.iloc[:-1]
     scalers = fit_scalers(fit_train, feature_cols)
     X_train, _ = make_windows(fit_train, scalers, lookback)
-    y_train = direction_labels(fit_train, lookback)
+    y_train = event_labels(fit_train, lookback, big_move=big_move)
     X_val, _ = make_windows(stop_val, scalers, lookback, history=train)
-    y_val = direction_labels(stop_val, lookback, history=train)
+    y_val = event_labels(stop_val, lookback, history=train, big_move=big_move)
     assert X_train.shape == (len(y_train), lookback, len(feature_cols)), X_train.shape
     assert X_val.shape == (len(y_val), lookback, len(feature_cols)), X_val.shape
     model = build_direction_lstm(lookback, len(feature_cols), units, base_rate=float(y_train.mean()), seed=seed)
@@ -221,6 +242,99 @@ def direction_fold(fold: Fold, with_lstm: bool = False) -> list[dict]:
     actual = fold.test["target"].to_numpy()
     base_rate = training_up_rate(seen)
     return [direction_row(name, actual, p, base_rate, f"walk-forward {fold.year}") for name, p in probs.items()]
+
+
+def big_move_threshold(train: pd.DataFrame) -> float:
+    """The daily move size, up or down, above which a day counts as a big move.
+
+    Cut at BIG_MOVE_QUANTILE of the training labels, leaving out the last
+    one, which belongs to the next split. Reused unchanged on later splits.
+    """
+    return float(train.iloc[:-1]["target"].abs().quantile(config.BIG_MOVE_QUANTILE))
+
+
+def big_move_days(part: pd.DataFrame, threshold: float) -> np.ndarray:
+    """True where the next day's return is bigger than threshold in either direction."""
+    return part["target"].abs().to_numpy() > threshold
+
+
+def volatility_baselines(
+    train: pd.DataFrame, part: pd.DataFrame, threshold: float,
+    feature_cols: tuple[str, ...] = tuple(config.VOLATILITY_FEATURES),
+) -> dict[str, np.ndarray]:
+    """P(big move) from the simple volatility models, for every day of part.
+
+    "Same as today" is the volatility version of the naive forecast: tomorrow
+    is a big-move day if today was. The logistic regressions read today's
+    values: the move size and 10-day volatility alone, then every indicator.
+    """
+    fit_train = train.iloc[:-1]
+    y_big = big_move_days(fit_train, threshold)
+    probs = {
+        "Training big-move rate (constant)": np.full(len(part), float(y_big.mean())),
+        "Same as today": (part["abs_ret"].to_numpy() > threshold).astype(float),
+    }
+    recent = ["abs_ret", f"volatility_{config.VOLATILITY_WINDOW}"]
+    for name, cols in (("Logistic regression (recent volatility)", recent),
+                       ("Logistic regression (indicators)", list(feature_cols))):
+        model = fit_logistic(fit_train[cols].to_numpy(), y_big)
+        probs[name] = model.predict_proba(part[cols].to_numpy())[:, 1]
+    return probs
+
+
+def volatility_lstm_predictions(
+    train: pd.DataFrame,
+    val: pd.DataFrame,
+    part: pd.DataFrame,
+    history: pd.DataFrame,
+    threshold: float,
+    feature_cols: tuple[str, ...] = tuple(config.VOLATILITY_FEATURES),
+    lookback: int = config.VOLATILITY_LOOKBACK,
+    units: int = config.VOLATILITY_UNITS,
+    seed: int = config.SEED,
+    verbose: int = 0,
+) -> DirectionRun:
+    """Train a volatility LSTM on train (early stopping on val); predict P(big move) for each day of part."""
+    return event_lstm_predictions(train, val, part, history, feature_cols, lookback, units, seed, verbose,
+                                  big_move=threshold)
+
+
+def volatility_row(name: str, actual_big: np.ndarray, prob: np.ndarray, base_rate: float, split: str) -> dict:
+    """One results row for a volatility model."""
+    return {"model": name, "split": split, "days": int(len(actual_big)),
+            **event_metrics(actual_big, prob, base_rate, config.DIRECTION_THRESHOLD)}
+
+
+def volatility_fold(fold: Fold, with_lstm: bool = False) -> list[dict]:
+    """Walk-forward step for the volatility models.
+
+    The big-move threshold comes from the fold's training years, so the
+    regressions (fit on train + val) and the LSTM (fit on train) predict the
+    same event. Brier skill uses the big-move rate of everything before the
+    test year.
+    """
+    threshold = big_move_threshold(fold.train)
+    seen = pd.concat([fold.train, fold.val])
+    probs = volatility_baselines(seen, fold.test, threshold)
+    if with_lstm:
+        probs["LSTM volatility"] = volatility_lstm_predictions(
+            fold.train, fold.val, fold.test, history=fold.val, threshold=threshold).prob_up
+    actual = big_move_days(fold.test, threshold)
+    base_rate = float(big_move_days(seen.iloc[:-1], threshold).mean())
+    return [{**volatility_row(name, actual, p, base_rate, f"walk-forward {fold.year}"), "threshold": threshold}
+            for name, p in probs.items()]
+
+
+def final_volatility_prediction(splits: Splits) -> tuple[str, np.ndarray, float]:
+    """The saved volatility LSTM's P(big move) for the test split, and the threshold. Run this once.
+
+    splits must come from load_direction_dataset().
+    """
+    model, scalers = load_artifacts(config.VOLATILITY_MODEL_DIR)
+    lookback = int(model.input_shape[1])
+    X_test, _ = make_windows(splits.test, scalers, lookback, history=splits.val)
+    name = f"LSTM volatility ({len(scalers.feature_cols)} inputs, {lookback}-day window)"
+    return name, predict_up_probability(model, X_test), big_move_threshold(splits.train)
 
 
 def final_test_prediction(model_key: str, splits: Splits) -> tuple[str, Prediction]:

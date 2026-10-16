@@ -103,17 +103,20 @@ def add_indicators(
     volatility_window: int = config.VOLATILITY_WINDOW,
     momentum_window: int = config.MOMENTUM_WINDOW,
 ) -> pd.DataFrame:
-    """Add backward-looking market indicators for the direction models.
+    """Add backward-looking market indicators for the direction and volatility models.
 
     volatility_10 is the standard deviation of the last 10 returns and
     momentum_20 the price change over the last 20 trading days, both ending
-    at day t's close. The warm-up rows without a full window are dropped;
+    at day t's close. abs_ret and spy_abs_ret are the size of today's AAPL
+    and SPY moves, whatever their direction. The warm-up rows without a full window are dropped;
     they all fall in early 2010, inside the training split.
     """
     indicators = dataset.copy()
     # Rolling windows and positive shifts only look back; the target stays the only future value.
     indicators[f"volatility_{volatility_window}"] = dataset["ret"].rolling(volatility_window).std()
     indicators[f"momentum_{momentum_window}"] = dataset["close"].pct_change(momentum_window)
+    indicators["abs_ret"] = dataset["ret"].abs()
+    indicators["spy_abs_ret"] = dataset["spy_ret"].abs()
     return indicators.dropna()
 
 

@@ -50,12 +50,22 @@ DIRECTION_SWEEP_LOOKBACKS = [20, 30, 60]
 DIRECTION_SWEEP_UNITS = [16, 32, 64]
 CONFIDENCE_BUCKETS = 5
 
+# Volatility model: predicts the probability that tomorrow is a big-move day,
+# meaning its return, up or down, is larger than BIG_MOVE_QUANTILE of training
+# days. At the median, about half of training days are big-move days.
+BIG_MOVE_QUANTILE = 0.5
+VOLATILITY_FEATURES = ["abs_ret", "spy_abs_ret", "ret", "volume_change", "volatility_10", "momentum_20"]
+# Chosen by 0003-train-lstm.py --task volatility --sweep on Oct 16: lowest validation log loss.
+VOLATILITY_LOOKBACK = 60
+VOLATILITY_UNITS = 64
+
 # Paths. ROOT is apps/stock-forecast; REPO_ROOT is the trading-season checkout.
 ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = ROOT.parents[1]
 DATA_DIR = ROOT / "data"
 MODELS_DIR = ROOT / "models"
 DIRECTION_MODEL_DIR = MODELS_DIR / "lstm-direction"
+VOLATILITY_MODEL_DIR = MODELS_DIR / "lstm-volatility"
 REPORTS_DIR = ROOT / "reports"
 PRICES_CSV = DATA_DIR / "aapl_daily.csv"
 MARKET_CSV = DATA_DIR / "spy_daily.csv"
@@ -64,6 +74,9 @@ TEST_RESULTS_CSV = REPORTS_DIR / "test_results.csv"
 WALK_FORWARD_CSV = REPORTS_DIR / "walk_forward.csv"
 DIRECTION_RESULTS_CSV = REPORTS_DIR / "direction_results.csv"
 TEST_DIRECTION_CSV = REPORTS_DIR / "test_direction_results.csv"
+VOLATILITY_RESULTS_CSV = REPORTS_DIR / "volatility_results.csv"
+TEST_VOLATILITY_CSV = REPORTS_DIR / "test_volatility_results.csv"
+WALK_FORWARD_VOLATILITY_CSV = REPORTS_DIR / "walk_forward_volatility.csv"
 MARKET_CONDITIONS_CSV = REPORTS_DIR / "market_conditions.csv"
 AUTOCORRELATION_CSV = REPORTS_DIR / "return_autocorrelation.csv"
 SCORECARD_JSON = REPO_ROOT / "apps" / "client-ui" / "public" / "forecast" / "scorecard.json"

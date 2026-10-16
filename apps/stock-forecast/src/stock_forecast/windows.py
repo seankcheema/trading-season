@@ -98,4 +98,21 @@ def direction_labels(
     A next-day return of exactly zero counts as not-up, matching
     evaluate.direction_accuracy.
     """
-    return (aligned_rows(part, lookback, history)["target"].to_numpy() > 0).astype(float)
+    return event_labels(part, lookback, history)
+
+
+def event_labels(
+    part: pd.DataFrame,
+    lookback: int = config.LOOKBACK,
+    history: pd.DataFrame | None = None,
+    big_move: float | None = None,
+) -> np.ndarray:
+    """1.0 where the next-day event happens, aligned with make_windows' samples.
+
+    With big_move=None the event is an up day. With a big_move threshold it
+    is a big-move day: the next day's return moves more than the threshold
+    in either direction.
+    """
+    target = aligned_rows(part, lookback, history)["target"].to_numpy()
+    event = target > 0 if big_move is None else np.abs(target) > big_move
+    return event.astype(float)
