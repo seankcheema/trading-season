@@ -403,7 +403,9 @@
   background: color-mix(in srgb, var(--primary) 16%, var(--raised));
   color: var(--primary);
 }
-.tool-button-active {
+/* Stays filled under the pointer, so the count badge keeps the ink the filled button sets. */
+.tool-button.tool-button-active,
+.tool-button.tool-button-active:hover {
   border-color: var(--primary);
   background: var(--primary);
   color: var(--primary-foreground);
