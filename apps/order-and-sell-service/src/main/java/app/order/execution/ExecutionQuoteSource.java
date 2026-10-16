@@ -32,8 +32,7 @@ public class ExecutionQuoteSource {
         try {
             var snapshot = client.get().uri("/api/market/snapshot" + (sessionId == null ? "" : "?sessionId=" + sessionId))
                     .retrieve().body(MarketResponses.Snapshot.class);
-            if (snapshot == null || snapshot.marketTimestamp() == null || snapshot.stocks() == null
-                    || (sessionId != null && snapshot.sessionId() != sessionId)) throw new QuoteUnavailableException();
+            if (!isUsable(snapshot, sessionId)) throw new QuoteUnavailableException();
             String symbol = instrument.getSimulatedStockSymbol();
             if (symbol == null) throw new QuoteUnavailableException();
             var stock = snapshot.stocks().stream().filter(s -> symbol.equalsIgnoreCase(s.symbol())).findFirst()
@@ -43,6 +42,10 @@ public class ExecutionQuoteSource {
             return new Quote(stock.price(), snapshot.sessionId(), stock.timestamp().atOffset(ZoneOffset.UTC));
         } catch (QuoteUnavailableException ex) { throw ex; }
         catch (RuntimeException ex) { throw new QuoteUnavailableException(); }
+    }
+    private static boolean isUsable(MarketResponses.Snapshot snapshot, Long sessionId) {
+        if (snapshot == null || snapshot.marketTimestamp() == null || snapshot.stocks() == null) return false;
+        return sessionId == null || snapshot.sessionId() == sessionId;
     }
     /** An immutable authoritative quote.
      * @param price market price

@@ -21,6 +21,7 @@ import { MarketPageComponent } from './market-page.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
 import { AuthService } from '../core/auth/auth.service';
 import { ToastService } from '../notifications/toast.service';
+import { OrderService } from '../dashboard/orders/order.service';
 
 const SNAPSHOT: MarketSnapshot = {
   sessionId: 7,
@@ -486,6 +487,49 @@ describe('MarketPageComponent', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('#comparison-picker')).toBeNull();
     expect(fixture.nativeElement.querySelector('#chart-mode-picker')).not.toBeNull();
+  });
+
+  it('positions the comparison menu under its trigger', async () => {
+    const fixture = await setup();
+    (
+      fixture.nativeElement.querySelector('[aria-controls="comparison-picker"]') as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+
+    fixture.componentInstance['positionToolbarMenu']();
+
+    expect(fixture.componentInstance['openToolbarMenu']()).toBe('comparison');
+    expect(fixture.componentInstance['toolbarMenuPosition']().top).toBeGreaterThanOrEqual(0);
+  });
+
+  it('refreshes balances and reports a rejection when a pending order resolves', async () => {
+    const fixture = await setup('aapl', '', '2');
+    const refresh = stubRefresh(fixture);
+    const resolved = TestBed.inject(OrderService).pendingResolved;
+
+    resolved.next(order({ accountId: 1, status: 'FILLED' }));
+    expect(refresh).toHaveBeenLastCalledWith(1);
+    expect(TestBed.inject(ToastService).messages()).toHaveLength(0);
+
+    resolved.next(
+      order({ accountId: undefined, status: 'REJECTED', rejectionReason: 'Out of funds' }),
+    );
+    expect(refresh).toHaveBeenLastCalledWith(2);
+    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Out of funds');
+
+    resolved.next(order({ accountId: undefined, status: 'REJECTED', rejectionReason: null }));
+    expect(TestBed.inject(ToastService).messages().at(-1)?.message).toBe('Order rejected.');
+  });
+
+  it('skips the balance refresh when a resolved order has no account to refresh', async () => {
+    const fixture = await setup();
+    const store = fixture.componentInstance['accountStore'];
+    vi.spyOn(store, 'selectedAccountId').mockReturnValue(null);
+    const refresh = stubRefresh(fixture);
+
+    TestBed.inject(OrderService).pendingResolved.next(order({ accountId: undefined }));
+
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it('renders the streamlined header and demo market metrics', async () => {
@@ -986,6 +1030,10 @@ describe('MarketPageComponent', () => {
       ...overrides,
     };
   }
+  function stubRefresh(fixture: ComponentFixture<MarketPageComponent>) {
+    const page = fixture.componentInstance as unknown as { refreshBalances(id: number): void };
+    return vi.spyOn(page, 'refreshBalances').mockImplementation(() => undefined);
+  }
   function editQuantity(fixture: ComponentFixture<MarketPageComponent>, quantity: string) {
     const input = fixture.nativeElement.querySelector('#future-trade-quantity') as HTMLInputElement;
     input.value = quantity;
@@ -1026,6 +1074,20 @@ describe('MarketPageComponent', () => {
     expect(fixture.componentInstance['orderMessage']()).toBe('');
     expect(fixture.nativeElement.querySelector('app-trade-ticket [role="status"]')).toBeNull();
     expect(TestBed.inject(ToastService).messages()[0].message).toContain('Filled 2 AAPL');
+    http.verify();
+  });
+  it('reports an accepted order that is still open', async () => {
+    const fixture = await setup('aapl', '', '2');
+    const http = TestBed.inject(HttpTestingController);
+    editQuantity(fixture, '2');
+    buy(fixture);
+    http.expectOne('/api/orders').flush(order({ accountId: 2, status: 'ACCEPTED' }));
+    http.expectOne('/api/accounts/2/holdings').flush([]);
+    http.expectOne('/api/users/me').flush({ availableFunds: 9000 });
+    fixture.detectChanges();
+    expect(TestBed.inject(ToastService).messages()[0].message).toBe(
+      'Market buy order placed for 2 AAPL.',
+    );
     http.verify();
   });
   it('sells all owned shares and displays the execution immediately', async () => {
