@@ -40,6 +40,14 @@ class ScorecardTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_scorecard(extra)
 
+    def test_direction_only_model_has_no_return_rmse(self):
+        direction = card(model="LSTM direction", model_return_rmse=None)
+        self.assertIsNone(direction["modelReturnRmse"])
+        validate_scorecard(direction)
+        self.assertIn('"modelReturnRmse": null', json.dumps(direction))
+        with self.assertRaises((TypeError, ValueError)):
+            card(naive_return_rmse=None)
+
     def test_written_file_round_trips(self):
         with tempfile.TemporaryDirectory() as folder:
             path = write_scorecard(card(), Path(folder) / "forecast" / "scorecard.json")

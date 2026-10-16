@@ -30,11 +30,15 @@ def build_scorecard(
     test_end: str,
     direction_accuracy: float,
     always_up_accuracy: float,
-    model_return_rmse: float,
+    model_return_rmse: float | None,
     naive_return_rmse: float,
     status: str = "final",
 ) -> dict:
-    """Assemble a scorecard with the agreed field names, rounded for display."""
+    """Assemble a scorecard with the agreed field names, rounded for display.
+
+    model_return_rmse is None for a direction-only model, which predicts
+    up or down but no return; the card then shows direction accuracy alone.
+    """
     # These camelCase keys are the static-file contract used by the Angular card.
     card = {
         "symbol": symbol,
@@ -42,7 +46,7 @@ def build_scorecard(
         "testPeriod": f"{test_start} to {test_end}",
         "directionAccuracy": round(float(direction_accuracy), 4),
         "alwaysUpAccuracy": round(float(always_up_accuracy), 4),
-        "modelReturnRmse": round(float(model_return_rmse), 6),
+        "modelReturnRmse": None if model_return_rmse is None else round(float(model_return_rmse), 6),
         "naiveReturnRmse": round(float(naive_return_rmse), 6),
         "status": status,
     }
@@ -72,9 +76,11 @@ def validate_scorecard(card: dict) -> None:
     for key in ("directionAccuracy", "alwaysUpAccuracy"):
         if not 0.0 <= card[key] <= 1.0:
             raise ValueError(f"{key} must be a share between 0 and 1")
-    for key in ("modelReturnRmse", "naiveReturnRmse"):
-        if card[key] < 0:
-            raise ValueError(f"{key} cannot be negative")
+    if not isinstance(card["naiveReturnRmse"], (int, float)) or card["naiveReturnRmse"] < 0:
+        raise ValueError("naiveReturnRmse must be a non-negative number")
+    # Direction-only models have no return forecast, so their RMSE is null.
+    if card["modelReturnRmse"] is not None and card["modelReturnRmse"] < 0:
+        raise ValueError("modelReturnRmse must be null or a non-negative number")
 
 
 def write_scorecard(card: dict, path: Path = config.SCORECARD_JSON) -> Path:

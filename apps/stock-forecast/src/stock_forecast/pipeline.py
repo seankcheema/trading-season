@@ -30,6 +30,7 @@ class Prediction:
     returns: np.ndarray | None
     up: np.ndarray | None = None
     include_direction: bool = True
+    prob_up: np.ndarray | None = None
 
 
 def load_dataset() -> pd.DataFrame:
@@ -223,7 +224,17 @@ def direction_fold(fold: Fold, with_lstm: bool = False) -> list[dict]:
 
 
 def final_test_prediction(model_key: str, splits: Splits) -> tuple[str, Prediction]:
-    """The chosen model's forecasts for the test split. Run this once."""
+    """The chosen model's forecasts for the test split. Run this once.
+
+    For "lstm-direction", splits must come from load_direction_dataset().
+    """
+    if model_key == "lstm-direction":
+        model, scalers = load_artifacts(config.DIRECTION_MODEL_DIR)
+        lookback = int(model.input_shape[1])
+        X_test, _ = make_windows(splits.test, scalers, lookback, history=splits.val)
+        prob = predict_up_probability(model, X_test)
+        name = f"LSTM direction ({len(scalers.feature_cols)} inputs, {lookback}-day window)"
+        return name, Prediction(None, prob > config.DIRECTION_THRESHOLD, prob_up=prob)
     if model_key == "lstm":
         # Load the frozen validation-selected model; never fit or tune on test rows.
         model, scalers = load_artifacts()
