@@ -202,7 +202,9 @@ export class OrderSubmissionComponent {
   );
 
   protected readonly submitLabel = computed(() => {
-    if (this.editOrder()) return this.busy() ? 'Saving…' : 'Save changes';
+    if (this.editOrder()) {
+      return this.busy() ? 'Saving…' : 'Save changes';
+    }
     if (this.busy()) {
       return this.submittedSide() === 'buy' ? 'Buying\u2026' : 'Selling\u2026';
     }
@@ -214,7 +216,14 @@ export class OrderSubmissionComponent {
   private readonly initializeEdit = effect(() => {
     const order = this.editOrder();
     const execution = this.execution();
-    if (!order || !execution || execution.buffer() === null || this.initializedEditId === order.orderId) return;
+    if (
+      !order ||
+      !execution ||
+      execution.buffer() === null ||
+      this.initializedEditId === order.orderId
+    ) {
+      return;
+    }
     untracked(() => {
       execution.executionType.set(order.executionType ?? 'MARKET');
       execution.limitPrice.set(order.limitPrice ?? null);

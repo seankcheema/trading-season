@@ -193,18 +193,21 @@ export class AccountDialogComponent implements OnInit {
   ngOnInit(): void {
     this.name.setValue(this.account()?.name ?? '');
     const account = this.account();
-    if (account)
+    if (account) {
       this._store.eligibility(account.accountId).subscribe({
         next: (result) => this.eligibility.set(result),
         error: () =>
           this.eligibilityError.set('Unable to check requirements. Close and reopen to retry.'),
       });
+    }
   }
 
   protected confirmClosure(): void {
     const account = this.account();
     const action = this.confirming();
-    if (!account || !action || this.saving()) return;
+    if (!account || !action || this.saving()) {
+      return;
+    }
     this.saving.set(true);
     this.errorMessage.set('');
     this._store.deleteAccount(account.accountId).subscribe({

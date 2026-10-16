@@ -173,7 +173,7 @@
             [disabled]="maxShares() === 0"
             (input)="onSharesInput($event)"
           />
-        <div orderSummary class="contents space-y-2">
+        <dl orderSummary class="space-y-2">
           <div class="flex justify-between gap-4">
             <dt class="text-muted-foreground">Shares</dt>
             <dd class="tabular-nums">{{ shares() }}</dd>
@@ -190,7 +190,7 @@
             <dt>Estimated {{ side() === 'buy' ? 'cost' : 'proceeds' }}</dt>
             <dd class="tabular-nums">{{ orderValue() | currency: 'USD' }}</dd>
           </div>
-        </div>
+        </dl>
         </app-execution-controls>
 
         <div class="min-h-4 flex-1"></div>

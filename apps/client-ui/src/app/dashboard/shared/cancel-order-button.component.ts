@@ -59,7 +59,9 @@ export class CancelOrderButtonComponent {
     this.confirmation().nativeElement.close();
   }
   protected confirm(): void {
-    if (this.busy()) return;
+    if (this.busy()) {
+      return;
+    }
     this.dismissConfirmation();
     this.confirmed.emit();
   }

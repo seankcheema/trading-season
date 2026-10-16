@@ -100,7 +100,7 @@ export interface TradeTicketDraft {
           aria-label="Shares"
           (input)="onQuantityInput($event)"
         />
-        <div orderSummary class="contents space-y-2">
+        <dl orderSummary class="space-y-2">
         <div class="flex justify-between gap-4">
           <dt class="text-muted-foreground">Shares</dt>
           <dd class="tabular-nums">{{ quantity() }}</dd>
@@ -117,7 +117,7 @@ export interface TradeTicketDraft {
           <dt>Estimated {{ side() === 'buy' ? 'cost' : 'proceeds' }}</dt>
           <dd class="tabular-nums">{{ draft().estimatedValue | currency: 'USD' }}</dd>
         </div>
-      </div>
+      </dl>
         </app-execution-controls>
 
       <div class="min-h-2 flex-1"></div>
@@ -228,7 +228,8 @@ export class TradeTicketComponent {
   }
 
   protected submitOrder(): void {
-    if (!this.execution()?.valid() || !this.ready() || this.busy() || !this.quantity() || this.quantity() > this.maxShares()) {
+    const blocked = !this.execution()?.valid() || !this.ready() || this.busy();
+    if (blocked || !this.quantity() || this.quantity() > this.maxShares()) {
       return;
     }
 

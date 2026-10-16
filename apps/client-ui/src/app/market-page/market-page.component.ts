@@ -773,9 +773,12 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.orders.pendingResolved.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((order) => {
       const accountId = order.accountId ?? this.accountStore.selectedAccountId();
-      if (accountId !== null) this.refreshBalances(accountId);
-      if (order.status === 'REJECTED')
+      if (accountId !== null) {
+        this.refreshBalances(accountId);
+      }
+      if (order.status === 'REJECTED') {
         this.toasts.show(order.rejectionReason ?? 'Order rejected.', 'error');
+      }
     });
     if (!isPlatformBrowser(this.platformId)) {
       return;
@@ -878,11 +881,13 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   @HostListener('window:resize')
   protected positionToolbarMenu(): void {
     const menu = this.openToolbarMenu();
-    let id = 'comparison-picker';
+    let id: string;
     if (menu === 'indicators') {
       id = 'indicator-picker';
     } else if (menu === 'chart-mode') {
       id = 'chart-mode-picker';
+    } else {
+      id = 'comparison-picker';
     }
     const toolbar = this.menuHost.nativeElement.querySelector('.chart-toolbar');
     const trigger = toolbar?.querySelector(`[aria-controls="${id}"]`);

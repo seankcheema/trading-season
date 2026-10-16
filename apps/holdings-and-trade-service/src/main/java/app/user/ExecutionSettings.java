@@ -1,6 +1,9 @@
 package app.user;
 
-import jakarta.validation.constraints.*;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 
 /** User-wide protection against unfavorable execution prices.

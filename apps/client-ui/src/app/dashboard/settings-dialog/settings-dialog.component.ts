@@ -67,7 +67,9 @@ export class SettingsDialogComponent {
   });
 
   protected saveBuffer(): void {
-    if (this.buffer.invalid || this.loading() || this.loadFailed() || this.saving() || this.saved()) return;
+    if (this.cannotSave()) {
+      return;
+    }
     clearTimeout(this.savedTimer);
     this.saved.set(false);
     this.saving.set(true);
@@ -88,6 +90,12 @@ export class SettingsDialogComponent {
         },
       });
   }
+
+  private cannotSave(): boolean {
+    const unavailable = this.loading() || this.loadFailed();
+    return this.buffer.invalid || unavailable || this.saving() || this.saved();
+  }
+
   protected loadBuffer(): void {
     this.loading.set(true);
     this.loadFailed.set(false);

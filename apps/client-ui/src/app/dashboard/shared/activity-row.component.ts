@@ -119,13 +119,19 @@ export class ActivityRowComponent {
   protected readonly cancelError = signal('');
   protected cancel(): void {
     const item = this.transaction();
-    if (!item.orderId || this.cancelling()) return;
+    if (!item.orderId || this.cancelling()) {
+      return;
+    }
     this.cancelling.set(true);
     this.cancelError.set('');
     this.orders.cancelOrder(item.orderId).subscribe({
       next: () => {
         this.cancelling.set(false);
-        if (item.accountId) this.accounts.refreshAfterTrade(item.accountId).subscribe({error: () => this.cancelError.set('Cancelled. Retry refreshing balances.')});
+        if (item.accountId) {
+          this.accounts.refreshAfterTrade(item.accountId).subscribe({
+            error: () => this.cancelError.set('Cancelled. Retry refreshing balances.'),
+          });
+        }
       },
       error: () => { this.cancelling.set(false); this.cancelError.set('Unable to cancel order. Refresh and try again.'); },
     });

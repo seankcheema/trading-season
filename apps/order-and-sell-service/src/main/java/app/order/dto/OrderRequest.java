@@ -1,6 +1,11 @@
 package app.order.dto;
 
-import jakarta.validation.constraints.*;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Null;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;

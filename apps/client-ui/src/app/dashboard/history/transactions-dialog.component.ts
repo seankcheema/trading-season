@@ -250,7 +250,9 @@ export class TransactionsDialogComponent implements OnInit {
   protected readonly loadError = signal(false);
   protected readonly cancelling = signal<ReadonlySet<number>>(new Set());
   protected cancelOrder(row: HistoryRow): void {
-    if (row.orderId === null || this.cancelling().has(row.orderId)) return;
+    if (row.orderId === null || this.cancelling().has(row.orderId)) {
+      return;
+    }
     this.cancelling.update((ids) => new Set(ids).add(row.orderId!));
     this.orderService.cancelOrder(row.orderId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => { this.cancelling.update((ids) => withoutId(ids, row.orderId!)); this.accountStore.load(true); },

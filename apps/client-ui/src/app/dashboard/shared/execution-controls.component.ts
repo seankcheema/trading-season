@@ -52,7 +52,8 @@ import { ExecutionSettingsService } from '../settings-dialog/execution-settings.
         <div class="mt-2"><ng-content select="[shareSlider]" /></div>
       </div>
 
-      <dl class="bg-muted/60 space-y-2 rounded-xl p-3 text-sm">
+      <div class="bg-muted/60 space-y-2 rounded-xl p-3 text-sm">
+        <dl>
         <div class="flex h-14 items-center justify-between gap-3">
           <dt class="text-muted-foreground shrink-0">{{ executionType() === 'MARKET' ? 'Market price' : executionLabel() + ' price' }}</dt>
           <dd class="min-w-0 max-w-[65%]" [class.w-32]="hasLimit() !== hasStop()" [class.w-52]="hasLimit() && hasStop()">
@@ -70,8 +71,9 @@ import { ExecutionSettingsService } from '../settings-dialog/execution-settings.
             }
           </dd>
         </div>
+        </dl>
         <ng-content select="[orderSummary]" />
-      </dl>
+      </div>
 
       @if (buffer() === null && !loadError()) {
         <span class="sr-only" role="status">Loading execution preference</span>
@@ -142,11 +144,14 @@ export class ExecutionControlsComponent {
   readonly reservationPrice = computed(() => this.reservationPriceFor(this.price()));
   // Parents can calculate before child inputs have been bound, using their current quote.
   reservationPriceFor(price: number): number {
-    if (!Number.isFinite(price) || price <= 0) return 0;
+    if (!Number.isFinite(price) || price <= 0) {
+      return 0;
+    }
     return this.hasLimit() ? (this.limitPrice() ?? 0) : price * (1 + (this.buffer() ?? 1) / 100);
   }
-  readonly valid = computed(() => this.buffer() !== null && !this.loadError()
-    && (!this.hasLimit() || this.validPrice(this.limitPrice())) && (!this.hasStop() || this.validPrice(this.stopPrice())));
+  readonly valid = computed(
+    () => this.buffer() !== null && !this.loadError() && this.pricesValid(),
+  );
   readonly parameters = computed(() => ({ executionType: this.executionType(),
     ...(this.hasLimit() && this.limitPrice() !== null ? { limitPrice: this.limitPrice()! } : {}),
     ...(this.hasStop() && this.stopPrice() !== null ? { stopPrice: this.stopPrice()! } : {}),
@@ -163,8 +168,17 @@ export class ExecutionControlsComponent {
     });
   }
   validPrice(value: number | null): boolean {
-    return value !== null && Number.isFinite(value) && value > 0 && value < 1e12
-      && Math.abs(value * 1e6 - Math.round(value * 1e6)) < 0.0001;
+    if (value === null || !Number.isFinite(value)) {
+      return false;
+    }
+    return value > 0 && value < 1e12 && Math.abs(value * 1e6 - Math.round(value * 1e6)) < 0.0001;
+  }
+
+  // A price that the chosen order type does not use cannot make the order invalid.
+  private pricesValid(): boolean {
+    const limitValid = !this.hasLimit() || this.validPrice(this.limitPrice());
+    const stopValid = !this.hasStop() || this.validPrice(this.stopPrice());
+    return limitValid && stopValid;
   }
   protected selectType(type: ExecutionType): void {
     this.executionType.set(type);

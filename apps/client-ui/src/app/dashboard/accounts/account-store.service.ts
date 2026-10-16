@@ -240,7 +240,9 @@ export class AccountStore {
   }
 
   deleteAccount(accountId: number): Observable<void> {
-    if (!this.isOwnedAccount(accountId)) return throwError(() => new NotOwnedError());
+    if (!this.isOwnedAccount(accountId)) {
+      return throwError(() => new NotOwnedError());
+    }
     const url = `${this._apiUrl}/me/accounts/${accountId}`;
     const request = this._http.delete<unknown>(url, { params: { confirmed: true } });
     return request.pipe(

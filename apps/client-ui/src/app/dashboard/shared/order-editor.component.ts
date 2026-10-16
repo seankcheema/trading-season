@@ -29,7 +29,9 @@ export class OrderEditorComponent {
   protected readonly instrument = computed(() => {
     const order = this.orders.editingOrder();
     const ref = this.orders.catalogue().find((item) => item.instrumentId === order?.instrumentId);
-    if (!order || !ref) return null;
+    if (!order || !ref) {
+      return null;
+    }
     const symbol = ref.simulatedStockSymbol ?? ref.ticker;
     return this.instruments().find((item) => item.symbol === symbol)
       ?? { symbol, name: ref.name, price: order.referencePrice ?? order.indicativePrice, change: 0, changePercent: 0 };
@@ -40,12 +42,16 @@ export class OrderEditorComponent {
     const stock = this.instrument();
     const holdings = this.accounts.holdingsByAccount().get(order?.accountId ?? -1) ?? [];
     const positions = Object.fromEntries(holdings.map((item) => [item.symbol, item.availableQuantity ?? item.quantity]));
-    if (stock && order?.orderType === 'SELL') positions[stock.symbol] = (positions[stock.symbol] ?? 0) + (order.reservedShares ?? 0);
+    if (stock && order?.orderType === 'SELL') {
+      positions[stock.symbol] = (positions[stock.symbol] ?? 0) + (order.reservedShares ?? 0);
+    }
     return positions;
   });
   protected saved(): void {
     const id = this.orders.editingOrder()?.accountId;
     this.orders.editingOrder.set(null);
-    if (id) this.accounts.refreshAfterTrade(id).subscribe({ error: () => this.accounts.load(true) });
+    if (id) {
+      this.accounts.refreshAfterTrade(id).subscribe({ error: () => this.accounts.load(true) });
+    }
   }
 }

@@ -7,7 +7,13 @@ const USD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' 
 // When an order took effect: the selected replay time, else when the backend resolved it, else
 // (for an order still pending) when it was submitted.
 export function orderDate(order: OrderResult): string {
-  if (order.evaluatedAt && Number.isFinite(Date.parse(order.evaluatedAt)) && order.status === 'FILLED') return order.evaluatedAt;
+  if (
+    order.evaluatedAt &&
+    Number.isFinite(Date.parse(order.evaluatedAt)) &&
+    order.status === 'FILLED'
+  ) {
+    return order.evaluatedAt;
+  }
   if (order.simulatedAt && Number.isFinite(Date.parse(order.simulatedAt))) {
     return order.simulatedAt;
   }
@@ -25,7 +31,9 @@ export function orderSymbol(order: OrderResult, catalogue: readonly InstrumentRe
 
 // Open orders display the user's instruction; filled orders retain their actual execution price.
 export function orderDisplayPrice(order: OrderResult): number {
-  if (order.status === 'FILLED') return order.executionPrice ?? order.indicativePrice;
+  if (order.status === 'FILLED') {
+    return order.executionPrice ?? order.indicativePrice;
+  }
   return order.limitPrice ?? order.stopPrice ?? order.executionPrice ?? order.indicativePrice;
 }
 

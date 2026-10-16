@@ -46,7 +46,9 @@ export class OrderService {
   readonly editingOrder = signal<OrderResult | null>(null);
   editOrder(orderId: number): void {
     const order = this._orders().find((item) => item.orderId === orderId);
-    if (order?.status !== 'ACCEPTED') return;
+    if (order?.status !== 'ACCEPTED') {
+      return;
+    }
     this.instruments().subscribe({
       next: () => this.editingOrder.set(order),
       error: () => this.toasts.show('Unable to load the order editor. Please try again.', 'error'),
