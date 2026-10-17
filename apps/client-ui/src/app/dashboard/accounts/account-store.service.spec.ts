@@ -522,4 +522,66 @@ describe('AccountStore', () => {
     expect(store.cashBalance()).toBe(4700);
     expect(store.holdingsOf(1)[0].quantity).toBe(5);
   });
+
+  describe('refreshing a loaded store', () => {
+    it('ignores a load that starts while another is running', () => {
+      store.load();
+      store.load();
+      http.expectOne('/api/me/accounts').flush(ACCOUNTS);
+      for (const account of ACCOUNTS) {
+        http.expectOne(holdingsUrl(account.accountId)).flush([]);
+      }
+      http.expectOne('/api/users/me').flush({ firstName: 'Ada', lastName: 'Lovelace' });
+      http.expectOne(isCashTransactions).flush([]);
+    });
+
+    it('refetches only the transactions while the loaded data is fresh', () => {
+      load();
+      store.load();
+      http.expectNone('/api/me/accounts');
+      http.expectOne(isCashTransactions).flush([cash(1, 'DEPOSIT')]);
+      expect(store.refreshError()).toBe('');
+    });
+
+    it('reports a failed transaction refresh while the loaded data is fresh', () => {
+      load();
+      store.load();
+      http.expectOne(isCashTransactions).flush({}, { status: 500, statusText: 'Error' });
+      expect(store.refreshError()).toBe('Unable to refresh transactions.');
+    });
+
+    it('reloads when an account is selected after the data has gone stale', () => {
+      vi.useFakeTimers();
+      try {
+        load();
+        vi.advanceTimersByTime(61_000);
+        expect(store.selectAccount(2)).toBe(true);
+        http.expectOne('/api/me/accounts').flush(ACCOUNTS);
+        for (const account of ACCOUNTS) {
+          http.expectOne(holdingsUrl(account.accountId)).flush([]);
+        }
+        http.expectOne('/api/users/me').flush({ firstName: 'Ada', lastName: 'Lovelace' });
+        http.expectOne(isCashTransactions).flush([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('keeps showing loaded data when a later refresh fails', () => {
+      load();
+      store.load(true);
+      http.expectOne('/api/users/me').flush({ firstName: 'Ada', lastName: 'Lovelace' });
+      http.expectOne('/api/me/accounts').flush({}, { status: 500, statusText: 'Error' });
+      expect(store.status()).toBe('ready');
+      expect(store.refreshError()).toBe('Unable to refresh accounts.');
+    });
+
+    it('builds the full name from whichever names the profile has', () => {
+      store.load();
+      http.expectOne('/api/users/me').flush({ firstName: null, lastName: 'Lovelace' });
+      http.expectOne('/api/me/accounts').flush([]);
+      http.expectOne(isCashTransactions).flush([]);
+      expect(store.fullName()).toBe('Lovelace');
+    });
+  });
 });

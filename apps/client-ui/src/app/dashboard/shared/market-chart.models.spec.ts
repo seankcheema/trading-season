@@ -161,4 +161,37 @@ describe('market chart models', () => {
     expect(bollingerBands(candles, 2, Number.NaN)).toEqual([]);
     expect(relativeStrengthIndex(candles, 2)).toEqual([]);
   });
+
+  it('keeps a flat series when the baseline cannot be used for percentages', () => {
+    const candle = (close: number): MarketCandlePoint => ({
+      time: new Date('2026-01-05T15:00:00Z'), open: close, high: close, low: close, close, volume: 3,
+    });
+    expect(percentChangePoints([candle(0), candle(5)]).map((point) => point.value)).toEqual([0, 0]);
+    expect(percentChangePoints([])).toEqual([]);
+  });
+
+  it('ignores a live price that is not a number or that has no series to land on', () => {
+    expect(applyLivePrice([], 10, '2026-01-05T15:00:00Z')).toEqual([]);
+    const points = [{ time: new Date('2026-01-05T15:00:00Z'), value: 1 }];
+    expect(applyLivePrice(points, Number.NaN, '2026-01-05T15:01:00Z')).toEqual(points);
+    expect(applyLiveCandlePrice([], 10, '2026-01-05T15:00:00Z')).toEqual([]);
+    const candles: MarketCandlePoint[] = [
+      { time: new Date('2026-01-05T15:00:00Z'), open: 1, high: 2, low: 1, close: 2, volume: 1 },
+    ];
+    expect(applyLiveCandlePrice(candles, Number.POSITIVE_INFINITY, '2026-01-05T15:01:00Z')).toEqual(candles);
+  });
+
+  it('keeps the last time when a live timestamp cannot be read', () => {
+    const start = new Date('2026-01-05T15:00:00Z');
+    const points = [{ time: start, value: 1 }];
+    expect(applyLivePrice(points, 5, 'not a date')[0]).toEqual({ time: start, value: 5 });
+    const candles: MarketCandlePoint[] = [{ time: start, open: 1, high: 2, low: 1, close: 2, volume: 1 }];
+    expect(applyLiveCandlePrice(candles, 5, 'not a date')[0].time).toBe(start);
+  });
+
+  it('treats a missing symbol as empty', () => {
+    expect(normalizeMarketSymbol(undefined)).toBe('');
+    expect(normalizeMarketSymbol(null)).toBe('');
+    expect(marketSymbolSlug(' Brk.B ')).toBe('brk.b');
+  });
 });

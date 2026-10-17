@@ -369,12 +369,7 @@ export class TransactionsDialogComponent implements OnInit {
     const status = this.status();
     const query = this.query().trim().toLowerCase();
     return sortHistoryRows(
-      this.allRows().filter(
-        (row) =>
-          (type === 'all' || row.side === type) &&
-          (status === 'all' || row.status === status) &&
-          (!query || row.label.toLowerCase().includes(query)),
-      ),
+      this.allRows().filter((row) => matchesFilters(row, type, status, query)),
       this.sortKey(),
       this.sortDirection(),
     );
@@ -475,6 +470,17 @@ export class TransactionsDialogComponent implements OnInit {
         },
       });
   }
+}
+
+function matchesFilters(
+  row: HistoryRow,
+  type: TypeFilter,
+  status: StatusFilter,
+  query: string,
+): boolean {
+  const typeMatches = type === 'all' || row.side === type;
+  const statusMatches = status === 'all' || row.status === status;
+  return typeMatches && statusMatches && (!query || row.label.toLowerCase().includes(query));
 }
 
 function withoutId(ids: ReadonlySet<number>, id: number): ReadonlySet<number> {

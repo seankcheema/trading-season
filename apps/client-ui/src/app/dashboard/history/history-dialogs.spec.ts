@@ -213,6 +213,38 @@ describe('history dialogs', () => {
         .toBe('bg-loss');
     });
 
+    it.each([
+      ['FILLED', 'bg-gain'],
+      ['PENDING', 'bg-pending'],
+      ['ACCEPTED', 'bg-primary'],
+    ])('marks %s audit events with %s', (eventType, expected) => {
+      const fixture = open();
+      expect(
+        fixture.componentInstance['auditMarkerClass']({ eventType, price: 100, occurredAt: '', detail: null }),
+      ).toBe(expected);
+    });
+
+    it('closes only the filter panel on Escape and clears the filters', () => {
+      seedOrders();
+      const fixture = open();
+      const component = fixture.componentInstance;
+      const event = new Event('keydown');
+      const stop = vi.spyOn(event, 'stopPropagation');
+      component['closeFilters'](event);
+      expect(stop).not.toHaveBeenCalled();
+      click(fixture, '[data-testid="transactions-filters"]');
+      click(fixture, '[data-testid="transactions-filter-buy"]');
+      click(fixture, '[data-testid="transactions-filters-clear"]');
+      expect(rows(fixture, 'transactions-row')).toHaveLength(5);
+      fixture.nativeElement.querySelector('[data-testid="transactions-filters-panel"]').previousElementSibling.click();
+      fixture.detectChanges();
+      expect(component['filtersOpen']()).toBe(false);
+      component['filtersOpen'].set(true);
+      component['closeFilters'](event);
+      expect(stop).toHaveBeenCalledOnce();
+      expect(component['filtersOpen']()).toBe(false);
+    });
+
     it('colors and signs only cash amounts', () => {
       seedOrders();
       const fixture = open();

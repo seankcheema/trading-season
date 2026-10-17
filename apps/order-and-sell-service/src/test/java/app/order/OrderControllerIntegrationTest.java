@@ -353,6 +353,31 @@ class OrderControllerIntegrationTest {
     }
 
     @Test
+    void readsOneOwnedOrderAndHidesAnotherUsersOrder() throws Exception {
+        Integer orderId = JsonPath.read(submit("BUY", "10", "20.00")
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.orderId");
+
+        mockMvc.perform(get("/api/orders/{orderId}", orderId).with(tokenFor(user.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.orderId").value(orderId))
+                .andExpect(jsonPath("$.status").value("FILLED"));
+        mockMvc.perform(get("/api/orders/{orderId}", orderId).with(tokenFor(givenAnOrderBelongingToAnotherUser())))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void aFilledOrderCanNeitherBeCancelledNorReplaced() throws Exception {
+        Integer orderId = JsonPath.read(submit("BUY", "10", "20.00")
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.orderId");
+
+        mockMvc.perform(post("/api/orders/{orderId}/cancel", orderId).with(tokenFor(user.getUserId())))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/orders/{orderId}/replace", orderId).with(tokenFor(user.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON).content(body("BUY", "5", "20.00")))
+                .andExpect(status().is4xxClientError());
+    }
+
+    @Test
     void listingOrdersIsEmptyForACallerWhoHasNotTraded() throws Exception {
         mockMvc.perform(get("/api/orders").with(tokenFor(UUID.randomUUID())))
                 .andExpect(status().isOk())

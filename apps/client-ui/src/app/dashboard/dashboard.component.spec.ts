@@ -1,5 +1,7 @@
 import { ExecutionSettingsService } from './settings-dialog/execution-settings.service';
 import { of as savedExecutionPreference } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
+import { MarketDataService, MarketStreamHandlers } from './market-data.service';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -2196,6 +2198,147 @@ describe('DashboardComponent', () => {
 
       expect(tour(fixture)).toBeNull();
       expect(localStorage.getItem('ts.tour.done')).toBeNull();
+    });
+  });
+
+  describe('market stream and refresh', () => {
+    const SNAPSHOT = {
+      sessionId: 7,
+      status: 'OPEN',
+      marketTimestamp: '2026-01-05T15:01:00Z',
+      serverTimestamp: '2026-01-05T15:01:00Z',
+      calendar: CALENDAR,
+      stocks: [
+        { symbol: 'AAPL', companyName: 'Apple', price: 100, change: 2, changePercent: 2, timestamp: 'x' },
+        { symbol: 'SPY', companyName: 'SPDR', price: 0, change: 0, changePercent: 0, timestamp: 'x' },
+      ],
+    };
+
+    function start() {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture);
+      const market = TestBed.inject(MarketDataService);
+      let handlers!: MarketStreamHandlers;
+      const stop = vi.fn();
+      vi.spyOn(market, 'connect').mockImplementation((_session, given) => {
+        handlers = given;
+        return stop;
+      });
+      const candles = vi
+        .spyOn(market, 'candles')
+        .mockImplementation((_session, symbol) =>
+          symbol === 'AAPL'
+            ? of({
+                sessionId: 7, symbol, timeframe: '1D', marketTimestamp: '', points: [
+                  { timestamp: '2026-01-05T15:00:00Z', open: 1, high: 2, low: 1, close: 2, volume: 1 },
+                ],
+              } as never)
+            : throwError(() => new Error('down')),
+        );
+      return { fixture, component: fixture.componentInstance, market, candles, stop, handlers: () => handlers };
+    }
+
+    it('applies a snapshot, connects the stream and loads a chart for every held or watched symbol', () => {
+      const { component, candles, handlers } = start();
+      component['applySnapshot'](SNAPSHOT as never);
+      expect(component['instruments']().map((stock) => stock.symbol)).toEqual(['AAPL', 'SPY']);
+      expect(candles).toHaveBeenCalled();
+      expect(component['assetCandlePoints']().get('AAPL')).toHaveLength(1);
+      // A failing symbol leaves no chart behind.
+      expect(component['assetCandlePoints']().has('SPY')).toBe(false);
+      expect(handlers()).toBeDefined();
+    });
+
+    it('applies ticks to the quoted symbol only and animates real moves', () => {
+      const { component, handlers } = start();
+      component['applySnapshot'](SNAPSHOT as never);
+      const animate = vi.spyOn(component['tickAnimator'], 'start');
+      handlers().tick({
+        eventId: 1, marketTimestamp: '2026-01-05T15:01:05Z', serverTimestamp: '2026-01-05T15:01:05Z',
+        prices: [
+          { symbol: 'AAPL', price: 103, sequenceNumber: 1 },
+          { symbol: 'SPY', price: 5, sequenceNumber: 2 },
+          { symbol: 'AAPL', price: 103, sequenceNumber: 3 },
+          { symbol: 'AAPL', price: 99, sequenceNumber: 4 },
+        ],
+      });
+      const aapl = component['instruments']().find((stock) => stock.symbol === 'AAPL')!;
+      expect(aapl.price).toBe(99);
+      expect(aapl.change).toBe(1);
+      expect(component['instruments']().find((stock) => stock.symbol === 'SPY')?.changePercent).toBe(0);
+      expect(animate).toHaveBeenCalledWith('AAPL', 'gain');
+      expect(animate).toHaveBeenCalledWith('AAPL', 'loss');
+    });
+
+    it('ignores ticks while the page is hidden and reloads the snapshot on resync', () => {
+      const { component, market, handlers } = start();
+      component['applySnapshot'](SNAPSHOT as never);
+      vi.spyOn(component['document'], 'hidden', 'get').mockReturnValue(true);
+      handlers().tick({
+        eventId: 1, marketTimestamp: '2026-01-05T15:09:00Z', serverTimestamp: '', prices: [],
+      });
+      expect(component['currentMarketTimestamp']()).toBe('2026-01-05T15:01:00Z');
+      vi.restoreAllMocks();
+
+      const snapshot = vi.spyOn(market, 'snapshot').mockReturnValue(of(SNAPSHOT as never));
+      handlers().status(true);
+      handlers().resync();
+      expect(snapshot).toHaveBeenCalled();
+    });
+
+    it('keeps the current view when a reloaded snapshot fails', () => {
+      const { component, market } = start();
+      vi.spyOn(market, 'snapshot').mockReturnValue(throwError(() => new Error('down')));
+      expect(() => component['loadMarketSnapshot']()).not.toThrow();
+    });
+
+    it('drops stale chart results after the market moves on and clears charts for a new session', () => {
+      const { component, market } = start();
+      const late = new Subject<never>();
+      vi.spyOn(market, 'candles').mockReturnValue(late as never);
+      component['applySnapshot'](SNAPSHOT as never);
+      component['applySnapshot']({ ...SNAPSHOT, sessionId: 8 } as never);
+      late.next({ points: [{ timestamp: '2026-01-05T15:00:00Z', close: 1 }] } as never);
+      late.error(new Error('late'));
+      expect(component['assetCandlePoints']().size).toBe(0);
+    });
+
+    it('reloads accounts, orders and the instrument catalogue on request', () => {
+      const { component } = start();
+      const load = vi.spyOn(component['accountStore'], 'load').mockImplementation(() => {});
+      component['retryAccounts']();
+      expect(load).toHaveBeenCalledWith(true);
+      const orders = vi.spyOn(component['orderService'], 'loadOrders').mockReturnValue(throwError(() => new Error('x')));
+      const instruments = vi.spyOn(component['orderService'], 'instruments').mockReturnValue(throwError(() => new Error('x')));
+      component['loadRecentOrders']();
+      expect(orders).toHaveBeenCalled();
+      expect(instruments).toHaveBeenCalled();
+    });
+
+    it('records the typed market time and applies it through the clock', () => {
+      const { component } = start();
+      component['onMarketDateTimeChange']({ target: { value: '2026-01-05T09:45' } } as unknown as Event);
+      expect(component['marketDateTime']()).toBe('2026-01-05T09:45');
+      const apply = vi.spyOn(component['clock'], 'applyMarketDateTime').mockImplementation(
+        (_value, onSnapshot, onApplied) => {
+          onSnapshot?.(SNAPSHOT as never);
+          onApplied?.();
+        },
+      );
+      component['applyMarketDateTime']();
+      expect(apply).toHaveBeenCalled();
+      component['onClockSnapshot'](SNAPSHOT as never);
+      expect(component['marketSessionId']()).toBe(7);
+    });
+
+    it('does nothing after a fill when no account is selected', () => {
+      const { component } = start();
+      component['accountStore']['_selectedAccountId'].set(null);
+      vi.spyOn(component['accountStore'], 'selectedAccountId').mockReturnValue(null);
+      const refresh = vi.spyOn(component['accountStore'], 'refreshAfterTrade');
+      component['onOrderSubmitted'](filledOrder());
+      expect(refresh).not.toHaveBeenCalled();
     });
   });
 });

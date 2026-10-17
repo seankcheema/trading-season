@@ -55,4 +55,26 @@ describe('toAuthErrorMessage', () => {
       AUTH_ERROR_MESSAGES.registrationFailed,
     );
   });
+
+  it.each([
+    ['register-auth', 409, 'emailTaken'],
+    ['register-auth', 418, 'registrationFailed'],
+    ['register-profile', 409, 'profileEmailTaken'],
+    ['register-profile', 400, 'invalidProfile'],
+    ['register-profile', 418, 'registrationFailed'],
+  ] as const)('maps %s status %s to %s', (context, status, key) => {
+    expect(toAuthErrorMessage(new HttpErrorResponse({ status }), context)).toBe(
+      AUTH_ERROR_MESSAGES[key],
+    );
+  });
+
+  it('joins a list of validation messages and ignores empty or non-text ones', () => {
+    const bad = (message: unknown) =>
+      toAuthErrorMessage(new HttpErrorResponse({ status: 400, error: { message } }), 'register-auth');
+    expect(bad(['Too short', 7, 'Needs a digit'])).toBe('Too short. Needs a digit');
+    expect(bad('Email is invalid')).toBe('Email is invalid');
+    expect(bad([])).toBe(AUTH_ERROR_MESSAGES.invalidRegistration);
+    expect(bad('')).toBe(AUTH_ERROR_MESSAGES.invalidRegistration);
+    expect(bad(5)).toBe(AUTH_ERROR_MESSAGES.invalidRegistration);
+  });
 });
