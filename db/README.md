@@ -11,7 +11,11 @@ The Reporting Service does not connect to it. What reporting shows is published 
 | [V003__Order_status_accepted.sql](migrations/V003__Order_status_accepted.sql) | Allows `ACCEPTED` in `orders.status`: an order is committed as accepted before it executes, then becomes `FILLED` or `REJECTED` |
 | [V008__Drop_account_status.sql](migrations/V008__Drop_account_status.sql) | Removes `user_accounts.account_status` |
 | [V009__Add_terms_acceptances.sql](migrations/V009__Add_terms_acceptances.sql) | `terms_acceptances`: one row per client and version of the platform terms they accepted |
-| [V010__Analyst_role.sql](migrations/V010__Analyst_role.sql) | Allows `ANALYST` in `user_accounts.user_role`, the role the Reporting Service serves its report runs to; `ADMIN`, allowed since V001, is served the console as well |
+| [V009__Analyst_role.sql](migrations/V009__Analyst_role.sql) | Allows `ANALYST` in `user_accounts.user_role`, the role the Reporting Service serves its report runs to; `ADMIN`, allowed since V001, is served the console as well |
+| [V010__Portfolio_account_lifecycle.sql](migrations/V010__Portfolio_account_lifecycle.sql) | Account archival status and timestamp, retaining financial history |
+| [V011__Execution_preferences_and_order_types.sql](migrations/V011__Execution_preferences_and_order_types.sql) | Saved execution buffers, conditional orders, immutable quote context and reservations |
+| [V012__Stop_trigger_reference.sql](migrations/V012__Stop_trigger_reference.sql) | Latched stop activation quote |
+| [V013__Order_audit_lifecycle.sql](migrations/V013__Order_audit_lifecycle.sql) | Conditional-order, cancellation and expiry audit events |
 
 In Docker, `db-init` runs [infrastructure/docker/init-db.sh](../infrastructure/docker/init-db.sh), which applies each file once and records it in `public.schema_migrations`. For a local PostgreSQL, apply the files in order with `psql -v ON_ERROR_STOP=1 -f`. Never edit an applied migration; add a new one.
 
@@ -274,3 +278,21 @@ erDiagram
         TIMESTAMPTZ recorded_at
     }
 ```
+
+## Portfolio account lifecycle
+
+[V010__Portfolio_account_lifecycle.sql](migrations/V010__Portfolio_account_lifecycle.sql) adds `accounts.status` (ACTIVE or ARCHIVED) and `archived_at`. A check constraint requires an archive timestamp exactly when status is ARCHIVED. Existing accounts become ACTIVE.
+
+The client's Delete action archives; it never deletes rows or cascades financial history. Account identities and every ledger relationship remain intact. Holdings and Trade publishes `status` and `archivedAt` in TRADING_ACCOUNT records after commit, and [reporting_feed.py](tools/reporting_feed.py) republishes the same fields for existing rows. Reporting retains the lifecycle state without connecting to the trading database. Apply migrations before running the republisher against the new schema. The [lifecycle API](../apps/holdings-and-trade-service/api.md) documents eligibility and the shared cash behavior.
+
+## Execution preferences and order reservations
+
+[V011](migrations/V011__Execution_preferences_and_order_types.sql) changes the profile buffer default to 1%, replaces existing zero defaults with 1%, and enforces 0-10%. It aborts if an existing preference lies outside that range; correct those values before rerunning the migration.
+
+Orders gain execution type and conditional prices, immutable reference quote/session/preference context, trigger and evaluation positions, reservations, execution price, rejection code and retry bookkeeping. Historical orders default to MARKET with unknown reference context left null; fills supply historical execution prices. Legacy ACCEPTED orders without context are not evaluated automatically. CANCELLED joins the status constraint. The existing unique fill-per-order constraint prevents duplicate execution. Apply migrations before deploying either Java service. See the [Order API](../apps/order-and-sell-service/api.md) for lifecycle and locking behavior.
+
+The migration contract test in `db/tools/tests/test_execution_migration.py` runs only with `EXECUTION_MIGRATION_DISPOSABLE_DATABASE_URL` set to an explicitly disposable PostgreSQL database. It creates an isolated temporary schema and verifies atomic rejection of invalid historical preferences, defaults, preservation of nonzero values, and historical order backfill.
+
+[V012](migrations/V012__Stop_trigger_reference.sql) adds the latched Stop activation quote. Submission quote columns remain unchanged for auditing; untriggered historical orders capture the activation quote when they trigger.
+
+[V013](migrations/V013__Order_audit_lifecycle.sql) permits TRIGGERED and CANCELLED audit entries. This fixes PostgreSQL rollbacks on Stop triggering, manual cancellation, and day-order expiry.

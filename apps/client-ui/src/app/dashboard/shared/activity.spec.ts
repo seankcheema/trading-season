@@ -39,10 +39,32 @@ function order(overrides: Partial<OrderResult> = {}): OrderResult {
 }
 
 describe('activity helpers', () => {
+  it('shows expired orders as cancelled without expiry explanations and retains rejection reasons', () => {
+    const expired = orderActivity(order({
+      status: 'CANCELLED',
+      rejectionCode: 'ORDER_EXPIRED',
+      rejectionReason: 'Day order expired at market close',
+    }), CATALOGUE);
+    expect(expired.status).toBe('CANCELLED');
+    expect(expired.detail).toBe('3 @ $10.00');
+    expect(expired.rejectionReason).toBeNull();
+    expect(orderActivity(order({
+      status: 'REJECTED', rejectionReason: 'Insufficient holdings',
+    }), CATALOGUE).rejectionReason).toBe('Insufficient holdings');
+  });
+
   it('dates an order by replay time, then resolution, then submission', () => {
     expect(orderDate(order({ simulatedAt: '2026-01-02T15:00:00Z' }))).toBe('2026-01-02T15:00:00Z');
     expect(orderDate(order({ simulatedAt: 'nonsense' }))).toBe('2026-01-05T16:00:05Z');
     expect(orderDate(order({ status: 'PENDING', resolvedAt: null }))).toBe('2026-01-05T16:00:00Z');
+  });
+
+  it('dates a fill by its valid evaluation time and no other status', () => {
+    expect(orderDate(order({ evaluatedAt: '2026-01-05T16:00:03Z' }))).toBe('2026-01-05T16:00:03Z');
+    expect(orderDate(order({ evaluatedAt: 'nonsense' }))).toBe('2026-01-05T16:00:05Z');
+    expect(orderDate(order({ status: 'CANCELLED', evaluatedAt: '2026-01-05T16:00:03Z' }))).toBe(
+      '2026-01-05T16:00:05Z',
+    );
   });
 
   it('types orders by side and reports their status', () => {
@@ -62,6 +84,25 @@ describe('activity helpers', () => {
     expect(orderActivity(order({ status: 'PENDING' }), CATALOGUE).status).toBe('PENDING');
     expect(orderActivity(order({ status: 'REJECTED' }), CATALOGUE).status).toBe('REJECTED');
     expect(orderActivity(order({ instrumentId: 99 }), []).label).toBe('Order #1');
+  });
+
+  it.each([
+    { executionType: 'LIMIT' as const, limitPrice: 95, expected: 95 },
+    { executionType: 'STOP' as const, stopPrice: 105, expected: 105 },
+    { executionType: 'STOP_LIMIT' as const, stopPrice: 105, limitPrice: 106, expected: 106 },
+  ])('shows entered prices for open $executionType orders in both views', ({ expected, ...prices }) => {
+    const pending = order({ ...prices, status: 'ACCEPTED', indicativePrice: 100 });
+    expect(orderActivity(pending, CATALOGUE).value).toBe(3 * expected);
+    const history = orderHistoryRow(pending, CATALOGUE, 'Primary');
+    expect(history.price).toBe(expected);
+    if (prices.stopPrice != null) expect(history.priceDetail).toContain('Stop $105.00');
+    if (prices.limitPrice != null) expect(history.priceDetail).toContain('Limit');
+  });
+
+  it('retains the actual fill and the original conditional price', () => {
+    const filled = order({ executionType: 'LIMIT', limitPrice: 95, executionPrice: 94 });
+    expect(orderHistoryRow(filled, CATALOGUE, 'Primary').price).toBe(94);
+    expect(orderActivity(filled, CATALOGUE).detail).toContain('Limit $95.00');
   });
 
   it('types cash transfers by direction and marks them completed', () => {

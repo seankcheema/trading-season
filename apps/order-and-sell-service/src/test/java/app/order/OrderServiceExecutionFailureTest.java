@@ -45,6 +45,16 @@ import static org.mockito.Mockito.when;
 @SpringBootTest
 @ActiveProfiles("test")
 class OrderServiceExecutionFailureTest {
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private app.order.execution.ExecutionQuoteSource quoteSource;
+
+    private Order submit(app.order.dto.OrderRequest request, java.util.UUID owner) {
+        org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(request.indicativePrice(), 1L,
+                        java.time.OffsetDateTime.parse("2026-01-05T15:00:00Z")));
+        return orderService.submitOrder(request, owner);
+    }
+
 
     @MockitoBean
     private OrderExecutionService orderExecutionService;
@@ -123,12 +133,29 @@ class OrderServiceExecutionFailureTest {
     }
 
     @Test
+    void aReplacementWhoseExecutionFailsStaysAcceptedAndRecordsTheFailure() {
+        OrderRequest original = limit(UUID.randomUUID(), "45");
+        Order open = submit(original, user.getUserId());
+
+        Order replaced = orderService.replace(open.getOrderId(), limit(UUID.randomUUID(), "44"), user.getUserId());
+
+        assertEquals("ACCEPTED", replaced.getStatus());
+        assertEquals("CANCELLED", orderRepository.findById(open.getOrderId()).orElseThrow().getStatus());
+        assertEquals(OrderService.AUDIT_EXECUTION_FAILED, auditEventsFor(replaced).getLast());
+    }
+
+    private OrderRequest limit(UUID clientReference, String limitPrice) {
+        return new OrderRequest(account.getAccountId(), instrument.getInstrumentId(), "BUY", new BigDecimal("10"),
+                new BigDecimal("50.00"), null, clientReference, null, "LIMIT", new BigDecimal(limitPrice), null, 1L);
+    }
+
+    @Test
     void anExecutionFailureLeavesTheAcceptedOrderOnRecord() {
         UUID clientReference = UUID.randomUUID();
         OrderRequest request = new OrderRequest(account.getAccountId(), instrument.getInstrumentId(), "BUY",
-                new BigDecimal("100"), new BigDecimal("50.00"), new BigDecimal("2.0"), clientReference, null);
+                new BigDecimal("100"), new BigDecimal("50.00"), null, clientReference, null);
 
-        Order order = orderService.submitOrder(request, user.getUserId());
+        Order order = submit(request, user.getUserId());
 
         assertEquals(Order.STATUS_ACCEPTED, order.getStatus());
         assertNotNull(order.getAcceptedAt());
@@ -143,7 +170,7 @@ class OrderServiceExecutionFailureTest {
                 userRepository.findById(user.getUserId()).orElseThrow().getAvailableFunds()));
 
         // Resubmitting the same client reference returns the accepted order and does not execute again.
-        Order again = orderService.submitOrder(request, user.getUserId());
+        Order again = submit(request, user.getUserId());
         assertEquals(order.getOrderId(), again.getOrderId());
         assertEquals(Order.STATUS_ACCEPTED, again.getStatus());
         verify(orderExecutionService, times(1)).execute(any(), any());

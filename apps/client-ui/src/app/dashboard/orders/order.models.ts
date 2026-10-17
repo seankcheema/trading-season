@@ -3,11 +3,12 @@
 // An order is placed against an instrumentId, but a trader picks a symbol and market data is
 // keyed by symbol, so GET /api/instruments is the lookup between the two.
 
+export type ExecutionType = 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT';
+
 export type OrderType = 'BUY' | 'SELL';
 
-// PENDING is never the status of a submission's response: an order reaches FILLED or REJECTED
-// before the request returns. It can still appear in order history.
-export type OrderStatus = 'PENDING' | 'FILLED' | 'REJECTED';
+// ACCEPTED orders remain open until conditions are met or the owner cancels them.
+export type OrderStatus = 'PENDING' | 'ACCEPTED' | 'FILLED' | 'REJECTED' | 'CANCELLED';
 
 export interface InstrumentRef {
   instrumentId: number;
@@ -26,18 +27,36 @@ export interface InstrumentRef {
 }
 
 export interface OrderSubmission {
+  executionType?: ExecutionType;
+  limitPrice?: number;
+  stopPrice?: number;
+  sessionId?: number;
   simulatedAt?: string;
   accountId: number;
   instrumentId: number;
   orderType: OrderType;
   quantity: number;
-  // The price shown to the trader before they submitted (BR-13). Orders currently fill at it.
+  // The displayed price at submission; authoritative quotes determine execution.
   indicativePrice: number;
   // Idempotency key. Resubmitting it returns the original order's outcome.
   clientReference: string;
 }
 
 export interface OrderResult {
+  executionType?: ExecutionType;
+  limitPrice?: number | null;
+  stopPrice?: number | null;
+  bufferPercent?: number;
+  referencePrice?: number | null;
+  referenceAt?: string | null;
+  sessionId?: number | null;
+  triggerPrice?: number | null;
+  triggeredAt?: string | null;
+  evaluatedAt?: string | null;
+  reservedCash?: number;
+  reservedShares?: number;
+  executionPrice?: number | null;
+  rejectionCode?: string | null;
   simulatedAt?: string | null;
   orderId: number;
   // Optional during rollout against an older backend; identifies the catalogue entry.

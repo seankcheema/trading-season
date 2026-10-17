@@ -67,6 +67,26 @@ public class UserController {
         return profileOf(userId);
     }
 
+    /** Reads the caller's saved buffer.
+     * @param jwt verified token
+     * @return saved execution preference */
+    @GetMapping("/me/execution-settings")
+    @Operation(summary = "Get trading execution settings")
+    public ExecutionSettings executionSettings(@AuthenticationPrincipal Jwt jwt) {
+        return new ExecutionSettings(userService.getOwnAccount(AuthenticatedUser.from(jwt).userId()).getExecutionBufferPercent());
+    }
+
+    /** Saves the caller's buffer; existing orders retain their snapshot.
+     * @param settings percentage from zero through ten
+     * @param jwt verified token
+     * @return saved execution preference */
+    @PutMapping("/me/execution-settings")
+    @Operation(summary = "Update trading execution settings")
+    public ExecutionSettings saveExecutionSettings(@Valid @RequestBody ExecutionSettings settings,
+            @AuthenticationPrincipal Jwt jwt) {
+        return userService.saveExecutionSettings(AuthenticatedUser.from(jwt).userId(), settings);
+    }
+
     private UserProfileResponse profileOf(UUID userId) {
         return UserProfileResponse.from(userService.getOwnAccount(userId),
                 userService.getUserAccount(userId), userService.hasAcceptedCurrentTerms(userId));

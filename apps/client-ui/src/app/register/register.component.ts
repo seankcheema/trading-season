@@ -34,6 +34,7 @@ import { HlmCardImports } from '@shared/ui-components/card';
 import { HlmInputImports } from '@shared/ui-components/input';
 import { toAuthErrorMessage } from '../core/auth/auth-error';
 import { AuthService } from '../core/auth/auth.service';
+import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 
 const SPECIAL_CHARACTER_PATTERN = /[^A-Za-z0-9]/;
 const NUMBER_PATTERN = /\d/;
@@ -54,6 +55,7 @@ function passwordsMatchValidator(): ValidatorFn {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ThemeToggleComponent,
     ReactiveFormsModule,
     RouterLink,
     NgIcon,

@@ -61,14 +61,15 @@ public class AccountService {
     }
 
     /**
-     * Retrieves all accounts belonging to the authenticated user.
+     * Retrieves active accounts belonging to the authenticated user.
      *
      * @param userId the authenticated user's UUID from the token's sub claim
-     * @return a list of the user's accounts ordered by opened date (newest first)
+     * @return a list of the user's active accounts ordered by opened date (newest first)
      */
     @Transactional(readOnly = true)
     public List<Account> getAccountsForUser(UUID userId) {
-        return accountRepository.findByUserIdOrderByOpenedDateDesc(userId);
+        return accountRepository.findByUserIdOrderByOpenedDateDesc(userId).stream()
+                .filter(account -> "ACTIVE".equals(account.getStatus())).toList();
     }
 
     /**
@@ -139,18 +140,22 @@ public class AccountService {
     }
 
     /**
-     * Updates the name of an account.
+     * Updates the name of an ACTIVE account under the lifecycle row lock.
      *
      * @param accountId the account ID
      * @param userId    the authenticated user's UUID
      * @param newName   the new account name
      * @return the updated account
+     * @throws AccountStateException if the account is archived
      * @throws AccountNotFoundException if the account does not exist
      * @throws ForbiddenException       if the account is owned by a different user
      */
     @Transactional
     public Account updateAccountName(Integer accountId, UUID userId, String newName) {
-        Account account = getAccountForUser(accountId, userId);
+        Account account = accountRepository.findByIdForUpdate(accountId)
+                .orElseThrow(() -> new AccountNotFoundException(accountId));
+        if (!account.getUserId().equals(userId)) throw new ForbiddenException("You do not have access to this account");
+        if (!"ACTIVE".equals(account.getStatus())) throw new AccountStateException("Archived accounts are read-only");
         account.setName(newName);
         Account saved = accountRepository.save(account);
         events.publishEvent(TradingAccountRecord.from(saved));
@@ -177,6 +182,7 @@ public class AccountService {
             return List.of();
         }
 
+        holdings.forEach(holding -> holding.setReservedShares(java.util.Objects.requireNonNullElse(accountRepository.reservedShares(accountId, holding.getInstrumentId()), BigDecimal.ZERO)));
         // Two batched lookups rather than one query per position.
         Map<Integer, Instrument> instruments = instrumentRepository
                 .findByInstrumentIdIn(holdings.stream().map(Holding::getInstrumentId).toList())

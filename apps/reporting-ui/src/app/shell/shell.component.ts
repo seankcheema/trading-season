@@ -23,6 +23,7 @@ import { AuthService } from '../core/auth/auth.service';
 import { TokenStorageService } from '../core/auth/token-storage.service';
 import { fullStamp } from '../reporting/format';
 import { ReportStore } from '../reporting/report-store.service';
+import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 
 interface NavItem {
   path: string;
@@ -58,7 +59,7 @@ function readCollapsed(): boolean {
 @Component({
   selector: 'app-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, RouterLinkActive, RouterOutlet, NgIcon],
+  imports: [ThemeToggleComponent, RouterLink, RouterLinkActive, RouterOutlet, NgIcon],
   providers: [
     ReportStore,
     provideIcons({

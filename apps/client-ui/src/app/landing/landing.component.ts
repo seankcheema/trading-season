@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 
 // Drawing space for the decorative graph; the SVG stretches it to fill the page width.
 const WIDTH = 1440;
@@ -97,7 +98,7 @@ function toGraphLine(values: number[], phase: number, scale: Scale, top: number,
 @Component({
   selector: 'app-landing',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink],
+  imports: [ThemeToggleComponent, RouterLink],
   templateUrl: './landing.component.html',
   styleUrl: './landing.component.css',
 })

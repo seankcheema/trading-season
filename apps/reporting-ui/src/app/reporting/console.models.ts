@@ -3,7 +3,7 @@
 
 // all starts on the day of the first order or cash transfer.
 export type ActivityRange = 'today' | '7d' | '30d' | '90d' | 'all';
-export type OrderStatus = 'FILLED' | 'PENDING' | 'ACCEPTED' | 'REJECTED';
+export type OrderStatus = 'FILLED' | 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED';
 export type OrderSide = 'BUY' | 'SELL';
 export type TraderLevel = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
 
@@ -142,6 +142,19 @@ export interface AuditEvent {
 }
 
 export interface OrderDetail extends OrderRow {
+  executionType?: 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT' | null;
+  limitPrice?: number | null;
+  stopPrice?: number | null;
+  referencePrice?: number | null;
+  referenceAt?: string | null;
+  sessionId?: number | null;
+  triggerPrice?: number | null;
+  triggeredAt?: string | null;
+  evaluatedAt?: string | null;
+  reservedCash?: number | null;
+  reservedShares?: number | null;
+  executionPrice?: number | null;
+  rejectionCode?: string | null;
   userEmail: string | null;
   bufferPercent: number | null;
   acceptedAt: string | null;

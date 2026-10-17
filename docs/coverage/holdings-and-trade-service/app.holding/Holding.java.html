@@ -12,7 +12,8 @@ import java.time.OffsetDateTime;
 
 /**
  * Cached current quantity an account holds of one instrument. This is a
- * cache (BR-15) — the source of truth is the append-only
+ * quantity preserves four decimal places, matching the shared schema so even a
+ * fractional position blocks account archiving. This is a cache (BR-15) — the source of truth is the append-only
  * {@code holding_movements} ledger it's reconciled against; order execution
  * must update it by inserting a movement row, never by writing this field
  * directly.
@@ -22,8 +23,8 @@ import java.time.OffsetDateTime;
 public class Holding {
 
     /** Creates an instance of this class. */
-<span class="fc" id="L25">    public Holding() {</span>
-<span class="fc" id="L26">    }</span>
+<span class="fc" id="L26">    public Holding() {</span>
+<span class="fc" id="L27">    }</span>
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -36,7 +37,7 @@ public class Holding {
     @Column(name = &quot;instrument_id&quot;, nullable = false, updatable = false)
     private Integer instrumentId;
 
-<span class="fc" id="L39">    @Column(nullable = false)</span>
+<span class="fc" id="L40">    @Column(nullable = false, precision = 14, scale = 4)</span>
     private BigDecimal quantity = BigDecimal.ZERO;
 
     @Column(name = &quot;updated_at&quot;, nullable = false)
@@ -48,7 +49,7 @@ public class Holding {
      * @return the holding ID
      */
     public Integer getHoldingId() {
-<span class="fc" id="L51">        return holdingId;</span>
+<span class="fc" id="L52">        return holdingId;</span>
     }
 
     /**
@@ -57,8 +58,8 @@ public class Holding {
      * @param holdingId the holding ID
      */
     public void setHoldingId(Integer holdingId) {
-<span class="fc" id="L60">        this.holdingId = holdingId;</span>
-<span class="fc" id="L61">    }</span>
+<span class="fc" id="L61">        this.holdingId = holdingId;</span>
+<span class="fc" id="L62">    }</span>
 
     /**
      * Returns the account ID.
@@ -66,7 +67,7 @@ public class Holding {
      * @return the account ID
      */
     public Integer getAccountId() {
-<span class="fc" id="L69">        return accountId;</span>
+<span class="fc" id="L70">        return accountId;</span>
     }
 
     /**
@@ -75,8 +76,8 @@ public class Holding {
      * @param accountId the account ID
      */
     public void setAccountId(Integer accountId) {
-<span class="fc" id="L78">        this.accountId = accountId;</span>
-<span class="fc" id="L79">    }</span>
+<span class="fc" id="L79">        this.accountId = accountId;</span>
+<span class="fc" id="L80">    }</span>
 
     /**
      * Returns the instrument ID.
@@ -84,7 +85,7 @@ public class Holding {
      * @return the instrument ID
      */
     public Integer getInstrumentId() {
-<span class="fc" id="L87">        return instrumentId;</span>
+<span class="fc" id="L88">        return instrumentId;</span>
     }
 
     /**
@@ -93,8 +94,8 @@ public class Holding {
      * @param instrumentId the instrument ID
      */
     public void setInstrumentId(Integer instrumentId) {
-<span class="fc" id="L96">        this.instrumentId = instrumentId;</span>
-<span class="fc" id="L97">    }</span>
+<span class="fc" id="L97">        this.instrumentId = instrumentId;</span>
+<span class="fc" id="L98">    }</span>
 
     /**
      * Returns the quantity.
@@ -102,7 +103,7 @@ public class Holding {
      * @return the quantity
      */
     public BigDecimal getQuantity() {
-<span class="fc" id="L105">        return quantity;</span>
+<span class="fc" id="L106">        return quantity;</span>
     }
 
     /**
@@ -111,8 +112,8 @@ public class Holding {
      * @param quantity the quantity
      */
     public void setQuantity(BigDecimal quantity) {
-<span class="fc" id="L114">        this.quantity = quantity;</span>
-<span class="fc" id="L115">    }</span>
+<span class="fc" id="L115">        this.quantity = quantity;</span>
+<span class="fc" id="L116">    }</span>
 
     /**
      * Returns the updated at.
@@ -120,7 +121,7 @@ public class Holding {
      * @return the updated at
      */
     public OffsetDateTime getUpdatedAt() {
-<span class="fc" id="L123">        return updatedAt;</span>
+<span class="fc" id="L124">        return updatedAt;</span>
     }
 
     /**
@@ -129,8 +130,16 @@ public class Holding {
      * @param updatedAt the updated at
      */
     public void setUpdatedAt(OffsetDateTime updatedAt) {
-<span class="fc" id="L132">        this.updatedAt = updatedAt;</span>
-<span class="fc" id="L133">    }</span>
+<span class="fc" id="L133">        this.updatedAt = updatedAt;</span>
+<span class="fc" id="L134">    }</span>
+<span class="fc" id="L135">    @jakarta.persistence.Transient</span>
+    private BigDecimal reservedShares = BigDecimal.ZERO;
+    /** Returns shares reserved by open sells.
+     * @return reserved shares */
+<span class="fc" id="L139">    public BigDecimal getReservedShares() { return reservedShares; }</span>
+    /** Attaches open order reservations.
+     * @param value reserved shares */
+<span class="fc" id="L142">    public void setReservedShares(BigDecimal value) { reservedShares = value; }</span>
 }
 
 

@@ -300,9 +300,11 @@ pipeline {
                             dir('db/tools') {
                                 sh '''
                                     set -eu
-                                    docker run --rm \
+                                    sh ../../infrastructure/jenkins/with-disposable-postgres.sh docker run --rm --network host \
+                                      -e EXECUTION_MIGRATION_DISPOSABLE_DATABASE_URL \
                                       -e PYTHONDONTWRITEBYTECODE=1 \
                                       -v "$(pwd)":/app \
+                                      -v "$(pwd)/../migrations":/migrations:ro \
                                       -w /app \
                                       python:3.14-slim \
                                       bash -c "
@@ -797,10 +799,10 @@ pipeline {
 
                     note "===== Kafka end-to-end: one order through trade-events and its three consumers, and into a reporting service with no database ====="
 
-                    # The build database is empty, so give the order something to buy.
-                    compose exec -T db psql -U trading_season -d trading_season -v ON_ERROR_STOP=1 -q -c \
-                        "INSERT INTO instruments (ticker, name, asset_class, market, currency, is_tradable) VALUES ('CIEQ', 'CI Equity', 'Equity', 'US', 'USD', true);"
-                    note "[KAFKA-E2E] instrument: CIEQ inserted for this build"
+                    # Order acceptance now requires an authoritative replay quote.
+                    compose exec -T db psql -U trading_season -d trading_season -v ON_ERROR_STOP=1 -q \
+                        < infrastructure/jenkins/market-fixture.sql
+                    note "[KAFKA-E2E] market: CIEQ instrument, completed session, candle and constant-price ticks inserted"
 
                     # Registers a trader, opens the order stream, places the order and checks
                     # each consumer's effect from inside the stack network.

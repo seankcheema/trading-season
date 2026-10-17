@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.Optional;
 
 /**
  * Turns an {@code ACCEPTED} order into a fill, atomically, and moves it to
@@ -34,15 +35,11 @@ import java.time.OffsetDateTime;
  * and the balances they left, because the reporting service reads none of
  * those tables.
  *
- * <p><b>Simplification:</b> this fills at the order's client-submitted
- * {@code indicativePrice} rather than a live market quote — business-backend
- * doesn't yet read the {@code quotes}/{@code market_ticks} tables FMS
- * writes. BR-08 calls for the quote price prevailing at execution time, and
- * KAN-100's buffer_percent tolerance only means something once there's a
- * live price to compare the indicative price against. Wiring that up is
- * follow-on work (plausibly KAN-129) — {@code fillPrice} below is the one
- * line to change once a quote source exists; everything downstream of it
- * (ledger writes, balance/holding updates) doesn't need to change.
+ * <p>Prices come from the authoritative Holdings and Trade replay cursor. Limits
+ * remain open until eligible; stops latch once triggered. Market executions
+ * enforce the saved buffer against the submission quote for Market orders and the
+ * first triggering quote for Stop orders before any ledger write.
+ * Cancellation and competing evaluations serialize under owner and order locks.
  *
  * <p><b>Funds:</b> cash belongs to the user, not to an account, so a BUY
  * debits and a SELL credits the owning user's {@code availableFunds}
@@ -59,6 +56,12 @@ import java.time.OffsetDateTime;
 @Service
 public class OrderExecutionService {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private ExecutionQuoteSource quotes;
+    @org.springframework.beans.factory.annotation.Autowired
+    private app.user.UserAccountRepository credentials;
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
     private final AccountRepository accountRepository;
     private final UserRepository userRepository;
     private final HoldingRepository holdingRepository;
@@ -107,26 +110,51 @@ public class OrderExecutionService {
      *
      * @param order      the {@code ACCEPTED} order to execute
      * @param instrument the instrument being traded
-     * @return the order as {@code FILLED}, or {@code REJECTED} if funds or
-     *         holdings were no longer sufficient under the row lock
+     * @return the current order, including ACCEPTED when conditions are unmet,
+     *         FILLED after atomic settlement, or REJECTED when protection or
+     *         resources fail; legacy orders without server context are unchanged
+     * @throws ExecutionQuoteSource.QuoteUnavailableException if the current market quote is unavailable
      * @throws IllegalStateException if the account or its owning user no longer exists
      * @throws org.springframework.dao.DataAccessException if a ledger write fails; this
      *         transaction rolls back and the order stays {@code ACCEPTED}
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Order execute(Order order, Instrument instrument) {
+        if (order.getReferencePrice() == null) return order;
+        var quote = "MARKET".equals(order.getExecutionType()) ? quotes.current(instrument, order.getSessionId())
+                : new ExecutionQuoteSource.Quote(order.getReferencePrice(), order.getSessionId(), order.getReferenceAt());
+        return evaluate(order.getOrderId(), instrument, quote);
+    }
+
+    /** Evaluates one ordered market tick in an independent settlement transaction.
+     * @param orderId persisted order
+     * @param instrument traded instrument
+     * @param quote authoritative tick in the order's fixed session
+     * @return current, filled, rejected, or day-expired cancelled order
+     * @throws org.springframework.dao.DataAccessException if settlement rolls back */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Order evaluate(Integer orderId, Instrument instrument, ExecutionQuoteSource.Quote quote) {
+        Order visible = orderRepository.findById(orderId).orElseThrow();
+        Account ownerAccount = accountRepository.findById(visible.getAccountId())
+                .orElseThrow(() -> new IllegalStateException("Account " + visible.getAccountId() + " disappeared mid-execution"));
+        User user = userRepository.findByIdForUpdate(ownerAccount.getUserId())
+                .orElseThrow(() -> new IllegalStateException("Account " + ownerAccount.getAccountId() + " has no owning user"));
+        Account account = accountRepository.findByIdForUpdate(visible.getAccountId()).orElseThrow();
+        Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow();
+        entityManager.refresh(order);
+        if (!isEvaluable(order, quote)) return order;
+        Optional<Order> ended = endedByTime(order, instrument, quote);
+        if (ended.isPresent()) return ended.get();
+        if (credentials.findById(user.getUserId()).isEmpty()) return reject(order, instrument, "Credential account does not exist");
         boolean isBuy = Order.TYPE_BUY.equals(order.getOrderType());
-        BigDecimal fillPrice = order.getIndicativePrice();
-        BigDecimal tradeValue = order.getQuantity().multiply(fillPrice);
+        BigDecimal fillPrice = quote.price();
+        BigDecimal tradeValue = order.getQuantity().multiply(fillPrice).setScale(2, java.math.RoundingMode.HALF_UP);
+        order.setEvaluatedAt(quote.timestamp());
+        Optional<Order> unmet = unmetCondition(order, instrument, quote);
+        if (unmet.isPresent()) return unmet.get();
 
-        Account account = accountRepository.findById(order.getAccountId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Account " + order.getAccountId() + " disappeared mid-execution"));
-        User user = userRepository.findByIdForUpdate(account.getUserId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Account " + account.getAccountId() + " has no owning user"));
-
-        if (isBuy && tradeValue.compareTo(user.getAvailableFunds()) > 0) {
+        BigDecimal otherCash = otherReservedCash(user, orderId);
+        if (isBuy && tradeValue.compareTo(user.getAvailableFunds().subtract(otherCash)) > 0) {
             return reject(order, instrument, "BR-09: insufficient funds at execution time");
         }
 
@@ -134,10 +162,83 @@ public class OrderExecutionService {
                 .findByAccountIdAndInstrumentIdForUpdate(order.getAccountId(), order.getInstrumentId())
                 .orElse(null);
         BigDecimal currentQuantity = holding == null ? BigDecimal.ZERO : holding.getQuantity();
-        if (!isBuy && order.getQuantity().compareTo(currentQuantity) > 0) {
+        BigDecimal otherShares = otherReservedShares(user, order);
+        if (!isBuy && order.getQuantity().compareTo(currentQuantity.subtract(otherShares)) > 0) {
             return reject(order, instrument, "Insufficient holdings at execution time");
         }
+        return settle(order, instrument, user, account, holding, fillPrice, tradeValue, isBuy);
+    }
 
+    /** True while the order is still open at this tick: same session, and no earlier than its last evaluation. */
+    private static boolean isEvaluable(Order order, ExecutionQuoteSource.Quote quote) {
+        boolean open = Order.STATUS_ACCEPTED.equals(order.getStatus()) && order.getReferencePrice() != null;
+        if (!open || !order.getSessionId().equals(quote.sessionId())) return false;
+        if (quote.timestamp().isBefore(order.getReferenceAt())) return false;
+        return order.getEvaluatedAt() == null || !quote.timestamp().isBefore(order.getEvaluatedAt());
+    }
+
+    /** Expires the order, or leaves it untouched during a retry backoff, when the tick settles its fate by time alone. */
+    private Optional<Order> endedByTime(Order order, Instrument instrument, ExecutionQuoteSource.Quote quote) {
+        if (!quote.timestamp().isBefore(ExecutionPolicy.expiresAt(order))) {
+            return Optional.of(expire(order, instrument));
+        }
+        if (order.getRetryAfter() != null && OffsetDateTime.now().isBefore(order.getRetryAfter())) {
+            return Optional.of(isFinalSecond(order, quote) ? expire(order, instrument) : order);
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Latches a stop, then checks the limit or the execution buffer.
+     * @return the order as it stands when the tick does not fill it, empty when it may fill
+     */
+    private Optional<Order> unmetCondition(Order order, Instrument instrument, ExecutionQuoteSource.Quote quote) {
+        BigDecimal fillPrice = quote.price();
+        boolean stop = "STOP".equals(order.getExecutionType()) || "STOP_LIMIT".equals(order.getExecutionType());
+        boolean newlyTriggered = false;
+        if (stop && order.getTriggeredAt() == null) {
+            if (!ExecutionPolicy.triggers(order.getOrderType(), fillPrice, order.getStopPrice())) {
+                return Optional.of(keepOpenOrExpire(order, instrument, quote));
+            }
+            order.setTriggeredAt(quote.timestamp());
+            order.setTriggerPrice(fillPrice);
+            auditTrailService.record(order.getOrderId(), "TRIGGERED", "Stop triggered at " + fillPrice);
+            newlyTriggered = true;
+        }
+        if (order.getLimitPrice() != null) {
+            if (ExecutionPolicy.within(order.getOrderType(), fillPrice, order.getLimitPrice())) return Optional.empty();
+            Order remaining = keepOpenOrExpire(order, instrument, quote);
+            if (newlyTriggered && Order.STATUS_ACCEPTED.equals(remaining.getStatus())) events.publishEvent(OrderStatusEvent.from(remaining, instrument));
+            return Optional.of(remaining);
+        }
+        if (ExecutionPolicy.within(order.getOrderType(), fillPrice, bufferBoundary(order))) return Optional.empty();
+        order.setRejectionCode("EXECUTION_BUFFER_EXCEEDED");
+        return Optional.of(reject(order, instrument, "Execution buffer exceeded: market price " + fillPrice
+                + " is outside your " + order.getBufferPercent() + "% protection"));
+    }
+
+    private static BigDecimal bufferBoundary(Order order) {
+        boolean anchoredOnTrigger = "STOP".equals(order.getExecutionType()) && order.getTriggerPrice() != null;
+        BigDecimal anchor = anchoredOnTrigger ? order.getTriggerPrice() : order.getReferencePrice();
+        return ExecutionPolicy.boundary(order.getOrderType(), anchor, order.getBufferPercent());
+    }
+
+    private BigDecimal otherReservedCash(User user, Integer orderId) {
+        return orderRepository.findReservations(user.getUserId()).stream()
+                .filter(o -> !o.getOrderId().equals(orderId)).map(Order::getReservedCash)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal otherReservedShares(User user, Order order) {
+        return orderRepository.findReservations(user.getUserId()).stream()
+                .filter(o -> !o.getOrderId().equals(order.getOrderId()) && o.getAccountId().equals(order.getAccountId())
+                        && o.getInstrumentId().equals(order.getInstrumentId()))
+                .map(Order::getReservedShares).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /** Writes the fill, both ledger postings, the holding and the audit row, and publishes the filled event. */
+    private Order settle(Order order, Instrument instrument, User user, Account account, Holding holding,
+            BigDecimal fillPrice, BigDecimal tradeValue, boolean isBuy) {
         OffsetDateTime now = OffsetDateTime.now();
 
         Fill fill = new Fill();
@@ -167,17 +268,13 @@ public class OrderExecutionService {
         movement.setCreatedAt(now);
         holdingMovementRepository.save(movement);
 
-        if (holding == null) {
-            holding = new Holding();
-            holding.setAccountId(order.getAccountId());
-            holding.setInstrumentId(order.getInstrumentId());
-            holding.setQuantity(quantityDelta);
-        } else {
-            holding.setQuantity(holding.getQuantity().add(quantityDelta));
-        }
-        holding.setUpdatedAt(now);
-        holdingRepository.save(holding);
+        Holding updated = applyMovement(holding, order, quantityDelta, now);
+        holdingRepository.save(updated);
 
+        order.setExecutionPrice(fillPrice);
+        order.setRetryAfter(null);
+        order.setReservedCash(BigDecimal.ZERO);
+        order.setReservedShares(BigDecimal.ZERO);
         order.setStatus(Order.STATUS_FILLED);
         order.setResolvedAt(now);
         final Order savedOrder = orderRepository.save(order);
@@ -186,11 +283,52 @@ public class OrderExecutionService {
         events.publishEvent(OrderStatusEvent.from(savedOrder, instrument, new OrderStatusEvent.Execution(
                 user.getUserId(), fill.getFillId(), fillPrice, savedOrder.getQuantity(), now,
                 cashTransaction.getCashTransactionId(), cashDelta, user.getAvailableFunds(),
-                movement.getHoldingMovementId(), quantityDelta, holding.getQuantity())));
+                movement.getHoldingMovementId(), quantityDelta, updated.getQuantity())));
         return savedOrder;
     }
 
+    private static Holding applyMovement(Holding holding, Order order, BigDecimal quantityDelta, OffsetDateTime now) {
+        Holding target = holding;
+        if (target == null) {
+            target = new Holding();
+            target.setAccountId(order.getAccountId());
+            target.setInstrumentId(order.getInstrumentId());
+            target.setQuantity(quantityDelta);
+        } else {
+            target.setQuantity(target.getQuantity().add(quantityDelta));
+        }
+        target.setUpdatedAt(now);
+        return target;
+    }
+
+    private static boolean isFinalSecond(Order order, ExecutionQuoteSource.Quote quote) {
+        return !quote.timestamp().plusSeconds(1).isBefore(ExecutionPolicy.expiresAt(order));
+    }
+
+    // The seeded market has one-second ticks; let the final tick fill before expiring.
+    private Order keepOpenOrExpire(Order order, Instrument instrument, ExecutionQuoteSource.Quote quote) {
+        return isFinalSecond(order, quote) ? expire(order, instrument) : orderRepository.save(order);
+    }
+
+    private Order expire(Order order, Instrument instrument) {
+        order.setStatus(Order.STATUS_CANCELLED);
+        order.setRejectionCode("ORDER_EXPIRED");
+        order.setRejectionReason("Day order expired at market close");
+        order.setResolvedAt(OffsetDateTime.now());
+        order.setEvaluatedAt(ExecutionPolicy.expiresAt(order));
+        order.setReservedCash(BigDecimal.ZERO);
+        order.setReservedShares(BigDecimal.ZERO);
+        order.setRetryAfter(null);
+        orderRepository.save(order);
+        auditTrailService.record(order.getOrderId(), Order.STATUS_CANCELLED, "Day order expired at market close");
+        events.publishEvent(OrderStatusEvent.from(order, instrument));
+        return order;
+    }
+
     private Order reject(Order order, Instrument instrument, String reason) {
+        order.setReservedCash(BigDecimal.ZERO);
+        order.setReservedShares(BigDecimal.ZERO);
+        if (order.getRejectionCode() == null) order.setRejectionCode("TRADING_RULE_FAILED");
         order.setStatus(Order.STATUS_REJECTED);
         order.setRejectionReason(reason);
         order.setResolvedAt(OffsetDateTime.now());

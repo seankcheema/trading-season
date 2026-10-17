@@ -21,9 +21,11 @@ import java.time.OffsetDateTime;
  * @param name         the instrument's name
  * @param quantity     the quantity held
  * @param averageCost  average price paid per share, or zero when unknown
+ * @param reservedShares shares reserved by open SELL orders
+ * @param availableQuantity shares available for new SELL orders
  * @param updatedAt    when the holding was last updated
  */
-<span class="fc" id="L26">public record HoldingResponse(</span>
+<span class="fc" id="L28">public record HoldingResponse(</span>
         Integer holdingId,
         Integer accountId,
         Integer instrumentId,
@@ -31,7 +33,9 @@ import java.time.OffsetDateTime;
         String name,
         BigDecimal quantity,
         BigDecimal averageCost,
-        OffsetDateTime updatedAt
+        OffsetDateTime updatedAt,
+        BigDecimal reservedShares,
+        BigDecimal availableQuantity
 ) {
 
     /**
@@ -45,15 +49,17 @@ import java.time.OffsetDateTime;
      *         unresolved symbol and zero for an unknown average cost
      */
     public static HoldingResponse from(Holding holding, Instrument instrument, BigDecimal averageCost) {
-<span class="fc" id="L48">        return new HoldingResponse(</span>
-<span class="fc" id="L49">                holding.getHoldingId(),</span>
-<span class="fc" id="L50">                holding.getAccountId(),</span>
-<span class="fc" id="L51">                holding.getInstrumentId(),</span>
-<span class="fc bfc" id="L52" title="All 2 branches covered.">                instrument != null ? instrument.displaySymbol() : String.valueOf(holding.getInstrumentId()),</span>
-<span class="fc bfc" id="L53" title="All 2 branches covered.">                instrument != null ? instrument.getName() : null,</span>
-<span class="fc" id="L54">                holding.getQuantity(),</span>
-<span class="fc bfc" id="L55" title="All 2 branches covered.">                averageCost != null ? averageCost : BigDecimal.ZERO,</span>
-<span class="fc" id="L56">                holding.getUpdatedAt()</span>
+<span class="fc" id="L52">        return new HoldingResponse(</span>
+<span class="fc" id="L53">                holding.getHoldingId(),</span>
+<span class="fc" id="L54">                holding.getAccountId(),</span>
+<span class="fc" id="L55">                holding.getInstrumentId(),</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">                instrument != null ? instrument.displaySymbol() : String.valueOf(holding.getInstrumentId()),</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">                instrument != null ? instrument.getName() : null,</span>
+<span class="fc" id="L58">                holding.getQuantity(),</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">                averageCost != null ? averageCost : BigDecimal.ZERO,</span>
+<span class="fc" id="L60">                holding.getUpdatedAt(),</span>
+<span class="fc" id="L61">                holding.getReservedShares(),</span>
+<span class="fc" id="L62">                holding.getQuantity().subtract(holding.getReservedShares())</span>
         );
     }
 }

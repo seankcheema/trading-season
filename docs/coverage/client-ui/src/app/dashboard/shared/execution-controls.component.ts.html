@@ -1,0 +1,661 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for src/app/dashboard/shared/execution-controls.component.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../../../prettify.css" />
+    <link rel="stylesheet" href="../../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../../../index.html">All files</a> / <a href="index.html">src/app/dashboard/shared</a> execution-controls.component.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">96.93% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>158/163</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">97.72% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>86/88</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">85.71% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>24/28</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">100% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>109/109</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line high'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a>
+<a name='L123'></a><a href='#L123'>123</a>
+<a name='L124'></a><a href='#L124'>124</a>
+<a name='L125'></a><a href='#L125'>125</a>
+<a name='L126'></a><a href='#L126'>126</a>
+<a name='L127'></a><a href='#L127'>127</a>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a>
+<a name='L137'></a><a href='#L137'>137</a>
+<a name='L138'></a><a href='#L138'>138</a>
+<a name='L139'></a><a href='#L139'>139</a>
+<a name='L140'></a><a href='#L140'>140</a>
+<a name='L141'></a><a href='#L141'>141</a>
+<a name='L142'></a><a href='#L142'>142</a>
+<a name='L143'></a><a href='#L143'>143</a>
+<a name='L144'></a><a href='#L144'>144</a>
+<a name='L145'></a><a href='#L145'>145</a>
+<a name='L146'></a><a href='#L146'>146</a>
+<a name='L147'></a><a href='#L147'>147</a>
+<a name='L148'></a><a href='#L148'>148</a>
+<a name='L149'></a><a href='#L149'>149</a>
+<a name='L150'></a><a href='#L150'>150</a>
+<a name='L151'></a><a href='#L151'>151</a>
+<a name='L152'></a><a href='#L152'>152</a>
+<a name='L153'></a><a href='#L153'>153</a>
+<a name='L154'></a><a href='#L154'>154</a>
+<a name='L155'></a><a href='#L155'>155</a>
+<a name='L156'></a><a href='#L156'>156</a>
+<a name='L157'></a><a href='#L157'>157</a>
+<a name='L158'></a><a href='#L158'>158</a>
+<a name='L159'></a><a href='#L159'>159</a>
+<a name='L160'></a><a href='#L160'>160</a>
+<a name='L161'></a><a href='#L161'>161</a>
+<a name='L162'></a><a href='#L162'>162</a>
+<a name='L163'></a><a href='#L163'>163</a>
+<a name='L164'></a><a href='#L164'>164</a>
+<a name='L165'></a><a href='#L165'>165</a>
+<a name='L166'></a><a href='#L166'>166</a>
+<a name='L167'></a><a href='#L167'>167</a>
+<a name='L168'></a><a href='#L168'>168</a>
+<a name='L169'></a><a href='#L169'>169</a>
+<a name='L170'></a><a href='#L170'>170</a>
+<a name='L171'></a><a href='#L171'>171</a>
+<a name='L172'></a><a href='#L172'>172</a>
+<a name='L173'></a><a href='#L173'>173</a>
+<a name='L174'></a><a href='#L174'>174</a>
+<a name='L175'></a><a href='#L175'>175</a>
+<a name='L176'></a><a href='#L176'>176</a>
+<a name='L177'></a><a href='#L177'>177</a>
+<a name='L178'></a><a href='#L178'>178</a>
+<a name='L179'></a><a href='#L179'>179</a>
+<a name='L180'></a><a href='#L180'>180</a>
+<a name='L181'></a><a href='#L181'>181</a>
+<a name='L182'></a><a href='#L182'>182</a>
+<a name='L183'></a><a href='#L183'>183</a>
+<a name='L184'></a><a href='#L184'>184</a>
+<a name='L185'></a><a href='#L185'>185</a>
+<a name='L186'></a><a href='#L186'>186</a>
+<a name='L187'></a><a href='#L187'>187</a>
+<a name='L188'></a><a href='#L188'>188</a>
+<a name='L189'></a><a href='#L189'>189</a>
+<a name='L190'></a><a href='#L190'>190</a>
+<a name='L191'></a><a href='#L191'>191</a>
+<a name='L192'></a><a href='#L192'>192</a>
+<a name='L193'></a><a href='#L193'>193</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">314x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">198x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">198x</span>
+<span class="cline-any cline-yes">198x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">198x</span>
+<span class="cline-any cline-yes">460x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">460x</span>
+<span class="cline-any cline-yes">792x</span>
+<span class="cline-any cline-yes">792x</span>
+<span class="cline-any cline-yes">460x</span>
+<span class="cline-any cline-yes">792x</span>
+<span class="cline-any cline-yes">126x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">460x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">198x</span>
+<span class="cline-any cline-yes">198x</span>
+<span class="cline-any cline-yes">198x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">10x</span>
+<span class="cline-any cline-yes">10x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">183x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">198x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">314x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">149x</span>
+<span class="cline-any cline-yes">149x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">130x</span>
+<span class="cline-any cline-yes">128x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">374x</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">362x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">68x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">117x</span>
+<span class="cline-any cline-yes">117x</span>
+<span class="cline-any cline-yes">116x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">29x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">24x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">67x</span>
+<span class="cline-any cline-yes">67x</span>
+<span class="cline-any cline-yes">67x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { CurrencyPipe, NgTemplateOutlet } from '@angular/common';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideCheck, lucideChevronDown, lucideZap, lucideTrendingUp, lucideCircleStop, lucideGitBranch } from '@ng-icons/lucide';
+import { DashboardHeaderDropdownComponent } from './dashboard-header-dropdown.component';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, inject, input, signal, viewChild } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ExecutionType } from '../orders/order.models';
+import { ExecutionSettingsService } from '../settings-dialog/execution-settings.service';
+&nbsp;
+/** Compact stock execution controls shared by the dialog and full-screen ticket. */
+@Component({
+  selector: 'app-execution-controls',
+  imports: [CurrencyPipe, NgTemplateOutlet, NgIcon, DashboardHeaderDropdownComponent],
+  providers: [provideIcons({ lucideCheck, lucideChevronDown, lucideZap, lucideTrendingUp, lucideCircleStop, lucideGitBranch })],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    &lt;div class="grid gap-3 text-xs"&gt;
+      &lt;div class="flex items-center justify-between gap-3"&gt;
+        &lt;span class="text-muted-foreground text-sm"&gt;Order type&lt;/span&gt;
+        &lt;app-dashboard-header-dropdown
+          #typeMenu ariaLabel="Order type" [label]="executionLabel()" [open]="typeOpen()"
+<span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >          (openChange)="t</span>ypeOpen.set($event)"</span> containerClass="w-40" panelClass="w-full"
+        &gt;
+          &lt;span dropdownTrigger class="flex w-full items-center justify-between gap-2"&gt;
+            &lt;span class="flex items-center gap-2"&gt;
+              &lt;ng-icon [name]="executionIcon()" aria-hidden="true" class="text-primary text-[16px]" /&gt;
+              {{ executionLabel() }}
+            &lt;/span&gt;
+            &lt;ng-icon name="lucideChevronDown" class="text-muted-foreground text-[14px]" /&gt;
+          &lt;/span&gt;
+          &lt;div role="menu" aria-label="Order types"&gt;
+            @for (option of types; track option.value) {
+              &lt;button type="button" role="menuitemradio"
+                class="hover:bg-muted flex h-9 w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2 text-left text-sm transition-colors"
+                [attr.aria-checked]="executionType() === option.value" (click)="selectType(option.value)"&gt;
+                &lt;span class="flex items-center gap-2"&gt;
+                  &lt;ng-icon [name]="option.icon" aria-hidden="true" class="text-primary text-[16px]" /&gt;
+                  {{ option.label }}
+                &lt;/span&gt;
+                @if (executionType() === option.value) {
+                  &lt;ng-icon name="lucideCheck" class="text-primary text-[16px]" /&gt;
+                }
+              &lt;/button&gt;
+            }
+          &lt;/div&gt;
+        &lt;/app-dashboard-header-dropdown&gt;
+      &lt;/div&gt;
+&nbsp;
+      &lt;div class="border-border rounded-xl border p-3"&gt;
+        &lt;ng-content select="[shareHeader]" /&gt;
+        &lt;ng-content select="[shareQuantity]" /&gt;
+        &lt;div class="mt-2"&gt;&lt;ng-content select="[shareSlider]" /&gt;&lt;/div&gt;
+      &lt;/div&gt;
+&nbsp;
+      &lt;div class="bg-muted/60 space-y-2 rounded-xl p-3 text-sm"&gt;
+        &lt;dl&gt;
+        &lt;div class="flex h-14 items-center justify-between gap-3"&gt;
+          &lt;dt class="text-muted-foreground shrink-0"&gt;{{ executionType() === 'MARKET' ? 'Market price' : executionLabel() + ' price' }}&lt;/dt&gt;
+          &lt;dd class="min-w-0 max-w-[65%]" [class.w-32]="hasLimit() !== hasStop()" [class.w-52]="hasLimit() &amp;&amp; hasStop()"&gt;
+            @if (hasLimit() &amp;&amp; hasStop()) {
+              &lt;div class="grid grid-cols-2 gap-2"&gt;
+                &lt;ng-container [ngTemplateOutlet]="stopField" /&gt;
+                &lt;ng-container [ngTemplateOutlet]="limitField" /&gt;
+              &lt;/div&gt;
+            } @else if (hasLimit()) {
+              &lt;ng-container [ngTemplateOutlet]="limitField" /&gt;
+            } @else if (hasStop()) {
+              &lt;ng-container [ngTemplateOutlet]="stopField" /&gt;
+            } @else {
+              &lt;span class="text-base font-medium tabular-nums"&gt;{{ price() | currency: 'USD' }}&lt;/span&gt;
+            }
+          &lt;/dd&gt;
+        &lt;/div&gt;
+        &lt;/dl&gt;
+        &lt;ng-content select="[orderSummary]" /&gt;
+      &lt;/div&gt;
+&nbsp;
+      @if (buffer() === null &amp;&amp; !loadError()) {
+        &lt;span class="sr-only" role="status"&gt;Loading execution preference&lt;/span&gt;
+      } @else if (loadError()) {
+        &lt;p role="alert" class="text-loss"&gt;Unable to load trading preference.
+          &lt;button type="button" class="underline" <span class="cstat-no" title="statement not covered" ><span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >(click)="l</span></span>oad()"&gt;R</span>etry&lt;/button&gt;&lt;/p&gt;
+      }
+    &lt;/div&gt;
+    &lt;ng-template #limitField&gt;
+      &lt;div class="min-w-0"&gt;
+        @if (hasLimit() &amp;&amp; hasStop()) {
+          &lt;span class="text-muted-foreground block text-[10px]"&gt;Limit&lt;/span&gt;
+        }
+        &lt;div class="flex items-center gap-1.5"&gt;
+          &lt;span aria-hidden="true" class="text-muted-foreground text-base"&gt;$&lt;/span&gt;
+          &lt;input aria-label="Limit price" aria-required="true" type="number" min="0.000001" step="0.000001"
+            class="border-border bg-muted/40 text-foreground focus-visible:ring-ring/35 h-8 min-w-0 w-full rounded-lg border px-2 text-base font-medium tabular-nums outline-none focus-visible:ring-2"
+            [class.border-primary]="limitPrice() === null" [class.bg-primary/10]="limitPrice() === null"
+            [class.ring-1]="limitPrice() === null" [class.ring-primary/30]="limitPrice() === null"
+            [attr.aria-invalid]="limitPrice() !== null &amp;&amp; !validPrice(limitPrice())"
+            [value]="limitPrice()" (input)="setPrice('limit', $event)" /&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/ng-template&gt;
+    &lt;ng-template #stopField&gt;
+      &lt;div class="min-w-0"&gt;
+        @if (hasLimit() &amp;&amp; hasStop()) {
+          &lt;span class="text-muted-foreground block text-[10px]"&gt;Stop&lt;/span&gt;
+        }
+        &lt;div class="flex items-center gap-1.5"&gt;
+          &lt;span aria-hidden="true" class="text-muted-foreground text-base"&gt;$&lt;/span&gt;
+          &lt;input aria-label="Stop price" aria-required="true" type="number" min="0.000001" step="0.000001"
+            class="border-border bg-muted/40 text-foreground focus-visible:ring-ring/35 h-8 min-w-0 w-full rounded-lg border px-2 text-base font-medium tabular-nums outline-none focus-visible:ring-2"
+            [class.border-primary]="stopPrice() === null" [class.bg-primary/10]="stopPrice() === null"
+            [class.ring-1]="stopPrice() === null" [class.ring-primary/30]="stopPrice() === null"
+            [attr.aria-invalid]="stopPrice() !== null &amp;&amp; !validPrice(stopPrice())"
+            [value]="stopPrice()" (input)="setPrice('stop', $event)" /&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/ng-template&gt;
+  `,
+})
+export class ExecutionControlsComponent {
+  readonly price = input.required&lt;number&gt;();
+  readonly side = input.required&lt;'buy' | 'sell'&gt;();
+  readonly quantity = input(0);
+  readonly executionType = signal&lt;ExecutionType&gt;('MARKET');
+  private readonly typeMenu = viewChild&lt;DashboardHeaderDropdownComponent, ElementRef&lt;HTMLElement&gt;&gt;(<span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >'typeMenu',</span></span> { read: ElementRef });
+  protected readonly typeOpen = signal(false);
+  protected readonly types: readonly { value: ExecutionType; label: string; icon: string }[] = [
+    { value: 'MARKET', label: 'Market', icon: 'lucideZap' }, { value: 'LIMIT', label: 'Limit', icon: 'lucideTrendingUp' },
+    { value: 'STOP', label: 'Stop', icon: 'lucideCircleStop' }, { value: 'STOP_LIMIT', label: 'Stop-Limit', icon: 'lucideGitBranch' },
+  ];
+  readonly executionLabel = computed(() =&gt; this.types.find((option) =&gt; option.value === this.executionType())!.label);
+  readonly executionIcon = computed(() =&gt; this.types.find((option) =&gt; option.value === this.executionType())!.icon);
+  readonly limitPrice = signal&lt;number | null&gt;(null);
+  readonly stopPrice = signal&lt;number | null&gt;(null);
+  readonly buffer = signal&lt;number | null&gt;(null);
+  readonly loadError = signal(false);
+  private readonly settings = inject(ExecutionSettingsService);
+  private readonly destroyRef = inject(DestroyRef);
+  readonly hasLimit = computed(() =&gt; ['LIMIT', 'STOP_LIMIT'].includes(this.executionType()));
+  readonly hasStop = computed(() =&gt; ['STOP', 'STOP_LIMIT'].includes(this.executionType()));
+  readonly bound = computed(() =&gt; {
+    const raw = this.price() * (1 + (this.side() === 'buy' ? 1 : -1) * (this.buffer() ?? <span class="branch-1 cbranch-no" title="branch not covered" >1) / 1</span>00);
+    return (this.side() === 'buy' ? Math.floor(raw * 1e6) : Math.ceil(raw * 1e6)) / 1e6;
+  });
+  readonly reservationPrice = computed(() =&gt; this.reservationPriceFor(this.price()));
+  // Parents can calculate before child inputs have been bound, using their current quote.
+  reservationPriceFor(price: number): number {
+    if (!Number.isFinite(price) || price &lt;= 0) {
+      return 0;
+    }
+    return this.hasLimit() ? (this.limitPrice() ?? 0) : price * (1 + (this.buffer() ?? <span class="branch-1 cbranch-no" title="branch not covered" >1) / 1</span>00);
+  }
+  readonly valid = computed(
+    () =&gt; this.buffer() !== null &amp;&amp; !this.loadError() &amp;&amp; this.pricesValid(),
+  );
+  readonly parameters = computed(() =&gt; ({ executionType: this.executionType(),
+    ...(this.hasLimit() &amp;&amp; this.limitPrice() !== null ? { limitPrice: this.limitPrice()! } : {}),
+    ...(this.hasStop() &amp;&amp; this.stopPrice() !== null ? { stopPrice: this.stopPrice()! } : {}),
+  }));
+  constructor() {
+    this.settings.changed?.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(<span class="fstat-no" title="function not covered" >(v</span>alue) =&gt; <span class="cstat-no" title="statement not covered" >this.buffer.set(value.executionBufferPercent))</span>;
+    this.load();
+  }
+  load(): void {
+    this.loadError.set(false);
+    this.settings.load().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (settings) =&gt; this.buffer.set(settings.executionBufferPercent),
+      error: () =&gt; this.loadError.set(true),
+    });
+  }
+  validPrice(value: number | null): boolean {
+    if (value === null || !Number.isFinite(value)) {
+      return false;
+    }
+    return value &gt; 0 &amp;&amp; value &lt; 1e12 &amp;&amp; Math.abs(value * 1e6 - Math.round(value * 1e6)) &lt; 0.0001;
+  }
+&nbsp;
+  // A price that the chosen order type does not use cannot make the order invalid.
+  private pricesValid(): boolean {
+    const limitValid = !this.hasLimit() || this.validPrice(this.limitPrice());
+    const stopValid = !this.hasStop() || this.validPrice(this.stopPrice());
+    return limitValid &amp;&amp; stopValid;
+  }
+  protected selectType(type: ExecutionType): void {
+    this.executionType.set(type);
+    this.typeOpen.set(false);
+    this.typeMenu()?.nativeElement.querySelector('summary')?.focus();
+  }
+  protected setPrice(kind: 'limit' | 'stop', event: Event): void {
+    const value = (event.target as HTMLInputElement).valueAsNumber;
+    (kind === 'limit' ? this.limitPrice : this.stopPrice).set(Number.isFinite(value) ? value : null);
+  }
+}
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-10-16T20:47:24.269Z
+            </div>
+        <script src="../../../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../../../sorter.js"></script>
+        <script src="../../../../block-navigation.js"></script>
+    </body>
+</html>
+    

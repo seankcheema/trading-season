@@ -97,43 +97,61 @@ describe('market chart models', () => {
     expect(percentChangePoints(candles).map((point) => point.value)).toEqual([0, 10, -10]);
   });
 
-  it('calculates SMA only after a complete period and preserves timestamps', () => {
+  it('calculates SMA from the opening candle and preserves timestamps', () => {
     const candles = candlesFromCloses([1, 2, 3, 4, 5]);
     const values = simpleMovingAverage(candles, 3);
-    expect(values.map((point) => point.value)).toEqual([2, 3, 4]);
-    expect(values.map((point) => point.time)).toEqual(candles.slice(2).map((point) => point.time));
+    expect(values.map((point) => point.value)).toEqual([1, 1.5, 2, 3, 4]);
+    expect(values.map((point) => point.time)).toEqual(candles.map((point) => point.time));
   });
 
-  it('seeds EMA with the first SMA and smooths subsequent closes', () => {
+  it('seeds EMA with the first close and grows its period', () => {
     const values = exponentialMovingAverage(candlesFromCloses([1, 2, 3, 6]), 3);
-    expect(values.map((point) => point.value)).toEqual([2, 4]);
+    [1, 5 / 3, 7 / 3, 25 / 6].forEach((value, index) => {
+      expect(values[index].value).toBeCloseTo(value, 12);
+    });
   });
 
   it('calculates Bollinger Bands with a 20-period mean and two standard deviations', () => {
     const candles = candlesFromCloses([1, 2, 3, 4]);
     const bands = bollingerBands(candles, 4, 2);
-    expect(bands).toHaveLength(1);
-    expect(bands[0].time).toBe(candles[3].time);
-    expect(bands[0].middle).toBe(2.5);
-    expect(bands[0].upper).toBeCloseTo(4.736, 3);
-    expect(bands[0].lower).toBeCloseTo(0.264, 3);
+    expect(bands).toHaveLength(4);
+    expect(bands[3].time).toBe(candles[3].time);
+    expect(bands[3].middle).toBe(2.5);
+    expect(bands[3].upper).toBeCloseTo(4.736, 3);
+    expect(bands[3].lower).toBeCloseTo(0.264, 3);
   });
 
   it('calculates Wilder RSI for rising, falling, and flat prices', () => {
-    expect(relativeStrengthIndex(candlesFromCloses([1, 2, 3, 4]), 3)[0].value).toBe(100);
-    expect(relativeStrengthIndex(candlesFromCloses([4, 3, 2, 1]), 3)[0].value).toBe(0);
-    expect(relativeStrengthIndex(candlesFromCloses([2, 2, 2, 2]), 3)[0].value).toBe(50);
+    expect(relativeStrengthIndex(candlesFromCloses([1, 2, 3, 4]), 3).at(-1)?.value).toBe(100);
+    expect(relativeStrengthIndex(candlesFromCloses([4, 3, 2, 1]), 3).at(-1)?.value).toBe(0);
+    expect(relativeStrengthIndex(candlesFromCloses([2, 2, 2, 2]), 3).at(-1)?.value).toBe(50);
 
     const smoothed = relativeStrengthIndex(candlesFromCloses([1, 2, 3, 4, 3]), 3);
     expect(smoothed.at(-1)?.value).toBeCloseTo(66.67, 2);
   });
 
-  it('omits indicators until enough candles exist', () => {
-    const candles = candlesFromCloses([1, 2]);
-    expect(simpleMovingAverage(candles, 3)).toEqual([]);
-    expect(exponentialMovingAverage(candles, 3)).toEqual([]);
-    expect(bollingerBands(candles, 3)).toEqual([]);
-    expect(relativeStrengthIndex(candles, 3)).toEqual([]);
+  it('renders every opening minute without future candles', () => {
+    const candles = candlesFromCloses(Array.from({ length: 50 }, (_, i) => 100 + i));
+    for (const calculate of [
+      simpleMovingAverage,
+      exponentialMovingAverage,
+      relativeStrengthIndex,
+    ]) {
+      const full = calculate(candles, 20);
+      expect(full).toHaveLength(50);
+      for (let count = 1; count <= 50; count++) {
+        expect(calculate(candles.slice(0, count), 20)).toEqual(full.slice(0, count));
+      }
+      expect(calculate([], 20)).toEqual([]);
+    }
+    expect(simpleMovingAverage(candles.slice(0, 1), 20)[0].value).toBe(100);
+    expect(exponentialMovingAverage(candles.slice(0, 1), 20)[0].value).toBe(100);
+    expect(relativeStrengthIndex(candles.slice(0, 1), 14)[0].value).toBe(50);
+    const bands = bollingerBands(candles, 20);
+    expect(bands[0]).toMatchObject({ middle: 100, upper: 100, lower: 100 });
+    for (let count = 1; count <= 50; count++) {
+      expect(bollingerBands(candles.slice(0, count), 20)).toEqual(bands.slice(0, count));
+    }
   });
 
   it('rejects invalid periods and non-finite candle values', () => {

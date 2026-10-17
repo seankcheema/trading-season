@@ -13,7 +13,8 @@ import java.util.UUID;
 /**
  * The columns of the {@code accounts} table that both Java services map. Each
  * service's {@code Account} entity extends this class and adds what only it
- * maps.
+ * maps. Lifecycle state and archive audit time are shared so both services
+ * enforce the same account eligibility.
  *
  * <p>{@code cashBalance} is a cache (BR-10) reconciled against
  * {@code cash_transactions}; never write this field without inserting the
@@ -42,6 +43,28 @@ public abstract class AccountBase {
 
     @Column(nullable = false)
     private String currency = "USD";
+
+    @Column(nullable = false)
+    private String status = "ACTIVE";
+
+    @Column(name = "archived_at")
+    private java.time.Instant archivedAt;
+
+    /** Returns the portfolio lifecycle.
+     * @return ACTIVE or ARCHIVED */
+    public String getStatus() { return status; }
+
+    /** Sets the portfolio lifecycle.
+     * @param status ACTIVE or ARCHIVED */
+    public void setStatus(String status) { this.status = status; }
+
+    /** Returns the archive audit time.
+     * @return archive time, or null for an active account */
+    public java.time.Instant getArchivedAt() { return archivedAt; }
+
+    /** Sets the archive audit time.
+     * @param archivedAt time the account became read-only */
+    public void setArchivedAt(java.time.Instant archivedAt) { this.archivedAt = archivedAt; }
 
     /**
      * Returns the ID.

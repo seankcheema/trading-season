@@ -57,4 +57,4 @@ class TestAccountModel:
 
         columns = {column.name for column in inspect(Account).columns}
 
-        assert columns == {'account_id', 'user_id', 'name', 'opened_date', 'currency'}
+        assert columns == {'account_id', 'user_id', 'name', 'opened_date', 'currency', 'status', 'archived_at'}

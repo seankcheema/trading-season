@@ -30,7 +30,7 @@ ALL_TIME = 'all'
 RANGES = (*RANGE_DAYS, ALL_TIME)
 # The most points all time is charted in; a longer history gets buckets of more days.
 ALL_TIME_POINTS = 366
-ORDER_STATUSES = ('FILLED', 'PENDING', 'ACCEPTED', 'REJECTED')
+ORDER_STATUSES = ('FILLED', 'PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED')
 # The product has no limit or stop orders: every order executes at the market quote.
 ORDER_KIND = 'MARKET'
 FEED_LIMIT = 20
@@ -446,6 +446,20 @@ def order_detail(session, order_id):
         **_order_row(*row),
         'userEmail': email,
         'bufferPercent': _number(order.buffer_percent),
+        'limitPrice': _number(order.limit_price, 6),
+        'stopPrice': _number(order.stop_price, 6),
+        'referencePrice': _number(order.reference_price, 6),
+        'triggerPrice': _number(order.trigger_price, 6),
+        'referenceAt': _iso(order.reference_at),
+        'sessionId': order.session_id,
+        'triggeredAt': _iso(order.triggered_at),
+        'evaluatedAt': _iso(order.evaluated_at),
+        'reservedCash': _number(order.reserved_cash, 6),
+        'reservedShares': _number(order.reserved_shares, 4),
+        'executionPrice': _number(order.execution_price, 6),
+        'executionType': order.execution_type,
+        'rejectionCode': order.rejection_code,
+
         'acceptedAt': _iso(order.accepted_at),
         'resolvedAt': _iso(order.resolved_at),
         'simulatedAt': _iso(order.simulated_at),

@@ -60,7 +60,7 @@ public class User {
 <span class="fc" id="L60">    private Integer sessionTimeoutMinutes = 10;</span>
 
 <span class="fc" id="L62">    @Column(name = &quot;execution_buffer_percent&quot;, nullable = false)</span>
-    private BigDecimal executionBufferPercent = BigDecimal.ZERO;
+    private BigDecimal executionBufferPercent = BigDecimal.ONE;
 
     @Column(name = &quot;last_activity_at&quot;)
     private OffsetDateTime lastActivityAt;
@@ -119,8 +119,8 @@ public class User {
      * @param middleName the middle name
      */
     public void setMiddleName(String middleName) {
-<span class="fc" id="L122">        this.middleName = middleName;</span>
-<span class="fc" id="L123">    }</span>
+<span class="nc" id="L122">        this.middleName = middleName;</span>
+<span class="nc" id="L123">    }</span>
 
     /**
      * Returns the last name.
@@ -147,7 +147,7 @@ public class User {
      * @return the SSN
      */
     public String getSsn() {
-<span class="fc" id="L150">        return ssn;</span>
+<span class="nc" id="L150">        return ssn;</span>
     }
 
     /**
@@ -304,6 +304,14 @@ public class User {
     public void setCreatedAt(OffsetDateTime createdAt) {
 <span class="fc" id="L305">        this.createdAt = createdAt;</span>
 <span class="fc" id="L306">    }</span>
+<span class="fc" id="L307">    @jakarta.persistence.Transient</span>
+    private BigDecimal reservedCash = BigDecimal.ZERO;
+    /** Returns cash committed to open BUY orders.
+     * @return reserved cash */
+<span class="fc" id="L311">    public BigDecimal getReservedCash() { return reservedCash; }</span>
+    /** Attaches the order reservation read model.
+     * @param value reserved cash */
+<span class="fc" id="L314">    public void setReservedCash(BigDecimal value) { reservedCash = value; }</span>
 }
 
 

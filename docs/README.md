@@ -1,10 +1,12 @@
 # Documentation
 
-Project documentation lives in the READMEs: start with the [root README](../README.md), then the README of the service you are working on. This folder holds generated and archival material only.
+Start with the [root README](../README.md) for the system overview and each service's README for implementation details. This folder holds local setup instructions, PDF documents, and generated reports.
 
 | Contents | Location |
 | --- | --- |
+| Windows local setup | [Local setup guide](local-setup/windows.md) |
 | Generated Java API documentation, one directory per Java service | [JAVA_DOCS](JAVA_DOCS/index.html) |
 | Generated coverage reports | [coverage](coverage/index.html) |
-| Platform terms and conditions, generated from the wording the client displays with `npm --prefix apps/client-ui run terms:pdf` | [PDF](terms-and-conditions.pdf) |
-| Sprint 7 team lead report | [PDF](<Sprint 7 Team Lead Report - Dua LEAPa.pdf>) |
+| Platform terms and conditions, generated from the wording the client displays with `npm --prefix apps/client-ui run terms:pdf` | [PDF](pdf/terms-and-conditions.pdf) |
+| Sprint 7 team lead report | [PDF](<pdf/Sprint 7 Team Lead Report - Dua LEAPa.pdf>) |
+| Sprint 8 team lead report | [PDF](<pdf/Sprint 8 Team Lead Report - Dua LEAPa 1.pdf>) |

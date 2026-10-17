@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd">
-<coverage lines-valid="260" lines-covered="259" line-rate="0.9961" branches-valid="102" branches-covered="95" branch-rate="0.9312999999999999" timestamp="1791835061108" complexity="0" version="0.1">
+<coverage lines-valid="260" lines-covered="259" line-rate="0.9961" branches-valid="102" branches-covered="95" branch-rate="0.9312999999999999" timestamp="1792183780205" complexity="0" version="0.1">
   <sources>
     <source>C:/Users/Administrator/Documents/GitHub/trading-season/apps/auth-service</source>
   </sources>
