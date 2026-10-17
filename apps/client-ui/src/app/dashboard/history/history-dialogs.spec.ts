@@ -132,6 +132,7 @@ describe('history dialogs', () => {
     it('filters by type', () => {
       seedOrders();
       const fixture = open();
+      click(fixture, '[data-testid="transactions-filters"]');
       const typed = (type: string) => {
         click(fixture, `[data-testid="transactions-filter-${type}"]`);
         return rows(fixture, 'transactions-row').length;
@@ -141,6 +142,20 @@ describe('history dialogs', () => {
       expect(typed('deposit')).toBe(1);
       expect(typed('withdrawal')).toBe(1);
       expect(typed('all')).toBe(5);
+    });
+
+    it('filters by status and combines it with the type filter', () => {
+      seedOrders();
+      const fixture = open();
+      const statuses = () => rows(fixture, 'transactions-row').map((row) => row.dataset['status']);
+      click(fixture, '[data-testid="transactions-filters"]');
+      click(fixture, '[data-testid="transactions-status-completed"]');
+      expect(statuses()).toEqual(['COMPLETED', 'COMPLETED']);
+      click(fixture, '[data-testid="transactions-filter-buy"]');
+      expect(statuses()).toEqual([]);
+      click(fixture, '[data-testid="transactions-filter-all"]');
+      click(fixture, '[data-testid="transactions-status-all"]');
+      expect(statuses()).toHaveLength(5);
     });
 
     it('searches asset labels and toggles sorting in both directions', () => {

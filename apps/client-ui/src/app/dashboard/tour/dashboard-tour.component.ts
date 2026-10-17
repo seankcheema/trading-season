@@ -212,7 +212,7 @@ let nextTourId = 0;
                   data-testid="tour-dot"
                   [class]="
                     (dot === current ? 'w-4 ' : 'w-1.5 ') +
-                    (dot <= current ? 'bg-primary' : 'bg-white/15')
+                    (dot <= current ? 'bg-primary' : 'bg-muted-foreground/40')
                   "
                 ></span>
               }
@@ -243,7 +243,7 @@ let nextTourId = 0;
                 #primary
                 hlmBtn
                 type="button"
-                class="cursor-pointer rounded-[5px]"
+                class="cursor-pointer rounded-lg"
                 data-testid="tour-next"
                 (click)="next()"
               >

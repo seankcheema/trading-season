@@ -131,7 +131,7 @@ describe('DashboardTourComponent', () => {
     expect(dots[0]).toContain('bg-primary');
     expect(dots[1]).toContain('w-4');
     expect(dots[2]).toContain('w-1.5');
-    expect(dots[2]).toContain('bg-white/15');
+    expect(dots[2]).toContain('bg-muted-foreground/40');
 
     await click('Back');
     expect(title()).toBe('Every trade starts with a search');

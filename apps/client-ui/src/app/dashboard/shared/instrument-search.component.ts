@@ -238,8 +238,8 @@ export class InstrumentSearchComponent {
   });
   protected readonly resultsClasses = computed(() =>
     this.embedded()
-      ? 'max-h-64 overflow-y-auto py-1'
-      : 'border-border bg-popover absolute inset-x-0 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-[5px] border py-1 shadow-lg',
+      ? 'max-h-64 overflow-y-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+      : 'border-border bg-popover absolute inset-x-0 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-xl border py-1 shadow-lg [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
   );
 
   private readonly _id = nextId++;
