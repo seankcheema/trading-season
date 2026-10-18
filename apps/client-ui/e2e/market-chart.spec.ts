@@ -208,6 +208,7 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   await page.getByRole('combobox', { name: 'Search instruments' }).fill('AAPL');
   await page.getByRole('option', { name: /AAPL/ }).first().click();
   await page.getByRole('link', { name: 'Open full screen market chart' }).click();
+  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl$/);
   await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');
   await page.reload();
   await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');
