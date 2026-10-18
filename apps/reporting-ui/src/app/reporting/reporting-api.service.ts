@@ -48,6 +48,13 @@ export class ReportingApiService {
     return this._http.get<OrderList>(`${this._api}/orders`);
   }
 
+  // Every order and transfer made in a range, with no cap on the rows, in the viewer's days.
+  ordersIn(range: ActivityRange): Observable<OrderList> {
+    return this._http.get<OrderList>(`${this._api}/orders`, {
+      params: { range, tzOffset: -new Date().getTimezoneOffset() },
+    });
+  }
+
   order(orderId: number): Observable<OrderDetail> {
     return this._http.get<OrderDetail>(`${this._api}/orders/${orderId}`);
   }

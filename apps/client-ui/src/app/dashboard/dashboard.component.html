@@ -160,14 +160,16 @@
 
         <section class="dash-card flex min-h-0 flex-1 flex-col p-5">
           <div class="flex items-center justify-between">
-            <h2 class="text-sm font-semibold">Recent Transactions</h2>
+            <h2 class="dash-label">Recent Transactions</h2>
             <button
               type="button"
-              class="dash-link"
+              class="dash-view-all"
               data-testid="open-transactions"
+              aria-haspopup="dialog"
               (click)="openHistory()"
             >
               View all
+              <ng-icon name="lucideChevronRight" class="dash-view-all-icon" aria-hidden="true" />
             </button>
           </div>
 
@@ -356,37 +358,22 @@
 
         <section class="dash-card flex min-h-0 flex-col p-5 lg:flex-[3]" data-tour="assets">
           <div class="flex items-center justify-between">
-            <div
-              class="bg-muted flex gap-0.5 rounded-lg p-0.5"
-              role="tablist"
-              aria-label="Assets and watch list"
-            >
-              @for (tab of portfolioTabs; track tab.id) {
-                <button
-                  type="button"
-                  role="tab"
-                  class="cursor-pointer rounded-md px-3 py-1 text-sm font-semibold transition-colors"
-                  [class]="
-                    assetsTab() === tab.id
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
-                  "
-                  [attr.aria-selected]="assetsTab() === tab.id"
-                  [attr.data-testid]="'assets-tab-' + tab.id"
-                  (click)="assetsTab.set(tab.id)"
-                >
-                  {{ tab.label }}
-                </button>
-              }
-            </div>
+            <app-segmented-tabs
+              label="Assets and watch list"
+              testIdPrefix="assets-tab"
+              [tabs]="portfolioTabs()"
+              [(value)]="assetsTab"
+            />
             @if (assetsTab() === 'assets') {
               <button
                 type="button"
-                class="dash-link"
+                class="dash-view-all"
                 data-testid="open-assets"
+                aria-haspopup="dialog"
                 (click)="openAssets()"
               >
                 View all
+                <ng-icon name="lucideChevronRight" class="dash-view-all-icon" aria-hidden="true" />
               </button>
             }
           </div>
@@ -394,6 +381,8 @@
           @if (assetsTab() === 'watchlist') {
             <div
               class="dash-scroll mt-4 min-h-0 flex-1 overflow-auto pb-4"
+              role="tabpanel"
+              aria-labelledby="assets-tab-watchlist"
               data-testid="watchlist-table"
             >
               <div class="min-w-[40rem]">
@@ -481,7 +470,11 @@
               </div>
             </div>
           } @else {
-            <div class="dash-scroll mt-4 min-h-0 flex-1 overflow-auto pb-4">
+            <div
+              class="dash-scroll mt-4 min-h-0 flex-1 overflow-auto pb-4"
+              role="tabpanel"
+              aria-labelledby="assets-tab-assets"
+            >
               <div class="min-w-[59rem]" data-testid="assets-table">
                 <div
                   class="assets-table-grid dash-table-head bg-card sticky top-0 grid gap-1.5 px-2 whitespace-nowrap"

@@ -213,7 +213,19 @@ def get_activity():
 @require_role(ADMIN_ROLE)
 @reads_read_model
 def list_orders():
-    """GET /api/reporting/orders: the newest orders and cash transfers across every account."""
+    """
+    GET /api/reporting/orders: the newest orders and cash transfers across every
+    account, or with a range every one made in it, in the viewer's days.
+    """
+    if 'range' in request.args:
+        range_key, tz_offset, refusal = _range_query('all')
+        if refusal:
+            return refusal
+        now = datetime.now(timezone.utc)
+        since = None
+        if range_key != console.ALL_TIME:
+            since, _step, _count = console.window(range_key, now, tz_offset)
+        return jsonify(console.orders(db.session, None, since=since)), 200
     limit = _whole_number('limit', console.DEFAULT_ORDER_LIMIT, 1, console.MAX_ORDER_LIMIT)
     if limit is None:
         return jsonify({'error': f'limit must be between 1 and {console.MAX_ORDER_LIMIT}'}), 400

@@ -1,4 +1,5 @@
 import { OrderEditorComponent } from './shared/order-editor.component';
+import { SegmentedTab, SegmentedTabsComponent } from './shared/segmented-tabs.component';
 import { WatchlistStore } from './watchlist/watchlist-store.service';
 import {
   ActivityItem,
@@ -33,6 +34,7 @@ import {
   lucideCalendarClock,
   lucideCheck,
   lucideChevronDown,
+  lucideChevronRight,
   lucideCompass,
   lucideLogOut,
   lucidePencil,
@@ -106,6 +108,7 @@ type AccountDialog =
     NgIcon,
     OrderSubmissionComponent,
     PriceChartComponent,
+    SegmentedTabsComponent,
     SettingsDialogComponent,
     SignedPercentPipe,
     TermsDialogComponent,
@@ -117,6 +120,7 @@ type AccountDialog =
       lucideCalendarClock,
       lucideCheck,
       lucideChevronDown,
+      lucideChevronRight,
       lucideCompass,
       lucideLogOut,
       lucidePencil,
@@ -208,10 +212,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
       instrument: this.instruments().find((instrument) => instrument.symbol === entry.symbol),
     })),
   );
-  protected readonly portfolioTabs = [
-    { id: 'assets', label: 'Assets' },
-    { id: 'watchlist', label: 'Watch List' },
-  ] as const;
+  protected readonly portfolioTabs = computed<SegmentedTab<'assets' | 'watchlist'>[]>(() => [
+    { id: 'assets', label: 'Assets', count: this.accountsLoading() ? null : this.visibleAssets().length },
+    {
+      id: 'watchlist',
+      label: 'Watch List',
+      count: this.watchlist.status() === 'ready' ? this.watchlist.entries().length : null,
+    },
+  ]);
   protected readonly assetsTab = signal<'assets' | 'watchlist'>('assets');
   protected refreshWatchlist(): void {
     this.watchlist.load(true).subscribe({ error: () => undefined });

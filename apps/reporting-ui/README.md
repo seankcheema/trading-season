@@ -153,7 +153,7 @@ The tokens are declared in [src/styles.css](src/styles.css) with the same values
 | --- | --- |
 | ChangePill, status tags | [change-pill.component.ts](src/app/shared/change-pill.component.ts) |
 | TimeframeToggle | [timeframe-toggle.component.ts](src/app/shared/timeframe-toggle.component.ts) |
-| HeaderDropdown with the export menu | [export-menu.component.ts](src/app/shared/export-menu.component.ts): CSV of the rows on screen, or PDF through the print dialog; see [Export PDF](#export-pdf) |
+| HeaderDropdown with the export menu | [export-menu.component.ts](src/app/shared/export-menu.component.ts): CSV of the rows on screen, or PDF through the print dialog; see [Export PDF](#export-pdf). On Activity the CSV is every order placed in the chosen range, fetched from the Reporting Service when it is asked for, not the status split on screen |
 | Select with a caption | [filter-select.component.ts](src/app/shared/filter-select.component.ts) |
 | PriceChart | [line-chart.component.ts](src/app/shared/line-chart.component.ts) |
 | Sparkline | [sparkline.component.ts](src/app/shared/sparkline.component.ts) |
