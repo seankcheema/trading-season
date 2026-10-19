@@ -1024,3 +1024,5 @@
   [sessionId]="sessionId()"
   [marketTimestamp]="marketTimestamp()"
 />
+
+<app-dua [holdings]="simulationHoldings().get(accountStore.selectedAccountId() ?? -1) ?? []" [quotes]="instruments()" [symbol]="symbol()" [connected]="connected()" />

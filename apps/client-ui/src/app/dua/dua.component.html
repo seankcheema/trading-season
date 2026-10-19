@@ -1,0 +1,116 @@
+<section
+  #panel
+  class="dua-panel"
+  [class.minimized]="session.minimized()"
+  [attr.inert]="session.minimized() ? '' : null"
+  [attr.aria-hidden]="session.minimized()"
+  role="region"
+  aria-label="Dua insights"
+  tabindex="-1"
+  (keydown.escape)="minimize()"
+>
+  <header>
+    <span>Dua</span><button type="button" aria-label="Minimize Dua" (click)="minimize()">−</button>
+  </header>
+  <div class="dua-body">
+    @if (!choice()) {
+      <p>What would you like to review?</p>
+      <div class="choices">
+        <button type="button" (click)="select('daily')">
+          Daily review <span aria-hidden="true">↗</span>
+        </button>
+        <button type="button" (click)="select('holdings')">
+          My holdings <span aria-hidden="true">↗</span>
+        </button>
+        @if (symbol()) {
+          <button type="button" (click)="select('stock')">
+            This stock <span aria-hidden="true">↗</span>
+          </button>
+        }
+      </div>
+    } @else {
+      <h2>
+        {{
+          choice() === 'daily' ? 'Daily review' : choice() === 'holdings' ? 'My holdings' : symbol()
+        }}
+      </h2>
+      @if (loading()) {
+        <span class="visually-hidden" role="status">Fetching stock insights</span>
+        <div class="skeleton insight-skeleton" aria-hidden="true"></div>
+        <div class="skeleton insight-skeleton short" aria-hidden="true"></div>
+      }
+      <div aria-live="polite">
+        @for (card of cards(); track $index) {
+          <article>
+            <p>{{ card.text }}</p>
+            @if (card.detail) {
+              <small>{{ card.detail }}</small>
+            }
+            @if (card.symbol !== symbol()) {
+              <button class="text-action" type="button" (click)="viewStock(card.symbol)">
+                View stock
+              </button>
+            }
+          </article>
+        }
+        @if (message()) {
+          <p class="feedback" role="status">{{ message() }}</p>
+        }
+      </div>
+      @if (asOf()) {
+        <small class="timestamp">As of {{ asOf() }}</small>
+      }
+      @if (snapshotDisconnected()) {
+        <small class="timestamp">Live feed was disconnected when this snapshot was taken.</small>
+      }
+      <div class="actions">
+        <button type="button" (click)="back()">Back to choices</button
+        ><button type="button" (click)="select(choice()!)">
+          {{ message() ? 'Retry' : 'Refresh' }}
+        </button>
+      </div>
+    }
+  </div>
+</section>
+<button
+  #launcher
+  class="dua-launcher"
+  type="button"
+  aria-label="Dua insights"
+  [attr.aria-expanded]="!session.minimized()"
+  [attr.aria-description]="hasUpdates() ? '1 new insight update. Click to open chat.' : null"
+  (pointerenter)="hovered.set($event.pointerType === 'mouse')"
+  (pointerleave)="hovered.set(false); hoverAcknowledged.set(false)"
+  (focus)="focused.set(launcher.matches(':focus-visible'))"
+  (blur)="focused.set(false); hoverAcknowledged.set(false)"
+  (click)="toggle()"
+>
+  @if (!imagesFailed() && stage() === 2) {
+    <span class="notification-count" aria-label="1 new insight update">1</span>
+  }
+  @if (imagesFailed()) {
+    <span class="fallback">Dua</span>
+  }
+  <img
+    src="/assets/dua-shark/shark_under.png"
+    alt=""
+    draggable="false"
+    [class.visible]="!imagesFailed() && stage() === 0"
+    (error)="imageFailed()"
+  />
+  <img
+    src="/assets/dua-shark/shark_peak.png"
+    alt=""
+    draggable="false"
+    [class.visible]="!imagesFailed() && stage() === 1"
+    (error)="imageFailed()"
+  />
+  <img
+    src="/assets/dua-shark/shark_peak_noti.png"
+    alt=""
+    draggable="false"
+    [class.notification]="true"
+    [class.visible]="!imagesFailed() && stage() === 2"
+    (error)="imageFailed()"
+  />
+</button>

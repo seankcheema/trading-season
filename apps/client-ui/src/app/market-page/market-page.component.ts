@@ -1,3 +1,4 @@
+import { DuaComponent } from '../dua/dua.component';
 import { OrderEditorComponent } from '../dashboard/shared/order-editor.component';
 import { WatchlistStore } from '../dashboard/watchlist/watchlist-store.service';
 import { WatchlistStarComponent } from '../dashboard/watchlist/watchlist-star.component';
@@ -136,6 +137,7 @@ interface MarketStats {
   selector: 'app-market-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    DuaComponent,
     NgTemplateOutlet,
     OrderEditorComponent,
     WatchlistStarComponent,
@@ -305,7 +307,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     return Number.isFinite(at) ? at : null;
   });
 
-  private readonly simulationHoldings = computed(
+  protected readonly simulationHoldings = computed(
     () =>
       new Map(
         [...this.accountStore.holdingsByAccount()].map(([id, current]) => [

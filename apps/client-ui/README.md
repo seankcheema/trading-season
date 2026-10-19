@@ -15,6 +15,16 @@ Live prices, candles, and the tick stream come from the Java market API. Metrics
 
 A user who has not accepted the platform terms in force sees them on the dashboard and on the market page in a dialog that cannot be dismissed, with everything behind it inert. They sign by typing their name and accept, or sign out. The wording and its version are in [terms-content.ts](src/app/dashboard/terms/terms-content.ts); the version must match the one [Holdings and Trade Service](../holdings-and-trade-service/README.md) and [Order and Sell Service](../order-and-sell-service/README.md) have in force, which a test in each of them checks. After changing the wording, run `npm --prefix apps/client-ui run terms:pdf` to regenerate [the PDF](../../docs/pdf/terms-and-conditions.pdf) from it.
 
+## Dua insights
+
+Dua is a viewport-fixed shark overlay at bottom-right on the dashboard and market page, remaining visible while scrolling. Its compact navy bubble starts closed with the underwater shark. Clicking the idle shark opens the bubble and shows the peeking shark while Dua talks; **Minimize Dua** closes it again. The preference lasts across screen navigation until logout. It does not take space in the page layout.
+
+The choice-only panel offers daily movement among the selected account's holdings, position performance versus average cost, and, on the market page, the selected stock's movement and direction across five completed one-minute candles. Results are snapshots labeled with market time; **Refresh** recalculates from available data. Replay changes clear results, incomplete and future candles are excluded, and missing prices are never replaced with purchase cost. Existing demo AI commentary remains separate from Dua.
+
+The three supplied PNGs live in [public/assets/dua-shark](public/assets/dua-shark/), served at `/assets/dua-shark/`. Artwork crossfades between underwater (idle), peak (open or hovered), and peak with notification (changed insights while closed). A small red **1** badge represents one consolidated pending insight update. Clicking the notification opens chat, clears the badge, and shows the peeking shark in one click. The badge sits 6px below the top of the launcher. Initial data establishes a baseline, and changes to rounded insight results or the trading date trigger the notification without additional requests. Hover changes the artwork, keeping the launcher background transparent; reduced motion disables transitions. No backend, model, text input, persistent chat storage, or trading action is added. See the [MVP design and insight rules](../../docs/dua-insights-mvp-plan.md).
+
+For the MVP, the notification can be acknowledged only once per page load. After the user clicks a notified shark, later price changes, account switches and screen navigation do not restore the badge. A full browser refresh resets this in-memory limit. The chat can still be opened and refreshed normally.
+
 ## Architecture
 
 ```mermaid
