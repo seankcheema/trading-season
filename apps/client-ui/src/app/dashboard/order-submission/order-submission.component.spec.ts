@@ -304,11 +304,11 @@ describe('OrderSubmissionComponent', () => {
     http.expectOne({ method: 'POST', url: '/api/orders' }).flush(
       filledOrder({
         status: 'REJECTED',
-        rejectionReason: 'BR-09: insufficient funds for this order',
+        rejectionReason: 'BR-05: insufficient funds for this order',
       }),
     );
 
-    expect(component['rejectionReason']()).toBe('BR-09: insufficient funds for this order');
+    expect(component['rejectionReason']()).toBe('BR-05: insufficient funds for this order');
     expect(component['errorMessage']()).toBe('');
     expect(component['filled']()).toBe(false);
     // A rejection leaves the ticket usable, so the trader can change it and retry.

@@ -228,7 +228,7 @@ class OrderServiceTest {
         Order order = submit(order("BUY", "100", "50.00"), user.getUserId());
 
         assertEquals(Order.STATUS_REJECTED, order.getStatus());
-        assertTrue(order.getRejectionReason().contains("BR-09"));
+        assertTrue(order.getRejectionReason().contains("BR-05"));
         assertNotNull(order.getResolvedAt());
         assertEquals(0, new BigDecimal("1000.00").compareTo(availableFunds()));
         assertEquals(0, fillRepository.count());

@@ -202,7 +202,7 @@ class OrderExecutionServiceTest {
     void buyFailsWhenFundsNoLongerCoverTheTrade() {
         Order result = service.execute(order(Order.TYPE_BUY, "41", "25.00"), new Instrument());
 
-        assertFailed(result, "BR-09: insufficient funds at execution time");
+        assertFailed(result, "BR-05: insufficient funds at execution time");
         assertEquals(new BigDecimal("1000.00"), user.getAvailableFunds());
     }
 

@@ -41,7 +41,7 @@ class SufficientFundsValidatorUnitTest {
         ValidationResult result = validator.validate(request, userWithFunds("500"), accountWithCash("0"), new Instrument());
 
         assertFalse(result.passed());
-        assertTrue(result.reason().contains("BR-09"));
+        assertTrue(result.reason().contains("BR-05"));
     }
 
     @Test

@@ -160,7 +160,7 @@ public class OrderExecutionService {
 
         BigDecimal otherCash = otherReservedCash(user, orderId);
         if (isBuy && tradeValue.compareTo(user.getAvailableFunds().subtract(otherCash)) > 0) {
-            return reject(order, instrument, "BR-09: insufficient funds at execution time");
+            return reject(order, instrument, "BR-05: insufficient funds at execution time");
         }
 
         Holding holding = holdingRepository
