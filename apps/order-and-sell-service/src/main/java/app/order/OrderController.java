@@ -7,7 +7,9 @@ import app.order.dto.OrderResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -34,6 +37,13 @@ import java.util.List;
 @RequestMapping("/api/orders")
 @Tag(name = "Orders", description = "Order submission and retrieval endpoints")
 public class OrderController {
+
+    /** Orders per page of {@code GET /api/orders} when the caller names no size (BR-11). */
+    public static final int DEFAULT_PAGE_SIZE = 50;
+    /** The largest page {@code GET /api/orders} serves. */
+    public static final int MAX_PAGE_SIZE = 200;
+    /** Response header carrying the caller's total order count. */
+    public static final String TOTAL_COUNT_HEADER = "X-Total-Count";
 
     private final OrderService orderService;
 
@@ -70,20 +80,30 @@ public class OrderController {
     }
 
     /**
-     * Lists the caller's own orders, newest submission first. The owner is
-     * resolved from the bearer token, so there is no path or query parameter
-     * that can name another user's orders. A caller with no orders gets an
-     * empty array, not a 404.
+     * Lists one page of the caller's own orders, newest submission first
+     * (BR-11). The owner is resolved from the bearer token, so there is no
+     * path or query parameter that can name another user's orders. A caller
+     * with no orders gets an empty array, not a 404. The page is the array
+     * body; the total number of the caller's orders travels in the
+     * {@code X-Total-Count} header. A page below zero reads as the first and
+     * a size outside 1 to {@value #MAX_PAGE_SIZE} is clamped into that range.
      *
-     * @param jwt the verified access token
-     * @return the caller's orders across every account they own
+     * @param page zero-based page number, first page when omitted
+     * @param size orders per page, {@value #DEFAULT_PAGE_SIZE} when omitted
+     * @param jwt  the verified access token
+     * @return that page of the caller's orders across every account they own
      */
     @GetMapping
-    @Operation(summary = "List user orders", description = "Retrieves all orders submitted by the authenticated user, newest first")
-    public List<OrderResponse> listOwnOrders(@AuthenticationPrincipal Jwt jwt) {
-        return orderService.getOwnOrders(AuthenticatedUser.from(jwt).userId()).stream()
-                .map(OrderResponse::from)
-                .toList();
+    @Operation(summary = "List user orders", description = "Retrieves one page of the orders submitted by the "
+            + "authenticated user, newest first; X-Total-Count carries the total")
+    public ResponseEntity<List<OrderResponse>> listOwnOrders(@RequestParam(defaultValue = "0") int page,
+                                                             @RequestParam(defaultValue = "" + DEFAULT_PAGE_SIZE) int size,
+                                                             @AuthenticationPrincipal Jwt jwt) {
+        Page<Order> orders = orderService.getOwnOrders(AuthenticatedUser.from(jwt).userId(),
+                Math.max(page, 0), Math.clamp(size, 1, MAX_PAGE_SIZE));
+        return ResponseEntity.ok()
+                .header(TOTAL_COUNT_HEADER, String.valueOf(orders.getTotalElements()))
+                .body(orders.map(OrderResponse::from).getContent());
     }
 
     /**
@@ -94,7 +114,8 @@ public class OrderController {
      *
      * @param orderId the requested order id
      * @param jwt the verified access token identifying the caller
-     * @return audit entries with the order price and their real record times
+     * @return audit entries, each with the quote its stage was priced against (BR-15)
+     *         and its real record time
      */
     @GetMapping("/{orderId}/audit")
     @Operation(summary = "Get an order audit trail", description = "Retrieves the authenticated caller's order lifecycle entries, oldest first")
@@ -102,7 +123,7 @@ public class OrderController {
                                                            @AuthenticationPrincipal Jwt jwt) {
         Order order = orderService.getOwnOrder(orderId, AuthenticatedUser.from(jwt).userId());
         return orderService.getOwnOrderAudit(orderId, AuthenticatedUser.from(jwt).userId()).stream()
-                .map(entry -> OrderAuditEntryResponse.from(entry, order.getIndicativePrice()))
+                .map(entry -> OrderAuditEntryResponse.from(entry, order))
                 .toList();
     }
     /** Reads one owned instruction.

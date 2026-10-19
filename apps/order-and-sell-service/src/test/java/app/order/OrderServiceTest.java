@@ -245,6 +245,22 @@ class OrderServiceTest {
     }
 
     @Test
+    void orderPlacedWhileTheMarketIsClosedIsRejected() {
+        // 16:00 America/Chicago on a Monday: the replay position is after the close.
+        org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(quoteAt(OffsetDateTime.parse("2026-01-05T22:00:00Z")));
+
+        Order order = orderService.submitOrder(order("BUY", "1", "100.00"), user.getUserId());
+
+        assertEquals(Order.STATUS_REJECTED, order.getStatus());
+        assertEquals("BR-05: the market is closed at Monday 16:00 America/Chicago; "
+                + "orders are accepted Monday to Friday 08:30 to 15:00", order.getRejectionReason());
+        assertEquals(0, STARTING_FUNDS.compareTo(availableFunds()));
+        assertEquals(0, fillRepository.count());
+        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_REJECTED), auditEventsFor(order));
+    }
+
+    @Test
     void sellOrderWithoutEnoughHoldingsIsRejected() {
         holdingOf("10");
 
