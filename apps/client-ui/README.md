@@ -112,6 +112,8 @@ An order's status changes on screen without a refresh (BR-07). While signed in, 
 
 A status never moves backwards, so an `ACCEPTED` event arriving after the submission response already said `FILLED` changes nothing. An event for an order the page has not loaded re-reads the order history. If the stream drops, the service reopens it after 2 s, doubling to a 10 s cap, and re-reads the history once on reconnection because the backend replays nothing. The stream closes on sign-out and reopens on the next sign-in. The Nginx image turns proxy buffering off for `/api/orders` so frames are forwarded as they arrive.
 
+The order history behind the dashboard and the market page is read from `GET /api/orders` page by page, in the endpoint's default page size, until a short page arrives (BR-11), so every view that derives cash or holdings from past orders still sees all of them.
+
 A fill that lands after the submission response, such as a limit or stop order's, is announced by the service with the `executionPrice` the Order and Sell Service settled at (BR-08); the submission toasts use the same field and fall back to the indicative price when a response has none.
 
 ## Loading states
