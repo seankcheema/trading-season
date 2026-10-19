@@ -198,16 +198,20 @@ def event_lstm_predictions(
     seed: int = config.SEED,
     verbose: int = 0,
     big_move: float | None = None,
+    purge: int = 1,
 ) -> DirectionRun:
     """Train an LSTM classifier on train (early stopping on val); predict the event for each day of part.
 
     The event is an up day, or a big-move day when big_move is given (see
-    windows.event_labels). The final row of train and of val carries a label
-    from the next split, so neither label is fitted or used for early
-    stopping. Those rows still feed the windows as past context, which leaks
-    nothing.
+    windows.event_labels). The final `purge` rows of train and of val carry
+    labels that reach into the next split (1 for a next-day label, H for a
+    label over the next H days), so those labels are never fitted or used for
+    early stopping. The rows still feed the windows as past context, which
+    leaks nothing.
     """
-    fit_train, stop_val = train.iloc[:-1], val.iloc[:-1]
+    if purge < 1:
+        raise ValueError(f"purge must be at least 1, got {purge}")
+    fit_train, stop_val = train.iloc[:-purge], val.iloc[:-purge]
     scalers = fit_scalers(fit_train, feature_cols)
     X_train, _ = make_windows(fit_train, scalers, lookback)
     y_train = event_labels(fit_train, lookback, big_move=big_move)

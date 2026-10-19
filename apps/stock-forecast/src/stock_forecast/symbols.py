@@ -94,15 +94,17 @@ def symbol_rows(symbol: str, with_lstm: bool = True) -> list[dict]:
     return rows
 
 
-def merge_results(saved: pd.DataFrame | None, new: pd.DataFrame) -> pd.DataFrame:
-    """Replace the saved rows of each (symbol, model) pair just run; keep every other row.
+def merge_results(saved: pd.DataFrame | None, new: pd.DataFrame,
+                  keys: tuple[str, ...] = ("symbol", "model")) -> pd.DataFrame:
+    """Replace the saved rows of each key combination just run; keep every other row.
 
-    A quick --no-lstm run of one symbol therefore keeps that symbol's saved LSTM rows.
+    With the default keys, a quick --no-lstm run of one symbol keeps that
+    symbol's saved LSTM rows.
     """
     if saved is None or saved.empty:
         return new.reset_index(drop=True)
-    rerun = set(zip(new["symbol"], new["model"]))
-    kept = saved[[pair not in rerun for pair in zip(saved["symbol"], saved["model"])]]
+    rerun = set(zip(*(new[k] for k in keys)))
+    kept = saved[[combo not in rerun for combo in zip(*(saved[k] for k in keys))]]
     return pd.concat([kept, new], ignore_index=True)
 
 

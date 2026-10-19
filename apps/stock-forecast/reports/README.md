@@ -131,6 +131,12 @@ What it means: the pipeline runs end to end on platform data, but the platform's
 
 **`platform_spike.png`** (demo): the platform's simulation schedules a volatility spike on Oct 12-17, 2026. The model, unchanged, raised its big-move probability on all 10 platform stocks during that week (to 50-76%, from 31-50% on other days). The chart shows it reacts within a day of the storm starting rather than predicting it, then stays cautious for a few weeks, as real storms tend to linger.
 
+## More inputs and longer windows
+
+**VIX family, fear gap and earnings dates** (`vix_family_comparison.csv`): adding the 9-day and 3-month versions of VIX, the volatility of VIX, the gap between expected and actual volatility, and AAPL's earnings dates raised AAPL's six-year accuracy from 60.2% to 62.2%. The bigger change is in how well the probabilities separate stormy from calm days: almost twice as good as the frozen model. Earnings matter on few days but strongly: after the evening before an AAPL earnings reaction, the next day was a big move 85% of the time.
+
+**Longer prediction windows** (`horizon_comparison.csv`): instead of "will tomorrow be a big-move day?", these ask "will the next 3 (or 5, 10, 21) days be more volatile than usual?". For SPY, the whole market, that is right about 80% of the time 3 to 5 days ahead, against about 65-68% for always giving the same answer, and it beat that bar in 5 of 6 years. For AAPL it reaches about 71%, but only about 4 points above its bar, because a single company also moves on its own news. Past two weeks the advantage fades. Training on only the last few years instead of all history did worse: the older crisis years teach the model what stress looks like.
+
 ## The earlier return model
 
 **`lstm_loss.png`**: the same learning chart for the LSTM that predicts the size of tomorrow's move.

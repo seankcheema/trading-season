@@ -59,6 +59,15 @@ A second track predicts how big tomorrow's move will be instead of its direction
 
 Walk-forward results (Oct 18): averaged over the five stocks, the shared LSTM scored 61.1% against 60.0% for one LSTM per stock, and VIX lifted SPY's per-stock LSTM from 64.4% to 67.5%. Gains elsewhere were one to two points or none, and JNJ stayed below its bar. Logistic regression with VIX gave the best-calibrated probabilities. None of these replace the frozen AAPL model. The per-stock rows here differ by up to half a point from `compare-symbols.py` because joining VIX drops one early-2010 row.
 
+## VIX family, earnings and prediction windows
+
+These experiments use the VIX family on top of VIX (`0001-download-data.py --vix-family`: VIX9D, VIX3M and VVIX, from Jan 2011) and each stock's earnings announcement times (`--earnings`: dates and times only, never the results). `data.add_vix_family` adds `vix_short` (VIX9D / VIX), `vix_term` (VIX / VIX3M; above 1 is an inverted curve) and `vvix`; `data.add_vix_gap` adds `vix_gap`, VIX minus the market's realized volatility over `VIX_GAP_WINDOW` days; `data.add_earnings` flags the last trading day before an announcement's reaction day (reports at or after `EARNINGS_AFTER_HOUR` move the next day).
+
+- `scripts/extra-vix-family.py` compares VIX, the VIX family, the family plus the gap, and, for stocks with saved earnings dates, all of them plus earnings, for logistic regression and the LSTM, walk-forward on AAPL and SPY. It writes `reports/vix_family_comparison.csv`; `--symbols` reruns some symbols and keeps the others' rows.
+- `scripts/extra-horizons.py` changes the question to "will realized volatility over the next H days be above its training median?" (`horizons.future_volatility`), for each H in `HORIZONS`. Labels over H days reach H days ahead, so `pipeline.event_lstm_predictions(purge=H)` drops the last H labels before every split boundary. `--train-years N` trains on only the last N years (a sliding training window). It writes `reports/horizon_comparison.csv`; `--no-lstm` runs the logistic regression alone in seconds.
+
+Walk-forward results (Oct 19-20): on AAPL's next-day big moves, VIX, the family, the gap and earnings together reached 62.2% (Brier skill 0.094, against 60.2% and 0.050 for the frozen model). SPY's realized volatility over the next 3 to 5 days was predicted correctly about 80% of the time against a bar of 65-68%, beating it in 5 of 6 years; AAPL's longer windows reached about 71% but stayed about 4 points above their bar. Training on all history beat a sliding 3- or 5-year window, and the LSTM did not beat logistic regression at windows of 3 days or more. None of these replace the frozen model.
+
 ## TradingSeason demo
 
 `scripts/extra-platform-demo.py` runs the saved direction and volatility models, untrained further, on the platform's simulated 2026 AAPL prices in `data/platform/`. It is a demo that the pipeline runs on platform data, never evidence: the simulation follows scripted monthly trends, so a "follow the 20-day trend" rule, scored alongside, does well there. `platform_demo.py` replaces SPY with the equal-weight average of the platform's 10 stocks and scores two variants on the same days: as trained, and recalibrated, where only the input scalers and the big-move cut-off are re-fit on the warm-up rows before the scored period. It writes `reports/platform_demo.csv` and `.png`; `--symbol MSFT` runs another platform stock through the same AAPL-trained models and writes `platform_demo_msft.csv` and `.png`.
@@ -124,6 +133,9 @@ Run from `apps/stock-forecast` with the virtual environment active.
 | 10d | `python scripts/extra-pooled-and-vix.py` | `reports/pooled_vix_comparison.csv` and `.png` | Week 3, one to two hours |
 | 10e | `export-platform-daily.py` through Docker (see its docstring) | `data/platform/*.csv` | Once, after seeding the platform's market data |
 | 10f | `python scripts/extra-platform-demo.py` | `reports/platform_demo.csv` and `.png` | Any time; under a minute |
+| 10g | `python scripts/0001-download-data.py --vix-family` and `--earnings` | `data/vix9d_daily.csv`, `vix3m_daily.csv`, `vvix_daily.csv`, `data/*_earnings.csv` | Once, Oct 19 |
+| 10h | `python scripts/extra-vix-family.py` | `reports/vix_family_comparison.csv` | Week 3, about 30 minutes |
+| 10i | `python scripts/extra-horizons.py` | `reports/horizon_comparison.csv` | Week 3; seconds with `--no-lstm`, about 30 minutes with the LSTM |
 | 10j | `python scripts/extra-platform-spike.py` | `reports/platform_spike.csv` and `.png` | Any time; under a minute |
 | 11 | `python scripts/0005-export-scorecard.py --model lstm-direction` | `reports/test_results.csv`, `reports/test_direction_results.csv`, test confidence charts, real `scorecard.json` | Once, Oct 22, after the final review |
 | 12 | `python scripts/0005-export-scorecard.py --model lstm-volatility` | `reports/test_volatility_results.csv`, test volatility charts; no scorecard | Once, Oct 22, after the final review |

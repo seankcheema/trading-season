@@ -85,6 +85,27 @@ SYMBOL_CSVS = {TICKER: PRICES_CSV, MARKET_TICKER: MARKET_CSV,
 COMPARISON_SYMBOLS = [TICKER, MARKET_TICKER, *EXTRA_SYMBOLS]
 VIX_CSV = DATA_DIR / "vix_daily.csv"
 VIX_FEATURES = VOLATILITY_FEATURES + ["vix", "vix_change"]
+# The rest of the VIX family (0001 --vix-family): 9-day and 3-month expected
+# volatility, and the volatility of VIX itself. VIX9D starts in Jan 2011.
+VIX_FAMILY_CSVS = {"^VIX9D": DATA_DIR / "vix9d_daily.csv", "^VIX3M": DATA_DIR / "vix3m_daily.csv",
+                   "^VVIX": DATA_DIR / "vvix_daily.csv"}
+VIX_FAMILY_FEATURES = VIX_FEATURES + ["vix_short", "vix_term", "vvix"]
+# Fear vs reality: VIX minus the market's realized volatility over the last
+# VIX_GAP_WINDOW days, both annualized.
+VIX_GAP_WINDOW = 20
+VIX_GAP_FEATURES = VIX_FAMILY_FEATURES + ["vix_gap"]
+# Earnings announcement dates and times (0001 --earnings), never the results.
+# A report at or after EARNINGS_AFTER_HOUR moves the next trading day.
+EARNINGS_CSVS = {symbol: DATA_DIR / f"{symbol.lower()}_earnings.csv" for symbol in [TICKER, *EXTRA_SYMBOLS]}
+EARNINGS_AFTER_HOUR = 12
+EARNINGS_FEATURES = VIX_GAP_FEATURES + ["earnings_next"]
+# Prediction windows: is the market's realized volatility over the next H
+# trading days above the training median? H = 1 is the next-day big move.
+HORIZONS = [1, 2, 3, 5, 10, 15, 21]
+HORIZON_FEATURES = VIX_GAP_FEATURES
+HORIZON_COMPARISON_CSV = REPORTS_DIR / "horizon_comparison.csv"
+VIX_FAMILY_SYMBOLS = [TICKER, MARKET_TICKER]
+VIX_FAMILY_COMPARISON_CSV = REPORTS_DIR / "vix_family_comparison.csv"
 POOLED_COMPARISON_CSV = REPORTS_DIR / "pooled_vix_comparison.csv"
 # TradingSeason demo: daily bars exported from the platform's simulated 2026
 # archive by export-platform-daily.py. Simulated prices: a demo, never evidence.

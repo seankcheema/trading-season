@@ -47,6 +47,21 @@ def download_prices(ticker: str, start: str = config.START, end: str = config.EN
     return frame
 
 
+def download_earnings_dates(ticker: str, limit: int = 100) -> pd.DataFrame:
+    """Download the dates and times of a stock's earnings announcements, oldest first.
+
+    Keeps only when each announcement happened (or is scheduled), never the
+    reported figures, which are only known afterwards. Raises if none come back.
+    """
+    import yfinance as yf
+
+    events = yf.Ticker(ticker).get_earnings_dates(limit=limit)
+    if events is None or events.empty:
+        raise RuntimeError(f"No earnings dates returned for {ticker}")
+    announced = pd.Series(events.index, name="announced_at").sort_values().reset_index(drop=True)
+    return announced.to_frame()
+
+
 def save_prices(prices: pd.DataFrame, path: Path, overwrite: bool = False) -> None:
     """Save prices to CSV, refusing to replace an existing snapshot by accident."""
     path = Path(path)
@@ -146,6 +161,65 @@ def add_vix(dataset: pd.DataFrame, vix: pd.DataFrame) -> pd.DataFrame:
     joined = dataset.join(level, how="inner")
     joined["vix_change"] = np.log(joined["vix"]).diff()
     return joined.dropna()
+
+
+def add_vix_family(dataset: pd.DataFrame, vix9d: pd.DataFrame, vix3m: pd.DataFrame,
+                   vvix: pd.DataFrame) -> pd.DataFrame:
+    """Add VIX term-structure inputs to a dataset that already has a vix column.
+
+    vix_short is VIX9D / VIX: above 1, the next 9 days look riskier than the
+    next 30. vix_term is VIX / VIX3M: above 1 (an inverted curve), near-term
+    fear exceeds longer-term fear, a classic stress signal. vvix is the
+    volatility of VIX, as a fraction. All are known at day t's close. Joined
+    by date; days missing any index are dropped, not filled.
+    """
+    family = pd.concat({"vix9d": vix9d["Close"] / 100, "vix3m": vix3m["Close"] / 100,
+                        "vvix": vvix["Close"] / 100}, axis=1)
+    joined = dataset.join(family, how="inner")
+    joined["vix_short"] = joined["vix9d"] / joined["vix"]
+    joined["vix_term"] = joined["vix"] / joined["vix3m"]
+    return joined.drop(columns=["vix9d", "vix3m"]).dropna()
+
+
+def add_vix_gap(dataset: pd.DataFrame, window: int = config.VIX_GAP_WINDOW) -> pd.DataFrame:
+    """Add vix_gap: VIX minus the market's realized volatility over the last `window` days.
+
+    Both are annualized fractions (realized: daily standard deviation times
+    sqrt(252)). Above 0, traders price in more risk than the market has just
+    shown. Uses spy_ret, so for SPY itself it is its own realized volatility.
+    Warm-up rows are dropped.
+    """
+    gapped = dataset.copy()
+    realized = dataset["spy_ret"].rolling(window).std() * np.sqrt(252)
+    gapped["vix_gap"] = dataset["vix"] - realized
+    return gapped.dropna()
+
+
+def load_earnings(path: Path) -> pd.Series:
+    """Saved announcement timestamps, each in its own (exchange) local time."""
+    raw = pd.read_csv(path)["announced_at"]
+    return raw.map(pd.Timestamp)
+
+
+def add_earnings(dataset: pd.DataFrame, announced: pd.Series,
+                 after_hour: int = config.EARNINGS_AFTER_HOUR) -> pd.DataFrame:
+    """Add earnings_next: 1.0 on the evening before a trading day that reacts to an announcement.
+
+    A report at or after `after_hour` (local time) moves the next trading
+    day; an earlier one moves the same day. The flag sits on the last trading
+    day before that reaction day. Announcement dates are scheduled weeks
+    ahead, so the flag is known at day t's close.
+    """
+    flagged = dataset.copy()
+    flagged["earnings_next"] = 0.0
+    days = dataset.index
+    for stamp in announced:
+        day = pd.Timestamp(stamp.date())
+        # The first trading day whose prices reflect the announcement.
+        position = days.searchsorted(day, side="right" if stamp.hour >= after_hour else "left")
+        if 0 < position < len(days):
+            flagged.iloc[position - 1, flagged.columns.get_loc("earnings_next")] = 1.0
+    return flagged
 
 
 def split_by_date(
