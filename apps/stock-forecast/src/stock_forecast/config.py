@@ -12,6 +12,9 @@ MARKET_TICKER = "SPY"
 # Extra stocks for compare-symbols.py: two low-volatility stocks and one large
 # tech stock like AAPL. Downloaded once by 0001-download-data.py --extra.
 EXTRA_SYMBOLS = ["MSFT", "JNJ", "KO"]
+# The CBOE volatility index: the options market's forecast of S&P 500
+# volatility over the next 30 days. Downloaded once by 0001 --vix.
+VIX_TICKER = "^VIX"
 
 # Download window. yfinance treats END as exclusive, so this ends Sep 30, 2026.
 START = "2010-01-01"
@@ -80,6 +83,9 @@ MARKET_CSV = DATA_DIR / "spy_daily.csv"
 SYMBOL_CSVS = {TICKER: PRICES_CSV, MARKET_TICKER: MARKET_CSV,
                **{symbol: DATA_DIR / f"{symbol.lower()}_daily.csv" for symbol in EXTRA_SYMBOLS}}
 COMPARISON_SYMBOLS = [TICKER, MARKET_TICKER, *EXTRA_SYMBOLS]
+VIX_CSV = DATA_DIR / "vix_daily.csv"
+VIX_FEATURES = VOLATILITY_FEATURES + ["vix", "vix_change"]
+POOLED_COMPARISON_CSV = REPORTS_DIR / "pooled_vix_comparison.csv"
 SYMBOL_COMPARISON_CSV = REPORTS_DIR / "symbol_comparison.csv"
 RESULTS_CSV = REPORTS_DIR / "results.csv"
 TEST_RESULTS_CSV = REPORTS_DIR / "test_results.csv"

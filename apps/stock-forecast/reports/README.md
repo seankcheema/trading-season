@@ -108,6 +108,17 @@ What it means: the model is a reasonable gauge of **how much** AAPL is likely to
 
 What it shows: SPY is the easy case because it is the whole market, not because it is calm. JNJ and KO are just as calm but did not improve, because a single company also moves on its own news. A simple logistic regression came close to the LSTM on most stocks.
 
+## Two upgrades: VIX and one shared model
+
+**`pooled_vix_comparison.png`**: two ways to improve the big-move model, tested on all five stocks over the six walk-forward years. Darker bars use the VIX index, the options market's forecast of how much the S&P 500 will move. Green bars are one LSTM trained on all five stocks at once instead of one per stock.
+
+- **VIX helps most where you would expect:** on SPY, the index VIX is built from, accuracy rose from 64.4% to 67.5%, and the worst year was 62%. On single stocks it added a point at most, and on JNJ it hurt the LSTM.
+- **One shared model helps a little:** averaged over the five stocks it scored 61.1% against 60.0% for separate models. On AAPL it reached 61.9%, the best AAPL result so far.
+- **JNJ never cleared its bar,** with any model.
+- **A logistic regression with VIX gave the most trustworthy probabilities** on average, so the simple model stays competitive.
+
+What it means: more data and better inputs move accuracy up by one to three points, mostly for the whole-market fund. That fits everything else here: big moves are partly predictable, and the inputs matter more than the model.
+
 ## The earlier return model
 
 **`lstm_loss.png`**: the same learning chart for the LSTM that predicts the size of tomorrow's move.

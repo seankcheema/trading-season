@@ -377,7 +377,8 @@ def plot_market_conditions(table: pd.DataFrame, path: Path, title: str) -> Path:
 def plot_symbol_comparison(summary: pd.DataFrame, path: Path, title: str) -> Path:
     """Walk-forward average accuracy per symbol, one panel per task, with each symbol's bar to clear."""
     tasks = list(dict.fromkeys(summary["task"]))
-    fig, axes = plt.subplots(1, len(tasks), figsize=(5 * len(tasks), 4.5), squeeze=False)
+    bars = summary.groupby("task").size().max()  # symbols x models in the busiest panel
+    fig, axes = plt.subplots(1, len(tasks), figsize=(max(5.0, 2 + 0.3 * bars) * len(tasks), 4.5), squeeze=False)
     for ax, task in zip(axes[0], tasks):
         rows = summary[summary["task"] == task]
         symbols = list(dict.fromkeys(rows["symbol"]))
@@ -395,17 +396,24 @@ def plot_symbol_comparison(summary: pd.DataFrame, path: Path, title: str) -> Pat
         ax.set_ylim(40, 70)
         ax.set_ylabel("Walk-forward average accuracy (%)")
         ax.set_title(task.capitalize())
-        ax.legend(fontsize=8, loc="upper left")
+        if len(models) > 3:
+            # Many variants: keep the legend beside the bars instead of over them.
+            ax.legend(fontsize=8, loc="upper left", bbox_to_anchor=(1.01, 1), borderaxespad=0)
+        else:
+            ax.legend(fontsize=8, loc="upper left")
     fig.suptitle(title)
     return _save(fig, path)
 
 
 def _model_color(model: str) -> str:
-    """One colour per kind of model, so the same kind matches across panels."""
+    """One colour family per kind of model, so the same kind matches across panels; "+ VIX" is darker."""
+    vix = model.endswith("+ VIX")
+    if model.startswith("LSTM, all stocks"):
+        return "#1c7a55" if vix else "#5cbf90"
     if model.startswith("LSTM"):
-        return "#2f5bd3"
+        return "#1f3f9a" if vix else "#2f5bd3"
     if model.startswith("Logistic"):
-        return "#d98a2b"
+        return "#a35f12" if vix else "#d98a2b"
     return "#9aa3ad"
 
 

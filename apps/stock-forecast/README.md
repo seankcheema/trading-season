@@ -53,6 +53,12 @@ A second track predicts how big tomorrow's move will be instead of its direction
 
 `scripts/compare-symbols.py` runs both tracks on every symbol in `COMPARISON_SYMBOLS` (AAPL, SPY and the `EXTRA_SYMBOLS`) with the settings chosen for AAPL, so nothing is retuned per symbol. When SPY is the stock being predicted, `symbols.inputs_for` drops the SPY market columns, which would copy its own returns. It scores validation and walk-forward only and writes `reports/symbol_comparison.csv` and `.png`; `--no-lstm` runs the regressions alone in seconds. To add a stock, add it to `EXTRA_SYMBOLS` and run `0001-download-data.py --extra` once; existing snapshots are never overwritten without `--force`.
 
+## Shared model and VIX
+
+`scripts/extra-pooled-and-vix.py` tests two ways to improve the big-move model on every comparison symbol: the VIX index as two extra inputs (`data.add_vix`: its level and daily log change, both known at the close; `VIX_FEATURES`), and one LSTM trained on all the stocks together (`pooled.py`). The shared model keeps each stock's own big-move threshold and input scalers, both fit on that stock's training rows, and scores each stock separately. Settings are the AAPL ones; validation and walk-forward only. It writes `reports/pooled_vix_comparison.csv` and `.png`, prints one line per model trained, and `--verbose` adds one line per epoch. `0001-download-data.py --vix` saves the VIX snapshot once.
+
+Walk-forward results (Oct 18): averaged over the five stocks, the shared LSTM scored 61.1% against 60.0% for one LSTM per stock, and VIX lifted SPY's per-stock LSTM from 64.4% to 67.5%. Gains elsewhere were one to two points or none, and JNJ stayed below its bar. Logistic regression with VIX gave the best-calibrated probabilities. None of these replace the frozen AAPL model. The per-stock rows here differ by up to half a point from `compare-symbols.py` because joining VIX drops one early-2010 row.
+
 `market-conditions.py` is descriptive: the next-day up-rate and mean next-day return after conditions such as a 2% drop or high volatility, in training and validation side by side, with thresholds cut from training rows only. It also writes the lag 1 to 5 autocorrelation of daily returns, the standard mean-reversion check. It never reads the test years.
 
 ## Data and splits
@@ -106,6 +112,8 @@ Run from `apps/stock-forecast` with the virtual environment active.
 | 10 | `python scripts/0004-walk-forward.py --task volatility --with-volatility-lstm` | `reports/walk_forward_volatility.csv`, chart | Week 3 |
 | 10a | `python scripts/0001-download-data.py --extra` | `data/msft_daily.csv`, `jnj_daily.csv`, `ko_daily.csv` | Once, Oct 16 |
 | 10b | `python scripts/compare-symbols.py` | `reports/symbol_comparison.csv` and `.png` | Week 3, up to an hour on a laptop CPU |
+| 10c | `python scripts/0001-download-data.py --vix` | `data/vix_daily.csv` | Once, Oct 17 |
+| 10d | `python scripts/extra-pooled-and-vix.py` | `reports/pooled_vix_comparison.csv` and `.png` | Week 3, one to two hours |
 | 11 | `python scripts/0005-export-scorecard.py --model lstm-direction` | `reports/test_results.csv`, `reports/test_direction_results.csv`, test confidence charts, real `scorecard.json` | Once, Oct 22, after the final review |
 | 12 | `python scripts/0005-export-scorecard.py --model lstm-volatility` | `reports/test_volatility_results.csv`, test volatility charts; no scorecard | Once, Oct 22, after the final review |
 

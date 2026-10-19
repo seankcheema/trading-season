@@ -136,6 +136,18 @@ def add_range_features(dataset: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFr
     return extended.dropna()
 
 
+def add_vix(dataset: pd.DataFrame, vix: pd.DataFrame) -> pd.DataFrame:
+    """Add the VIX index as inputs: its level (as a fraction) and its daily log change.
+
+    Both are known at day t's close. Joined by date; days without a VIX
+    value are dropped rather than filled.
+    """
+    level = (vix["Close"] / 100).rename("vix")
+    joined = dataset.join(level, how="inner")
+    joined["vix_change"] = np.log(joined["vix"]).diff()
+    return joined.dropna()
+
+
 def split_by_date(
     dataset: pd.DataFrame,
     train_end: str = config.TRAIN_END,
