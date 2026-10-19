@@ -261,6 +261,10 @@ function Start-KafkaBroker {
         # down. Compaction only saves disk here; the consumer tolerates the
         # extra duplicates.
         'log.cleaner.enable=false'
+        # The same limit applies to retention: deleting a segment older than the
+        # default seven days fails on its memory-mapped files, Kafka takes the
+        # log directory offline and the broker shuts down. Keep everything.
+        'log.retention.ms=-1'
     ) | Set-Content -LiteralPath $configFile -Encoding Ascii
 
     if (-not (Test-Path -LiteralPath (Join-Path $dataDirectory 'meta.properties') -PathType Leaf)) {
@@ -272,6 +276,17 @@ function Start-KafkaBroker {
             throw "Could not format Kafka storage in $dataDirectory."
         }
     }
+
+    # Kafka renames an obsolete cluster-metadata snapshot to *.deleted and
+    # removes it a minute later. When this script stops the broker inside that
+    # minute the file is left behind, read-only, and Windows then refuses the
+    # delete Kafka retries at the next start (AccessDeniedException), so the
+    # broker never listens. These files are already marked for deletion.
+    Get-ChildItem -LiteralPath $dataDirectory -Recurse -Filter '*.deleted' -File -Force -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            $_.IsReadOnly = $false
+            Remove-Item -LiteralPath $_.FullName -Force
+        }
 
     $broker = Start-LocalService -Name 'kafka' -FilePath $java -WorkingDirectory $kafkaRoot -ArgumentList @(
         '-Xmx512m', '-Xms256m', '-Djava.net.preferIPv4Stack=true', '-cp', "`"$kafkaClasspath`"",

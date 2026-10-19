@@ -672,6 +672,13 @@ pipeline {
                     check_http client-ui / '<app-root'
                     check_http reporting-ui / '<app-root'
                     check_http reporting-service /health '"status": "healthy"' 8083
+                    # The Java services and the auth service have no healthcheck, so
+                    # prove each answers on its own port. These paths are public: the
+                    # auth service's JWKS document, which both Java services fetch to
+                    # verify tokens, and the OpenAPI document each Java service serves.
+                    check_http auth-service /.well-known/jwks.json '"keys"' 3001
+                    check_http holdings-and-trade-service /v3/api-docs '"openapi"' 8082
+                    check_http order-and-sell-service /v3/api-docs '"openapi"' 8081
 
                     # Match PartitionCount as a whole tab-delimited field so 3 does not match 30.
                     TOPIC_DESCRIBE="$(compose exec -T kafka /opt/kafka/bin/kafka-topics.sh \
@@ -743,7 +750,7 @@ pipeline {
                         done
                         exit 1
                     fi
-                    echo "===== Kafka consumer groups on trade-events ====="
+                    echo "===== Kafka consumer groups ====="
                     compose exec -T kafka /opt/kafka/bin/kafka-consumer-groups.sh \
                         --bootstrap-server localhost:9092 --describe --all-groups
 
