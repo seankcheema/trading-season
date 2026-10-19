@@ -161,6 +161,14 @@ class OrderServiceTest {
         return userRepository.findById(user.getUserId()).orElseThrow().getAvailableFunds();
     }
 
+    private List<String> auditDetailsFor(Order order) {
+        return auditTrailRepository.findAll().stream()
+                .filter(event -> event.getOrderId().equals(order.getOrderId()))
+                .sorted(Comparator.comparing(AuditTrail::getAuditId))
+                .map(AuditTrail::getDetail)
+                .toList();
+    }
+
     private List<String> auditEventsFor(Order order) {
         return auditTrailRepository.findAll().stream()
                 .filter(event -> event.getOrderId().equals(order.getOrderId()))
@@ -178,6 +186,16 @@ class OrderServiceTest {
         assertNotNull(order.getAcceptedAt());
         assertNotNull(order.getResolvedAt());
         assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_ACCEPTED, Order.STATUS_FILLED), auditEventsFor(order));
+        // BR-14: each entry reads on its own, naming the client, the terms and the pricing decision.
+        List<String> details = auditDetailsFor(order);
+        assertTrue(details.get(0).startsWith("Submitted by user " + user.getUserId() + " on account "
+                + account.getAccountId() + ": BUY 100 TEST MARKET at indicative price 50.00, market quote 50.00 in session 1 at "),
+                details.get(0));
+        assertTrue(details.get(0).contains(", client reference " + order.getClientReference()), details.get(0));
+        assertTrue(details.get(1).startsWith("Passed trading rules at market quote 50.00 with buffer 5"), details.get(1));
+        assertTrue(details.get(2).startsWith("Filled 100"), details.get(2));
+        assertTrue(details.get(2).contains("@ 50.00 (market quote in session 1 at "), details.get(2));
+        assertTrue(details.get(2).contains("; cash -5000.00 for user " + user.getUserId() + "; holding +100"), details.get(2));
     }
 
     @Test

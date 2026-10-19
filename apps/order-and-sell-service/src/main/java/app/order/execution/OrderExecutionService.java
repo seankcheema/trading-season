@@ -41,6 +41,11 @@ import java.util.Optional;
  * first triggering quote for Stop orders before any ledger write.
  * Cancellation and competing evaluations serialize under owner and order locks.
  *
+ * <p>A fill's {@code FILLED} audit entry names the fill price and the quote it
+ * came from, the signed cash change for the owning user and the signed holding
+ * change for the account, so the row reads on its own as the record of that
+ * pricing decision (BR-14).
+ *
  * <p><b>Funds:</b> cash belongs to the user, not to an account, so a BUY
  * debits and a SELL credits the owning user's {@code availableFunds}
  * (KAN-93). {@code accounts.cash_balance} is not moved. A
@@ -279,12 +284,19 @@ public class OrderExecutionService {
         order.setResolvedAt(now);
         final Order savedOrder = orderRepository.save(order);
         auditTrailService.record(savedOrder.getOrderId(), Order.STATUS_FILLED,
-                "Filled " + savedOrder.getQuantity() + " @ " + fillPrice);
+                "Filled " + savedOrder.getQuantity().toPlainString() + " @ " + fillPrice.toPlainString()
+                        + " (market quote in session " + savedOrder.getSessionId() + " at " + savedOrder.getEvaluatedAt()
+                        + "); cash " + signed(cashDelta) + " for user " + user.getUserId()
+                        + "; holding " + signed(quantityDelta) + " on account " + account.getAccountId());
         events.publishEvent(OrderStatusEvent.from(savedOrder, instrument, new OrderStatusEvent.Execution(
                 user.getUserId(), fill.getFillId(), fillPrice, savedOrder.getQuantity(), now,
                 cashTransaction.getCashTransactionId(), cashDelta, user.getAvailableFunds(),
                 movement.getHoldingMovementId(), quantityDelta, updated.getQuantity())));
         return savedOrder;
+    }
+
+    private static String signed(BigDecimal amount) {
+        return (amount.signum() >= 0 ? "+" : "") + amount.toPlainString();
     }
 
     private static Holding applyMovement(Holding holding, Order order, BigDecimal quantityDelta, OffsetDateTime now) {

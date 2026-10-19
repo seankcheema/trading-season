@@ -152,6 +152,12 @@ public class OrderService {
      * request that did not come through the dashboard. A resubmission of an
      * order that is already on record still returns that order.
      *
+     * <p>Each step is written to the audit trail so that every row reads on its
+     * own as the record of that event (BR-14): {@code PENDING} with the caller's
+     * id, the account and the submitted terms, {@code ACCEPTED} with the
+     * authoritative quote and buffer once the rules pass, then the final
+     * status. A resubmission of an order already on record writes nothing.
+     *
      * @param request the validated submission
      * @param callerId the caller's user id, from the token's {@code sub} claim
      * @return the persisted order in its current status
@@ -313,7 +319,7 @@ public class OrderService {
         var quote = quotes.current(instrument, request.sessionId());
 
         Order order = orderRepository.save(pendingOrder(request, account, instrument, user.getExecutionBufferPercent(), quote));
-        auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, null);
+        auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, submissionDetail(order, instrument, callerId));
 
         // The rules see the authoritative cost and submission position rather than the
         // client's price estimate and display time (BR-05 checks the market hours).
@@ -335,9 +341,34 @@ public class OrderService {
         order.setStatus(Order.STATUS_ACCEPTED);
         order.setAcceptedAt(OffsetDateTime.now());
         order = orderRepository.save(order);
-        auditTrailService.record(order.getOrderId(), Order.STATUS_ACCEPTED, null);
+        auditTrailService.record(order.getOrderId(), Order.STATUS_ACCEPTED,
+                "Passed trading rules at market quote " + order.getReferencePrice().toPlainString()
+                        + " with buffer " + order.getBufferPercent().toPlainString() + "%");
         events.publishEvent(OrderStatusEvent.from(order, instrument));
         return new Acceptance(order, instrument, true);
+    }
+
+    /**
+     * Describes a new order so its audit row identifies the client and the
+     * terms they submitted without relying on any other row (BR-14).
+     */
+    private static String submissionDetail(Order order, Instrument instrument, UUID callerId) {
+        StringBuilder detail = new StringBuilder("Submitted by user ").append(callerId)
+                .append(" on account ").append(order.getAccountId()).append(": ")
+                .append(order.getOrderType()).append(' ').append(order.getQuantity().toPlainString()).append(' ')
+                .append(instrument.getTicker()).append(' ').append(order.getExecutionType())
+                .append(" at indicative price ").append(order.getIndicativePrice().toPlainString());
+        if (order.getLimitPrice() != null) {
+            detail.append(", limit ").append(order.getLimitPrice().toPlainString());
+        }
+        if (order.getStopPrice() != null) {
+            detail.append(", stop ").append(order.getStopPrice().toPlainString());
+        }
+        detail.append(", market quote ").append(order.getReferencePrice().toPlainString())
+                .append(" in session ").append(order.getSessionId()).append(" at ").append(order.getReferenceAt())
+                .append(", buffer ").append(order.getBufferPercent().toPlainString()).append('%')
+                .append(", client reference ").append(order.getClientReference());
+        return detail.toString();
     }
 
     /** Locks the caller's profile and the account, proving the caller owns it. */
