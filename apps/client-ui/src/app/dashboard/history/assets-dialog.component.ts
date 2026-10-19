@@ -154,7 +154,7 @@ const FILTERS: readonly { id: AssetFilter; label: string }[] = [
                   </span>
                   <span class="flex items-center justify-end gap-2 tabular-nums">
                     <span
-                      class="h-1 w-9 overflow-hidden rounded-full bg-white/10"
+                      class="h-1 w-9 overflow-hidden rounded-full bg-foreground/10"
                       aria-hidden="true"
                     >
                       <span class="bg-primary block h-full" [style.width.%]="row.weight"></span>

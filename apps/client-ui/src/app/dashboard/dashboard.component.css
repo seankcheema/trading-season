@@ -75,18 +75,18 @@
 }
 
 .net-worth-card {
-  border-color: rgba(0, 187, 255, 0.2);
+  border-color: var(--hero-border);
   background:
-    radial-gradient(100% 120% at 100% 100%, rgba(0, 187, 255, 0.28) 0%, transparent 60%),
-    linear-gradient(135deg, #10161a 0%, #0b2f3e 100%);
+    radial-gradient(100% 120% at 100% 100%, var(--hero-glow) 0%, transparent 60%),
+    linear-gradient(135deg, var(--hero-from) 0%, var(--hero-to) 100%);
 }
 
 .net-worth-action {
   height: 2.25rem;
   cursor: pointer;
-  border: 1px solid rgba(238, 250, 255, 0.12);
+  border: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
   border-radius: 0.5rem;
-  background: rgba(238, 250, 255, 0.06);
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
   font-size: 0.875rem;
   font-weight: 500;
   transition:
@@ -95,7 +95,7 @@
 }
 
 .net-worth-action:hover {
-  background: rgba(238, 250, 255, 0.12);
+  background: color-mix(in srgb, var(--foreground) 12%, transparent);
 }
 
 .net-worth-action-primary {
