@@ -12,6 +12,15 @@ import {
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  lucideChartPie,
+  lucideChevronLeft,
+  lucideChevronRight,
+  lucideNewspaper,
+  lucideScanSearch,
+  lucideX,
+} from '@ng-icons/lucide';
 import { Subscription } from 'rxjs';
 import { AccountHolding } from '../dashboard/accounts/account.models';
 import { AccountStore } from '../dashboard/accounts/account-store.service';
@@ -32,6 +41,17 @@ import {
 @Component({
   selector: 'app-dua',
   host: { '[hidden]': 'account.needsTermsAcceptance()' },
+  imports: [NgIcon],
+  providers: [
+    provideIcons({
+      lucideChartPie,
+      lucideChevronLeft,
+      lucideChevronRight,
+      lucideNewspaper,
+      lucideScanSearch,
+      lucideX,
+    }),
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './dua.component.html',
   styleUrl: './dua.component.css',
@@ -48,16 +68,18 @@ export class DuaComponent {
   private readonly router = inject(Router);
   protected readonly hovered = signal(false);
   protected readonly focused = signal(false);
-  protected readonly hoverAcknowledged = signal(false);
   protected readonly hasUpdates = signal(false);
-  protected readonly stage = computed(() =>
-    !this.session.minimized()
-      ? 1
-      : this.hasUpdates()
-        ? 2
-        : !this.hoverAcknowledged() && (this.hovered() || this.focused())
-          ? 1
-          : 0,
+  protected readonly faceVisible = computed(
+    () => !this.session.minimized() || this.hasUpdates() || this.hovered() || this.focused(),
+  );
+  protected readonly title = computed(() =>
+    this.choice() === 'daily'
+      ? 'Daily review'
+      : this.choice() === 'holdings'
+        ? 'My holdings'
+        : this.choice() === 'stock'
+          ? this.symbol()
+          : 'Dua',
   );
   protected readonly imagesFailed = signal(false);
   protected readonly cards = signal<DuaCard[]>([]);
@@ -143,7 +165,6 @@ export class DuaComponent {
       this.session.acknowledgeNotification();
       this.hasUpdates.set(false);
     }
-    this.hoverAcknowledged.set(false);
     this.session.minimized.update((value) => !value);
     if (!this.session.minimized()) {
       this.timers.push(setTimeout(() => this.panel()?.nativeElement.focus()));
@@ -153,10 +174,8 @@ export class DuaComponent {
   protected minimize(): void {
     this.clearTimers();
     this.session.minimized.set(true);
-    // Programmatic focus restoration should not leave a closed shark peeking.
     this.focused.set(false);
     this.launcher()?.nativeElement.focus();
-    this.hoverAcknowledged.set(true);
   }
 
   protected back(): void {

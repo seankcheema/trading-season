@@ -6,7 +6,7 @@ Status: Implementation added to the Client UI; build, test execution, and browse
 
 Add Dua as a clickable shark in the bottom-right corner of the dashboard and advanced stock screen in the [Client UI](../apps/client-ui/README.md).
 
-The compact conversation panel starts closed, with the underwater shark visible. Clicking the idle shark opens the predefined choices; users can minimize the panel again. The overlay uses viewport-fixed positioning independently of the page layout, remaining at bottom-right while either screen scrolls. All insights use existing market and holdings data, calculated in the browser. No text input, NLP, AI model, or backend changes are included.
+The compact conversation panel starts closed, with a fin-focused circular shark launcher. Clicking the launcher opens the predefined choices; users can minimize the panel again. The overlay uses viewport-fixed positioning independently of the page layout, remaining at bottom-right while either screen scrolls. All insights use existing market and holdings data, calculated in the browser. No text input, NLP, AI model, or backend changes are included.
 
 ## Experience
 
@@ -18,7 +18,7 @@ Dua opens with: "What would you like to review?"
 | My holdings | Both screens | Position gains and losses compared with average purchase cost. |
 | This stock | Advanced stock screen | Selected stock's movement since open and recent price direction. |
 
-Each response contains at most three short insight cards, followed by **Back to choices** and **Refresh**. Relevant stock cards include **View stock**, opening the existing advanced screen.
+Each response contains at most three short insight cards, with a **Back to choices** header control and a **Refresh** action. Relevant stock cards include **View stock**, opening the existing advanced screen.
 
 Example wording:
 
@@ -41,12 +41,12 @@ Insights appear only after selection; opening the panel initially shows choices.
 ## Frontend implementation
 
 - Add app-local Dua launcher, panel, context adapter, and a pure insight-calculation module using the existing [Angular patterns](../apps/client-ui/AGENTS.md).
-- Use the supplied `shark_under.png`, `shark_peak.png`, and `shark_peak_noti.png` in [the Client UI public assets](../apps/client-ui/public/assets/dua-shark/), preserving transparency and aspect ratio. The tracked artwork was moved into the app because Angular requires assets within its workspace and the UI Docker context is app-local. The images are served at `/assets/dua-shark/` without duplication.
-- Keep the launcher approximately 120px wide by 64px high with 16px safe-area spacing. Align all three images consistently within that area.
+- Use the exact supplied [shark-launcher-light-512.png](../apps/client-ui/public/assets/assistant/shark-launcher-light-512.png), copied unchanged into the Client UI public assets and served at `/assets/assistant/shark-launcher-light-512.png`. The supplied AssistantLauncher design is a visual reference only; retain the existing Angular implementation and real analytics.
+- Keep the launcher 52px square with circular clipping and 16px safe-area spacing. At rest, scale the image to 2.4 around a 50% horizontal, 35% vertical origin to frame the dorsal fin and keep the face below the visible area.
 - Fix the component host itself to the viewport at bottom-right, sized only to the shark, so scrolling the dashboard or advanced stock screen never moves it. Do not add a wrapper div, viewport-sized container, spacer, or reserved page area. The chat bubble is absolutely anchored above the shark.
-- Use state-driven artwork rather than a timed introduction: under when idle and closed, peak while chat is open, and peak with notification when changed insights are available while closed. Crossfade smoothly over 450ms (350ms for the notification image), with a subtle upward translation. Do not loop or open the panel automatically.
+- On hover, keyboard focus, while a notification is pending, or while chat is open, animate the image to scale 1.12 over 250ms using transform only, revealing the full face without moving or resizing the launcher. Restore the fin crop when closed with no pending notification and no longer hovered or focused. No wiggle, image swapping, timed introduction, or automatic opening.
 - Initial account/stock data establishes a baseline. Changes to the rounded insight cards or market trading date produce one consolidated pending update for that account, session and stock context, using existing UI data with no extra requests. Show a small red **1** badge on the notification shark; it represents the pending snapshot rather than a count of stocks or ticks.
-- Clicking the notified shark opens the chat, acknowledges the update, removes the badge, and shows peak in one click. Position the red badge 6px below the top of the launcher. Hovering an idle shark shows peak without changing its background; pending notifications take precedence over hover. Preserve chat state and insight baselines across navigation; reset on logout. With reduced motion, switch artwork immediately, and keep Dua hidden while terms block the page.
+- Clicking the notified shark opens the chat, acknowledges the update, removes the badge, and reveals the full face in one click. Position the red badge 6px below the top of the launcher, outside the circular image clipping area. A pending notification keeps the slightly zoomed face visible, even without hover. Hovering or focusing also reveals the face without changing the notification state. Preserve chat state and insight baselines across navigation; reset on logout. With reduced motion, switch image transforms immediately, and keep Dua hidden while terms block the page.
 - MVP notification limit: once the user clicks a notified shark, suppress further notifications for the remainder of that page load, across account changes and navigation. Keep this acknowledgement in memory only; a full browser refresh permits a new notification. This does not prevent opening the chat or refreshing its insights.
 - Feed Dua the current account, holdings, stock, market session, cursor, quotes, and connection status through a shared typed context. Reuse existing [market-service](../apps/client-ui/src/app/dashboard/market-data.service.ts) requests and caches; introduce no separate polling loop.
 - Calculate a snapshot when a choice is selected or Refresh is pressed. Display its "As of" market timestamp. Reset results when account, stock, or simulation context changes.
@@ -55,10 +55,10 @@ Insights appear only after selection; opening the panel initially shows choices.
 
 ## Minimal chat appearance
 
-- Make the panel feel like a small conversation bubble emerging from the shark: anchor it immediately above the launcher with a subtle tail pointing toward the shark. Keep the shark visible below it.
+- Anchor the compact rounded panel 12px above the circular launcher, keeping the shark visible below it. Follow the supplied reference's clean panel outline without a bubble tail.
 - Use a desktop width of 320px and a maximum height of 400px, constrained to the available viewport. Let content determine the height until that limit, then scroll the body internally. On mobile, retain the compact anchored bubble with width limited to the viewport minus 32px; do not expand into a full-screen chat.
-- Match the shark with a dark navy surface, muted ocean-blue border and accents, soft off-white text, and a restrained shadow. Preserve readable contrast. Avoid bright cyan backgrounds, neon glows, gradients, pulsing effects, and decorative animation.
-- Keep the header to "Dua" and a minimize button. Use short messages, small rounded choice buttons, modest spacing, and subtle dividers rather than large nested cards. Show only the current choices or result, without accumulating a long conversation transcript.
+- Use the app's charcoal card and muted surface tokens, subtle borders, off-white text, restrained cyan accents, and a soft shadow. Avoid neon glows, gradients, pulsing effects, and decorative animation.
+- The initial header has a small full-face shark avatar, "Dua", and a minimize button. In result views, replace the avatar with a back control and display the selected choice title. Use short messages, rounded choice rows with small icons and descriptive subtitles, and subtle result dividers. Show only the current choices or result, without accumulating a transcript.
 - Open with a 180ms ease-out opacity and small upward translation from the shark; close over 120ms. Use the lower-right transform origin so the panel appears connected to the launcher. Disable these transitions for reduced-motion preferences.
 - Keep all interaction choice-based: no composer, typing indicator, oversized welcome screen, or extra decorative controls. Display insight timestamps and necessary status feedback quietly but legibly.
 
@@ -67,7 +67,7 @@ Insights appear only after selection; opening the panel initially shows choices.
 - Test percentage calculations, zero/missing baselines, winner/loser selection, the 10% threshold, and rising/falling/mixed candle sequences.
 - Verify simulation filtering, unfinished candles, empty holdings, insufficient history, disconnected data, and context changes.
 - Check both screens on desktop and mobile, including keyboard interaction and overlap with existing controls.
-- Verify smooth state transitions, initial closed/underwater state, new-information badges, opening chat and clearing the notification in one click, hover with no background, reduced motion, and image-load failure handling. Check that the compact bubble remains within the viewport and visually connected to the shark.
+- Verify the initial closed/fin-focused state, smooth face reveal on hover and keyboard focus, new-information badges, opening chat and clearing notifications in one click, reduced motion, and image fallback. Check that the compact panel remains within the viewport and the launcher stays fixed while both screens scroll.
 - Run the Client UI build, relevant Angular tests, targeted UI checks, and `git diff --check`; update the Client UI README when implementing the feature.
 
-Defaults: selected account only, English copy, existing simulation data, supplied three-stage shark artwork, compact muted chat bubble, session-only state, and no backend changes.
+Defaults: selected account only, English copy, existing simulation data, exact supplied light shark PNG, compact charcoal panel, session-only state, and no backend changes.

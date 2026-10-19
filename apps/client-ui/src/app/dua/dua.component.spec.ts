@@ -70,14 +70,17 @@ describe('Dua panel', () => {
     };
     return { fixture, click, text: () => fixture.nativeElement.textContent as string };
   }
-  it('starts underwater with the chat closed, peeks while open, and minimizes again', () => {
+  it('starts fin-focused with chat closed, reveals the face while open, and minimizes again', () => {
     const { fixture, click } = setup();
     expect(session.minimized()).toBe(true);
-    expect(fixture.nativeElement.querySelector('img.visible').src).toContain('shark_under.png');
+    expect(fixture.nativeElement.querySelector('.launcher-art').src).toContain(
+      'shark-launcher-light-512.png',
+    );
+    expect(fixture.nativeElement.querySelector('.launcher-art.face-visible')).toBeNull();
     expect(fixture.nativeElement.querySelector('input,textarea')).toBeNull();
     click('Dua insights');
     expect(session.minimized()).toBe(false);
-    expect(fixture.nativeElement.querySelector('img.visible').src).toContain('shark_peak.png');
+    expect(fixture.nativeElement.querySelector('.launcher-art.face-visible')).not.toBeNull();
     click('Minimize Dua');
     expect(session.minimized()).toBe(true);
     fixture.destroy();
@@ -129,36 +132,43 @@ describe('Dua panel', () => {
     fixture.detectChanges();
     expect(response.observed).toBe(false);
   });
-  it('preloads stages and handles missing artwork with an accessible fallback', () => {
+  it('uses one launcher image and handles missing artwork with an accessible fallback', () => {
     const { fixture } = setup();
-    const imgs = fixture.nativeElement.querySelectorAll('img') as NodeListOf<HTMLImageElement>;
-    expect(imgs.length).toBe(3);
+    const imgs = fixture.nativeElement.querySelectorAll(
+      '.dua-launcher img',
+    ) as NodeListOf<HTMLImageElement>;
+    expect(imgs.length).toBe(1);
     imgs[0].dispatchEvent(new Event('error'));
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.fallback').textContent).toBe('Dua');
   });
   it('opens chat and clears the numbered notification in one click', () => {
     const { fixture, click } = setup();
-    const imgs = fixture.nativeElement.querySelectorAll('img') as NodeListOf<HTMLImageElement>;
-    expect(imgs[0].classList.contains('visible')).toBe(true);
+    const art = fixture.nativeElement.querySelector('.launcher-art') as HTMLImageElement;
+    expect(art.classList.contains('face-visible')).toBe(false);
     fixture.componentRef.setInput('quotes', [
       { symbol: 'AAPL', name: 'Apple', price: 120, change: 20, changePercent: 20 },
     ]);
     fixture.detectChanges();
-    expect(imgs[2].classList.contains('visible')).toBe(true);
+    expect(art.classList.contains('face-visible')).toBe(true);
     expect(fixture.nativeElement.querySelector('.notification-count').textContent.trim()).toBe('1');
+    const hover = new Event('pointerenter');
+    Object.defineProperty(hover, 'pointerType', { value: 'mouse' });
+    fixture.nativeElement.querySelector('.dua-launcher').dispatchEvent(hover);
+    fixture.detectChanges();
+    expect(art.classList.contains('face-visible')).toBe(true);
+    expect(fixture.nativeElement.querySelector('.notification-count')).not.toBeNull();
+    expect(session.minimized()).toBe(true);
     click('Dua insights');
     expect(session.minimized()).toBe(false);
     expect(fixture.nativeElement.querySelector('.notification-count')).toBeNull();
-    expect(imgs[1].classList.contains('visible')).toBe(true);
+    expect(art.classList.contains('face-visible')).toBe(true);
     click('Minimize Dua');
-    expect(imgs[0].classList.contains('visible')).toBe(true);
     fixture.componentRef.setInput('quotes', [
       { symbol: 'AAPL', name: 'Apple', price: 130, change: 30, changePercent: 30 },
     ]);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.notification-count')).toBeNull();
-    expect(imgs[0].classList.contains('visible')).toBe(true);
     account.selectedAccountId.set(2);
     fixture.detectChanges();
     fixture.componentRef.setInput('quotes', [
@@ -168,17 +178,37 @@ describe('Dua panel', () => {
     expect(fixture.nativeElement.querySelector('.notification-count')).toBeNull();
     fixture.destroy();
   });
-  it('changes artwork on hover and restores underwater on pointer leave', () => {
+  it('reveals the face on hover without opening chat, then restores the fin crop', () => {
     const { fixture } = setup();
     const launcher = fixture.nativeElement.querySelector('.dua-launcher');
     const event = new Event('pointerenter');
     Object.defineProperty(event, 'pointerType', { value: 'mouse' });
     launcher.dispatchEvent(event);
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('img.visible').src).toContain('shark_peak.png');
+    expect(fixture.nativeElement.querySelector('.launcher-art.face-visible')).not.toBeNull();
+    expect(session.minimized()).toBe(true);
     launcher.dispatchEvent(new Event('pointerleave'));
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('img.visible').src).toContain('shark_under.png');
+    expect(fixture.nativeElement.querySelector('.launcher-art.face-visible')).toBeNull();
+    fixture.destroy();
+  });
+  it('reveals the face on keyboard focus and shows the selected view title with back navigation', () => {
+    const { fixture, click } = setup();
+    const launcher = fixture.nativeElement.querySelector('.dua-launcher') as HTMLButtonElement;
+    vi.spyOn(launcher, 'matches').mockReturnValue(true);
+    launcher.dispatchEvent(new Event('focus'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.launcher-art.face-visible')).not.toBeNull();
+    expect(session.minimized()).toBe(true);
+    launcher.dispatchEvent(new Event('blur'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.launcher-art.face-visible')).toBeNull();
+    click('Dua insights');
+    expect(fixture.nativeElement.querySelector('h2').textContent.trim()).toBe('Dua');
+    click('Daily review');
+    expect(fixture.nativeElement.querySelector('h2').textContent.trim()).toBe('Daily review');
+    click('Back to choices');
+    expect(fixture.nativeElement.querySelector('h2').textContent.trim()).toBe('Dua');
     fixture.destroy();
   });
 });

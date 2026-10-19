@@ -9,37 +9,67 @@
   tabindex="-1"
   (keydown.escape)="minimize()"
 >
-  <header>
-    <span>Dua</span><button type="button" aria-label="Minimize Dua" (click)="minimize()">−</button>
+  <header class="dua-header">
+    @if (choice()) {
+      <button class="icon-button" type="button" aria-label="Back to choices" (click)="back()">
+        <ng-icon name="lucideChevronLeft" aria-hidden="true" />
+      </button>
+    } @else {
+      <span class="dua-avatar" aria-hidden="true">
+        @if (!imagesFailed()) {
+          <img
+            src="/assets/assistant/shark-launcher-light-512.png"
+            alt=""
+            (error)="imageFailed()"
+          />
+        } @else {
+          D
+        }
+      </span>
+    }
+    <h2>{{ title() }}</h2>
+    <button class="icon-button" type="button" aria-label="Minimize Dua" (click)="minimize()">
+      <ng-icon name="lucideX" aria-hidden="true" />
+    </button>
   </header>
   <div class="dua-body">
     @if (!choice()) {
-      <p>What would you like to review?</p>
+      <p class="greeting">What would you like to review?</p>
       <div class="choices">
-        <button type="button" (click)="select('daily')">
-          Daily review <span aria-hidden="true">↗</span>
+        <button type="button" aria-label="Daily review" (click)="select('daily')">
+          <span class="choice-icon"><ng-icon name="lucideNewspaper" aria-hidden="true" /></span>
+          <span class="choice-copy"
+            ><span class="choice-title">Daily review</span
+            ><small>How your stocks moved today</small></span
+          >
+          <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
         </button>
-        <button type="button" (click)="select('holdings')">
-          My holdings <span aria-hidden="true">↗</span>
+        <button type="button" aria-label="My holdings" (click)="select('holdings')">
+          <span class="choice-icon"><ng-icon name="lucideChartPie" aria-hidden="true" /></span>
+          <span class="choice-copy"
+            ><span class="choice-title">My holdings</span
+            ><small>Gains and losses since purchase</small></span
+          >
+          <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
         </button>
         @if (symbol()) {
-          <button type="button" (click)="select('stock')">
-            This stock <span aria-hidden="true">↗</span>
+          <button type="button" aria-label="This stock" (click)="select('stock')">
+            <span class="choice-icon"><ng-icon name="lucideScanSearch" aria-hidden="true" /></span>
+            <span class="choice-copy"
+              ><span class="choice-title">This stock</span
+              ><small>{{ symbol() }} · price and recent direction</small></span
+            >
+            <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
           </button>
         }
       </div>
     } @else {
-      <h2>
-        {{
-          choice() === 'daily' ? 'Daily review' : choice() === 'holdings' ? 'My holdings' : symbol()
-        }}
-      </h2>
       @if (loading()) {
         <span class="visually-hidden" role="status">Fetching stock insights</span>
         <div class="skeleton insight-skeleton" aria-hidden="true"></div>
         <div class="skeleton insight-skeleton short" aria-hidden="true"></div>
       }
-      <div aria-live="polite">
+      <div class="insights" aria-live="polite">
         @for (card of cards(); track $index) {
           <article>
             <p>{{ card.text }}</p>
@@ -64,8 +94,7 @@
         <small class="timestamp">Live feed was disconnected when this snapshot was taken.</small>
       }
       <div class="actions">
-        <button type="button" (click)="back()">Back to choices</button
-        ><button type="button" (click)="select(choice()!)">
+        <button type="button" (click)="select(choice()!)">
           {{ message() ? 'Retry' : 'Refresh' }}
         </button>
       </div>
@@ -80,37 +109,26 @@
   [attr.aria-expanded]="!session.minimized()"
   [attr.aria-description]="hasUpdates() ? '1 new insight update. Click to open chat.' : null"
   (pointerenter)="hovered.set($event.pointerType === 'mouse')"
-  (pointerleave)="hovered.set(false); hoverAcknowledged.set(false)"
+  (pointerleave)="hovered.set(false)"
   (focus)="focused.set(launcher.matches(':focus-visible'))"
-  (blur)="focused.set(false); hoverAcknowledged.set(false)"
+  (blur)="focused.set(false)"
   (click)="toggle()"
 >
-  @if (!imagesFailed() && stage() === 2) {
+  <span class="launcher-clip">
+    @if (imagesFailed()) {
+      <span class="fallback">Dua</span>
+    } @else {
+      <img
+        class="launcher-art"
+        [class.face-visible]="faceVisible()"
+        src="/assets/assistant/shark-launcher-light-512.png"
+        alt=""
+        draggable="false"
+        (error)="imageFailed()"
+      />
+    }
+  </span>
+  @if (hasUpdates() && session.minimized()) {
     <span class="notification-count" aria-label="1 new insight update">1</span>
   }
-  @if (imagesFailed()) {
-    <span class="fallback">Dua</span>
-  }
-  <img
-    src="/assets/dua-shark/shark_under.png"
-    alt=""
-    draggable="false"
-    [class.visible]="!imagesFailed() && stage() === 0"
-    (error)="imageFailed()"
-  />
-  <img
-    src="/assets/dua-shark/shark_peak.png"
-    alt=""
-    draggable="false"
-    [class.visible]="!imagesFailed() && stage() === 1"
-    (error)="imageFailed()"
-  />
-  <img
-    src="/assets/dua-shark/shark_peak_noti.png"
-    alt=""
-    draggable="false"
-    [class.notification]="true"
-    [class.visible]="!imagesFailed() && stage() === 2"
-    (error)="imageFailed()"
-  />
 </button>

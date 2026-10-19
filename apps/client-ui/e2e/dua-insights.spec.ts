@@ -38,6 +38,17 @@ test('Dua starts closed, reviews holdings, minimizes and follows stock navigatio
   await loginPage.signIn(USER.email, USER.password);
   const panel = page.getByRole('region', { name: 'Dua insights' });
   await expect(panel).toBeHidden();
+  const launcher = page.getByRole('button', { name: 'Dua insights', exact: true });
+  const art = page.locator('app-dua .launcher-art');
+  await expect(art).not.toHaveClass(/face-visible/);
+  const beforeHover = await launcher.boundingBox();
+  await launcher.hover();
+  await expect(art).toHaveClass(/face-visible/);
+  await expect(art).toHaveCSS('transform', 'matrix(1.12, 0, 0, 1.12, 0, 0)');
+  await expect(launcher).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  expect(await launcher.boundingBox()).toEqual(beforeHover);
+  await page.mouse.move(0, 0);
+  await expect(art).not.toHaveClass(/face-visible/);
   await page.getByRole('button', { name: 'Dua insights', exact: true }).click();
   await expect(panel).toBeVisible();
   await expect(panel.getByRole('textbox')).toHaveCount(0);
@@ -66,7 +77,11 @@ test('Dua remains a compact overlay on mobile and supports reduced motion', asyn
   await loginPage.signIn(USER.email, USER.password);
   const panel = page.getByRole('region', { name: 'Dua insights' });
   await expect(panel).toBeHidden();
-  await expect(page.locator('app-dua img.visible')).toHaveAttribute('src', /shark_under/);
+  await expect(page.locator('app-dua .launcher-art')).toHaveAttribute(
+    'src',
+    /shark-launcher-light-512/,
+  );
+  await expect(page.locator('app-dua .launcher-art')).not.toHaveClass(/face-visible/);
   await page.getByRole('button', { name: 'Dua insights', exact: true }).click();
   await expect(panel).toBeVisible();
   const bounds = await panel.boundingBox();
@@ -74,7 +89,8 @@ test('Dua remains a compact overlay on mobile and supports reduced motion', asyn
   expect(bounds!.height).toBeLessThanOrEqual(400);
   expect(bounds!.x).toBeGreaterThanOrEqual(0);
   expect(bounds!.y).toBeGreaterThanOrEqual(0);
-  await expect(page.locator('app-dua img.visible')).toHaveAttribute('src', /shark_peak\.png/);
+  await expect(page.locator('app-dua .launcher-art')).toHaveClass(/face-visible/);
+  await expect(page.locator('app-dua .launcher-art')).toHaveCSS('transition-duration', '0s');
   const failedImages = await page
     .locator('app-dua img')
     .evaluateAll((images) => images.some((img) => !(img as HTMLImageElement).naturalWidth));

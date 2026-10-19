@@ -2,51 +2,61 @@
   position: fixed;
   right: max(16px, env(safe-area-inset-right));
   bottom: max(16px, env(safe-area-inset-bottom));
-  width: 120px;
-  height: 64px;
+  width: 52px;
+  height: 52px;
   z-index: 40;
-  color: #dce9f2;
+  color: var(--foreground);
   font-size: 13px;
   line-height: 1.5;
 }
 :host([hidden]) {
   display: none;
 }
+button {
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
 .dua-launcher {
   position: relative;
   display: block;
-  width: 120px;
-  height: 64px;
-  border: 0;
+  width: 52px;
+  height: 52px;
   padding: 0;
+  border: 0;
+  border-radius: 50%;
   background: transparent;
-  cursor: pointer;
+  box-shadow: 0 8px 24px -8px #000b;
 }
-.dua-launcher img {
-  position: absolute;
-  inset: 0;
+.dua-launcher:hover,
+.dua-launcher:active {
+  background: transparent;
+}
+.launcher-clip {
+  display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
-  object-position: center bottom;
-  opacity: 0;
-  transform: translateY(4px);
-  transition:
-    opacity 450ms ease,
-    transform 450ms ease;
+  overflow: hidden;
+  border-radius: inherit;
+  background: #eefaff;
+}
+.launcher-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(2.4);
+  transform-origin: 50% 35%;
+  transition: transform 250ms cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: none;
 }
-.dua-launcher img.notification {
-  transition-duration: 350ms;
-}
-.dua-launcher img.visible {
-  opacity: 1;
-  transform: translateY(0);
+.launcher-art.face-visible {
+  transform: scale(1.12);
 }
 .notification-count {
   position: absolute;
   top: 6px;
-  right: 12px;
+  right: -2px;
   z-index: 1;
   min-width: 17px;
   height: 17px;
@@ -61,25 +71,25 @@
   pointer-events: none;
 }
 .fallback {
-  display: inline-block;
-  padding: 8px 18px;
-  border: 1px solid #35536a;
-  border-radius: 24px;
-  background: #142333;
-  color: #dce9f2;
+  display: grid;
+  height: 100%;
+  place-items: center;
+  color: #0e0e0e;
+  font-size: 12px;
+  font-weight: 600;
 }
 .dua-panel {
   position: absolute;
   right: 0;
-  bottom: 75px;
+  bottom: 64px;
   width: min(320px, calc(100vw - 32px));
-  max-height: min(400px, calc(100dvh - 115px - env(safe-area-inset-bottom)));
+  max-height: min(400px, calc(100dvh - 96px - env(safe-area-inset-bottom)));
   display: flex;
   flex-direction: column;
-  background: #12202e;
-  border: 1px solid #2b4255;
-  border-radius: 14px;
-  box-shadow: 0 8px 24px #0004;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: 0 16px 40px -12px #000b;
   opacity: 1;
   visibility: visible;
   transform: translateY(0);
@@ -89,18 +99,6 @@
     transform 180ms ease-out,
     visibility 180ms;
 }
-.dua-panel::after {
-  content: '';
-  position: absolute;
-  bottom: -6px;
-  right: 47px;
-  width: 10px;
-  height: 10px;
-  background: #12202e;
-  border-right: 1px solid #2b4255;
-  border-bottom: 1px solid #2b4255;
-  transform: rotate(45deg);
-}
 .dua-panel.minimized {
   opacity: 0;
   visibility: hidden;
@@ -108,94 +106,144 @@
   pointer-events: none;
   transition-duration: 120ms;
 }
-@starting-style {
-  .dua-panel {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-}
-header {
+.dua-header {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid #263a4b;
-  font-size: 13px;
-  font-weight: 600;
+  gap: 10px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
 }
-button {
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
+.dua-avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #eefaff;
+  color: #0e0e0e;
 }
-header button {
-  background: transparent;
-  border: 0;
-  width: 32px;
-  height: 32px;
-  font-size: 20px;
-  border-radius: 6px;
-}
-.dua-body {
-  overflow-y: auto;
-  padding: 12px;
-  font-size: 13px;
-}
-p {
-  margin: 0 0 10px;
+.dua-avatar img {
+  width: 100%;
+  height: 100%;
 }
 h2 {
-  font-size: 13px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+  font-size: 14px;
   font-weight: 600;
-  margin: 0 0 10px;
+}
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+ng-icon {
+  flex-shrink: 0;
+  font-size: 16px;
+}
+.dua-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+}
+p {
+  margin: 0;
+}
+.greeting {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 12px 12px 12px 4px;
+  background: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
 }
 .choices {
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 .choices button {
   display: flex;
-  justify-content: space-between;
-  text-align: left;
-  padding: 8px 10px;
-  border: 1px solid #30495d;
-  border-radius: 8px;
-  background: #192c3c;
-}
-.choices span {
-  color: #91afc5;
-}
-.dua-panel button:hover {
-  background-color: #233c50;
-}
-.dua-launcher:hover,
-.dua-launcher:active {
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
   background: transparent;
+  text-align: left;
+  transition:
+    border-color 150ms,
+    background-color 150ms;
+}
+.choices button:hover {
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+.choice-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
+}
+.choice-copy {
+  flex: 1;
+  min-width: 0;
+}
+.choice-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+}
+small {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.choice-chevron {
+  color: var(--muted-foreground);
 }
 button:focus-visible,
 section:focus-visible {
-  outline: 2px solid #8aafc9;
+  outline: 2px solid var(--ring);
   outline-offset: 3px;
 }
 article {
-  padding: 9px 0;
-  border-bottom: 1px solid #263a4b;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+article:first-child {
+  padding-top: 0;
 }
 article p {
   margin-bottom: 4px;
 }
-small {
-  display: block;
-  color: #a9becf;
-  font-size: 11px;
-}
 .text-action {
   display: block;
-  padding: 4px 0;
-  background: transparent;
+  padding: 6px 0 0;
   border: 0;
-  color: #aac9df;
+  background: transparent;
+  color: var(--primary);
   font-size: 12px;
+}
+.text-action:hover {
   text-decoration: underline;
 }
 .timestamp {
@@ -203,20 +251,24 @@ small {
 }
 .feedback {
   margin-top: 8px;
-  color: #b8cad7;
+  color: var(--muted-foreground);
 }
 .actions {
   display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: flex-end;
   margin-top: 12px;
 }
 .actions button {
-  border: 1px solid #30495d;
-  border-radius: 6px;
-  background: #192c3c;
-  padding: 5px 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
   font-size: 12px;
+}
+.actions button:hover,
+.icon-button:hover {
+  background: var(--muted);
+  color: var(--foreground);
 }
 .insight-skeleton {
   height: 36px;
@@ -237,8 +289,8 @@ small {
 }
 @media (prefers-reduced-motion: reduce) {
   .dua-panel,
-  .dua-launcher img {
+  .launcher-art,
+  .choices button {
     transition: none;
-    transform: none;
   }
 }
