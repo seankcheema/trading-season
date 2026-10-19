@@ -1,74 +1,45 @@
 package app.order.execution;
 
 import app.instrument.Instrument;
-import app.market.MarketReplayService;
-import app.market.MarketRequestException;
-import app.market.MarketResponses.Snapshot;
-import app.market.MarketResponses.StockSnapshot;
-import org.junit.jupiter.api.Test;
-
+import com.sun.net.httpserver.HttpServer;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.math.BigDecimal;
-import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
-/**
- * The quote a fill is priced at is the instrument's price in the shared market replay (BR-08).
- * Anything that stops that price being read is reported as no quote, never as an exception.
- */
 class ExecutionQuoteSourceTest {
-
-    private final MarketReplayService replay = mock(MarketReplayService.class);
-    private final ExecutionQuoteSource source = new ExecutionQuoteSource(replay);
-
-    @Test
-    void quotesTheInstrumentUnderItsSimulatedStockSymbol() {
-        when(replay.snapshot(null)).thenReturn(snapshot(stock("MSFT", "410.10"), stock("AAPL", "227.45")));
-
-        assertEquals(Optional.of(new BigDecimal("227.45")), source.currentPrice(instrument("AAPL.L", "AAPL")));
+    private ExecutionQuoteSource.Quote read(String response, String symbol, Long session) throws Exception {
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/market/snapshot", exchange -> {
+            byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes); exchange.close();
+        });
+        server.start();
+        try {
+            var source = new ExecutionQuoteSource("http://127.0.0.1:" + server.getAddress().getPort());
+            var instrument = new Instrument(); instrument.setSimulatedStockSymbol(symbol);
+            return source.current(instrument, session);
+        } finally { server.stop(0); }
     }
-
-    @Test
-    void fallsBackToTheTickerWhenNothingSimulatesTheInstrument() {
-        when(replay.snapshot(null)).thenReturn(snapshot(stock("MSFT", "410.10")));
-
-        assertEquals(Optional.of(new BigDecimal("410.10")), source.currentPrice(instrument("MSFT", null)));
-        assertEquals("MSFT", ExecutionQuoteSource.quotedSymbol(instrument("MSFT", null)));
+    private String snapshot(String price, String time) {
+        return "{\"sessionId\":1,\"marketTimestamp\":\"2026-01-05T15:00:00Z\",\"stocks\":[{\"symbol\":\"AAPL\",\"price\":" + price + ",\"timestamp\":\"" + time + "\"}]}";
     }
-
-    @Test
-    void hasNoQuoteForASymbolTheReplayDoesNotCarry() {
-        when(replay.snapshot(null)).thenReturn(snapshot(stock("MSFT", "410.10")));
-
-        assertTrue(source.currentPrice(instrument("VOD.L", null)).isEmpty());
+    @Test void readsTheAuthoritativeQuoteWithOrWithoutExplicitSession() throws Exception {
+        assertEquals(0, new BigDecimal("100.123456").compareTo(read(snapshot("100.123456", "2026-01-05T15:00:00Z"), "AAPL", 1L).price()));
+        assertEquals(1L, read(snapshot("100", "2026-01-05T15:00:00Z"), "AAPL", null).sessionId());
     }
-
-    @Test
-    void hasNoQuoteWhenTheReplayCannotBeRead() {
-        when(replay.snapshot(null)).thenThrow(new MarketRequestException("Selected date has no replay prices available"));
-
-        assertTrue(source.currentPrice(instrument("AAPL", null)).isEmpty());
-    }
-
-    private static Instrument instrument(String ticker, String simulatedStockSymbol) {
-        Instrument instrument = new Instrument();
-        instrument.setTicker(ticker);
-        instrument.setSimulatedStockSymbol(simulatedStockSymbol);
-        return instrument;
-    }
-
-    private static StockSnapshot stock(String symbol, String price) {
-        return new StockSnapshot(symbol, symbol + " Inc.", new BigDecimal(price), BigDecimal.ZERO, BigDecimal.ZERO,
-                Instant.parse("2026-01-05T15:01:00Z"));
-    }
-
-    private static Snapshot snapshot(StockSnapshot... stocks) {
-        return new Snapshot(1L, "COMPLETED", Instant.parse("2026-01-05T15:01:00Z"), Instant.now(), null,
-                List.of(stocks));
+    @Test void refusesMissingInvalidOrUnsynchronizedPrices() {
+        assertThrows(ExecutionQuoteSource.QuoteUnavailableException.class, () -> read("null", "AAPL", 1L));
+        assertThrows(ExecutionQuoteSource.QuoteUnavailableException.class, () -> read("{}", "AAPL", 1L));
+        assertThrows(ExecutionQuoteSource.QuoteUnavailableException.class, () -> read("not JSON", "AAPL", 1L));
+        assertThrows(ExecutionQuoteSource.QuoteUnavailableException.class, () -> read(snapshot("100", "2026-01-05T15:00:00Z"), "AAPL", 2L));
+        assertThrows(ExecutionQuoteSource.QuoteUnavailableException.class, () -> read(snapshot("0", "2026-01-05T15:00:00Z"), "AAPL", 1L));
+        assertThrows(ExecutionQuoteSource.QuoteUnavailableException.class, () -> read(snapshot("null", "2026-01-05T15:00:00Z"), "AAPL", 1L));
+        assertThrows(ExecutionQuoteSource.QuoteUnavailableException.class, () -> read(snapshot("100", "2026-01-05T14:59:59Z"), "AAPL", 1L));
+        assertThrows(ExecutionQuoteSource.QuoteUnavailableException.class, () -> read(snapshot("100", "2026-01-05T15:00:00Z"), "OTHER", 1L));
+        assertThrows(ExecutionQuoteSource.QuoteUnavailableException.class, () -> read(snapshot("100", "2026-01-05T15:00:00Z"), null, 1L));
     }
 }

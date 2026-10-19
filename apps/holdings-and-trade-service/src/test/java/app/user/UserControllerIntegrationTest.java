@@ -246,4 +246,37 @@ class UserControllerIntegrationTest {
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.error").exists());
     }
+
+    @Test
+    void tradingPreferencePersistsAndIsIsolatedBetweenUsers() throws Exception {
+        UUID alice = UUID.randomUUID(), bob = UUID.randomUUID();
+        registerUser(alice, "alice", "alice@example.com"); registerUser(bob, "bob", "bob@example.com");
+        mockMvc.perform(get("/api/users/me/execution-settings").with(tokenFor(alice, "alice@example.com")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.executionBufferPercent").value(1));
+        mockMvc.perform(put("/api/users/me/execution-settings").with(tokenFor(alice, "alice@example.com"))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"executionBufferPercent\":2.25}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.executionBufferPercent").value(2.25));
+        mockMvc.perform(get("/api/users/me/execution-settings").with(tokenFor(alice, "different-device@example.com")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.executionBufferPercent").value(2.25));
+        mockMvc.perform(get("/api/users/me/execution-settings").with(tokenFor(bob, "bob@example.com")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.executionBufferPercent").value(1));
+        assertEquals(0, new BigDecimal("2.25").compareTo(userRepository.findById(alice).orElseThrow().getExecutionBufferPercent()));
+    }
+    @Test
+    void tradingPreferenceRejectsInvalidValuesAndRequiresAuthentication() throws Exception {
+        UUID alice = UUID.randomUUID(); registerUser(alice, "alice", "alice@example.com");
+        for (String value : List.of("-0.01", "10.01", "1.001", "null", "\"not-a-number\"")) {
+            mockMvc.perform(put("/api/users/me/execution-settings").with(tokenFor(alice, "alice@example.com"))
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"executionBufferPercent\":" + value + "}"))
+                    .andExpect(status().isBadRequest());
+        }
+        for (String value : List.of("0", "10")) {
+            mockMvc.perform(put("/api/users/me/execution-settings").with(tokenFor(alice, "alice@example.com"))
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"executionBufferPercent\":" + value + "}"))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.executionBufferPercent").value(Integer.parseInt(value)));
+        }
+        mockMvc.perform(get("/api/users/me/execution-settings")).andExpect(status().isUnauthorized());
+        mockMvc.perform(put("/api/users/me/execution-settings").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"executionBufferPercent\":2}")).andExpect(status().isUnauthorized());
+    }
 }

@@ -32,13 +32,11 @@ import java.util.UUID;
  *
  * @param accountId       the account the order was placed against; the message key, not part of the body
  * @param orderId         the order
- * @param status          {@code ACCEPTED}, {@code FILLED} or {@code REJECTED}
+ * @param status          ACCEPTED, FILLED, REJECTED or CANCELLED; triggering emits an updated ACCEPTED snapshot
  * @param symbol          the instrument's ticker
  * @param side            {@code BUY} or {@code SELL}
  * @param quantity        units ordered
- * @param price           the price the order was filled at when the status is {@code FILLED}
- *                        (the fill's quote price, BR-08/15); otherwise the indicative price
- *                        the trader saw
+ * @param price           actual fill quote when filled, otherwise the client display price
  * @param rejectionReason why the order was rejected, or {@code null} otherwise
  * @param occurredAt      when the order reached this status
  * @param order           the order row as committed with this status
@@ -70,6 +68,19 @@ public record OrderStatusEvent(
      * @param acceptedAt      when the trading rules passed, or {@code null}
      * @param resolvedAt      when the order was filled or rejected, or {@code null}
      * @param simulatedAt     the replay time the client traded at, or {@code null}
+     * @param executionType persisted executionType
+     * @param limitPrice persisted limitPrice
+     * @param stopPrice persisted stopPrice
+     * @param referencePrice persisted referencePrice
+     * @param referenceAt persisted referenceAt
+     * @param sessionId persisted sessionId
+     * @param triggerPrice authoritative activation quote, null before triggering or for legacy orders
+     * @param triggeredAt persisted triggeredAt
+     * @param evaluatedAt persisted evaluatedAt
+     * @param reservedCash persisted reservedCash
+     * @param reservedShares persisted reservedShares
+     * @param executionPrice persisted executionPrice
+     * @param rejectionCode persisted rejectionCode
      */
     public record OrderRecord(
             UUID clientReference,
@@ -80,7 +91,20 @@ public record OrderStatusEvent(
             OffsetDateTime submittedAt,
             OffsetDateTime acceptedAt,
             OffsetDateTime resolvedAt,
-            OffsetDateTime simulatedAt) {
+            OffsetDateTime simulatedAt,
+            String executionType,
+            BigDecimal limitPrice,
+            BigDecimal stopPrice,
+            BigDecimal referencePrice,
+            OffsetDateTime referenceAt,
+            Long sessionId,
+            OffsetDateTime triggeredAt,
+            BigDecimal triggerPrice,
+            OffsetDateTime evaluatedAt,
+            BigDecimal reservedCash,
+            BigDecimal reservedShares,
+            BigDecimal executionPrice,
+            String rejectionCode) {
     }
 
     /**
@@ -157,7 +181,20 @@ public record OrderStatusEvent(
                         order.getSubmittedAt(),
                         order.getAcceptedAt(),
                         order.getResolvedAt(),
-                        order.getSimulatedAt()),
+                        order.getSimulatedAt(),
+                        order.getExecutionType(),
+                        order.getLimitPrice(),
+                        order.getStopPrice(),
+                        order.getReferencePrice(),
+                        order.getReferenceAt(),
+                        order.getSessionId(),
+                        order.getTriggeredAt(),
+                        order.getTriggerPrice(),
+                        order.getEvaluatedAt(),
+                        order.getReservedCash(),
+                        order.getReservedShares(),
+                        order.getExecutionPrice(),
+                        order.getRejectionCode()),
                 execution);
     }
 }

@@ -1,4 +1,5 @@
 import { AuthService } from '../../core/auth/auth.service';
+import { ToastService } from '../../notifications/toast.service';
 import { TokenStorageService } from '../../core/auth/token-storage.service';
 import { HttpClient } from '@angular/common/http';
 import { DestroyRef, Injectable, effect, inject, signal, untracked } from '@angular/core';
@@ -18,6 +19,7 @@ import { BACKEND_API_URL } from '../../core/api.config';
 import { newClientReference } from '../../core/client-reference';
 import { UnknownInstrumentError } from './order-error';
 import {
+  ExecutionType,
   InstrumentRef,
   OrderAuditEntry,
   OrderResult,
@@ -32,7 +34,13 @@ export const STREAM_RECONNECT_MS = { initial: 2_000, max: 10_000 } as const;
 
 // A status never moves backwards: the stream can deliver ACCEPTED after the submission
 // response already reported FILLED, and both terminal statuses outrank the open ones.
-const STATUS_RANK: Record<OrderStatus, number> = { PENDING: 0, ACCEPTED: 1, FILLED: 2, REJECTED: 2 };
+const STATUS_RANK: Record<OrderStatus, number> = {
+  PENDING: 0,
+  ACCEPTED: 1,
+  FILLED: 2,
+  REJECTED: 2,
+  CANCELLED: 2,
+};
 
 // Submits orders and reads the caller's order history. While signed in it holds the order
 // status stream open, so a status change reaches the screen the moment the backend commits
@@ -42,6 +50,7 @@ const STATUS_RANK: Record<OrderStatus, number> = { PENDING: 0, ACCEPTED: 1, FILL
 @Injectable({ providedIn: 'root' })
 export class OrderService {
   private readonly _http = inject(HttpClient);
+  private readonly toasts = inject(ToastService);
   private readonly _apiUrl = inject(BACKEND_API_URL);
   private readonly _auth = inject(AuthService);
   private readonly _storage = inject(TokenStorageService);
@@ -51,11 +60,24 @@ export class OrderService {
   private revision = 0;
   private readonly cancelled = new Subject<void>();
   private historyRequest?: Observable<OrderResult[]>;
+  readonly editingOrder = signal<OrderResult | null>(null);
+  editOrder(orderId: number): void {
+    const order = this._orders().find((item) => item.orderId === orderId);
+    if (order?.status !== 'ACCEPTED') {
+      return;
+    }
+    this.instruments().subscribe({
+      next: () => this.editingOrder.set(order),
+      error: () => this.toasts.show('Unable to load the order editor. Please try again.', 'error'),
+    });
+  }
   readonly refreshing = signal(false);
   readonly historyError = signal('');
   // Emits an order the moment the stream reports it filled after it had been open, so views
-  // can reload the cash and holdings it moved.
+  // can reload the cash and holdings it moved; pendingResolved also reports rejections and
+  // cancellations, so views can refresh released reservations.
   readonly pendingFilled = new Subject<OrderResult>();
+  readonly pendingResolved = new Subject<OrderResult>();
   // The open stream, or undefined while signed out or between reconnect attempts.
   private stream?: AbortController;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
@@ -71,6 +93,7 @@ export class OrderService {
       this.historyRequest = undefined;
       this._instruments = null;
       this._orders.set([]);
+      this.editingOrder.set(null);
       this._catalogue.set([]);
       this.historyStatus.set('idle');
       this.historyError.set('');
@@ -113,6 +136,12 @@ export class OrderService {
   // process at all fails this observable.
   submitOrder(order: {
     accountId: number;
+    replacesOrderId?: number;
+    instrumentId?: number;
+    executionType?: ExecutionType;
+    limitPrice?: number;
+    stopPrice?: number;
+    sessionId?: number;
     simulatedAt?: string;
     symbol: string;
     orderType: OrderType;
@@ -121,7 +150,9 @@ export class OrderService {
   }): Observable<OrderResult> {
     return this.instruments().pipe(
       switchMap((instruments) => {
-        const instrument = findInstrumentBySymbol(instruments, order.symbol);
+        const instrument = order.instrumentId !== undefined
+          ? instruments.find((item) => item.instrumentId === order.instrumentId)
+          : findInstrumentBySymbol(instruments, order.symbol);
         if (!instrument) {
           return throwError(() => new UnknownInstrumentError(order.symbol));
         }
@@ -130,11 +161,15 @@ export class OrderService {
           instrumentId: instrument.instrumentId,
           orderType: order.orderType,
           quantity: order.quantity,
+          executionType: order.executionType ?? 'MARKET',
+          ...(order.limitPrice !== undefined ? { limitPrice: order.limitPrice } : {}),
+          ...(order.stopPrice !== undefined ? { stopPrice: order.stopPrice } : {}),
+          ...(order.sessionId !== undefined ? { sessionId: order.sessionId } : {}),
           indicativePrice: order.indicativePrice,
           clientReference: newClientReference(),
           ...(order.simulatedAt ? { simulatedAt: order.simulatedAt } : {}),
         };
-        return this._http.post<OrderResult>(`${this._apiUrl}/orders`, submission);
+        return this._http.post<OrderResult>(order.replacesOrderId ? `${this._apiUrl}/orders/${order.replacesOrderId}/replace` : `${this._apiUrl}/orders`, submission);
       }),
       takeUntil(this.cancelled),
       // A fill moves funds and holdings, so the history the dashboard shows is stale
@@ -144,7 +179,8 @@ export class OrderService {
         this.historyRequest = undefined;
         this._orders.update((orders) => [
           result,
-          ...orders.filter((order) => order.orderId !== result.orderId),
+          ...orders.filter((item) => item.orderId !== result.orderId).map((item) => item.orderId === order.replacesOrderId
+            ? { ...item, status: 'CANCELLED' as const, reservedCash: 0, reservedShares: 0, rejectionCode: 'ORDER_REPLACED', rejectionReason: `Replaced by order #${result.orderId}` } : item),
         ]);
       }),
     );
@@ -194,6 +230,17 @@ export class OrderService {
     return this._http
       .get<OrderAuditEntry[]>(`${this._apiUrl}/orders/${orderId}/audit`)
       .pipe(takeUntil(this.cancelled));
+  }
+
+  cancelOrder(orderId: number): Observable<OrderResult> {
+    return this._http.post<OrderResult>(`${this._apiUrl}/orders/${orderId}/cancel`, {}).pipe(
+      takeUntil(this.cancelled),
+      tap((result) => {
+        this.revision++;
+        this.historyRequest = undefined;
+        this._orders.update((orders) => orders.map((order) => order.orderId === orderId ? result : order));
+      }),
+    );
   }
 
   // Opens GET /api/orders/stream and keeps reading it until it drops or the session ends.
@@ -311,18 +358,37 @@ export class OrderService {
     if (STATUS_RANK[frame.status] <= STATUS_RANK[current.status]) {
       return;
     }
+    const terminal = STATUS_RANK[frame.status] === 2;
     const updated: OrderResult = {
       ...current,
       status: frame.status,
       rejectionReason: frame.rejectionReason ?? null,
       resolvedAt: frame.order?.resolvedAt ?? current.resolvedAt,
+      // A resolved order holds nothing back any more; a fill settled at the frame's price.
+      ...(terminal ? { reservedCash: 0, reservedShares: 0 } : {}),
+      ...(frame.status === 'FILLED' && typeof frame.price === 'number' ? { executionPrice: frame.price } : {}),
     };
     this._orders.update((orders) =>
       orders.map((order) => (order.orderId === updated.orderId ? updated : order)),
     );
+    if (terminal) {
+      this.pendingResolved.next(updated);
+    }
     if (updated.status === 'FILLED') {
       this.pendingFilled.next(updated);
+      this.announceFill(updated);
     }
+  }
+
+  // A fill that lands after the submission response, such as a limit order's, is announced
+  // here because no component is waiting on it.
+  private announceFill(order: OrderResult): void {
+    const instrument = this._catalogue().find((item) => item.instrumentId === order.instrumentId);
+    const symbol = instrument?.simulatedStockSymbol ?? instrument?.ticker ?? `order #${order.orderId}`;
+    const price = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
+      order.executionPrice ?? order.indicativePrice,
+    );
+    this.toasts.show(`Filled ${order.quantity} ${symbol} at ${price}.`, 'success');
   }
 
   // Resolves a market-data symbol to the instrument behind it, for callers that need the id

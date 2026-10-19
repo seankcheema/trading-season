@@ -26,6 +26,7 @@ flowchart LR
     UI -- "/api/orders, /api/instruments" --> OS["Order and Sell Service<br/>Spring Boot :8081"]
     UI -- "all other /api/*" --> HT["Holdings and Trade Service<br/>Spring Boot :8082"]
 
+    OS -- "authoritative replay quotes" --> HT
     OS -. "cached JWKS" .-> Auth
     HT -. "cached JWKS" .-> Auth
     RS["Reporting Service<br/>Flask :8083"] -. "cached JWKS" .-> Auth
@@ -54,7 +55,7 @@ flowchart LR
 
 The UI reaches both Java services through one relative `/api` prefix that the dev proxy and the Nginx image split by path. The Java services never call the Auth Service per request: they verify tokens locally against its cached public keys. The Reporting UI calls the Auth Service and the Reporting Service through a proxy on its own origin. It never reads Kafka or the database itself, and neither does the Reporting Service read the database: its report runs are what the reporting consumer has built from `trade-events`, and its activity, customers and orders screens are answered from a read model the service builds out of the two topics' files. The report runs are served to accounts with the `ANALYST` or `ADMIN` role and the other screens to `ADMIN` only, so traders cannot use any of it; see [roles](apps/auth-service/README.md#roles).
 
-The Order and Sell Service publishes one `trade-events` message after each committed order status change (ACCEPTED, FILLED or REJECTED), keyed by account id. Three consumer groups read the topic independently:
+The Order and Sell Service publishes one `trade-events` message after each committed order status change (ACCEPTED, FILLED, REJECTED or CANCELLED), keyed by account id. A latched Stop also publishes an updated ACCEPTED snapshot. Three consumer groups read the topic independently:
 
 | Consumer group | Lives in | On each event |
 | --- | --- | --- |
@@ -88,7 +89,7 @@ Each part of the flow can be followed from its description here to the code that
 | Capability | Requirement | Documentation | Code | Tests | Jenkins evidence |
 | --- | --- | --- | --- | --- | --- |
 | An order is committed as accepted before it executes, and the fill ledger commits atomically | BR-06, BR-09 | [Order flow](#order-flow), [Order and Sell: order submission](apps/order-and-sell-service/README.md#order-submission) | [OrderService](apps/order-and-sell-service/src/main/java/app/order/OrderService.java), [OrderExecutionService](apps/order-and-sell-service/src/main/java/app/order/execution/OrderExecutionService.java), [V003 migration](db/migrations/V003__Order_status_accepted.sql) | [OrderServiceExecutionFailureTest](apps/order-and-sell-service/src/test/java/app/order/OrderServiceExecutionFailureTest.java), [OrderControllerIntegrationTest](apps/order-and-sell-service/src/test/java/app/order/OrderControllerIntegrationTest.java) | Stage "Order and Sell Service Tests" |
-| A fill is priced at the current market quote at the moment of execution, within the order's price buffer | BR-08, KAN-100 | [Order flow](#order-flow), [Order and Sell: order submission](apps/order-and-sell-service/README.md#order-submission) | [ExecutionQuoteSource](apps/order-and-sell-service/src/main/java/app/order/execution/ExecutionQuoteSource.java), [OrderExecutionService](apps/order-and-sell-service/src/main/java/app/order/execution/OrderExecutionService.java) | [ExecutionQuoteSourceTest](apps/order-and-sell-service/src/test/java/app/order/execution/ExecutionQuoteSourceTest.java), [OrderExecutionServiceTest](apps/order-and-sell-service/src/test/java/app/order/execution/OrderExecutionServiceTest.java), [OrderServiceTest](apps/order-and-sell-service/src/test/java/app/order/OrderServiceTest.java) | Stage "Order and Sell Service Tests"; end-to-end stage reports the price the real order filled at and checks the trader's cash against it |
+| A fill is priced at the authoritative market quote at the moment of execution, within the trader's saved execution buffer | BR-08, KAN-100 | [Order flow](#order-flow), [Order and Sell: order API](apps/order-and-sell-service/api.md) | [ExecutionQuoteSource](apps/order-and-sell-service/src/main/java/app/order/execution/ExecutionQuoteSource.java), [OrderExecutionService](apps/order-and-sell-service/src/main/java/app/order/execution/OrderExecutionService.java) | [ExecutionQuoteSourceTest](apps/order-and-sell-service/src/test/java/app/order/execution/ExecutionQuoteSourceTest.java), [OrderExecutionServiceTest](apps/order-and-sell-service/src/test/java/app/order/execution/OrderExecutionServiceTest.java), [OrderServiceTest](apps/order-and-sell-service/src/test/java/app/order/OrderServiceTest.java) | Stage "Order and Sell Service Tests"; end-to-end stage reports the price the real order filled at and checks the trader's cash against it |
 | One `trade-events` message per committed status change | Section 3 (loose coupling) | [Architecture](#architecture) | [TradeEventPublisher](apps/order-and-sell-service/src/main/java/app/order/event/TradeEventPublisher.java), [OrderStatusEvent](apps/order-and-sell-service/src/main/java/app/order/event/OrderStatusEvent.java) | [TradeEventPublisherTest](apps/order-and-sell-service/src/test/java/app/order/event/TradeEventPublisherTest.java), [TradeEventFlowIntegrationTest](apps/order-and-sell-service/src/test/java/app/order/event/TradeEventFlowIntegrationTest.java) (embedded broker) | Stage "Order and Sell Service Tests"; stack stage prints the `trade-events` topic with three partitions; end-to-end stage shows the ACCEPTED and FILLED messages published for a real order |
 | Order status pushed live to the trader (`order-status-pusher`) and applied by the Client UI without a refresh | BR-07, section 9.2 | [Order and Sell README](apps/order-and-sell-service/README.md), [Client UI: order status](apps/client-ui/README.md#order-status) | [OrderStatusPusherListener](apps/order-and-sell-service/src/main/java/app/order/event/OrderStatusPusherListener.java), [OrderStatusStreamRegistry](apps/order-and-sell-service/src/main/java/app/order/event/OrderStatusStreamRegistry.java), [OrderStatusStreamController](apps/order-and-sell-service/src/main/java/app/order/event/OrderStatusStreamController.java), [order.service.ts](apps/client-ui/src/app/dashboard/orders/order.service.ts) | [OrderStatusPusherListenerTest](apps/order-and-sell-service/src/test/java/app/order/event/OrderStatusPusherListenerTest.java), [OrderStatusStreamRegistryTest](apps/order-and-sell-service/src/test/java/app/order/event/OrderStatusStreamRegistryTest.java), [OrderStatusStreamControllerTest](apps/order-and-sell-service/src/test/java/app/order/event/OrderStatusStreamControllerTest.java), [TradeEventFlowIntegrationTest](apps/order-and-sell-service/src/test/java/app/order/event/TradeEventFlowIntegrationTest.java), [order.service.spec.ts](apps/client-ui/src/app/dashboard/orders/order.service.spec.ts), [recent-transactions.spec.ts](apps/client-ui/e2e/recent-transactions.spec.ts) | Stage "Order and Sell Service Tests" and "Frontend Tests"; stack stage lists `order-status-pusher` as a live consumer group; end-to-end stage shows both status frames arriving on the order stream |
 | Portfolio value captured at the moment of a fill (`portfolio-valuation-capture`) | Section 9.2, BR-18 | [Holdings and Trade: portfolio valuation on fill](apps/holdings-and-trade-service/README.md#portfolio-valuation-on-fill) | [PortfolioValuationListener](apps/holdings-and-trade-service/src/main/java/app/account/PortfolioValuationListener.java) | [PortfolioValuationListenerTest](apps/holdings-and-trade-service/src/test/java/app/account/PortfolioValuationListenerTest.java), [PortfolioValuationCaptureFlowIntegrationTest](apps/holdings-and-trade-service/src/test/java/app/account/PortfolioValuationCaptureFlowIntegrationTest.java) (embedded broker) | Stage "Holdings and Trade Service Tests"; stack stage lists `portfolio-valuation-capture` as a live consumer group; end-to-end stage shows the valuation row captured for the order |
@@ -96,8 +97,8 @@ Each part of the flow can be followed from its description here to the code that
 | Every row reporting shows is published by its owner to `platform-records` | BR-16 (analysis without competing with live trading), section 3 | [Reporting without the database](#reporting-without-the-database) | Order and Sell [record](apps/order-and-sell-service/src/main/java/app/record), Holdings and Trade [record](apps/holdings-and-trade-service/src/main/java/app/record), [sign-in-publisher.service.ts](apps/auth-service/src/events/sign-in-publisher.service.ts) | Order and Sell [PlatformRecordPublisherTest](apps/order-and-sell-service/src/test/java/app/record/PlatformRecordPublisherTest.java) and [TradeEventFlowIntegrationTest](apps/order-and-sell-service/src/test/java/app/order/event/TradeEventFlowIntegrationTest.java), Holdings and Trade [PlatformRecordPublisherTest](apps/holdings-and-trade-service/src/test/java/app/record/PlatformRecordPublisherTest.java) and [PortfolioValuationCaptureFlowIntegrationTest](apps/holdings-and-trade-service/src/test/java/app/account/PortfolioValuationCaptureFlowIntegrationTest.java), [sign-in-publisher.service.spec.ts](apps/auth-service/src/events/sign-in-publisher.service.spec.ts) | Both Java test stages and "Auth Service Tests"; stack stage shows `platform-records` with three partitions, compacted; end-to-end stage shows each service's "Published platform record" log line |
 | The console is answered from Kafka alone, with no database connection | BR-16 | [Reporting README: the read model](apps/reporting-service/README.md#the-read-model) | [read_model.py](apps/reporting-service/read_model.py), [projection.py](apps/reporting-service/projection.py), [console.py](apps/reporting-service/console.py), [models.py](apps/reporting-service/models.py) | [test_read_model.py](apps/reporting-service/tests/test_read_model.py), [test_projection.py](apps/reporting-service/tests/test_projection.py), [test_console.py](apps/reporting-service/tests/test_console.py) | Stage "Reporting Service Tests"; end-to-end stage checks the reporting image has no database setting or driver, then shows the trader, the order, its ledger impact and its audit trail served to an admin |
 | History in the database published to the topics, and demo history seeded | BR-16 | [db/README: reporting feed tools](db/README.md#reporting-feed-tools) | [republish_history.py](db/tools/republish_history.py), [reporting_feed.py](db/tools/reporting_feed.py), [seed_demo_history.py](db/tools/seed_demo_history.py) | [test_reporting_feed.py](db/tools/tests/test_reporting_feed.py), [test_seed_demo_history.py](db/tools/tests/test_seed_demo_history.py) | Stage "Reporting Feed Tools Tests" |
-| Every instrument class the firm supports at launch is simulated and priced: UK, US and Indian equities, FX, crypto | BR-12 | [Market data: universe](apps/market-data/README.md#universe), [Holdings and Trade: market replay](apps/holdings-and-trade-service/README.md#market-replay) | [common.py](apps/market-data/db/scripts/python/lib/common.py), [importing.py](apps/market-data/db/scripts/python/lib/importing.py), [V012 migration](db/migrations/V012__Instrument_price_links.sql) | [test_stock_universe.py](apps/market-data/db/scripts/python/tests/test_stock_universe.py), [test_instrument_price_links.py](apps/market-data/db/scripts/python/tests/test_instrument_price_links.py) | Stage "Synthetic Market Data Integration" imports the universe; stage "Build Local Docker Stack" seeds two days of it, and the end-to-end stage places its order against a seeded instrument |
-| Cash is correct as of the last trade: the ledger sums to the balance from registration onward, and a retried deposit or withdrawal posts once | BR-10, section 9.1 | [Holdings and Trade README](apps/holdings-and-trade-service/README.md#cash-movement) | [RegistrationService](apps/holdings-and-trade-service/src/main/java/app/registration/RegistrationService.java), [CashTransactionService](apps/holdings-and-trade-service/src/main/java/app/cash/CashTransactionService.java), [V013 migration](db/migrations/V013__Cash_transaction_client_reference.sql) | [RegistrationControllerIntegrationTest](apps/holdings-and-trade-service/src/test/java/app/registration/RegistrationControllerIntegrationTest.java), [CashTransactionControllerIntegrationTest](apps/holdings-and-trade-service/src/test/java/app/cash/CashTransactionControllerIntegrationTest.java), [test_cash_transaction_reference_migration.py](apps/market-data/db/scripts/python/tests/test_cash_transaction_reference_migration.py) | Stage "Holdings and Trade Service Tests"; end-to-end stage registers a trader whose opening funds are the first ledger row |
+| Every instrument class the firm supports at launch is simulated and priced: UK, US and Indian equities, FX, crypto | BR-12 | [Market data: universe](apps/market-data/README.md#universe), [Holdings and Trade: market replay](apps/holdings-and-trade-service/README.md#market-replay) | [common.py](apps/market-data/db/scripts/python/lib/common.py), [importing.py](apps/market-data/db/scripts/python/lib/importing.py), [V012 migration](db/migrations/V014__Instrument_price_links.sql) | [test_stock_universe.py](apps/market-data/db/scripts/python/tests/test_stock_universe.py), [test_instrument_price_links.py](apps/market-data/db/scripts/python/tests/test_instrument_price_links.py) | Stage "Synthetic Market Data Integration" imports the universe; stage "Build Local Docker Stack" seeds two days of it, and the end-to-end stage places its order against a seeded instrument |
+| Cash is correct as of the last trade: the ledger sums to the balance from registration onward, and a retried deposit or withdrawal posts once | BR-10, section 9.1 | [Holdings and Trade README](apps/holdings-and-trade-service/README.md#cash-movement) | [RegistrationService](apps/holdings-and-trade-service/src/main/java/app/registration/RegistrationService.java), [CashTransactionService](apps/holdings-and-trade-service/src/main/java/app/cash/CashTransactionService.java), [V013 migration](db/migrations/V015__Cash_transaction_client_reference.sql) | [RegistrationControllerIntegrationTest](apps/holdings-and-trade-service/src/test/java/app/registration/RegistrationControllerIntegrationTest.java), [CashTransactionControllerIntegrationTest](apps/holdings-and-trade-service/src/test/java/app/cash/CashTransactionControllerIntegrationTest.java), [test_cash_transaction_reference_migration.py](apps/market-data/db/scripts/python/tests/test_cash_transaction_reference_migration.py) | Stage "Holdings and Trade Service Tests"; end-to-end stage registers a trader whose opening funds are the first ledger row |
 | Broker and topic provisioning | Section 3 | [Infrastructure README](infrastructure/README.md#local-stack) | [docker-compose.local.yml](infrastructure/docker-compose/docker-compose.local.yml) (`kafka`, `kafka-init`, `reporting-consumer`) | Stack stage of the pipeline | Stage "Build Local Docker Stack": every expected container running, both topics described, all three groups registered; stage "Kafka End-to-End Flow": lag 0 on every group, on both topics, after the order |
 
 ## Authentication and request flow
@@ -133,24 +134,25 @@ sequenceDiagram
     participant K as Kafka trade-events
 
     UI->>OS: POST /api/orders
-    OS->>DB: Transaction 1: insert order as PENDING, run validation rules
+    OS->>DB: Transaction 1: snapshot quote/preference, insert PENDING, validate
     alt A rule fails
         OS->>DB: Mark REJECTED, write audit entry, commit
         OS->>K: REJECTED
     else All rules pass
-        OS->>DB: Mark ACCEPTED, commit
+        OS->>DB: Reserve resources, mark ACCEPTED, commit
         OS->>K: ACCEPTED
-        OS->>DB: Transaction 2: price at the current market quote, then fill, cash, holding movement, holding, audit, mark FILLED, commit
+        Note over OS,DB: Conditional orders wait for eligible ticks or cancellation
+        OS->>DB: Transaction 2 when eligible: fill, ledger, release reservation, mark FILLED
         OS->>K: FILLED
     end
     OS-->>UI: 201 with the order outcome
 ```
 
-Acceptance and execution are separate transactions, so an order is never recorded as FILLED before its execution has committed. Execution prices the fill at the instrument's current market quote (BR-08), not at the price the trader saw; an order with no quote, or one outside its price buffer, is rejected at that point. If execution fails, the order stays ACCEPTED with an `EXECUTION_FAILED` audit entry and the response carries that state; nothing retries it automatically. Each message is published only after its transaction commits, so a consumer never sees a status the database does not hold.
+Acceptance and execution are separate transactions, so an order is never recorded as FILLED before its execution has committed. Execution prices the fill at the authoritative replay quote (BR-08), never at the price the trader saw, and rejects a market order whose quote falls outside the trader's saved execution buffer. If execution fails, the order stays ACCEPTED with an `EXECUTION_FAILED` audit entry and the response carries that state; the evaluator retries it with bounded backoff. Each message is published only after its transaction commits, so a consumer never sees a status the database does not hold.
 
 ## Data ownership
 
-Every service writes only its own tables. The schema is defined once, in [db/migrations](db/migrations), and no service runs migrations itself.
+Every service writes only its own tables. The [Order API](apps/order-and-sell-service/api.md) describes conditional execution, immutable buffers and reservations; [trading preferences](apps/holdings-and-trade-service/api.md#trading-preferences) belong to Holdings and Trade. The schema is defined once, in [db/migrations](db/migrations), and no service runs migrations itself.
 
 ```mermaid
 flowchart TB
@@ -196,7 +198,7 @@ flowchart LR
         T7["Reporting UI"]
         T8["Reporting feed tools"]
     end
-    Tests --> Docs["Javadocs"] --> E2E["Playwright E2E"] --> Stack["Build local<br/>Docker stack"] --> Flow["Kafka end-to-end<br/>flow"] --> Sonar["SonarQube analysis<br/>and quality gate"]
+    Tests --> Sonar["SonarQube analysis<br/>and quality gate"] --> E2E["Playwright E2E"] --> Stack["Build local<br/>Docker stack"] --> Flow["Kafka end-to-end<br/>flow"]
 ```
 
 ## Getting started
@@ -214,35 +216,9 @@ The UI is at http://localhost:4200 and the Reporting UI at http://localhost:4300
 
 ### Local processes (Windows)
 
-```powershell
-npm --prefix apps/client-ui ci
-npm --prefix apps/reporting-ui ci
-npm --prefix apps/auth-service ci
-python -m venv apps/reporting-service/venv
-apps/reporting-service/venv/Scripts/python -m pip install -r apps/reporting-service/requirements.txt
-Copy-Item apps/auth-service/.env.example apps/auth-service/.env
-node apps/auth-service/scripts/generate-dev-keys.mjs | Add-Content apps/auth-service/.env
-$env:SPRING_DATASOURCE_PASSWORD = 'password'
-.\scripts\start-local.ps1
-```
-
-The script starts the Client UI on 4200, the Reporting UI on 4300, the Auth Service, both Java services, the Reporting Service on 8083 and its consumer, and stops with an instruction if a project's dependencies are not installed. This needs a running `trading_season` database; see [db/README.md](db/README.md) to create and migrate one, and [apps/market-data](apps/market-data/README.md) to load synthetic market data.
+Follow the [Local setup (Windows) guide](docs/local-setup/windows.md) for terminal commands to install dependencies, configure authentication, prepare local PostgreSQL, migrate and seed data, and start the services with optional local Kafka. Docker Compose is not required.
 
 On Linux, `scripts/setup-local.sh` installs the dependencies and starts both UIs, the Auth Service and both Java services. When it starts the database from the Compose file it also starts the Compose broker and creates both topics; when it finds a local PostgreSQL it starts no broker, so start the Compose `kafka` and `kafka-init` services first. It does not start the Reporting Service or its consumer; start them as [apps/reporting-service](apps/reporting-service/README.md#local-development) describes.
-
-Reporting reads Kafka and nothing else, so everything the Reporting UI shows needs a Kafka broker on `localhost:29092`. The script handles the three cases:
-
-| Broker | What the script does |
-| --- | --- |
-| Already listening on `localhost:29092`, for example the `kafka` and `kafka-init` services of the Compose file | Uses it |
-| Not running, and `-KafkaHome` or `KAFKA_HOME` names an unpacked [Apache Kafka](https://kafka.apache.org/downloads) distribution | Starts a single-node broker from it with the JDK, keeps its data in `%LOCALAPPDATA%\trading-season\kafka`, and creates `trade-events` and the compacted `platform-records`, each with three partitions. For a machine without Docker |
-| Neither | Sets `app.events.enabled=false` on both Java services and `EVENTS_ENABLED=false` on the auth service, does not start the consumer, and warns that the Reporting UI shows nothing new |
-
-```powershell
-.\scripts\start-local.ps1 -KafkaHome C:\tools\kafka_2.13-4.1.1
-```
-
-Only what the services do while a broker is running is published. The consumer writes a report when it starts and then every minute (`-ReportIntervalMinutes`; the Compose stack uses 15), so an order placed in the Client UI appears on the Reporting UI's console within seconds and in its report runs within that time. `-SkipReporting` starts the stack without the Reporting Service and its consumer, for a machine without Python. See [apps/reporting-service](apps/reporting-service/README.md).
 
 ### History for reporting
 

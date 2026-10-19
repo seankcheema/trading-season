@@ -230,7 +230,7 @@ export class InstrumentSearchComponent {
     const size =
       this.size() === 'lg' ? `h-12 ${right} pl-12 text-base` : `h-11 ${right} pl-11 text-sm`;
     const base =
-      'border-border placeholder:text-muted-foreground focus-visible:border-ring w-full border transition-colors outline-none';
+      'border-border placeholder:text-muted-foreground focus-visible:border-ring block box-border w-full border py-0 transition-colors outline-none';
     const ring = this.action() ? ' focus-visible:ring-ring/50 focus-visible:ring-3' : '';
     return this.embedded()
       ? `${base} ${size} rounded-none border-x-0 border-t-0 bg-transparent`
@@ -238,8 +238,8 @@ export class InstrumentSearchComponent {
   });
   protected readonly resultsClasses = computed(() =>
     this.embedded()
-      ? 'max-h-64 overflow-y-auto py-1'
-      : 'border-border bg-popover absolute inset-x-0 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-[5px] border py-1 shadow-lg',
+      ? 'max-h-64 overflow-y-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+      : 'border-border bg-popover absolute inset-x-0 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-xl border py-1 shadow-lg [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
   );
 
   private readonly _id = nextId++;

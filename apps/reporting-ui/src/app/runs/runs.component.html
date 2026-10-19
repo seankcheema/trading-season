@@ -62,7 +62,7 @@
           </span>
         </div>
         <p class="text-muted-foreground text-xs">{{ row.detail }}</p>
-        <div class="mt-1.5 flex h-1.5 gap-0.5 overflow-hidden rounded-full bg-white/10">
+        <div class="mt-1.5 flex h-1.5 gap-0.5 overflow-hidden rounded-full bg-foreground/10">
           @for (bar of row.bars; track bar.tone) {
             @if (bar.width) {
               <span class="h-full rounded-full" [class]="bar.tone" [style.width.%]="bar.width"></span>

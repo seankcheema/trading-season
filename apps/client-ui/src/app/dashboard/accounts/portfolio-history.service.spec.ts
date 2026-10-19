@@ -209,4 +209,90 @@ describe('PortfolioHistoryService', () => {
     expect(service.points()[0].value).toBe(110);
   });
 
+  it('keeps at most 64 cached views', () => {
+    for (let id = 1; id <= 66; id++) {
+      service.select(id, '1D');
+      http.expectOne(history(id)).flush([point]);
+    }
+    service.select(1, '1D');
+    http.expectOne(history(1)).flush([point]);
+  });
+
+  it('marks a cached view stale when its reload fails and shows an expired entry while reloading', () => {
+    vi.useFakeTimers();
+    try {
+      service.select(1, '1D');
+      http.expectOne(history()).flush([point]);
+      vi.advanceTimersByTime(61_000);
+      service.select(1, '1D');
+      expect(service.points()).toHaveLength(1);
+      http.expectOne(history()).flush(null, { status: 500, statusText: 'Error' });
+      expect(service.status()).toBe('error');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('values holdings at their cost when no candle is available and includes five-day sessions', () => {
+    const at = Date.parse('2026-01-09T17:00:00Z');
+    service.select(1, '5D', {
+      accountId: 1,
+      at,
+      sessionId: 1,
+      current: [{ symbol: 'AAPL', quantity: 2, averageCost: 100 }],
+      catalogue: [
+        {
+          instrumentId: 7, ticker: 'AAPL', name: 'Apple', assetClass: 'Equity',
+          market: 'US', currency: 'USD', tradable: true, simulatedStockSymbol: null,
+        },
+        {
+          instrumentId: 8, ticker: 'MSFT', name: 'Microsoft', assetClass: 'Equity',
+          market: 'US', currency: 'USD', tradable: true, simulatedStockSymbol: null,
+        },
+      ],
+      orders: [
+        {
+          orderId: 1, accountId: 1, instrumentId: 8, status: 'FILLED' as const,
+          orderType: 'BUY' as const, quantity: 1, indicativePrice: 50,
+          simulatedAt: '2026-01-08T17:00:00Z', submittedAt: '2026-10-01T18:00:00Z',
+          resolvedAt: '2026-10-01T18:00:00Z', rejectionReason: null,
+        },
+        {
+          orderId: 2, accountId: 1, instrumentId: 99, status: 'FILLED' as const,
+          orderType: 'BUY' as const, quantity: 1, indicativePrice: 50,
+          simulatedAt: '2026-01-08T18:00:00Z', submittedAt: '2026-10-01T18:00:00Z',
+          resolvedAt: '2026-10-01T18:00:00Z', rejectionReason: null,
+        },
+      ],
+      quoteSymbols: ['AAPL', 'MSFT'],
+    });
+    const requests = http.match((request) => request.url === '/api/market/candles');
+    expect(requests.map((request) => request.request.params.get('symbol')).sort()).toEqual([
+      'AAPL', 'MSFT',
+    ]);
+    for (const request of requests) {
+      request.flush({
+        symbol: request.request.params.get('symbol'),
+        rangeStart: '2026-01-05T14:30:00Z',
+        rangeEnd: '2026-01-09T21:00:00Z',
+        tradingSessions: [{ start: '2026-01-08T14:30:00Z', end: '2026-01-08T21:00:00Z' }],
+        points: [],
+      });
+    }
+    expect(service.domain()?.sessions).toEqual([
+      { start: Date.parse('2026-01-08T14:30:00Z'), end: Date.parse('2026-01-08T21:00:00Z') },
+    ]);
+    expect(service.points().at(-1)?.value).toBe(200);
+  });
+
+  it('shows an error when simulated candles cannot be loaded', () => {
+    service.select(1, '1D', {
+      accountId: 1, at: Date.parse('2026-01-05T16:00:00Z'), sessionId: 1,
+      rangeSymbol: 'AAPL', current: [], catalogue: [], orders: [],
+    });
+    http
+      .expectOne((request) => request.url === '/api/market/candles')
+      .flush(null, { status: 500, statusText: 'Error' });
+    expect(service.status()).toBe('error');
+  });
 });

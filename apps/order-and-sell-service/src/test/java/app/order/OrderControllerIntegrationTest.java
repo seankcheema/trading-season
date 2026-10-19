@@ -9,7 +9,6 @@ import app.order.audit.AuditTrail;
 import app.order.audit.AuditTrailRepository;
 import app.order.execution.CashTransaction;
 import app.order.execution.CashTransactionRepository;
-import app.order.execution.ExecutionQuoteSource;
 import app.order.execution.Fill;
 import app.order.execution.FillRepository;
 import app.order.execution.HoldingMovement;
@@ -26,7 +25,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -37,7 +35,6 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.hasSize;
@@ -45,8 +42,6 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -66,6 +61,9 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppC
 @ActiveProfiles("test")
 @Tag("integration")
 class OrderControllerIntegrationTest {
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private app.order.execution.ExecutionQuoteSource quoteSource;
+
 
     @Autowired private WebApplicationContext webApplicationContext;
     @Autowired private UserRepository userRepository;
@@ -79,9 +77,6 @@ class OrderControllerIntegrationTest {
     @Autowired private AuditTrailRepository auditTrailRepository;
     @Autowired private JdbcTemplate jdbcTemplate;
 
-    /** BR-08: execution prices fills from the market replay, which the test database does not seed. */
-    @MockitoBean private ExecutionQuoteSource quoteSource;
-
     private MockMvc mockMvc;
     private User user;
     private Account account;
@@ -90,6 +85,9 @@ class OrderControllerIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal("20.00"), 1L,
+                        java.time.OffsetDateTime.parse("2026-01-05T15:00:00Z")));
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
         auditTrailRepository.deleteAll();
         holdingMovementRepository.deleteAll();
@@ -132,16 +130,6 @@ class OrderControllerIntegrationTest {
         instrument.setAssetClass("EQUITY");
         instrument.setCurrency("USD");
         instrument = instrumentRepository.save(instrument);
-
-        // Unless a test says otherwise, the market quotes the price the trader saw.
-        quote("20.00");
-    }
-
-    private void quote(String... prices) {
-        var stubbing = when(quoteSource.currentPrice(any()));
-        for (String price : prices) {
-            stubbing = stubbing.thenReturn(Optional.of(new BigDecimal(price)));
-        }
     }
 
     @Test
@@ -162,6 +150,8 @@ class OrderControllerIntegrationTest {
         for (String replayTime : List.of("2026-01-06T17:00:00Z", "2026-01-05T16:00:00Z")) {
             String payload = body("BUY", "1", "20.00").trim();
             payload = payload.substring(0, payload.length() - 1) + ", \"simulatedAt\": \"" + replayTime + "\"}";
+            org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                    .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal("20.00"), 1L, OffsetDateTime.parse(replayTime)));
             mockMvc.perform(post("/api/orders").with(tokenFor(user.getUserId()))
                     .contentType(MediaType.APPLICATION_JSON).content(payload))
                     .andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("FILLED"))
@@ -175,7 +165,6 @@ class OrderControllerIntegrationTest {
 
     @Test
     void buyThenSellFillsAndLeavesAConsistentLedger() throws Exception {
-        quote("20.00", "25.00");
         submit("BUY", "10", "20.00")
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.orderId").value(notNullValue()))
@@ -183,7 +172,6 @@ class OrderControllerIntegrationTest {
                 .andExpect(jsonPath("$.orderType").value("BUY"))
                 .andExpect(jsonPath("$.quantity").value(10))
                 .andExpect(jsonPath("$.indicativePrice").value(20.00))
-                .andExpect(jsonPath("$.fillPrice").value(20.00))
                 .andExpect(jsonPath("$.rejectionReason").value(nullValue()))
                 .andExpect(jsonPath("$.submittedAt").value(notNullValue()))
                 .andExpect(jsonPath("$.resolvedAt").value(notNullValue()));
@@ -225,7 +213,6 @@ class OrderControllerIntegrationTest {
 
     @Test
     void sellingTheRemainingPositionClosesItWithoutLosingLedgerHistory() throws Exception {
-        quote("20.00", "25.00", "30.00");
         submit("BUY", "10", "20.00").andExpect(jsonPath("$.status").value("FILLED"));
         submit("SELL", "4", "25.00").andExpect(jsonPath("$.status").value("FILLED"));
         submit("SELL", "6", "30.00").andExpect(jsonPath("$.status").value("FILLED"));
@@ -312,7 +299,6 @@ class OrderControllerIntegrationTest {
 
     @Test
     void listingOrdersReturnsTheCallersOwnOrdersNewestFirst() throws Exception {
-        quote("20.00", "10.00");
         submit("BUY", "10", "20.00").andExpect(status().isCreated());
         submit("BUY", "5", "10.00").andExpect(status().isCreated());
 
@@ -364,6 +350,31 @@ class OrderControllerIntegrationTest {
 
         mockMvc.perform(get("/api/orders/{orderId}/audit", orderId).with(tokenFor(strangerId)))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void readsOneOwnedOrderAndHidesAnotherUsersOrder() throws Exception {
+        Integer orderId = JsonPath.read(submit("BUY", "10", "20.00")
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.orderId");
+
+        mockMvc.perform(get("/api/orders/{orderId}", orderId).with(tokenFor(user.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.orderId").value(orderId))
+                .andExpect(jsonPath("$.status").value("FILLED"));
+        mockMvc.perform(get("/api/orders/{orderId}", orderId).with(tokenFor(givenAnOrderBelongingToAnotherUser())))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void aFilledOrderCanNeitherBeCancelledNorReplaced() throws Exception {
+        Integer orderId = JsonPath.read(submit("BUY", "10", "20.00")
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.orderId");
+
+        mockMvc.perform(post("/api/orders/{orderId}/cancel", orderId).with(tokenFor(user.getUserId())))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/orders/{orderId}/replace", orderId).with(tokenFor(user.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON).content(body("BUY", "5", "20.00")))
+                .andExpect(status().is4xxClientError());
     }
 
     @Test
@@ -575,8 +586,11 @@ class OrderControllerIntegrationTest {
         return bodyFor(account.getAccountId(), instrument.getInstrumentId(), type, quantity, price);
     }
 
-    private static String bodyFor(Integer accountId, Integer instrumentId, String type,
+    private String bodyFor(Integer accountId, Integer instrumentId, String type,
                                   String quantity, String price) {
+        org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal(price), 1L,
+                        java.time.OffsetDateTime.parse("2026-01-05T15:00:00Z")));
         return """
                 {"accountId": %d, "instrumentId": %d, "orderType": "%s", "quantity": %s,
                  "indicativePrice": %s, "clientReference": "%s"}

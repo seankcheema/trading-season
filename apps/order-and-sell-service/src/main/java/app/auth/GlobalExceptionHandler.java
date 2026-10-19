@@ -46,4 +46,24 @@ public class GlobalExceptionHandler extends ApiExceptionHandler {
     public ResponseEntity<Map<String, String>> handleInstrumentNotFound(InstrumentNotFoundException ex) {
         return error(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
+
+
+    /** Maps temporary market outages without recording an order.
+     * @param ex unavailable quote
+     * @return 503 and a safe reason */
+    @ExceptionHandler(app.order.execution.ExecutionQuoteSource.QuoteUnavailableException.class)
+    public ResponseEntity<Map<String, String>> handleQuoteUnavailable(app.order.execution.ExecutionQuoteSource.QuoteUnavailableException ex) {
+        return error(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+    }
+
+    /** Returns safe service validation and lifecycle conflict messages.
+     * @param ex status and domain explanation
+     * @return requested HTTP status with a consistent error body */
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    public ResponseEntity<Map<String, String>> handleStatus(org.springframework.web.server.ResponseStatusException ex) {
+        return ResponseEntity.status(ex.getStatusCode()).body(Map.of("error", ex.getReason() == null ? "Order operation failed" : ex.getReason()));
+    }
+
 }
+
+

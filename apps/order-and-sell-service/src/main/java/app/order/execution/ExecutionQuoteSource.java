@@ -1,73 +1,61 @@
 package app.order.execution;
 
 import app.instrument.Instrument;
-import app.market.MarketReplayService;
-import app.market.MarketResponses.StockSnapshot;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import app.market.MarketResponses;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-
+import org.springframework.web.client.RestClient;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import java.net.http.HttpClient;
+import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.math.BigDecimal;
-import java.util.Optional;
 
-/**
- * Reads the price an instrument currently trades at, so a fill can be priced
- * against the market rather than the number the client submitted (BR-08).
- *
- * <p>The quote is the instrument's price in the shared market replay at its
- * current cursor, read through {@link MarketReplayService#snapshot(Long)} for
- * the newest completed session: the same price the Client UI shows beside
- * the order ticket. An instrument is quoted under its
- * {@code simulatedStockSymbol}, falling back to its ticker.
- *
- * <p>Whatever stops a quote being read (no seeded session, no replay frames,
- * a storage failure, or a symbol the replay does not carry) yields an empty
- * result; {@link OrderExecutionService} decides what that means for the order.
- */
+/** Reads the same authoritative replay clock the trading UI uses. */
 @Component
 public class ExecutionQuoteSource {
-
-    private static final Logger log = LoggerFactory.getLogger(ExecutionQuoteSource.class);
-
-    private final MarketReplayService marketReplayService;
-
-    /**
-     * Creates the quote source.
-     *
-     * @param marketReplayService the shared market replay this service also serves over HTTP
-     */
-    public ExecutionQuoteSource(MarketReplayService marketReplayService) {
-        this.marketReplayService = marketReplayService;
+    private final RestClient client;
+    /** Configures a bounded server-side market connection.
+     * @param baseUrl Holdings and Trade service origin */
+    public ExecutionQuoteSource(@Value("${app.execution.market-url:http://localhost:8082}") String baseUrl) {
+        var factory = new JdkClientHttpRequestFactory(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build());
+        factory.setReadTimeout(Duration.ofSeconds(5));
+        client = RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
     }
-
-    /**
-     * Returns the instrument's current market price.
-     *
-     * @param instrument the instrument being traded
-     * @return its price at the replay cursor, or empty when no quote can be read
-     */
-    public Optional<BigDecimal> currentPrice(Instrument instrument) {
-        String symbol = quotedSymbol(instrument);
+    /** Reads an instrument quote at the current authoritative cursor.
+     * @param instrument stock instrument
+     * @param sessionId optional session
+     * @return synchronized server quote
+     * @throws QuoteUnavailableException when market data is missing or invalid */
+    public Quote current(Instrument instrument, Long sessionId) {
         try {
-            return marketReplayService.snapshot(null).stocks().stream()
-                    .filter(stock -> stock.symbol().equals(symbol))
-                    .map(StockSnapshot::price)
-                    .findFirst();
-        } catch (RuntimeException unavailable) {
-            log.warn("No market quote for {}: {}", symbol, unavailable.getMessage());
-            return Optional.empty();
-        }
+            var snapshot = client.get().uri("/api/market/snapshot" + (sessionId == null ? "" : "?sessionId=" + sessionId))
+                    .retrieve().body(MarketResponses.Snapshot.class);
+            if (!isUsable(snapshot, sessionId)) throw new QuoteUnavailableException();
+            String symbol = instrument.getSimulatedStockSymbol();
+            if (symbol == null) throw new QuoteUnavailableException();
+            var stock = snapshot.stocks().stream().filter(s -> symbol.equalsIgnoreCase(s.symbol())).findFirst()
+                    .orElseThrow(QuoteUnavailableException::new);
+            if (stock.price() == null || stock.price().signum() <= 0 || !snapshot.marketTimestamp().equals(stock.timestamp()))
+                throw new QuoteUnavailableException();
+            return new Quote(stock.price(), snapshot.sessionId(), stock.timestamp().atOffset(ZoneOffset.UTC));
+        } catch (QuoteUnavailableException ex) { throw ex; }
+        catch (RuntimeException ex) { throw new QuoteUnavailableException(); }
     }
-
-    /**
-     * Returns the symbol the market replay quotes an instrument under.
-     *
-     * @param instrument the instrument being traded
-     * @return its {@code simulatedStockSymbol}, or its ticker when it has none
-     */
-    public static String quotedSymbol(Instrument instrument) {
-        return instrument.getSimulatedStockSymbol() != null
-                ? instrument.getSimulatedStockSymbol()
-                : instrument.getTicker();
+    private static boolean isUsable(MarketResponses.Snapshot snapshot, Long sessionId) {
+        if (snapshot == null || snapshot.marketTimestamp() == null || snapshot.stocks() == null) return false;
+        return sessionId == null || snapshot.sessionId() == sessionId;
+    }
+    /** An immutable authoritative quote.
+     * @param price market price
+     * @param sessionId simulation identifier
+     * @param timestamp simulated quote position */
+    public record Quote(BigDecimal price, long sessionId, OffsetDateTime timestamp) { }
+    /** Market data cannot currently authorize a trade. */
+    public static class QuoteUnavailableException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+        /** Creates a safe message for clients. */
+        public QuoteUnavailableException() { super("Market price unavailable. Please try again."); }
     }
 }

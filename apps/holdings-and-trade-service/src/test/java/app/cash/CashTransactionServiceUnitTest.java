@@ -181,8 +181,8 @@ class CashTransactionServiceUnitTest {
     void movingCashWithNoAccountToBookItAgainstIsNotFound() {
         when(userRepository.findByIdForUpdate(USER_ID))
                 .thenReturn(Optional.of(user(BigDecimal.TEN)));
-        when(accountRepository.findFirstByUserIdOrderByOpenedDateAscIdAsc(USER_ID))
-                .thenReturn(Optional.empty());
+        when(accountRepository.findByUserIdOrderByOpenedDateDesc(USER_ID))
+                .thenReturn(List.of());
 
         assertThrows(AccountNotFoundException.class,
                 () -> service.move(USER_ID, BigDecimal.ONE, "DEPOSIT", REF));
@@ -306,8 +306,9 @@ class CashTransactionServiceUnitTest {
         account.setUserId(USER_ID);
         account.setName("Main Account");
         account.setOpenedDate(LocalDate.of(2026, 1, 1));
-        when(accountRepository.findFirstByUserIdOrderByOpenedDateAscIdAsc(USER_ID))
-                .thenReturn(Optional.of(account));
+        when(accountRepository.findByUserIdOrderByOpenedDateDesc(USER_ID))
+                .thenReturn(List.of(account));
+        when(accountRepository.findByIdForUpdate(accountId)).thenReturn(Optional.of(account));
     }
 
     private static User user(BigDecimal funds) {
@@ -317,5 +318,20 @@ class CashTransactionServiceUnitTest {
         user.setLastName("Lovelace");
         user.setAvailableFunds(funds);
         return user;
+    }
+
+    @Test void withdrawalCannotSpendCashReservedForOpenBuyOrders() {
+        User user = user(new BigDecimal("100.00")); givenUserWithAccount(user, 7);
+        when(accountRepository.reservedCash(USER_ID)).thenReturn(new BigDecimal("80.00"));
+        assertThrows(InsufficientFundsException.class, () -> service.move(USER_ID, new BigDecimal("20.01"), "WITHDRAWAL", REF));
+        assertEquals(new BigDecimal("100.00"), user.getAvailableFunds());
+        verify(cashTransactionRepository, never()).save(any(CashTransaction.class));
+    }
+    @Test void withdrawalAtUnreservedBoundarySucceeds() {
+        User user = user(new BigDecimal("100.00")); givenUserWithAccount(user, 7);
+        when(accountRepository.reservedCash(USER_ID)).thenReturn(new BigDecimal("80.00"));
+        when(cashTransactionRepository.save(any(CashTransaction.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        service.move(USER_ID, new BigDecimal("20.00"), "WITHDRAWAL", REF);
+        assertEquals(new BigDecimal("80.00"), user.getAvailableFunds());
     }
 }

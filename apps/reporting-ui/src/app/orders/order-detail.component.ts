@@ -24,7 +24,8 @@ import { SkeletonFactsComponent } from '../shared/skeleton.component';
 const STATUS_NOTES: Record<OrderStatus, string> = {
   FILLED: 'Executed at the market quote; holdings and cash posted.',
   PENDING: 'Submitted and waiting to be validated.',
-  ACCEPTED: 'Validated and waiting for a market quote.',
+  ACCEPTED: 'Open; waiting for execution conditions or cancellation.',
+  CANCELLED: 'Cancelled before execution; reserved resources released.',
   REJECTED: 'Failed validation; no fill, cash or holdings were posted.',
 };
 
@@ -339,7 +340,15 @@ export class OrderDetailComponent {
         { label: 'Account', value: order.accountName },
       ]),
       facts('Execution', [
+        { label: 'Order type', value: order.executionType?.replaceAll('_', '-') ?? 'MARKET' },
         { label: 'Quantity', value: count(order.quantity) },
+        { label: 'Reference quote', value: money(order.referencePrice ?? null) },
+        { label: 'Limit price', value: money(order.limitPrice ?? null) },
+        { label: 'Stop price', value: money(order.stopPrice ?? null) },
+        { label: 'Trigger price', value: money(order.triggerPrice ?? null) },
+        { label: 'Triggered', value: daySeconds(order.triggeredAt ?? null) },
+        { label: 'Reserved cash', value: money(order.reservedCash ?? null) },
+        { label: 'Reserved shares', value: order.reservedShares == null ? '—' : count(order.reservedShares) },
         { label: 'Fill price', value: money(order.price) },
         { label: 'Fill ID', value: fill ? `#${fill.fillId}` : '—' },
         { label: 'Indicative price', value: money(order.indicativePrice) },

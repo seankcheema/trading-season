@@ -21,13 +21,15 @@
 .history-grid {
   grid-template-columns:
     1.25rem
-    minmax(0, 1.4fr)
+    minmax(0, 1.2fr)
+    minmax(0, 1.1fr)
+    minmax(0, 1fr)
     minmax(0, 0.8fr)
-    minmax(0, 0.95fr)
-    minmax(0, 0.6fr)
+    minmax(0, 0.55fr)
     minmax(0, 0.75fr)
     minmax(0, 0.85fr)
-    minmax(0, 1fr);
+    minmax(0, 0.95fr)
+    2rem;
 }
 
 .audit-entry:not(:last-child)::before {

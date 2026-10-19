@@ -147,13 +147,13 @@ A role change takes effect at the account's next sign-in or token refresh. See [
 
 The screens reproduce the TradingSeason design system's reporting console: the sidebar shell, Activity, Customers, the customer page, Orders and the order dialog, with the kit's layout, spacing, type and copy. The design system export itself is not checked in.
 
-The tokens are declared in [src/styles.css](src/styles.css) with the same values as the Client UI's dark theme, and Tailwind v4 maps them to utilities. Text takes the font's own line height, as the kit does. The kit's components are ported once, in [src/app/shared](src/app/shared):
+The tokens are declared in [src/styles.css](src/styles.css) with the same values as the Client UI's two themes (see [Theme](#theme)), and Tailwind v4 maps them to utilities. Text takes the font's own line height, as the kit does. The kit's components are ported once, in [src/app/shared](src/app/shared):
 
 | Kit component | Here |
 | --- | --- |
 | ChangePill, status tags | [change-pill.component.ts](src/app/shared/change-pill.component.ts) |
 | TimeframeToggle | [timeframe-toggle.component.ts](src/app/shared/timeframe-toggle.component.ts) |
-| HeaderDropdown with the export menu | [export-menu.component.ts](src/app/shared/export-menu.component.ts): CSV of the rows on screen, or PDF through the print dialog; see [Export PDF](#export-pdf) |
+| HeaderDropdown with the export menu | [export-menu.component.ts](src/app/shared/export-menu.component.ts): CSV of the rows on screen, or PDF through the print dialog; see [Export PDF](#export-pdf). On Activity the CSV is every order placed in the chosen range, fetched from the Reporting Service when it is asked for, not the status split on screen |
 | Select with a caption | [filter-select.component.ts](src/app/shared/filter-select.component.ts) |
 | PriceChart | [line-chart.component.ts](src/app/shared/line-chart.component.ts) |
 | Sparkline | [sparkline.component.ts](src/app/shared/sparkline.component.ts) |
@@ -189,12 +189,23 @@ The kit is a proposal drawn on sample data. Where the product has no such data, 
 | The chart row holds Notional traded and Orders by status | A third card, Client segments: each trader level's notional and its share, traders and orders in the range | The business requirements ask for activity by client segment, which the kit predates |
 | Three sidebar entries | A fourth, Report runs, and for an analyst only that one | The scheduled reports built from the Kafka topic are a product requirement the kit predates |
 | No way to sign out | A log out button beside the signed-in user | The kit does not draw one |
+| Dark only | A light theme as well, switched beside log out and on the sign-in page | Asked for; see [Theme](#theme) |
 | No loading state | Placeholders in the screen's layout while its first load is in flight | The kit is drawn on sample data, which is never on its way |
 | Most traded shows a price sparkline under "Today" whatever the range | The column is named after the chosen range and plots the symbol's fill prices in it | The label follows what is plotted |
 
-Report runs is not in the kit. It is built from the kit's vocabulary as Activity uses it: the headline tiles, cards, the 6px bars of Orders by status, and filled orders in the gain color with rejected ones in the loss color. Its header carries the range toggle Activity has, with the same five ranges, and it opens on 7D and afterwards on the range last chosen in this browser, which it remembers apart from Activity's. Its figures are drawn in the page from what the service answers for the latest run over that range: the run's `report.json` for all time, with days in UTC, and for a narrower range the service's cut of the same run in the viewer's days, ending when the run was generated. The days of Trades per day are also given to screen readers as a table that names the zone, and the column under the pointer is read out above the chart. The PNG charts the Reporting Service renders, in the same surface and colors, are the downloads, for the range on screen, and a file of a narrower range carries the range in its name. When a run is more than a minute late the header says Overdue with the time it was expected, which is how a consumer that is not running shows; a run on time shows nothing there.
+Report runs is not in the kit. It is built from the kit's vocabulary as Activity uses it: the headline tiles, cards, the 6px bars of Orders by status, and filled orders in the gain color with rejected ones in the loss color. Its header carries the range toggle Activity has, with the same five ranges, and it opens on 7D and afterwards on the range last chosen in this browser, which it remembers apart from Activity's. Its figures are drawn in the page from what the service answers for the latest run over that range: the run's `report.json` for all time, with days in UTC, and for a narrower range the service's cut of the same run in the viewer's days, ending when the run was generated. The days of Trades per day are also given to screen readers as a table that names the zone, and the column under the pointer is read out above the chart. The PNG charts the Reporting Service renders, in the light theme's surface and colors whatever the theme on screen, are the downloads, for the range on screen, and a file of a narrower range carries the range in its name. When a run is more than a minute late the header says Overdue with the time it was expected, which is how a consumer that is not running shows; a run on time shows nothing there.
 
 This app does not use the Client UI's [shared-ui-components](../client-ui/shared-ui-components/README.md). Its own markup is styled directly from the tokens, so that library still has one consumer.
+
+### Theme
+
+The screens come in the design system's dark theme, which is the default, and a light one. The switch is the sun or moon button beside log out in the sidebar, and at the top right of the sign-in page. It works as the [Client UI's](../client-ui/README.md#themes) does:
+
+- [src/styles.css](src/styles.css) declares the light tokens on `:root` and the dark ones on `:root.dark`, with the Client UI's values. Gain, loss and pending are darker in light so that they read as text on a white card.
+- [ThemeService](src/app/core/theme/theme.service.ts) adds or removes the `dark` class on `<html>` and keeps the choice in this browser's `localStorage` under `ts.settings.theme`; other open tabs follow it. A script in [src/index.html](src/index.html) applies a saved light theme before the first paint, so a reload does not flash dark.
+- Everything the app hands out is light, whatever the theme on screen: the dark tokens are declared for `@media screen` only, so [Export PDF](#export-pdf) prints with the light ones, and the Reporting Service draws the chart PNGs in the light colors. CSV files carry no colors.
+
+Use a token, not a literal color, in new markup: a literal looks right in one theme only.
 
 ### Export PDF
 
@@ -203,7 +214,7 @@ Export PDF, on every screen, prints the screen through the browser's print dialo
 - The page is 1376 by 973 CSS pixels, A4's landscape proportions, so the content is as wide as a laptop window and still fits paper. In print every breakpoint counts as reached, because a width query in print answers for the sheet the browser has in mind and not for that page; the breakpoint variants are redefined in the stylesheet to say so.
 - The sidebar, the Export and Refresh buttons and the download links are left out. A line at the top, shown only in print, carries the product name, when the export was made and who made it. The Activity range and the filters of Orders and Customers stay, so the document says what it covers.
 - Nothing scrolls or clips: every list and table is printed whole, over as many pages as it needs. A card stays on one page; a card that holds a list breaks between its rows.
-- The dark theme is kept, and the page margins are covered in the app's background so no frame shows around a page.
+- The printout is in the light theme whatever the theme on screen, and the page margins are covered in its background so no frame shows around a page.
 
 In the print dialog choose "Save as PDF". The dialog's own Paper size and Margins are overridden by the page the stylesheet sets. A table that runs over several pages does not repeat its column headings, because the tables are grids and not HTML tables.
 
@@ -238,9 +249,13 @@ The production [Dockerfile](Dockerfile) builds the app and serves it through unp
 ## Tests
 
 `*.spec.ts` beside the code under `src`, on the Angular unit-test builder with Vitest. The run fails below 90 percent on statements, branches, functions, or lines (`coverageThresholds` in [angular.json](angular.json)). Add `--coverage` for the report. Shared test data and DOM helpers live in [src/testing](src/testing) and are excluded from the application build.
+
+[vitest.config.ts](vitest.config.ts) limits the fork pool with Vitest 4's `maxWorkers: 1` and disables file parallelism. Jenkins runs this suite alongside other CPU-heavy stages; keeping test files sequential avoids competing workers causing test timeouts.
 ### Integration tests
 
 Playwright specs in [e2e](e2e) drive the built app in Chromium against the real Reporting Service, so they check the screens, the service's read model and report run, and its access rules together. Only the two things the service does not itself provide are replaced: Kafka, and the Auth Service.
+
+[playwright.config.ts](playwright.config.ts) allows assertions up to ten seconds while both browser suites share the Jenkins agent. CI still fails on a flaky test that passes only on retry.
 
 ```mermaid
 flowchart LR
@@ -276,3 +291,5 @@ In the [Jenkins pipeline](../../infrastructure/README.md#jenkins) the suite runs
 - Report runs counts an order in a range by when it resolved and Activity by when it was placed, and Report runs stops at the run's generation time, so the two screens can differ by the orders of the last minutes. Today is a single column of Trades per day, where Activity plots it by the hour. A new run can replace the one on screen up to 30 seconds before the page learns of it; a chart downloaded in that gap is taken from the new run, and the page moves on to it.
 - Trades per day plots the days that have a resolved order, side by side. A day without one is left out, not drawn as a gap.
 - Users are not signed out for inactivity, unlike the Client UI.
+
+Order detail includes execution conditions, submission reference quote, trigger time and outstanding reservations. Order filters include CANCELLED. These values come from the Reporting Service contract and Kafka projection.

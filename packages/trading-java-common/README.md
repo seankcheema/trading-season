@@ -18,10 +18,12 @@ A class belongs here when it is the same in both services, or when the only diff
 
 - `SecurityConfig` extends `ResourceServerSecurity` and names the endpoints only that service leaves public.
 - `GlobalExceptionHandler` extends `ApiExceptionHandler` and adds the failures only that service raises.
-- Each `Account`, `CashTransaction`, `HoldingMovement`, `Instrument` and `TermsAcceptance` extends its `...Base` mapped superclass.
+- Each `Account`, `CashTransaction`, `HoldingMovement`, `Instrument` and `TermsAcceptance` extends its `...Base` mapped superclass. `AccountBase` owns the common identity, balance, currency, lifecycle status and archive time; Holdings and Trade adds the account name.
 - Each `UserService` extends `UserLookupService`.
 
 Shared classes may refer to classes that exist in both services under the same name and package (`app.record.PlatformRecord`, `app.user.UserRepository`, `app.Main`); the shared tests may use the same. Neither service can be compiled without this directory, and this directory cannot be compiled by itself.
+
+Order execution catch-up (`ExecutionTickSource`) belongs to Order and Sell, alongside its quote model and evaluator. It consumes the shared market storage interface without making the shared source depend on order execution classes.
 
 ## Working on it
 

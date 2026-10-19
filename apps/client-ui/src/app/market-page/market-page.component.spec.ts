@@ -1,3 +1,6 @@
+import { SELECTED_ACCOUNT_STORAGE_KEY } from '../dashboard/accounts/account-store.service';
+import { ExecutionSettingsService } from '../dashboard/settings-dialog/execution-settings.service';
+import { of as savedExecutionPreference } from 'rxjs';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { OrderResult } from '../dashboard/orders/order.models';
@@ -19,6 +22,7 @@ import { MarketPageComponent } from './market-page.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
 import { AuthService } from '../core/auth/auth.service';
 import { ToastService } from '../notifications/toast.service';
+import { OrderService } from '../dashboard/orders/order.service';
 
 const SNAPSHOT: MarketSnapshot = {
   sessionId: 7,
@@ -85,9 +89,17 @@ describe('MarketPageComponent', () => {
     orders: OrderResult[] = [],
     profile: { termsAccepted?: boolean } = {},
   ): Promise<ComponentFixture<MarketPageComponent>> {
+    // The account this tab chose earlier, as AccountStore keeps it; never a URL parameter.
+    if (accountId) {
+      sessionStorage.setItem(SELECTED_ACCOUNT_STORAGE_KEY, accountId);
+    }
     await TestBed.configureTestingModule({
       imports: [MarketPageComponent],
       providers: [
+        {
+          provide: ExecutionSettingsService,
+          useValue: { load: () => savedExecutionPreference({ executionBufferPercent: 0 }) },
+        },
         provideRouter([]),
         provideHttpClient(),
         provideHttpClientTesting(),
@@ -96,7 +108,7 @@ describe('MarketPageComponent', () => {
           provide: ActivatedRoute,
           useValue: {
             paramMap: of(convertToParamMap({ symbol })),
-            queryParamMap: of(convertToParamMap({ compare, accountId })),
+            queryParamMap: of(convertToParamMap({ compare })),
           },
         },
         { provide: MarketDataService, useValue: marketData },
@@ -133,6 +145,7 @@ describe('MarketPageComponent', () => {
   }
 
   beforeEach(() => {
+    sessionStorage.clear();
     vi.clearAllMocks();
     marketData.candles.mockImplementation(
       (_sessionId: number, symbol: string, timeframe: Timeframe) =>
@@ -169,7 +182,9 @@ describe('MarketPageComponent', () => {
       serverTimestamp: '2026-01-05T15:01:10Z',
       prices: [{ symbol: 'AAPL', price: 230, sequenceNumber: 2 }],
     });
-    expect(fixture.componentInstance['instruments']().find((stock) => stock.symbol === 'AAPL')?.price).toBe(230);
+    expect(
+      fixture.componentInstance['instruments']().find((stock) => stock.symbol === 'AAPL')?.price,
+    ).toBe(230);
     fixture.destroy();
     expect(disconnect).toHaveBeenCalledTimes(2);
   });
@@ -181,9 +196,12 @@ describe('MarketPageComponent', () => {
     marketData.candles.mockImplementationOnce(() => pending);
     fixture.componentInstance['candleRevision'].update((revision) => revision + 1);
     fixture.detectChanges();
-    expect(fixture.debugElement.query(By.directive(PriceChartComponent)).componentInstance).toBe(chart);
-    const status = [...fixture.nativeElement.querySelectorAll('[role="status"]')]
-      .find((element: HTMLElement) => element.textContent?.includes('Updating chart'));
+    expect(fixture.debugElement.query(By.directive(PriceChartComponent)).componentInstance).toBe(
+      chart,
+    );
+    const status = [...fixture.nativeElement.querySelectorAll('[role="status"]')].find(
+      (element: HTMLElement) => element.textContent?.includes('Updating chart'),
+    );
     expect(status?.classList.contains('sr-only')).toBe(true);
     pending.complete();
     fixture.destroy();
@@ -210,16 +228,15 @@ describe('MarketPageComponent', () => {
     ).toBe(true);
   });
 
-  it('opens notifications and the dashboard profile actions from the header', async () => {
+  it('opens the dashboard profile actions from the header, which has no notifications bell', async () => {
     const fixture = await setup();
     const header = fixture.nativeElement.querySelector('header');
     const profile = header.querySelector('[data-testid="profile-dropdown"]');
     expect(profile.querySelector('[data-testid="profile-initials"]').textContent.trim()).toBe(
       fixture.componentInstance['accountStore'].initials(),
     );
-    header.querySelector('[data-testid="notifications-dropdown"] summary').click();
-    fixture.detectChanges();
-    expect(header.textContent).toContain('No notifications yet.');
+    expect(header.querySelector('[data-testid="notifications-dropdown"]')).toBeNull();
+    expect(header.querySelector('[aria-label="Open notifications"]')).toBeNull();
     profile.querySelector('summary').click();
     fixture.detectChanges();
     profile.querySelector('button').click();
@@ -228,13 +245,33 @@ describe('MarketPageComponent', () => {
     expect(fixture.componentInstance['openHeaderDropdown']()).toBeNull();
 
     const logout = vi.spyOn(TestBed.inject(AuthService), 'logout').mockReturnValue(of(undefined));
-    const navigateToLogin = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+    const navigateToLogin = vi
+      .spyOn(TestBed.inject(Router), 'navigateByUrl')
+      .mockResolvedValue(true);
     profile.querySelectorAll('button')[1].click();
     expect(logout).toHaveBeenCalledOnce();
     expect(navigateToLogin).toHaveBeenCalledWith('/login');
   });
 
-  it('shows shared cash and the selected portfolio in the account box above execution', async () => {
+  it('preserves the order draft while switching away from Trading', async () => {
+    const fixture = await setup();
+    const root = fixture.nativeElement as HTMLElement;
+    const ticket = root.querySelector('app-trade-ticket');
+    const quantity = root.querySelector('#future-trade-quantity') as HTMLInputElement;
+    quantity.value = '3';
+    quantity.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    fixture.componentInstance['insightTab'].set('recent-orders');
+    fixture.detectChanges();
+    expect(root.querySelector('app-trade-ticket')).toBe(ticket);
+    expect((root.querySelector('.trading-content') as HTMLElement).hidden).toBe(true);
+    fixture.componentInstance['insightTab'].set('trading');
+    fixture.detectChanges();
+    expect(quantity.value).toBe('3');
+    expect((root.querySelector('.trading-content') as HTMLElement).hidden).toBe(false);
+  });
+
+  it('shows shared cash and the selected portfolio in the Trading tab', async () => {
     const fixture = await setup();
     const panel = fixture.nativeElement.querySelector('[data-testid="account-value-panel"]');
     expect(panel.querySelector('[data-testid="available-cash"]').textContent).toContain(
@@ -243,8 +280,13 @@ describe('MarketPageComponent', () => {
     expect(panel.querySelector('[data-testid="account-portfolio-value"]').textContent).toContain(
       '$1,129.00',
     );
-    expect(fixture.nativeElement.querySelector('header app-account-control')).toBeNull();
-    expect(panel.querySelector('app-account-control')).not.toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('app-market-clock-control').nextElementSibling.tagName,
+    ).toBe('APP-ACCOUNT-CONTROL');
+    expect(panel.querySelector('app-account-control')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[role=tab][aria-selected=true]').textContent.trim(),
+    ).toBe('Trading');
     fixture.componentInstance['selectAccount'](2);
     fixture.detectChanges();
     expect(panel.querySelector('[data-testid="account-portfolio-value"]').textContent).toContain(
@@ -452,6 +494,49 @@ describe('MarketPageComponent', () => {
     expect(fixture.nativeElement.querySelector('#chart-mode-picker')).not.toBeNull();
   });
 
+  it('positions the comparison menu under its trigger', async () => {
+    const fixture = await setup();
+    (
+      fixture.nativeElement.querySelector('[aria-controls="comparison-picker"]') as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+
+    fixture.componentInstance['positionToolbarMenu']();
+
+    expect(fixture.componentInstance['openToolbarMenu']()).toBe('comparison');
+    expect(fixture.componentInstance['toolbarMenuPosition']().top).toBeGreaterThanOrEqual(0);
+  });
+
+  it('refreshes balances and reports a rejection when a pending order resolves', async () => {
+    const fixture = await setup('aapl', '', '2');
+    const refresh = stubRefresh(fixture);
+    const resolved = TestBed.inject(OrderService).pendingResolved;
+
+    resolved.next(order({ accountId: 1, status: 'FILLED' }));
+    expect(refresh).toHaveBeenLastCalledWith(1);
+    expect(TestBed.inject(ToastService).messages()).toHaveLength(0);
+
+    resolved.next(
+      order({ accountId: undefined, status: 'REJECTED', rejectionReason: 'Out of funds' }),
+    );
+    expect(refresh).toHaveBeenLastCalledWith(2);
+    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Out of funds');
+
+    resolved.next(order({ accountId: undefined, status: 'REJECTED', rejectionReason: null }));
+    expect(TestBed.inject(ToastService).messages().at(-1)?.message).toBe('Order rejected.');
+  });
+
+  it('skips the balance refresh when a resolved order has no account to refresh', async () => {
+    const fixture = await setup();
+    const store = fixture.componentInstance['accountStore'];
+    vi.spyOn(store, 'selectedAccountId').mockReturnValue(null);
+    const refresh = stubRefresh(fixture);
+
+    TestBed.inject(OrderService).pendingResolved.next(order({ accountId: undefined }));
+
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
   it('renders the streamlined header and demo market metrics', async () => {
     const fixture = await setup();
     const text = fixture.nativeElement.textContent as string;
@@ -488,93 +573,25 @@ describe('MarketPageComponent', () => {
     ) as HTMLButtonElement;
 
     expect(getComputedStyle(header).position).toBe('relative');
-    expect(Number(getComputedStyle(header).zIndex)).toBeGreaterThan(30);
+    // Above the chart menus (40) so its own dropdowns open over the page, but below the
+    // dialog backdrops (50) so a dialog covers the header too.
+    expect(Number(getComputedStyle(header).zIndex)).toBeGreaterThan(40);
+    expect(Number(getComputedStyle(header).zIndex)).toBeLessThan(50);
     expect(header.classList).not.toContain('border-b');
     expect(profile.classList).toContain('border-border');
     expect(profile.className).not.toContain('border-primary');
   });
 
-  it('renders overview and news feeds plus an empty AI chat state', async () => {
-    const fixture = await setup();
-    expect(fixture.nativeElement.textContent).not.toContain('Current market read');
-    expect(fixture.nativeElement.textContent).toContain('Short-term risk');
-    expect(fixture.nativeElement.textContent).toContain('Popularity');
-    expect(fixture.nativeElement.textContent).toContain('Sentiment');
-    expect(fixture.nativeElement.textContent).toContain('Bullish');
-    expect(fixture.nativeElement.querySelectorAll('.overview-card')).toHaveLength(6);
-    expect(fixture.nativeElement.querySelectorAll('.overview-card-icon')).toHaveLength(4);
-    expect(fixture.nativeElement.querySelectorAll('[role="progressbar"]')).toHaveLength(4);
-    expect(fixture.nativeElement.querySelectorAll('.overview-progress span')).toHaveLength(20);
-    expect(fixture.nativeElement.querySelector('.overview-summary')?.textContent).toContain(
-      'AAPL shows steady strength, elevated activity, and positive sentiment',
-    );
-    expect(fixture.nativeElement.querySelector('.overview-summary')?.textContent).toContain(
-      'Signal scores are illustrative',
-    );
-    expect(
-      fixture.nativeElement
-        .querySelector('[aria-label="Short-term risk level"]')
-        ?.getAttribute('aria-valuenow'),
-    ).toBe('3');
-    expect(fixture.nativeElement.querySelector('[aria-label="Key level strength"]')).toBeNull();
-    expect(fixture.nativeElement.querySelector('[aria-label="Activity level"]')).toBeNull();
-    expect(fixture.nativeElement.querySelector('.overview-risk')?.textContent).toContain(
-      'Moderate',
-    );
-    expect(fixture.nativeElement.textContent).not.toContain('Reconnecting');
-    const tabs = Array.from(
-      fixture.nativeElement.querySelectorAll('[role="tab"]'),
-    ) as HTMLButtonElement[];
-    expect(tabs.find((tab) => tab.textContent?.trim() === 'Overview')?.classList).toContain(
-      'bg-primary',
-    );
-    tabs.find((tab) => tab.textContent?.trim() === 'News')?.click();
-    fixture.detectChanges();
-    expect(tabs.find((tab) => tab.textContent?.trim() === 'News')?.classList).toContain(
-      'bg-primary',
-    );
-    expect(fixture.nativeElement.textContent).toContain('Latest headlines');
-    expect(fixture.nativeElement.querySelector('.news-hero')).toBeNull();
-    expect(fixture.nativeElement.querySelectorAll('.news-story').length).toBe(5);
-    expect(fixture.nativeElement.querySelector('.news-story')?.textContent).toContain(
-      'AAPL holds near its session high',
-    );
-    expect(fixture.nativeElement.textContent).toContain('Market update');
-    expect(fixture.nativeElement.textContent).toContain('Sector watch');
-    expect(fixture.nativeElement.textContent).toContain('Company outlook');
-    expect(fixture.nativeElement.textContent).toContain('Macroeconomy');
-    expect(fixture.nativeElement.textContent).toContain('Earnings');
-    expect(fixture.nativeElement.querySelectorAll('.news-arrow')).toHaveLength(5);
-    tabs.find((tab) => tab.textContent?.trim() === 'AI')?.click();
-    fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Ask about AAPL');
-    expect(fixture.nativeElement.textContent).toContain('Explore the chart');
-    expect(fixture.nativeElement.querySelector('[aria-label="Ask market AI"]')).not.toBeNull();
-    expect(fixture.nativeElement.querySelectorAll('.insight-item').length).toBe(0);
-    expect(fixture.nativeElement.querySelectorAll('[aria-hidden="true"]')).not.toHaveLength(0);
-  });
-
-  it('submits a prompt from the AI chat composer', async () => {
+  it('offers only the Trading and Recent Orders tabs in the market tools', async () => {
     const fixture = await setup();
     const tabs = Array.from(
       fixture.nativeElement.querySelectorAll('[role="tab"]'),
     ) as HTMLButtonElement[];
-    tabs.find((tab) => tab.textContent?.trim() === 'AI')?.click();
-    fixture.detectChanges();
-
-    const input = fixture.nativeElement.querySelector(
-      '[aria-label="Ask market AI"]',
-    ) as HTMLInputElement;
-    input.value = 'Explain today’s volume';
-    input.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
-    (
-      fixture.nativeElement.querySelector('[aria-label="Send question"]') as HTMLButtonElement
-    ).click();
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.textContent).toContain('Explain today’s volume');
-    expect(fixture.nativeElement.textContent).toContain('simulated session');
+    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual(['Trading', 'Recent Orders']);
+    expect(tabs[0].classList).toContain('bg-primary');
+    expect(fixture.nativeElement.querySelector('[aria-label="Ask market AI"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.overview-summary')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.news-story')).toBeNull();
   });
 
   it('includes recent orders and expands the chart when tools are collapsed', async () => {
@@ -622,6 +639,29 @@ describe('MarketPageComponent', () => {
     const charts = fixture.debugElement.queryAll(By.directive(PriceChartComponent));
     expect(charts).toHaveLength(2);
     expect(charts.every((chart) => chart.componentInstance.candles().length === 1)).toBe(true);
+  });
+
+  it.each([2.04, -3.5, 0])('formats comparison dollar changes for %s', async (change) => {
+    marketData.snapshot.mockReturnValueOnce(
+      of({
+        ...SNAPSHOT,
+        stocks: SNAPSHOT.stocks.map((stock) => ({ ...stock, change })),
+      }),
+    );
+    const fixture = await setup('aapl', 'msft');
+    const sections = fixture.nativeElement.querySelectorAll('.comparison-chart');
+    expect(sections).toHaveLength(2);
+    const expected = change === 0 ? '$0.00' : change < 0 ? '-$3.50' : '$2.04';
+    sections.forEach((section: HTMLElement, index: number) => {
+      const header = section.querySelector(
+        '.comparison-price-label-left, .comparison-price-label-right',
+      );
+      expect(header?.closest('.chart-toolbar')).not.toBeNull();
+      expect(section.querySelector('.chart-indicator-key')).toBeNull();
+      expect(header?.textContent).toContain(index === 0 ? 'AAPL' : 'MSFT');
+      expect(header?.textContent).toContain(expected);
+      expect(header?.textContent).toContain('%');
+    });
   });
 
   it('opens the comparison picker and writes the selected peer to the URL', async () => {
@@ -803,7 +843,7 @@ describe('MarketPageComponent', () => {
     expect(skeleton.querySelector('.tools-column')?.getAttribute('aria-hidden')).toBe('true');
     expect(skeleton.querySelectorAll('.market-metrics > div')).toHaveLength(7);
     expect(skeleton.querySelector('.chart-stage .skeleton')).not.toBeNull();
-    expect(skeleton.querySelectorAll('[data-testid="activity-row-skeleton"]')).toHaveLength(5);
+    expect(skeleton.querySelector('[data-testid="trading-skeleton"]')).not.toBeNull();
     expect(root.querySelector('app-price-chart')).toBeNull();
     expect(root.querySelector('app-trade-ticket')).toBeNull();
 
@@ -835,7 +875,14 @@ describe('MarketPageComponent', () => {
       timeframe: '1D',
       marketTimestamp: SNAPSHOT.marketTimestamp,
       points: [
-        { timestamp: '2026-01-05T15:00:00Z', open: 224, high: 226, low: 223, close: 225, volume: 1000 },
+        {
+          timestamp: '2026-01-05T15:00:00Z',
+          open: 224,
+          high: 226,
+          low: 223,
+          close: 225,
+          volume: 1000,
+        },
       ],
     });
     fixture.detectChanges();
@@ -918,6 +965,10 @@ describe('MarketPageComponent', () => {
       ...overrides,
     };
   }
+  function stubRefresh(fixture: ComponentFixture<MarketPageComponent>) {
+    const page = fixture.componentInstance as unknown as { refreshBalances(id: number): void };
+    return vi.spyOn(page, 'refreshBalances').mockImplementation(() => undefined);
+  }
   function editQuantity(fixture: ComponentFixture<MarketPageComponent>, quantity: string) {
     const input = fixture.nativeElement.querySelector('#future-trade-quantity') as HTMLInputElement;
     input.value = quantity;
@@ -946,7 +997,7 @@ describe('MarketPageComponent', () => {
       simulatedAt: '2026-01-05T15:01:00.000Z',
     });
     expect(req.request.body.clientReference).toBeTruthy();
-    req.flush(order({ accountId: 2, fillPrice: 226.1 }));
+    req.flush(order({ accountId: 2, executionPrice: 226.1 }));
     http
       .expectOne('/api/accounts/2/holdings')
       .flush([{ symbol: 'AAPL', quantity: 2, averageCost: 225.8 }]);
@@ -958,6 +1009,20 @@ describe('MarketPageComponent', () => {
     expect(fixture.componentInstance['orderMessage']()).toBe('');
     expect(fixture.nativeElement.querySelector('app-trade-ticket [role="status"]')).toBeNull();
     expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 2 AAPL at $226.10.');
+    http.verify();
+  });
+  it('reports an accepted order that is still open', async () => {
+    const fixture = await setup('aapl', '', '2');
+    const http = TestBed.inject(HttpTestingController);
+    editQuantity(fixture, '2');
+    buy(fixture);
+    http.expectOne('/api/orders').flush(order({ accountId: 2, status: 'ACCEPTED' }));
+    http.expectOne('/api/accounts/2/holdings').flush([]);
+    http.expectOne('/api/users/me').flush({ availableFunds: 9000 });
+    fixture.detectChanges();
+    expect(TestBed.inject(ToastService).messages()[0].message).toBe(
+      'Market buy order placed for 2 AAPL.',
+    );
     http.verify();
   });
   it('sells all owned shares and displays the execution immediately', async () => {
@@ -1051,7 +1116,7 @@ describe('MarketPageComponent', () => {
     expect(c['recentOrders']()[0].key).toBe('order-41');
     TestBed.inject(HttpTestingController).expectNone((r) => r.method === 'POST');
   });
-  it('falls back to the first owned account for invalid account links', async () => {
+  it('falls back to the first owned account when the saved one is not owned', async () => {
     const fixture = await setup('aapl', '', '999');
     expect(fixture.componentInstance['accountStore'].selectedAccountId()).toBe(1);
   });
@@ -1197,9 +1262,12 @@ describe('MarketPageComponent', () => {
       fixture.detectChanges();
 
       (termsDialog(fixture)!.querySelector('button[type="submit"]') as HTMLButtonElement).click();
-      TestBed.inject(HttpTestingController)
-        .expectOne('/api/users/me/terms-acceptance')
-        .flush({ firstName: 'Ada', lastName: 'Lovelace', availableFunds: 10000, termsAccepted: true });
+      TestBed.inject(HttpTestingController).expectOne('/api/users/me/terms-acceptance').flush({
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        availableFunds: 10000,
+        termsAccepted: true,
+      });
       fixture.detectChanges();
 
       expect(termsDialog(fixture)).toBeNull();
@@ -1220,6 +1288,155 @@ describe('MarketPageComponent', () => {
 
       expect(logout).toHaveBeenCalledOnce();
       expect(navigateToLogin).toHaveBeenCalledWith('/login');
+    });
+  });
+
+  describe('routing, accounts and refresh failures', () => {
+    const lastHandlers = () => marketData.connect.mock.calls.at(-1)![1] as MarketStreamHandlers;
+
+    it('redirects a symbol that is not in canonical form without loading it', async () => {
+      await setup('AAPL');
+      expect(navigate).toHaveBeenCalledWith(['/dashboard/markets', 'aapl'], {
+        queryParamsHandling: 'preserve',
+        replaceUrl: true,
+      });
+      expect(marketData.snapshot).not.toHaveBeenCalled();
+    });
+
+    it('rewrites a comparison that is not in canonical form', async () => {
+      await setup('aapl', 'MSFT');
+      expect(navigate).toHaveBeenCalled();
+      const [, extras] = navigate.mock.calls.at(-1)!;
+      expect(extras.queryParams).toEqual({ compare: 'msft' });
+    });
+
+    it('selects, creates and renames accounts through the store and closes the menu', async () => {
+      const fixture = await setup();
+      const component = fixture.componentInstance;
+      component['openHeaderDropdown'].set('account' as never);
+      component['selectAccount'](2);
+      expect(component['openHeaderDropdown']()).toBeNull();
+      component['selectAccount'](999);
+
+      component['openHeaderDropdown'].set('account' as never);
+      component['openCreateAccount']();
+      expect(component['accountDialog']()).toEqual({ account: null });
+      expect(component['openHeaderDropdown']()).toBeNull();
+
+      const owned = { accountId: 2, name: 'Retirement', openedDate: '2026-01-01' };
+      component['openHeaderDropdown'].set('account' as never);
+      component['openRenameAccount'](owned);
+      expect(component['accountDialog']()).toEqual({ account: owned });
+      component['accountDialog'].set(null);
+      component['openRenameAccount']({ accountId: 404, name: 'Nope', openedDate: '2026-01-01' });
+      expect(component['accountDialog']()).toBeNull();
+
+      component['onAccountSaved'](owned);
+      expect(component['accountDialog']()).toBeNull();
+    });
+
+    it('navigates to another instrument and keeps a different comparison', async () => {
+      const fixture = await setup('aapl', 'msft');
+      const component = fixture.componentInstance;
+      const instrument = component['instruments']().find((item) => item.symbol === 'MSFT')!;
+      component['selectInstrument'](instrument);
+      expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: null });
+      component['selectInstrument'](component['instruments']().find((item) => item.symbol === 'AAPL')!);
+      expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: 'msft' });
+    });
+
+    it('reflects stream connection status and reloads the snapshot on resync', async () => {
+      const fixture = await setup();
+      const handlers = lastHandlers();
+      handlers.status(true);
+      expect(fixture.componentInstance['connected']()).toBe(true);
+      handlers.status(false);
+      expect(fixture.componentInstance['connected']()).toBe(false);
+      const calls = marketData.snapshot.mock.calls.length;
+      handlers.resync();
+      expect(marketData.snapshot.mock.calls.length).toBe(calls + 1);
+    });
+
+    it('shows the error page when the first snapshot fails and a notice when a refresh fails', async () => {
+      marketData.snapshot.mockReturnValueOnce(throwError(() => new Error('down')));
+      const fixture = await setup();
+      expect(fixture.componentInstance['pageStatus']()).toBe('error');
+
+      marketData.snapshot.mockReturnValue(of(SNAPSHOT));
+      fixture.componentInstance['retry']();
+      expect(fixture.componentInstance['pageStatus']()).toBe('ready');
+      marketData.snapshot.mockReturnValueOnce(throwError(() => new Error('down')));
+      fixture.componentInstance['retry']();
+      expect(fixture.componentInstance['chartRefreshError']()).toBe(
+        'Market snapshot could not refresh.',
+      );
+      marketData.snapshot.mockImplementation(() => of(SNAPSHOT));
+    });
+
+    it('reports a chart that cannot be loaded, keeping any candles already shown', async () => {
+      const fixture = await setup();
+      const component = fixture.componentInstance;
+      marketData.candles.mockImplementationOnce(() => throwError(() => new Error('down')));
+      component['candleRevision'].update((revision) => revision + 1);
+      fixture.detectChanges();
+      expect(component['chartRefreshError']()).toBe('Chart data could not refresh.');
+      expect(component['chartStatus']()).not.toBe('error');
+
+      component['candles'].set([]);
+      marketData.candles.mockImplementationOnce(() => throwError(() => new Error('down')));
+      component['candleRevision'].update((revision) => revision + 1);
+      fixture.detectChanges();
+      expect(component['chartStatus']()).toBe('error');
+    });
+
+    it('marks the chart empty when the market has no candles', async () => {
+      const fixture = await setup();
+      marketData.candles.mockImplementationOnce((_s: number, symbol: string, timeframe: Timeframe) =>
+        of({ sessionId: 7, symbol, timeframe, marketTimestamp: SNAPSHOT.marketTimestamp, points: [] }),
+      );
+      fixture.componentInstance['candleRevision'].update((revision) => revision + 1);
+      fixture.detectChanges();
+      expect(fixture.componentInstance['chartStatus']()).toBe('empty');
+    });
+
+    it('shows the not-found page for a symbol the market does not quote', async () => {
+      const fixture = await setup('zzzz');
+      expect(fixture.componentInstance['pageStatus']()).toBe('not-found');
+    });
+
+    it('marks the catalogue as failed when instruments cannot be loaded', async () => {
+      await TestBed.configureTestingModule({
+        imports: [MarketPageComponent],
+        providers: [
+          {
+            provide: ExecutionSettingsService,
+            useValue: { load: () => savedExecutionPreference({ executionBufferPercent: 0 }) },
+          },
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          { provide: PLATFORM_ID, useValue: 'browser' },
+          {
+            provide: ActivatedRoute,
+            useValue: {
+              paramMap: of(convertToParamMap({ symbol: 'aapl' })),
+              queryParamMap: of(convertToParamMap({ compare: '' })),
+            },
+          },
+          { provide: MarketDataService, useValue: marketData },
+        ],
+      }).compileComponents();
+      const fixture = TestBed.createComponent(MarketPageComponent);
+      fixture.detectChanges();
+      const http = TestBed.inject(HttpTestingController);
+      http.expectOne('/api/instruments').flush({}, { status: 500, statusText: 'Error' });
+      http.expectOne('/api/orders').flush({}, { status: 500, statusText: 'Error' });
+      http.match(() => true).forEach((request) => {
+        if (!request.cancelled) {
+          request.flush({}, { status: 500, statusText: 'Error' });
+        }
+      });
+      expect(fixture.componentInstance['catalogueStatus']()).toBe('error');
     });
   });
 });

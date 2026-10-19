@@ -1,8 +1,10 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { PLATFORM_ID, Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { TokenStorageService } from '../../core/auth/token-storage.service';
 import { NotOwnedError } from './account-error';
-import { AccountStore } from './account-store.service';
+import { AccountStore, SELECTED_ACCOUNT_STORAGE_KEY } from './account-store.service';
 import { Account, AccountHolding, CashTransaction } from './account.models';
 
 const ACCOUNTS: Account[] = [
@@ -27,15 +29,26 @@ describe('AccountStore', () => {
   let store: AccountStore;
   let http: HttpTestingController;
 
-  beforeEach(() => {
+  // A new store, as after a page reload; this tab's sessionStorage survives it.
+  function reload(providers: Provider[] = []): void {
+    http?.verify();
+    TestBed.resetTestingModule();
     TestBed.configureTestingModule({
-      providers: [AccountStore, provideHttpClient(), provideHttpClientTesting()],
+      providers: [AccountStore, provideHttpClient(), provideHttpClientTesting(), ...providers],
     });
     store = TestBed.inject(AccountStore);
     http = TestBed.inject(HttpTestingController);
+  }
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    reload();
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => {
+    http.verify();
+    vi.restoreAllMocks();
+  });
 
   function load(
     accounts: Account[] = ACCOUNTS,
@@ -53,6 +66,50 @@ describe('AccountStore', () => {
     http.expectOne('/api/users/me').flush({ ...profile, availableFunds: funds });
     http.expectOne(isCashTransactions).flush([]);
   }
+
+  describe('deleting archives from active accounts', () => {
+    it('requests eligibility without interpreting financial history', () => {
+      const next = vi.fn();
+      store.eligibility(1).subscribe(next);
+      const result = { archiveBlockers: [], deleteBlockers: [] };
+      http.expectOne('/api/me/accounts/1/eligibility').flush(result);
+      expect(next).toHaveBeenCalledWith(result);
+    });
+    it('confirms Delete, removes the active account, and refreshes shared balances', () => {
+      load();
+      store.selectAccount(1, false);
+      const next = vi.fn();
+      store.deleteAccount(1).subscribe(next);
+      const request = http.expectOne('/api/me/accounts/1?confirmed=true');
+      expect(request.request.method).toBe('DELETE');
+      request.flush(null, { status: 204, statusText: 'No Content' });
+      expect(store.accounts().map((a) => a.accountId)).toEqual([2]);
+      expect(store.selectedAccountId()).toBe(2);
+      http.expectOne('/api/me/accounts').flush([ACCOUNTS[1]]);
+      http
+        .expectOne('/api/users/me')
+        .flush({ firstName: 'Ada', lastName: 'Lovelace', availableFunds: 5000 });
+      http.expectOne(isCashTransactions).flush([]);
+      expect(next).toHaveBeenCalledWith(undefined);
+      expect(store.cashBalance()).toBe(5000);
+    });
+    it('rejects a client attempt on an unknown account', () => {
+      const error = vi.fn();
+      store.deleteAccount(99).subscribe({ error });
+      expect(error.mock.calls[0][0]).toBeInstanceOf(NotOwnedError);
+      http.expectNone('/api/me/accounts/99?confirmed=true');
+    });
+    it('does not remove an account after a backend refusal', () => {
+      load();
+      const error = vi.fn();
+      store.deleteAccount(1).subscribe({ error });
+      http
+        .expectOne('/api/me/accounts/1?confirmed=true')
+        .flush({ error: 'Account contains cash' }, { status: 409, statusText: 'Conflict' });
+      expect(error).toHaveBeenCalled();
+      expect(store.accounts()).toEqual(ACCOUNTS);
+    });
+  });
 
   describe('loading', () => {
     it('starts idle with nothing selected and no cash', () => {
@@ -150,6 +207,68 @@ describe('AccountStore', () => {
       expect(store.selectedAccount()?.name).toBe('Retirement');
       expect(store.selectedHoldings()).toEqual(HOLDINGS[2]);
       http.expectNone(() => true);
+    });
+
+    it('keeps the choice for this tab, so a reload opens the same account', () => {
+      store.selectAccount(2);
+      expect(sessionStorage.getItem(SELECTED_ACCOUNT_STORAGE_KEY)).toBe('2');
+
+      reload();
+      load();
+
+      expect(store.selectedAccount()?.name).toBe('Retirement');
+    });
+
+    it('opens the first account when the saved one is unusable or not owned', () => {
+      for (const saved of ['999', 'Retirement', '-2']) {
+        sessionStorage.setItem(SELECTED_ACCOUNT_STORAGE_KEY, saved);
+        reload();
+        load();
+
+        expect(store.selectedAccount()?.name).toBe('Brokerage');
+      }
+    });
+
+    it('forgets the choice at sign-out, so the next user starts on their first account', () => {
+      store.selectAccount(2);
+
+      TestBed.inject(TokenStorageService).clear();
+
+      expect(sessionStorage.getItem(SELECTED_ACCOUNT_STORAGE_KEY)).toBeNull();
+    });
+
+    it('still switches when storage is blocked', () => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new DOMException('blocked', 'SecurityError');
+      });
+
+      expect(store.selectAccount(2)).toBe(true);
+      expect(store.selectedAccount()?.name).toBe('Retirement');
+    });
+
+    it('starts with nothing saved when storage cannot be read', () => {
+      sessionStorage.setItem(SELECTED_ACCOUNT_STORAGE_KEY, '2');
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new DOMException('blocked', 'SecurityError');
+      });
+
+      reload();
+      load();
+
+      expect(store.selectedAccount()?.name).toBe('Brokerage');
+    });
+  });
+
+  describe('selection on the server', () => {
+    it('neither reads nor writes storage', () => {
+      sessionStorage.setItem(SELECTED_ACCOUNT_STORAGE_KEY, '2');
+      reload([{ provide: PLATFORM_ID, useValue: 'server' }]);
+      const setItem = vi.spyOn(Storage.prototype, 'setItem');
+      load();
+
+      expect(store.selectedAccount()?.name).toBe('Brokerage');
+      store.selectAccount(2);
+      expect(setItem).not.toHaveBeenCalled();
     });
   });
 
@@ -408,4 +527,65 @@ describe('AccountStore', () => {
     expect(store.holdingsOf(1)[0].quantity).toBe(5);
   });
 
+  describe('refreshing a loaded store', () => {
+    it('ignores a load that starts while another is running', () => {
+      store.load();
+      store.load();
+      http.expectOne('/api/me/accounts').flush(ACCOUNTS);
+      for (const account of ACCOUNTS) {
+        http.expectOne(holdingsUrl(account.accountId)).flush([]);
+      }
+      http.expectOne('/api/users/me').flush({ firstName: 'Ada', lastName: 'Lovelace' });
+      http.expectOne(isCashTransactions).flush([]);
+    });
+
+    it('refetches only the transactions while the loaded data is fresh', () => {
+      load();
+      store.load();
+      http.expectNone('/api/me/accounts');
+      http.expectOne(isCashTransactions).flush([cash(1, 'DEPOSIT')]);
+      expect(store.refreshError()).toBe('');
+    });
+
+    it('reports a failed transaction refresh while the loaded data is fresh', () => {
+      load();
+      store.load();
+      http.expectOne(isCashTransactions).flush({}, { status: 500, statusText: 'Error' });
+      expect(store.refreshError()).toBe('Unable to refresh transactions.');
+    });
+
+    it('reloads when an account is selected after the data has gone stale', () => {
+      vi.useFakeTimers();
+      try {
+        load();
+        vi.advanceTimersByTime(61_000);
+        expect(store.selectAccount(2)).toBe(true);
+        http.expectOne('/api/me/accounts').flush(ACCOUNTS);
+        for (const account of ACCOUNTS) {
+          http.expectOne(holdingsUrl(account.accountId)).flush([]);
+        }
+        http.expectOne('/api/users/me').flush({ firstName: 'Ada', lastName: 'Lovelace' });
+        http.expectOne(isCashTransactions).flush([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('keeps showing loaded data when a later refresh fails', () => {
+      load();
+      store.load(true);
+      http.expectOne('/api/users/me').flush({ firstName: 'Ada', lastName: 'Lovelace' });
+      http.expectOne('/api/me/accounts').flush({}, { status: 500, statusText: 'Error' });
+      expect(store.status()).toBe('ready');
+      expect(store.refreshError()).toBe('Unable to refresh accounts.');
+    });
+
+    it('builds the full name from whichever names the profile has', () => {
+      store.load();
+      http.expectOne('/api/users/me').flush({ firstName: null, lastName: 'Lovelace' });
+      http.expectOne('/api/me/accounts').flush([]);
+      http.expectOne(isCashTransactions).flush([]);
+      expect(store.fullName()).toBe('Lovelace');
+    });
+  });
 });

@@ -12,6 +12,8 @@ import { MarketSnapshot } from '../market-data.service';
   providers: [provideIcons({ lucideCalendarClock, lucideChevronDown })],
   template: `
     <app-dashboard-header-dropdown
+      class="block"
+      [triggerClass]="triggerClass()"
       iconName="lucideCalendarClock"
       [label]="clock.marketClockLabel()"
       ariaLabel="Change simulated market time"
@@ -56,6 +58,7 @@ import { MarketSnapshot } from '../market-data.service';
 })
 export class MarketClockControlComponent {
   readonly clock = inject(MarketClockService);
+  readonly triggerClass = input('');
   readonly open = input(false);
   readonly openChange = output<boolean>();
   readonly snapshotApplied = output<MarketSnapshot>();

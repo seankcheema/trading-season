@@ -11,7 +11,6 @@ import app.order.OrderService;
 import app.order.audit.AuditTrailRepository;
 import app.order.dto.OrderRequest;
 import app.order.execution.CashTransactionRepository;
-import app.order.execution.ExecutionQuoteSource;
 import app.order.execution.FillRepository;
 import app.order.execution.HoldingMovementRepository;
 import app.record.AuditEntryRecord;
@@ -39,7 +38,6 @@ import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.kafka.test.utils.ContainerTestUtils;
 import org.springframework.kafka.test.utils.KafkaTestUtils;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -51,14 +49,11 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
 
 /**
  * Runs the real path from {@code OrderService} through the after-commit
@@ -89,6 +84,16 @@ import static org.mockito.Mockito.when;
 @ExtendWith(OutputCaptureExtension.class)
 @Tag("integration")
 class TradeEventFlowIntegrationTest {
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private app.order.execution.ExecutionQuoteSource quoteSource;
+
+    private Order submit(app.order.dto.OrderRequest request, java.util.UUID owner) {
+        org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(request.indicativePrice(), 1L,
+                        java.time.OffsetDateTime.parse("2026-01-05T15:00:00Z")));
+        return orderService.submitOrder(request, owner);
+    }
+
 
     @Autowired
     private OrderService orderService;
@@ -120,9 +125,6 @@ class TradeEventFlowIntegrationTest {
     private ObjectMapper objectMapper;
     @Autowired
     private OrderStatusStreamRegistry streams;
-    /** BR-08: execution prices fills from the market replay, which the test database does not seed. */
-    @MockitoBean
-    private ExecutionQuoteSource quoteSource;
 
     private User user;
     private Account account;
@@ -170,7 +172,6 @@ class TradeEventFlowIntegrationTest {
         instrument.setCurrency("USD");
         instrument.setTradable(true);
         instrument = instrumentRepository.save(instrument);
-        when(quoteSource.currentPrice(any())).thenReturn(Optional.of(new BigDecimal("50.00")));
 
         // The consumer group must own all three partitions before an order is
         // placed, or an event could be published before anyone is subscribed.
@@ -181,7 +182,7 @@ class TradeEventFlowIntegrationTest {
 
     private OrderRequest order(String orderType, String quantity, String price) {
         return new OrderRequest(account.getAccountId(), instrument.getInstrumentId(), orderType,
-                new BigDecimal(quantity), new BigDecimal(price), new BigDecimal("2.0"), UUID.randomUUID(), null);
+                new BigDecimal(quantity), new BigDecimal(price), null, UUID.randomUUID(), null);
     }
 
     @Test
@@ -191,9 +192,9 @@ class TradeEventFlowIntegrationTest {
         RecordingSseEmitter browser = new RecordingSseEmitter();
         streams.register(user.getUserId(), browser);
 
-        Order filled = orderService.submitOrder(order("BUY", "100", "50.00"), user.getUserId());
+        Order filled = submit(order("BUY", "100", "50.00"), user.getUserId());
         // Sells more than the 100 just bought, so the rule pipeline rejects it before acceptance.
-        Order rejected = orderService.submitOrder(order("SELL", "500", "50.00"), user.getUserId());
+        Order rejected = submit(order("SELL", "500", "50.00"), user.getUserId());
         assertEquals(Order.STATUS_FILLED, filled.getStatus());
         assertEquals(Order.STATUS_REJECTED, rejected.getStatus());
 

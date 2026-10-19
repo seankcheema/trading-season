@@ -1,4 +1,4 @@
-"""Verify V013 against disposable PostgreSQL, never a developer database.
+"""Verify V015 against disposable PostgreSQL, never a developer database.
 
 BR-10 and section 9.1: cash_transactions.client_reference lets a retried deposit
 or withdrawal post once. Run directly with Python. PostgreSQL binaries must be
@@ -43,7 +43,7 @@ class CashTransactionReferenceMigrationTest(unittest.TestCase):
         cls.sql("postgres", f"CREATE DATABASE {cls.database}")
         for path in sorted(cls.migrations.glob("V*.sql")):
             cls.migrate(path.name)
-        cls.migrate("V013__Cash_transaction_client_reference.sql")  # safe to reapply
+        cls.migrate("V015__Cash_transaction_client_reference.sql")  # safe to reapply
         cls.sql(cls.database, FIXTURE)
 
     @classmethod
@@ -87,7 +87,7 @@ class CashTransactionReferenceMigrationTest(unittest.TestCase):
             self.sql(self.database, deposit)
         self.assertIn("cash_transactions_client_reference_key", raised.exception.stderr)
 
-        # Rows that carry no reference, such as order fills and history from before V013, never collide.
+        # Rows that carry no reference, such as order fills and history from before V015, never collide.
         self.sql(self.database, "INSERT INTO cash_transactions(account_id,amount,reason) VALUES (1,50,'DEPOSIT')")
         self.sql(self.database, "INSERT INTO cash_transactions(account_id,amount,reason) VALUES (1,-20,'WITHDRAWAL')")
         self.assertEqual("3", self.sql(self.database, "SELECT count(*) FROM cash_transactions"))

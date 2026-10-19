@@ -116,8 +116,9 @@ test.describe('Activity', () => {
     const inWeek = ordersIn('7d');
 
     const statuses = card(page, 'Orders by status').locator('[data-statuses] > div');
-    await expect(statuses).toHaveCount(4);
-    for (const status of ['FILLED', 'PENDING', 'ACCEPTED', 'REJECTED']) {
+    const statusNames = ['FILLED', 'PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED'];
+    await expect(statuses).toHaveCount(statusNames.length);
+    for (const status of statusNames) {
       const count = inWeek.filter((order) => order.status === status).length;
       await expect(statuses.filter({ hasText: new RegExp(status, 'i') })).toContainText(
         new RegExp(`${status}\\s*${count}\\s`, 'i'),
@@ -173,9 +174,8 @@ test.describe('Activity', () => {
     await expect(feed).toContainText(`${fullName(customerOf(3))} withdrew cash`);
   });
 
-  test('exports the status split as CSV', async ({ page, openAsAdmin }) => {
+  test('exports every order of the range as CSV', async ({ page, openAsAdmin }) => {
     await openAsAdmin('/');
-    // The export is of what is on screen, so wait for the figures to arrive.
     await expect(card(page, 'Orders')).toContainText(String(figures('7d').orders));
 
     await page.getByRole('button', { name: 'Export this view' }).click();
@@ -183,17 +183,14 @@ test.describe('Activity', () => {
     await page.getByRole('menuitem', { name: 'Export CSV' }).click();
 
     const file = await download;
-    expect(file.suggestedFilename()).toBe('activity-7d.csv');
+    expect(file.suggestedFilename()).toBe('activity-orders-7d.csv');
     const lines = (await readFile((await file.path())!, 'utf8'))
       .trim()
       .split(/\r?\n/)
       .map((line) => line.replaceAll('"', ''));
-    expect(lines[0]).toBe('Status,Orders');
-    const inWeek = ordersIn('7d');
-    expect(lines).toContain(`FILLED,${inWeek.filter((order) => order.status === 'FILLED').length}`);
-    expect(lines).toContain(
-      `REJECTED,${inWeek.filter((order) => order.status === 'REJECTED').length}`,
-    );
+    expect(lines[0]).toContain('Order,Time,Customer');
+    // One line per order in the week, however many the screen shows.
+    expect(lines.length - 1).toBe(ordersIn('7d').length);
   });
 
   test('says it could not load the activity, and loads it on a retry', async ({

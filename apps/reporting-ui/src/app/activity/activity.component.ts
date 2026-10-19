@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { finalize } from 'rxjs';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideArrowRightLeft,
@@ -25,6 +26,7 @@ import {
 } from '../reporting/format';
 import { RANGES, rangeName, readRange, rememberRange } from '../reporting/range';
 import { ReportingApiService } from '../reporting/reporting-api.service';
+import { LEDGER_CSV_HEADER, ledgerCsvRow, ledgerRows } from '../orders/ledger-rows';
 import { plainReason } from '../orders/order-detail.component';
 import { ChangePillComponent, PillTone, statusTone } from '../shared/change-pill.component';
 import { ExportMenuComponent, downloadCsv } from '../shared/export-menu.component';
@@ -158,6 +160,12 @@ function feedRow(item: FeedItem): FeedRow {
       <app-export-menu (exportCsv)="exportCsv()" />
     </app-page-header>
 
+    @if (exportFailed()) {
+      <p class="text-loss shrink-0 text-sm" role="alert">
+        We couldn't export the orders. Try again.
+      </p>
+    }
+
     @switch (activity.state()) {
       @case ('loading') {
         <!-- The same rows as the loaded screen below, so nothing moves when it arrives. -->
@@ -247,7 +255,7 @@ function feedRow(item: FeedItem): FeedRow {
                       <span class="text-muted-foreground text-xs">{{ percent(row.share) }}</span>
                     </span>
                   </div>
-                  <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-foreground/10">
                     <div class="h-full rounded-full" [class]="row.bar" [style.width.%]="row.share"></div>
                   </div>
                 </div>
@@ -268,7 +276,7 @@ function feedRow(item: FeedItem): FeedRow {
                     </span>
                   </div>
                   <p class="text-muted-foreground text-xs">{{ row.detail }}</p>
-                  <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-foreground/10">
                     <div class="bg-primary h-full rounded-full" [style.width.%]="row.share"></div>
                   </div>
                 </div>
@@ -434,6 +442,9 @@ export class ActivityComponent {
 
   protected readonly feed = computed(() => this.activity.data()!.feed.map(feedRow));
 
+  protected readonly exportFailed = signal(false);
+  private _exporting = false;
+
   protected readonly count = count;
   protected readonly percent = percent;
   protected readonly wholeDollars = wholeDollars;
@@ -444,11 +455,26 @@ export class ActivityComponent {
     this.activity.reload();
   }
 
+  // Every order placed in the chosen range, not only the rows on screen. The service
+  // is asked for them when the export is, since the screen holds counts, not orders.
   protected exportCsv(): void {
-    downloadCsv(
-      `activity-${this.range()}`,
-      ['Status', 'Orders'],
-      this.activity.data()?.statuses.map((row) => [row.status, row.count]) ?? [],
-    );
+    if (this._exporting) {
+      return;
+    }
+    const range = this.range();
+    this._exporting = true;
+    this.exportFailed.set(false);
+    this._api
+      .ordersIn(range)
+      .pipe(finalize(() => (this._exporting = false)))
+      .subscribe({
+        next: ({ orders }) =>
+          downloadCsv(
+            `activity-orders-${range}`,
+            LEDGER_CSV_HEADER,
+            ledgerRows(orders, []).map(ledgerCsvRow),
+          ),
+        error: () => this.exportFailed.set(true),
+      });
   }
 }

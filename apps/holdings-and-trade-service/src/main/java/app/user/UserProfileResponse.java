@@ -16,7 +16,9 @@ import java.util.UUID;
  * @param address        mailing address
  * @param dateOfBirth    date of birth
  * @param traderLevel    BEGINNER, INTERMEDIATE or ADVANCED
- * @param availableFunds cash available for trading
+ * @param availableFunds total cash balance
+ * @param reservedCash cash reserved for open BUY orders
+ * @param spendableFunds cash available for new orders and withdrawals
  * @param userRole       ADMIN, TRADER or ANALYST
  * @param createdAt      when the account was registered
  * @param termsAccepted  whether the caller has accepted the platform terms
@@ -34,7 +36,9 @@ public record UserProfileResponse(
         BigDecimal availableFunds,
         String userRole,
         OffsetDateTime createdAt,
-        boolean termsAccepted
+        boolean termsAccepted,
+        BigDecimal reservedCash,
+        BigDecimal spendableFunds
 ) {
 
     /**
@@ -55,6 +59,7 @@ public record UserProfileResponse(
         return new UserProfileResponse(user.getUserId(), account.getEmail(),
                 user.getFirstName(), user.getMiddleName(), user.getLastName(), user.getAddress(),
                 user.getDateOfBirth(), user.getTraderLevel(), user.getAvailableFunds(),
-                account.getUserRole(), user.getCreatedAt(), termsAccepted);
+                account.getUserRole(), user.getCreatedAt(), termsAccepted, user.getReservedCash(),
+                user.getAvailableFunds().subtract(user.getReservedCash()));
     }
 }

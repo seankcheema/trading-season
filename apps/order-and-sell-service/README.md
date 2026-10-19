@@ -6,39 +6,29 @@ Spring Boot (Java 21) service that submits, validates, and executes buy and sell
 - Compiles source it shares with the Holdings and Trade Service from [packages/trading-java-common](../../packages/trading-java-common/README.md): the market feed, token verification wiring, and the base classes its entities extend.
 - Shares the `trading_season` database. The schema comes from [db/migrations](../../db/migrations); Hibernate never alters it.
 - Authenticates callers by verifying RS256 tokens from the [Auth Service](../auth-service/README.md) against its cached JWKS. The caller is always the token's `sub`.
-- Publishes one Kafka `trade-events` message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`) and runs the `order-status-pusher` consumer group, which forwards each change to the owner's open `GET /api/orders/stream` connections. The other two groups live in the [Holdings and Trade Service](../holdings-and-trade-service/README.md) and the [Reporting Service](../reporting-service/README.md).
+- Publishes one Kafka `trade-events` message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`, `CANCELLED`) and runs the `order-status-pusher` consumer group, which forwards each change to the owner's open `GET /api/orders/stream` connections. The other two groups live in the [Holdings and Trade Service](../holdings-and-trade-service/README.md) and the [Reporting Service](../reporting-service/README.md).
 - Publishes every audit trail entry to the Kafka `platform-records` topic. The Reporting Service has no database connection: these two topics are how it knows about orders.
 
 ## Endpoints
+
+See [Order API](api.md#read-and-cancel) for detail reads and cancellation, and [editing orders](api.md#editing-an-open-order) for atomic replacement.
 
 All require a bearer token except the public market reads.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| POST | `/api/orders` | Submit a buy or sell order. Returns 201 with the outcome (`FILLED`, `REJECTED`, or `ACCEPTED` when execution failed and the order stays on record) |
+| POST | `/api/orders` | Submit a buy or sell order. Returns 201 with the outcome (`FILLED`, `REJECTED`, or `ACCEPTED` while open) |
 | GET | `/api/orders` | The caller's orders across all their accounts, newest first |
-| GET | `/api/orders/{orderId}/audit` | One of the caller's orders as its audit trail, oldest first: `eventType`, `price` (the order's indicative price), `occurredAt`, `detail` (for `FILLED`, `Filled <quantity> @ <market price> (market quote; indicative <price>)`). Another caller's order is 404, the same as a missing one |
+| GET | `/api/orders/{orderId}/audit` | One of the caller's orders as its audit trail, oldest first: `eventType`, `price` (the order's indicative price), `occurredAt`, `detail`. Another caller's order is 404, the same as a missing one |
 | GET | `/api/orders/stream` | Server-Sent Events: an `order-status` event with each committed status change's JSON body, and a `heartbeat` every 15 seconds |
 | GET | `/api/instruments` | Every instrument (UK, US and Indian equities, FX pairs and crypto assets, as seeded by the [market data import](../market-data/README.md#universe)) with `assetClass`, `market`, `currency`, `tradable` and `simulatedStockSymbol` |
 | GET | `/api/users/me` | The caller's profile, without the SSN |
 | GET | `/api/market/snapshot`, `/candles`, `/stream` | Public market data (snapshot, OHLCV candles, SSE ticks) |
 | PUT | `/api/market/clock` | Move the shared replay cursor |
 
-Order request: `accountId`, `instrumentId`, `orderType` (`BUY` or `SELL`), `quantity`, `indicativePrice`, `clientReference` (UUID idempotency key), and optional `bufferPercent` (tolerance in percent between `indicativePrice` and the market quote at execution; defaults to the user's `execution_buffer_percent`) and `simulatedAt`.
+The canonical [Order API](api.md) documents the request/response fields, Market/Limit/Stop/Stop-Limit execution, immutable buffer preferences, shared-cash and share reservations, cancellation, authoritative replay quotes, retries, and optional disposable-PostgreSQL concurrency tests.
 
-Order response: `orderId`, `instrumentId`, `accountId`, `status`, `orderType`, `quantity`, `indicativePrice`, `fillPrice` (the market price a `FILLED` submission executed at; null otherwise, including on `GET /api/orders`), `rejectionReason`, `submittedAt`, `resolvedAt` and `simulatedAt`.
-
-Behavior worth knowing:
-
-- A rule failure is a normal outcome: the response is still 201 with `status: REJECTED` and a `rejectionReason`.
-- Resubmitting the same `accountId` and `clientReference` returns the original outcome without executing again.
-- Another user's account is 403 and a missing account is 404, checked before the idempotency lookup. An unknown `instrumentId` is 400.
-- A caller who has not accepted the platform terms in force is 403 with `Accept the platform terms before placing an order`, and nothing is recorded for the attempt. Acceptances are recorded by [Holdings and Trade Service](../holdings-and-trade-service/README.md) in `terms_acceptances`, which this service only reads; the version in force is `TermsAcceptance.CURRENT_VERSION` and must match that service's. A resubmission of an order already on record still returns it.
-- Cash belongs to the user, not the account: a fill moves `users.available_funds`.
-- An order fills at the instrument's current market quote, not at `indicativePrice` (BR-08). `ExecutionQuoteSource` reads the quote from the shared market replay at its cursor, the same price `GET /api/market/snapshot` shows, under the instrument's `simulatedStockSymbol` or else its ticker. With no quote (no seeded session, or a symbol the replay does not carry) the order is rejected with `BR-08: no current market quote for <symbol>`. A positive `bufferPercent` rejects a quote further than that percentage from `indicativePrice`; zero or null accepts the market price whatever it is. The `FILLED` audit entry records both prices, and the response carries the fill price as `fillPrice`.
-- `simulatedAt` records the replay time chosen in the UI. `submittedAt`, `resolvedAt`, and fill times are always real server times.
-- `GET /api/orders/stream` needs the bearer header, which the browser's native `EventSource` cannot send; the Client UI reads it through `fetch` with the header set (see [its README](../client-ui/README.md#order-status)). Only the caller's own order events are pushed.
-- Errors use `{"error": "..."}`.
+Orders fill at server market quotes. `indicativePrice` is display/audit context. `orderType` remains BUY/SELL; `executionType` selects execution behavior. ACCEPTED orders can remain open until their conditions are met, the owner cancels them, or their simulation trading day closes. Execution failures retain reservations and retry with bounded backoff. Apply the [V011 migration](../../db/migrations/V011__Execution_preferences_and_order_types.sql) before starting the updated services. Also apply [V012](../../db/migrations/V012__Stop_trigger_reference.sql) for Stop activation quotes, and [V013](../../db/migrations/V013__Order_audit_lifecycle.sql) for conditional-order and cancellation audit events.
 
 ## Design
 
@@ -89,8 +79,6 @@ flowchart TB
     IC --> E2
     UC --> E2
     MC --> MR[MarketReplayService]
-    OE --> QS[ExecutionQuoteSource]
-    QS --> MR
     OS -. "OrderStatusEvent after commit" .-> TP
     OE -. "OrderStatusEvent after commit" .-> TP
     TP --> K
@@ -107,7 +95,6 @@ sequenceDiagram
     participant S as OrderService
     participant P as ValidationPipeline
     participant E as OrderExecutionService
-    participant Q as ExecutionQuoteSource
     participant DB as PostgreSQL
     participant K as Kafka trade-events
 
@@ -120,40 +107,34 @@ sequenceDiagram
     else New
         S->>DB: Caller accepted the terms in force (else 403)
         S->>DB: Load user and instrument (400 if instrument unknown)
-        S->>DB: Insert order PENDING and audit entry
+        S->>DB: Snapshot authoritative quote and saved buffer; insert PENDING
         S->>P: run(request, user, account, instrument)
         alt A rule fails
             S->>DB: Mark REJECTED with reason and audit entry, commit
             S->>K: REJECTED (after commit)
         else All rules pass
-            S->>DB: Mark ACCEPTED and audit entry, commit
+            S->>DB: Reserve resources; mark ACCEPTED and audit entry, commit
             S->>K: ACCEPTED (after commit)
             Note over E,DB: Transaction 2: execution (REQUIRES_NEW)
-            S->>E: execute(order, instrument)
-            E->>Q: Current market quote for the instrument
-            alt No quote, or quote outside bufferPercent
+            S->>E: Evaluate execution conditions (now or later)
+            E->>DB: Lock user row and holding row
+            alt Funds or holdings changed since validation
                 E->>DB: Mark REJECTED, commit
                 E->>K: REJECTED (after commit)
-            else Quote accepted
-                E->>DB: Lock user row and holding row
-                alt Funds or holdings changed since validation
-                    E->>DB: Mark REJECTED, commit
-                    E->>K: REJECTED (after commit)
-                else Still valid
-                    E->>DB: Insert fill, cash transaction, holding movement at the quote
-                    E->>DB: Update available funds and holding
-                    E->>DB: Mark FILLED and audit entry, commit
-                    E->>K: FILLED (after commit)
-                end
+            else Still valid
+                E->>DB: Insert fill, cash transaction, holding movement
+                E->>DB: Update available funds and holding
+                E->>DB: Mark FILLED and audit entry, commit
+                E->>K: FILLED (after commit)
             end
         end
         S-->>C: Order in its final status
     end
 ```
 
-Acceptance and execution are separate transactions (BR-06). The accepted order is committed before any ledger row is written, and the fill, cash transaction, holding movement, holding update and FILLED status commit together or not at all (BR-09). Execution prices the fill at the market quote read at that moment (BR-08), so the fill's `quote_price`, the cash moved and the `FILLED` message's `price` can differ from `indicativePrice`. If execution throws, only the execution rolls back: the order stays `ACCEPTED`, an `EXECUTION_FAILED` audit entry records the cause (truncated to 255 characters), and the response returns the order in that state. Nothing retries it automatically.
+Acceptance and execution are separate transactions (BR-06). The accepted order is committed with reservations before any ledger row is written, and the fill, cash transaction, holding movement, holding update and FILLED status commit together or not at all (BR-09). If execution throws, only the execution rolls back: the order stays `ACCEPTED`, an `EXECUTION_FAILED` audit entry records the cause (truncated to 255 characters), and the response returns the order in that state. The evaluator retries with bounded backoff while retaining reservations.
 
-Each `trade-events` message is published by `TradeEventPublisher` from an `AFTER_COMMIT` transactional event listener, so a consumer never sees a status the database does not hold. The message key is the account id as a string; the body is JSON with `orderId`, `status`, `symbol`, `side`, `quantity`, `price`, `rejectionReason` and `occurredAt`. For a `FILLED` message `price` is the fill's quote price, the price the trade settled at (BR-08, BR-15), which is what reporting values filled orders by; for every other status it is the indicative price the trader saw. A send failure is logged and never fails the order.
+Each `trade-events` message is published by `TradeEventPublisher` from an `AFTER_COMMIT` transactional event listener, so a consumer never sees a status the database does not hold. The message key is the account id as a string; the body is JSON with `orderId`, `status`, `symbol`, `side`, `quantity`, `price`, `rejectionReason` and `occurredAt`. A send failure is logged and never fails the order.
 
 ### What reporting receives
 
@@ -161,10 +142,10 @@ The Reporting Service reads Kafka, not the database, so everything it shows of a
 
 | Field | When | Contents |
 | --- | --- | --- |
-| `order` | Always | The order row as committed with this status: `clientReference`, `instrumentId`, `instrumentName`, `indicativePrice`, `bufferPercent`, `submittedAt`, `acceptedAt`, `resolvedAt`, `simulatedAt` |
+| `order` | Always | The order row and the execution fields documented in [Order API](api.md), including: `clientReference`, `instrumentId`, `instrumentName`, `indicativePrice`, `bufferPercent`, `submittedAt`, `acceptedAt`, `resolvedAt`, `simulatedAt` |
 | `execution` | `FILLED` only, otherwise null | What executing the order wrote: `userId`, `fillId`, `price`, `quantity`, `filledAt`; the cash posting `cashTransactionId` and `cashAmount` with the owner's `availableFunds` after it; the holding movement `holdingMovementId` and `quantityDelta` with the `holdingQuantity` it left |
 
-The frames on `GET /api/orders/stream` are these same bodies.
+The frames on `GET /api/orders/stream` are these same bodies. The stream needs the bearer header, which the browser's native `EventSource` cannot send; the Client UI reads it through `fetch` with the header set (see [its README](../client-ui/README.md#order-status)). Only the caller's own order events are pushed.
 
 The audit trail holds more than statuses, an execution failure for one, so it travels on its own: `AuditTrailService` raises an `AuditEntryRecord` for every entry, and `PlatformRecordPublisher` sends it to `platform-records` after the commit, keyed `ORDER_AUDIT:<auditId>`, with `type`, `auditId`, `orderId`, `eventType`, `detail` and `recordedAt`. The topic is compacted and shared with the Holdings and Trade and auth services; the record types are listed in the [Reporting Service README](../reporting-service/README.md#what-arrives).
 
@@ -177,14 +158,16 @@ stateDiagram-v2
     [*] --> PENDING: submitted
     PENDING --> REJECTED: rule fails
     PENDING --> ACCEPTED: all rules pass (committed)
-    ACCEPTED --> REJECTED: no market quote, quote outside the buffer, or funds or holdings changed
+    ACCEPTED --> REJECTED: buffer or resources fail
+    ACCEPTED --> CANCELLED: owner cancels; reservations released
     ACCEPTED --> FILLED: fill and ledger written
-    ACCEPTED --> ACCEPTED: execution failed (EXECUTION_FAILED audit)
+    ACCEPTED --> ACCEPTED: waiting for conditions, stop triggered, or retryable execution failure
     REJECTED --> [*]
     FILLED --> [*]
 ```
 
-Every transition is recorded in `audit_trail` and published to `platform-records`, and every committed `ACCEPTED`, `FILLED` and `REJECTED` status is also published to `trade-events`. A new validation rule is a new `OrderValidator` class; the pipeline discovers it automatically and stops at the first rejection.
+Every transition is recorded in `audit_trail` and published to `platform-records`, and every committed `ACCEPTED`, `FILLED`, `REJECTED` and `CANCELLED` status is also published to `trade-events`. A new validation rule is a new `OrderValidator` class; the pipeline discovers it automatically and stops at the first rejection.
+
 ## Configuration
 
 Environment variables override [application.properties](src/main/resources/application.properties).
@@ -213,4 +196,6 @@ mvn test
 
 Tests use H2 with the `test` profile and mirror the source packages under `src/test/java/app`. The trade-event flow test starts an embedded Kafka broker; no external broker is needed. JaCoCo fails the build below 70 percent on every counter in any package (`coverage.minimum` in [pom.xml](pom.xml)); reports are in `target/site/jacoco/`.
 
-After changing Java code, regenerate the Javadocs; see [AGENTS.md](../../AGENTS.md).
+After changing Java code, regenerate the Javadocs; see [AGENTS.md](../../AGENTS.md). The pinned Maven Javadoc plugin fails generation on warnings as well as errors. Jenkins also provisions a disposable PostgreSQL database for the optional order concurrency contract, independently of the local stack.
+
+The execution conditions, reservations and replay behavior in [Order API](api.md) extend the acceptance/settlement sequence illustrated above.

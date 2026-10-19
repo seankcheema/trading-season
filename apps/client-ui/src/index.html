@@ -6,6 +6,17 @@
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/svg+xml" href="2b-waves.svg">
+  <!-- Applies a saved light theme before the first paint, so the page never flashes dark.
+       ThemeService (src/app/core/theme) owns the choice from then on; keep the key in step. -->
+  <script>
+    try {
+      if (localStorage.getItem('ts.settings.theme') === 'light') {
+        document.documentElement.classList.remove('dark');
+      }
+    } catch {
+      // Storage is blocked; the page stays in the dark theme.
+    }
+  </script>
 </head>
 <body>
   <app-root></app-root>

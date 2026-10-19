@@ -1,5 +1,5 @@
 import { CashTransaction } from '../accounts/account.models';
-import { InstrumentRef, OrderResult } from '../orders/order.models';
+import { ExecutionType, InstrumentRef, OrderResult } from '../orders/order.models';
 import { ActivityItem, ActivityStatus } from './activity-row.component';
 
 const USD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
@@ -7,6 +7,13 @@ const USD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' 
 // When an order took effect: the selected replay time, else when the backend resolved it, else
 // (for an order still pending) when it was submitted.
 export function orderDate(order: OrderResult): string {
+  if (
+    order.evaluatedAt &&
+    Number.isFinite(Date.parse(order.evaluatedAt)) &&
+    order.status === 'FILLED'
+  ) {
+    return order.evaluatedAt;
+  }
   if (order.simulatedAt && Number.isFinite(Date.parse(order.simulatedAt))) {
     return order.simulatedAt;
   }
@@ -22,6 +29,19 @@ export function orderSymbol(order: OrderResult, catalogue: readonly InstrumentRe
   return instrument?.simulatedStockSymbol ?? instrument?.ticker ?? `Order #${order.orderId}`;
 }
 
+// Open orders display the user's instruction; filled orders retain their actual execution price.
+export function orderDisplayPrice(order: OrderResult): number {
+  if (order.status === 'FILLED') {
+    return order.executionPrice ?? order.indicativePrice;
+  }
+  return order.limitPrice ?? order.stopPrice ?? order.executionPrice ?? order.indicativePrice;
+}
+
+export function orderPriceDetail(order: OrderResult): string {
+  return [order.stopPrice != null ? `Stop ${USD.format(order.stopPrice)}` : '',
+    order.limitPrice != null ? `Limit ${USD.format(order.limitPrice)}` : ''].filter(Boolean).join(' · ');
+}
+
 export function orderActivity(
   order: OrderResult,
   catalogue: readonly InstrumentRef[],
@@ -30,13 +50,15 @@ export function orderActivity(
     kind: 'trade',
     key: `order-${order.orderId}`,
     date: orderDate(order),
-    value: order.quantity * order.indicativePrice,
+    orderId: order.orderId,
+    accountId: order.accountId,
+    value: order.quantity * orderDisplayPrice(order),
     label: orderSymbol(order, catalogue),
-    detail: `${order.quantity} @ ${USD.format(order.indicativePrice)}`,
+    detail: `${order.quantity} @ ${USD.format(orderDisplayPrice(order))}${order.executionType ? ` · ${order.executionType.replaceAll('_', '-')}` : ''}${orderPriceDetail(order) ? ` · ${orderPriceDetail(order)}` : ''}${order.triggeredAt ? ' · Triggered' : ''}`,
     type: order.orderType,
     status: order.status,
     positive: order.orderType === 'SELL',
-    rejectionReason: order.rejectionReason,
+    rejectionReason: order.rejectionCode === 'ORDER_EXPIRED' ? null : order.rejectionReason,
   };
 }
 
@@ -65,11 +87,16 @@ export interface HistoryRow {
   symbol: string | null;
   label: string;
   account: string;
+  // The account an order was placed in, or null for cash, which every account shares.
+  accountId: number | null;
+  // How an order executes (market, limit, stop or stop-limit), or null for cash.
+  executionType: ExecutionType | null;
   status: ActivityStatus;
   // Buy or sell for an order, deposit or withdrawal for cash.
   side: 'Buy' | 'Sell' | 'Deposit' | 'Withdrawal';
   shares: number | null;
   price: number | null;
+  priceDetail?: string;
   value: number;
   positive: boolean;
   rejectionReason: string | null;
@@ -96,10 +123,13 @@ export function orderHistoryRow(
     symbol: instrument ? (instrument.simulatedStockSymbol ?? instrument.ticker) : null,
     label: item.label,
     account: accountName,
+    accountId: order.accountId ?? null,
+    executionType: order.executionType ?? 'MARKET',
     status: order.status,
     side: order.orderType === 'BUY' ? 'Buy' : 'Sell',
     shares: order.quantity,
-    price: order.indicativePrice,
+    price: orderDisplayPrice(order),
+    priceDetail: orderPriceDetail(order),
     value: item.value,
     positive: item.positive,
     rejectionReason: order.rejectionReason,
@@ -117,6 +147,8 @@ export function cashHistoryRow(transaction: CashTransaction): HistoryRow {
     symbol: null,
     label: item.label,
     account: 'All accounts',
+    accountId: null,
+    executionType: null,
     status: item.status,
     side: transaction.reason === 'DEPOSIT' ? 'Deposit' : 'Withdrawal',
     shares: null,

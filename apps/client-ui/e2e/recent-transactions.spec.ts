@@ -88,7 +88,7 @@ test('recent transactions label every row by type, show its status, and sign onl
   await expect(tag(2)).toHaveText('buy');
   await expect(tag(3)).toHaveText('sell');
   await expect(tag(4)).toHaveText('buy');
-  await expect(tag(0)).toHaveClass(/text-amber-400/);
+  await expect(tag(0)).toHaveClass(/text-pending/);
   await expect(tag(1)).toHaveClass(/text-primary/);
   await expect(tag(2)).toHaveCSS('color', GAIN);
   await expect(tag(3)).toHaveCSS('color', LOSS);
@@ -124,6 +124,7 @@ test('view all opens every transaction, including cash, and filters by type', as
   await expect(rows).toHaveCount(4);
   await expect(rows.first()).toHaveAttribute('data-status', 'COMPLETED');
 
+  await dialog.getByTestId('transactions-filters').click();
   await dialog.getByTestId('transactions-filter-deposit').click();
   await expect(rows).toHaveCount(1);
   await dialog.getByTestId('transactions-filter-withdrawal').click();
@@ -134,6 +135,10 @@ test('view all opens every transaction, including cash, and filters by type', as
   await expect(rows).toHaveCount(2);
   await dialog.getByTestId('transactions-filter-all').click();
   await expect(rows).toHaveCount(4);
+  // Escape closes only the filter panel, leaving the dialog open.
+  await page.keyboard.press('Escape');
+  await expect(dialog.getByTestId('transactions-filters-panel')).toBeHidden();
+  await expect(dialog).toBeVisible();
 
   // Sorting by value puts the largest first, and a second click reverses it.
   await dialog.getByRole('button', { name: 'Sort by Value' }).click();

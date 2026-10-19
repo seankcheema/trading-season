@@ -3,6 +3,9 @@
     <img src="2b-waves.svg" alt="" class="size-11 md:size-14" />
     <span class="text-2xl font-semibold tracking-tight md:text-3xl">TradingSeason</span>
   </a>
+  <div class="fixed top-0 right-0 z-10 flex h-24 items-center px-4 md:h-28 md:px-8">
+    <app-theme-toggle />
+  </div>
 
   <div hlmCard class="w-full max-w-md rounded-[10px]">
     <div hlmCardHeader class="text-center">
@@ -219,7 +222,7 @@
             <li
               class="flex items-center gap-1.5 text-xs"
               [class.text-muted-foreground]="!hasMinLength()"
-              [class.text-[#33FF00]]="hasMinLength()"
+              [class.text-gain]="hasMinLength()"
             >
               <ng-icon [name]="hasMinLength() ? 'lucideCheck' : 'lucideX'" class="text-[12px]" />
               At least 8 characters
@@ -227,7 +230,7 @@
             <li
               class="flex items-center gap-1.5 text-xs"
               [class.text-muted-foreground]="!hasNumber()"
-              [class.text-[#33FF00]]="hasNumber()"
+              [class.text-gain]="hasNumber()"
             >
               <ng-icon [name]="hasNumber() ? 'lucideCheck' : 'lucideX'" class="text-[12px]" />
               At least 1 number
@@ -235,7 +238,7 @@
             <li
               class="flex items-center gap-1.5 text-xs"
               [class.text-muted-foreground]="!hasSpecialCharacter()"
-              [class.text-[#33FF00]]="hasSpecialCharacter()"
+              [class.text-gain]="hasSpecialCharacter()"
             >
               <ng-icon [name]="hasSpecialCharacter() ? 'lucideCheck' : 'lucideX'" class="text-[12px]" />
               At least 1 special character

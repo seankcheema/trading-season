@@ -19,7 +19,11 @@ All require a bearer token except where marked public.
 | POST | `/api/registration` | Create the caller's profile and a default account, and book the opening funds as the first deposit |
 | GET | `/api/users/me` | The caller's profile, without the SSN; `termsAccepted` reports whether they accepted the platform terms in force |
 | PUT | `/api/users/me/terms-acceptance` | Record that the caller accepts the platform terms; returns the updated profile |
-| GET, POST | `/api/me/accounts` | List (newest first) or open an account |
+| GET, POST | `/api/me/accounts` | List ACTIVE accounts (newest first) or open an account |
+| DELETE | `/api/me/accounts/{accountId}?confirmed=true` | Archive from the active client view, retaining all data |
+| POST | `/api/me/accounts/{accountId}/archive` | Archive an eligible account |
+| GET | `/api/me/accounts/archived` | List the caller's archived accounts |
+| GET | `/api/me/accounts/{accountId}/eligibility` | Explain unmet archive/delete requirements |
 | PUT | `/api/me/accounts/{accountId}` | Rename an owned account |
 | GET | `/api/accounts/{accountId}` | An owned account |
 | GET | `/api/accounts/{accountId}/holdings` | Positions with symbol and average cost |
@@ -30,6 +34,8 @@ All require a bearer token except where marked public.
 | PUT, DELETE | `/api/me/watchlist/{symbol}` | Save or remove a stock |
 | GET | `/api/market/snapshot`, `/candles`, `/stream` | Public market data (snapshot, OHLCV candles, SSE ticks) |
 | PUT | `/api/market/clock` | Move the shared replay cursor (authenticated) |
+
+Account deletion is archival, never physical deletion. See the [lifecycle API](api.md) for eligibility, locking, request and response schemas, errors, and retention.
 
 Behavior worth knowing:
 
@@ -135,7 +141,7 @@ sequenceDiagram
         S-->>C: 422
     else Allowed
         S->>DB: Update available_funds
-        S->>DB: Insert cash_transactions on caller's first account
+        S->>DB: Insert cash_transactions on caller's earliest ACTIVE account
         S-->>C: 201 transaction
     end
 ```
@@ -171,7 +177,7 @@ The Reporting Service reads Kafka, not the database. Each service method that wr
 | Record | Raised when | Key | Body |
 | --- | --- | --- | --- |
 | `CUSTOMER_PROFILE` | A profile is registered | `CUSTOMER_PROFILE:<userId>` | `userId`, `firstName`, `lastName`, `traderLevel`, `availableFunds`, `sessionTimeoutMinutes`, `lastActivityAt`, `createdAt`, `asOf` |
-| `TRADING_ACCOUNT` | An account is opened or renamed | `TRADING_ACCOUNT:<accountId>` | `accountId`, `userId`, `name`, `openedDate`, `currency` |
+| `TRADING_ACCOUNT` | An account is opened or renamed | `TRADING_ACCOUNT:<accountId>` | `accountId`, `userId`, `name`, `openedDate`, `currency`, `status`, `archivedAt` |
 | `CASH_TRANSFER` | A deposit or withdrawal is booked, including the opening deposit at registration | `CASH_TRANSFER:<cashTransactionId>` | `cashTransactionId`, `accountId`, `userId`, `amount`, `reason`, `createdAt`, and the `availableFunds` it left |
 | `PORTFOLIO_VALUATION` | A valuation is captured | `PORTFOLIO_VALUATION:<accountId>` | `valuationId`, `accountId`, `observedAt`, `portfolioValue` |
 | `MARKET_SESSION` | The service has started | `MARKET_SESSION:current` | `sessionId`, the newest completed simulation session |
@@ -234,4 +240,6 @@ mvn test
 
 Tests use H2 with [application-test.properties](src/test/resources/application-test.properties), mirror the source packages under `src/test/java/app`, and cover cross-user isolation for every user-specific endpoint. The valuation-capture flow test starts an embedded Kafka broker; no external broker is needed. Use `@SpringBootTest` with `@Transactional` for repository tests; `@DataJpaTest` is not available. JaCoCo fails the build below 85 percent on every counter in any package (`coverage.minimum` in [pom.xml](pom.xml)); reports are in `target/site/jacoco/`.
 
-Keep HTTP validation in controllers, business logic in services, and persistence in repositories. After changing Java code, regenerate the Javadocs; see [AGENTS.md](../../AGENTS.md).
+Keep HTTP validation in controllers, business logic in services, and persistence in repositories. After changing Java code, regenerate the Javadocs; see [AGENTS.md](../../AGENTS.md). The pinned Maven Javadoc plugin fails generation on warnings as well as errors.
+
+Trading preferences, reservation-aware buying power and available shares are documented in [the API contract](api.md#trading-preferences). Holdings and Trade owns preference writes; Order and Sell reads that saved profile value and owns order reservations.

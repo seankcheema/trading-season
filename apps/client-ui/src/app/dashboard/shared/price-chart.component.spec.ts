@@ -117,7 +117,9 @@ describe('PriceChartComponent', () => {
     coords.forEach((coord, index) => {
       component['onPointerMove']({ clientX: coord.x * 4 } as PointerEvent, plot);
       expect(component['hoverIndex']()).toBe(index);
-      expect(component['hovered']()?.valueLabel).toBe(component['formatValue'](points[index].value));
+      expect(component['hovered']()?.valueLabel).toBe(
+        component['formatValue'](points[index].value),
+      );
       expect(component['hovered']()?.timeLabel).toBe(labels[index]);
     });
     component['_plotWidth'].set(800);
@@ -225,12 +227,28 @@ describe('PriceChartComponent', () => {
     expect(fixture.nativeElement.querySelector('.rsi-pane')).toBeNull();
   });
 
-  it('shows a labeled demo RSI fallback for a short candle series', () => {
+  it('shows real indicators for a short candle series', () => {
     const fixture = setupIndicatorCandles(10);
-    expect(fixture.nativeElement.querySelector('.chart-indicator-line')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.chart-indicator-line')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.rsi-line')).not.toBeNull();
-    expect(fixture.nativeElement.textContent).toContain('Demo');
-    expect(fixture.componentInstance['latestRsi']()).toBe(57);
+    expect(fixture.nativeElement.textContent).not.toContain('Demo');
+    expect(fixture.componentInstance['latestRsi']()).toBeGreaterThanOrEqual(0);
+  });
+
+  it('draws all indicators for the first candle', () => {
+    const fixture = setupIndicatorCandles(1);
+    expect(fixture.nativeElement.querySelectorAll('.chart-indicator-line')).toHaveLength(4);
+    expect(fixture.nativeElement.querySelector('.rsi-line')).not.toBeNull();
+    expect(fixture.componentInstance['latestRsi']()).toBe(50);
+  });
+
+  it('hides comparison badges without hiding indicators', () => {
+    const fixture = setupIndicatorCandles();
+    fixture.componentRef.setInput('showIndicatorLabels', false);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.chart-indicator-key')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.chart-indicator-sma')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.rsi-pane')).not.toBeNull();
   });
 
   it('keeps indicator paths on the same visible range while zooming', () => {
@@ -268,12 +286,17 @@ describe('PriceChartComponent', () => {
     expect(component['describePoint'](3)?.changePercent).toBe(0);
     fixture.componentRef.setInput('changeBaseline', 'first-positive');
     fixture.detectChanges();
-    for (const [index, expected] of [[2, 0], [3, 50], [4, -50]]) {
+    for (const [index, expected] of [
+      [2, 0],
+      [3, 50],
+      [4, -50],
+    ]) {
       component['hoverIndex'].set(index);
       fixture.detectChanges();
       expect(component['hovered']()?.changePercent).toBe(expected);
-      expect(fixture.nativeElement.querySelector('.price-hover-label').textContent)
-        .toContain(`${expected >= 0 ? '+' : ''}${expected.toFixed(2)}%`);
+      expect(fixture.nativeElement.querySelector('.price-hover-label').textContent).toContain(
+        `${expected >= 0 ? '+' : ''}${expected.toFixed(2)}%`,
+      );
     }
   });
 
@@ -468,7 +491,7 @@ describe('PriceChartComponent', () => {
     expect(plot.contains(tooltip)).toBe(true);
   });
 
-  it('should keep chart controls in the plot overlay when interactive', () => {
+  it('should keep chart controls in the toolbar above the plot when interactive', () => {
     const points = Array.from({ length: 120 }, (_, index) => ({
       time: new Date(2026, 0, 1, 9, index),
       value: 100 + index,
@@ -478,8 +501,9 @@ describe('PriceChartComponent', () => {
       .querySelector('[aria-label="Zoom out"]')
       ?.closest('div');
 
-    expect(controlsContainer?.classList).toContain('absolute');
-    expect(controlsContainer?.classList).toContain('z-30');
+    expect(controlsContainer?.classList).toContain('chart-control-bar');
+    expect(controlsContainer?.classList).not.toContain('absolute');
+    expect(controlsContainer?.parentElement?.classList).toContain('chart-toolbar');
     expect(fixture.nativeElement.querySelector('[aria-label="Zoom out"]')).not.toBeNull();
   });
 
@@ -557,6 +581,25 @@ describe('PriceChartComponent', () => {
     expect(component['atLatest']()).toBe(true);
   });
 
+  it('keeps Latest beside the indicator labels and works without indicators', () => {
+    const fixture = setupIndicatorCandles(120, true);
+    const component = fixture.componentInstance;
+    component['pan'](-0.5);
+    fixture.detectChanges();
+    const row = fixture.nativeElement.querySelector('.chart-top-right');
+    expect(row.parentElement.classList.contains('chart-toolbar')).toBe(true);
+    expect(row.parentElement.querySelector('.chart-control-bar')).not.toBeNull();
+    expect(row.querySelector('.chart-indicator-key')).not.toBeNull();
+    expect(row.querySelector('button').textContent).toContain('Latest');
+    fixture.componentRef.setInput('enabledIndicators', []);
+    fixture.detectChanges();
+    expect(row.querySelector('.chart-indicator-key')).toBeNull();
+    row.querySelector('button').click();
+    fixture.detectChanges();
+    expect(component['atLatest']()).toBe(true);
+    expect(row.querySelector('button')).toBeNull();
+  });
+
   it('should preserve the original full-series chart when interaction is disabled', () => {
     const points = Array.from({ length: 120 }, (_, index) => ({
       time: new Date(2026, 0, 1, 9, index),
@@ -578,6 +621,171 @@ describe('PriceChartComponent', () => {
     fixture.componentRef.setInput('interactionKey', 'MSFT');
     fixture.detectChanges();
     expect(fixture.componentInstance['atLatest']()).toBe(true);
+  });
+
+  describe('interaction', () => {
+    const longSeries = () =>
+      Array.from({ length: 120 }, (_, index) => ({
+        time: new Date(2026, 0, 1, 9, index),
+        value: 100 + index,
+      }));
+
+    function plotStub(width = 200) {
+      const captured = new Set<number>();
+      return {
+        getBoundingClientRect: () => ({ left: 0, width }) as DOMRect,
+        setPointerCapture: (id: number) => captured.add(id),
+        hasPointerCapture: (id: number) => captured.has(id),
+        releasePointerCapture: (id: number) => captured.delete(id),
+        captured,
+      };
+    }
+
+    const pointer = (clientX: number, pointerId = 1) => ({ clientX, pointerId }) as PointerEvent;
+
+    it('shows a hover point under the pointer and clears it when the pointer leaves', () => {
+      const fixture = setup('1D', longSeries(), true);
+      const component = fixture.componentInstance;
+      const plot = plotStub();
+      component['onPointerMove'](pointer(100), plot as unknown as HTMLElement);
+      expect(component['hoverIndex']()).not.toBeNull();
+      component['onPointerLeave']();
+      expect(component['hoverIndex']()).toBeNull();
+    });
+
+    it('does nothing on pointer move when there is nothing to show', () => {
+      const fixture = setup('1D', [], true);
+      fixture.componentInstance['onPointerMove'](pointer(10), plotStub() as unknown as HTMLElement);
+      expect(fixture.componentInstance['hoverIndex']()).toBeNull();
+    });
+
+    it('drags the view with the pointer and releases the capture', () => {
+      const fixture = setup('1D', longSeries(), true);
+      const component = fixture.componentInstance;
+      const plot = plotStub() as unknown as HTMLElement;
+      component['onPointerDown'](pointer(100), plot);
+      expect(component['dragStart']).not.toBeNull();
+      const before = component['viewStart']();
+      component['onPointerMove'](pointer(150), plot);
+      expect(component['viewStart']()).toBeLessThan(before);
+      component['onPointerLeave']();
+      component['onPointerUp'](pointer(150), plot);
+      expect(component['dragStart']).toBeNull();
+    });
+
+    it('only inspects on pointer down when the chart is not interactive', () => {
+      const fixture = setup('1D', longSeries(), false);
+      const component = fixture.componentInstance;
+      component['onPointerDown'](pointer(100), plotStub() as unknown as HTMLElement);
+      expect(component['dragStart']).toBeNull();
+      expect(component['hoverIndex']()).not.toBeNull();
+    });
+
+    it('ignores a pointer-up that never held the capture', () => {
+      const fixture = setup('1D', longSeries(), true);
+      expect(() =>
+        fixture.componentInstance['onPointerUp'](pointer(1), {} as unknown as HTMLElement),
+      ).not.toThrow();
+    });
+
+    it('zooms with the wheel, pans with horizontal wheel and ignores it when not interactive', () => {
+      const fixture = setup('1D', longSeries(), true);
+      const component = fixture.componentInstance;
+      const plot = plotStub() as unknown as HTMLElement;
+      const wheel = (init: Partial<WheelEvent>) => {
+        const event = { preventDefault: vi.fn(), clientX: 100, deltaX: 0, deltaY: 0, ctrlKey: false, ...init };
+        component['onWheel'](event as unknown as WheelEvent, plot);
+        return event;
+      };
+      const initial = component['visiblePoints']().length;
+      wheel({ deltaY: -200 });
+      expect(component['visiblePoints']().length).toBeLessThan(initial);
+      wheel({ deltaY: 100, ctrlKey: true });
+      component['pan'](-0.5);
+      const start = component['viewStart']();
+      const horizontal = wheel({ deltaX: 40 });
+      expect(horizontal.preventDefault).toHaveBeenCalled();
+      expect(component['viewStart']()).toBeGreaterThanOrEqual(start);
+
+      fixture.componentRef.setInput('interactive', false);
+      const ignored = wheel({ deltaY: 100 });
+      expect(ignored.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it('zooms, resets and moves with the keyboard', () => {
+      const fixture = setup('1D', longSeries(), true);
+      const component = fixture.componentInstance;
+      const key = (value: string) => {
+        const event = new KeyboardEvent('keydown', { key: value, cancelable: true });
+        component['onKeydown'](event);
+        return event;
+      };
+      const initial = component['visiblePoints']().length;
+      expect(key('+').defaultPrevented).toBe(true);
+      const zoomedIn = component['visiblePoints']().length;
+      expect(zoomedIn).toBeLessThan(initial);
+      key('=');
+      key('-');
+      expect(component['visiblePoints']().length).toBeGreaterThan(zoomedIn - 20);
+      key('0');
+      expect(component['visiblePoints']().length).toBe(initial);
+      key('ArrowRight');
+      key('End');
+      expect(component['hoverIndex']()).toBe(component['visiblePoints']().length - 1);
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+      const stop = vi.spyOn(escape, 'stopPropagation');
+      component['onKeydown'](escape);
+      expect(stop).toHaveBeenCalled();
+      expect(component['hoverIndex']()).toBeNull();
+      const second = new KeyboardEvent('keydown', { key: 'Escape' });
+      const stopAgain = vi.spyOn(second, 'stopPropagation');
+      component['onKeydown'](second);
+      expect(stopAgain).not.toHaveBeenCalled();
+      expect(key('x').defaultPrevented).toBe(false);
+    });
+
+    it('does not zoom from the keyboard when the chart is not interactive', () => {
+      const fixture = setup('1D', longSeries(), false);
+      const component = fixture.componentInstance;
+      component['onKeydown'](new KeyboardEvent('keydown', { key: '+' }));
+      expect(component['visiblePoints']()).toHaveLength(120);
+    });
+
+    it('ignores the keyboard when there is nothing to move through', () => {
+      const fixture = setup('1D', [], true);
+      fixture.componentInstance['onKeydown'](new KeyboardEvent('keydown', { key: 'End' }));
+      expect(fixture.componentInstance['hoverIndex']()).toBeNull();
+    });
+
+    it('wires the toolbar buttons and plot events to the view', () => {
+      const fixture = setup('1D', longSeries(), true);
+      const component = fixture.componentInstance;
+      const root: HTMLElement = fixture.nativeElement;
+      const click = (label: string) => {
+        (root.querySelector(`[aria-label="${label}"]`) as HTMLElement).click();
+        fixture.detectChanges();
+      };
+      const initial = component['visiblePoints']().length;
+      click('Zoom in');
+      const zoomedIn = component['visiblePoints']().length;
+      expect(zoomedIn).toBeLessThan(initial);
+      click('Zoom out');
+      expect(component['visiblePoints']().length).toBeGreaterThan(zoomedIn);
+      click('Zoom in');
+      click('Pan left');
+      click('Pan right');
+      click('Reset chart view');
+      expect(component['visiblePoints']().length).toBe(initial);
+
+      const plot = root.querySelector('[tabindex="0"]') as HTMLElement;
+      plot.getBoundingClientRect = () => ({ left: 0, width: 200 }) as DOMRect;
+      for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'pointerleave']) {
+        plot.dispatchEvent(new MouseEvent(type, { clientX: 80, bubbles: true }));
+      }
+      plot.dispatchEvent(new WheelEvent('wheel', { deltaY: -50, clientX: 50, cancelable: true }));
+      plot.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home' }));
+      expect(component['hoverIndex']()).toBe(0);
+    });
   });
 });
 

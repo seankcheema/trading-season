@@ -1,3 +1,5 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
+import { ExecutionControlsComponent } from '../shared/execution-controls.component';
 import { WatchlistStarComponent } from '../watchlist/watchlist-star.component';
 import { ToastService } from '../../notifications/toast.service';
 import { affordableShares, boundedShares, wholeShares } from '../shared/share-limits';
@@ -5,6 +7,7 @@ import { CurrencyPipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  viewChild,
   DestroyRef,
   computed,
   effect,
@@ -35,6 +38,8 @@ const ORDER_REJECTED = 'The order was rejected.';
   selector: 'app-order-submission',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    CdkTrapFocus,
+    ExecutionControlsComponent,
     WatchlistStarComponent,
     CurrencyPipe,
     NgIcon,
@@ -50,6 +55,7 @@ const ORDER_REJECTED = 'The order was rejected.';
   styleUrl: './order-submission.component.css',
 })
 export class OrderSubmissionComponent {
+  readonly execution = viewChild(ExecutionControlsComponent);
   private readonly marketData = inject(MarketDataService);
   private readonly orders = inject(OrderService);
   private readonly toasts = inject(ToastService);
@@ -61,6 +67,7 @@ export class OrderSubmissionComponent {
   }
 
   readonly instrument = input.required<Instrument>();
+  readonly editOrder = input<OrderResult | null>(null);
   readonly instruments = input<readonly Instrument[]>([]);
   readonly sessionId = input<number | null>(null);
   readonly marketTimestamp = input('');
@@ -156,7 +163,7 @@ export class OrderSubmissionComponent {
 
   protected readonly maxShares = computed(() =>
     this.side() === 'buy'
-      ? affordableShares(this.cashBalance(), this.activeInstrument().price)
+      ? affordableShares(this.cashBalance(), this.execution()?.reservationPriceFor(this.activeInstrument().price) ?? this.activeInstrument().price)
       : wholeShares(this.sharesHeld()),
   );
 
@@ -195,11 +202,36 @@ export class OrderSubmissionComponent {
   );
 
   protected readonly submitLabel = computed(() => {
+    if (this.editOrder()) {
+      return this.busy() ? 'Saving…' : 'Save changes';
+    }
     if (this.busy()) {
       return this.submittedSide() === 'buy' ? 'Buying\u2026' : 'Selling\u2026';
     }
     const action = this.side() === 'buy' ? 'Buy' : 'Sell';
     return `${action} ${this.shares()} ${this.activeInstrument().symbol}`;
+  });
+
+  private initializedEditId: number | null = null;
+  private readonly initializeEdit = effect(() => {
+    const order = this.editOrder();
+    const execution = this.execution();
+    if (
+      !order ||
+      !execution ||
+      execution.buffer() === null ||
+      this.initializedEditId === order.orderId
+    ) {
+      return;
+    }
+    untracked(() => {
+      execution.executionType.set(order.executionType ?? 'MARKET');
+      execution.limitPrice.set(order.limitPrice ?? null);
+      execution.stopPrice.set(order.stopPrice ?? null);
+      this.side.set(order.orderType === 'BUY' ? 'buy' : 'sell');
+      this.shares.set(order.quantity);
+      this.initializedEditId = order.orderId;
+    });
   });
 
   private readonly marketTimeMillis = computed(() => {
@@ -226,7 +258,7 @@ export class OrderSubmissionComponent {
   }
 
   protected submit(): void {
-    if (!this.canSubmit()) {
+    if (!this.canSubmit() || !this.execution()?.valid()) {
       return;
     }
     const accountId = Number(this.accountId());
@@ -238,6 +270,7 @@ export class OrderSubmissionComponent {
     }
 
     const symbol = this.activeInstrument().symbol;
+    const executionLabel = this.execution()!.executionLabel();
     this.submittedSide.set(this.side());
     this.coolingDown.set(true);
     this.cooldownTimer = setTimeout(() => this.coolingDown.set(false), 1000);
@@ -247,8 +280,11 @@ export class OrderSubmissionComponent {
     this.orders
       .submitOrder({
         accountId,
+        ...(this.editOrder() ? { replacesOrderId: this.editOrder()!.orderId, instrumentId: this.editOrder()!.instrumentId } : {}),
         symbol,
         orderType: this.side() === 'buy' ? 'BUY' : 'SELL',
+        ...this.execution()!.parameters(),
+        ...(this.sessionId() !== null ? { sessionId: this.sessionId()! } : {}),
         quantity: this.shares(),
         indicativePrice: this.activeInstrument().price,
         simulatedAt: Number.isFinite(Date.parse(this.marketTimestamp()))
@@ -263,8 +299,11 @@ export class OrderSubmissionComponent {
             const price = new Intl.NumberFormat('en-US', {
               style: 'currency',
               currency: 'USD',
-            }).format(result.fillPrice ?? result.indicativePrice);
+            }).format(result.executionPrice ?? result.indicativePrice);
             this.toasts.show(`Filled ${result.quantity} ${symbol} at ${price}.`, 'success');
+          }
+          if (result.status === 'ACCEPTED') {
+            this.toasts.show(`${executionLabel} ${result.orderType.toLowerCase()} order ${this.editOrder() ? 'updated' : 'placed'} for ${result.quantity} ${symbol}.`, 'success');
           }
           if (result.status === 'REJECTED') {
             this.toasts.show(`Rejected: ${result.rejectionReason ?? ORDER_REJECTED}`, 'error');

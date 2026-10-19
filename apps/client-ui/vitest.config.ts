@@ -7,7 +7,7 @@ import { defineConfig } from 'vitest/config';
 // to start within its handshake timeout ("Timeout waiting for worker to
 // respond"), which aborts the whole run with zero tests collected. A single
 // fork avoids racing other processes for CPU to spin up workers, and the
-// Angular CLI loads this file only because `runnerConfig: true` is set in
+// Angular CLI loads this file through the explicit `runnerConfig` path in
 // angular.json.
 //
 // The same contention stretches individual tests. The dashboard suite runs in
@@ -20,10 +20,7 @@ export default defineConfig({
   test: {
     testTimeout: 30_000,
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
-    },
+    maxWorkers: 1,
+    fileParallelism: false,
   },
 });

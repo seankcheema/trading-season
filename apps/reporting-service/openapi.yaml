@@ -290,7 +290,9 @@ paths:
       summary: The newest orders and cash transfers across every account
       description: |
         Requires the ADMIN role. The newest deposits and withdrawals are
-        returned beside the orders, under the same limit.
+        returned beside the orders, under the same limit. With `range`, every
+        order and transfer made in that range is returned instead, in the
+        viewer's days, and `limit` is ignored.
       security:
         - bearerAuth: []
       parameters:
@@ -301,6 +303,19 @@ paths:
             minimum: 1
             maximum: 1000
             default: 500
+        - name: range
+          in: query
+          schema:
+            type: string
+            enum: [today, 7d, 30d, 90d, all]
+        - name: tzOffset
+          in: query
+          description: Minutes the viewer sits east of UTC; used with `range`.
+          schema:
+            type: integer
+            minimum: -840
+            maximum: 840
+            default: 0
       responses:
         '200':
           description: Orders and transfers returned, each newest first
@@ -879,7 +894,7 @@ components:
       required: [kind, at]
     OrderStatus:
       type: string
-      enum: [FILLED, PENDING, ACCEPTED, REJECTED]
+      enum: [FILLED, PENDING, ACCEPTED, REJECTED, CANCELLED]
     OrderSide:
       type: string
       enum: [BUY, SELL]
@@ -979,6 +994,49 @@ components:
         - type: object
           properties:
             userEmail:
+              type: string
+              nullable: true
+            executionType:
+              type: string
+              nullable: true
+            limitPrice:
+              type: number
+              nullable: true
+            stopPrice:
+              type: number
+              nullable: true
+            referencePrice:
+              type: number
+              nullable: true
+            referenceAt:
+              type: string
+              nullable: true
+              format: date-time
+            sessionId:
+              type: integer
+              nullable: true
+            triggerPrice:
+              type: number
+              nullable: true
+              description: First stop activation quote; submission reference remains unchanged.
+            triggeredAt:
+              type: string
+              nullable: true
+              format: date-time
+            evaluatedAt:
+              type: string
+              nullable: true
+              format: date-time
+            reservedCash:
+              type: number
+              nullable: true
+            reservedShares:
+              type: number
+              nullable: true
+            executionPrice:
+              type: number
+              nullable: true
+            rejectionCode:
               type: string
               nullable: true
             bufferPercent:

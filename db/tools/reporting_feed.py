@@ -48,7 +48,7 @@ QUERIES = {
     'profiles': '''SELECT user_id, first_name, last_name, trader_level, available_funds, session_timeout_minutes,
                           last_activity_at, created_at
                    FROM users ORDER BY created_at, user_id''',
-    'accounts': 'SELECT account_id, user_id, name, opened_date, currency FROM accounts ORDER BY account_id',
+    'accounts': 'SELECT account_id, user_id, name, opened_date, currency, status, archived_at FROM accounts ORDER BY account_id',
     'session': '''SELECT id FROM simulation_sessions WHERE status = 'COMPLETED'
                   ORDER BY created_at DESC, id DESC LIMIT 1''',
     'cash': '''SELECT cash_transaction_id, account_id, fill_id, amount, reason, created_at
@@ -61,7 +61,8 @@ QUERIES = {
     'audit': 'SELECT audit_id, order_id, event_type, detail, recorded_at FROM audit_trail ORDER BY audit_id',
     'orders': '''SELECT o.order_id, o.account_id, o.instrument_id, o.client_reference, o.order_type, o.status,
                         o.quantity, o.indicative_price, o.buffer_percent, o.rejection_reason, o.submitted_at,
-                        o.accepted_at, o.resolved_at, o.simulated_at, i.ticker, i.name AS instrument_name,
+                        o.accepted_at, o.resolved_at, o.simulated_at,
+                        o.execution_type, o.limit_price, o.stop_price, o.reference_price, o.reference_at, o.session_id, o.triggered_at, o.trigger_price, o.evaluated_at, o.reserved_cash, o.reserved_shares, o.execution_price, o.rejection_code, i.ticker, i.name AS instrument_name,
                         f.fill_id, f.quote_price, f.quantity AS fill_quantity, f.filled_at
                  FROM orders o
                  JOIN instruments i ON i.instrument_id = o.instrument_id
@@ -172,6 +173,7 @@ def build_messages(snapshot):
         messages.append(_record('TRADING_ACCOUNT', row['account_id'], {
             'accountId': row['account_id'], 'userId': text(row['user_id']), 'name': row['name'],
             'openedDate': iso(row['opened_date']), 'currency': row['currency'],
+            'status': row.get('status', 'ACTIVE'), 'archivedAt': iso(row.get('archived_at')),
         }))
     for row in snapshot['session']:
         messages.append(_record('MARKET_SESSION', 'current', {'sessionId': row['id']}))
@@ -229,7 +231,7 @@ def _order_event(row, owner, cash_of_fill, movement_of_fill, cash_after, holding
         'symbol': row['ticker'],
         'side': row['order_type'],
         'quantity': number(row['quantity']),
-        'price': number(row['indicative_price']),
+        'price': number(row['quote_price'] if row['fill_id'] is not None else row['indicative_price']),
         'rejectionReason': row['rejection_reason'],
         'occurredAt': iso(occurred_at),
         'order': {
@@ -242,6 +244,20 @@ def _order_event(row, owner, cash_of_fill, movement_of_fill, cash_after, holding
             'acceptedAt': iso(row['accepted_at']),
             'resolvedAt': iso(row['resolved_at']),
             'simulatedAt': iso(row['simulated_at']),
+            'executionType': text(row.get('execution_type')),
+            'limitPrice': number(row.get('limit_price')),
+            'stopPrice': number(row.get('stop_price')),
+            'referencePrice': number(row.get('reference_price')),
+            'referenceAt': iso(row.get('reference_at')),
+            'sessionId': row.get('session_id'),
+            'triggeredAt': iso(row.get('triggered_at')),
+            'triggerPrice': number(row.get('trigger_price')),
+            'evaluatedAt': iso(row.get('evaluated_at')),
+            'reservedCash': number(row.get('reserved_cash')),
+            'reservedShares': number(row.get('reserved_shares')),
+            'executionPrice': number(row.get('execution_price')),
+            'rejectionCode': text(row.get('rejection_code')),
+
         },
         'execution': execution,
     })

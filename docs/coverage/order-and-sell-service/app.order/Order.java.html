@@ -22,7 +22,9 @@ import java.util.UUID;
  * is written and the user's available funds and the account's holdings have
  * moved, or {@code ACCEPTED -&gt; REJECTED} if the re-check under the row lock
  * fails. Execution runs in a separate transaction, so an order whose
- * execution fails unexpectedly stays {@code ACCEPTED} on record. This entity
+ * execution fails unexpectedly stays {@code ACCEPTED} on record, with its reservation,
+ * for bounded-backoff retry. Conditional orders also remain ACCEPTED until eligible
+ * or cancelled; triggering is recorded separately from status. This entity
  * is persisted as {@code PENDING} the moment a request is received, before
  * the trading-rule pipeline runs, so a rejected order still leaves a record.
  */
@@ -31,8 +33,8 @@ import java.util.UUID;
 public class Order {
 
     /** Creates an instance of this class. */
-<span class="fc" id="L34">    public Order() {</span>
-<span class="fc" id="L35">    }</span>
+<span class="fc" id="L36">    public Order() {</span>
+<span class="fc" id="L37">    }</span>
 
     /** Order type for a purchase. */
     public static final String TYPE_BUY = &quot;BUY&quot;;
@@ -44,7 +46,7 @@ public class Order {
     /**
      * Passed the trading rules and committed as a firm commitment before
      * execution (BR-06). Execution follows in its own transaction; an order
-     * stays here if that execution fails unexpectedly.
+     * stays here while conditions are unmet or settlement is retryable.
      */
     public static final String STATUS_ACCEPTED = &quot;ACCEPTED&quot;;
     /**
@@ -73,7 +75,7 @@ public class Order {
     @Column(name = &quot;order_type&quot;, nullable = false, updatable = false)
     private String orderType;
 
-<span class="fc" id="L76">    @Column(nullable = false)</span>
+<span class="fc" id="L78">    @Column(nullable = false)</span>
     private String status = STATUS_PENDING;
 
     @Column(nullable = false, updatable = false)
@@ -83,7 +85,7 @@ public class Order {
     @Column(name = &quot;indicative_price&quot;, updatable = false)
     private BigDecimal indicativePrice;
 
-    /** KAN-100: the trader's execution price tolerance, acquired from the client. */
+    /** The saved user execution preference snapshotted at submission. */
     @Column(name = &quot;buffer_percent&quot;, updatable = false)
     private BigDecimal bufferPercent;
 
@@ -106,11 +108,11 @@ public class Order {
 
     /** Returns the selected simulation time.
      * @return simulated time, or null for submissions without replay context */
-<span class="fc" id="L109">    public OffsetDateTime getSimulatedAt() { return simulatedAt; }</span>
+<span class="fc" id="L111">    public OffsetDateTime getSimulatedAt() { return simulatedAt; }</span>
 
     /** Sets the selected simulation time.
      * @param simulatedAt selected replay time, including backdated submissions */
-<span class="fc" id="L113">    public void setSimulatedAt(OffsetDateTime simulatedAt) { this.simulatedAt = simulatedAt; }</span>
+<span class="fc" id="L115">    public void setSimulatedAt(OffsetDateTime simulatedAt) { this.simulatedAt = simulatedAt; }</span>
 
     /**
      * Returns the order ID.
@@ -118,7 +120,7 @@ public class Order {
      * @return the order ID
      */
     public Integer getOrderId() {
-<span class="fc" id="L121">        return orderId;</span>
+<span class="fc" id="L123">        return orderId;</span>
     }
 
     /**
@@ -127,8 +129,8 @@ public class Order {
      * @param orderId the order ID
      */
     public void setOrderId(Integer orderId) {
-<span class="fc" id="L130">        this.orderId = orderId;</span>
-<span class="fc" id="L131">    }</span>
+<span class="fc" id="L132">        this.orderId = orderId;</span>
+<span class="fc" id="L133">    }</span>
 
     /**
      * Returns the account ID.
@@ -136,7 +138,7 @@ public class Order {
      * @return the account ID
      */
     public Integer getAccountId() {
-<span class="fc" id="L139">        return accountId;</span>
+<span class="fc" id="L141">        return accountId;</span>
     }
 
     /**
@@ -145,8 +147,8 @@ public class Order {
      * @param accountId the account ID
      */
     public void setAccountId(Integer accountId) {
-<span class="fc" id="L148">        this.accountId = accountId;</span>
-<span class="fc" id="L149">    }</span>
+<span class="fc" id="L150">        this.accountId = accountId;</span>
+<span class="fc" id="L151">    }</span>
 
     /**
      * Returns the instrument ID.
@@ -154,7 +156,7 @@ public class Order {
      * @return the instrument ID
      */
     public Integer getInstrumentId() {
-<span class="fc" id="L157">        return instrumentId;</span>
+<span class="fc" id="L159">        return instrumentId;</span>
     }
 
     /**
@@ -163,8 +165,8 @@ public class Order {
      * @param instrumentId the instrument ID
      */
     public void setInstrumentId(Integer instrumentId) {
-<span class="fc" id="L166">        this.instrumentId = instrumentId;</span>
-<span class="fc" id="L167">    }</span>
+<span class="fc" id="L168">        this.instrumentId = instrumentId;</span>
+<span class="fc" id="L169">    }</span>
 
     /**
      * Returns the client reference.
@@ -172,7 +174,7 @@ public class Order {
      * @return the client reference
      */
     public UUID getClientReference() {
-<span class="fc" id="L175">        return clientReference;</span>
+<span class="fc" id="L177">        return clientReference;</span>
     }
 
     /**
@@ -181,8 +183,8 @@ public class Order {
      * @param clientReference the client reference
      */
     public void setClientReference(UUID clientReference) {
-<span class="fc" id="L184">        this.clientReference = clientReference;</span>
-<span class="fc" id="L185">    }</span>
+<span class="fc" id="L186">        this.clientReference = clientReference;</span>
+<span class="fc" id="L187">    }</span>
 
     /**
      * Returns the order type.
@@ -190,7 +192,7 @@ public class Order {
      * @return the order type
      */
     public String getOrderType() {
-<span class="fc" id="L193">        return orderType;</span>
+<span class="fc" id="L195">        return orderType;</span>
     }
 
     /**
@@ -199,8 +201,8 @@ public class Order {
      * @param orderType the order type
      */
     public void setOrderType(String orderType) {
-<span class="fc" id="L202">        this.orderType = orderType;</span>
-<span class="fc" id="L203">    }</span>
+<span class="fc" id="L204">        this.orderType = orderType;</span>
+<span class="fc" id="L205">    }</span>
 
     /**
      * Returns the status.
@@ -208,7 +210,7 @@ public class Order {
      * @return the status
      */
     public String getStatus() {
-<span class="fc" id="L211">        return status;</span>
+<span class="fc" id="L213">        return status;</span>
     }
 
     /**
@@ -217,8 +219,8 @@ public class Order {
      * @param status the status
      */
     public void setStatus(String status) {
-<span class="fc" id="L220">        this.status = status;</span>
-<span class="fc" id="L221">    }</span>
+<span class="fc" id="L222">        this.status = status;</span>
+<span class="fc" id="L223">    }</span>
 
     /**
      * Returns the quantity.
@@ -226,7 +228,7 @@ public class Order {
      * @return the quantity
      */
     public BigDecimal getQuantity() {
-<span class="fc" id="L229">        return quantity;</span>
+<span class="fc" id="L231">        return quantity;</span>
     }
 
     /**
@@ -235,8 +237,8 @@ public class Order {
      * @param quantity the quantity
      */
     public void setQuantity(BigDecimal quantity) {
-<span class="fc" id="L238">        this.quantity = quantity;</span>
-<span class="fc" id="L239">    }</span>
+<span class="fc" id="L240">        this.quantity = quantity;</span>
+<span class="fc" id="L241">    }</span>
 
     /**
      * Returns the indicative price.
@@ -244,7 +246,7 @@ public class Order {
      * @return the indicative price
      */
     public BigDecimal getIndicativePrice() {
-<span class="fc" id="L247">        return indicativePrice;</span>
+<span class="fc" id="L249">        return indicativePrice;</span>
     }
 
     /**
@@ -253,8 +255,8 @@ public class Order {
      * @param indicativePrice the indicative price
      */
     public void setIndicativePrice(BigDecimal indicativePrice) {
-<span class="fc" id="L256">        this.indicativePrice = indicativePrice;</span>
-<span class="fc" id="L257">    }</span>
+<span class="fc" id="L258">        this.indicativePrice = indicativePrice;</span>
+<span class="fc" id="L259">    }</span>
 
     /**
      * Returns the buffer percent.
@@ -262,7 +264,7 @@ public class Order {
      * @return the buffer percent
      */
     public BigDecimal getBufferPercent() {
-<span class="fc" id="L265">        return bufferPercent;</span>
+<span class="fc" id="L267">        return bufferPercent;</span>
     }
 
     /**
@@ -271,8 +273,8 @@ public class Order {
      * @param bufferPercent the buffer percent
      */
     public void setBufferPercent(BigDecimal bufferPercent) {
-<span class="fc" id="L274">        this.bufferPercent = bufferPercent;</span>
-<span class="fc" id="L275">    }</span>
+<span class="fc" id="L276">        this.bufferPercent = bufferPercent;</span>
+<span class="fc" id="L277">    }</span>
 
     /**
      * Returns the rejection reason.
@@ -280,7 +282,7 @@ public class Order {
      * @return the rejection reason
      */
     public String getRejectionReason() {
-<span class="fc" id="L283">        return rejectionReason;</span>
+<span class="fc" id="L285">        return rejectionReason;</span>
     }
 
     /**
@@ -289,8 +291,8 @@ public class Order {
      * @param rejectionReason the rejection reason
      */
     public void setRejectionReason(String rejectionReason) {
-<span class="fc" id="L292">        this.rejectionReason = rejectionReason;</span>
-<span class="fc" id="L293">    }</span>
+<span class="fc" id="L294">        this.rejectionReason = rejectionReason;</span>
+<span class="fc" id="L295">    }</span>
 
     /**
      * Returns the submitted at.
@@ -298,7 +300,7 @@ public class Order {
      * @return the submitted at
      */
     public OffsetDateTime getSubmittedAt() {
-<span class="fc" id="L301">        return submittedAt;</span>
+<span class="fc" id="L303">        return submittedAt;</span>
     }
 
     /**
@@ -307,8 +309,8 @@ public class Order {
      * @param submittedAt the submitted at
      */
     public void setSubmittedAt(OffsetDateTime submittedAt) {
-<span class="fc" id="L310">        this.submittedAt = submittedAt;</span>
-<span class="fc" id="L311">    }</span>
+<span class="fc" id="L312">        this.submittedAt = submittedAt;</span>
+<span class="fc" id="L313">    }</span>
 
     /**
      * Returns the accepted at.
@@ -316,7 +318,7 @@ public class Order {
      * @return the accepted at
      */
     public OffsetDateTime getAcceptedAt() {
-<span class="fc" id="L319">        return acceptedAt;</span>
+<span class="fc" id="L321">        return acceptedAt;</span>
     }
 
     /**
@@ -325,8 +327,8 @@ public class Order {
      * @param acceptedAt the accepted at
      */
     public void setAcceptedAt(OffsetDateTime acceptedAt) {
-<span class="fc" id="L328">        this.acceptedAt = acceptedAt;</span>
-<span class="fc" id="L329">    }</span>
+<span class="fc" id="L330">        this.acceptedAt = acceptedAt;</span>
+<span class="fc" id="L331">    }</span>
 
     /**
      * Returns the resolved at.
@@ -334,7 +336,7 @@ public class Order {
      * @return the resolved at
      */
     public OffsetDateTime getResolvedAt() {
-<span class="fc" id="L337">        return resolvedAt;</span>
+<span class="fc" id="L339">        return resolvedAt;</span>
     }
 
     /**
@@ -343,9 +345,131 @@ public class Order {
      * @param resolvedAt the resolved at
      */
     public void setResolvedAt(OffsetDateTime resolvedAt) {
-<span class="fc" id="L346">        this.resolvedAt = resolvedAt;</span>
-<span class="fc" id="L347">    }</span>
+<span class="fc" id="L348">        this.resolvedAt = resolvedAt;</span>
+<span class="fc" id="L349">    }</span>
+    /** Final state of an order cancelled before execution. */
+    public static final String STATUS_CANCELLED = &quot;CANCELLED&quot;;
+<span class="fc" id="L352">    @Column(name = &quot;execution_type&quot;)</span>
+    private String executionType = &quot;MARKET&quot;;
+    /** Returns executionType.
+     * @return persisted executionType */
+<span class="fc" id="L356">    public String getExecutionType() { return executionType; }</span>
+    /** Sets executionType.
+     * @param value new executionType */
+<span class="fc" id="L359">    public void setExecutionType(String value) { this.executionType = value; }</span>
+<span class="fc" id="L360">    @Column(name = &quot;limit_price&quot;, precision = 18, scale = 6)</span>
+    private BigDecimal limitPrice = null;
+    /** Returns limitPrice.
+     * @return persisted limitPrice */
+<span class="fc" id="L364">    public BigDecimal getLimitPrice() { return limitPrice; }</span>
+    /** Sets limitPrice.
+     * @param value new limitPrice */
+<span class="fc" id="L367">    public void setLimitPrice(BigDecimal value) { this.limitPrice = value; }</span>
+<span class="fc" id="L368">    @Column(name = &quot;stop_price&quot;, precision = 18, scale = 6)</span>
+    private BigDecimal stopPrice = null;
+    /** Returns stopPrice.
+     * @return persisted stopPrice */
+<span class="fc" id="L372">    public BigDecimal getStopPrice() { return stopPrice; }</span>
+    /** Sets stopPrice.
+     * @param value new stopPrice */
+<span class="fc" id="L375">    public void setStopPrice(BigDecimal value) { this.stopPrice = value; }</span>
+<span class="fc" id="L376">    @Column(name = &quot;reference_price&quot;, precision = 18, scale = 6)</span>
+    private BigDecimal referencePrice = null;
+    /** Returns referencePrice.
+     * @return persisted referencePrice */
+<span class="fc" id="L380">    public BigDecimal getReferencePrice() { return referencePrice; }</span>
+    /** Sets referencePrice.
+     * @param value new referencePrice */
+<span class="fc" id="L383">    public void setReferencePrice(BigDecimal value) { this.referencePrice = value; }</span>
+<span class="fc" id="L384">    @Column(name = &quot;reference_at&quot;)</span>
+    private OffsetDateTime referenceAt = null;
+    /** Returns referenceAt.
+     * @return persisted referenceAt */
+<span class="fc" id="L388">    public OffsetDateTime getReferenceAt() { return referenceAt; }</span>
+    /** Sets referenceAt.
+     * @param value new referenceAt */
+<span class="fc" id="L391">    public void setReferenceAt(OffsetDateTime value) { this.referenceAt = value; }</span>
+<span class="fc" id="L392">    @Column(name = &quot;session_id&quot;)</span>
+    private Long sessionId = null;
+    /** Returns sessionId.
+     * @return persisted sessionId */
+<span class="fc" id="L396">    public Long getSessionId() { return sessionId; }</span>
+    /** Sets sessionId.
+     * @param value new sessionId */
+<span class="fc" id="L399">    public void setSessionId(Long value) { this.sessionId = value; }</span>
+    /** Authoritative activation quote, distinct from the immutable submission quote. */
+    @Column(name = &quot;trigger_price&quot;, precision = 24, scale = 6)
+    private BigDecimal triggerPrice;
+    /** Returns the latched stop activation quote.
+     * @return trigger quote, or null before activation or for legacy orders */
+<span class="fc" id="L405">    public BigDecimal getTriggerPrice() { return triggerPrice; }</span>
+    /** Records the first stop activation quote.
+     * @param value authoritative trigger price */
+<span class="fc" id="L408">    public void setTriggerPrice(BigDecimal value) { this.triggerPrice = value; }</span>
+
+<span class="fc" id="L410">    @Column(name = &quot;triggered_at&quot;)</span>
+    private OffsetDateTime triggeredAt = null;
+    /** Returns triggeredAt.
+     * @return persisted triggeredAt */
+<span class="fc" id="L414">    public OffsetDateTime getTriggeredAt() { return triggeredAt; }</span>
+    /** Sets triggeredAt.
+     * @param value new triggeredAt */
+<span class="fc" id="L417">    public void setTriggeredAt(OffsetDateTime value) { this.triggeredAt = value; }</span>
+<span class="fc" id="L418">    @Column(name = &quot;evaluated_at&quot;)</span>
+    private OffsetDateTime evaluatedAt = null;
+    /** Returns evaluatedAt.
+     * @return persisted evaluatedAt */
+<span class="fc" id="L422">    public OffsetDateTime getEvaluatedAt() { return evaluatedAt; }</span>
+    /** Sets evaluatedAt.
+     * @param value new evaluatedAt */
+<span class="fc" id="L425">    public void setEvaluatedAt(OffsetDateTime value) { this.evaluatedAt = value; }</span>
+<span class="fc" id="L426">    @Column(name = &quot;reserved_cash&quot;, precision = 24, scale = 6)</span>
+    private BigDecimal reservedCash = BigDecimal.ZERO;
+    /** Returns reservedCash.
+     * @return persisted reservedCash */
+<span class="fc" id="L430">    public BigDecimal getReservedCash() { return reservedCash; }</span>
+    /** Sets reservedCash.
+     * @param value new reservedCash */
+<span class="fc" id="L433">    public void setReservedCash(BigDecimal value) { this.reservedCash = value; }</span>
+<span class="fc" id="L434">    @Column(name = &quot;reserved_shares&quot;, precision = 14, scale = 4)</span>
+    private BigDecimal reservedShares = BigDecimal.ZERO;
+    /** Returns reservedShares.
+     * @return persisted reservedShares */
+<span class="fc" id="L438">    public BigDecimal getReservedShares() { return reservedShares; }</span>
+    /** Sets reservedShares.
+     * @param value new reservedShares */
+<span class="fc" id="L441">    public void setReservedShares(BigDecimal value) { this.reservedShares = value; }</span>
+<span class="fc" id="L442">    @Column(name = &quot;execution_price&quot;, precision = 18, scale = 6)</span>
+    private BigDecimal executionPrice = null;
+    /** Returns executionPrice.
+     * @return persisted executionPrice */
+<span class="fc" id="L446">    public BigDecimal getExecutionPrice() { return executionPrice; }</span>
+    /** Sets executionPrice.
+     * @param value new executionPrice */
+<span class="fc" id="L449">    public void setExecutionPrice(BigDecimal value) { this.executionPrice = value; }</span>
+<span class="fc" id="L450">    @Column(name = &quot;rejection_code&quot;)</span>
+    private String rejectionCode = null;
+    /** Returns rejectionCode.
+     * @return persisted rejectionCode */
+<span class="fc" id="L454">    public String getRejectionCode() { return rejectionCode; }</span>
+    /** Sets rejectionCode.
+     * @param value new rejectionCode */
+<span class="fc" id="L457">    public void setRejectionCode(String value) { this.rejectionCode = value; }</span>
+<span class="fc" id="L458">    @Column(name = &quot;retry_after&quot;)</span>
+    private OffsetDateTime retryAfter = null;
+    /** Returns retryAfter.
+     * @return persisted retryAfter */
+<span class="fc" id="L462">    public OffsetDateTime getRetryAfter() { return retryAfter; }</span>
+    /** Sets retryAfter.
+     * @param value new retryAfter */
+<span class="fc" id="L465">    public void setRetryAfter(OffsetDateTime value) { this.retryAfter = value; }</span>
+<span class="fc" id="L466">    @Column(name = &quot;execution_attempts&quot;)</span>
+<span class="fc" id="L467">    private Integer executionAttempts = 0;</span>
+    /** Returns executionAttempts.
+     * @return persisted executionAttempts */
+<span class="fc" id="L470">    public Integer getExecutionAttempts() { return executionAttempts; }</span>
+    /** Sets executionAttempts.
+     * @param value new executionAttempts */
+<span class="fc" id="L473">    public void setExecutionAttempts(Integer value) { this.executionAttempts = value; }</span>
 }
-
-
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

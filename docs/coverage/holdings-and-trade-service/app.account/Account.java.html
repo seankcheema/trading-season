@@ -2,132 +2,27 @@
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.UUID;
 
 /**
  * A brokerage/child account: the unit orders and holdings attach to/
  * A user can own more than one account (KAN-78, KAN-103/104)
- * Represents an account with an ID, name, and balance.
+ * Represents an account with an ID, name, balance, and ACTIVE or ARCHIVED lifecycle.
+ * Archived accounts retain their identity and history but reject new financial activity.
  * &lt;p&gt;{@code cashBalance} is a cache (BR-10) reconciled against
- * {@code cash_transactions} - order execution must update it by 
+ * {@code cash_transactions} - order execution must update it by
  * inserting a ledger row, never by writing this field directly.
  */
-
 @Entity
 @Table(name = &quot;accounts&quot;)
-
-public class Account {
-
-    /** Creates an instance of this class. */
-<span class="fc" id="L29">    public Account() {</span>
-<span class="fc" id="L30">    }</span>
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = &quot;account_id&quot;, updatable = false, nullable = false)
-   private Integer id;
-@Column(name = &quot;user_id&quot;, nullable = false, updatable = false)
-    private UUID userId;
-
-<span class="fc" id="L39">    @Column(name = &quot;cash_balance&quot;, nullable = false)</span>
-    private BigDecimal cashBalance = BigDecimal.ZERO;
-
-    @Column(name = &quot;opened_date&quot;, nullable = false)
-    private LocalDate openedDate;
+public class Account extends AccountBase {
 
     @Column(nullable = false)
     private String name;
 
-<span class="fc" id="L48">    @Column(nullable = false)</span>
-    private String currency = &quot;USD&quot;;
-
-    /**
-     * Returns the ID.
-     *
-     * @return the ID
-     */
-    public Integer getId() {
-<span class="fc" id="L57">        return id;</span>
-    }
-
-    /**
-     * Sets the ID.
-     *
-     * @param id the ID
-     */
-    public void setId(Integer id) {
-<span class="fc" id="L66">        this.id = id;</span>
-<span class="fc" id="L67">    }</span>
-
-    /**
-     * Returns the account ID.
-     *
-     * @return the account ID
-     */
-    public Integer getAccountId() {
-<span class="fc" id="L75">        return id;</span>
-    }
-
-    /**
-     * Returns the user ID.
-     *
-     * @return the user ID
-     */
-    public UUID getUserId() {
-<span class="fc" id="L84">        return userId;</span>
-    }
-
-    /**
-     * Sets the user ID.
-     *
-     * @param userId the user ID
-     */
-    public void setUserId(UUID userId) {
-<span class="fc" id="L93">        this.userId = userId;</span>
-<span class="fc" id="L94">    }</span>
-
-    /**
-     * Returns the cash balance.
-     *
-     * @return the cash balance
-     */
-    public BigDecimal getCashBalance() {
-<span class="fc" id="L102">        return cashBalance;</span>
-    }
-
-    /**
-     * Sets the cash balance.
-     *
-     * @param cashBalance the cash balance
-     */
-    public void setCashBalance(BigDecimal cashBalance) {
-<span class="fc" id="L111">        this.cashBalance = cashBalance;</span>
-<span class="fc" id="L112">    }</span>
-
-    /**
-     * Returns the opened date.
-     *
-     * @return the opened date
-     */
-    public LocalDate getOpenedDate() {
-<span class="fc" id="L120">        return openedDate;</span>
-    }
-
-    /**
-     * Sets the opened date.
-     *
-     * @param openedDate the opened date
-     */
-    public void setOpenedDate(LocalDate openedDate) {
-<span class="fc" id="L129">        this.openedDate = openedDate;</span>
-<span class="fc" id="L130">    }</span>
+    /** Creates an instance of this class. */
+<span class="fc" id="L24">    public Account() {</span>
+<span class="fc" id="L25">    }</span>
 
     /**
      * Returns the name.
@@ -135,7 +30,7 @@ public class Account {
      * @return the name
      */
     public String getName() {
-<span class="fc" id="L138">        return name;</span>
+<span class="fc" id="L33">        return name;</span>
     }
 
     /**
@@ -144,27 +39,7 @@ public class Account {
      * @param name the name
      */
     public void setName(String name) {
-<span class="fc" id="L147">        this.name = name;</span>
-<span class="fc" id="L148">    }</span>
-
-    /**
-     * Returns the currency.
-     *
-     * @return the currency
-     */
-    public String getCurrency() {
-<span class="fc" id="L156">        return currency;</span>
-    }
-
-    /**
-     * Sets the currency.
-     *
-     * @param currency the currency
-     */
-    public void setCurrency(String currency) {
-<span class="fc" id="L165">        this.currency = currency;</span>
-<span class="fc" id="L166">    }</span>
+<span class="fc" id="L42">        this.name = name;</span>
+<span class="fc" id="L43">    }</span>
 }
-
-
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { PLATFORM_ID, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { of } from 'rxjs';
@@ -244,5 +244,67 @@ describe('SessionTimeoutService', () => {
       expect(service.timeoutMinutes()).toBe(10);
       expect(localStorage.getItem(TIMEOUT_KEY)).toBeNull();
     });
+  });
+
+  it('does nothing when the tab becomes hidden', () => {
+    createService();
+    signIn();
+    vi.setSystemTime(Date.now() + 11 * MINUTE);
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(logout).not.toHaveBeenCalled();
+  });
+
+  it('keeps running when the browser refuses the activity storage', () => {
+    createService();
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    signIn();
+    vi.advanceTimersByTime(MINUTE);
+    act();
+    isAuthenticated.set(false);
+    TestBed.tick();
+    vi.restoreAllMocks();
+
+    expect(logout).not.toHaveBeenCalled();
+  });
+
+  it('writes shared activity at most once per interval', () => {
+    createService();
+    signIn();
+    const written = Number(localStorage.getItem(ACTIVITY_KEY));
+    act();
+    act('keydown');
+
+    expect(Number(localStorage.getItem(ACTIVITY_KEY))).toBe(written);
+  });
+
+  it('uses the default limit and stays inert on the server', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: PLATFORM_ID, useValue: 'server' },
+        { provide: AuthService, useValue: { isAuthenticated, logout } },
+        { provide: Router, useValue: { navigate } },
+      ],
+    });
+    const service = TestBed.inject(SessionTimeoutService);
+    isAuthenticated.set(true);
+    TestBed.tick();
+    service.setTimeoutMinutes(30);
+    vi.advanceTimersByTime(60 * MINUTE);
+
+    expect(service.timeoutMinutes()).toBe(30);
+    expect(logout).not.toHaveBeenCalled();
+    expect(localStorage.getItem(TIMEOUT_KEY)).toBeNull();
   });
 });

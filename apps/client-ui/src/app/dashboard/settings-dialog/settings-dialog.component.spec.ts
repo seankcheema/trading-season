@@ -1,3 +1,5 @@
+import { ExecutionSettingsService } from './execution-settings.service';
+import { of } from 'rxjs';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { SessionTimeoutService } from '../../core/auth/session-timeout.service';
@@ -10,7 +12,7 @@ describe('SettingsDialogComponent', () => {
     setTimeoutMinutes = vi.fn();
     await TestBed.configureTestingModule({
       imports: [SettingsDialogComponent],
-      providers: [
+      providers: [{ provide: ExecutionSettingsService, useValue: { load: () => of({ executionBufferPercent: 0 }), save: (executionBufferPercent: number) => of({ executionBufferPercent }) } },
         {
           provide: SessionTimeoutService,
           useValue: { timeoutMinutes: signal(15), setTimeoutMinutes },
@@ -98,4 +100,15 @@ describe('SettingsDialogComponent', () => {
     (element.querySelector('.settings-backdrop') as HTMLElement).click();
     expect(closed).toHaveBeenCalledTimes(1);
   });
+  it('ignores a save request while one has just succeeded', () => {
+    const fixture = TestBed.createComponent(SettingsDialogComponent);
+    fixture.detectChanges();
+    const component = fixture.componentInstance;
+    component['saved'].set(true);
+
+    component['saveBuffer']();
+
+    expect(component['saving']()).toBe(false);
+  });
+
 });

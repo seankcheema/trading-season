@@ -1,4 +1,4 @@
-"""Verify V012 against disposable PostgreSQL, never a developer database.
+"""Verify V014 against disposable PostgreSQL, never a developer database.
 
 BR-12: an instrument of any class (UK, US or Indian equity, FX, crypto) can
 link to a simulated price series through instruments.simulated_stock_symbol.
@@ -69,7 +69,7 @@ class InstrumentPriceLinksMigrationTest(unittest.TestCase):
         database = "instrument_links"
         self.sql("postgres", f"CREATE DATABASE {database}")
         for path in sorted(self.migrations.glob("V*.sql")):
-            if path.name.startswith("V012"):
+            if path.name.startswith("V014"):
                 continue
             self.migrate(database, path.name)
         self.sql(database, """
@@ -85,14 +85,14 @@ class InstrumentPriceLinksMigrationTest(unittest.TestCase):
               "VALUES ('EURUSD','Euro / US Dollar','FX',NULL,'USD',TRUE,'EUR')")
         with self.assertRaises(subprocess.CalledProcessError):
             self.sql(database, fx)
-        self.migrate(database, "V012__Instrument_price_links.sql")
+        self.migrate(database, "V014__Instrument_price_links.sql")
         self.sql(database, fx)
         self.sql(database, """
             INSERT INTO instruments(ticker,name,asset_class,market,currency,is_tradable,simulated_stock_symbol)
             VALUES ('BTCUSD','Bitcoin / US Dollar','Crypto',NULL,'USD',TRUE,'BTC'),
                    ('VOD','Vodafone Group','Equity','UK','USD',TRUE,'VOD');
         """)
-        self.migrate(database, "V012__Instrument_price_links.sql")
+        self.migrate(database, "V014__Instrument_price_links.sql")
         self.assertEqual("4", self.sql(database, "SELECT count(*) FROM instruments WHERE simulated_stock_symbol IS NOT NULL"))
         with self.assertRaises(subprocess.CalledProcessError):
             self.sql(database, "INSERT INTO instruments(ticker,name,asset_class,market,currency,is_tradable,simulated_stock_symbol) "

@@ -19,12 +19,14 @@ import { toAuthErrorMessage } from '../core/auth/auth-error';
 import { AuthService } from '../core/auth/auth.service';
 import { LOGIN_LOCKOUT_MINUTES, LoginLockoutService } from '../core/auth/login-lockout.service';
 import { INACTIVE_SIGN_OUT_REASON } from '../core/auth/session-timeout.service';
+import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 
 @Component({
   selector: 'app-login',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ThemeToggleComponent,
     ReactiveFormsModule,
     RouterLink,
     NgIcon,
