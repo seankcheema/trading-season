@@ -158,6 +158,57 @@ describe('history dialogs', () => {
       expect(statuses()).toHaveLength(5);
     });
 
+    it('filters by order kind and shows non-market kinds beside the type', () => {
+      const service = TestBed.inject(OrderService);
+      service.loadOrders().subscribe();
+      http.expectOne('/api/orders').flush([
+        order({ orderId: 1 }),
+        order({ orderId: 2, executionType: 'LIMIT', limitPrice: 95, status: 'ACCEPTED' }),
+        order({ orderId: 3, executionType: 'STOP', stopPrice: 90, status: 'ACCEPTED' }),
+      ]);
+      service.instruments().subscribe();
+      http.expectOne('/api/instruments').flush(CATALOGUE);
+      const fixture = open();
+      const ids = () => rows(fixture, 'transactions-row').length;
+      click(fixture, '[data-testid="transactions-filters"]');
+      click(fixture, '[data-testid="transactions-execution-limit"]');
+      expect(ids()).toBe(1);
+      expect(rows(fixture, 'transaction-execution').map((el) => el.textContent?.trim())).toEqual([
+        'Limit',
+      ]);
+      click(fixture, '[data-testid="transactions-execution-market"]');
+      expect(ids()).toBe(1);
+      expect(rows(fixture, 'transaction-execution')).toHaveLength(0);
+      click(fixture, '[data-testid="transactions-execution-all"]');
+      expect(ids()).toBe(5);
+    });
+
+    it('filters by account, names the account on each row and leaves out shared cash', () => {
+      const service = TestBed.inject(OrderService);
+      service.loadOrders().subscribe();
+      http.expectOne('/api/orders').flush([
+        order({ orderId: 1, accountId: 1 }),
+        order({ orderId: 2, accountId: 2 }),
+      ]);
+      service.instruments().subscribe();
+      http.expectOne('/api/instruments').flush(CATALOGUE);
+      const fixture = open();
+      const component = fixture.componentInstance;
+      expect(rows(fixture, 'transaction-account').map((el) => el.textContent?.trim())).toEqual([
+        'All accounts',
+        'Account',
+        'Account',
+        'All accounts',
+      ]);
+      component['accountId'].set(2);
+      fixture.detectChanges();
+      expect(rows(fixture, 'transactions-row')).toHaveLength(1);
+      expect(component['activeFilters']()).toBe(1);
+      component['clearFilters']();
+      fixture.detectChanges();
+      expect(rows(fixture, 'transactions-row')).toHaveLength(4);
+    });
+
     it('searches asset labels and toggles sorting in both directions', () => {
       seedOrders(); const fixture = open(); const component = fixture.componentInstance;
       const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
@@ -311,7 +362,7 @@ describe('history dialogs', () => {
 
       expect(placeholders).toHaveLength(6);
       // Seven data placeholders, with reserved audit and action columns on either side.
-      expect(placeholders[0].children).toHaveLength(9);
+      expect(placeholders[0].children).toHaveLength(10);
       expect(placeholders[0].getAttribute('aria-hidden')).toBe('true');
       expect(table.querySelector('[role="status"]')?.textContent).toContain('Loading transactions…');
       expect(table.textContent).not.toContain('No transactions match these filters.');

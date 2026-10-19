@@ -17,7 +17,7 @@ import { lucideFilter } from '@ng-icons/lucide';
 import { CashTransaction } from '../accounts/account.models';
 import { AccountStore } from '../accounts/account-store.service';
 import { OrderService } from '../orders/order.service';
-import { OrderAuditEntry } from '../orders/order.models';
+import { ExecutionType, OrderAuditEntry } from '../orders/order.models';
 import {
   HistoryRow,
   HistorySortKey,
@@ -51,6 +51,24 @@ const STATUS_FILTERS: readonly { id: StatusFilter; label: string }[] = [
   { id: 'COMPLETED', label: 'Completed' },
 ];
 
+type ExecutionFilter = 'all' | ExecutionType;
+type AccountFilter = 'all' | number;
+
+const EXECUTION_LABELS: Record<ExecutionType, string> = {
+  MARKET: 'Market',
+  LIMIT: 'Limit',
+  STOP: 'Stop',
+  STOP_LIMIT: 'Stop-limit',
+};
+
+const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'MARKET', label: EXECUTION_LABELS.MARKET },
+  { id: 'LIMIT', label: EXECUTION_LABELS.LIMIT },
+  { id: 'STOP', label: EXECUTION_LABELS.STOP },
+  { id: 'STOP_LIMIT', label: EXECUTION_LABELS.STOP_LIMIT },
+];
+
 // Every cash transfer and order the user has made, not just the latest few on the dashboard.
 // Orders follow the same replay rule as the dashboard: those after the simulated clock are
 // hidden.
@@ -63,7 +81,7 @@ const STATUS_FILTERS: readonly { id: StatusFilter; label: string }[] = [
     <app-dashboard-dialog
       dialogTitle="Recent Transactions"
       closeLabel="Close recent transactions"
-      size="wide"
+      size="xwide"
       (closed)="closed.emit()"
     >
       <div class="mb-4 flex flex-wrap items-center gap-2">
@@ -119,7 +137,7 @@ const STATUS_FILTERS: readonly { id: StatusFilter; label: string }[] = [
                 }
               </div>
               <p class="text-muted-foreground mb-1.5 text-xs font-medium">Status</p>
-              <div class="flex flex-wrap gap-1" role="group" aria-label="Transaction status">
+              <div class="mb-3 flex flex-wrap gap-1" role="group" aria-label="Transaction status">
                 @for (filter of statusFilters; track filter.id) {
                   <button
                     type="button"
@@ -134,6 +152,58 @@ const STATUS_FILTERS: readonly { id: StatusFilter; label: string }[] = [
                     (click)="status.set(filter.id)"
                   >
                     {{ filter.label }}
+                  </button>
+                }
+              </div>
+              <p class="text-muted-foreground mb-1.5 text-xs font-medium">Order kind</p>
+              <div class="mb-3 flex flex-wrap gap-1" role="group" aria-label="Order kind">
+                @for (filter of executionFilters; track filter.id) {
+                  <button
+                    type="button"
+                    class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+                    [class]="
+                      execution() === filter.id
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground hover:text-foreground'
+                    "
+                    [attr.aria-pressed]="execution() === filter.id"
+                    [attr.data-testid]="'transactions-execution-' + filter.id.toLowerCase()"
+                    (click)="execution.set(filter.id)"
+                  >
+                    {{ filter.label }}
+                  </button>
+                }
+              </div>
+              <p class="text-muted-foreground mb-1.5 text-xs font-medium">Account</p>
+              <div class="flex flex-wrap gap-1" role="group" aria-label="Transaction account">
+                <button
+                  type="button"
+                  class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+                  [class]="
+                    accountId() === 'all'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:text-foreground'
+                  "
+                  [attr.aria-pressed]="accountId() === 'all'"
+                  data-testid="transactions-account-all"
+                  (click)="accountId.set('all')"
+                >
+                  All
+                </button>
+                @for (account of accountStore.accounts(); track account.accountId) {
+                  <button
+                    type="button"
+                    class="max-w-full cursor-pointer truncate rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+                    [class]="
+                      accountId() === account.accountId
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground hover:text-foreground'
+                    "
+                    [attr.aria-pressed]="accountId() === account.accountId"
+                    [attr.data-testid]="'transactions-account-' + account.accountId"
+                    (click)="accountId.set(account.accountId)"
+                  >
+                    {{ account.name }}
                   </button>
                 }
               </div>
@@ -173,7 +243,7 @@ const STATUS_FILTERS: readonly { id: StatusFilter; label: string }[] = [
       }
 
       <div class="overflow-x-auto">
-        <div class="min-w-[46rem]" data-testid="transactions-table">
+        <div class="min-w-[54rem]" data-testid="transactions-table">
           <div class="history-grid dash-table-head grid gap-2 px-2">
             <span aria-hidden="true"></span>
             @for (column of columns; track column.key) {
@@ -229,7 +299,13 @@ const STATUS_FILTERS: readonly { id: StatusFilter; label: string }[] = [
                     {{ row.date | date: 'MMM d, y, h:mm a' : '' : 'en-US' }}
                   </span>
                   <span class="truncate font-medium">{{ row.label }}</span>
-                  <span class="truncate">{{ row.side }}</span>
+                  <span class="text-muted-foreground truncate" data-testid="transaction-account">{{ row.account }}</span>
+                  <span class="truncate">
+                    {{ row.side }}
+                    @if (row.executionType && row.executionType !== 'MARKET') {
+                      <span class="text-muted-foreground block text-[10px]" data-testid="transaction-execution">{{ executionLabel(row.executionType) }}</span>
+                    }
+                  </span>
                   <span>
                     <span
                       class="rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
@@ -270,7 +346,7 @@ const STATUS_FILTERS: readonly { id: StatusFilter; label: string }[] = [
                   >
                     <span></span>
                     <span class="skeleton h-5 w-4/5"></span>
-                    @for (cell of [1, 2, 3]; track cell) {
+                    @for (cell of [1, 2, 3, 4]; track cell) {
                       <span class="skeleton h-5 w-3/5"></span>
                     }
                     @for (cell of [1, 2, 3]; track cell) {
@@ -293,7 +369,7 @@ const STATUS_FILTERS: readonly { id: StatusFilter; label: string }[] = [
   styleUrl: './history-table.css',
 })
 export class TransactionsDialogComponent implements OnInit {
-  private readonly accountStore = inject(AccountStore);
+  protected readonly accountStore = inject(AccountStore);
   protected readonly orderService = inject(OrderService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -303,6 +379,7 @@ export class TransactionsDialogComponent implements OnInit {
 
   protected readonly typeFilters = TYPE_FILTERS;
   protected readonly statusFilters = STATUS_FILTERS;
+  protected readonly executionFilters = EXECUTION_FILTERS;
   protected readonly columns: readonly {
     key: HistorySortKey;
     label: string;
@@ -310,6 +387,7 @@ export class TransactionsDialogComponent implements OnInit {
   }[] = [
     { key: 'date', label: 'Date', align: 'left' },
     { key: 'label', label: 'Asset', align: 'left' },
+    { key: 'account', label: 'Account', align: 'left' },
     { key: 'side', label: 'Type', align: 'left' },
     { key: 'status', label: 'Status', align: 'left' },
     { key: 'shares', label: 'Shares', align: 'right' },
@@ -318,9 +396,16 @@ export class TransactionsDialogComponent implements OnInit {
   ];
   protected readonly type = signal<TypeFilter>('all');
   protected readonly status = signal<StatusFilter>('all');
+  protected readonly execution = signal<ExecutionFilter>('all');
+  // Cash is shared by every account, so picking one account leaves cash transfers out.
+  protected readonly accountId = signal<AccountFilter>('all');
   protected readonly filtersOpen = signal(false);
   protected readonly activeFilters = computed(
-    () => Number(this.type() !== 'all') + Number(this.status() !== 'all'),
+    () =>
+      Number(this.type() !== 'all') +
+      Number(this.status() !== 'all') +
+      Number(this.execution() !== 'all') +
+      Number(this.accountId() !== 'all'),
   );
   protected readonly query = signal('');
   protected readonly sortKey = signal<HistorySortKey>('date');
@@ -367,9 +452,13 @@ export class TransactionsDialogComponent implements OnInit {
   protected readonly rows = computed(() => {
     const type = this.type();
     const status = this.status();
+    const execution = this.execution();
+    const accountId = this.accountId();
     const query = this.query().trim().toLowerCase();
     return sortHistoryRows(
-      this.allRows().filter((row) => matchesFilters(row, type, status, query)),
+      this.allRows().filter((row) =>
+        matchesFilters(row, type, status, execution, accountId, query),
+      ),
       this.sortKey(),
       this.sortDirection(),
     );
@@ -402,6 +491,12 @@ export class TransactionsDialogComponent implements OnInit {
   protected clearFilters(): void {
     this.type.set('all');
     this.status.set('all');
+    this.execution.set('all');
+    this.accountId.set('all');
+  }
+
+  protected executionLabel(execution: ExecutionType): string {
+    return EXECUTION_LABELS[execution];
   }
 
   protected onQuery(event: Event): void {
@@ -476,11 +571,23 @@ function matchesFilters(
   row: HistoryRow,
   type: TypeFilter,
   status: StatusFilter,
+  execution: ExecutionFilter,
+  accountId: AccountFilter,
   query: string,
 ): boolean {
-  const typeMatches = type === 'all' || row.side === type;
-  const statusMatches = status === 'all' || row.status === status;
-  return typeMatches && statusMatches && (!query || row.label.toLowerCase().includes(query));
+  if (query && !row.label.toLowerCase().includes(query)) {
+    return false;
+  }
+  return (
+    matchesChoice(type, row.side) &&
+    matchesChoice(status, row.status) &&
+    matchesChoice(execution, row.executionType) &&
+    matchesChoice(accountId, row.accountId)
+  );
+}
+
+function matchesChoice<T>(choice: 'all' | T, value: T | null): boolean {
+  return choice === 'all' || choice === value;
 }
 
 function withoutId(ids: ReadonlySet<number>, id: number): ReadonlySet<number> {
