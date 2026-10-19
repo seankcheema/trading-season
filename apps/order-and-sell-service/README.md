@@ -169,6 +169,22 @@ stateDiagram-v2
 
 Every transition is recorded in `audit_trail` and published to `platform-records`, and every committed `ACCEPTED`, `FILLED`, `REJECTED` and `CANCELLED` status is also published to `trade-events`. A new validation rule is a new `OrderValidator` class; the pipeline discovers it automatically and stops at the first rejection. The rules see the authoritative submission quote and position, not the client's indicative price and display time: `MarketHoursValidator` rejects an order whose position falls outside the simulated session, Monday to Friday 08:30 to 15:00 America/Chicago (BR-05), the same close a day order expires at.
 
+### Audit trail
+
+Each `audit_trail` row is written to stand on its own as the record of that event, without needing any other row to interpret it (BR-14), and the [V016 migration](../../db/README.md#trade-record) stops it being changed or removed afterwards. A submitted order writes these entries, in order:
+
+| Event | Detail |
+| --- | --- |
+| `PENDING` | `Submitted by user <id> on account <n>: <side> <quantity> <ticker> <execution type> at indicative price <price>[, limit <price>][, stop <price>], market quote <reference price> in session <id> at <reference time>, buffer <percent>%, client reference <uuid>` |
+| `ACCEPTED` | `Passed trading rules at market quote <reference price> with buffer <percent>%`; a replacement adds a second `ACCEPTED` entry naming the order it replaces |
+| `REJECTED` | The rule or execution check that failed, prefixed with its requirement, such as `BR-05` or `BR-09` |
+| `TRIGGERED` | `Stop triggered at <quote>` |
+| `FILLED` | `Filled <quantity> @ <price> (market quote in session <id> at <time>); cash <signed amount> for user <id>; holding <signed quantity> on account <n>` |
+| `CANCELLED` | `Cancelled by owner`, `Day order expired at market close`, or `Replaced by order #<id>` |
+| `EXECUTION_FAILED` | The exception that rolled the execution back, truncated to 255 characters |
+
+`GET /api/orders/{orderId}/audit` serves them with the quote each stage was priced against (BR-15).
+
 ## Configuration
 
 Environment variables override [application.properties](src/main/resources/application.properties).

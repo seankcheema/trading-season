@@ -18,6 +18,8 @@ The Reporting Service does not connect to it. What reporting shows is published 
 | [V013__Order_audit_lifecycle.sql](migrations/V013__Order_audit_lifecycle.sql) | Conditional-order, cancellation and expiry audit events |
 | [V014__Instrument_price_links.sql](migrations/V014__Instrument_price_links.sql) | Lets an instrument of any class link to its simulated price series through `instruments.simulated_stock_symbol`; V001 allowed the link for US equities only, so FX, crypto and UK or Indian equities could not be priced (BR-12) |
 | [V015__Cash_transaction_client_reference.sql](migrations/V015__Cash_transaction_client_reference.sql) | `cash_transactions.client_reference`, unique when present: the key a client sends with a deposit or withdrawal so a retry posts once (BR-10, section 9.1). Order fills and older rows keep it null |
+| [V016__Protect_trade_records.sql](migrations/V016__Protect_trade_records.sql) | Triggers that make the [trade record](#trade-record) append-only (BR-14, section 9.4) |
+| [V017__Protect_client_identity.sql](migrations/V017__Protect_client_identity.sql) | Triggers that fix the identity of the client the trade record is attributed to, and make `terms_acceptances` append-only |
 
 In Docker, `db-init` runs [infrastructure/docker/init-db.sh](../infrastructure/docker/init-db.sh), which applies each file once and records it in `public.schema_migrations`. For a local PostgreSQL, apply the files in order with `psql -v ON_ERROR_STOP=1 -f`. Never edit an applied migration; add a new one.
 
@@ -281,6 +283,44 @@ erDiagram
         TIMESTAMPTZ recorded_at
     }
 ```
+
+## Trade record
+
+BR-14: every accepted order, pricing decision, and resulting change to cash or holdings must be permanently recorded and attributable to a specific client and time. The requirement sets no retention period, so nothing is archived out or purged, and closing an account or a client must leave every row in place.
+
+| Table | What it records | Attributed by |
+| --- | --- | --- |
+| orders | The terms the client submitted, the quote context the server captured (`reference_price`, `reference_at`, `session_id`, execution type and prices) and the order's outcome, including `trigger_price` and `execution_price` | account, submission time |
+| audit_trail | One row per lifecycle event, with a self-contained description; see [Order and Sell: audit trail](../apps/order-and-sell-service/README.md#audit-trail) | order, recording time |
+| fills | The quantity and price an order was filled at | order, fill time |
+| cash_transactions | The signed cash change from a fill, deposit, or withdrawal | account, creation time |
+| holding_movements | The signed share change from a fill | account, instrument, creation time |
+
+An account always belongs to one user, so every row resolves to a client through its account.
+
+V016 and V017 add triggers that enforce this for every role, including the table owner the services connect as:
+
+| Table | Allowed | Rejected | Migration |
+| --- | --- | --- | --- |
+| audit_trail, fills, cash_transactions, holding_movements | INSERT | UPDATE, DELETE, TRUNCATE | V016 |
+| orders | INSERT; a `PENDING` order may become `ACCEPTED`; while open its working columns (evaluation and trigger times, trigger price, reservations, retry state, attempt count) may change; it is resolved once to `FILLED`, `REJECTED` or `CANCELLED`; a `CANCELLED` order may still receive its rejection code and reason, which a replacement writes once the replacing order is known | Changing submitted terms, the captured quote context or a recorded acceptance time; changing a `FILLED` or `REJECTED` order; DELETE, TRUNCATE | V016 |
+| accounts | INSERT, rename, archive | Moving an account to another user, DELETE, TRUNCATE | V016 |
+| users | INSERT; changing address, trader level, the execution buffer and other settings, and the cached balance | Changing the user id, name, SSN, or date of birth; DELETE, TRUNCATE | V017 |
+| user_accounts | INSERT; changing the password hash, role, and sign-in lockout state | Changing the user id or email, DELETE, TRUNCATE | V017 |
+| terms_acceptances | INSERT | UPDATE, DELETE, TRUNCATE | V017 |
+
+- A rejected change raises SQLSTATE `23001` (`restrict_violation`).
+- `users.available_funds` and `holdings` stay mutable: they are cached balances derived from the ledgers, which remain the record.
+- No service changes a frozen identity column; each is written once, at registration. There is no way to deactivate or delete a client, and none can be added as a row delete. A change-of-name or change-of-email feature needs a migration that records the history instead of overwriting it.
+- Neither migration adds tables or columns or changes existing rows, and both may be reapplied. V016 must follow V011, whose backfill of `execution_price` it would otherwise reject; V017 reuses a function V016 creates, so apply them in order.
+- Once they are applied, manual cleanup of these tables with `DELETE`, `UPDATE`, or `TRUNCATE` fails; reset a disposable database by recreating it.
+- PostgreSQL makes committed rows durable across restarts, and a fill with its ledger rows is one transaction, so a crash or failed deployment leaves either the whole fill or none of it.
+
+Limits:
+
+- The table owner can remove the triggers with a schema change (`DROP TRIGGER`, or `ALTER TABLE ... DISABLE TRIGGER`), and the services connect as that owner. In the Compose stack they connect as the PostgreSQL superuser, which can also switch triggers off for its own session. Separating the owner role from the application role would close both paths; that separation is not implemented.
+- Dropping a table or the database is not prevented. The only protection is a backup taken beforehand; see [Database backup and restore](../infrastructure/README.md#database-backup-and-restore). Backups are manual.
+- The Java service tests run on H2, which does not load these triggers. With PostgreSQL binaries on PATH, [test_trade_record_migration.py](../apps/market-data/db/scripts/python/tests/test_trade_record_migration.py) verifies them against an isolated temporary cluster, including an open order being evaluated, cancelled and replaced, and reapplying both migrations to a database that already holds rows.
 
 ## Portfolio account lifecycle
 
