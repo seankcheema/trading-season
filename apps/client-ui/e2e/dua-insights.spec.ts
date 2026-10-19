@@ -44,7 +44,7 @@ test('Dua starts closed, reviews holdings, minimizes and follows stock navigatio
   const beforeHover = await launcher.boundingBox();
   await launcher.hover();
   await expect(art).toHaveClass(/face-visible/);
-  await expect(art).toHaveCSS('transform', 'matrix(1.12, 0, 0, 1.12, 0, 0)');
+  await expect(art).toHaveCSS('transform', 'matrix(1.35, 0, 0, 1.35, 0, -10)');
   await expect(launcher).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   expect(await launcher.boundingBox()).toEqual(beforeHover);
   await page.mouse.move(0, 0);
