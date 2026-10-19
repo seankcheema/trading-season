@@ -105,6 +105,28 @@ describe('activity helpers', () => {
     expect(orderActivity(filled, CATALOGUE).detail).toContain('Limit $95.00');
   });
 
+  it('carries the account and execution type of an order, defaulting to market', () => {
+    expect(orderHistoryRow(order({ accountId: 4 }), CATALOGUE, 'Growth')).toMatchObject({
+      accountId: 4,
+      account: 'Growth',
+      executionType: 'MARKET',
+    });
+    expect(
+      orderHistoryRow(order({ accountId: undefined, executionType: 'STOP_LIMIT' }), CATALOGUE, 'x'),
+    ).toMatchObject({ accountId: null, executionType: 'STOP_LIMIT' });
+  });
+
+  it('gives cash transfers no account id and no execution type', () => {
+    expect(
+      cashHistoryRow({
+        cashTransactionId: 5,
+        amount: 10,
+        reason: 'DEPOSIT',
+        createdAt: '2026-01-05T16:00:00Z',
+      }),
+    ).toMatchObject({ account: 'All accounts', accountId: null, executionType: null });
+  });
+
   it('types cash transfers by direction and marks them completed', () => {
     const base = { cashTransactionId: 4, amount: 25, createdAt: '2026-01-05T16:00:00Z' };
     expect(cashActivity({ ...base, reason: 'DEPOSIT' })).toMatchObject({

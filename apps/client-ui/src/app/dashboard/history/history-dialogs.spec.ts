@@ -183,6 +183,49 @@ describe('history dialogs', () => {
       expect(ids()).toBe(5);
     });
 
+    it('wires the header, close button, filter escape key and order menu to the dialog', () => {
+      const service = TestBed.inject(OrderService);
+      service.loadOrders().subscribe();
+      http.expectOne('/api/orders').flush([order({ orderId: 1, status: 'ACCEPTED' })]);
+      service.instruments().subscribe();
+      http.expectOne('/api/instruments').flush(CATALOGUE);
+      const fixture = open();
+      const component = fixture.componentInstance;
+      const root: HTMLElement = fixture.nativeElement;
+
+      (root.querySelector('[app-sort-header]') as HTMLElement).click();
+      fixture.detectChanges();
+      expect(component['sortDirection']()).toBe('asc');
+
+      click(fixture, '[data-testid="transactions-filters"]');
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+      root.querySelector('[data-testid="transactions-filters-panel"]')!.dispatchEvent(escape);
+      fixture.detectChanges();
+      expect(component['filtersOpen']()).toBe(false);
+
+      const edit = vi.spyOn(service, 'editOrder').mockImplementation(() => {});
+      const cancel = vi.spyOn(service, 'cancelOrder').mockReturnValue(new Subject<OrderResult>());
+      const menuItem = (name: string) =>
+        [...root.querySelectorAll<HTMLElement>('[role="menuitem"], button')].find(
+          (el) => el.textContent?.trim() === name,
+        )!;
+      // jsdom does not implement the modal dialog the cancel confirmation opens.
+      const confirmation = root.querySelector('dialog') as HTMLDialogElement;
+      confirmation.showModal = vi.fn();
+      confirmation.close = vi.fn();
+      menuItem('Edit order').click();
+      expect(edit).toHaveBeenCalledWith(1);
+      menuItem('Cancel order').click();
+      fixture.detectChanges();
+      menuItem('Confirm cancellation').click();
+      expect(cancel).toHaveBeenCalledWith(1);
+
+      const closed = vi.fn();
+      component.closed.subscribe(closed);
+      click(fixture, '[aria-label="Close recent transactions"]');
+      expect(closed).toHaveBeenCalledOnce();
+    });
+
     it('filters by account, names the account on each row and leaves out shared cash', () => {
       const service = TestBed.inject(OrderService);
       service.loadOrders().subscribe();
@@ -200,12 +243,32 @@ describe('history dialogs', () => {
         'Account',
         'All accounts',
       ]);
-      component['accountId'].set(2);
+      TestBed.inject(AccountStore)['_accounts'].set([
+        { accountId: 1, name: 'Main', openedDate: '2026-01-01' },
+        { accountId: 2, name: 'Growth', openedDate: '2026-01-01' },
+      ]);
       fixture.detectChanges();
+      click(fixture, '[data-testid="transactions-filters"]');
+      const pressed = (id: string) =>
+        fixture.nativeElement
+          .querySelector(`[data-testid="transactions-account-${id}"]`)
+          .getAttribute('aria-pressed');
+      expect(pressed('all')).toBe('true');
+      click(fixture, '[data-testid="transactions-account-2"]');
+      expect(pressed('2')).toBe('true');
+      expect(pressed('all')).toBe('false');
       expect(rows(fixture, 'transactions-row')).toHaveLength(1);
       expect(component['activeFilters']()).toBe(1);
-      component['clearFilters']();
+      click(fixture, '[data-testid="transactions-account-1"]');
+      expect(rows(fixture, 'transactions-row')).toHaveLength(1);
+      click(fixture, '[data-testid="transactions-account-all"]');
+      expect(rows(fixture, 'transactions-row')).toHaveLength(4);
+      component['accountId'].set(2);
+      component['execution'].set('LIMIT');
+      expect(component['activeFilters']()).toBe(2);
       fixture.detectChanges();
+      click(fixture, '[data-testid="transactions-filters-clear"]');
+      expect(component['activeFilters']()).toBe(0);
       expect(rows(fixture, 'transactions-row')).toHaveLength(4);
     });
 
