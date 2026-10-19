@@ -1,6 +1,6 @@
 # Reporting Service
 
-Python Flask service with two jobs. It turns the `trade-events` Kafka topic into scheduled reports, for analysts and admins, and it serves read-only views of platform activity, orders and customers for the [Reporting UI](../reporting-ui/README.md)'s console, for admins only.
+Python Flask service with two jobs. It turns the `trade-events` Kafka topic into live report snapshots for analysts and admins, keeps scheduled run files as an audit trail, and serves read-only views of platform activity, orders and customers for the [Reporting UI](../reporting-ui/README.md)'s console, for admins only.
 
 It reads Kafka and nothing else. It has no connection to the `trading_season` database, no driver to open one with, and no setting that names it, so nothing it does can compete with trading for the database.
 
@@ -11,8 +11,8 @@ It reads Kafka and nothing else. It has no connection to the `trading_season` da
 
 1. The trading services publish what they commit to two topics. Order and Sell publishes one `trade-events` message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`), keyed by account id, carrying the order row and, for a fill, the fill and its two ledger postings. The auth service and both Java services publish the current state of every other row reporting shows to `platform-records`; see [what arrives](#what-arrives).
 2. `consumer.py`, consumer group `reporting-ingester`, appends each message of either topic as one JSON line to `events/<topic>-p<partition>.jsonl` under `REPORTING_FILES_DIR`, then commits the offset. Offsets already on disk are skipped, so redelivery never duplicates a line.
-3. When it starts, and then every `SCHEDULER_INTERVAL_MINUTES`, the same process runs `report_run.py`: reads the `trade-events` files, takes account and trader names and each trader's level from the read model, and writes `runs/<UTC timestamp>/report.json` plus four PNG charts. `runs/latest` points at the new run; older runs are deleted. The first run reports the events already on disk, so a restart serves a report at once; a run that comes due while the process is busy runs late instead of being skipped. The charts are downloads, so they use the Reporting UI's light surface and colors whatever theme the UI is in, filled orders in the gain color and rejected orders in the loss color. A run written before that change keeps its dark files until the next run replaces it.
-4. The web service (`wsgi.py` under gunicorn) serves the runs and the console behind the same RS256 tokens the Java services accept.
+3. When it starts, and then every `SCHEDULER_INTERVAL_MINUTES`, the same process runs `report_run.py`: reads the `trade-events` files, takes account and trader names and each trader's level from the read model, and writes `runs/<UTC timestamp>/report.json` plus four PNG charts. `runs/latest` points at the new run; older runs are deleted. The first run reports the events already on disk, so a restart serves a run archive at once; a run that comes due while the process is busy runs late instead of being skipped.
+4. The web service (`wsgi.py` under gunicorn) serves the console and run endpoints behind the same RS256 tokens the Java services accept. `GET /api/reporting/runs/latest` is built live from current event files, and chart downloads for that latest snapshot are rendered at request time so they match the data on screen.
 
 ### The read model
 
@@ -58,7 +58,7 @@ A run holds the three views the business asked to analyse trading by (BR-16: ins
 | By client segment | `activityBySegment`: active accounts, fills, rejections and notional per trader level | `volume_by_segment.png` |
 | By account | `tradesPerAccount`: resolved orders per account | `trades_per_account.png` |
 
-A run covers every event on disk and cuts its days in UTC. Asked for `range=today`, `7d`, `30d` or `90d`, `/api/reporting/runs/latest` answers with the same views for that part of the run: the range is the one Activity cuts, in the viewer's days from `tzOffset`, but it ends when the run was generated, so the answer stays a reading of that run. It is worked out from the `trade-events` files when it is asked for, and so is a chart asked for with a range; neither is written to the run directory. The web service therefore loads the chart code as well as the consumer does.
+`/api/reporting/runs/latest` serves a live snapshot from `trade-events` on disk: all time is every event consumed so far, with days cut in UTC. Asked for `range=today`, `7d`, `30d` or `90d`, it answers that same snapshot over the viewer's days from `tzOffset`, ending at the snapshot's generation time. The latest snapshot's chart PNGs are rendered at download time so they match the same data. Scheduled run files are still written to disk and listed by `/api/reporting/runs` for traceability.
 
 The run counts only final statuses as trades, and counts each order's status once: when history is republished, an order already on disk arrives again under a new offset and replaces its earlier message instead of adding to a count.
 
@@ -118,8 +118,8 @@ Authenticated endpoints need an RS256 bearer token from the [Auth Service](../au
 | GET | `/docs`, `/openapi.yaml` | public | Swagger UI and the OpenAPI contract |
 | GET | `/api/reporting/profile` | any token | The caller's trader profile |
 | GET | `/api/reporting/runs` | `ANALYST`, `ADMIN` | Every complete report run, newest first, with the latest run id |
-| GET | `/api/reporting/runs/latest?range=&tzOffset=` | `ANALYST`, `ADMIN` | The latest run's `report.json`, or with a range of `today`, `7d`, `30d` or `90d` the same figures for that part of it in the viewer's days; 404 until the first run |
-| GET | `/api/reporting/runs/{runId}/files/{name}?range=&tzOffset=` | `ANALYST`, `ADMIN` | One PNG chart of a run: the file the report job wrote, or with a range the chart drawn for it |
+| GET | `/api/reporting/runs/latest?range=&tzOffset=` | `ANALYST`, `ADMIN` | The latest live snapshot from `trade-events` files, or with a range of `today`, `7d`, `30d` or `90d` that same snapshot over the viewer's days; 404 until trade events exist |
+| GET | `/api/reporting/runs/{runId}/files/{name}?range=&tzOffset=` | `ANALYST`, `ADMIN` | One PNG chart of a run: for the latest snapshot, rendered at download time; for earlier runs, the stored file over all time, or a chart drawn for a range |
 | GET | `/api/reporting/scheduler/status` | public | Latest run id, when it was generated, and the interval |
 | GET | `/api/reporting/activity?range=&tzOffset=` | `ADMIN` | Platform activity over `today`, `7d`, `30d`, `90d` or `all`, in the viewer's days |
 | GET | `/api/reporting/orders?limit=&range=&tzOffset=` | `ADMIN` | The newest orders across every account, 500 unless `limit` says otherwise (1 to 1000), and the newest deposits and withdrawals under the same limit. With a `range` of `today`, `7d`, `30d`, `90d` or `all` (days from `tzOffset`, as Activity cuts them), every order and transfer in that range, with no row cap; the Reporting UI's Activity export uses this |

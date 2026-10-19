@@ -1,11 +1,28 @@
 """The endpoints that expose report runs."""
 
 import json
+from datetime import datetime, timezone
+
+import pytest
 
 from event_store import EventStore
 from tests.messages import filled, order_event
 
 PNG_MAGIC = b'\x89PNG\r\n\x1a\n'
+
+
+@pytest.fixture
+def fixed_live_now(mocker):
+    """Freeze the live snapshot clock where the range tests expect it."""
+
+    class FrozenDateTime(datetime):
+
+        @classmethod
+        def now(cls, tz=None):
+            value = datetime(2026, 10, 6, 12, 0, tzinfo=timezone.utc)
+            return value if tz is None else value.astimezone(tz)
+
+    mocker.patch('report_run.datetime', FrozenDateTime)
 
 
 def write_run(files_dir, run_id, generated_at='2026-10-06T12:00:00+00:00'):
@@ -122,6 +139,19 @@ class TestListAndLatest:
 
         assert [run['runId'] for run in listing['runs']] == ['20261006T120000Z']
 
+    def test_serves_a_live_latest_report_even_before_the_first_run_is_written(self, client, files_dir,
+                                                                               authenticated, fixed_live_now):
+        write_events(files_dir)
+
+        response = client.get('/api/reporting/runs/latest', headers=authenticated)
+
+        assert response.status_code == 200
+        report = response.get_json()
+        assert report['runId'] == '20261006T130000Z'
+        assert report['generatedAt'] == '2026-10-06T12:00:00+00:00'
+        assert report['eventCount'] == 4
+        assert report['statusCounts'] == {'FILLED': 3, 'REJECTED': 1}
+
 
 class TestRunFiles:
 
@@ -171,14 +201,15 @@ class TestRunsOverARange:
     LATEST = '/api/reporting/runs/latest'
     CHART = '/api/reporting/runs/20261006T120000Z/files/volume_by_symbol.png'
 
-    def test_the_latest_run_is_cut_to_the_range_asked_for(self, client, files_dir, authenticated):
+    def test_the_latest_run_is_cut_to_the_range_asked_for(self, client, files_dir, authenticated, fixed_live_now):
         write_events(files_dir)
         run = write_run(files_dir, '20261006T120000Z')
 
         report = client.get(f'{self.LATEST}?range=7d', headers=authenticated).get_json()
 
         assert report['runId'] == run['runId'] and report['generatedAt'] == run['generatedAt']
-        assert report['files'] == run['files']
+        assert report['files'] == ['volume_by_symbol.png', 'daily_trades.png', 'volume_by_segment.png',
+                                   'trades_per_account.png']
         assert report['range'] == '7d'
         # Seven days counting the day the run was generated, and nothing after it was.
         assert report['from'] == '2026-09-30T00:00:00+00:00'
@@ -192,7 +223,7 @@ class TestRunsOverARange:
                                          {'date': '2026-10-06', 'filled': 0, 'rejected': 1}]
         assert report['timezone'] == 'UTC'
 
-    def test_a_range_is_cut_in_the_viewers_days(self, client, files_dir, authenticated):
+    def test_a_range_is_cut_in_the_viewers_days(self, client, files_dir, authenticated, fixed_live_now):
         write_events(files_dir)
         write_run(files_dir, '20261006T120000Z')
 
@@ -208,27 +239,40 @@ class TestRunsOverARange:
         # 03:00 UTC on the 6th is the evening of the 5th there.
         assert week['dailyCounts'] == [{'date': '2026-10-05', 'filled': 1, 'rejected': 1}]
 
-    def test_all_time_is_the_run_as_it_was_written(self, client, files_dir, authenticated):
+    def test_all_time_is_the_live_snapshot_of_events_on_disk(self, client, files_dir, authenticated, fixed_live_now):
         write_events(files_dir)
-        run = write_run(files_dir, '20261006T120000Z')
+        write_run(files_dir, '20261006T120000Z')
 
-        assert client.get(f'{self.LATEST}?range=all&tzOffset=-300', headers=authenticated).get_json() == run
+        report = client.get(f'{self.LATEST}?range=all&tzOffset=-300', headers=authenticated).get_json()
 
-    def test_a_chart_is_drawn_for_the_range_asked_for(self, client, files_dir, authenticated):
+        assert report['runId'] == '20261006T120000Z'
+        assert report['generatedAt'] == '2026-10-06T12:00:00+00:00'
+        assert report['eventCount'] == 4
+        assert report['statusCounts'] == {'FILLED': 3, 'REJECTED': 1}
+        assert report['timezone'] == 'UTC'
+        assert [(row['symbol'], row['notional']) for row in report['volumeBySymbol']] == [
+            ('AAPL', '1100.00'),
+            ('NVDA', '100.00'),
+        ]
+
+    def test_a_chart_is_drawn_for_the_latest_live_snapshot(self, client, files_dir, authenticated, fixed_live_now):
         write_events(files_dir)
         write_run(files_dir, '20261006T120000Z')
 
         whole = client.get(self.CHART, headers=authenticated)
         ranged = client.get(f'{self.CHART}?range=7d&tzOffset=-300', headers=authenticated)
 
-        assert whole.data == PNG_MAGIC + b'fake', 'all time is the file the report job wrote'
+        assert whole.status_code == 200
+        assert whole.mimetype == 'image/png'
+        assert whole.data.startswith(PNG_MAGIC)
         assert ranged.status_code == 200
         assert ranged.mimetype == 'image/png'
         assert ranged.data.startswith(PNG_MAGIC) and ranged.data != whole.data
+        assert 'no-cache' in whole.headers['Cache-Control']
         assert 'no-cache' in ranged.headers['Cache-Control']
 
     def test_only_a_chart_the_run_has_and_the_service_can_draw_is_cut_to_a_range(self, client, files_dir,
-                                                                                 authenticated):
+                                                                                 authenticated, fixed_live_now):
         write_run(files_dir, '20261006T120000Z')
         (files_dir / 'runs' / '20261006T120000Z' / 'extra.png').write_bytes(PNG_MAGIC + b'extra')
         base = '/api/reporting/runs/20261006T120000Z/files'
@@ -240,7 +284,8 @@ class TestRunsOverARange:
         assert client.get('/api/reporting/runs/20261006T130000Z/files/volume_by_symbol.png?range=7d',
                           headers=authenticated).status_code == 404
 
-    def test_a_range_or_offset_the_service_does_not_know_is_refused(self, client, files_dir, authenticated):
+    def test_a_range_or_offset_the_service_does_not_know_is_refused(self, client, files_dir, authenticated,
+                                                                    fixed_live_now):
         write_run(files_dir, '20261006T120000Z')
 
         for path in (self.LATEST, self.CHART):
@@ -250,7 +295,8 @@ class TestRunsOverARange:
             assert client.get(f'{path}?range=7d&tzOffset=east', headers=authenticated).status_code == 400, path
             assert client.get(f'{path}?range=7d&tzOffset=900', headers=authenticated).status_code == 400, path
 
-    def test_a_range_is_refused_before_it_is_said_that_no_run_exists(self, client, files_dir, authenticated):
+    def test_a_range_is_refused_before_it_is_said_that_no_run_exists(self, client, files_dir, authenticated,
+                                                                     fixed_live_now):
         assert client.get(f'{self.LATEST}?range=1y', headers=authenticated).status_code == 400
         assert client.get(f'{self.LATEST}?range=7d', headers=authenticated).status_code == 404
 

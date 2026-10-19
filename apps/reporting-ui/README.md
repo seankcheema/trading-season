@@ -1,6 +1,6 @@
 # Reporting UI
 
-Angular 21 single-page app for the analysts who read the scheduled reports and the admins who also watch platform activity and support customers. It presents what the [Reporting Service](../reporting-service/README.md) serves: activity, customers and orders from the read model it builds out of the `trade-events` and `platform-records` Kafka topics, and the report runs the reporting consumer builds from `trade-events`. Nothing it shows is read from the trading database. Standalone components, signals, reactive forms, and OnPush change detection, with no server-side rendering.
+Angular 21 single-page app for the analysts who read live report snapshots and the admins who also watch platform activity and support customers. It presents what the [Reporting Service](../reporting-service/README.md) serves: activity, customers and orders from the read model it builds out of the `trade-events` and `platform-records` Kafka topics, and report runs from `trade-events` snapshots. Nothing it shows is read from the trading database. Standalone components, signals, reactive forms, and OnPush change detection, with no server-side rendering.
 
 - Port 4300, for both `ng serve` and the Compose container
 - For analysts and admins only. It signs in against the [Auth Service](../auth-service/README.md) and admits an account only if its token carries the `ANALYST` or `ADMIN` [role](../auth-service/README.md#roles). An admin sees every screen; an analyst sees the report runs and nothing else. It has no registration screen. In development, sign in as `reporting-admin@example.com` / `admin123` or `analyst@example.com` / `analyst123`.
@@ -30,7 +30,7 @@ The reporting requirements of the LEAP business requirements specification, and 
 | BR-16, by instrument | Most traded on Activity; traded value by symbol in a report run |
 | BR-16, by period | The Today, 7D, 30D, 90D and All ranges on Activity, each figure but all time's against the period before; trades per day in a report run |
 | BR-16, by client segment | Client segments on Activity; traded value by client segment in a report run. A segment is a trader's level, the only classification of clients the product keeps |
-| BR-16, without competing with live trading | Every screen is answered from Kafka: the Reporting Service has no connection to the trading database. The report runs are built from the `trade-events` topic; Activity, Customers and Orders from a read model of `trade-events` and `platform-records`; see [How the data reaches the screen](#how-the-data-reaches-the-screen) |
+| BR-16, without competing with live trading | Every screen is answered from Kafka: the Reporting Service has no connection to the trading database. Report runs are served from live `trade-events` snapshots; Activity, Customers and Orders from a read model of `trade-events` and `platform-records`; see [How the data reaches the screen](#how-the-data-reaches-the-screen) |
 | BR-17, trading volumes, most active instruments, client activity trends | On Activity: Notional traded, Most traded, and Active traders against the prior period beside Client segments |
 | Section 9.3, internal access limited to what a role requires | An analyst sees the report runs only; the screens that show individual customers are an admin's. See [Who sees what](#who-sees-what) |
 
@@ -58,13 +58,13 @@ The UI never talks to Kafka or the database, and neither it nor the Reporting Se
 | One customer, with their orders and transfers | Read model | `GET /api/reporting/customers/{userId}` | Reading again every 30 seconds |
 | Orders and cash transfers | Read model | `GET /api/reporting/orders` | Reading again every 30 seconds |
 | One order | Read model | `GET /api/reporting/orders/{orderId}` | Read when the order is opened |
-| Report runs | `trade-events` files | `GET /api/reporting/runs`, `GET /api/reporting/runs/latest?range=&tzOffset=`, `GET /api/reporting/scheduler/status` | Asking the scheduler status every 30 seconds and reloading when the latest run id changes, and reloading when the range is changed |
+| Report runs | `trade-events` files | `GET /api/reporting/runs`, `GET /api/reporting/runs/latest?range=&tzOffset=`, `GET /api/reporting/scheduler/status` | Reloading the latest snapshot every 5 seconds, plus reloading when the range changes and when scheduler metadata says run archives changed |
 | A chart PNG of a run | `trade-events` files | `GET /api/reporting/runs/{runId}/files/{name}`, fetched as a blob because a link cannot send the bearer token | Fetched when its download is asked for |
 | Signed-in user's name and trader level | Read model | `GET /api/reporting/profile`; a sign-in without a trading profile (404) shows its email instead | Read once |
 
-The read model is the Reporting Service's own tables, built from the `trade-events` and `platform-records` messages its consumer stored; see [the Reporting Service](../reporting-service/README.md#the-read-model). A message is on screen at the next refresh after it is published.
+The read model is the Reporting Service's own tables, built from the `trade-events` and `platform-records` messages its consumer stored; see [the Reporting Service](../reporting-service/README.md#the-read-model). A message reaches the screens on their next poll interval.
 
-A refresh that fails leaves the last good data on screen. Every screen shows what was published while a Kafka broker was running, and what [republish_history.py](../../db/README.md#reporting-feed-tools) published from the database afterwards.
+A polling cycle that fails leaves the last good data on screen. Every screen shows what was published while a Kafka broker was running, and what [republish_history.py](../../db/README.md#reporting-feed-tools) published from the database afterwards.
 
 ## Architecture
 
@@ -187,13 +187,13 @@ The kit is a proposal drawn on sample data. Where the product has no such data, 
 | Activity opens on Today | It opens on 7D, and afterwards on the range last chosen in this browser | Asked for: Today is mostly zeros until the day's first order |
 | The range toggle offers Today, 7D, 30D and 90D | A fifth range, All: all time, from the day of the first order or cash transfer. It has no change pills, and Orders says "since" that day in place of "vs prior period" | Asked for. Nothing comes before all time to compare it with |
 | The chart row holds Notional traded and Orders by status | A third card, Client segments: each trader level's notional and its share, traders and orders in the range | The business requirements ask for activity by client segment, which the kit predates |
-| Three sidebar entries | A fourth, Report runs, and for an analyst only that one | The scheduled reports built from the Kafka topic are a product requirement the kit predates |
+| Three sidebar entries | A fourth, Report runs, and for an analyst only that one | The Kafka-backed report snapshots are a product requirement the kit predates |
 | No way to sign out | A log out button beside the signed-in user | The kit does not draw one |
 | Dark only | A light theme as well, switched beside log out and on the sign-in page | Asked for; see [Theme](#theme) |
 | No loading state | Placeholders in the screen's layout while its first load is in flight | The kit is drawn on sample data, which is never on its way |
 | Most traded shows a price sparkline under "Today" whatever the range | The column is named after the chosen range and plots the symbol's fill prices in it | The label follows what is plotted |
 
-Report runs is not in the kit. It is built from the kit's vocabulary as Activity uses it: the headline tiles, cards, the 6px bars of Orders by status, and filled orders in the gain color with rejected ones in the loss color. Its header carries the range toggle Activity has, with the same five ranges, and it opens on 7D and afterwards on the range last chosen in this browser, which it remembers apart from Activity's. Its figures are drawn in the page from what the service answers for the latest run over that range: the run's `report.json` for all time, with days in UTC, and for a narrower range the service's cut of the same run in the viewer's days, ending when the run was generated. The days of Trades per day are also given to screen readers as a table that names the zone, and the column under the pointer is read out above the chart. The PNG charts the Reporting Service renders, in the light theme's surface and colors whatever the theme on screen, are the downloads, for the range on screen, and a file of a narrower range carries the range in its name. When a run is more than a minute late the header says Overdue with the time it was expected, which is how a consumer that is not running shows; a run on time shows nothing there.
+Report runs is not in the kit. It is built from the kit's vocabulary as Activity uses it: the headline tiles, cards, the 6px bars of Orders by status, and filled orders in the gain color with rejected ones in the loss color. Its header carries the range toggle Activity has, with the same five ranges, and it opens on 7D and afterwards on the range last chosen in this browser, which it remembers apart from Activity's. Its figures are drawn in the page from what the service answers for the latest live snapshot over that range: all time is the full snapshot with days in UTC, and a narrower range is the service's cut of that snapshot in the viewer's days, ending when the snapshot was generated. The days of Trades per day are also given to screen readers as a table that names the zone, and the column under the pointer is read out above the chart. The PNG charts for the latest snapshot are rendered by the Reporting Service at download time, in the light theme's surface and colors whatever the theme on screen; a file of a narrower range carries the range in its name. When a run archive is more than a minute late the header says Overdue with the time it was expected, which is how a consumer that is not running shows; an on-time archive shows nothing there.
 
 This app does not use the Client UI's [shared-ui-components](../client-ui/shared-ui-components/README.md). Its own markup is styled directly from the tokens, so that library still has one consumer.
 
@@ -212,7 +212,7 @@ Use a token, not a literal color, in new markup: a literal looks right in one th
 Export PDF, on every screen, prints the screen through the browser's print dialog, and the print rules in [src/styles.css](src/styles.css) make the printout the desktop screen:
 
 - The page is 1376 by 973 CSS pixels, A4's landscape proportions, so the content is as wide as a laptop window and still fits paper. In print every breakpoint counts as reached, because a width query in print answers for the sheet the browser has in mind and not for that page; the breakpoint variants are redefined in the stylesheet to say so.
-- The sidebar, the Export and Refresh buttons and the download links are left out. A line at the top, shown only in print, carries the product name, when the export was made and who made it. The Activity range and the filters of Orders and Customers stay, so the document says what it covers.
+- The sidebar, the Export button and the download links are left out. A line at the top, shown only in print, carries the product name, when the export was made and who made it. The Activity range and the filters of Orders and Customers stay, so the document says what it covers.
 - Nothing scrolls or clips: every list and table is printed whole, over as many pages as it needs. A card stays on one page; a card that holds a list breaks between its rows.
 - The printout is in the light theme whatever the theme on screen, and the page margins are covered in its background so no frame shows around a page.
 
@@ -239,8 +239,8 @@ What the screens show depends on what is running:
 | Reporting Service not reachable | A load error with a retry | A load error with a retry |
 | Reporting Service up, consumer never started | Empty: no customers, no orders | "No report runs yet" |
 | Consumer running, nothing published yet | Empty, then each sign-in, customer and order as it is published | A report of zeros |
-| Customers sign up and trade while the broker and consumer run | All of it, within seconds | Their orders, from the next run on |
-| History republished from the database | Everything in the database at that moment | The same, from the next run on |
+| Customers sign up and trade while the broker and consumer run | All of it, within seconds | Their orders, within seconds |
+| History republished from the database | Everything in the database at that moment | The same, once republished |
 
 Messages exist only for what the services did while a Kafka broker was running. What was already in the database, or was written to it by SQL, reaches every screen once [republish_history.py](../../db/README.md#reporting-feed-tools) has published it. [seed_demo_history.py](../../db/README.md#reporting-feed-tools) gives a development database six months of history to republish.
 
@@ -287,8 +287,8 @@ In the [Jenkins pipeline](../../infrastructure/README.md#jenkins) the suite runs
 - An analyst's "Orders per account" card names each account and its trader. Whether an analyst's work needs clients by name is a decision for the business; the other three cards name nobody.
 - A transfer row opens nothing: the service has no endpoint for a single cash transaction.
 - The Activity ranges are fixed at today, 7, 30 and 90 days, and all time; there is no custom range. All time plots a point per day for a history of up to 366 days. Beyond that a point covers several days and is labelled with the day it starts.
-- The service keeps only the newest report run, and a run covers every event on disk. Report runs shows that run over the chosen range; a run still on disk beside it is listed under Earlier runs with its PNG charts only, over all time, because the service serves the figures of the latest run alone.
-- Report runs counts an order in a range by when it resolved and Activity by when it was placed, and Report runs stops at the run's generation time, so the two screens can differ by the orders of the last minutes. Today is a single column of Trades per day, where Activity plots it by the hour. A new run can replace the one on screen up to 30 seconds before the page learns of it; a chart downloaded in that gap is taken from the new run, and the page moves on to it.
+- The service keeps only the newest scheduled run file on disk. Report runs still shows a live latest snapshot over the chosen range; a run still on disk beside it is listed under Earlier runs with its PNG charts only, over all time.
+- Report runs counts an order in a range by when it resolved and Activity by when it was placed, so the two screens can differ by the newest orders. Today is a single column of Trades per day, where Activity plots it by the hour.
 - Trades per day plots the days that have a resolved order, side by side. A day without one is left out, not drawn as a gap.
 - Users are not signed out for inactivity, unlike the Client UI.
 

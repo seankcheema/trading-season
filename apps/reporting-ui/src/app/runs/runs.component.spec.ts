@@ -85,7 +85,7 @@ describe('RunsComponent', () => {
     const header = root.querySelector('app-page-header')!;
 
     expect(text(header.querySelector('p')!)).toMatch(
-      /^Run 20261008T194500Z · generated Oct 8, \d{1,2}:45 [AP]M \S+ · replaced every 15 minutes$/,
+      /^Run 20261008T194500Z · generated Oct 8, \d{1,2}:45 [AP]M \S+ · live from Kafka · run archives every 15 minutes$/,
     );
     const toggle = header.querySelector('app-timeframe-toggle')!;
     expect(toggle.getAttribute('aria-label')).toBe('Report range');
@@ -443,19 +443,6 @@ describe('RunsComponent', () => {
     expect(text(card(root, 'Orders resolved'))).toContain('8');
   });
 
-  it('refreshes on demand', () => {
-    const root = render();
-    // The range toggle's buttons come first in the header.
-    const button = root.querySelector<HTMLButtonElement>('app-page-header > div > button')!;
-    button.click();
-    expect(store.refresh).toHaveBeenCalledTimes(1);
-
-    store.refreshing.set(true);
-    fixture.detectChanges();
-    expect(button.textContent).toContain('Refreshing…');
-    expect(button.disabled).toBe(true);
-  });
-
   it('shows loading and empty states', () => {
     const root = render('loading');
     expect(text(root.querySelector('[role="status"]')!)).toBe('Loading report runs…');
@@ -472,18 +459,18 @@ describe('RunsComponent', () => {
     expect(text(root)).toContain('No report runs yet');
     expect(root.querySelector('.skeleton')).toBeNull();
     expect(root.querySelector('[aria-busy]')).toBeNull();
-    expect(text(root)).toContain('Written by the reporting consumer · each run replaces');
+    expect(text(root)).toContain('Live from Kafka trade-events');
 
     store.scheduler.set(schedulerStatus({ interval_minutes: 1 }));
     fixture.detectChanges();
-    expect(text(root)).toContain('Written by the reporting consumer every minute · each run');
+    expect(text(root)).toContain('Live from Kafka trade-events · run archives written every minute');
   });
 
   it('names the run without an interval until the scheduler has answered', () => {
     const root = render('ready', () => store.scheduler.set(null));
 
     expect(text(root.querySelector('app-page-header p')!)).toMatch(
-      /^Run 20261008T194500Z · generated Oct 8, \d{1,2}:45 [AP]M \S+$/,
+      /^Run 20261008T194500Z · generated Oct 8, \d{1,2}:45 [AP]M \S+ · live from Kafka$/,
     );
   });
 

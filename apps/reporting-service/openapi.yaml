@@ -10,10 +10,10 @@ info:
     Everything the service serves comes from two Kafka topics. It has no
     connection to the trading_season database.
 
-    The report runs are produced by the reporting consumer from the
-    trade-events topic, with user and account names and each trader's level,
-    the client segment a run splits activity by, taken from the
-    platform-records topic.
+    The reporting consumer archives run files from the trade-events topic,
+    with user and account names and each trader's level (the client segment
+    a run splits activity by) taken from the platform-records topic. The
+    latest run endpoint is served live from current event files.
 
     The console endpoints (activity, orders, customers) are answered from a
     read model the service builds from both topics: orders and their fills
@@ -112,16 +112,16 @@ paths:
       description: |
         Requires the ANALYST or ADMIN role.
 
-        Without a range, or with the range all, the answer is the run's
-        report.json as the report job wrote it: every event on disk, with
-        days cut in UTC.
+        Without a range, or with the range all, the answer is the latest
+        live snapshot from trade-events on disk: every event consumed so far,
+        with days cut in UTC.
 
         Any other range is the one the activity endpoint cuts, counted in the
-        viewer's days from tzOffset, except that it ends when the run was
+        viewer's days from tzOffset, except that it ends when the snapshot was
         generated instead of now. The answer has the shape of report.json and
-        the run's id, generation time and files, with the figures taken from
-        the trade events that occurred inside the range, days cut in the
-        viewer's zone, and range, from and to added.
+        includes run id, generation time and files, with figures taken from
+        trade events that occurred inside the range, days cut in the viewer's
+        zone, and range, from and to added.
       security:
         - bearerAuth: []
       parameters:
@@ -154,7 +154,7 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          description: No report has been generated yet
+          description: No trade events have been consumed yet
           content:
             application/json:
               schema:
@@ -168,10 +168,13 @@ paths:
       description: |
         Requires the ANALYST or ADMIN role.
 
-        Without a range, or with the range all, the answer is the file the
-        report job wrote. Any other range is drawn when it is asked for, from
-        the figures /api/reporting/runs/latest gives for that range of this
-        run, and is not kept.
+        For the latest run snapshot, charts are rendered at download time from
+        live data so they match what /api/reporting/runs/latest returns.
+
+        For earlier run ids, without a range (or with range=all) the answer is
+        the file written by the report job. Any other range is drawn when it
+        is asked for, from the figures /api/reporting/runs/latest gives for
+        that range of this run, and is not kept.
       security:
         - bearerAuth: []
       parameters:
