@@ -132,6 +132,7 @@ describe('history dialogs', () => {
     it('filters by type', () => {
       seedOrders();
       const fixture = open();
+      click(fixture, '[data-testid="transactions-filters"]');
       const typed = (type: string) => {
         click(fixture, `[data-testid="transactions-filter-${type}"]`);
         return rows(fixture, 'transactions-row').length;
@@ -141,6 +142,134 @@ describe('history dialogs', () => {
       expect(typed('deposit')).toBe(1);
       expect(typed('withdrawal')).toBe(1);
       expect(typed('all')).toBe(5);
+    });
+
+    it('filters by status and combines it with the type filter', () => {
+      seedOrders();
+      const fixture = open();
+      const statuses = () => rows(fixture, 'transactions-row').map((row) => row.dataset['status']);
+      click(fixture, '[data-testid="transactions-filters"]');
+      click(fixture, '[data-testid="transactions-status-completed"]');
+      expect(statuses()).toEqual(['COMPLETED', 'COMPLETED']);
+      click(fixture, '[data-testid="transactions-filter-buy"]');
+      expect(statuses()).toEqual([]);
+      click(fixture, '[data-testid="transactions-filter-all"]');
+      click(fixture, '[data-testid="transactions-status-all"]');
+      expect(statuses()).toHaveLength(5);
+    });
+
+    it('filters by order kind and shows non-market kinds beside the type', () => {
+      const service = TestBed.inject(OrderService);
+      service.loadOrders().subscribe();
+      http.expectOne('/api/orders').flush([
+        order({ orderId: 1 }),
+        order({ orderId: 2, executionType: 'LIMIT', limitPrice: 95, status: 'ACCEPTED' }),
+        order({ orderId: 3, executionType: 'STOP', stopPrice: 90, status: 'ACCEPTED' }),
+      ]);
+      service.instruments().subscribe();
+      http.expectOne('/api/instruments').flush(CATALOGUE);
+      const fixture = open();
+      const ids = () => rows(fixture, 'transactions-row').length;
+      click(fixture, '[data-testid="transactions-filters"]');
+      click(fixture, '[data-testid="transactions-execution-limit"]');
+      expect(ids()).toBe(1);
+      expect(rows(fixture, 'transaction-execution').map((el) => el.textContent?.trim())).toEqual([
+        'Limit',
+      ]);
+      click(fixture, '[data-testid="transactions-execution-market"]');
+      expect(ids()).toBe(1);
+      expect(rows(fixture, 'transaction-execution')).toHaveLength(0);
+      click(fixture, '[data-testid="transactions-execution-all"]');
+      expect(ids()).toBe(5);
+    });
+
+    it('wires the header, close button, filter escape key and order menu to the dialog', () => {
+      const service = TestBed.inject(OrderService);
+      service.loadOrders().subscribe();
+      http.expectOne('/api/orders').flush([order({ orderId: 1, status: 'ACCEPTED' })]);
+      service.instruments().subscribe();
+      http.expectOne('/api/instruments').flush(CATALOGUE);
+      const fixture = open();
+      const component = fixture.componentInstance;
+      const root: HTMLElement = fixture.nativeElement;
+
+      (root.querySelector('[app-sort-header]') as HTMLElement).click();
+      fixture.detectChanges();
+      expect(component['sortDirection']()).toBe('asc');
+
+      click(fixture, '[data-testid="transactions-filters"]');
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+      root.querySelector('[data-testid="transactions-filters-panel"]')!.dispatchEvent(escape);
+      fixture.detectChanges();
+      expect(component['filtersOpen']()).toBe(false);
+
+      const edit = vi.spyOn(service, 'editOrder').mockImplementation(() => {});
+      const cancel = vi.spyOn(service, 'cancelOrder').mockReturnValue(new Subject<OrderResult>());
+      const menuItem = (name: string) =>
+        [...root.querySelectorAll<HTMLElement>('[role="menuitem"], button')].find(
+          (el) => el.textContent?.trim() === name,
+        )!;
+      // jsdom does not implement the modal dialog the cancel confirmation opens.
+      const confirmation = root.querySelector('dialog') as HTMLDialogElement;
+      confirmation.showModal = vi.fn();
+      confirmation.close = vi.fn();
+      menuItem('Edit order').click();
+      expect(edit).toHaveBeenCalledWith(1);
+      menuItem('Cancel order').click();
+      fixture.detectChanges();
+      menuItem('Confirm cancellation').click();
+      expect(cancel).toHaveBeenCalledWith(1);
+
+      const closed = vi.fn();
+      component.closed.subscribe(closed);
+      click(fixture, '[aria-label="Close recent transactions"]');
+      expect(closed).toHaveBeenCalledOnce();
+    });
+
+    it('filters by account, names the account on each row and leaves out shared cash', () => {
+      const service = TestBed.inject(OrderService);
+      service.loadOrders().subscribe();
+      http.expectOne('/api/orders').flush([
+        order({ orderId: 1, accountId: 1 }),
+        order({ orderId: 2, accountId: 2 }),
+      ]);
+      service.instruments().subscribe();
+      http.expectOne('/api/instruments').flush(CATALOGUE);
+      const fixture = open();
+      const component = fixture.componentInstance;
+      expect(rows(fixture, 'transaction-account').map((el) => el.textContent?.trim())).toEqual([
+        'All accounts',
+        'Account',
+        'Account',
+        'All accounts',
+      ]);
+      TestBed.inject(AccountStore)['_accounts'].set([
+        { accountId: 1, name: 'Main', openedDate: '2026-01-01' },
+        { accountId: 2, name: 'Growth', openedDate: '2026-01-01' },
+      ]);
+      fixture.detectChanges();
+      click(fixture, '[data-testid="transactions-filters"]');
+      const pressed = (id: string) =>
+        fixture.nativeElement
+          .querySelector(`[data-testid="transactions-account-${id}"]`)
+          .getAttribute('aria-pressed');
+      expect(pressed('all')).toBe('true');
+      click(fixture, '[data-testid="transactions-account-2"]');
+      expect(pressed('2')).toBe('true');
+      expect(pressed('all')).toBe('false');
+      expect(rows(fixture, 'transactions-row')).toHaveLength(1);
+      expect(component['activeFilters']()).toBe(1);
+      click(fixture, '[data-testid="transactions-account-1"]');
+      expect(rows(fixture, 'transactions-row')).toHaveLength(1);
+      click(fixture, '[data-testid="transactions-account-all"]');
+      expect(rows(fixture, 'transactions-row')).toHaveLength(4);
+      component['accountId'].set(2);
+      component['execution'].set('LIMIT');
+      expect(component['activeFilters']()).toBe(2);
+      fixture.detectChanges();
+      click(fixture, '[data-testid="transactions-filters-clear"]');
+      expect(component['activeFilters']()).toBe(0);
+      expect(rows(fixture, 'transactions-row')).toHaveLength(4);
     });
 
     it('searches asset labels and toggles sorting in both directions', () => {
@@ -196,6 +325,38 @@ describe('history dialogs', () => {
       const fixture = open();
       expect(fixture.componentInstance['auditMarkerClass']({ eventType, price: 100, occurredAt: '', detail: null }))
         .toBe('bg-loss');
+    });
+
+    it.each([
+      ['FILLED', 'bg-gain'],
+      ['PENDING', 'bg-pending'],
+      ['ACCEPTED', 'bg-primary'],
+    ])('marks %s audit events with %s', (eventType, expected) => {
+      const fixture = open();
+      expect(
+        fixture.componentInstance['auditMarkerClass']({ eventType, price: 100, occurredAt: '', detail: null }),
+      ).toBe(expected);
+    });
+
+    it('closes only the filter panel on Escape and clears the filters', () => {
+      seedOrders();
+      const fixture = open();
+      const component = fixture.componentInstance;
+      const event = new Event('keydown');
+      const stop = vi.spyOn(event, 'stopPropagation');
+      component['closeFilters'](event);
+      expect(stop).not.toHaveBeenCalled();
+      click(fixture, '[data-testid="transactions-filters"]');
+      click(fixture, '[data-testid="transactions-filter-buy"]');
+      click(fixture, '[data-testid="transactions-filters-clear"]');
+      expect(rows(fixture, 'transactions-row')).toHaveLength(5);
+      fixture.nativeElement.querySelector('[data-testid="transactions-filters-panel"]').previousElementSibling.click();
+      fixture.detectChanges();
+      expect(component['filtersOpen']()).toBe(false);
+      component['filtersOpen'].set(true);
+      component['closeFilters'](event);
+      expect(stop).toHaveBeenCalledOnce();
+      expect(component['filtersOpen']()).toBe(false);
     });
 
     it('colors and signs only cash amounts', () => {
@@ -264,7 +425,7 @@ describe('history dialogs', () => {
 
       expect(placeholders).toHaveLength(6);
       // Seven data placeholders, with reserved audit and action columns on either side.
-      expect(placeholders[0].children).toHaveLength(9);
+      expect(placeholders[0].children).toHaveLength(10);
       expect(placeholders[0].getAttribute('aria-hidden')).toBe('true');
       expect(table.querySelector('[role="status"]')?.textContent).toContain('Loading transactions…');
       expect(table.textContent).not.toContain('No transactions match these filters.');

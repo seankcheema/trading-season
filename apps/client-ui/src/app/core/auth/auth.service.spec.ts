@@ -153,4 +153,101 @@ describe('AuthService', () => {
 
     await result;
   });
+
+  it('reports an auth-step failure for any registration error other than a taken email', async () => {
+    const result = firstValueFrom(service.register(DETAILS)).catch((e: unknown) => e);
+    http
+      .expectOne('http://localhost:3001/auth/register')
+      .flush({}, { status: 500, statusText: 'Server Error' });
+    const error = await result;
+    expect(error).toBeInstanceOf(RegistrationStepError);
+    expect((error as RegistrationStepError).step).toBe('register-auth');
+  });
+
+  it('reports an auth-step failure when the resume login fails for another reason', async () => {
+    const result = firstValueFrom(service.register(DETAILS)).catch((e: unknown) => e);
+    http
+      .expectOne('http://localhost:3001/auth/register')
+      .flush({}, { status: 409, statusText: 'Conflict' });
+    http
+      .expectOne('http://localhost:3001/auth/login')
+      .flush({}, { status: 503, statusText: 'Unavailable' });
+    const error = await result;
+    expect(error).toBeInstanceOf(RegistrationStepError);
+    expect((error as RegistrationStepError).step).toBe('register-auth');
+  });
+
+  it('signs out locally even when there is no refresh token or revoking it fails', async () => {
+    await firstValueFrom(service.logout());
+    http.expectNone('http://localhost:3001/auth/logout');
+
+    storage.save(TOKENS);
+    const result = firstValueFrom(service.logout());
+    http
+      .expectOne('http://localhost:3001/auth/logout')
+      .flush({}, { status: 500, statusText: 'Server Error' });
+    await result;
+    expect(service.isAuthenticated()).toBe(false);
+  });
+
+  it('answers true without refreshing while the access token is valid', async () => {
+    storage.save(TOKENS);
+    expect(await firstValueFrom(service.ensureValidSession())).toBe(true);
+    http.expectNone('http://localhost:3001/auth/refresh');
+  });
+
+  it('shares one in-flight refresh between callers', async () => {
+    storage.save({ ...TOKENS, expiresIn: -1 });
+    const first = firstValueFrom(service.ensureValidSession());
+    const second = firstValueFrom(service.ensureValidSession());
+    http.expectOne('http://localhost:3001/auth/refresh').flush(TOKENS);
+    expect(await Promise.all([first, second])).toEqual([true, true]);
+  });
+
+  it('clears a session that has no refresh token left to use', async () => {
+    storage.save({ ...TOKENS, refreshToken: '', expiresIn: -1 });
+    expect(service.isAuthenticated()).toBe(true);
+    expect(await firstValueFrom(service.ensureValidSession())).toBe(false);
+    expect(service.isAuthenticated()).toBe(false);
+    expect(await firstValueFrom(service.ensureValidSession())).toBe(false);
+  });
+
+  it.each([400, 401, 403])('signs out when the refresh is refused with %s', async (status) => {
+    storage.save({ ...TOKENS, expiresIn: -1 });
+    const result = firstValueFrom(service.ensureValidSession());
+    http
+      .expectOne('http://localhost:3001/auth/refresh')
+      .flush({}, { status, statusText: 'Refused' });
+    expect(await result).toBe(false);
+    expect(service.isAuthenticated()).toBe(false);
+  });
+
+  it('keeps the session and surfaces the error when the refresh fails for another reason', async () => {
+    storage.save({ ...TOKENS, expiresIn: -1 });
+    const result = firstValueFrom(service.ensureValidSession()).catch((e: unknown) => e);
+    http
+      .expectOne('http://localhost:3001/auth/refresh')
+      .flush({}, { status: 503, statusText: 'Unavailable' });
+    expect(await result).toBeInstanceOf(HttpErrorResponse);
+    expect(service.isAuthenticated()).toBe(true);
+  });
+
+  it('discards a refresh result that arrives after the session changed', async () => {
+    storage.save({ ...TOKENS, expiresIn: -1 });
+    const result = firstValueFrom(service.ensureValidSession());
+    const request = http.expectOne('http://localhost:3001/auth/refresh');
+    storage.clear();
+    request.flush({ ...TOKENS, accessToken: 'late' });
+    expect(await result).toBe(false);
+    expect(storage.accessToken).toBeNull();
+  });
+
+  it('ignores a refresh failure that arrives after the session changed', async () => {
+    storage.save({ ...TOKENS, expiresIn: -1 });
+    const result = firstValueFrom(service.ensureValidSession());
+    const request = http.expectOne('http://localhost:3001/auth/refresh');
+    storage.clear();
+    request.flush({}, { status: 500, statusText: 'Server Error' });
+    expect(await result).toBe(false);
+  });
 });

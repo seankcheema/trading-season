@@ -412,4 +412,70 @@ describe('OrderService', () => {
     });
   });
 
+  it('tells the user when the order editor cannot load its instrument catalogue', () => {
+    service.loadOrders().subscribe();
+    http.expectOne('/api/orders').flush([order({ status: 'ACCEPTED' })]);
+    service.editOrder(1);
+    http.expectOne('/api/instruments').flush({}, { status: 500, statusText: 'Error' });
+
+    expect(service.editingOrder()).toBeNull();
+    expect(TestBed.inject(ToastService).messages()[0].message).toContain('Unable to load the order editor');
+  });
+
+  it('submits by instrument id and refuses an id the catalogue does not hold', () => {
+    service.submitOrder({ ...BUY, instrumentId: 7 }).subscribe();
+    http.expectOne('/api/instruments').flush([instrument()]);
+    http.expectOne({ method: 'POST', url: '/api/orders' }).flush(order());
+
+    let failure: unknown;
+    service.submitOrder({ ...BUY, instrumentId: 99 }).subscribe({ error: (error) => (failure = error) });
+    expect(failure).toBeInstanceOf(UnknownInstrumentError);
+  });
+
+  it('serves the cached history without a request when a refresh is not required', () => {
+    service.loadOrders().subscribe();
+    http.expectOne('/api/orders').flush([order()]);
+
+    let cached: OrderResult[] = [];
+    service.loadOrders(false).subscribe((orders) => (cached = orders));
+
+    http.expectNone('/api/orders');
+    expect(cached).toEqual([order()]);
+  });
+
+  it('skips a poll while the tab is hidden and ignores a poll that fails', () => {
+    vi.useFakeTimers();
+    try {
+      service.loadOrders().subscribe();
+      http.expectOne('/api/orders').flush([order({ status: 'ACCEPTED', resolvedAt: null })]);
+      TestBed.tick();
+
+      const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+      vi.advanceTimersByTime(PENDING_ORDER_POLL_MS);
+      http.expectNone('/api/orders');
+
+      hidden.mockReturnValue(false);
+      vi.advanceTimersByTime(PENDING_ORDER_POLL_MS);
+      http.expectOne('/api/orders').flush({}, { status: 500, statusText: 'Error' });
+      expect(service.orders()[0].status).toBe('ACCEPTED');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('names an order by number when its instrument is not in the catalogue and uses its execution price', () => {
+    vi.useFakeTimers();
+    try {
+      service.loadOrders().subscribe();
+      http.expectOne('/api/orders').flush([order({ status: 'ACCEPTED', resolvedAt: null })]);
+      TestBed.tick();
+
+      vi.advanceTimersByTime(PENDING_ORDER_POLL_MS);
+      http.expectOne('/api/orders').flush([order({ executionPrice: 101.5 })]);
+
+      expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 2 order #1 at $101.50.');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

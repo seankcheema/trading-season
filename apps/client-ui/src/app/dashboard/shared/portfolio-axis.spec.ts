@@ -84,4 +84,18 @@ describe('portfolio axis and curves', () => {
       }
     });
   });
+
+  it('places a time after the last session at the right edge and a flat domain at the left', () => {
+    const sessions = [
+      { start: 0, end: 10 },
+      { start: 20, end: 30 },
+    ];
+    expect(timePosition(99, { start: 0, end: 30, sessions })).toBe(100);
+    expect(timePosition(5, { start: 10, end: 10 })).toBe(0);
+  });
+
+  it('draws nothing for no points and a bare move for one', () => {
+    expect(monotonePath([])).toBe('');
+    expect(monotonePath([{ x: 1, y: 2 }])).toBe('M 1.0000,2.0000');
+  });
 });

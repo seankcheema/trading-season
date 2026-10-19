@@ -328,33 +328,39 @@ def _transfer_row(transaction, account, user):
     }
 
 
-def _transfers(session, limit, user_id=None):
-    """The newest deposits and withdrawals across every account, or one customer's."""
+def _transfers(session, limit, user_id=None, since=None):
+    """The newest deposits and withdrawals across every account, or one customer's, from since on."""
     query = (session.query(CashTransaction, Account, User)
              .join(Account, Account.account_id == CashTransaction.account_id)
              .join(User, User.user_id == Account.user_id)
              .filter(CashTransaction.reason.in_(TRANSFER_REASONS)))
     if user_id is not None:
         query = query.filter(User.user_id == user_id)
+    if since is not None:
+        query = query.filter(CashTransaction.created_at >= since)
     rows = (query.order_by(CashTransaction.created_at.desc(), CashTransaction.cash_transaction_id.desc())
             .limit(limit).all())
     return [_transfer_row(*row) for row in rows]
 
 
-def orders(session, limit=DEFAULT_ORDER_LIMIT, user_id=None):
+def orders(session, limit=DEFAULT_ORDER_LIMIT, user_id=None, since=None):
     """
     The newest orders across every account, or one customer's, and beside
-    them the newest deposits and withdrawals, under the same limit.
+    them the newest deposits and withdrawals, under the same limit. With
+    since, only those made from then on; a limit of None then returns every
+    one of them.
     """
     query = _order_query(session)
     if user_id is not None:
         query = query.filter(User.user_id == user_id)
+    if since is not None:
+        query = query.filter(Order.submitted_at >= since)
     total = query.count()
     # Newest by when it was submitted, not by id: history loaded late has high ids and old dates.
     rows = query.order_by(Order.submitted_at.desc(), Order.order_id.desc()).limit(limit).all()
     return {
         'orders': [_order_row(*row) for row in rows],
-        'transfers': _transfers(session, limit, user_id),
+        'transfers': _transfers(session, limit, user_id, since),
         'total': total,
         'sessionId': _session_id(session),
     }

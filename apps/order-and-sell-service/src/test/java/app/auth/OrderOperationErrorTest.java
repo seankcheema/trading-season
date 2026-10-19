@@ -28,4 +28,12 @@ class OrderOperationErrorTest {
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.getStatusCode());
         assertEquals(Map.of("error", "Market price unavailable. Please try again."), response.getBody());
     }
+
+    @Test
+    void constraintViolationsAnswer409WithoutDatabaseDetails() {
+        var response = handler.handleDataIntegrity(
+                new org.springframework.dao.DataIntegrityViolationException("duplicate key value violates unique constraint uq_orders"));
+        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+        assertEquals(Map.of("error", "Request conflicts with existing data"), response.getBody());
+    }
 }

@@ -1,5 +1,7 @@
 import { ExecutionSettingsService } from './settings-dialog/execution-settings.service';
 import { of as savedExecutionPreference } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
+import { MarketDataService, MarketStreamHandlers } from './market-data.service';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -145,6 +147,8 @@ function createDashboard(): ComponentFixture<DashboardComponent> {
 
 describe('DashboardComponent', () => {
   beforeEach(async () => {
+    // The first-run tour would cover the dashboard; it has its own tests below.
+    localStorage.setItem('ts.tour.done', '1');
     sessionStorage.clear();
     await TestBed.configureTestingModule({
       imports: [DashboardComponent],
@@ -558,8 +562,12 @@ describe('DashboardComponent', () => {
 
     expect(trigger.className).toContain('rounded-full');
     expect(trigger.textContent?.trim()).toBe('');
-    expect(items.map((item) => item.textContent?.trim())).toEqual(['Settings', 'Log out']);
-    expect(items[1].className).toContain('text-loss');
+    expect(items.map((item) => item.textContent?.trim())).toEqual([
+      'Settings',
+      'Take the tour',
+      'Log out',
+    ]);
+    expect(items[2].className).toContain('text-loss');
     expect(fixture.nativeElement.querySelector('[aria-label="Sign out"]')).toBeNull();
   });
 
@@ -569,10 +577,12 @@ describe('DashboardComponent', () => {
     fixture.detectChanges();
     openDropdown(fixture, 'profile-dropdown');
 
-    const items = fixture.nativeElement.querySelectorAll(
-      '[data-testid="profile-dropdown"] button[role="menuitem"]',
-    ) as NodeListOf<HTMLButtonElement>;
-    items[1].click();
+    const items = [
+      ...fixture.nativeElement.querySelectorAll(
+        '[data-testid="profile-dropdown"] button[role="menuitem"]',
+      ),
+    ] as HTMLButtonElement[];
+    items.find((item) => item.textContent?.trim() === 'Log out')!.click();
     fixture.detectChanges();
 
     expect(navigate).toHaveBeenCalledWith('/login');
@@ -2041,6 +2051,294 @@ describe('DashboardComponent', () => {
 
       expect(navigate).toHaveBeenCalledWith('/login');
       TestBed.inject(HttpTestingController).expectNone('/api/users/me/terms-acceptance');
+    });
+  });
+
+  describe('first-run tour', () => {
+    const NOT_ACCEPTED = { ...PROFILE, termsAccepted: false };
+
+    beforeEach(() => {
+      localStorage.removeItem('ts.tour.done');
+      localStorage.removeItem('ts.tour.step');
+    });
+    afterEach(() => {
+      localStorage.removeItem('ts.tour.done');
+      localStorage.removeItem('ts.tour.step');
+    });
+
+    function tour(fixture: ComponentFixture<DashboardComponent>) {
+      return (fixture.nativeElement as HTMLElement).querySelector('app-dashboard-tour');
+    }
+
+    function content(fixture: ComponentFixture<DashboardComponent>) {
+      return (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="dashboard-content"]',
+      ) as HTMLElement;
+    }
+
+    function tourButton(fixture: ComponentFixture<DashboardComponent>, name: string) {
+      return [...(tour(fixture)?.querySelectorAll('button') ?? [])].find(
+        (button) => button.textContent?.trim() === name,
+      ) as HTMLButtonElement;
+    }
+
+    it('marks every element it spotlights', () => {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture);
+      const page = fixture.nativeElement as HTMLElement;
+
+      for (const target of ['search', 'net-worth', 'account', 'portfolio', 'assets']) {
+        expect(page.querySelector(`[data-tour="${target}"]`)).not.toBeNull();
+      }
+    });
+
+    it('opens by itself once the accounts and profile load, with the dashboard inert', () => {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      expect(tour(fixture)).toBeNull();
+
+      flushAccounts(fixture);
+
+      expect(tour(fixture)?.textContent).toContain('Welcome to TradingSeason');
+      expect(content(fixture).hasAttribute('inert')).toBe(true);
+    });
+
+    it('waits until the terms are accepted', () => {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture, ACCOUNTS, { profile: NOT_ACCEPTED });
+
+      expect(tour(fixture)).toBeNull();
+    });
+
+    it('does not open by itself once finished or skipped', () => {
+      localStorage.setItem('ts.tour.done', '1');
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture);
+
+      expect(tour(fixture)).toBeNull();
+    });
+
+    it('closes on Skip and gives the dashboard back', async () => {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture);
+
+      tourButton(fixture, 'Skip').click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(tour(fixture)).toBeNull();
+      expect(content(fixture).hasAttribute('inert')).toBe(false);
+      expect(localStorage.getItem('ts.tour.done')).toBe('1');
+    });
+
+    it('starts again from the first step from the profile menu, and returns focus there', async () => {
+      localStorage.setItem('ts.tour.done', '1');
+      localStorage.setItem('ts.tour.step', '4');
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture);
+      openDropdown(fixture, 'profile-dropdown');
+
+      (
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="start-tour"]',
+        ) as HTMLButtonElement
+      ).click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(dropdownDetails(fixture, 'profile-dropdown').open).toBe(false);
+      expect(tour(fixture)?.textContent).toContain('Welcome to TradingSeason');
+
+      tourButton(fixture, 'Skip').click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(document.activeElement).toBe(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="profile-dropdown"] summary',
+        ),
+      );
+    });
+
+    it('hands over to the stock search when finished', async () => {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture);
+      // Reopen at the last step.
+      fixture.componentInstance['tourOpen'].set(false);
+      fixture.detectChanges();
+      localStorage.setItem('ts.tour.step', '6');
+      fixture.componentInstance['tourOpen'].set(true);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      tourButton(fixture, 'Find a stock').click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(tour(fixture)).toBeNull();
+      expect(document.activeElement).toBe(
+        (fixture.nativeElement as HTMLElement).querySelector('[data-tour="search"] input'),
+      );
+    });
+
+    it('closes when the profile turns out to need the terms accepted', () => {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      fixture.componentInstance['startTour']();
+      fixture.detectChanges();
+      expect(tour(fixture)).not.toBeNull();
+
+      flushAccounts(fixture, ACCOUNTS, { profile: NOT_ACCEPTED });
+
+      expect(tour(fixture)).toBeNull();
+      expect(localStorage.getItem('ts.tour.done')).toBeNull();
+    });
+  });
+
+  describe('market stream and refresh', () => {
+    const SNAPSHOT = {
+      sessionId: 7,
+      status: 'OPEN',
+      marketTimestamp: '2026-01-05T15:01:00Z',
+      serverTimestamp: '2026-01-05T15:01:00Z',
+      calendar: CALENDAR,
+      stocks: [
+        { symbol: 'AAPL', companyName: 'Apple', price: 100, change: 2, changePercent: 2, timestamp: 'x' },
+        { symbol: 'SPY', companyName: 'SPDR', price: 0, change: 0, changePercent: 0, timestamp: 'x' },
+      ],
+    };
+
+    function start() {
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture);
+      const market = TestBed.inject(MarketDataService);
+      let handlers!: MarketStreamHandlers;
+      const stop = vi.fn();
+      vi.spyOn(market, 'connect').mockImplementation((_session, given) => {
+        handlers = given;
+        return stop;
+      });
+      const candles = vi
+        .spyOn(market, 'candles')
+        .mockImplementation((_session, symbol) =>
+          symbol === 'AAPL'
+            ? of({
+                sessionId: 7, symbol, timeframe: '1D', marketTimestamp: '', points: [
+                  { timestamp: '2026-01-05T15:00:00Z', open: 1, high: 2, low: 1, close: 2, volume: 1 },
+                ],
+              } as never)
+            : throwError(() => new Error('down')),
+        );
+      return { fixture, component: fixture.componentInstance, market, candles, stop, handlers: () => handlers };
+    }
+
+    it('applies a snapshot, connects the stream and loads a chart for every held or watched symbol', () => {
+      const { component, candles, handlers } = start();
+      component['applySnapshot'](SNAPSHOT as never);
+      expect(component['instruments']().map((stock) => stock.symbol)).toEqual(['AAPL', 'SPY']);
+      expect(candles).toHaveBeenCalled();
+      expect(component['assetCandlePoints']().get('AAPL')).toHaveLength(1);
+      // A failing symbol leaves no chart behind.
+      expect(component['assetCandlePoints']().has('SPY')).toBe(false);
+      expect(handlers()).toBeDefined();
+    });
+
+    it('applies ticks to the quoted symbol only and animates real moves', () => {
+      const { component, handlers } = start();
+      component['applySnapshot'](SNAPSHOT as never);
+      const animate = vi.spyOn(component['tickAnimator'], 'start');
+      handlers().tick({
+        eventId: 1, marketTimestamp: '2026-01-05T15:01:05Z', serverTimestamp: '2026-01-05T15:01:05Z',
+        prices: [
+          { symbol: 'AAPL', price: 103, sequenceNumber: 1 },
+          { symbol: 'SPY', price: 5, sequenceNumber: 2 },
+          { symbol: 'AAPL', price: 103, sequenceNumber: 3 },
+          { symbol: 'AAPL', price: 99, sequenceNumber: 4 },
+        ],
+      });
+      const aapl = component['instruments']().find((stock) => stock.symbol === 'AAPL')!;
+      expect(aapl.price).toBe(99);
+      expect(aapl.change).toBe(1);
+      expect(component['instruments']().find((stock) => stock.symbol === 'SPY')?.changePercent).toBe(0);
+      expect(animate).toHaveBeenCalledWith('AAPL', 'gain');
+      expect(animate).toHaveBeenCalledWith('AAPL', 'loss');
+    });
+
+    it('ignores ticks while the page is hidden and reloads the snapshot on resync', () => {
+      const { component, market, handlers } = start();
+      component['applySnapshot'](SNAPSHOT as never);
+      vi.spyOn(component['document'], 'hidden', 'get').mockReturnValue(true);
+      handlers().tick({
+        eventId: 1, marketTimestamp: '2026-01-05T15:09:00Z', serverTimestamp: '', prices: [],
+      });
+      expect(component['currentMarketTimestamp']()).toBe('2026-01-05T15:01:00Z');
+      vi.restoreAllMocks();
+
+      const snapshot = vi.spyOn(market, 'snapshot').mockReturnValue(of(SNAPSHOT as never));
+      handlers().status(true);
+      handlers().resync();
+      expect(snapshot).toHaveBeenCalled();
+    });
+
+    it('keeps the current view when a reloaded snapshot fails', () => {
+      const { component, market } = start();
+      vi.spyOn(market, 'snapshot').mockReturnValue(throwError(() => new Error('down')));
+      expect(() => component['loadMarketSnapshot']()).not.toThrow();
+    });
+
+    it('drops stale chart results after the market moves on and clears charts for a new session', () => {
+      const { component, market } = start();
+      const late = new Subject<never>();
+      vi.spyOn(market, 'candles').mockReturnValue(late as never);
+      component['applySnapshot'](SNAPSHOT as never);
+      component['applySnapshot']({ ...SNAPSHOT, sessionId: 8 } as never);
+      late.next({ points: [{ timestamp: '2026-01-05T15:00:00Z', close: 1 }] } as never);
+      late.error(new Error('late'));
+      expect(component['assetCandlePoints']().size).toBe(0);
+    });
+
+    it('reloads accounts, orders and the instrument catalogue on request', () => {
+      const { component } = start();
+      const load = vi.spyOn(component['accountStore'], 'load').mockImplementation(() => {});
+      component['retryAccounts']();
+      expect(load).toHaveBeenCalledWith(true);
+      const orders = vi.spyOn(component['orderService'], 'loadOrders').mockReturnValue(throwError(() => new Error('x')));
+      const instruments = vi.spyOn(component['orderService'], 'instruments').mockReturnValue(throwError(() => new Error('x')));
+      component['loadRecentOrders']();
+      expect(orders).toHaveBeenCalled();
+      expect(instruments).toHaveBeenCalled();
+    });
+
+    it('records the typed market time and applies it through the clock', () => {
+      const { component } = start();
+      component['onMarketDateTimeChange']({ target: { value: '2026-01-05T09:45' } } as unknown as Event);
+      expect(component['marketDateTime']()).toBe('2026-01-05T09:45');
+      const apply = vi.spyOn(component['clock'], 'applyMarketDateTime').mockImplementation(
+        (_value, onSnapshot, onApplied) => {
+          onSnapshot?.(SNAPSHOT as never);
+          onApplied?.();
+        },
+      );
+      component['applyMarketDateTime']();
+      expect(apply).toHaveBeenCalled();
+      component['onClockSnapshot'](SNAPSHOT as never);
+      expect(component['marketSessionId']()).toBe(7);
+    });
+
+    it('does nothing after a fill when no account is selected', () => {
+      const { component } = start();
+      component['accountStore']['_selectedAccountId'].set(null);
+      vi.spyOn(component['accountStore'], 'selectedAccountId').mockReturnValue(null);
+      const refresh = vi.spyOn(component['accountStore'], 'refreshAfterTrade');
+      component['onOrderSubmitted'](filledOrder());
+      expect(refresh).not.toHaveBeenCalled();
     });
   });
 });

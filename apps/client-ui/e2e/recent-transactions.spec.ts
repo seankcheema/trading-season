@@ -123,6 +123,7 @@ test('view all opens every transaction, including cash, and filters by type', as
   await expect(rows).toHaveCount(4);
   await expect(rows.first()).toHaveAttribute('data-status', 'COMPLETED');
 
+  await dialog.getByTestId('transactions-filters').click();
   await dialog.getByTestId('transactions-filter-deposit').click();
   await expect(rows).toHaveCount(1);
   await dialog.getByTestId('transactions-filter-withdrawal').click();
@@ -133,6 +134,10 @@ test('view all opens every transaction, including cash, and filters by type', as
   await expect(rows).toHaveCount(2);
   await dialog.getByTestId('transactions-filter-all').click();
   await expect(rows).toHaveCount(4);
+  // Escape closes only the filter panel, leaving the dialog open.
+  await page.keyboard.press('Escape');
+  await expect(dialog.getByTestId('transactions-filters-panel')).toBeHidden();
+  await expect(dialog).toBeVisible();
 
   // Sorting by value puts the largest first, and a second click reverses it.
   await dialog.getByRole('button', { name: 'Sort by Value' }).click();

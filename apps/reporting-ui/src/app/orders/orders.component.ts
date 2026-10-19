@@ -8,6 +8,7 @@ import { PageHeaderComponent } from '../shared/page-header.component';
 import { SkeletonTableComponent } from '../shared/skeleton.component';
 import { OrderBrowserComponent } from './order-browser.component';
 import { OrderDetailComponent } from './order-detail.component';
+import { LEDGER_CSV_HEADER, ledgerCsvRow } from './ledger-rows';
 import { ORDER_TABLE_MIN_WIDTH, ORDER_TRACKS } from './order-table.component';
 
 // How often the order list is read again.
@@ -84,22 +85,6 @@ export class OrdersComponent {
 
   // The rows on screen, in the order they are shown.
   protected exportCsv(): void {
-    downloadCsv(
-      'orders',
-      ['Order', 'Time', 'Customer', 'Account', 'Asset', 'Side', 'Qty', 'Fill price', 'Amount', 'Status', 'Client reference'],
-      (this._browser()?.shown() ?? []).map((row) => [
-        row.order ? row.id : '',
-        row.at,
-        row.userName,
-        row.accountName,
-        row.symbol,
-        row.side,
-        row.quantity ?? '',
-        row.price ?? '',
-        row.amount ?? '',
-        row.status,
-        row.reference,
-      ]),
-    );
+    downloadCsv('orders', LEDGER_CSV_HEADER, (this._browser()?.shown() ?? []).map(ledgerCsvRow));
   }
 }

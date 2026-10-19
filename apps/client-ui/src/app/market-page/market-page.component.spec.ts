@@ -1290,4 +1290,153 @@ describe('MarketPageComponent', () => {
       expect(navigateToLogin).toHaveBeenCalledWith('/login');
     });
   });
+
+  describe('routing, accounts and refresh failures', () => {
+    const lastHandlers = () => marketData.connect.mock.calls.at(-1)![1] as MarketStreamHandlers;
+
+    it('redirects a symbol that is not in canonical form without loading it', async () => {
+      await setup('AAPL');
+      expect(navigate).toHaveBeenCalledWith(['/dashboard/markets', 'aapl'], {
+        queryParamsHandling: 'preserve',
+        replaceUrl: true,
+      });
+      expect(marketData.snapshot).not.toHaveBeenCalled();
+    });
+
+    it('rewrites a comparison that is not in canonical form', async () => {
+      await setup('aapl', 'MSFT');
+      expect(navigate).toHaveBeenCalled();
+      const [, extras] = navigate.mock.calls.at(-1)!;
+      expect(extras.queryParams).toEqual({ compare: 'msft' });
+    });
+
+    it('selects, creates and renames accounts through the store and closes the menu', async () => {
+      const fixture = await setup();
+      const component = fixture.componentInstance;
+      component['openHeaderDropdown'].set('account' as never);
+      component['selectAccount'](2);
+      expect(component['openHeaderDropdown']()).toBeNull();
+      component['selectAccount'](999);
+
+      component['openHeaderDropdown'].set('account' as never);
+      component['openCreateAccount']();
+      expect(component['accountDialog']()).toEqual({ account: null });
+      expect(component['openHeaderDropdown']()).toBeNull();
+
+      const owned = { accountId: 2, name: 'Retirement', openedDate: '2026-01-01' };
+      component['openHeaderDropdown'].set('account' as never);
+      component['openRenameAccount'](owned);
+      expect(component['accountDialog']()).toEqual({ account: owned });
+      component['accountDialog'].set(null);
+      component['openRenameAccount']({ accountId: 404, name: 'Nope', openedDate: '2026-01-01' });
+      expect(component['accountDialog']()).toBeNull();
+
+      component['onAccountSaved'](owned);
+      expect(component['accountDialog']()).toBeNull();
+    });
+
+    it('navigates to another instrument and keeps a different comparison', async () => {
+      const fixture = await setup('aapl', 'msft');
+      const component = fixture.componentInstance;
+      const instrument = component['instruments']().find((item) => item.symbol === 'MSFT')!;
+      component['selectInstrument'](instrument);
+      expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: null });
+      component['selectInstrument'](component['instruments']().find((item) => item.symbol === 'AAPL')!);
+      expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: 'msft' });
+    });
+
+    it('reflects stream connection status and reloads the snapshot on resync', async () => {
+      const fixture = await setup();
+      const handlers = lastHandlers();
+      handlers.status(true);
+      expect(fixture.componentInstance['connected']()).toBe(true);
+      handlers.status(false);
+      expect(fixture.componentInstance['connected']()).toBe(false);
+      const calls = marketData.snapshot.mock.calls.length;
+      handlers.resync();
+      expect(marketData.snapshot.mock.calls.length).toBe(calls + 1);
+    });
+
+    it('shows the error page when the first snapshot fails and a notice when a refresh fails', async () => {
+      marketData.snapshot.mockReturnValueOnce(throwError(() => new Error('down')));
+      const fixture = await setup();
+      expect(fixture.componentInstance['pageStatus']()).toBe('error');
+
+      marketData.snapshot.mockReturnValue(of(SNAPSHOT));
+      fixture.componentInstance['retry']();
+      expect(fixture.componentInstance['pageStatus']()).toBe('ready');
+      marketData.snapshot.mockReturnValueOnce(throwError(() => new Error('down')));
+      fixture.componentInstance['retry']();
+      expect(fixture.componentInstance['chartRefreshError']()).toBe(
+        'Market snapshot could not refresh.',
+      );
+      marketData.snapshot.mockImplementation(() => of(SNAPSHOT));
+    });
+
+    it('reports a chart that cannot be loaded, keeping any candles already shown', async () => {
+      const fixture = await setup();
+      const component = fixture.componentInstance;
+      marketData.candles.mockImplementationOnce(() => throwError(() => new Error('down')));
+      component['candleRevision'].update((revision) => revision + 1);
+      fixture.detectChanges();
+      expect(component['chartRefreshError']()).toBe('Chart data could not refresh.');
+      expect(component['chartStatus']()).not.toBe('error');
+
+      component['candles'].set([]);
+      marketData.candles.mockImplementationOnce(() => throwError(() => new Error('down')));
+      component['candleRevision'].update((revision) => revision + 1);
+      fixture.detectChanges();
+      expect(component['chartStatus']()).toBe('error');
+    });
+
+    it('marks the chart empty when the market has no candles', async () => {
+      const fixture = await setup();
+      marketData.candles.mockImplementationOnce((_s: number, symbol: string, timeframe: Timeframe) =>
+        of({ sessionId: 7, symbol, timeframe, marketTimestamp: SNAPSHOT.marketTimestamp, points: [] }),
+      );
+      fixture.componentInstance['candleRevision'].update((revision) => revision + 1);
+      fixture.detectChanges();
+      expect(fixture.componentInstance['chartStatus']()).toBe('empty');
+    });
+
+    it('shows the not-found page for a symbol the market does not quote', async () => {
+      const fixture = await setup('zzzz');
+      expect(fixture.componentInstance['pageStatus']()).toBe('not-found');
+    });
+
+    it('marks the catalogue as failed when instruments cannot be loaded', async () => {
+      await TestBed.configureTestingModule({
+        imports: [MarketPageComponent],
+        providers: [
+          {
+            provide: ExecutionSettingsService,
+            useValue: { load: () => savedExecutionPreference({ executionBufferPercent: 0 }) },
+          },
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          { provide: PLATFORM_ID, useValue: 'browser' },
+          {
+            provide: ActivatedRoute,
+            useValue: {
+              paramMap: of(convertToParamMap({ symbol: 'aapl' })),
+              queryParamMap: of(convertToParamMap({ compare: '' })),
+            },
+          },
+          { provide: MarketDataService, useValue: marketData },
+        ],
+      }).compileComponents();
+      const fixture = TestBed.createComponent(MarketPageComponent);
+      fixture.detectChanges();
+      const http = TestBed.inject(HttpTestingController);
+      http.expectOne('/api/instruments').flush({}, { status: 500, statusText: 'Error' });
+      http.expectOne('/api/orders').flush({}, { status: 500, statusText: 'Error' });
+      http.match(() => true).forEach((request) => {
+        if (!request.cancelled) {
+          request.flush({}, { status: 500, statusText: 'Error' });
+        }
+      });
+      expect(fixture.componentInstance['catalogueStatus']()).toBe('error');
+    });
+  });
 });

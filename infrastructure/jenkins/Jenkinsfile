@@ -311,10 +311,14 @@ pipeline {
                                         # Runs as root: hand the output back to the jenkins user on any exit.
                                         trap 'chmod -R a+rwX /app' EXIT
                                         set -eu
-                                        mkdir -p reports/junit
+                                        mkdir -p reports/junit coverage
                                         python -m pip install -q -r requirements.txt
                                         python -m pytest -p no:cacheprovider tests/ -v \
-                                          --junit-xml=reports/junit/results.xml
+                                          --junit-xml=reports/junit/results.xml \
+                                          --cov=. \
+                                          --cov-report=term-missing \
+                                          --cov-report=xml:coverage/coverage.xml \
+                                          --cov-report=html:coverage/htmlcov
                                       "
                                 '''
                             }
@@ -322,7 +326,7 @@ pipeline {
                     }
                     post {
                         always {
-                            archiveArtifacts artifacts: 'db/tools/reports/**/*', allowEmptyArchive: true
+                            archiveArtifacts artifacts: 'db/tools/coverage/**/*, db/tools/reports/**/*', allowEmptyArchive: true
                             catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                                 junit testResults: 'db/tools/reports/junit/*.xml',
                                       allowEmptyResults: false,

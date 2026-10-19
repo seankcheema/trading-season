@@ -72,6 +72,11 @@ class AccountLifecycleIntegrationTest {
         mvc.perform(get("/api/me/accounts/archived").with(jwt().jwt(t -> t.subject(UUID.randomUUID().toString()))))
             .andExpect(jsonPath("$.length()").value(0));
     }
+    @Test void theOwnerSeesWhatBlocksArchivingAndDeleting() throws Exception {
+        mvc.perform(get(path() + "/eligibility").with(jwt().jwt(t -> t.subject(owner.toString()))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.archiveBlockers").isArray())
+            .andExpect(jsonPath("$.deleteBlockers").isArray());
+    }
     @Test void fractionalAndNegativeSharesAndOpenOrdersAreNotEmpty() throws Exception {
         jdbc.update("INSERT INTO holdings(account_id,instrument_id,quantity,updated_at) VALUES (?,1,-0.0001,CURRENT_TIMESTAMP)", account.getId());
         mvc.perform(post(path() + "/archive").with(jwt().jwt(t -> t.subject(owner.toString()))))

@@ -294,6 +294,13 @@ class TestOrders:
         assert listing['total'] == 4
         assert [order['orderId'] for order in listing['orders']] == [4, 3]
 
+    def test_since_keeps_every_order_and_transfer_made_from_then_on_whatever_the_limit(self, platform):
+        listing = console.orders(platform, limit=None, since=hours_ago(5))
+
+        assert listing['total'] == 3
+        assert [order['orderId'] for order in listing['orders']] == [4, 3, 2]
+        assert all(datetime.fromisoformat(row['at']) >= hours_ago(5) for row in listing['transfers'])
+
     def test_lists_deposits_and_withdrawals_beside_the_orders_but_not_what_a_fill_posted(self, platform):
         listing = console.orders(platform)
 
@@ -490,6 +497,16 @@ class TestConsoleRoutes:
         assert response.get_json()['total'] == 4
         for limit in ('0', '1001', 'many'):
             assert client.get(f'/api/reporting/orders?limit={limit}', headers=authenticated_admin).status_code == 400
+
+    def test_orders_take_a_range_and_ignore_the_row_cap(self, client, platform, authenticated_admin):
+        everything = client.get('/api/reporting/orders?range=all', headers=authenticated_admin).get_json()
+        none = client.get('/api/reporting/orders?range=today&tzOffset=840', headers=authenticated_admin)
+
+        assert everything['total'] == 4
+        assert [order['orderId'] for order in everything['orders']] == [4, 3, 2, 1]
+        assert none.status_code == 200
+        for query in ('range=1y', 'range=7d&tzOffset=9999'):
+            assert client.get(f'/api/reporting/orders?{query}', headers=authenticated_admin).status_code == 400
 
     def test_an_order_is_served_with_its_audit_trail(self, client, platform, authenticated_admin):
         body = client.get('/api/reporting/orders/2', headers=authenticated_admin).get_json()

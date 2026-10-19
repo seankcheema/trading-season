@@ -12,10 +12,12 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideFilter } from '@ng-icons/lucide';
 import { CashTransaction } from '../accounts/account.models';
 import { AccountStore } from '../accounts/account-store.service';
 import { OrderService } from '../orders/order.service';
-import { OrderAuditEntry } from '../orders/order.models';
+import { ExecutionType, OrderAuditEntry } from '../orders/order.models';
 import {
   HistoryRow,
   HistorySortKey,
@@ -29,6 +31,7 @@ import { DashboardDialogComponent } from '../shared/dashboard-dialog.component';
 import { SortHeaderComponent } from '../shared/sort-header.component';
 
 type TypeFilter = 'all' | HistoryRow['side'];
+type StatusFilter = 'all' | HistoryRow['status'];
 
 const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -38,41 +41,183 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
   { id: 'Withdrawal', label: 'Withdrawal' },
 ];
 
+const STATUS_FILTERS: readonly { id: StatusFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'FILLED', label: 'Filled' },
+  { id: 'PENDING', label: 'Pending' },
+  { id: 'ACCEPTED', label: 'Accepted' },
+  { id: 'REJECTED', label: 'Rejected' },
+  { id: 'CANCELLED', label: 'Cancelled' },
+  { id: 'COMPLETED', label: 'Completed' },
+];
+
+type ExecutionFilter = 'all' | ExecutionType;
+type AccountFilter = 'all' | number;
+
+const EXECUTION_LABELS: Record<ExecutionType, string> = {
+  MARKET: 'Market',
+  LIMIT: 'Limit',
+  STOP: 'Stop',
+  STOP_LIMIT: 'Stop-limit',
+};
+
+const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'MARKET', label: EXECUTION_LABELS.MARKET },
+  { id: 'LIMIT', label: EXECUTION_LABELS.LIMIT },
+  { id: 'STOP', label: EXECUTION_LABELS.STOP },
+  { id: 'STOP_LIMIT', label: EXECUTION_LABELS.STOP_LIMIT },
+];
+
 // Every cash transfer and order the user has made, not just the latest few on the dashboard.
 // Orders follow the same replay rule as the dashboard: those after the simulated clock are
 // hidden.
 @Component({
   selector: 'app-transactions-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CancelOrderButtonComponent, CurrencyPipe, DashboardDialogComponent, DatePipe, NgTemplateOutlet, SortHeaderComponent],
+  imports: [CancelOrderButtonComponent, CurrencyPipe, DashboardDialogComponent, DatePipe, NgIcon, NgTemplateOutlet, SortHeaderComponent],
+  providers: [provideIcons({ lucideFilter })],
   template: `
     <app-dashboard-dialog
       dialogTitle="Recent Transactions"
       closeLabel="Close recent transactions"
-      size="wide"
+      size="xwide"
       (closed)="closed.emit()"
     >
       <div class="mb-4 flex flex-wrap items-center gap-2">
-        <div
-          class="bg-muted flex gap-0.5 rounded-lg p-0.5"
-          role="group"
-          aria-label="Transaction type"
-        >
-          @for (filter of typeFilters; track filter.id) {
-            <button
-              type="button"
-              class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
-              [class]="
-                type() === filter.id
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              "
-              [attr.aria-pressed]="type() === filter.id"
-              [attr.data-testid]="'transactions-filter-' + filter.id.toLowerCase()"
-              (click)="type.set(filter.id)"
+        <div class="relative" (keydown.escape)="closeFilters($event)">
+          <button
+            type="button"
+            class="border-input bg-input/30 hover:bg-muted flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors"
+            aria-haspopup="true"
+            aria-label="Filters"
+            data-testid="transactions-filters"
+            [attr.aria-expanded]="filtersOpen()"
+            (click)="filtersOpen.set(!filtersOpen())"
+          >
+            <ng-icon name="lucideFilter" class="text-[16px]" />
+            @if (activeFilters() > 0) {
+              <span
+                class="bg-primary text-primary-foreground rounded-full px-1.5 text-[10px] leading-4 font-semibold"
+                data-testid="transactions-filters-count"
+              >
+                {{ activeFilters() }}
+              </span>
+            }
+          </button>
+          @if (filtersOpen()) {
+            <div
+              class="fixed inset-0 z-10"
+              aria-hidden="true"
+              (click)="filtersOpen.set(false)"
+            ></div>
+            <div
+              class="border-border bg-popover absolute top-full left-0 z-20 mt-1 w-72 rounded-xl border p-3 shadow-lg"
+              role="group"
+              aria-label="Transaction filters"
+              data-testid="transactions-filters-panel"
             >
-              {{ filter.label }}
-            </button>
+              <p class="text-muted-foreground mb-1.5 text-xs font-medium">Type</p>
+              <div class="mb-3 flex flex-wrap gap-1" role="group" aria-label="Transaction type">
+                @for (filter of typeFilters; track filter.id) {
+                  <button
+                    type="button"
+                    class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+                    [class]="
+                      type() === filter.id
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground hover:text-foreground'
+                    "
+                    [attr.aria-pressed]="type() === filter.id"
+                    [attr.data-testid]="'transactions-filter-' + filter.id.toLowerCase()"
+                    (click)="type.set(filter.id)"
+                  >
+                    {{ filter.label }}
+                  </button>
+                }
+              </div>
+              <p class="text-muted-foreground mb-1.5 text-xs font-medium">Status</p>
+              <div class="mb-3 flex flex-wrap gap-1" role="group" aria-label="Transaction status">
+                @for (filter of statusFilters; track filter.id) {
+                  <button
+                    type="button"
+                    class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+                    [class]="
+                      status() === filter.id
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground hover:text-foreground'
+                    "
+                    [attr.aria-pressed]="status() === filter.id"
+                    [attr.data-testid]="'transactions-status-' + filter.id.toLowerCase()"
+                    (click)="status.set(filter.id)"
+                  >
+                    {{ filter.label }}
+                  </button>
+                }
+              </div>
+              <p class="text-muted-foreground mb-1.5 text-xs font-medium">Order kind</p>
+              <div class="mb-3 flex flex-wrap gap-1" role="group" aria-label="Order kind">
+                @for (filter of executionFilters; track filter.id) {
+                  <button
+                    type="button"
+                    class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+                    [class]="
+                      execution() === filter.id
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground hover:text-foreground'
+                    "
+                    [attr.aria-pressed]="execution() === filter.id"
+                    [attr.data-testid]="'transactions-execution-' + filter.id.toLowerCase()"
+                    (click)="execution.set(filter.id)"
+                  >
+                    {{ filter.label }}
+                  </button>
+                }
+              </div>
+              <p class="text-muted-foreground mb-1.5 text-xs font-medium">Account</p>
+              <div class="flex flex-wrap gap-1" role="group" aria-label="Transaction account">
+                <button
+                  type="button"
+                  class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+                  [class]="
+                    accountId() === 'all'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:text-foreground'
+                  "
+                  [attr.aria-pressed]="accountId() === 'all'"
+                  data-testid="transactions-account-all"
+                  (click)="accountId.set('all')"
+                >
+                  All
+                </button>
+                @for (account of accountStore.accounts(); track account.accountId) {
+                  <button
+                    type="button"
+                    class="max-w-full cursor-pointer truncate rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+                    [class]="
+                      accountId() === account.accountId
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground hover:text-foreground'
+                    "
+                    [attr.aria-pressed]="accountId() === account.accountId"
+                    [attr.data-testid]="'transactions-account-' + account.accountId"
+                    (click)="accountId.set(account.accountId)"
+                  >
+                    {{ account.name }}
+                  </button>
+                }
+              </div>
+              @if (activeFilters() > 0) {
+                <button
+                  type="button"
+                  class="text-primary mt-3 cursor-pointer text-xs font-medium hover:underline"
+                  data-testid="transactions-filters-clear"
+                  (click)="clearFilters()"
+                >
+                  Clear filters
+                </button>
+              }
+            </div>
           }
         </div>
         <input
@@ -98,7 +243,7 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
       }
 
       <div class="overflow-x-auto">
-        <div class="min-w-[46rem]" data-testid="transactions-table">
+        <div class="min-w-[54rem]" data-testid="transactions-table">
           <div class="history-grid dash-table-head grid gap-2 px-2">
             <span aria-hidden="true"></span>
             @for (column of columns; track column.key) {
@@ -118,7 +263,7 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
               <li data-testid="transactions-row" [attr.data-status]="row.status">
                 @if (row.kind === 'trade' && row.orderId !== null) {
                 <div class="history-grid hover:bg-muted/50 grid w-full items-center gap-2 rounded-md px-2 py-2.5 text-left text-sm transition-colors">
-                  <button type="button" class="text-muted-foreground flex h-4 w-4 items-center justify-center transition-transform"
+                  <button type="button" class="text-muted-foreground flex h-4 w-4 cursor-pointer items-center justify-center transition-transform"
                     [class.rotate-90]="expandedOrderId() === row.orderId" [class.text-primary]="expandedOrderId() === row.orderId"
                     [attr.aria-expanded]="expandedOrderId() === row.orderId" [attr.aria-label]="'Show audit trail for ' + row.label"
                     [attr.data-testid]="'transactions-order-' + row.orderId" (click)="toggleAudit(row)">
@@ -154,7 +299,13 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
                     {{ row.date | date: 'MMM d, y, h:mm a' : '' : 'en-US' }}
                   </span>
                   <span class="truncate font-medium">{{ row.label }}</span>
-                  <span class="truncate">{{ row.side }}</span>
+                  <span class="text-muted-foreground truncate" data-testid="transaction-account">{{ row.account }}</span>
+                  <span class="truncate">
+                    {{ row.side }}
+                    @if (row.executionType && row.executionType !== 'MARKET') {
+                      <span class="text-muted-foreground block text-[10px]" data-testid="transaction-execution">{{ executionLabel(row.executionType) }}</span>
+                    }
+                  </span>
                   <span>
                     <span
                       class="rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
@@ -195,7 +346,7 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
                   >
                     <span></span>
                     <span class="skeleton h-5 w-4/5"></span>
-                    @for (cell of [1, 2, 3]; track cell) {
+                    @for (cell of [1, 2, 3, 4]; track cell) {
                       <span class="skeleton h-5 w-3/5"></span>
                     }
                     @for (cell of [1, 2, 3]; track cell) {
@@ -218,7 +369,7 @@ const TYPE_FILTERS: readonly { id: TypeFilter; label: string }[] = [
   styleUrl: './history-table.css',
 })
 export class TransactionsDialogComponent implements OnInit {
-  private readonly accountStore = inject(AccountStore);
+  protected readonly accountStore = inject(AccountStore);
   protected readonly orderService = inject(OrderService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -227,6 +378,8 @@ export class TransactionsDialogComponent implements OnInit {
   readonly closed = output<void>();
 
   protected readonly typeFilters = TYPE_FILTERS;
+  protected readonly statusFilters = STATUS_FILTERS;
+  protected readonly executionFilters = EXECUTION_FILTERS;
   protected readonly columns: readonly {
     key: HistorySortKey;
     label: string;
@@ -234,6 +387,7 @@ export class TransactionsDialogComponent implements OnInit {
   }[] = [
     { key: 'date', label: 'Date', align: 'left' },
     { key: 'label', label: 'Asset', align: 'left' },
+    { key: 'account', label: 'Account', align: 'left' },
     { key: 'side', label: 'Type', align: 'left' },
     { key: 'status', label: 'Status', align: 'left' },
     { key: 'shares', label: 'Shares', align: 'right' },
@@ -241,6 +395,18 @@ export class TransactionsDialogComponent implements OnInit {
     { key: 'value', label: 'Value', align: 'right' },
   ];
   protected readonly type = signal<TypeFilter>('all');
+  protected readonly status = signal<StatusFilter>('all');
+  protected readonly execution = signal<ExecutionFilter>('all');
+  // Cash is shared by every account, so picking one account leaves cash transfers out.
+  protected readonly accountId = signal<AccountFilter>('all');
+  protected readonly filtersOpen = signal(false);
+  protected readonly activeFilters = computed(
+    () =>
+      Number(this.type() !== 'all') +
+      Number(this.status() !== 'all') +
+      Number(this.execution() !== 'all') +
+      Number(this.accountId() !== 'all'),
+  );
   protected readonly query = signal('');
   protected readonly sortKey = signal<HistorySortKey>('date');
   protected readonly sortDirection = signal<SortDirection>('desc');
@@ -285,12 +451,13 @@ export class TransactionsDialogComponent implements OnInit {
 
   protected readonly rows = computed(() => {
     const type = this.type();
+    const status = this.status();
+    const execution = this.execution();
+    const accountId = this.accountId();
     const query = this.query().trim().toLowerCase();
     return sortHistoryRows(
-      this.allRows().filter(
-        (row) =>
-          (type === 'all' || row.side === type) &&
-          (!query || row.label.toLowerCase().includes(query)),
+      this.allRows().filter((row) =>
+        matchesFilters(row, type, status, execution, accountId, query),
       ),
       this.sortKey(),
       this.sortDirection(),
@@ -311,6 +478,25 @@ export class TransactionsDialogComponent implements OnInit {
           this.loading.set(false);
         },
       });
+  }
+
+  // Escape closes just the filter panel, not the dialog around it.
+  protected closeFilters(event: Event): void {
+    if (this.filtersOpen()) {
+      event.stopPropagation();
+      this.filtersOpen.set(false);
+    }
+  }
+
+  protected clearFilters(): void {
+    this.type.set('all');
+    this.status.set('all');
+    this.execution.set('all');
+    this.accountId.set('all');
+  }
+
+  protected executionLabel(execution: ExecutionType): string {
+    return EXECUTION_LABELS[execution];
   }
 
   protected onQuery(event: Event): void {
@@ -379,6 +565,29 @@ export class TransactionsDialogComponent implements OnInit {
         },
       });
   }
+}
+
+function matchesFilters(
+  row: HistoryRow,
+  type: TypeFilter,
+  status: StatusFilter,
+  execution: ExecutionFilter,
+  accountId: AccountFilter,
+  query: string,
+): boolean {
+  if (query && !row.label.toLowerCase().includes(query)) {
+    return false;
+  }
+  return (
+    matchesChoice(type, row.side) &&
+    matchesChoice(status, row.status) &&
+    matchesChoice(execution, row.executionType) &&
+    matchesChoice(accountId, row.accountId)
+  );
+}
+
+function matchesChoice<T>(choice: 'all' | T, value: T | null): boolean {
+  return choice === 'all' || choice === value;
 }
 
 function withoutId(ids: ReadonlySet<number>, id: number): ReadonlySet<number> {

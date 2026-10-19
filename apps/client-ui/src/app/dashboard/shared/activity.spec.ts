@@ -105,6 +105,28 @@ describe('activity helpers', () => {
     expect(orderActivity(filled, CATALOGUE).detail).toContain('Limit $95.00');
   });
 
+  it('carries the account and execution type of an order, defaulting to market', () => {
+    expect(orderHistoryRow(order({ accountId: 4 }), CATALOGUE, 'Growth')).toMatchObject({
+      accountId: 4,
+      account: 'Growth',
+      executionType: 'MARKET',
+    });
+    expect(
+      orderHistoryRow(order({ accountId: undefined, executionType: 'STOP_LIMIT' }), CATALOGUE, 'x'),
+    ).toMatchObject({ accountId: null, executionType: 'STOP_LIMIT' });
+  });
+
+  it('gives cash transfers no account id and no execution type', () => {
+    expect(
+      cashHistoryRow({
+        cashTransactionId: 5,
+        amount: 10,
+        reason: 'DEPOSIT',
+        createdAt: '2026-01-05T16:00:00Z',
+      }),
+    ).toMatchObject({ account: 'All accounts', accountId: null, executionType: null });
+  });
+
   it('types cash transfers by direction and marks them completed', () => {
     const base = { cashTransactionId: 4, amount: 25, createdAt: '2026-01-05T16:00:00Z' };
     expect(cashActivity({ ...base, reason: 'DEPOSIT' })).toMatchObject({
@@ -174,5 +196,23 @@ describe('activity helpers', () => {
       ]);
       expect(rows.map((row) => row.key)).toEqual(before);
     });
+  });
+
+  it('sorts rows without the sorted value after those with one, whichever side they are on', () => {
+    const cash = cashHistoryRow({
+      cashTransactionId: 9, amount: 5, reason: 'DEPOSIT', createdAt: '2026-01-05T12:00:00Z',
+    });
+    const trade = orderHistoryRow(
+      {
+        orderId: 1, instrumentId: 7, accountId: 1, status: 'FILLED', orderType: 'BUY', quantity: 2,
+        indicativePrice: 10, rejectionReason: null, submittedAt: '2026-01-05T16:00:00Z',
+        resolvedAt: '2026-01-05T16:00:00Z',
+      } as OrderResult,
+      CATALOGUE,
+      'Main',
+    );
+    expect(sortHistoryRows([cash, trade], 'shares', 'desc').map((row) => row.kind)).toEqual(['trade', 'cash']);
+    expect(sortHistoryRows([trade, cash], 'shares', 'asc').map((row) => row.kind)).toEqual(['trade', 'cash']);
+    expect(sortHistoryRows([cash, { ...cash, key: 'a', at: cash.at }], 'shares', 'asc')).toHaveLength(2);
   });
 });

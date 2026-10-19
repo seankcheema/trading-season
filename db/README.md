@@ -67,7 +67,7 @@ Additive, and for a development database only: nothing that exists is changed or
 - `--dry-run` writes everything, prints the summary and rolls it all back. It still advances the id sequences.
 - It publishes nothing. Run `republish_history.py` afterwards for reporting to see the history.
 
-Tests: `python -m pytest tests` in `db/tools`. They need no database or broker.
+Tests: `python -m pytest tests` in `db/tools`. They need no database or broker. Add `--cov=. --cov-report=term-missing --cov-report=html:coverage/htmlcov --cov-report=xml:coverage/coverage.xml` for coverage (`.coveragerc` leaves the tests themselves out of the measurement); Jenkins archives the reports from `db/tools/coverage`.
 
 ## Schema
 

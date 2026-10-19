@@ -122,7 +122,7 @@ Authenticated endpoints need an RS256 bearer token from the [Auth Service](../au
 | GET | `/api/reporting/runs/{runId}/files/{name}?range=&tzOffset=` | `ANALYST`, `ADMIN` | One PNG chart of a run: the file the report job wrote, or with a range the chart drawn for it |
 | GET | `/api/reporting/scheduler/status` | public | Latest run id, when it was generated, and the interval |
 | GET | `/api/reporting/activity?range=&tzOffset=` | `ADMIN` | Platform activity over `today`, `7d`, `30d`, `90d` or `all`, in the viewer's days |
-| GET | `/api/reporting/orders?limit=` | `ADMIN` | The newest orders across every account, 500 unless `limit` says otherwise (1 to 1000), and the newest deposits and withdrawals under the same limit |
+| GET | `/api/reporting/orders?limit=&range=&tzOffset=` | `ADMIN` | The newest orders across every account, 500 unless `limit` says otherwise (1 to 1000), and the newest deposits and withdrawals under the same limit. With a `range` of `today`, `7d`, `30d`, `90d` or `all` (days from `tzOffset`, as Activity cuts them), every order and transfer in that range, with no row cap; the Reporting UI's Activity export uses this |
 | GET | `/api/reporting/orders/{orderId}` | `ADMIN` | One order with its execution, ledger impact and audit trail, each entry with the price the order stood at: the price it asked for, and its fill price on the entry that records the fill |
 | GET | `/api/reporting/customers` | `ADMIN` | Every trader with their balances and lock status; analysts and admins are left out |
 | GET | `/api/reporting/customers/{userId}` | `ADMIN` | One customer with their accounts, orders and transfers; 404 for an analyst or admin |
