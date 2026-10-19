@@ -92,6 +92,8 @@ export interface OrderResult {
 /** One immutable lifecycle event from GET /api/orders/{orderId}/audit. */
 export interface OrderAuditEntry {
   eventType: string;
+  // The quote this stage was priced against (BR-15): the execution quote for FILLED, the
+  // activation quote for TRIGGERED, otherwise the quote the order was submitted at.
   price: number;
   occurredAt: string;
   detail: string | null;

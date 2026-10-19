@@ -4,7 +4,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { UnknownInstrumentError } from './order-error';
 import { InstrumentRef, OrderResult, OrderStatusFrame } from './order.models';
-import { OrderService, STREAM_RECONNECT_MS } from './order.service';
+import { ORDER_PAGE_SIZE, OrderService, STREAM_RECONNECT_MS } from './order.service';
 import { TokenStorageService } from '../../core/auth/token-storage.service';
 import { vi } from 'vitest';
 
@@ -66,6 +66,26 @@ describe('OrderService', () => {
     http.expectOne('/api/orders').flush([order()]);
     expect(service.historyStatus()).toBe('ready');
     expect(service.orders()).toEqual([order()]);
+  });
+
+  it('reads the history page by page until a short page', () => {
+    const page = (from: number, count: number) =>
+      Array.from({ length: count }, (_, i) => order({ orderId: from - i }));
+    service.loadOrders().subscribe();
+    http.expectOne('/api/orders').flush(page(200, ORDER_PAGE_SIZE));
+    http.expectOne('/api/orders?page=1').flush(page(150, ORDER_PAGE_SIZE));
+    http.expectOne('/api/orders?page=2').flush(page(100, 1));
+    expect(service.orders()).toHaveLength(ORDER_PAGE_SIZE * 2 + 1);
+    expect(service.orders()[0].orderId).toBe(200);
+    expect(service.orders().at(-1)?.orderId).toBe(100);
+    expect(service.historyStatus()).toBe('ready');
+  });
+
+  it('stops paging on an empty page after a full one', () => {
+    service.loadOrders().subscribe();
+    http.expectOne('/api/orders').flush(Array.from({ length: ORDER_PAGE_SIZE }, (_, i) => order({ orderId: i + 1 })));
+    http.expectOne('/api/orders?page=1').flush([]);
+    expect(service.orders()).toHaveLength(ORDER_PAGE_SIZE);
   });
 
   it('posts cancellation and immediately replaces the cached open order', () => {

@@ -4,10 +4,13 @@ import { TokenStorageService } from '../../core/auth/token-storage.service';
 import { HttpClient } from '@angular/common/http';
 import { DestroyRef, Injectable, effect, inject, signal, untracked } from '@angular/core';
 import {
+  EMPTY,
   Observable,
   Subject,
+  expand,
   finalize,
   of,
+  reduce,
   takeUntil,
   map,
   shareReplay,
@@ -28,6 +31,10 @@ import {
   OrderSubmission,
   OrderType,
 } from './order.models';
+
+// GET /api/orders serves this many orders per page when no size is asked for (BR-11). The
+// history is read page by page until a short page, so the first request stays parameterless.
+export const ORDER_PAGE_SIZE = 50;
 
 // Delay before reopening a dropped order status stream, doubled per failure up to the cap.
 export const STREAM_RECONNECT_MS = { initial: 2_000, max: 10_000 } as const;
@@ -199,7 +206,11 @@ export class OrderService {
       this.historyStatus.set('loading');
     }
     this.refreshing.set(true);
-    const request = this._http.get<OrderResult[]>(`${this._apiUrl}/orders`).pipe(
+    const request = this.ordersPage(0).pipe(
+      expand((page) =>
+        page.orders.length === ORDER_PAGE_SIZE ? this.ordersPage(page.number + 1) : EMPTY,
+      ),
+      reduce((all, page) => all.concat(page.orders), [] as OrderResult[]),
       switchMap((orders) => (revision === this.revision ? of(orders) : this.loadOrders())),
       tap({
         next: (orders) => {
@@ -223,6 +234,12 @@ export class OrderService {
     );
     this.historyRequest = request;
     return request;
+  }
+
+  // One page of the caller's orders, newest first; the first page is the endpoint's default.
+  private ordersPage(number: number): Observable<{ number: number; orders: OrderResult[] }> {
+    const url = number === 0 ? `${this._apiUrl}/orders` : `${this._apiUrl}/orders?page=${number}`;
+    return this._http.get<OrderResult[]>(url).pipe(map((orders) => ({ number, orders })));
   }
 
   /** Reads the signed-in trader's immutable audit timeline for one order. */

@@ -498,7 +498,7 @@ export class ApiStub {
         },
         {
           eventType: 'FILLED',
-          price: order.indicativePrice,
+          price: order.executionPrice ?? order.indicativePrice,
           occurredAt: order.resolvedAt ?? order.submittedAt,
           detail: null,
         },
