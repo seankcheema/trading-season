@@ -448,5 +448,243 @@ describe('history dialogs', () => {
         fixture.nativeElement.querySelector('[data-testid="transactions-error"]'),
       ).not.toBeNull();
     });
+
+    describe('pagination', () => {
+      // 40 deposits, one a minute apart, the newest first once sorted by date.
+      const MANY: CashTransaction[] = Array.from({ length: 40 }, (_, index) => ({
+        cashTransactionId: index + 1,
+        amount: 100 + index,
+        reason: 'DEPOSIT',
+        createdAt: new Date(Date.UTC(2026, 0, 5, 15, index)).toISOString(),
+      }));
+
+      function openMany() {
+        const fixture = TestBed.createComponent(TransactionsDialogComponent);
+        fixture.detectChanges();
+        http
+          .expectOne((request) => request.url === '/api/me/cash-transactions')
+          .flush(MANY);
+        fixture.detectChanges();
+        return fixture;
+      }
+
+      const pageLabel = (fixture: ComponentFixture<unknown>) =>
+        fixture.nativeElement
+          .querySelector('[data-testid="transactions-page"]')
+          .textContent.trim();
+
+      const countLabel = (fixture: ComponentFixture<unknown>) =>
+        fixture.nativeElement
+          .querySelector('[data-testid="transactions-count"]')
+          .textContent.trim();
+
+      it('shows fifteen transactions a page and reports the total', () => {
+        const fixture = openMany();
+        expect(rows(fixture, 'transactions-row')).toHaveLength(15);
+        expect(pageLabel(fixture)).toBe('Page 1 of 3');
+        expect(countLabel(fixture)).toBe('1–15 of 40 transactions');
+      });
+
+      it('says which transactions each page holds out of the total', () => {
+        const fixture = openMany();
+        click(fixture, '[data-testid="transactions-next"]');
+        expect(countLabel(fixture)).toBe('16–30 of 40 transactions');
+        click(fixture, '[data-testid="transactions-next"]');
+        expect(countLabel(fixture)).toBe('31–40 of 40 transactions');
+      });
+
+      it('gives a plain total when everything fits on one page', () => {
+        const fixture = open();
+        expect(countLabel(fixture)).toBe('2 transactions');
+      });
+
+      it('pages forward and back, with the last page holding the remainder', () => {
+        const fixture = openMany();
+        click(fixture, '[data-testid="transactions-next"]');
+        expect(pageLabel(fixture)).toBe('Page 2 of 3');
+        expect(rows(fixture, 'transactions-row')).toHaveLength(15);
+        click(fixture, '[data-testid="transactions-next"]');
+        expect(pageLabel(fixture)).toBe('Page 3 of 3');
+        expect(rows(fixture, 'transactions-row')).toHaveLength(10);
+        const next = fixture.nativeElement.querySelector('[data-testid="transactions-next"]');
+        expect(next.disabled).toBe(true);
+        click(fixture, '[data-testid="transactions-prev"]');
+        expect(pageLabel(fixture)).toBe('Page 2 of 3');
+      });
+
+      it('disables Previous on the first page', () => {
+        const fixture = openMany();
+        const previous = fixture.nativeElement.querySelector('[data-testid="transactions-prev"]');
+        expect(previous.disabled).toBe(true);
+      });
+
+      it('returns to the first page when the listing changes', () => {
+        const fixture = openMany();
+        click(fixture, '[data-testid="transactions-next"]');
+        expect(pageLabel(fixture)).toBe('Page 2 of 3');
+        click(fixture, '[data-testid="transactions-filters"]');
+        click(fixture, '[data-testid="transactions-filter-deposit"]');
+        expect(pageLabel(fixture)).toBe('Page 1 of 3');
+        click(fixture, '[data-testid="transactions-next"]');
+        click(fixture, '.dash-table-head button');
+        expect(pageLabel(fixture)).toBe('Page 1 of 3');
+      });
+
+      it('has no pager when everything fits on one page', () => {
+        const fixture = open();
+        expect(fixture.nativeElement.querySelector('[data-testid="transactions-page"]')).toBeNull();
+        expect(fixture.nativeElement.querySelector('[data-testid="transactions-next"]')).toBeNull();
+      });
+
+      it('exports every filtered transaction, not just the page on screen', async () => {
+        const fixture = openMany();
+        let blob: Blob | null = null;
+        URL.createObjectURL = vi.fn((made: Blob) => {
+          blob = made;
+          return 'blob:statement';
+        });
+        URL.revokeObjectURL = vi.fn();
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+        click(fixture, '[data-testid="transactions-export"]');
+        click(fixture, '[data-testid="transactions-export-csv"]');
+        await fixture.whenStable();
+        const text = await (blob as unknown as Blob).text();
+        expect(text.split('\r\n').filter(Boolean)).toHaveLength(41);
+        vi.restoreAllMocks();
+      });
+    });
+
+    describe('date range', () => {
+      function setDate(fixture: ComponentFixture<unknown>, testId: string, value: string): void {
+        const input = fixture.nativeElement.querySelector(
+          `[data-testid="${testId}"]`,
+        ) as HTMLInputElement;
+        input.value = value;
+        input.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+      }
+
+      // The date the table shows for a UTC instant, in this machine's time zone.
+      function localDay(iso: string): string {
+        const date = new Date(iso);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+      }
+
+      it('keeps every row inside the range and none outside it', () => {
+        seedOrders();
+        const fixture = open();
+        setDate(fixture, 'transactions-from', '2026-01-04');
+        setDate(fixture, 'transactions-to', '2026-01-07');
+        expect(rows(fixture, 'transactions-row')).toHaveLength(5);
+        setDate(fixture, 'transactions-from', '2026-01-07');
+        setDate(fixture, 'transactions-to', '');
+        expect(rows(fixture, 'transactions-row')).toHaveLength(0);
+        setDate(fixture, 'transactions-from', '');
+        setDate(fixture, 'transactions-to', '2026-01-04');
+        expect(rows(fixture, 'transactions-row')).toHaveLength(0);
+      });
+
+      it('includes the whole of the first and last day', () => {
+        const fixture = open();
+        const day = localDay('2026-01-05T19:00:00Z');
+        setDate(fixture, 'transactions-from', day);
+        setDate(fixture, 'transactions-to', day);
+        // The 19:00 UTC withdrawal falls on that day wherever the machine is.
+        expect(rows(fixture, 'transactions-row').length).toBeGreaterThan(0);
+        expect(rows(fixture, 'transactions-count').length).toBe(1);
+      });
+
+      it('narrows the count and combines with the other filters', () => {
+        seedOrders();
+        const fixture = open();
+        setDate(fixture, 'transactions-from', '2026-01-04');
+        click(fixture, '[data-testid="transactions-filters"]');
+        click(fixture, '[data-testid="transactions-filter-deposit"]');
+        expect(rows(fixture, 'transactions-row')).toHaveLength(1);
+        setDate(fixture, 'transactions-from', '2026-01-07');
+        expect(rows(fixture, 'transactions-row')).toHaveLength(0);
+      });
+
+      it('stops each date passing the other', () => {
+        const fixture = open();
+        setDate(fixture, 'transactions-from', '2026-01-04');
+        setDate(fixture, 'transactions-to', '2026-01-07');
+        const from = fixture.nativeElement.querySelector('[data-testid="transactions-from"]');
+        const to = fixture.nativeElement.querySelector('[data-testid="transactions-to"]');
+        expect(from.getAttribute('max')).toBe('2026-01-07');
+        expect(to.getAttribute('min')).toBe('2026-01-04');
+      });
+    });
+
+    describe('exporting the statement', () => {
+      const exportButton = (fixture: ComponentFixture<unknown>): HTMLButtonElement =>
+        fixture.nativeElement.querySelector('[data-testid="transactions-export"]');
+
+      afterEach(() => vi.restoreAllMocks());
+
+      it('is disabled until the ledger has loaded', () => {
+        const fixture = TestBed.createComponent(TransactionsDialogComponent);
+        fixture.detectChanges();
+        expect(exportButton(fixture).disabled).toBe(true);
+        http.expectOne((request) => request.url === '/api/me/cash-transactions').flush(CASH);
+        fixture.detectChanges();
+        expect(exportButton(fixture).disabled).toBe(false);
+      });
+
+      it('is disabled when the filters leave nothing to export', () => {
+        const fixture = open();
+        fixture.nativeElement.querySelector('input[type="search"]').value = 'ZZZZ';
+        fixture.nativeElement
+          .querySelector('input[type="search"]')
+          .dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+        expect(exportButton(fixture).disabled).toBe(true);
+      });
+
+      it('downloads the filtered rows as a CSV file', async () => {
+        seedOrders();
+        const fixture = open();
+        click(fixture, '[data-testid="transactions-filters"]');
+        click(fixture, '[data-testid="transactions-filter-deposit"]');
+        let blob: Blob | null = null;
+        URL.createObjectURL = vi.fn((made: Blob) => {
+          blob = made;
+          return 'blob:statement';
+        });
+        URL.revokeObjectURL = vi.fn();
+        let downloaded = '';
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+          this: HTMLAnchorElement,
+        ) {
+          downloaded = this.download;
+        });
+
+        click(fixture, '[data-testid="transactions-export"]');
+        click(fixture, '[data-testid="transactions-export-csv"]');
+        await fixture.whenStable();
+
+        expect(downloaded).toMatch(/^account-statement-\d{4}-\d{2}-\d{2}\.csv$/);
+        const text = await (blob as unknown as Blob).text();
+        expect(text.split('\r\n').filter(Boolean)).toHaveLength(2);
+        expect(text).toContain('Deposit');
+        expect(text).not.toContain('Withdrawal');
+        expect(text).not.toContain('AAPL');
+      });
+
+      it('reports a failed export', async () => {
+        const fixture = open();
+        URL.createObjectURL = vi.fn(() => {
+          throw new Error('blocked');
+        });
+        click(fixture, '[data-testid="transactions-export"]');
+        click(fixture, '[data-testid="transactions-export-csv"]');
+        await fixture.whenStable();
+        fixture.detectChanges();
+        expect(
+          fixture.nativeElement.querySelector('[data-testid="transactions-export-error"]'),
+        ).not.toBeNull();
+      });
+    });
   });
 });
