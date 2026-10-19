@@ -28,7 +28,7 @@ $orderDirectory = Join-Path $repoRoot 'apps/order-and-sell-service'
 $backendDirectory = Join-Path $repoRoot 'apps/market-data'
 $envFile = Join-Path $authDirectory '.env'
 # The host-facing broker address every service defaults to, and the topics the
-# Compose stack's kafka-init creates.
+# Compose stack's kafka container creates.
 $brokerPort = 29092
 $tradeEventsTopic = 'trade-events'
 $platformRecordsTopic = 'platform-records'
@@ -288,7 +288,7 @@ function Start-KafkaBroker {
 }
 
 function Confirm-Topics {
-    # As kafka-init creates them. Three partitions each: one key's messages
+    # As the Compose stack's kafka container creates them. Three partitions each: one key's messages
     # share a partition and keep their order. platform-records is compacted,
     # because each message is the current state of one row and only the latest
     # per key is ever needed.

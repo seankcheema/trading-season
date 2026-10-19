@@ -10,7 +10,7 @@ It reads Kafka and nothing else. It has no connection to the `trading_season` da
 ## How it works
 
 1. The trading services publish what they commit to two topics. Order and Sell publishes one `trade-events` message per committed order status change (`ACCEPTED`, `FILLED`, `REJECTED`), keyed by account id, carrying the order row and, for a fill, the fill and its two ledger postings. The auth service and both Java services publish the current state of every other row reporting shows to `platform-records`; see [what arrives](#what-arrives).
-2. `consumer.py`, consumer group `reporting-ingester`, appends each message of either topic as one JSON line to `events/<topic>-p<partition>.jsonl` under `REPORTING_FILES_DIR`, then commits the offset. Offsets already on disk are skipped, so redelivery never duplicates a line.
+2. `consumer.py`, consumer group `reporting-ingester`, appends each message of either topic as one JSON line to `events/<topic>-p<partition>.jsonl` under `REPORTING_FILES_DIR`, then commits the offset. Offsets already on disk are skipped, so redelivery never duplicates a line. Where it reads from is decided by the files, not the commit: each assigned partition resumes after the last offset in its file, or from the start of the topic when it has no file, so a container that starts with an empty disk rebuilds everything the broker still holds. The consumer and the web service are two processes of one container, started by [serve.py](serve.py).
 3. When it starts, and then every `SCHEDULER_INTERVAL_MINUTES`, the same process runs `report_run.py`: reads the `trade-events` files, takes account and trader names and each trader's level from the read model, and writes `runs/<UTC timestamp>/report.json` plus four PNG charts. `runs/latest` points at the new run; older runs are deleted. The first run reports the events already on disk, so a restart serves a run archive at once; a run that comes due while the process is busy runs late instead of being skipped.
 4. The web service (`wsgi.py` under gunicorn) serves the console and run endpoints behind the same RS256 tokens the Java services accept. `GET /api/reporting/runs/latest` is built live from current event files, and chart downloads for that latest snapshot are rendered at request time so they match the data on screen.
 
@@ -88,11 +88,11 @@ The console endpoints are the other half, served to admins only because they sho
 
 - Python 3.14, Flask 3, Flask-SQLAlchemy over the in-memory SQLite that ships with Python; no database driver is installed
 - confluent-kafka for the consumer, APScheduler for the report job, matplotlib (Agg) for charts
-- gunicorn for the web service; one image, two processes
+- gunicorn for the web service; one image, one container, two processes (see [Docker](#docker))
 
 ## Local development
 
-Prerequisites: Python 3.14, the Compose stack's Kafka (`docker compose ... up -d kafka-init`), and the auth service for tokens. No database.
+Prerequisites: Python 3.14, the Compose stack's Kafka (`docker compose ... up -d kafka`, which creates the topics and reports healthy once they exist), and the auth service for tokens. No database.
 
 ```sh
 python -m venv venv
@@ -103,7 +103,7 @@ python consumer.py                # terminal 1: consumer plus report scheduler
 FLASK_ENV=development python app.py   # terminal 2: web service on 8083
 ```
 
-On the host the broker is `localhost:29092` and the files land in `./data/reporting` (ignored by git). Run exactly one consumer at a time.
+On the host the broker is `localhost:29092` and the files land in `./data/reporting` (ignored by git). Run exactly one consumer at a time. Locally the two run as separate terminals; `serve.py` is the container entry point and needs gunicorn, which does not run on Windows.
 
 On Windows, [scripts/start-local.ps1](../../scripts/start-local.ps1) starts both processes from this `venv` with the rest of the stack, and can start a broker without Docker; see [Local processes](../../README.md#local-processes-windows).
 
@@ -161,7 +161,7 @@ No arrow leaves this diagram for the trading database, because the service has n
 | `KAFKA_TRADE_EVENTS_TOPIC` | `trade-events` | The order status topic to consume |
 | `KAFKA_PLATFORM_RECORDS_TOPIC` | `platform-records` | The records topic to consume |
 | `REPORTING_CONSUMER_GROUP` | `reporting-ingester` | Consumer group; keep it stable so offsets carry across restarts |
-| `SCHEDULER_ENABLED` | `True` | Run the report job; the web service is started with `false` |
+| `SCHEDULER_ENABLED` | `True` | Run the report job. Only `consumer.py` reads it: the web workers never start a scheduler |
 | `SCHEDULER_INTERVAL_MINUTES` | `15` | Report run interval, after the run the consumer makes when it starts |
 
 There is no database variable. A `DATABASE_URL` in the environment is ignored.
@@ -183,7 +183,9 @@ There is no database variable. A `DATABASE_URL` in the environment is ignored.
 
 The files are named for what they hold, whatever name a deployment gives the topics.
 
-Everything here is derived from the topics. To rebuild: stop the consumer, delete the directory contents, reset the group's offsets to earliest for both topics (`kafka-consumer-groups.sh --group reporting-ingester --all-topics --reset-offsets --to-earliest --execute`), start the consumer. `platform-records` is compacted and keeps every row's latest state, so it always replays in full. `trade-events` keeps messages for the broker's retention period only; orders older than that come back by running [republish_history.py](../../db/README.md#reporting-feed-tools) again.
+The event files are derived from the topics. To rebuild them: stop the service, delete `events/`, and start it. The consumer finds no file for a partition and reads it from the start, so no offset reset is needed. `platform-records` is compacted and keeps every row's latest state, so it always replays in full, and the Compose broker keeps `trade-events` forever (`retention.ms=-1`), so a replay is complete. A broker with the default retention would drop older orders, which come back by running [republish_history.py](../../db/README.md#reporting-feed-tools) again. After a broker that lost its data is refilled that way, delete `events/` as well: the new topics restart their offsets at 0, and files kept from before would make the consumer skip those messages as already written.
+
+The report run under `runs/` is derived too: only the latest run is kept, and the consumer writes a new one as soon as it starts, so a lost directory costs nothing. The live `runs/latest` endpoint does not read it at all; it is built from the event files.
 
 ## Tests
 
@@ -195,7 +197,9 @@ Tests run on the same in-memory read model the service uses, a temporary files d
 
 ## Docker
 
-The image runs gunicorn by default; Compose starts a second container from the same image with `command: ["python", "consumer.py"]`. Both mount the `reporting_files` volume at `/data/reporting`, the web service read-only. Neither depends on the database container. The consumer is a separate container rather than a thread in the web app because gunicorn runs several worker processes, and the consumer must run exactly once: one writer per partition file and one scheduler. Same code, same image, a different command; nothing is duplicated. See [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml).
+One image, one container: the default command is `python serve.py`, which starts gunicorn (the web service) and `consumer.py` as two processes, passes SIGTERM to both, and exits as soon as either stops, so the container's restart policy brings both back. A web service that outlived its consumer would quietly serve files that stop growing. The consumer is a separate process rather than a thread in the web app because gunicorn runs several worker processes, and the consumer must run exactly once: one writer per partition file and one scheduler. Neither depends on the database container.
+
+Run exactly one replica. A second container in the group would be given half the partitions, and each would show only the events it stored. `REPORTING_FILES_DIR` (`/data/reporting`) can be a named volume, which Compose uses, or the container's own disk, which is rebuilt from Kafka as above. See [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) and the [described AWS layout](../../infrastructure/README.md#described-aws-layout).
 
 ## Known limitations
 

@@ -616,39 +616,17 @@ pipeline {
                     # Disposable stack: always start from an empty database.
                     compose down -v --remove-orphans
 
-                    if ! compose up -d --build auth-service client-ui db db-init holdings-and-trade-service kafka order-and-sell-service reporting-consumer reporting-service reporting-ui; then
+                    if ! compose up -d --build auth-service client-ui db db-init holdings-and-trade-service kafka order-and-sell-service reporting-service reporting-ui; then
                         compose logs --no-color db-init >&2 || true
                         exit 1
                     fi
 
-                    # kafka-init is started separately because detached startup
-                    # of the whole stack can lose a short-lived init container.
-                    compose up -d kafka-init
+                    # The kafka container creates both topics as it starts and reports
+                    # healthy only once they exist, and every service that needs them
+                    # waits for that, so there is no separate topic step to wait on.
                     compose ps
 
-                    attempt=1
-                    while [ "$attempt" -le 60 ]; do
-                        INIT_ID="$(compose ps -aq kafka-init)"
-                        if [ -n "$INIT_ID" ]; then
-                            INIT_STATE="$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$INIT_ID")"
-                            case "$INIT_STATE" in
-                                exited:0) break ;;
-                                exited:*)
-                                    echo "kafka-init failed ($INIT_STATE)." >&2
-                                    docker logs "$INIT_ID" >&2
-                                    exit 1
-                                    ;;
-                            esac
-                        fi
-                        attempt=$((attempt + 1))
-                        sleep 2
-                    done
-                    if [ "$attempt" -gt 60 ]; then
-                        echo "kafka-init did not finish within two minutes." >&2
-                        exit 1
-                    fi
-
-                    EXPECTED_SERVICES="auth-service client-ui db holdings-and-trade-service kafka order-and-sell-service reporting-consumer reporting-service reporting-ui"
+                    EXPECTED_SERVICES="auth-service client-ui db holdings-and-trade-service kafka order-and-sell-service reporting-service reporting-ui"
                     RUNNING_SERVICES="$(compose ps --services --filter status=running | sort | tr '\\n' ' ' | sed 's/ $//')"
                     if [ "$RUNNING_SERVICES" != "$EXPECTED_SERVICES" ]; then
                         echo "Expected running services: $EXPECTED_SERVICES" >&2
@@ -708,6 +686,12 @@ pipeline {
                         echo "Topic trade-events does not have three partitions." >&2
                         exit 1
                     }
+                    # Reporting rebuilds its files by replaying this topic, so the broker
+                    # must not delete anything from it.
+                    echo "$TOPIC_DESCRIBE" | grep -q 'retention.ms=-1' || {
+                        echo "Topic trade-events does not keep its messages forever." >&2
+                        exit 1
+                    }
 
                     # The reporting service has no database: this topic carries every
                     # customer, account, transfer and audit entry it shows. Compacted,
@@ -752,7 +736,7 @@ pipeline {
                             case "$group" in
                                 order-status-pusher) service=order-and-sell-service ;;
                                 portfolio-valuation-capture) service=holdings-and-trade-service ;;
-                                reporting-ingester) service=reporting-consumer ;;
+                                reporting-ingester) service=reporting-service ;;
                             esac
                             echo "===== $service logs =====" >&2
                             compose logs --no-color --tail 100 "$service" >&2 || true
@@ -807,12 +791,12 @@ pipeline {
                     # Registers a trader, opens the order stream, places the order and checks
                     # each consumer's effect from inside the stack network.
                     status=0
-                    compose exec -T reporting-consumer python - < infrastructure/jenkins/kafka-end-to-end.py > "$EVIDENCE_DIR/flow.txt" 2>&1 || status=$?
+                    compose exec -T reporting-service python - < infrastructure/jenkins/kafka-end-to-end.py > "$EVIDENCE_DIR/flow.txt" 2>&1 || status=$?
                     cat "$EVIDENCE_DIR/flow.txt"
                     cat "$EVIDENCE_DIR/flow.txt" >> "$EVIDENCE"
                     if [ "$status" -ne 0 ]; then
                         echo "Kafka end-to-end flow failed (exit $status); service logs follow." >&2
-                        for service in order-and-sell-service holdings-and-trade-service reporting-consumer; do
+                        for service in order-and-sell-service holdings-and-trade-service reporting-service; do
                             echo "===== $service logs =====" >&2
                             compose logs --no-color --tail 100 "$service" >&2 || true
                         done
@@ -841,12 +825,12 @@ pipeline {
                     log_line order-and-sell-service "Published trade event orderId=$ORDER_ID status=FILLED" "producer log, FILLED"
                     log_line order-and-sell-service "Pushed order status for account $ACCOUNT_ID to 1 open stream(s)" "order-status-pusher log"
                     log_line holdings-and-trade-service "Captured portfolio valuation for account $ACCOUNT_ID" "portfolio-valuation-capture log"
-                    log_line reporting-consumer "Stored trade event orderId=$ORDER_ID status=FILLED" "reporting-ingester log"
+                    log_line reporting-service "Stored trade event orderId=$ORDER_ID status=FILLED" "reporting-ingester log"
                     # The records around the order, each from the service that owns the row.
                     log_line holdings-and-trade-service "Published platform record key=TRADING_ACCOUNT:$ACCOUNT_ID" "Holdings and Trade publishes the account"
                     log_line order-and-sell-service "Published platform record key=ORDER_AUDIT:" "Order and Sell publishes the audit trail"
                     log_line auth-service "Published platform record key=SIGN_IN:" "auth publishes the sign-in"
-                    log_line reporting-consumer "Stored platform record type=TRADING_ACCOUNT key=TRADING_ACCOUNT:$ACCOUNT_ID" "reporting-ingester log, account record"
+                    log_line reporting-service "Stored platform record type=TRADING_ACCOUNT key=TRADING_ACCOUNT:$ACCOUNT_ID" "reporting-ingester log, account record"
 
                     # Finally every group must have consumed everything the order published.
                     attempt=1

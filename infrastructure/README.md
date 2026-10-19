@@ -4,8 +4,10 @@ Container and CI configuration. None of it is a production deployment.
 
 | Resource | Purpose |
 | --- | --- |
-| [docker-compose.local.yml](docker-compose/docker-compose.local.yml) | Full local stack: UI, services, database, Kafka with both topics, the reporting service and its consumer |
-| [docker-compose.jenkins.yml](docker-compose/docker-compose.jenkins.yml) | Optional Jenkins container (UI on host port 8888) |
+| [docker-compose.local.yml](docker-compose/docker-compose.local.yml) | Full local stack: UI, services, database, Kafka (which creates both topics), and the reporting service with its consumer in one container |
+| [docker-compose.jenkins.yml](docker-compose/docker-compose.jenkins.yml) | Optional Jenkins container (UI on host port 8888) plus a second copy of the stack on `ci-network`, used by [setup-jenkins.sh](docker/setup-jenkins.sh). Keep it in step with the local file |
+| [docker-compose.kafka-ec2.yml](docker-compose/docker-compose.kafka-ec2.yml) | Override for a host that runs only Kafka: publishes 9092 and advertises the host's private DNS name; see [Kafka on its own host](#kafka-on-its-own-host) |
+| [docker/kafka-start.sh](docker/kafka-start.sh) | Starts the broker, creates both topics, and forwards SIGTERM to the broker |
 | [Jenkinsfile](jenkins/Jenkinsfile) | CI pipeline |
 | [sonar-project.properties](jenkins/sonar-project.properties), [jacoco-to-sonar-coverage.mjs](jenkins/jacoco-to-sonar-coverage.mjs) | SonarQube analysis settings and the Java coverage conversion it depends on |
 | [jenkins/kafka-end-to-end.py](jenkins/kafka-end-to-end.py) | Order-to-consumers check the pipeline runs against the built stack |
@@ -33,20 +35,62 @@ docker compose --project-name trading-season-local -f infrastructure/docker-comp
 | Auth Service | 3001 |
 | Order and Sell Service | 8081 |
 | Holdings and Trade Service | 8082 |
-| Reporting Service | 8083 |
-| Reporting consumer | none (`reporting-consumer`, same image as the Reporting Service, runs `python consumer.py`) |
+| Reporting Service | 8083 (one container: gunicorn and the Kafka consumer, started by `serve.py`) |
 | PostgreSQL | 5432 |
-| Kafka | 29092 (`kafka:9092` in the network) |
+| Kafka | 29092 on this machine's loopback only (`kafka:9092` in the network) |
 
 - `DB_PASSWORD` sets the one database password the auth service and the Java services use. The reporting containers are given no database setting and do not depend on `db` or `db-init`. Defaults are for disposable development only.
 - `db-init` migrates the database before dependent services start; a failed migration stops it. Data persists in the `db_data` volume; `down -v` deletes it.
-- A one-shot `kafka-init` creates two topics, each with three partitions; auto-creation is disabled. `trade-events`: the Order and Sell Service publishes to it, and three consumer groups read it: `order-status-pusher` (Order and Sell), `portfolio-valuation-capture` (Holdings and Trade) and `reporting-ingester` (`reporting-consumer`). `platform-records`: the auth service and both Java services publish to it, and `reporting-ingester` is its only reader; it is created with `cleanup.policy=compact`, so it keeps the latest state of every row instead of expiring by age. The auth service, both Java services and the consumer start only after `kafka-init` completes and receive `KAFKA_BOOTSTRAP_SERVERS=kafka:9092`.
-- The `reporting-consumer` and `reporting-service` containers share the `reporting_files` volume at `/data/reporting`: the consumer appends the messages of both topics and writes report runs, the web service reads them and builds its read model from them. It is all the data reporting has. `down -v` deletes it; the files can be rebuilt by resetting the `reporting-ingester` group's offsets (see [apps/reporting-service](../apps/reporting-service/README.md)).
+- The `kafka` container creates two topics as it starts ([kafka-start.sh](docker/kafka-start.sh)), each with three partitions; auto-creation is disabled, and the container reports healthy only once both exist. `trade-events` is created with `retention.ms=-1`, so nothing is deleted from it: the reporting service rebuilds its files by replaying it. `trade-events`: the Order and Sell Service publishes to it, and three consumer groups read it: `order-status-pusher` (Order and Sell), `portfolio-valuation-capture` (Holdings and Trade) and `reporting-ingester` (`reporting-service`). `platform-records`: the auth service and both Java services publish to it, and `reporting-ingester` is its only reader; it is created with `cleanup.policy=compact`, so it keeps the latest state of every row instead of expiring by age. The auth service, both Java services and the reporting service start only after `kafka` is healthy and receive `KAFKA_BOOTSTRAP_SERVERS=kafka:9092`.
+- The `reporting-service` container runs two processes under `serve.py`: the consumer appends the messages of both topics under `/data/reporting` and writes report runs, and the gunicorn workers read them and build the read model from them. If either process stops the container exits and Compose restarts it. Run exactly one replica. The `reporting_files` volume holds the files, and it is all the data reporting has. `down -v` deletes it, and the files rebuild themselves: the consumer resumes from where each file ends, or from the start of the topic when a file is missing (see [apps/reporting-service](../apps/reporting-service/README.md)).
 - A fresh stack needs nothing more: everything is published from the first registration. A database that already holds data, or is loaded by SQL, needs [republish_history.py](../db/README.md#reporting-feed-tools) run once against `localhost:29092` for reporting to see it.
 - `reporting-ui` serves the Angular app through Nginx and proxies `/api/reporting` to `reporting-service` and `/auth` to `auth-service`, so it starts after both and needs no CORS entry on either.
 - To inspect the topic: `docker compose --project-name trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --all-groups` shows each group's lag.
 - Opt-in profiles: `initialize` (first-time empty database) and `seed` (market data steps 0002 to 0004; see [apps/market-data](../apps/market-data/README.md)).
-- For Linux VMs, `scripts/setup-local.sh` at the repository root reuses a local PostgreSQL or starts `db`, `kafka` and `kafka-init` from this Compose file, and runs the applications on the host against `localhost:29092`. With a local PostgreSQL it starts no broker, and it never starts the reporting service or its consumer.
+- For Linux VMs, `scripts/setup-local.sh` at the repository root reuses a local PostgreSQL or starts `db` and `kafka` from this Compose file and waits for `kafka` to be healthy, and runs the applications on the host against `localhost:29092`. With a local PostgreSQL it starts no broker, and it never starts the reporting service or its consumer.
+
+### Kafka on its own host
+
+The broker needs only the Kafka service, because it creates its own topics. On a host that runs only Kafka, such as an EC2 instance, add the override and start that one service:
+
+```sh
+KAFKA_ADVERTISED_HOST=<private DNS name of this instance> \
+  docker compose -f infrastructure/docker-compose/docker-compose.local.yml \
+  -f infrastructure/docker-compose/docker-compose.kafka-ec2.yml up -d kafka
+```
+
+- Clients on other hosts bootstrap on `<that name>:9092` and are told to reconnect to the advertised address, so it must be the name they can resolve. Use the private DNS name, not a public IP: it survives a stop and start. Set `KAFKA_BOOTSTRAP_SERVERS` on every service to `<that name>:9092`.
+- The listener is PLAINTEXT with no authentication. Allow 9092 in the security group from the services' security group only, and never from outside the VPC. This is a described layout, not a production-ready deployment.
+- Put `kafka_data` on a dedicated EBS volume that is not deleted when the instance terminates, and snapshot it. One broker with replication factor 1 has no second copy.
+- Topic creation runs inside the container on every start and does nothing when the topics exist. A start that cannot create them stops the broker instead of leaving it up without topics.
+
+### What survives a restart
+
+| Data | Survives | Notes |
+| --- | --- | --- |
+| Database (RDS or `db_data`) | Yes | Not touched by anything on this page |
+| Kafka topics and committed offsets | Container restart and instance stop and start | Lost if the `kafka_data` volume is lost; see the recovery steps below |
+| Reporting event files | No, on a replaced task | Rebuilt in full by the consumer from the topics |
+| The report run (`runs/<timestamp>`) | No, on a replaced task | Only the latest run is ever kept, and a new one is written when the service starts, so nothing is lost. `GET /api/reporting/runs/latest` is built live from the event files and does not use it |
+
+### Kafka outage and recovery
+
+- Publishers (Order and Sell, Holdings and Trade, the auth service) log and drop a send that fails after the database commit, and never retry beyond the Kafka client's own timeouts. Orders still complete, delayed by up to the producer's `max.block.ms` (5 seconds). Events published during an outage can be missing from reporting.
+- After the broker returns with its data, run [republish_history.py](../db/README.md#reporting-feed-tools) to fill the gap. It is safe to repeat.
+- If the broker returns empty, because the volume was lost, republish the history, then replace the Reporting Service container so it starts with an empty disk. The new topics restart their offsets at 0, and a consumer that kept its old files would skip those messages as already written.
+- The services reconnect to a returned broker without a restart as long as its advertised name is unchanged. A replacement instance needs the same name or a DNS alias.
+
+### Described AWS layout
+
+One layout this repository is arranged for. None of it is created or tested here.
+
+| Part | Where | Notes |
+| --- | --- | --- |
+| Client UI and Reporting UI | S3 behind CloudFront | The UIs call relative paths, so route the same paths their [Nginx files](../apps/client-ui/nginx.conf) do: `/api/orders`, `/api/instruments`, `/api/me/watchlist` and `/api/` to the Java services, and for the Reporting UI `/api/reporting/` and `/auth/` to an ALB in front of ECS. Same origin, so no CORS entry is needed |
+| Auth, Order and Sell, Holdings and Trade, Reporting Service | ECS | The Dockerfile `HEALTHCHECK` is ignored by ECS: define a task health check (`/health` on 8083 for reporting). Give `AUTH_SERVICE_URL` and the Java services' `EXECUTION_MARKET_URL` a discoverable name, for example ECS Service Connect |
+| Reporting Service | ECS, exactly one task | Local ephemeral disk, rebuilt from Kafka on every replacement. A second task would take half the partitions and show half the events |
+| Kafka | One EC2 instance | See [Kafka on its own host](#kafka-on-its-own-host) |
+| Database | RDS | Set the `SPRING_DATASOURCE_*` and auth `DB_*` variables. Run the migrations ([init-db.sh](docker/init-db.sh)) as a one-off task or a CI step against RDS |
 
 ### Java service images
 
@@ -56,7 +100,7 @@ The two Java service images build from the repository root: both Compose files u
 
 The pipeline needs a Linux agent with Docker and Compose, JDK 21 at `/usr/lib/jvm/java-21-amazon-corretto`, a Maven tool named `maven`, and a NodeJS tool named `NodeJS` running 24.8 or later. It requires 5 GiB of free workspace storage.
 
-Stages: toolchain and preflight checks, depth-1 checkout, `npm ci`, parallel test suites (both Java services, auth, reporting, the reporting feed tools in `db/tools`, frontend, reporting UI, synthetic market data), SonarQube analysis and quality gate, Playwright E2E (the Client UI suite against an API stand-in and the Reporting UI suite against the real Reporting Service with only the Auth Service stubbed, run in parallel in separate containers; neither stops the other and either fails the stage), then a build of the local stack with build-scoped JWT keys and smoke checks: every expected container, including `reporting-consumer`, is running; the UIs and the reporting health endpoint answer; the `trade-events` topic exists with three partitions; `platform-records` exists with three partitions and is compacted; and the three consumer groups (`order-status-pusher`, `portfolio-valuation-capture`, `reporting-ingester`) have registered, with their partition assignment printed to the console. A missing group fails the build and prints that service's log. The stage ends by pruning dangling images and trimming the Docker build cache to 2 GiB; it does not prune stopped containers, networks, or volumes. A final "Kafka End-to-End Flow" stage then runs [kafka-end-to-end.py](jenkins/kafka-end-to-end.py) inside the `reporting-consumer` container: it first checks that the reporting image has no database setting and no PostgreSQL driver; then registers a trader, opens the order stream, places a BUY order and checks that the stream received both status frames, that a portfolio valuation was captured and reached reporting, that both events reached the reporting files and a report run that names the account from published records, that the web service refuses that run to the trader and serves it to the seeded development analyst, that the console shows the seeded development admin the trader, the order, its ledger impact and its audit trail, and that every consumer group ends at lag 0 on both topics. Each step is printed as a `[KAFKA-E2E]` line, together with the matching producer and consumer log lines, and archived as `reports/kafka-end-to-end/evidence.txt`. The [SonarQube](#sonarqube) analysis and quality gate run right after the test suites; a disk cleanup before the end-to-end stage keeps only the compiled Java classes, the JaCoCo XML and the UI lcov files. A failing test stage skips everything after it. Reports are archived per stage, missing JUnit reports fail the build, and each tier enforces its own coverage floor (UI 90, Reporting UI 90, Holdings and Trade 85, Order and Sell 70, auth 70).
+Stages: toolchain and preflight checks, depth-1 checkout, `npm ci`, parallel test suites (both Java services, auth, reporting, the reporting feed tools in `db/tools`, frontend, reporting UI, synthetic market data), SonarQube analysis and quality gate, Playwright E2E (the Client UI suite against an API stand-in and the Reporting UI suite against the real Reporting Service with only the Auth Service stubbed, run in parallel in separate containers; neither stops the other and either fails the stage), then a build of the local stack with build-scoped JWT keys and smoke checks: every expected container, including `reporting-service`, is running; the UIs and the reporting health endpoint answer; the `trade-events` topic exists with three partitions and keeps its messages forever; `platform-records` exists with three partitions and is compacted; and the three consumer groups (`order-status-pusher`, `portfolio-valuation-capture`, `reporting-ingester`) have registered, with their partition assignment printed to the console. A missing group fails the build and prints that service's log. The stage ends by pruning dangling images and trimming the Docker build cache to 2 GiB; it does not prune stopped containers, networks, or volumes. A final "Kafka End-to-End Flow" stage then runs [kafka-end-to-end.py](jenkins/kafka-end-to-end.py) inside the `reporting-service` container: it first checks that the reporting image has no database setting and no PostgreSQL driver; then registers a trader, opens the order stream, places a BUY order and checks that the stream received both status frames, that a portfolio valuation was captured and reached reporting, that both events reached the reporting files and a report run that names the account from published records, that the web service refuses that run to the trader and serves it to the seeded development analyst, that the console shows the seeded development admin the trader, the order, its ledger impact and its audit trail, and that every consumer group ends at lag 0 on both topics. Each step is printed as a `[KAFKA-E2E]` line, together with the matching producer and consumer log lines, and archived as `reports/kafka-end-to-end/evidence.txt`. The [SonarQube](#sonarqube) analysis and quality gate run right after the test suites; a disk cleanup before the end-to-end stage keeps only the compiled Java classes, the JaCoCo XML and the UI lcov files. A failing test stage skips everything after it. Reports are archived per stage, missing JUnit reports fail the build, and each tier enforces its own coverage floor (UI 90, Reporting UI 90, Holdings and Trade 85, Order and Sell 70, auth 70).
 
 Maven runs through [maven-retry.sh](jenkins/maven-retry.sh), which repeats a run up to three times when it failed only because Maven Central refused or dropped a download (for example a 502); any other failure, such as a failing test, stops at once. Without it, one bad download in a parallel test branch aborted every other branch.
 

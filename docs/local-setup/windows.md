@@ -171,7 +171,7 @@ Reporting reads Kafka and nothing else, so everything the Reporting UI shows nee
 
 | Broker | What the script does |
 | --- | --- |
-| Already listening on `localhost:29092`, for example the `kafka` and `kafka-init` services of the Compose file | Uses it |
+| Already listening on `localhost:29092`, for example the `kafka` service of the Compose file | Uses it |
 | Not running, and `-KafkaHome` or `KAFKA_HOME` names an unpacked [Apache Kafka](https://kafka.apache.org/downloads) distribution | Starts a single-node broker from it with the JDK, keeps its data in `%LOCALAPPDATA%\trading-season\kafka`, and creates `trade-events` and the compacted `platform-records`, each with three partitions. For a machine without Docker. The broker runs with the log cleaner off (`log.cleaner.enable=false`), because Windows cannot rename the index files compaction swaps and Kafka would shut the broker down; `platform-records` is therefore not compacted here, which only costs disk |
 | Neither | Sets `app.events.enabled=false` on both Java services and `EVENTS_ENABLED=false` on the auth service, does not start the consumer, and warns that the Reporting UI shows nothing new |
 

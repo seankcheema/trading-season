@@ -25,7 +25,7 @@ class Config:
     REPORTING_SERVICE_HOST = os.getenv('REPORTING_SERVICE_HOST', '0.0.0.0')
 
     # Report runs. The scheduler runs in the consumer process only (consumer.py);
-    # the web service leaves SCHEDULER_ENABLED false.
+    # the web workers never start one, whatever SCHEDULER_ENABLED is.
     SCHEDULER_ENABLED = os.getenv('SCHEDULER_ENABLED', 'True').lower() == 'true'
     SCHEDULER_INTERVAL_MINUTES = int(os.getenv('SCHEDULER_INTERVAL_MINUTES', 15))
 
