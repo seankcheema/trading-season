@@ -1,3 +1,4 @@
+import type { Download } from '@playwright/test';
 import { newAccount } from './fixtures/accounts';
 import type { SeedAccount } from './fixtures/api-stub';
 import { expect, test } from './fixtures/test';
@@ -149,6 +150,43 @@ test('view all opens every transaction, including cash, and filters by type', as
   await dialog.getByRole('button', { name: 'Close recent transactions' }).click();
   await expect(dialog).toBeHidden();
 });
+
+test('export downloads the filtered statement as CSV and as a PDF', async ({ page }) => {
+  await page.getByTestId('open-transactions').click();
+  const dialog = page.getByRole('dialog', { name: 'Recent Transactions' });
+  await expect(dialog.getByTestId('transactions-row')).toHaveCount(3);
+
+  await dialog.getByTestId('transactions-filters').click();
+  await dialog.getByTestId('transactions-filter-buy').click();
+  await page.keyboard.press('Escape');
+
+  await dialog.getByTestId('transactions-export').click();
+  const [csv] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByTestId('transactions-export-csv').click(),
+  ]);
+  expect(csv.suggestedFilename()).toMatch(/^account-statement-\d{4}-\d{2}-\d{2}\.csv$/);
+  const lines = (await readDownload(csv)).replace('﻿', '').split('\r\n').filter(Boolean);
+  // A header and the two buy orders; the rejected sell is filtered out.
+  expect(lines).toHaveLength(3);
+  expect(lines.slice(1).every((line) => line.includes(',Buy,'))).toBe(true);
+
+  await dialog.getByTestId('transactions-export').click();
+  const [pdf] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByTestId('transactions-export-pdf').click(),
+  ]);
+  expect(pdf.suggestedFilename()).toMatch(/\.pdf$/);
+  expect((await readDownload(pdf)).startsWith('%PDF-')).toBe(true);
+});
+
+async function readDownload(download: Download): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of await download.createReadStream()) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString('latin1');
+}
 
 test('an order row expands into its audit timeline from pending to its final status', async ({
   page,
