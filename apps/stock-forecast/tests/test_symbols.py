@@ -9,7 +9,7 @@ import pandas as pd
 from stock_forecast import config
 from stock_forecast.data import save_prices
 from stock_forecast.evaluate import plot_symbol_comparison
-from stock_forecast.symbols import MARKET_COLUMNS, inputs_for, load_symbol_dataset, summarise, symbol_rows
+from stock_forecast.symbols import MARKET_COLUMNS, inputs_for, load_symbol_dataset, merge_results, summarise, symbol_rows
 from tests.helpers import make_prices
 
 
@@ -23,6 +23,19 @@ class SymbolConfigTests(unittest.TestCase):
         self.assertEqual(config.SYMBOL_CSVS[config.TICKER], config.PRICES_CSV)
         self.assertEqual(config.SYMBOL_CSVS[config.MARKET_TICKER], config.MARKET_CSV)
         self.assertEqual(len(set(config.SYMBOL_CSVS.values())), len(config.SYMBOL_CSVS))
+
+
+class MergeResultsTests(unittest.TestCase):
+    def test_rerunning_one_symbol_and_model_replaces_only_those_rows(self):
+        saved = pd.DataFrame({"symbol": ["AAPL", "AAPL", "SPY"], "model": ["Logistic", "LSTM", "Logistic"],
+                              "accuracy": [0.1, 0.2, 0.3]})
+        new = pd.DataFrame({"symbol": ["AAPL"], "model": ["Logistic"], "accuracy": [0.9]})
+        merged = merge_results(saved, new).set_index(["symbol", "model"])["accuracy"]
+        self.assertEqual(merged.to_dict(), {("AAPL", "LSTM"): 0.2, ("SPY", "Logistic"): 0.3, ("AAPL", "Logistic"): 0.9})
+
+    def test_first_run_has_nothing_saved(self):
+        new = pd.DataFrame({"symbol": ["KO"], "model": ["Logistic"], "accuracy": [0.5]})
+        self.assertEqual(len(merge_results(None, new)), 1)
 
 
 class SymbolComparisonTests(unittest.TestCase):

@@ -119,6 +119,18 @@ What it shows: SPY is the easy case because it is the whole market, not because 
 
 What it means: more data and better inputs move accuracy up by one to three points, mostly for the whole-market fund. That fits everything else here: big moves are partly predictable, and the inputs matter more than the model.
 
+## On TradingSeason's own prices (demo)
+
+**`platform_demo.png`**: the trained models, unchanged, run on the platform's simulated 2026 AAPL prices from late April to December (the earlier months fill the model's 60-day window). Blue bars are the models; grey bars are simple rules on the same days. The number on each bar is the AUC: 0.5 means the model ranks days no better than chance.
+
+- **Direction (left):** the model scored 58.9%, but its AUC of 0.48 shows that is luck. The simple rule "follow the 20-day trend" scored 68.9%, because the simulation's prices follow scripted monthly trends. A high score on these prices only shows a model learned the script.
+- **Big moves, as trained (middle):** simulated AAPL is much calmer than the real stock, so only about a quarter of days pass the 0.87% cut-off and "always calm" scores 77%. The model scores about the same, but still ranks stormy days above calm ones (AUC 0.67).
+- **Big moves, recalibrated (right):** re-fitting the input scaling and the cut-off on the 59 warm-up days made it worse (AUC 0.50). Too few days to re-learn from, so the model works best as trained.
+
+What it means: the pipeline runs end to end on platform data, but the platform's prices cannot measure the model. That is why the model is trained and tested on real prices.
+
+**`platform_spike.png`** (demo): the platform's simulation schedules a volatility spike on Oct 12-17, 2026. The model, unchanged, raised its big-move probability on all 10 platform stocks during that week (to 50-76%, from 31-50% on other days). The chart shows it reacts within a day of the storm starting rather than predicting it, then stays cautious for a few weeks, as real storms tend to linger.
+
 ## The earlier return model
 
 **`lstm_loss.png`**: the same learning chart for the LSTM that predicts the size of tomorrow's move.

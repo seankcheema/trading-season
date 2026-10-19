@@ -94,6 +94,18 @@ def symbol_rows(symbol: str, with_lstm: bool = True) -> list[dict]:
     return rows
 
 
+def merge_results(saved: pd.DataFrame | None, new: pd.DataFrame) -> pd.DataFrame:
+    """Replace the saved rows of each (symbol, model) pair just run; keep every other row.
+
+    A quick --no-lstm run of one symbol therefore keeps that symbol's saved LSTM rows.
+    """
+    if saved is None or saved.empty:
+        return new.reset_index(drop=True)
+    rerun = set(zip(new["symbol"], new["model"]))
+    kept = saved[[pair not in rerun for pair in zip(saved["symbol"], saved["model"])]]
+    return pd.concat([kept, new], ignore_index=True)
+
+
 def summarise(table: pd.DataFrame) -> pd.DataFrame:
     """Walk-forward average accuracy, bar, years beating the bar and Brier skill, per symbol, task and model."""
     wf = table[table["split"].str.startswith("walk-forward")].copy()

@@ -86,6 +86,15 @@ COMPARISON_SYMBOLS = [TICKER, MARKET_TICKER, *EXTRA_SYMBOLS]
 VIX_CSV = DATA_DIR / "vix_daily.csv"
 VIX_FEATURES = VOLATILITY_FEATURES + ["vix", "vix_change"]
 POOLED_COMPARISON_CSV = REPORTS_DIR / "pooled_vix_comparison.csv"
+# TradingSeason demo: daily bars exported from the platform's simulated 2026
+# archive by export-platform-daily.py. Simulated prices: a demo, never evidence.
+PLATFORM_DIR = DATA_DIR / "platform"
+PLATFORM_SYMBOL = "AAPL"
+PLATFORM_RESULTS_CSV = REPORTS_DIR / "platform_demo.csv"
+# The simulation's own settings, read only for its scheduled volatility spikes.
+PLATFORM_SIM_CONFIG = (REPO_ROOT / "apps" / "market-data" / "db" / "scripts" / "python" / "config"
+                       / "synthetic-market-data-2026-v1.json")
+PLATFORM_SPIKE_CSV = REPORTS_DIR / "platform_spike.csv"
 SYMBOL_COMPARISON_CSV = REPORTS_DIR / "symbol_comparison.csv"
 RESULTS_CSV = REPORTS_DIR / "results.csv"
 TEST_RESULTS_CSV = REPORTS_DIR / "test_results.csv"

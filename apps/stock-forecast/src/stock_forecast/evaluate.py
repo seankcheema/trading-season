@@ -385,7 +385,8 @@ def plot_symbol_comparison(summary: pd.DataFrame, path: Path, title: str) -> Pat
         models = list(dict.fromkeys(rows["model"]))
         width = 0.8 / len(models)
         for i, model in enumerate(models):
-            values = [rows[(rows["symbol"] == s) & (rows["model"] == model)]["accuracy"].iloc[0] * 100 for s in symbols]
+            # A symbol not yet run with this model gets no bar rather than an error.
+            values = [rows[(rows["symbol"] == s) & (rows["model"] == model)]["accuracy"].mean() * 100 for s in symbols]
             ax.bar(np.arange(len(symbols)) + (i - (len(models) - 1) / 2) * width, values, width=width, label=model,
                    color=_model_color(model))
         for j, symbol in enumerate(symbols):
@@ -402,6 +403,59 @@ def plot_symbol_comparison(summary: pd.DataFrame, path: Path, title: str) -> Pat
         else:
             ax.legend(fontsize=8, loc="upper left")
     fig.suptitle(title)
+    return _save(fig, path)
+
+
+def plot_platform_demo(table: pd.DataFrame, path: Path, title: str) -> Path:
+    """Accuracy on the simulated platform prices, one panel per task, AUC printed on each bar."""
+    panels = [("direction", None), ("volatility", "as trained"), ("volatility", "recalibrated")]
+    fig, axes = plt.subplots(1, len(panels), figsize=(14, 4.8))
+    for ax, (task, variant) in zip(axes, panels):
+        rows = table[table["task"] == task]
+        if variant is not None:
+            rows = rows[rows["variant"] == variant]
+        # The direction panel holds both LSTM variants, so name the variant there.
+        labels = [f"{m}\n({v})" if task == "direction" and v != "rule" else m
+                  for m, v in zip(rows["model"], rows["variant"])]
+        colors = ["#2f5bd3" if m.startswith("LSTM") else "#9aa3ad" for m in rows["model"]]
+        bars = ax.bar(range(len(rows)), rows["accuracy"] * 100, color=colors)
+        for bar, auc in zip(bars, rows["auc"]):
+            if pd.notna(auc):
+                ax.annotate(f"AUC {auc:.2f}", (bar.get_x() + bar.get_width() / 2, bar.get_height()),
+                            xytext=(0, 3), textcoords="offset points", ha="center", fontsize=8)
+        ax.set_xticks(range(len(rows)), labels, rotation=20, ha="right", fontsize=8)
+        ax.set_ylim(40, 90)
+        ax.axhline(50, color="grey", linestyle=":", linewidth=1)
+        ax.set_ylabel("Accuracy (%)")
+        if task == "direction":
+            ax.set_title("Direction")
+        else:
+            cut = rows["threshold"].iloc[0]
+            ax.set_title(f"Big moves, {variant} (over {cut:.2%})")
+    fig.suptitle(title)
+    return _save(fig, path)
+
+
+def plot_spike(daily: pd.DataFrame, spikes: list, path: Path, title: str, start: str, end: str) -> Path:
+    """The model's daily big-move probability against the moves that happened, scheduled spikes shaded."""
+    window = daily.loc[start:end]
+    fig, ax = plt.subplots(figsize=(11, 4.5))
+    ax.bar(window.index, window["move"] * 100, color=["#d98a2b" if b else "#c9ced6" for b in window["big"]],
+           width=0.8, label="Actual move that day (%), orange = big move")
+    ax.set_ylabel("Actual move (%)")
+    twin = ax.twinx()
+    twin.plot(window.index, window["prob_big"] * 100, color="#2f5bd3", linewidth=2, label="Model's big-move probability")
+    twin.set_ylabel("Big-move probability (%)")
+    twin.set_ylim(0, 100)
+    for spike_id, first, last in spikes:
+        if first <= window.index.max() and last >= window.index.min():
+            ax.axvspan(first - pd.Timedelta(hours=12), last + pd.Timedelta(hours=12), color="#e45756", alpha=0.12,
+                       label="Scheduled volatility spike")
+    handles = ax.get_legend_handles_labels()[0] + twin.get_legend_handles_labels()[0]
+    labels = ax.get_legend_handles_labels()[1] + twin.get_legend_handles_labels()[1]
+    ax.legend(handles, labels, fontsize=8, loc="upper left")
+    ax.set_title(title)
+    fig.autofmt_xdate()
     return _save(fig, path)
 
 
