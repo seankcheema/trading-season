@@ -9,6 +9,9 @@ from pathlib import Path
 # vector autoregression a view of the overall market.
 TICKER = "AAPL"
 MARKET_TICKER = "SPY"
+# Extra stocks for compare-symbols.py: two low-volatility stocks and one large
+# tech stock like AAPL. Downloaded once by 0001-download-data.py --extra.
+EXTRA_SYMBOLS = ["MSFT", "JNJ", "KO"]
 
 # Download window. yfinance treats END as exclusive, so this ends Sep 30, 2026.
 START = "2010-01-01"
@@ -74,8 +77,9 @@ REPORTS_DIR = ROOT / "reports"
 PRICES_CSV = DATA_DIR / "aapl_daily.csv"
 MARKET_CSV = DATA_DIR / "spy_daily.csv"
 # Snapshots that compare-symbols.py can use as the stock to predict.
-SYMBOL_CSVS = {TICKER: PRICES_CSV, MARKET_TICKER: MARKET_CSV}
-COMPARISON_SYMBOLS = [TICKER, MARKET_TICKER]
+SYMBOL_CSVS = {TICKER: PRICES_CSV, MARKET_TICKER: MARKET_CSV,
+               **{symbol: DATA_DIR / f"{symbol.lower()}_daily.csv" for symbol in EXTRA_SYMBOLS}}
+COMPARISON_SYMBOLS = [TICKER, MARKET_TICKER, *EXTRA_SYMBOLS]
 SYMBOL_COMPARISON_CSV = REPORTS_DIR / "symbol_comparison.csv"
 RESULTS_CSV = REPORTS_DIR / "results.csv"
 TEST_RESULTS_CSV = REPORTS_DIR / "test_results.csv"

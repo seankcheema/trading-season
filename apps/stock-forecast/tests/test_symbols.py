@@ -13,6 +13,18 @@ from stock_forecast.symbols import MARKET_COLUMNS, inputs_for, load_symbol_datas
 from tests.helpers import make_prices
 
 
+class SymbolConfigTests(unittest.TestCase):
+    def test_every_comparison_symbol_has_one_snapshot_path(self):
+        self.assertEqual(config.COMPARISON_SYMBOLS[:2], [config.TICKER, config.MARKET_TICKER])
+        self.assertEqual(set(config.COMPARISON_SYMBOLS), set(config.SYMBOL_CSVS))
+        for symbol in config.EXTRA_SYMBOLS:
+            self.assertEqual(config.SYMBOL_CSVS[symbol], config.DATA_DIR / f"{symbol.lower()}_daily.csv")
+        # The extra snapshots never replace the AAPL and SPY files.
+        self.assertEqual(config.SYMBOL_CSVS[config.TICKER], config.PRICES_CSV)
+        self.assertEqual(config.SYMBOL_CSVS[config.MARKET_TICKER], config.MARKET_CSV)
+        self.assertEqual(len(set(config.SYMBOL_CSVS.values())), len(config.SYMBOL_CSVS))
+
+
 class SymbolComparisonTests(unittest.TestCase):
     # Point the comparison at two synthetic snapshots, so no real data is needed.
     @classmethod
