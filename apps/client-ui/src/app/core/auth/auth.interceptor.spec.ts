@@ -169,4 +169,43 @@ describe('authenticated request renewal', () => {
     request.flush({});
     await result;
   });
+
+  it('sends API calls untouched when nobody is signed in', async () => {
+    storage.clear();
+    const result = firstValueFrom(client.get('/api/orders'));
+    const request = http.expectOne('/api/orders');
+    expect(request.request.headers.has('Authorization')).toBe(false);
+    request.flush([]);
+    await result;
+  });
+
+  it('ends the request when the user changes before a 401 can be retried', async () => {
+    const result = firstValueFrom(client.get('/api/orders')).catch((e: unknown) => e);
+    const request = http.expectOne('/api/orders');
+    storage.clear();
+    reject(request);
+    const error = await result;
+    expect(error).toBeInstanceOf(HttpErrorResponse);
+    expect((error as HttpErrorResponse).status).toBe(401);
+    expect(navigate).toHaveBeenCalledWith(['/login']);
+  });
+
+  it('ends the request when renewal after a 401 is refused', async () => {
+    const result = firstValueFrom(client.get('/api/orders')).catch((e: unknown) => e);
+    reject(http.expectOne('/api/orders'));
+    reject(http.expectOne(refreshUrl), 401);
+    const error = await result;
+    expect((error as HttpErrorResponse).statusText).toBe('Session expired');
+    expect(navigate).toHaveBeenCalledWith(['/login']);
+  });
+
+  it('ends the request when the user changes while the token is being renewed', async () => {
+    storage.save({ ...tokens, expiresIn: -1 });
+    const result = firstValueFrom(client.get('/api/orders')).catch((e: unknown) => e);
+    const refresh = http.expectOne(refreshUrl);
+    storage.save({ accessToken: 'x.eyJzdWIiOiI5OSJ9.y', refreshToken: 'other', expiresIn: 900 });
+    refresh.flush(rotated);
+    const error = await result;
+    expect((error as HttpErrorResponse).status).toBe(401);
+  });
 });

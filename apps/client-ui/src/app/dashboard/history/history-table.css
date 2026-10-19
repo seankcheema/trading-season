@@ -20,13 +20,30 @@
 
 .history-grid {
   grid-template-columns:
-    minmax(0, 1.4fr)
+    1.25rem
+    minmax(0, 1.2fr)
+    minmax(0, 1.1fr)
+    minmax(0, 1fr)
     minmax(0, 0.8fr)
-    minmax(0, 0.95fr)
-    minmax(0, 0.6fr)
+    minmax(0, 0.55fr)
     minmax(0, 0.75fr)
     minmax(0, 0.85fr)
-    minmax(0, 1fr);
+    minmax(0, 0.95fr)
+    2rem;
+}
+
+.audit-entry:not(:last-child)::before {
+  background: var(--border);
+  content: '';
+  height: 100%;
+  left: calc(0.25rem - 0.5px);
+  position: absolute;
+  top: 0.5rem;
+  width: 1px;
+}
+
+.audit-marker {
+  z-index: 1;
 }
 
 .order-grid {

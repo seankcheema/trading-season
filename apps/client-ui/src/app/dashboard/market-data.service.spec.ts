@@ -298,4 +298,104 @@ describe('MarketDataService', () => {
     expect(old.cancelled).toBe(true);
   });
 
+  describe('seeks, ticks and cached history', () => {
+    const stock = (symbol: string, price: number, change: number) => ({
+      symbol, companyName: symbol, price, change,
+      changePercent: 0, timestamp: '2026-01-05T15:00:00Z',
+    });
+    const snapshot = (stocks: ReturnType<typeof stock>[], marketTimestamp = '2026-01-05T15:00:00Z') => ({
+      sessionId: 7, marketTimestamp, serverTimestamp: marketTimestamp, stocks,
+    });
+    const tickEvent = (marketTimestamp: string, prices: { symbol: string; price: number }[]) =>
+      ({ data: JSON.stringify({ eventId: 1, marketTimestamp, serverTimestamp: marketTimestamp, prices }) }) as MessageEvent<string>;
+
+    it('holds snapshot and candle reads until a running seek finishes', () => {
+      service.setClock(7, '2026-01-05T16:00:00Z').subscribe();
+      const seen: number[] = [];
+      service.snapshot(7).subscribe((value) => seen.push(value.sessionId));
+      service.candles(7, 'aapl ', '1D').subscribe();
+      http.expectNone('/api/market/snapshot');
+      http.expectNone((request) => request.url === '/api/market/candles');
+
+      http.expectOne((request) => request.url === '/api/market/clock').flush(snapshot([]));
+      http.expectOne('/api/market/snapshot?sessionId=7').flush(snapshot([]));
+      const candles = http.expectOne((request) => request.url === '/api/market/candles');
+      expect(candles.request.params.get('symbol')).toBe('AAPL');
+      candles.flush({ points: [] });
+      expect(seen).toContain(7);
+    });
+
+    it('ignores stream ticks while a seek is running', () => {
+      service.snapshot().subscribe();
+      http.expectOne('/api/market/snapshot').flush(snapshot([stock('AAPL', 100, 5)]));
+      vi.stubGlobal('EventSource', FakeEventSource);
+      const h = { tick: vi.fn(), status: vi.fn(), resync: vi.fn() };
+      const disconnect = service.connect(7, h);
+      service.setClock(7, '2026-01-05T16:00:00Z').subscribe();
+      FakeEventSource.last!.listeners.get('market-tick')!(
+        tickEvent('2026-01-05T15:00:02Z', [{ symbol: 'AAPL', price: 101 }]),
+      );
+      expect(h.tick).not.toHaveBeenCalled();
+      http.expectOne((request) => request.url === '/api/market/clock').flush(snapshot([]));
+      disconnect();
+    });
+
+    it('applies ticks only to the symbols they name and guards a zero opening price', () => {
+      service.snapshot().subscribe();
+      http.expectOne('/api/market/snapshot').flush(
+        snapshot([stock('AAPL', 100, 5), stock('MSFT', 50, 0), stock('ZERO', 0, 0)]),
+      );
+      vi.stubGlobal('EventSource', FakeEventSource);
+      const h = { tick: vi.fn(), status: vi.fn(), resync: vi.fn() };
+      const disconnect = service.connect(7, h);
+      FakeEventSource.last!.listeners.get('market-tick')!(
+        tickEvent('2026-01-05T15:00:02Z', [
+          { symbol: 'AAPL', price: 102 },
+          { symbol: 'ZERO', price: 1 },
+        ]),
+      );
+      let latest: ReturnType<typeof stock>[] = [];
+      service.snapshot().subscribe((value) => (latest = latest.length ? latest : (value.stocks as typeof latest)));
+      http.expectOne('/api/market/snapshot').flush(snapshot([]));
+      expect(latest.find((item) => item.symbol === 'AAPL')?.price).toBe(102);
+      expect(latest.find((item) => item.symbol === 'MSFT')?.price).toBe(50);
+      expect(latest.find((item) => item.symbol === 'ZERO')?.changePercent).toBe(0);
+      disconnect();
+    });
+
+    it('rebuilds a late snapshot around live quotes, keeping symbols the stream has not priced', () => {
+      service.snapshot().subscribe();
+      http.expectOne('/api/market/snapshot').flush(snapshot([stock('AAPL', 100, 5)]));
+      vi.stubGlobal('EventSource', FakeEventSource);
+      const disconnect = service.connect(7, { tick: vi.fn(), status: vi.fn(), resync: vi.fn() });
+      let received: ReturnType<typeof stock>[] = [];
+      service.snapshot().subscribe((value) => (received = value.stocks as typeof received));
+      FakeEventSource.last!.listeners.get('market-tick')!(
+        tickEvent('2026-01-05T15:00:02Z', [{ symbol: 'AAPL', price: 102 }]),
+      );
+      http.expectOne('/api/market/snapshot').flush(
+        snapshot([stock('AAPL', 100, 0), stock('NEW', 10, 0)]),
+      );
+      expect(received.find((item) => item.symbol === 'NEW')?.price).toBe(10);
+      expect(received.find((item) => item.symbol === 'AAPL')?.changePercent).toBeCloseTo(2);
+      disconnect();
+    });
+
+    it('serves a stale history entry first while the refresh is in flight', () => {
+      vi.useFakeTimers();
+      try {
+        service.candles(7, 'AAPL', '1D').subscribe();
+        http.expectOne((request) => request.url === '/api/market/candles').flush({ points: [{ t: 1 }] });
+        vi.advanceTimersByTime(61_000);
+        const seen: unknown[] = [];
+        service.candles(7, 'AAPL', '1D').subscribe((value) => seen.push(value));
+        service.candles(7, 'AAPL', '1D').subscribe((value) => seen.push(value));
+        expect(seen).toHaveLength(2);
+        http.expectOne((request) => request.url === '/api/market/candles').flush({ points: [{ t: 2 }] });
+        expect(seen).toHaveLength(4);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
 });

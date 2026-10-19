@@ -1,9 +1,8 @@
-<main class="market-page bg-[#0e0e0e] text-[#eefaff]" [attr.inert]="termsRequired() ? '' : null">
-  <header class="market-nav bg-[#0e0e0e]/95 px-4 backdrop-blur-xl md:px-6">
+<main class="market-page bg-background text-foreground" [attr.inert]="termsRequired() ? '' : null">
+  <header class="market-nav bg-background/95 px-4 backdrop-blur-xl md:px-6">
     <div class="market-nav-inner mx-auto flex h-full max-w-[1600px] items-center gap-3">
       <a
         routerLink="/dashboard"
-        [queryParams]="{ accountId: accountStore.selectedAccountId() }"
         class="nav-back"
         aria-label="Back to dashboard"
       >
@@ -22,21 +21,17 @@
           (openChange)="openHeaderDropdown.set($event ? 'market-clock' : null)"
           (snapshotApplied)="onClockSnapshot($event)"
         />
-        <app-dashboard-header-dropdown
-          data-testid="notifications-dropdown"
-          ariaLabel="Open notifications"
-          [open]="openHeaderDropdown() === 'notifications'"
-          (openChange)="openHeaderDropdown.set($event ? 'notifications' : null)"
-          containerClass="shrink-0"
-          triggerClass="text-muted-foreground hover:bg-muted hover:text-foreground size-9 justify-center rounded-full"
-          panelClass="w-64 p-3"
-        >
-          <ng-icon dropdownTrigger name="lucideBell" class="text-lg" />
-          <div aria-label="Notifications">
-            <strong class="text-sm">Notifications</strong>
-            <p class="text-muted-foreground mt-2 text-xs">No notifications yet.</p>
-          </div>
-        </app-dashboard-header-dropdown>
+        <app-account-control
+          data-testid="account-dropdown"
+          [store]="accountStore"
+          [portfolioValues]="portfolioValues()"
+          [open]="openHeaderDropdown() === 'account'"
+          (openChange)="openHeaderDropdown.set($event ? 'account' : null)"
+          (selected)="selectAccount($event)"
+          (create)="openCreateAccount()"
+          (rename)="openRenameAccount($event)"
+        />
+        <app-theme-toggle />
         <app-dashboard-header-dropdown
           data-testid="profile-dropdown"
           ariaLabel="Open profile menu"
@@ -114,24 +109,23 @@
               <div class="border-border border-b pb-2">
                 <span class="skeleton h-8 w-4/5"></span>
               </div>
-              <ul class="insight-content pt-3">
-                @for (row of skeletonRows; track row) {
-                  <li app-activity-row-skeleton></li>
-                }
-              </ul>
-            </section>
-            <section class="account-value-panel">
-              <span class="skeleton h-10 w-full rounded-lg"></span>
-              <div class="account-value-balances">
-                @for (card of [1, 2]; track card) {
-                  <div class="overview-card account-balance-card">
-                    <span class="skeleton h-3 w-20"></span>
-                    <span class="skeleton mt-1.5 h-7 w-24"></span>
-                  </div>
-                }
+              <div class="trading-content insight-content" data-testid="trading-skeleton">
+                <div class="account-value-balances">
+                  @for (card of [1, 2]; track card) {
+                    <div class="overview-card account-balance-card">
+                      <span class="skeleton h-3 w-20"></span>
+                      <span class="skeleton mt-1.5 h-7 w-24"></span>
+                    </div>
+                  }
+                </div>
+                <div class="flex flex-1 flex-col gap-3 rounded-xl border border-border p-3">
+                  <span class="skeleton h-9 w-full"></span>
+                  <span class="skeleton h-9 w-full"></span>
+                  <span class="skeleton h-16 w-full"></span>
+                  <span class="skeleton mt-auto h-11 w-full"></span>
+                </div>
               </div>
             </section>
-            <span class="skeleton h-[24.5rem] w-full shrink-0 rounded-xl"></span>
           </aside>
         </div>
       }
@@ -246,9 +240,11 @@
                 class="chart-panel border-border bg-card rounded-xl border p-3"
                 [class.chart-panel-with-rsi]="rsiEnabled()"
               >
-                <div class="chart-toolbar"
+                <div
+                  class="chart-toolbar"
                   [style.--picker-left]="toolbarMenuPosition().left + 'px'"
-                  [style.--picker-top]="toolbarMenuPosition().top + 'px'">
+                  [style.--picker-top]="toolbarMenuPosition().top + 'px'"
+                >
                   <div class="flex flex-wrap items-center justify-start gap-1.5">
                     <div class="indicator-dropdown">
                       <button
@@ -265,7 +261,7 @@
                         <ng-icon name="lucideSlidersHorizontal" /> Indicators
                         @if (enabledIndicators().length) {
                           <span
-                            class="text-primary bg-primary/15 inline-flex size-4 items-center justify-center rounded-full text-[9px]"
+                            class="bg-primary-foreground/20 inline-flex size-4 items-center justify-center rounded-full text-[9px]"
                             >{{ enabledIndicators().length }}</span
                           >
                         }
@@ -401,67 +397,44 @@
                 </div>
                 <div class="chart-stage" [class.chart-stage-comparing]="comparisonInstrument()">
                   @if (comparisonInstrument(); as compared) {
-                    <div class="comparison-price-label-left">
-                      <span class="text-xs font-semibold">{{ active.symbol }}</span>
-                      <span
-                        class="tick-price text-xs font-semibold tabular-nums"
-                        [class.tick-price-gain]="
-                          tickAnimations().get(active.symbol)?.direction === 'gain'
-                        "
-                        [class.tick-price-loss]="
-                          tickAnimations().get(active.symbol)?.direction === 'loss'
-                        "
-                        [class.tick-animation-even]="
-                          (tickAnimations().get(active.symbol)?.revision ?? 1) % 2 === 0
-                        "
-                        [style.animation-duration.ms]="
-                          tickAnimations().get(active.symbol)?.durationMs
-                        "
-                      >
-                        {{ active.price | currency: 'USD' : 'symbol' : '1.2-2' }}
-                      </span>
-                      <span
-                        class="text-xs font-semibold tabular-nums"
-                        [class]="active.change >= 0 ? 'text-gain' : 'text-loss'"
-                      >
-                        {{ active.change | number: '1.1-1' }} ({{
-                          active.changePercent | signedPercent
-                        }})
-                      </span>
-                    </div>
-                    <div class="comparison-price-label-right">
-                      <span class="text-xs font-semibold">{{ compared.symbol }}</span>
-                      <span
-                        class="tick-price text-xs font-semibold tabular-nums"
-                        [class.tick-price-gain]="
-                          tickAnimations().get(compared.symbol)?.direction === 'gain'
-                        "
-                        [class.tick-price-loss]="
-                          tickAnimations().get(compared.symbol)?.direction === 'loss'
-                        "
-                        [class.tick-animation-even]="
-                          (tickAnimations().get(compared.symbol)?.revision ?? 1) % 2 === 0
-                        "
-                        [style.animation-duration.ms]="
-                          tickAnimations().get(compared.symbol)?.durationMs
-                        "
-                      >
-                        {{ compared.price | currency: 'USD' : 'symbol' : '1.2-2' }}
-                      </span>
-                      <span
-                        class="text-xs font-semibold tabular-nums"
-                        [class]="compared.change >= 0 ? 'text-gain' : 'text-loss'"
-                      >
-                        {{ compared.change | number: '1.1-1' }} ({{
-                          compared.changePercent | signedPercent
-                        }})
-                      </span>
-                    </div>
                     <div class="comparison-charts">
                       <section
                         class="comparison-chart"
                         [attr.aria-label]="active.symbol + ' price chart'"
                       >
+                        <ng-template #comparisonHeaderLeft>
+                          <div class="comparison-price-label-left">
+                            <span class="text-xs font-semibold">{{ active.symbol }}</span>
+                            <span
+                              class="tick-price text-xs font-semibold tabular-nums"
+                              [class.tick-price-gain]="
+                                tickAnimations().get(active.symbol)?.direction === 'gain'
+                              "
+                              [class.tick-price-loss]="
+                                tickAnimations().get(active.symbol)?.direction === 'loss'
+                              "
+                              [class.tick-animation-even]="
+                                (tickAnimations().get(active.symbol)?.revision ?? 1) % 2 === 0
+                              "
+                              [style.animation-duration.ms]="
+                                tickAnimations().get(active.symbol)?.durationMs
+                              "
+                            >
+                              {{ active.price | currency: 'USD' : 'symbol' : '1.2-2' }}
+                            </span>
+                            <span
+                              class="text-xs font-semibold tabular-nums"
+                              [class]="active.change >= 0 ? 'text-gain' : 'text-loss'"
+                            >
+                              {{ active.change | currency: 'USD' : 'symbol' : '1.2-2' }} ({{
+                                active.changePercent | signedPercent
+                              }})
+                            </span>
+                          </div>
+                        </ng-template>
+                        @if (chartStatus() !== 'ready') {
+                          <ng-container [ngTemplateOutlet]="comparisonHeaderLeft" />
+                        }
                         @switch (chartStatus()) {
                           @case ('ready') {
                             <app-price-chart
@@ -475,12 +448,21 @@
                               [enabledIndicators]="enabledIndicators()"
                               [timeframe]="chartTimeframe()"
                               timezone="America/Chicago"
-                            />
+                              [showIndicatorLabels]="false"
+                            >
+                              <ng-container
+                                chart-summary
+                                [ngTemplateOutlet]="comparisonHeaderLeft"
+                              />
+                            </app-price-chart>
                           }
                           @case ('loading') {
                             <div class="chart-message" role="status" aria-busy="true">
                               <span class="sr-only">Loading {{ active.symbol }} candles…</span>
-                              <span class="skeleton flex-1 self-stretch rounded-lg" aria-hidden="true"></span>
+                              <span
+                                class="skeleton flex-1 self-stretch rounded-lg"
+                                aria-hidden="true"
+                              ></span>
                             </div>
                           }
                           @case ('empty') {
@@ -499,6 +481,39 @@
                         class="comparison-chart"
                         [attr.aria-label]="compared.symbol + ' price chart'"
                       >
+                        <ng-template #comparisonHeaderRight>
+                          <div class="comparison-price-label-right">
+                            <span class="text-xs font-semibold">{{ compared.symbol }}</span>
+                            <span
+                              class="tick-price text-xs font-semibold tabular-nums"
+                              [class.tick-price-gain]="
+                                tickAnimations().get(compared.symbol)?.direction === 'gain'
+                              "
+                              [class.tick-price-loss]="
+                                tickAnimations().get(compared.symbol)?.direction === 'loss'
+                              "
+                              [class.tick-animation-even]="
+                                (tickAnimations().get(compared.symbol)?.revision ?? 1) % 2 === 0
+                              "
+                              [style.animation-duration.ms]="
+                                tickAnimations().get(compared.symbol)?.durationMs
+                              "
+                            >
+                              {{ compared.price | currency: 'USD' : 'symbol' : '1.2-2' }}
+                            </span>
+                            <span
+                              class="text-xs font-semibold tabular-nums"
+                              [class]="compared.change >= 0 ? 'text-gain' : 'text-loss'"
+                            >
+                              {{ compared.change | currency: 'USD' : 'symbol' : '1.2-2' }} ({{
+                                compared.changePercent | signedPercent
+                              }})
+                            </span>
+                          </div>
+                        </ng-template>
+                        @if (comparisonChartStatus() !== 'ready') {
+                          <ng-container [ngTemplateOutlet]="comparisonHeaderRight" />
+                        }
                         @switch (comparisonChartStatus()) {
                           @case ('ready') {
                             <app-price-chart
@@ -512,12 +527,21 @@
                               [enabledIndicators]="enabledIndicators()"
                               [timeframe]="comparisonTimeframe()"
                               timezone="America/Chicago"
-                            />
+                              [showIndicatorLabels]="false"
+                            >
+                              <ng-container
+                                chart-summary
+                                [ngTemplateOutlet]="comparisonHeaderRight"
+                              />
+                            </app-price-chart>
                           }
                           @case ('loading') {
                             <div class="chart-message" role="status" aria-busy="true">
                               <span class="sr-only">Loading {{ compared.symbol }} candles…</span>
-                              <span class="skeleton flex-1 self-stretch rounded-lg" aria-hidden="true"></span>
+                              <span
+                                class="skeleton flex-1 self-stretch rounded-lg"
+                                aria-hidden="true"
+                              ></span>
                             </div>
                           }
                           @case ('empty') {
@@ -552,7 +576,10 @@
                       @case ('loading') {
                         <div class="chart-message" role="status" aria-busy="true">
                           <span class="sr-only">Loading candles…</span>
-                          <span class="skeleton flex-1 self-stretch rounded-lg" aria-hidden="true"></span>
+                          <span
+                            class="skeleton flex-1 self-stretch rounded-lg"
+                            aria-hidden="true"
+                          ></span>
                         </div>
                       }
                       @case ('empty') {
@@ -583,11 +610,14 @@
                       <ng-icon class="chevron-rotate" name="lucideChevronRight" />
                     </button>
                     <div
-                      class="bg-muted flex gap-0.5 rounded-lg p-0.5"
+                      class="insight-tabs bg-muted flex gap-0.5 rounded-lg p-0.5"
                       role="tablist"
                       aria-label="Instrument tools"
                     >
-                      @for (tab of ['overview', 'news', 'ai', 'recent-orders']; track tab) {
+                      @for (
+                        tab of ['trading', 'recent-orders'];
+                        track tab
+                      ) {
                         <button
                           type="button"
                           role="tab"
@@ -600,17 +630,106 @@
                           [attr.aria-selected]="insightTab() === tab"
                           (click)="insightTab.set($any(tab))"
                         >
-                          {{
-                            tab === 'ai'
-                              ? 'AI'
-                              : tab === 'recent-orders'
-                                ? 'Recent Orders'
-                                : (tab | titlecase)
-                          }}
+                          {{ tab === 'recent-orders' ? 'Recent Orders' : 'Trading' }}
                         </button>
                       }
                     </div>
                   </div>
+                </div>
+                <div
+                  class="trading-content insight-content"
+                  role="tabpanel"
+                  aria-label="Trading"
+                  [hidden]="insightTab() !== 'trading'"
+                >
+                  <section
+                    class="account-value-panel"
+                    aria-label="Trading account"
+                    data-testid="account-value-panel"
+                  >
+                    <dl class="account-value-balances">
+                      <div class="overview-card account-balance-card account-cash-card">
+                        <dt class="text-muted-foreground text-xs">Available cash</dt>
+                        <dd class="text-xl font-semibold tabular-nums" data-testid="available-cash">
+                          @if (accountStore.status() === 'ready') {
+                            {{ availableCash() | currency: 'USD' }}
+                          } @else if (accountsLoading()) {
+                            <span class="skeleton h-7 w-24" aria-hidden="true"></span>
+                          } @else {
+                            <span aria-label="Balance unavailable">—</span>
+                          }
+                        </dd>
+                      </div>
+                      <div class="overview-card account-balance-card account-portfolio-card">
+                        <dt class="text-muted-foreground text-xs">Portfolio value</dt>
+                        <dd
+                          class="text-xl font-semibold tabular-nums"
+                          data-testid="account-portfolio-value"
+                        >
+                          @if (
+                            accountStore.status() === 'ready' && accountStore.selectedAccount()
+                          ) {
+                            {{
+                              portfolioValues().get(accountStore.selectedAccountId()!) ?? 0
+                                | currency: 'USD'
+                            }}
+                          } @else if (accountsLoading()) {
+                            <span class="skeleton h-7 w-24" aria-hidden="true"></span>
+                          } @else {
+                            <span aria-label="Balance unavailable">—</span>
+                          }
+                        </dd>
+                      </div>
+                    </dl>
+                    @if (accountsLoading()) {
+                      <p class="sr-only" role="status">Loading account balances…</p>
+                    }
+                    @if (accountStore.status() === 'error') {
+                      <p class="text-loss text-xs" role="alert">
+                        Accounts unavailable.
+                        <button type="button" class="text-primary" (click)="accountStore.load()">
+                          Retry accounts
+                        </button>
+                      </p>
+                    }
+                    @if (accountStore.status() === 'ready' && !accountStore.selectedAccount()) {
+                      <button
+                        type="button"
+                        class="text-primary text-xs"
+                        (click)="openCreateAccount()"
+                      >
+                        Create an account to trade
+                      </button>
+                    }
+                  </section>
+                  @if (orders.historyStatus() === 'error' || catalogueStatus() === 'error') {
+                    <button type="button" class="text-primary text-xs" (click)="loadTradingData()">
+                      Retry trading data
+                    </button>
+                  }
+                  @if (
+                    accountStore.status() === 'loading' ||
+                    catalogueStatus() === 'loading' ||
+                    orders.historyStatus() === 'loading'
+                  ) {
+                    <p class="text-muted-foreground text-xs">Loading trading data…</p>
+                  }
+                  <app-trade-ticket
+                    [symbol]="active.symbol"
+                    [price]="active.price"
+                    [accountId]="accountStore.selectedAccountId()?.toString() ?? ''"
+                    [cashBalance]="tradingCashBalance()"
+                    [heldShares]="heldShares()"
+                    [ready]="tradeReady()"
+                    [busy]="busy()"
+                    [message]="orderMessage()"
+                    [error]="orderError()"
+                    [refreshFailed]="refreshAccountId() !== null"
+                    (submitted)="submitOrder($event)"
+                    (refresh)="retryBalances()"
+                    [sessionId]="sessionId()"
+                    [marketTimestamp]="marketTimestamp()"
+                  />
                 </div>
                 @switch (insightTab()) {
                   @case ('recent-orders') {
@@ -656,300 +775,8 @@
                       </ul>
                     </div>
                   }
-                  @case ('overview') {
-                    <div class="insight-content insight-feed overview-feed">
-                      <div class="overview-card-list">
-                        <article class="overview-card">
-                          <div class="overview-card-topline">
-                            <div class="overview-card-icon" aria-hidden="true">
-                              <ng-icon name="lucideTrendingUp" />
-                            </div>
-                            <div class="overview-card-heading">
-                              <span>Trend</span>
-                              <strong>Positive</strong>
-                            </div>
-                          </div>
-                          <div
-                            class="overview-progress overview-progress-positive"
-                            role="progressbar"
-                            aria-label="Trend level"
-                            aria-valuemin="0"
-                            aria-valuemax="5"
-                            aria-valuenow="4"
-                          >
-                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
-                              <span [class.overview-progress-filled]="segment <= 4"></span>
-                            }
-                          </div>
-                        </article>
-                        <article class="overview-card">
-                          <div class="overview-card-topline">
-                            <div class="overview-card-icon" aria-hidden="true">
-                              <ng-icon name="lucideUsersRound" />
-                            </div>
-                            <div class="overview-card-heading">
-                              <span>Popularity</span>
-                              <strong>Above average</strong>
-                            </div>
-                          </div>
-                          <div
-                            class="overview-progress"
-                            role="progressbar"
-                            aria-label="Popularity level"
-                            aria-valuemin="0"
-                            aria-valuemax="5"
-                            aria-valuenow="4"
-                          >
-                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
-                              <span [class.overview-progress-filled]="segment <= 4"></span>
-                            }
-                          </div>
-                        </article>
-                        <article class="overview-card">
-                          <div class="overview-card-topline">
-                            <div class="overview-card-icon" aria-hidden="true">
-                              <ng-icon name="lucideShieldCheck" />
-                            </div>
-                            <div class="overview-card-heading">
-                              <span>Short-term risk</span>
-                              <strong class="overview-risk">Moderate</strong>
-                            </div>
-                          </div>
-                          <div
-                            class="overview-progress overview-progress-risk"
-                            role="progressbar"
-                            aria-label="Short-term risk level"
-                            aria-valuemin="0"
-                            aria-valuemax="5"
-                            aria-valuenow="3"
-                          >
-                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
-                              <span [class.overview-progress-filled]="segment <= 3"></span>
-                            }
-                          </div>
-                        </article>
-                        <article class="overview-card">
-                          <div class="overview-card-topline">
-                            <div class="overview-card-icon" aria-hidden="true">
-                              <ng-icon name="lucideMessageSquareText" />
-                            </div>
-                            <div class="overview-card-heading">
-                              <span>Sentiment</span>
-                              <strong>Bullish</strong>
-                            </div>
-                          </div>
-                          <div
-                            class="overview-progress overview-progress-positive"
-                            role="progressbar"
-                            aria-label="Sentiment level"
-                            aria-valuemin="0"
-                            aria-valuemax="5"
-                            aria-valuenow="4"
-                          >
-                            @for (segment of [1, 2, 3, 4, 5]; track segment) {
-                              <span [class.overview-progress-filled]="segment <= 4"></span>
-                            }
-                          </div>
-                        </article>
-                      </div>
-                      <aside class="overview-summary">
-                        <div class="overview-summary-content">
-                          <strong>Session brief</strong>
-                          <p>
-                            {{ active.symbol }} shows steady strength, elevated activity, and
-                            positive sentiment with moderate near-term risk.
-                          </p>
-                          <p>
-                            Support is forming near
-                            {{ marketStats().low | currency: 'USD' }}, while simulated participation
-                            remains above average. Signal scores are illustrative.
-                          </p>
-                        </div>
-                      </aside>
-                    </div>
-                  }
-                  @case ('news') {
-                    <div class="insight-content insight-feed news-feed">
-                      <header class="insight-intro">
-                        <strong>Latest headlines</strong>
-                      </header>
-                      <div class="news-list" aria-label="Simulated market headlines">
-                        @for (story of demoNews; track story.title) {
-                          <article class="news-story">
-                            <div class="news-meta">
-                              <time>{{ story.age }}</time>
-                              <span>{{ story.category }}</span>
-                            </div>
-                            <div class="news-story-heading">
-                              <h3>
-                                @if (story.includeSymbol) {
-                                  {{ active.symbol }} {{ story.title }}
-                                } @else {
-                                  {{ story.title }}
-                                }
-                              </h3>
-                              <span class="news-arrow" aria-hidden="true">›</span>
-                            </div>
-                          </article>
-                        }
-                      </div>
-                    </div>
-                  }
-                  @case ('ai') {
-                    <div class="insight-content flex min-h-0 flex-col pt-2">
-                      @if (aiMessages().length) {
-                        <div class="min-h-0 flex-1 space-y-3 overflow-auto py-2" aria-live="polite">
-                          @for (message of aiMessages(); track $index) {
-                            <div
-                              class="max-w-[92%] rounded-lg px-3 py-2 text-xs/5"
-                              [class]="
-                                message.role === 'user'
-                                  ? 'bg-primary/15 text-foreground ml-auto'
-                                  : 'bg-white/5 text-muted-foreground mr-auto'
-                              "
-                            >
-                              {{ message.text }}
-                            </div>
-                          }
-                        </div>
-                      } @else {
-                        <div
-                          class="flex min-h-0 flex-1 flex-col items-center justify-center px-5 text-center"
-                        >
-                          <ng-icon
-                            name="lucideBotMessageSquare"
-                            class="text-muted-foreground mb-4 text-4xl"
-                          />
-                          <strong class="text-base font-semibold"
-                            >Ask about {{ active.symbol }}</strong
-                          >
-                          <p class="text-muted-foreground mt-1 max-w-56 text-xs/5">
-                            Explore the chart, price movement, volume, or market terminology.
-                          </p>
-                        </div>
-                      }
-                      <form
-                        method="post"
-                        class="mt-2 flex min-h-11 items-center gap-2 rounded-lg border border-white/10 bg-[#202020] p-1.5 pl-3 focus-within:border-primary/40"
-                        (submit)="submitAiPrompt($event, active.symbol)"
-                      >
-                        <input
-                          type="text"
-                          class="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-white/30"
-                          [value]="aiDraft()"
-                          [placeholder]="'Ask about ' + active.symbol"
-                          aria-label="Ask market AI"
-                          (input)="aiDraft.set($any($event.target).value)"
-                        />
-                        <button
-                          type="submit"
-                          class="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-md disabled:cursor-not-allowed disabled:opacity-30"
-                          [disabled]="!aiDraft().trim()"
-                          aria-label="Send question"
-                          title="Send question"
-                        >
-                          <ng-icon name="lucideSendHorizontal" />
-                        </button>
-                      </form>
-                    </div>
-                  }
                 }
               </section>
-
-              <section
-                class="account-value-panel"
-                aria-label="Trading account"
-                data-testid="account-value-panel"
-              >
-                <app-account-control
-                  data-testid="account-dropdown"
-                  class="account-control-expanded"
-                  [expanded]="true"
-                  [store]="accountStore"
-                  [portfolioValues]="portfolioValues()"
-                  [open]="openHeaderDropdown() === 'account'"
-                  (openChange)="openHeaderDropdown.set($event ? 'account' : null)"
-                  (selected)="selectAccount($event)"
-                  (create)="openCreateAccount()"
-                  (rename)="openRenameAccount($event)"
-                />
-                <dl class="account-value-balances">
-                  <div class="overview-card account-balance-card account-cash-card">
-                    <dt class="text-muted-foreground text-xs">Available cash</dt>
-                    <dd class="text-xl font-semibold tabular-nums" data-testid="available-cash">
-                      @if (accountStore.status() === 'ready') {
-                        {{ availableCash() | currency: 'USD' }}
-                      } @else if (accountsLoading()) {
-                        <span class="skeleton h-7 w-24" aria-hidden="true"></span>
-                      } @else {
-                        <span aria-label="Balance unavailable">—</span>
-                      }
-                    </dd>
-                  </div>
-                  <div class="overview-card account-balance-card account-portfolio-card">
-                    <dt class="text-muted-foreground text-xs">Portfolio value</dt>
-                    <dd
-                      class="text-xl font-semibold tabular-nums"
-                      data-testid="account-portfolio-value"
-                    >
-                      @if (accountStore.status() === 'ready' && accountStore.selectedAccount()) {
-                        {{
-                          portfolioValues().get(accountStore.selectedAccountId()!) ?? 0
-                            | currency: 'USD'
-                        }}
-                      } @else if (accountsLoading()) {
-                        <span class="skeleton h-7 w-24" aria-hidden="true"></span>
-                      } @else {
-                        <span aria-label="Balance unavailable">—</span>
-                      }
-                    </dd>
-                  </div>
-                </dl>
-                @if (accountsLoading()) {
-                  <p class="sr-only" role="status">Loading account balances…</p>
-                }
-                @if (accountStore.status() === 'error') {
-                  <p class="text-loss text-xs" role="alert">
-                    Accounts unavailable.
-                    <button type="button" class="text-primary" (click)="accountStore.load()">
-                      Retry accounts
-                    </button>
-                  </p>
-                }
-                @if (accountStore.status() === 'ready' && !accountStore.selectedAccount()) {
-                  <button type="button" class="text-primary text-xs" (click)="openCreateAccount()">
-                    Create an account to trade
-                  </button>
-                }
-              </section>
-              @if (orders.historyStatus() === 'error' || catalogueStatus() === 'error') {
-                <button type="button" class="text-primary text-xs" (click)="loadTradingData()">
-                  Retry trading data
-                </button>
-              }
-              @if (
-                accountStore.status() === 'loading' ||
-                catalogueStatus() === 'loading' ||
-                orders.historyStatus() === 'loading'
-              ) {
-                <p class="text-muted-foreground text-xs">Loading trading data…</p>
-              }
-              <app-trade-ticket
-                [symbol]="active.symbol"
-                [price]="active.price"
-                [accountId]="accountStore.selectedAccountId()?.toString() ?? ''"
-                [cashBalance]="tradingCashBalance()"
-                [heldShares]="heldShares()"
-                [ready]="tradeReady()"
-                [busy]="busy()"
-                [message]="orderMessage()"
-                [error]="orderError()"
-                [refreshFailed]="refreshAccountId() !== null"
-                (submitted)="submitOrder($event)"
-                (refresh)="retryBalances()"
-                [sessionId]="sessionId()"
-                [marketTimestamp]="marketTimestamp()"
-              />
             </aside>
           </div>
         }
@@ -973,3 +800,9 @@
 @if (termsRequired()) {
   <app-terms-dialog [signatureName]="termsSignatureName()" (declined)="onSignOut()" />
 }
+
+<app-order-editor
+  [instruments]="instruments()"
+  [sessionId]="sessionId()"
+  [marketTimestamp]="marketTimestamp()"
+/>

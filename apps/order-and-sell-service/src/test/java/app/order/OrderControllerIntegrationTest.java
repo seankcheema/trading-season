@@ -61,6 +61,9 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppC
 @ActiveProfiles("test")
 @Tag("integration")
 class OrderControllerIntegrationTest {
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private app.order.execution.ExecutionQuoteSource quoteSource;
+
 
     @Autowired private WebApplicationContext webApplicationContext;
     @Autowired private UserRepository userRepository;
@@ -82,6 +85,9 @@ class OrderControllerIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal("20.00"), 1L,
+                        java.time.OffsetDateTime.parse("2026-01-05T15:00:00Z")));
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
         auditTrailRepository.deleteAll();
         holdingMovementRepository.deleteAll();
@@ -144,6 +150,8 @@ class OrderControllerIntegrationTest {
         for (String replayTime : List.of("2026-01-06T17:00:00Z", "2026-01-05T16:00:00Z")) {
             String payload = body("BUY", "1", "20.00").trim();
             payload = payload.substring(0, payload.length() - 1) + ", \"simulatedAt\": \"" + replayTime + "\"}";
+            org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                    .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal("20.00"), 1L, OffsetDateTime.parse(replayTime)));
             mockMvc.perform(post("/api/orders").with(tokenFor(user.getUserId()))
                     .contentType(MediaType.APPLICATION_JSON).content(payload))
                     .andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("FILLED"))
@@ -316,6 +324,57 @@ class OrderControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].quantity").value(7));
+    }
+
+    @Test
+    void orderAuditReturnsTheOwnersTimelineOldestFirstWithPriceAndRealTimestamps() throws Exception {
+        Integer orderId = JsonPath.read(submit("BUY", "10", "20.00")
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.orderId");
+
+        mockMvc.perform(get("/api/orders/{orderId}/audit", orderId).with(tokenFor(user.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(3)))
+                .andExpect(jsonPath("$[0].eventType").value("PENDING"))
+                .andExpect(jsonPath("$[1].eventType").value("ACCEPTED"))
+                .andExpect(jsonPath("$[2].eventType").value("FILLED"))
+                .andExpect(jsonPath("$[0].price").value(20.00))
+                .andExpect(jsonPath("$[0].occurredAt").value(notNullValue()))
+                .andExpect(jsonPath("$[2].occurredAt").value(notNullValue()));
+    }
+
+    @Test
+    void orderAuditDoesNotRevealAnotherUsersOrder() throws Exception {
+        Integer orderId = JsonPath.read(submit("BUY", "10", "20.00")
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.orderId");
+        UUID strangerId = givenAnOrderBelongingToAnotherUser();
+
+        mockMvc.perform(get("/api/orders/{orderId}/audit", orderId).with(tokenFor(strangerId)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void readsOneOwnedOrderAndHidesAnotherUsersOrder() throws Exception {
+        Integer orderId = JsonPath.read(submit("BUY", "10", "20.00")
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.orderId");
+
+        mockMvc.perform(get("/api/orders/{orderId}", orderId).with(tokenFor(user.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.orderId").value(orderId))
+                .andExpect(jsonPath("$.status").value("FILLED"));
+        mockMvc.perform(get("/api/orders/{orderId}", orderId).with(tokenFor(givenAnOrderBelongingToAnotherUser())))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void aFilledOrderCanNeitherBeCancelledNorReplaced() throws Exception {
+        Integer orderId = JsonPath.read(submit("BUY", "10", "20.00")
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.orderId");
+
+        mockMvc.perform(post("/api/orders/{orderId}/cancel", orderId).with(tokenFor(user.getUserId())))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/orders/{orderId}/replace", orderId).with(tokenFor(user.getUserId()))
+                        .contentType(MediaType.APPLICATION_JSON).content(body("BUY", "5", "20.00")))
+                .andExpect(status().is4xxClientError());
     }
 
     @Test
@@ -527,8 +586,11 @@ class OrderControllerIntegrationTest {
         return bodyFor(account.getAccountId(), instrument.getInstrumentId(), type, quantity, price);
     }
 
-    private static String bodyFor(Integer accountId, Integer instrumentId, String type,
+    private String bodyFor(Integer accountId, Integer instrumentId, String type,
                                   String quantity, String price) {
+        org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(new BigDecimal(price), 1L,
+                        java.time.OffsetDateTime.parse("2026-01-05T15:00:00Z")));
         return """
                 {"accountId": %d, "instrumentId": %d, "orderType": "%s", "quantity": %s,
                  "indicativePrice": %s, "clientReference": "%s"}

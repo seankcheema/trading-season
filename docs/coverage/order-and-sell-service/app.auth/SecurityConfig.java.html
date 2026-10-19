@@ -1,167 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SecurityConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.auth</a> &gt; <span class="el_source">SecurityConfig.java</span></div><h1>SecurityConfig.java</h1><pre class="source lang-java linenums">package app.auth;
 
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
-import org.springframework.security.oauth2.core.OAuth2TokenValidator;
-import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
-import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.jwt.JwtClaimNames;
-import org.springframework.security.oauth2.jwt.JwtClaimValidator;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.JwtValidators;
-import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
-import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
-import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.web.client.RestOperations;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-
-import java.util.List;
+import org.springframework.security.config.annotation.web.configurers.AuthorizeHttpRequestsConfigurer;
 
 /**
- * Configures the backend as an OAuth2 resource server that trusts access tokens
- * issued by the NestJS auth service.
+ * Configures the Order and Sell Service as an OAuth2 resource server that trusts access
+ * tokens issued by the NestJS auth service; the token handling is in
+ * {@link ResourceServerSecurity}.
  *
- * &lt;p&gt;Tokens are RS256 JWTs. The auth service's public key is fetched from its
- * JWKS endpoint on first use and cached, so verification never calls the auth
- * service per request and this service never handles a password. The token's
- * {@code sub} claim is the user's UUID and is the only identifier shared between
- * the auth and business databases.
- *
- * &lt;p&gt;Every endpoint requires a valid bearer token except the read-only
- * simulated market endpoints. Market mutations and all user-specific
- * operations remain authenticated.
+ * &lt;p&gt;Beyond the shared rules, the Swagger UI's static web jar assets are public.
  */
 @Configuration
-public class SecurityConfig {
+public class SecurityConfig extends ResourceServerSecurity {
 
     /** Creates an instance of this class. */
-<span class="fc" id="L49">    public SecurityConfig() {</span>
-<span class="fc" id="L50">    }</span>
+<span class="fc" id="L18">    public SecurityConfig() {</span>
+<span class="fc" id="L19">    }</span>
 
-    /**
-     * Builds the security filter chain: stateless bearer-token authentication,
-     * no CSRF protection (no cookies are used), CORS for the configured origins,
-     * and JSON error bodies for authentication and authorization failures.
-     *
-     * @param http              the security builder
-     * @param errorHandler      writes 401 and 403 responses in the API error format
-     * @return the configured filter chain
-     * @throws Exception if the chain cannot be built
-     */
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityErrorHandler errorHandler)
-            throws Exception {
-<span class="fc" id="L65">        http</span>
-                // CSRF disabled: API uses stateless JWT authentication with Bearer tokens in Authorization header.
-                // CSRF attacks cannot occur because tokens are not automatically sent by browsers. NOSONAR java:S4502
-<span class="fc" id="L68">                .csrf(AbstractHttpConfigurer::disable)</span>
-<span class="fc" id="L69">                .cors(Customizer.withDefaults())</span>
-<span class="fc" id="L70">                .sessionManagement(session -&gt; session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))</span>
-<span class="fc" id="L71">                .authorizeHttpRequests(auth -&gt; auth</span>
-<span class="fc" id="L72">                        .requestMatchers(HttpMethod.GET, &quot;/api/market/**&quot;).permitAll()</span>
-<span class="fc" id="L73">                        .requestMatchers(&quot;/error&quot;).permitAll()</span>
-                        // Swagger/OpenAPI documentation paths
-<span class="fc" id="L75">                        .requestMatchers(&quot;/swagger-ui.html&quot;, &quot;/swagger-ui/**&quot;, &quot;/v3/api-docs&quot;, &quot;/v3/api-docs/**&quot;, &quot;/webjars/**&quot;).permitAll()</span>
-<span class="fc" id="L76">                        .anyRequest().authenticated())</span>
-<span class="fc" id="L77">                .oauth2ResourceServer(oauth2 -&gt; oauth2</span>
-<span class="fc" id="L78">                        .jwt(jwt -&gt; jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))</span>
-<span class="fc" id="L79">                        .authenticationEntryPoint(errorHandler)</span>
-<span class="fc" id="L80">                        .accessDeniedHandler(errorHandler))</span>
-<span class="fc" id="L81">                .exceptionHandling(exceptions -&gt; exceptions</span>
-<span class="fc" id="L82">                        .authenticationEntryPoint(errorHandler)</span>
-<span class="fc" id="L83">                        .accessDeniedHandler(errorHandler));</span>
-<span class="fc" id="L84">        return http.build();</span>
-    }
-
-    /**
-     * Creates the decoder that verifies access tokens against the auth service's JWKS.
-     *
-     * @param jwkSetUri the auth service's {@code /.well-known/jwks.json} URL
-     * @param issuer    the expected {@code iss} claim
-     * @return a decoder accepting only RS256 tokens that pass {@link #tokenValidator(String)}
-     */
-    @Bean
-    public JwtDecoder jwtDecoder(@Value(&quot;${app.auth.jwk-set-uri}&quot;) String jwkSetUri,
-                                 @Value(&quot;${app.auth.issuer}&quot;) String issuer) {
-<span class="fc" id="L97">        return buildJwtDecoder(jwkSetUri, issuer, new RestTemplate());</span>
-    }
-
-    /**
-     * Builds a JWKS-backed decoder using the given HTTP client. Separated from the
-     * bean method so tests can serve the key set without a running auth service.
-     *
-     * @param jwkSetUri     the JWKS URL
-     * @param issuer        the expected {@code iss} claim
-     * @param restOperations the client used to fetch the key set
-     * @return the configured decoder
-     */
-    static NimbusJwtDecoder buildJwtDecoder(String jwkSetUri, String issuer, RestOperations restOperations) {
-<span class="fc" id="L110">        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri)</span>
-<span class="fc" id="L111">                .jwsAlgorithm(SignatureAlgorithm.RS256)</span>
-<span class="fc" id="L112">                .restOperations(restOperations)</span>
-<span class="fc" id="L113">                .build();</span>
-<span class="fc" id="L114">        decoder.setJwtValidator(tokenValidator(issuer));</span>
-<span class="fc" id="L115">        return decoder;</span>
-    }
-
-    /**
-     * Claim checks applied after the signature is verified: {@code exp} and
-     * {@code nbf} with the default clock skew, {@code iss} equal to the configured
-     * issuer, and {@code sub} holding a UUID so it can be used as a user id.
-     *
-     * @param issuer the expected issuer
-     * @return the combined validator
-     */
-    static OAuth2TokenValidator&lt;Jwt&gt; tokenValidator(String issuer) {
-<span class="fc" id="L127">        return new DelegatingOAuth2TokenValidator&lt;&gt;(</span>
-<span class="fc" id="L128">                JwtValidators.createDefaultWithIssuer(issuer),</span>
-                new JwtClaimValidator&lt;String&gt;(JwtClaimNames.SUB, AuthenticatedUser::isUuid));
-    }
-
-    /**
-     * Maps the token's {@code roles} claim (ADMIN, TRADER or ANALYST) to {@code ROLE_}
-     * authorities so endpoints can use role-based rules.
-     *
-     * @return the authentication converter
-     */
-    static JwtAuthenticationConverter jwtAuthenticationConverter() {
-<span class="fc" id="L139">        JwtGrantedAuthoritiesConverter authorities = new JwtGrantedAuthoritiesConverter();</span>
-<span class="fc" id="L140">        authorities.setAuthoritiesClaimName(&quot;roles&quot;);</span>
-<span class="fc" id="L141">        authorities.setAuthorityPrefix(&quot;ROLE_&quot;);</span>
-<span class="fc" id="L142">        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();</span>
-<span class="fc" id="L143">        converter.setJwtGrantedAuthoritiesConverter(authorities);</span>
-<span class="fc" id="L144">        return converter;</span>
-    }
-
-    /**
-     * Allows the configured browser origins to send bearer tokens to the API.
-     *
-     * @param allowedOrigins exact origins, never a wildcard
-     * @return the CORS configuration for all paths
-     */
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource(
-            @Value(&quot;${app.cors.allowed-origins}&quot;) List&lt;String&gt; allowedOrigins) {
-<span class="fc" id="L156">        CorsConfiguration cors = new CorsConfiguration();</span>
-<span class="fc" id="L157">        cors.setAllowedOrigins(allowedOrigins);</span>
-<span class="fc" id="L158">        cors.setAllowedMethods(List.of(&quot;GET&quot;, &quot;POST&quot;, &quot;PUT&quot;, &quot;PATCH&quot;, &quot;DELETE&quot;, &quot;OPTIONS&quot;));</span>
-<span class="fc" id="L159">        cors.setAllowedHeaders(List.of(&quot;Authorization&quot;, &quot;Content-Type&quot;));</span>
-<span class="fc" id="L160">        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();</span>
-<span class="fc" id="L161">        source.registerCorsConfiguration(&quot;/**&quot;, cors);</span>
-<span class="fc" id="L162">        return source;</span>
-    }
+    @Override
+    protected void permitServiceEndpoints(
+            AuthorizeHttpRequestsConfigurer&lt;HttpSecurity&gt;.AuthorizationManagerRequestMatcherRegistry registry) {
+<span class="fc" id="L24">        registry.requestMatchers(&quot;/webjars/**&quot;).permitAll();</span>
+<span class="fc" id="L25">    }</span>
 }
-
-
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

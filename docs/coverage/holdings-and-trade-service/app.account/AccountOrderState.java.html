@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AccountOrderState.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.account</a> &gt; <span class="el_source">AccountOrderState.java</span></div><h1>AccountOrderState.java</h1><pre class="source lang-java linenums">package app.account;
+
+/** Read-only mapping of order states owned and written by Order and Sell. */
+@jakarta.persistence.Entity
+@jakarta.persistence.Table(name = &quot;orders&quot;)
+@org.hibernate.annotations.Immutable
+public class AccountOrderState {
+    /** Creates the read model for persistence. */
+<span class="nc" id="L9">    public AccountOrderState() { }</span>
+    @jakarta.persistence.Id
+    @jakarta.persistence.Column(name = &quot;order_id&quot;)
+    private Integer id;
+    @jakarta.persistence.Column(name = &quot;account_id&quot;, nullable = false)
+    private Integer accountId;
+    @jakarta.persistence.Column(nullable = false)
+    private String status;
+    @jakarta.persistence.Column(name = &quot;instrument_id&quot;)
+    private Integer instrumentId;
+    @jakarta.persistence.Column(name = &quot;reserved_cash&quot;, precision = 24, scale = 6)
+    private java.math.BigDecimal reservedCash;
+    @jakarta.persistence.Column(name = &quot;reserved_shares&quot;, precision = 14, scale = 4)
+    private java.math.BigDecimal reservedShares;
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

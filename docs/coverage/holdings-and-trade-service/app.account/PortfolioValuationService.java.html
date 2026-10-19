@@ -15,7 +15,13 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -38,7 +44,7 @@ public class PortfolioValuationService {
     private final MarketReplayService market;
     private final ApplicationEventPublisher events;
     private final Duration scheduledPublishInterval;
-<span class="fc" id="L41">    private final Map&lt;Integer, Instant&gt; lastPublished = new ConcurrentHashMap&lt;&gt;();</span>
+<span class="fc" id="L47">    private final Map&lt;Integer, Instant&gt; lastPublished = new ConcurrentHashMap&lt;&gt;();</span>
     private final Clock clock;
 
     /**
@@ -57,77 +63,78 @@ public class PortfolioValuationService {
             HoldingMovementRepository movements, PortfolioValuationRepository valuations,
             MarketReplayService market, ApplicationEventPublisher events,
             @Value(&quot;${app.events.valuation-interval-minutes:15}&quot;) long scheduledPublishIntervalMinutes) {
-<span class="fc" id="L60">        this(accounts, accountRepository, movements, valuations, market, events,</span>
-<span class="fc" id="L61">                Duration.ofMinutes(scheduledPublishIntervalMinutes), Clock.systemUTC());</span>
-<span class="fc" id="L62">    }</span>
+<span class="fc" id="L66">        this(accounts, accountRepository, movements, valuations, market, events,</span>
+<span class="fc" id="L67">                Duration.ofMinutes(scheduledPublishIntervalMinutes), Clock.systemUTC());</span>
+<span class="fc" id="L68">    }</span>
 
     PortfolioValuationService(AccountService accounts, AccountRepository accountRepository,
             HoldingMovementRepository movements, PortfolioValuationRepository valuations,
             MarketReplayService market, ApplicationEventPublisher events,
-<span class="fc" id="L67">            Duration scheduledPublishInterval, Clock clock) {</span>
-<span class="fc" id="L68">        this.accounts = accounts;</span>
-<span class="fc" id="L69">        this.accountRepository = accountRepository;</span>
-<span class="fc" id="L70">        this.movements = movements;</span>
-<span class="fc" id="L71">        this.valuations = valuations;</span>
-<span class="fc" id="L72">        this.market = market;</span>
-<span class="fc" id="L73">        this.events = events;</span>
-<span class="fc" id="L74">        this.scheduledPublishInterval = scheduledPublishInterval;</span>
-<span class="fc" id="L75">        this.clock = clock;</span>
-<span class="fc" id="L76">    }</span>
+<span class="fc" id="L73">            Duration scheduledPublishInterval, Clock clock) {</span>
+<span class="fc" id="L74">        this.accounts = accounts;</span>
+<span class="fc" id="L75">        this.accountRepository = accountRepository;</span>
+<span class="fc" id="L76">        this.movements = movements;</span>
+<span class="fc" id="L77">        this.valuations = valuations;</span>
+<span class="fc" id="L78">        this.market = market;</span>
+<span class="fc" id="L79">        this.events = events;</span>
+<span class="fc" id="L80">        this.scheduledPublishInterval = scheduledPublishInterval;</span>
+<span class="fc" id="L81">        this.clock = clock;</span>
+<span class="fc" id="L82">    }</span>
 
     /**
      * Captures a current observation after checking ownership. New accounts stay empty.
      * @param accountId owned account
      * @param userId verified caller
      * @param scheduled whether unchanged captures in the same minute should be coalesced
-     * @return observation, or null when the account has never bought shares
+     * @return observation, or null when archived or when the account has never bought shares
      * @throws AccountNotFoundException for a missing account
      * @throws app.auth.ForbiddenException for another user's account
      */
     @Transactional
     public Point capture(Integer accountId, UUID userId, boolean scheduled) {
-<span class="fc" id="L89">        accounts.getAccountForUser(accountId, userId);</span>
-<span class="fc" id="L90">        accountRepository.findByIdForUpdate(accountId)</span>
-<span class="fc" id="L91">                .orElseThrow(() -&gt; new AccountNotFoundException(accountId));</span>
-<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (!movements.hasAcquisitions(accountId)) return null;</span>
-<span class="fc" id="L93">        Instant now = clock.instant();</span>
-<span class="fc" id="L94">        Optional&lt;PortfolioValuation&gt; previous = valuations</span>
-<span class="fc" id="L95">                .findFirstByAccountIdOrderByObservedAtDescIdDesc(accountId);</span>
-<span class="fc bfc" id="L96" title="All 4 branches covered.">        if (scheduled &amp;&amp; previous.isPresent() &amp;&amp; previous.get().getObservedAt()</span>
-<span class="fc bfc" id="L97" title="All 2 branches covered.">                .truncatedTo(ChronoUnit.MINUTES).equals(now.truncatedTo(ChronoUnit.MINUTES))) {</span>
-<span class="fc" id="L98">            return point(previous.get());</span>
+<span class="fc" id="L95">        accounts.getAccountForUser(accountId, userId);</span>
+<span class="fc" id="L96">        Account locked = accountRepository.findByIdForUpdate(accountId)</span>
+<span class="fc" id="L97">                .orElseThrow(() -&gt; new AccountNotFoundException(accountId));</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">        if (!&quot;ACTIVE&quot;.equals(locked.getStatus())) return null;</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        if (!movements.hasAcquisitions(accountId)) return null;</span>
+<span class="fc" id="L100">        Instant now = clock.instant();</span>
+<span class="fc" id="L101">        Optional&lt;PortfolioValuation&gt; previous = valuations</span>
+<span class="fc" id="L102">                .findFirstByAccountIdOrderByObservedAtDescIdDesc(accountId);</span>
+<span class="fc bfc" id="L103" title="All 4 branches covered.">        if (scheduled &amp;&amp; previous.isPresent() &amp;&amp; previous.get().getObservedAt()</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                .truncatedTo(ChronoUnit.MINUTES).equals(now.truncatedTo(ChronoUnit.MINUTES))) {</span>
+<span class="fc" id="L105">            return point(previous.get());</span>
         }
-<span class="fc" id="L100">        var positions = accounts.getHoldingsForAccount(accountId, userId);</span>
-<span class="fc" id="L101">        Map&lt;String, BigDecimal&gt; prices = new HashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L102" title="All 4 branches covered.">        if (positions.stream().anyMatch(position -&gt; position.holding().getQuantity().signum() &gt; 0)) {</span>
+<span class="fc" id="L107">        var positions = accounts.getHoldingsForAccount(accountId, userId);</span>
+<span class="fc" id="L108">        Map&lt;String, BigDecimal&gt; prices = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L109" title="All 4 branches covered.">        if (positions.stream().anyMatch(position -&gt; position.holding().getQuantity().signum() &gt; 0)) {</span>
             try {
-<span class="fc" id="L104">                market.snapshot(null).stocks().forEach(stock -&gt; prices.put(stock.symbol(), stock.price()));</span>
-<span class="fc" id="L105">            } catch (MarketRequestException unavailable) {</span>
+<span class="fc" id="L111">                market.snapshot(null).stocks().forEach(stock -&gt; prices.put(stock.symbol(), stock.price()));</span>
+<span class="fc" id="L112">            } catch (MarketRequestException unavailable) {</span>
                 // An account can hold instruments not covered by the replay archive.
-<span class="fc" id="L107">            }</span>
+<span class="fc" id="L114">            }</span>
         }
-<span class="fc" id="L109">        BigDecimal value = BigDecimal.ZERO;</span>
-<span class="fc bfc" id="L110" title="All 2 branches covered.">        for (var position : positions) {</span>
-<span class="fc bfc" id="L111" title="All 2 branches covered.">            String symbol = position.instrument() == null ? &quot;&quot; : position.instrument().displaySymbol();</span>
-<span class="fc" id="L112">            BigDecimal price = prices.getOrDefault(symbol,</span>
-<span class="fc bfc" id="L113" title="All 2 branches covered.">                    position.averageCost() == null ? BigDecimal.ZERO : position.averageCost());</span>
-<span class="fc" id="L114">            value = value.add(position.holding().getQuantity().multiply(price));</span>
-<span class="fc" id="L115">        }</span>
-<span class="fc" id="L116">        PortfolioValuation saved = valuations.save(new PortfolioValuation(accountId, now, value));</span>
-<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (dueForReporting(accountId, now, scheduled)) {</span>
-<span class="fc" id="L118">            events.publishEvent(PortfolioValuationRecord.from(saved));</span>
+<span class="fc" id="L116">        BigDecimal value = BigDecimal.ZERO;</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        for (var position : positions) {</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            String symbol = position.instrument() == null ? &quot;&quot; : position.instrument().displaySymbol();</span>
+<span class="fc" id="L119">            BigDecimal price = prices.getOrDefault(symbol,</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                    position.averageCost() == null ? BigDecimal.ZERO : position.averageCost());</span>
+<span class="fc" id="L121">            value = value.add(position.holding().getQuantity().multiply(price));</span>
+<span class="fc" id="L122">        }</span>
+<span class="fc" id="L123">        PortfolioValuation saved = valuations.save(new PortfolioValuation(accountId, now, value));</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if (dueForReporting(accountId, now, scheduled)) {</span>
+<span class="fc" id="L125">            events.publishEvent(PortfolioValuationRecord.from(saved));</span>
         }
-<span class="fc" id="L120">        return point(saved);</span>
+<span class="fc" id="L127">        return point(saved);</span>
     }
 
     /** Whether this capture is raised for reporting; remembers when it is. */
     private boolean dueForReporting(Integer accountId, Instant now, boolean scheduled) {
-<span class="fc" id="L125">        Instant last = lastPublished.get(accountId);</span>
-<span class="fc bfc" id="L126" title="All 6 branches covered.">        if (scheduled &amp;&amp; last != null &amp;&amp; now.isBefore(last.plus(scheduledPublishInterval))) {</span>
-<span class="fc" id="L127">            return false;</span>
+<span class="fc" id="L132">        Instant last = lastPublished.get(accountId);</span>
+<span class="fc bfc" id="L133" title="All 6 branches covered.">        if (scheduled &amp;&amp; last != null &amp;&amp; now.isBefore(last.plus(scheduledPublishInterval))) {</span>
+<span class="fc" id="L134">            return false;</span>
         }
-<span class="fc" id="L129">        lastPublished.put(accountId, now);</span>
-<span class="fc" id="L130">        return true;</span>
+<span class="fc" id="L136">        lastPublished.put(accountId, now);</span>
+<span class="fc" id="L137">        return true;</span>
     }
 
     /**
@@ -142,32 +149,32 @@ public class PortfolioValuationService {
      */
     @Transactional(readOnly = true)
     public List&lt;Point&gt; history(Integer accountId, UUID userId, String timeframe) {
-<span class="fc" id="L145">        accounts.getAccountForUser(accountId, userId);</span>
+<span class="fc" id="L152">        accounts.getAccountForUser(accountId, userId);</span>
         MarketTimeframe range;
-<span class="fc" id="L147">        try { range = MarketTimeframe.parse(timeframe); }</span>
-<span class="fc" id="L148">        catch (MarketRequestException invalid) { throw new IllegalArgumentException(invalid.getMessage()); }</span>
-<span class="fc" id="L149">        Instant end = clock.instant();</span>
-<span class="fc" id="L150">        Map&lt;Long, Point&gt; buckets = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L151" title="All 2 branches covered.">        for (var valuation : valuations.findByAccountIdAndObservedAtBetweenOrderByObservedAtAscIdAsc(</span>
-<span class="fc" id="L152">                accountId, end.minus(range.lookback()), end)) {</span>
-<span class="fc" id="L153">            buckets.put(valuation.getObservedAt().getEpochSecond() / range.bucket().toSeconds(), point(valuation));</span>
-<span class="fc" id="L154">        }</span>
-<span class="fc" id="L155">        List&lt;Point&gt; points = new ArrayList&lt;&gt;(buckets.values());</span>
-<span class="fc bfc" id="L156" title="All 2 branches covered.">        if (points.isEmpty()) return points;</span>
-<span class="fc" id="L157">        Instant start = end.minus(range.lookback());</span>
-<span class="fc" id="L158">        Instant firstAcquisition = movements.firstAcquisitionAt(accountId);</span>
-<span class="fc bfc" id="L159" title="All 4 branches covered.">        if (firstAcquisition != null &amp;&amp; firstAcquisition.isAfter(start)</span>
-<span class="fc bfc" id="L160" title="All 2 branches covered.">                &amp;&amp; !firstAcquisition.isAfter(points.getFirst().timestamp())) {</span>
-<span class="fc" id="L161">            points.addFirst(new Point(firstAcquisition.minusMillis(1), BigDecimal.ZERO));</span>
-<span class="fc" id="L162">            points.addFirst(new Point(start, BigDecimal.ZERO));</span>
+<span class="fc" id="L154">        try { range = MarketTimeframe.parse(timeframe); }</span>
+<span class="fc" id="L155">        catch (MarketRequestException invalid) { throw new IllegalArgumentException(invalid.getMessage()); }</span>
+<span class="fc" id="L156">        Instant end = clock.instant();</span>
+<span class="fc" id="L157">        Map&lt;Long, Point&gt; buckets = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        for (var valuation : valuations.findByAccountIdAndObservedAtBetweenOrderByObservedAtAscIdAsc(</span>
+<span class="fc" id="L159">                accountId, end.minus(range.lookback()), end)) {</span>
+<span class="fc" id="L160">            buckets.put(valuation.getObservedAt().getEpochSecond() / range.bucket().toSeconds(), point(valuation));</span>
+<span class="fc" id="L161">        }</span>
+<span class="fc" id="L162">        List&lt;Point&gt; points = new ArrayList&lt;&gt;(buckets.values());</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        if (points.isEmpty()) return points;</span>
+<span class="fc" id="L164">        Instant start = end.minus(range.lookback());</span>
+<span class="fc" id="L165">        Instant firstAcquisition = movements.firstAcquisitionAt(accountId);</span>
+<span class="fc bfc" id="L166" title="All 4 branches covered.">        if (firstAcquisition != null &amp;&amp; firstAcquisition.isAfter(start)</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">                &amp;&amp; !firstAcquisition.isAfter(points.getFirst().timestamp())) {</span>
+<span class="fc" id="L168">            points.addFirst(new Point(firstAcquisition.minusMillis(1), BigDecimal.ZERO));</span>
+<span class="fc" id="L169">            points.addFirst(new Point(start, BigDecimal.ZERO));</span>
         }
-<span class="fc" id="L164">        Point latest = points.getLast();</span>
-<span class="fc bfc" id="L165" title="All 2 branches covered.">        if (latest.timestamp().isBefore(end)) points.add(new Point(end, latest.value()));</span>
-<span class="fc" id="L166">        return List.copyOf(points);</span>
+<span class="fc" id="L171">        Point latest = points.getLast();</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        if (latest.timestamp().isBefore(end)) points.add(new Point(end, latest.value()));</span>
+<span class="fc" id="L173">        return List.copyOf(points);</span>
     }
 
     private static Point point(PortfolioValuation valuation) {
-<span class="fc" id="L170">        return new Point(valuation.getObservedAt(), valuation.getValue());</span>
+<span class="fc" id="L177">        return new Point(valuation.getObservedAt(), valuation.getValue());</span>
     }
 
     /**
@@ -175,6 +182,6 @@ public class PortfolioValuationService {
      * @param timestamp real observation time
      * @param value holdings value, excluding cash
      */
-<span class="fc" id="L178">    public record Point(Instant timestamp, BigDecimal value) { }</span>
+<span class="fc" id="L185">    public record Point(Instant timestamp, BigDecimal value) { }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

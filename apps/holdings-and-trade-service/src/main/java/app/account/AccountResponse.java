@@ -12,6 +12,8 @@ import java.util.UUID;
  * @param name        the account name
  * @param cashBalance the current cash balance
  * @param openedDate  the date the account was opened
+ * @param status ACTIVE or ARCHIVED
+ * @param archivedAt archive timestamp, or null
  * @param currency    the account currency (e.g., "USD")
  */
 public record AccountResponse(
@@ -20,7 +22,9 @@ public record AccountResponse(
         String name,
         BigDecimal cashBalance,
         LocalDate openedDate,
-        String currency
+        String currency,
+        String status,
+        java.time.Instant archivedAt
 ) {
 
     /**
@@ -36,7 +40,7 @@ public record AccountResponse(
                 account.getName(),
                 account.getCashBalance(),
                 account.getOpenedDate(),
-                account.getCurrency()
+                account.getCurrency(), account.getStatus(), account.getArchivedAt()
         );
     }
 }

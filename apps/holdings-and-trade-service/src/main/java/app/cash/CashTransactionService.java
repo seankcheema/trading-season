@@ -84,6 +84,8 @@ public class CashTransactionService {
      *
      * <p>The balance row is locked before it is read, so two concurrent
      * withdrawals cannot both pass the funds check against the same balance.
+     * The earliest ACTIVE account receives the ledger row; the user lock also
+     * serializes transfers with lifecycle changes, so archived accounts stay read-only.
      *
      * @param userId the authenticated user's UUID from the token's sub claim
      * @param amount how much to move, positive
@@ -92,7 +94,7 @@ public class CashTransactionService {
      * @return the recorded ledger row
      * @throws UserNotFoundException      if the caller has not registered a profile
      * @throws AccountNotFoundException   if the caller has no account to book the row against
-     * @throws InsufficientFundsException if a withdrawal exceeds the available funds
+     * @throws InsufficientFundsException if a withdrawal exceeds cash less open BUY reservations
      * @throws IllegalArgumentException   if the amount is not positive or the reason is unknown
      */
     @Transactional
@@ -112,11 +114,14 @@ public class CashTransactionService {
 
         // The schema keys every ledger row to an account. Cash is the user's, so any
         // of their accounts would do; the first is the default opened at sign-up.
-        Account account = accountRepository.findFirstByUserIdOrderByOpenedDateAscIdAsc(userId)
-                .orElseThrow(() -> new AccountNotFoundException("No account is open for this user"));
+        Account account = accountRepository.findByUserIdOrderByOpenedDateDesc(userId).stream()
+                .filter(candidate -> "ACTIVE".equals(candidate.getStatus()))
+                .min(java.util.Comparator.comparing(Account::getOpenedDate).thenComparing(Account::getId))
+                .orElseThrow(() -> new AccountNotFoundException("No active account is open for this user"));
+        account = accountRepository.findByIdForUpdate(account.getAccountId()).orElseThrow();
 
         BigDecimal available = user.getAvailableFunds();
-        if (!deposit && amount.compareTo(available) > 0) {
+        if (!deposit && amount.compareTo(available.subtract(java.util.Objects.requireNonNullElse(accountRepository.reservedCash(userId), BigDecimal.ZERO))) > 0) {
             throw new InsufficientFundsException("Insufficient funds");
         }
 

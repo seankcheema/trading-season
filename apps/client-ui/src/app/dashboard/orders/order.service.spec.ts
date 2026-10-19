@@ -1,3 +1,4 @@
+import { ToastService } from '../../notifications/toast.service';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -64,6 +65,49 @@ describe('OrderService', () => {
     http.expectOne('/api/orders').flush([order()]);
     expect(service.historyStatus()).toBe('ready');
     expect(service.orders()).toEqual([order()]);
+  });
+
+  it('posts cancellation and immediately replaces the cached open order', () => {
+    service.loadOrders().subscribe();
+    http.expectOne('/api/orders').flush([order({ status: 'ACCEPTED', reservedCash: 200 })]);
+    service.cancelOrder(1).subscribe();
+    const cancelled = order({ status: 'CANCELLED', reservedCash: 0 });
+    http.expectOne({ method: 'POST', url: '/api/orders/1/cancel' }).flush(cancelled);
+    expect(service.orders()).toEqual([cancelled]);
+    expect(service.orders()[0].reservedCash).toBe(0);
+  });
+
+  it('opens the editor with the saved order and routes edits to atomic replacement', () => {
+    const original = order({ orderId: 1, status: 'ACCEPTED', accountId: 42, instrumentId: 7, executionType: 'LIMIT', limitPrice: 95, reservedCash: 190 });
+    service.loadOrders().subscribe(); http.expectOne('/api/orders').flush([original]);
+    service.editOrder(1); http.expectOne('/api/instruments').flush([instrument()]);
+    expect(service.editingOrder()).toEqual(original);
+    service.submitOrder({ ...BUY, replacesOrderId: 1, executionType: 'LIMIT', limitPrice: 94 }).subscribe();
+    const request = http.expectOne({ method: 'POST', url: '/api/orders/1/replace' });
+    expect(request.request.body.limitPrice).toBe(94);
+    request.flush(order({ orderId: 2, status: 'ACCEPTED', limitPrice: 94 }));
+    expect(service.orders().find((item) => item.orderId === 1)?.status).toBe('CANCELLED');
+    expect(service.orders()[0].orderId).toBe(2);
+  });
+
+  it('does not open the editor for an order that is missing or no longer open', () => {
+    service.loadOrders().subscribe();
+    http.expectOne('/api/orders').flush([order({ status: 'FILLED' })]);
+
+    service.editOrder(1);
+    service.editOrder(404);
+
+    http.expectNone('/api/instruments');
+    expect(service.editingOrder()).toBeNull();
+  });
+
+  it('retains the original cached order when a replacement is refused', () => {
+    const original = order({ status: 'ACCEPTED', reservedCash: 200 });
+    service.loadOrders().subscribe(); http.expectOne('/api/orders').flush([original]);
+    service.instruments().subscribe(); http.expectOne('/api/instruments').flush([instrument()]);
+    service.submitOrder({ ...BUY, replacesOrderId: 1, quantity: 1000 }).subscribe({ error: () => {} });
+    http.expectOne('/api/orders/1/replace').flush({ error: 'Insufficient cash' }, { status: 400, statusText: 'Bad Request' });
+    expect(service.orders()).toEqual([original]);
   });
 
   describe('instruments', () => {
@@ -341,6 +385,7 @@ describe('OrderService', () => {
       http.expectOne('/api/orders').flush([order()]);
       expect(filled).toEqual([order()]);
       expect(service.orders()[0].status).toBe('FILLED');
+      expect(TestBed.inject(ToastService).messages()[0].message).toContain('Filled 2');
       TestBed.tick();
 
       // Nothing is pending any more, so the timer stops.
@@ -367,4 +412,70 @@ describe('OrderService', () => {
     });
   });
 
+  it('tells the user when the order editor cannot load its instrument catalogue', () => {
+    service.loadOrders().subscribe();
+    http.expectOne('/api/orders').flush([order({ status: 'ACCEPTED' })]);
+    service.editOrder(1);
+    http.expectOne('/api/instruments').flush({}, { status: 500, statusText: 'Error' });
+
+    expect(service.editingOrder()).toBeNull();
+    expect(TestBed.inject(ToastService).messages()[0].message).toContain('Unable to load the order editor');
+  });
+
+  it('submits by instrument id and refuses an id the catalogue does not hold', () => {
+    service.submitOrder({ ...BUY, instrumentId: 7 }).subscribe();
+    http.expectOne('/api/instruments').flush([instrument()]);
+    http.expectOne({ method: 'POST', url: '/api/orders' }).flush(order());
+
+    let failure: unknown;
+    service.submitOrder({ ...BUY, instrumentId: 99 }).subscribe({ error: (error) => (failure = error) });
+    expect(failure).toBeInstanceOf(UnknownInstrumentError);
+  });
+
+  it('serves the cached history without a request when a refresh is not required', () => {
+    service.loadOrders().subscribe();
+    http.expectOne('/api/orders').flush([order()]);
+
+    let cached: OrderResult[] = [];
+    service.loadOrders(false).subscribe((orders) => (cached = orders));
+
+    http.expectNone('/api/orders');
+    expect(cached).toEqual([order()]);
+  });
+
+  it('skips a poll while the tab is hidden and ignores a poll that fails', () => {
+    vi.useFakeTimers();
+    try {
+      service.loadOrders().subscribe();
+      http.expectOne('/api/orders').flush([order({ status: 'ACCEPTED', resolvedAt: null })]);
+      TestBed.tick();
+
+      const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+      vi.advanceTimersByTime(PENDING_ORDER_POLL_MS);
+      http.expectNone('/api/orders');
+
+      hidden.mockReturnValue(false);
+      vi.advanceTimersByTime(PENDING_ORDER_POLL_MS);
+      http.expectOne('/api/orders').flush({}, { status: 500, statusText: 'Error' });
+      expect(service.orders()[0].status).toBe('ACCEPTED');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('names an order by number when its instrument is not in the catalogue and uses its execution price', () => {
+    vi.useFakeTimers();
+    try {
+      service.loadOrders().subscribe();
+      http.expectOne('/api/orders').flush([order({ status: 'ACCEPTED', resolvedAt: null })]);
+      TestBed.tick();
+
+      vi.advanceTimersByTime(PENDING_ORDER_POLL_MS);
+      http.expectOne('/api/orders').flush([order({ executionPrice: 101.5 })]);
+
+      expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 2 order #1 at $101.50.');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

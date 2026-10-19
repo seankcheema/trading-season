@@ -84,6 +84,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @ExtendWith(OutputCaptureExtension.class)
 @Tag("integration")
 class TradeEventFlowIntegrationTest {
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private app.order.execution.ExecutionQuoteSource quoteSource;
+
+    private Order submit(app.order.dto.OrderRequest request, java.util.UUID owner) {
+        org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new app.order.execution.ExecutionQuoteSource.Quote(request.indicativePrice(), 1L,
+                        java.time.OffsetDateTime.parse("2026-01-05T15:00:00Z")));
+        return orderService.submitOrder(request, owner);
+    }
+
 
     @Autowired
     private OrderService orderService;
@@ -172,7 +182,7 @@ class TradeEventFlowIntegrationTest {
 
     private OrderRequest order(String orderType, String quantity, String price) {
         return new OrderRequest(account.getAccountId(), instrument.getInstrumentId(), orderType,
-                new BigDecimal(quantity), new BigDecimal(price), new BigDecimal("2.0"), UUID.randomUUID(), null);
+                new BigDecimal(quantity), new BigDecimal(price), null, UUID.randomUUID(), null);
     }
 
     @Test
@@ -182,9 +192,9 @@ class TradeEventFlowIntegrationTest {
         RecordingSseEmitter browser = new RecordingSseEmitter();
         streams.register(user.getUserId(), browser);
 
-        Order filled = orderService.submitOrder(order("BUY", "100", "50.00"), user.getUserId());
+        Order filled = submit(order("BUY", "100", "50.00"), user.getUserId());
         // Sells more than the 100 just bought, so the rule pipeline rejects it before acceptance.
-        Order rejected = orderService.submitOrder(order("SELL", "500", "50.00"), user.getUserId());
+        Order rejected = submit(order("SELL", "500", "50.00"), user.getUserId());
         assertEquals(Order.STATUS_FILLED, filled.getStatus());
         assertEquals(Order.STATUS_REJECTED, rejected.getStatus());
 

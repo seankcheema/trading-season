@@ -2,6 +2,7 @@ package app.order;
 
 import app.auth.AuthenticatedUser;
 import app.order.dto.OrderRequest;
+import app.order.dto.OrderAuditEntryResponse;
 import app.order.dto.OrderResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,6 +12,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -58,7 +60,7 @@ public class OrderController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Submit an order", description = "Submits a buy or sell order and returns its outcome: "
-            + "FILLED, REJECTED, or ACCEPTED when the order was accepted but its execution failed and it stays on record. "
+            + "FILLED, REJECTED, or ACCEPTED while conditions are unmet or settlement is retryable. "
             + "Each committed status change is also published to the Kafka topic trade-events and pushed to the caller's "
             + "open GET /api/orders/stream connections.")
     public OrderResponse submitOrder(@Valid @RequestBody OrderRequest request,
@@ -83,4 +85,53 @@ public class OrderController {
                 .map(OrderResponse::from)
                 .toList();
     }
+
+    /**
+     * Lists the immutable lifecycle audit trail for one of the caller's
+     * orders. Entries are oldest first so a client can render the progression
+     * from PENDING through its current status. A missing order and an order
+     * belonging to a different caller both return 404.
+     *
+     * @param orderId the requested order id
+     * @param jwt the verified access token identifying the caller
+     * @return audit entries with the order price and their real record times
+     */
+    @GetMapping("/{orderId}/audit")
+    @Operation(summary = "Get an order audit trail", description = "Retrieves the authenticated caller's order lifecycle entries, oldest first")
+    public List<OrderAuditEntryResponse> getOwnOrderAudit(@PathVariable Integer orderId,
+                                                           @AuthenticationPrincipal Jwt jwt) {
+        Order order = orderService.getOwnOrder(orderId, AuthenticatedUser.from(jwt).userId());
+        return orderService.getOwnOrderAudit(orderId, AuthenticatedUser.from(jwt).userId()).stream()
+                .map(entry -> OrderAuditEntryResponse.from(entry, order.getIndicativePrice()))
+                .toList();
+    }
+    /** Reads one owned instruction.
+     * @param orderId order identifier
+     * @param jwt verified caller
+     * @return current order */
+    @GetMapping("/{orderId}")
+    @Operation(summary = "Get an owned order")
+    public OrderResponse getOrder(@PathVariable Integer orderId, @AuthenticationPrincipal Jwt jwt) {
+        return OrderResponse.from(orderService.getOwnOrder(orderId, AuthenticatedUser.from(jwt).userId()));
+    }
+    /** Cancels an owned open instruction.
+     * @param orderId order identifier
+     * @param jwt verified caller
+     * @return cancelled order */
+    @PostMapping("/{orderId}/cancel")
+    @Operation(summary = "Cancel an open order")
+    public OrderResponse cancel(@PathVariable Integer orderId, @AuthenticationPrincipal Jwt jwt) {
+        return OrderResponse.from(orderService.cancel(orderId, AuthenticatedUser.from(jwt).userId()));
+    }    /** Replaces an owned open order without losing it on validation failure.
+     * @param orderId original order
+     * @param request validated replacement instruction
+     * @param jwt verified caller
+     * @return replacement outcome */
+    @PostMapping("/{orderId}/replace")
+    @Operation(summary = "Edit an open order by atomic replacement")
+    public OrderResponse replace(@PathVariable Integer orderId, @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody OrderRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        return OrderResponse.from(orderService.replace(orderId, request, AuthenticatedUser.from(jwt).userId()));
+    }
+
 }

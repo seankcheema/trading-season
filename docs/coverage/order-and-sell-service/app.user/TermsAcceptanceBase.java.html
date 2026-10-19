@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TermsAcceptanceBase.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">order-and-sell-service</a> &gt; <a href="index.source.html" class="el_package">app.user</a> &gt; <span class="el_source">TermsAcceptanceBase.java</span></div><h1>TermsAcceptanceBase.java</h1><pre class="source lang-java linenums">package app.user;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Id;
+import jakarta.persistence.MappedSuperclass;
+
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+/**
+ * The columns of the {@code terms_acceptances} table, keyed by the client and
+ * the version of the platform terms they accepted. Each service's
+ * {@code TermsAcceptance} entity extends this class.
+ */
+@MappedSuperclass
+public abstract class TermsAcceptanceBase {
+
+    @Id
+    @Column(name = &quot;user_id&quot;, updatable = false, nullable = false)
+    private UUID userId;
+
+    @Id
+    @Column(name = &quot;terms_version&quot;, updatable = false, nullable = false)
+    private String termsVersion;
+
+    @Column(name = &quot;accepted_at&quot;, updatable = false, nullable = false)
+    private OffsetDateTime acceptedAt;
+
+    /** Creates an instance for a service's entity to extend. */
+<span class="nc" id="L30">    protected TermsAcceptanceBase() {</span>
+<span class="nc" id="L31">    }</span>
+
+    /**
+     * Creates an acceptance.
+     *
+     * @param userId       the client's user id
+     * @param termsVersion the version of the terms the client accepted
+     * @param acceptedAt   when the client accepted
+     */
+<span class="nc" id="L40">    protected TermsAcceptanceBase(UUID userId, String termsVersion, OffsetDateTime acceptedAt) {</span>
+<span class="nc" id="L41">        this.userId = userId;</span>
+<span class="nc" id="L42">        this.termsVersion = termsVersion;</span>
+<span class="nc" id="L43">        this.acceptedAt = acceptedAt;</span>
+<span class="nc" id="L44">    }</span>
+
+    /**
+     * Returns the client's user id.
+     *
+     * @return the user id
+     */
+    public UUID getUserId() {
+<span class="nc" id="L52">        return userId;</span>
+    }
+
+    /**
+     * Returns the version of the terms the client accepted.
+     *
+     * @return the terms version
+     */
+    public String getTermsVersion() {
+<span class="nc" id="L61">        return termsVersion;</span>
+    }
+
+    /**
+     * Returns when the client accepted.
+     *
+     * @return the acceptance time
+     */
+    public OffsetDateTime getAcceptedAt() {
+<span class="nc" id="L70">        return acceptedAt;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

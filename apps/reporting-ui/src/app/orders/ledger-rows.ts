@@ -108,3 +108,35 @@ export function ledgerSortValue(row: LedgerRow, key: LedgerSortKey): string | nu
       return row[key];
   }
 }
+
+// The columns of an exported orders table.
+export const LEDGER_CSV_HEADER = [
+  'Order',
+  'Time',
+  'Customer',
+  'Account',
+  'Asset',
+  'Side',
+  'Qty',
+  'Fill price',
+  'Amount',
+  'Status',
+  'Client reference',
+];
+
+// One row as an export lists it, in the order of LEDGER_CSV_HEADER.
+export function ledgerCsvRow(row: LedgerRow): unknown[] {
+  return [
+    row.order ? row.id : '',
+    row.at,
+    row.userName,
+    row.accountName,
+    row.symbol,
+    row.side,
+    row.quantity ?? '',
+    row.price ?? '',
+    row.amount ?? '',
+    row.status,
+    row.reference,
+  ];
+}

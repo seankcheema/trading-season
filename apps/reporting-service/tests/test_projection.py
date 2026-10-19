@@ -403,3 +403,57 @@ class TestWhatTheConsoleMakesOfIt:
         assert (customers['sean@example.com']['cash'], customers['sean@example.com']['portfolio']) == (9000.0, 1010.0)
         assert customers['jane@example.com']['status'] == 'LOCKED'
         assert customers['jane@example.com']['failedAttempts'] == 5
+
+
+class TestAccountLifecycle:
+    def test_archival_preserves_financial_rows_and_survives_older_replay(self, customer):
+        apply_trade_event(customer, filled(7, 11, 21, 31))
+        retained = (count(customer, Order), count(customer, Fill), count(customer, CashTransaction))
+        record = dict(account(), status='ARCHIVED', archivedAt='2026-10-15T12:00:00Z')
+        apply_record(customer, record)
+        apply_record(customer, record)
+        apply_record(customer, account())
+        row = customer.get(Account, 1)
+        assert row.status == 'ARCHIVED'
+        assert stored(row.archived_at) == utc(2026, 10, 15, 12)
+        assert retained == (count(customer, Order), count(customer, Fill), count(customer, CashTransaction))
+
+    def test_unknown_status_cannot_change_account(self, customer):
+        with pytest.raises(Unusable):
+            apply_record(customer, dict(account(), status='UNKNOWN'))
+        assert customer.get(Account, 1).status == 'ACTIVE'
+
+
+    def test_status_and_archive_timestamp_must_agree(self, customer):
+        with pytest.raises(Unusable):
+            apply_record(customer, dict(account(), status='ARCHIVED'))
+        with pytest.raises(Unusable):
+            apply_record(customer, dict(account(), archivedAt='2026-10-15T12:00:00Z'))
+        assert customer.get(Account, 1).status == 'ACTIVE'
+
+
+def test_execution_snapshot_survives_old_accepted_replay(customer):
+    original = order_event(70, 'ACCEPTED', accepted_at='2026-10-05T09:30:00Z')
+    original['order'].update(executionType='STOP_LIMIT', referencePrice=100, sessionId=1,
+                             referenceAt='2026-10-05T09:30:00Z', evaluatedAt='2026-10-05T09:30:00Z',
+                             limitPrice=102, stopPrice=105, reservedCash=1020, reservedShares=0)
+    apply_trade_event(customer, original)
+    import copy
+    triggered = copy.deepcopy(original)
+    triggered['order'].update(triggerPrice=105, triggeredAt='2026-10-05T09:31:00Z', evaluatedAt='2026-10-05T09:31:00Z')
+    apply_trade_event(customer, triggered)
+    apply_trade_event(customer, original)
+    current = customer.get(Order, 70)
+    assert current.execution_type == 'STOP_LIMIT'
+    assert current.reference_price == Decimal('100')
+    assert current.reserved_cash == Decimal('1020')
+    assert stored(current.triggered_at) == utc(2026, 10, 5, 9, 31)
+    assert current.trigger_price == 105
+    cancelled = copy.deepcopy(triggered)
+    cancelled['status'] = 'CANCELLED'
+    cancelled['order'].update(reservedCash=0, resolvedAt='2026-10-05T09:32:00Z')
+    apply_trade_event(customer, cancelled)
+    apply_trade_event(customer, triggered)
+    customer.expire_all()
+    assert customer.get(Order, 70).status == 'CANCELLED'
+    assert customer.get(Order, 70).reserved_cash == Decimal('0')

@@ -34,6 +34,10 @@ export class LoginPage {
   }
 
   async signIn(email: string, password: string): Promise<void> {
+    // The production server renders this form before Angular attaches listeners.
+    // Angular removes its ngh marker when the component hydrates; a visible SSR
+    // input alone is not enough to safely fill or submit the form.
+    await this.page.locator('app-login:not([ngh])').waitFor();
     await this.email.fill(email);
     await this.password.fill(password);
     await this.submit.click();
@@ -88,6 +92,7 @@ export class RegisterPage {
 
   /** Fills every field without submitting, so a test can inspect the form first. */
   async fill(account: TestAccount): Promise<void> {
+    await this.page.locator('app-register:not([ngh])').waitFor();
     await this.firstName.fill(account.firstName);
     await this.middleName.fill(account.middleName);
     await this.lastName.fill(account.lastName);

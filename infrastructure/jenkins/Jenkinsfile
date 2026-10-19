@@ -99,7 +99,7 @@ pipeline {
                         dir('apps/holdings-and-trade-service') {
                             sh '''
                                 set -eu
-                                mvn -B -Dmaven.repo.local="$WORKSPACE/.m2/holdings-and-trade-service" clean test
+                                sh "$WORKSPACE/infrastructure/jenkins/maven-retry.sh" -B -Dmaven.repo.local="$WORKSPACE/.m2/holdings-and-trade-service" clean test
                                 test -s target/site/jacoco/jacoco.xml
                             '''
                         }
@@ -120,7 +120,7 @@ pipeline {
                         dir('apps/order-and-sell-service') {
                             sh '''
                                 set -eu
-                                mvn -B -Dmaven.repo.local="$WORKSPACE/.m2/order-and-sell-service" clean test
+                                sh "$WORKSPACE/infrastructure/jenkins/maven-retry.sh" -B -Dmaven.repo.local="$WORKSPACE/.m2/order-and-sell-service" clean test
                                 test -s target/site/jacoco/jacoco.xml
                             '''
                         }
@@ -300,19 +300,25 @@ pipeline {
                             dir('db/tools') {
                                 sh '''
                                     set -eu
-                                    docker run --rm \
+                                    sh ../../infrastructure/jenkins/with-disposable-postgres.sh docker run --rm --network host \
+                                      -e EXECUTION_MIGRATION_DISPOSABLE_DATABASE_URL \
                                       -e PYTHONDONTWRITEBYTECODE=1 \
                                       -v "$(pwd)":/app \
+                                      -v "$(pwd)/../migrations":/migrations:ro \
                                       -w /app \
                                       python:3.14-slim \
                                       bash -c "
                                         # Runs as root: hand the output back to the jenkins user on any exit.
                                         trap 'chmod -R a+rwX /app' EXIT
                                         set -eu
-                                        mkdir -p reports/junit
+                                        mkdir -p reports/junit coverage
                                         python -m pip install -q -r requirements.txt
                                         python -m pytest -p no:cacheprovider tests/ -v \
-                                          --junit-xml=reports/junit/results.xml
+                                          --junit-xml=reports/junit/results.xml \
+                                          --cov=. \
+                                          --cov-report=term-missing \
+                                          --cov-report=xml:coverage/coverage.xml \
+                                          --cov-report=html:coverage/htmlcov
                                       "
                                 '''
                             }
@@ -320,7 +326,7 @@ pipeline {
                     }
                     post {
                         always {
-                            archiveArtifacts artifacts: 'db/tools/reports/**/*', allowEmptyArchive: true
+                            archiveArtifacts artifacts: 'db/tools/coverage/**/*, db/tools/reports/**/*', allowEmptyArchive: true
                             catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                                 junit testResults: 'db/tools/reports/junit/*.xml',
                                       allowEmptyResults: false,
@@ -374,24 +380,6 @@ pipeline {
             }
         }
 
-        stage('Java API Documentation') {
-            when { expression { currentBuild.currentResult == 'SUCCESS' } }
-            steps {
-                sh '''
-                    set -eu
-                    for service in holdings-and-trade-service order-and-sell-service; do
-                        mvn -B -Dmaven.repo.local="$WORKSPACE/.m2/$service" -f "apps/$service/pom.xml" org.apache.maven.plugins:maven-javadoc-plugin:3.11.2:javadoc
-                        test -s "apps/$service/target/reports/apidocs/index.html"
-                    done
-                '''
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'apps/*/target/reports/apidocs/**/*', allowEmptyArchive: false
-                }
-            }
-        }
-
         stage('SonarQube Analysis') {
             when { expression { currentBuild.currentResult == 'SUCCESS' } }
             steps {
@@ -402,6 +390,26 @@ pipeline {
                     // server under Manage Jenkins > System; the project key and
                     // name are in sonar-project.properties.
                     withSonarQubeEnv('SonarQube') {
+                        // The SonarQube container shares this host's Docker daemon
+                        // and may be stopped; start it, then wait for it to be ready.
+                        sh '''
+                            set -eu
+                            if [ "$(docker inspect --format '{{.State.Running}}' sonarqube 2>/dev/null || echo missing)" != "true" ]; then
+                                echo "SonarQube container is not running; starting it."
+                                docker start sonarqube
+                            fi
+                            STATUS_URL="${SONAR_HOST_URL:-http://localhost:9000}/api/system/status"
+                            for attempt in $(seq 1 60); do
+                                if curl --silent --max-time 10 "$STATUS_URL" | grep -q '"status":"UP"'; then
+                                    echo "SonarQube is up."
+                                    exit 0
+                                fi
+                                echo "Waiting for SonarQube to start (attempt $attempt of 60)."
+                                sleep 5
+                            done
+                            echo "SonarQube did not report UP within 5 minutes." >&2
+                            exit 1
+                        '''
                         sh """
                             set -eu
                             node infrastructure/jenkins/jacoco-to-sonar-coverage.mjs \
@@ -444,12 +452,26 @@ pipeline {
             }
         }
 
-
-
         stage('Pre-E2E Disk Cleanup') {
             steps {
-                // Reports were archived by their own stages.
-                sh 'rm -rf apps/holdings-and-trade-service/target apps/order-and-sell-service/target apps/client-ui/coverage apps/reporting-ui/coverage'
+                // Reports were archived by their own stages, and SonarQube Analysis
+                // has already imported its inputs. Each Java service's compiled
+                // classes and JaCoCo XML, and the UIs' lcov files, are still kept.
+                sh '''
+                    set -eu
+                    for service in holdings-and-trade-service order-and-sell-service; do
+                        target="apps/$service/target"
+                        [ -d "$target" ] || continue
+                        find "$target" -mindepth 1 -maxdepth 1 ! -name classes ! -name site -exec rm -rf {} +
+                        [ ! -d "$target/site" ] || find "$target/site" -mindepth 1 -maxdepth 1 ! -name jacoco -exec rm -rf {} +
+                        [ ! -d "$target/site/jacoco" ] || find "$target/site/jacoco" -mindepth 1 -maxdepth 1 ! -name jacoco.xml -exec rm -rf {} +
+                    done
+                    for coverage in apps/client-ui/coverage apps/reporting-ui/coverage; do
+                        [ -d "$coverage" ] || continue
+                        find "$coverage" -type f ! -name lcov.info -delete
+                        find "$coverage" -mindepth 1 -type d -empty -delete
+                    done
+                '''
             }
         }
 
@@ -457,50 +479,110 @@ pipeline {
             environment {
                 CI = 'true'
             }
-            steps {
-                script {
-                    env.E2E_TEST_CONTAINER = 'trading-season-e2e-' + sh(
-                        script: 'printf %s "$BUILD_TAG" | sha256sum | cut -c1-16',
-                        returnStdout: true
-                    ).trim()
+            stages {
+                stage('Prepare Playwright Image') {
+                    steps {
+                        script {
+                            env.E2E_TEST_CONTAINER = 'trading-season-e2e-' + sh(
+                                script: 'printf %s "$BUILD_TAG" | sha256sum | cut -c1-16',
+                                returnStdout: true
+                            ).trim()
+                            // The suite stages below start from this name.
+                            env.PW_IMAGE = 'trading-season-playwright:' + sh(
+                                script: '''cd apps/client-ui && node -p "require('@playwright/test/package.json').version"''',
+                                returnStdout: true
+                            ).trim() + '-python3'
+                        }
+                        // Chromium needs system libraries the agent lacks and the
+                        // jenkins user cannot install, so the suites run in a slim
+                        // Chromium-only image tagged with the @playwright/test version.
+                        // Python is in it too, for the Reporting Service.
+                        sh '''
+                            set -eu
+                            PW_VERSION="$(cd apps/client-ui && node -p "require('@playwright/test/package.json').version")"
+                            REPORTING_PW_VERSION="$(cd apps/reporting-ui && node -p "require('@playwright/test/package.json').version")"
+                            if [ "$PW_VERSION" != "$REPORTING_PW_VERSION" ]; then
+                                echo "Client UI uses @playwright/test $PW_VERSION and Reporting UI $REPORTING_PW_VERSION; the image holds browsers for one version, so they must match." >&2
+                                exit 1
+                            fi
+                            test "$PW_IMAGE" = "trading-season-playwright:${PW_VERSION}-python3"
+                            if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
+                                docker build --build-arg PLAYWRIGHT_VERSION="$PW_VERSION" \
+                                    -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
+                            fi
+                        '''
+                    }
                 }
-                dir('apps/client-ui') {
-                    sh '''
-                        set -eu
-                        # Chromium needs system libraries the agent lacks and the
-                        # jenkins user cannot install, so the suite runs in a slim
-                        # Chromium-only image tagged with the @playwright/test version.
-                        PW_VERSION="$(node -p "require('@playwright/test/package.json').version")"
-                        PW_IMAGE="trading-season-playwright:${PW_VERSION}"
-                        if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
-                            docker build --build-arg PLAYWRIGHT_VERSION="$PW_VERSION" \
-                                -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
-                        fi
-                        # The workspace (with node_modules) and the Jenkins Node are
-                        # mounted in. --user keeps output owned by jenkins and
-                        # --ipc=host avoids Chromium crashes from the small /dev/shm.
-                        # The API is stubbed, so no backend or database is needed.
-                        NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
-                        docker run --rm --name "$E2E_TEST_CONTAINER" \
-                            --user "$(id -u):$(id -g)" \
-                            --ipc=host \
-                            -v "$WORKSPACE:/workspace" \
-                            -v "$NODE_HOME:/opt/node:ro" \
-                            -e HOME=/tmp \
-                            -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-                            -e CI=true \
-                            -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
-                            -w /workspace/apps/client-ui \
-                            "$PW_IMAGE" \
-                            npm run e2e
-                    '''
+                // The suites run side by side in separate containers, each with its
+                // own network namespace, so their loopback ports cannot collide.
+                // Neither stops the other on failure (no failFast), so a failure in
+                // one does not hide the second; the stage fails if either did.
+                stage('Suites') {
+                    parallel {
+                        stage('Client UI E2E') {
+                            steps {
+                                // The API is stubbed, so no backend or database is needed.
+                                // The workspace (with node_modules) and the Jenkins Node
+                                // are mounted in. --user keeps output owned by jenkins
+                                // and --ipc=host avoids Chromium crashes from the small
+                                // /dev/shm.
+                                sh '''
+                                    set -eu
+                                    NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
+                                    docker run --rm --name "${E2E_TEST_CONTAINER}-client" \
+                                        --user "$(id -u):$(id -g)" \
+                                        --ipc=host \
+                                        -v "$WORKSPACE:/workspace" \
+                                        -v "$NODE_HOME:/opt/node:ro" \
+                                        -e HOME=/tmp \
+                                        -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+                                        -e CI=true \
+                                        -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
+                                        -w /workspace/apps/client-ui \
+                                        "$PW_IMAGE" \
+                                        npm run e2e
+                                '''
+                            }
+                        }
+                        stage('Reporting UI E2E') {
+                            steps {
+                                // The suite starts the real Reporting Service, the Auth
+                                // Service stand-in and the built app inside this one
+                                // container, on loopback ports of its own. The service's
+                                // requirements go into a venv first, as in the Reporting
+                                // Service Tests stage; Kafka and the database are not
+                                // needed, the service reads seeded files.
+                                sh '''
+                                    set -eu
+                                    NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
+                                    docker run --rm --name "${E2E_TEST_CONTAINER}-reporting" \
+                                        --user "$(id -u):$(id -g)" \
+                                        --ipc=host \
+                                        -v "$WORKSPACE:/workspace" \
+                                        -v "$NODE_HOME:/opt/node:ro" \
+                                        -e HOME=/tmp \
+                                        -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+                                        -e CI=true \
+                                        -e PYTHONDONTWRITEBYTECODE=1 \
+                                        -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
+                                        -e E2E_PYTHON=/tmp/reporting-venv/bin/python \
+                                        -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
+                                        -w /workspace/apps/reporting-ui \
+                                        "$PW_IMAGE" \
+                                        sh -c "python3 -m venv /tmp/reporting-venv && /tmp/reporting-venv/bin/pip install -q -r /workspace/apps/reporting-service/requirements.txt && npm run e2e"
+                                '''
+                            }
+                        }
+                    }
                 }
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'apps/client-ui/reports/playwright/**/*',
+                    archiveArtifacts artifacts: 'apps/client-ui/reports/playwright/**/*, apps/reporting-ui/reports/playwright/**/*',
                                       allowEmptyArchive: true
-                    junit testResults: 'apps/client-ui/reports/playwright/junit.xml',
+                    // One report per suite. A suite that could not start leaves none,
+                    // and the other still has to, or the stage reports nothing ran.
+                    junit testResults: 'apps/client-ui/reports/playwright/junit.xml, apps/reporting-ui/reports/playwright/junit.xml',
                           allowEmptyResults: false,
                           healthScaleFactor: 1.0
                 }
@@ -717,10 +799,10 @@ pipeline {
 
                     note "===== Kafka end-to-end: one order through trade-events and its three consumers, and into a reporting service with no database ====="
 
-                    # The build database is empty, so give the order something to buy.
-                    compose exec -T db psql -U trading_season -d trading_season -v ON_ERROR_STOP=1 -q -c \
-                        "INSERT INTO instruments (ticker, name, asset_class, market, currency, is_tradable) VALUES ('CIEQ', 'CI Equity', 'Equity', 'US', 'USD', true);"
-                    note "[KAFKA-E2E] instrument: CIEQ inserted for this build"
+                    # Order acceptance now requires an authoritative replay quote.
+                    compose exec -T db psql -U trading_season -d trading_season -v ON_ERROR_STOP=1 -q \
+                        < infrastructure/jenkins/market-fixture.sql
+                    note "[KAFKA-E2E] market: CIEQ instrument, completed session, candle and constant-price ticks inserted"
 
                     # Registers a trader, opens the order stream, places the order and checks
                     # each consumer's effect from inside the stack network.
@@ -812,7 +894,8 @@ pipeline {
                             fi
                         }
                         if [ -n "${E2E_TEST_CONTAINER:-}" ]; then
-                            remove_resource container "$E2E_TEST_CONTAINER" -f
+                            remove_resource container "${E2E_TEST_CONTAINER}-client" -f
+                            remove_resource container "${E2E_TEST_CONTAINER}-reporting" -f
                         fi
                         if [ -n "${MARKET_TEST_TAG:-}" ]; then
                             remove_resource container "${MARKET_TEST_TAG}-db" -f
@@ -845,13 +928,17 @@ pipeline {
                 script {
                     def cacheCleanupStatus = sh(script: '''
                         set +e
-                        PW_VERSION=""
-                        if [ -f node_modules/@playwright/test/package.json ]; then
-                            PW_VERSION="$(node -p "require('@playwright/test/package.json').version" 2>/dev/null)"
+                        # The image the end-to-end stage builds: its tag is the Playwright
+                        # version and "-python3". There is no root npm project, so the
+                        # version is read from the app whose node_modules hold it.
+                        PW_TAG=""
+                        if [ -f apps/client-ui/node_modules/@playwright/test/package.json ]; then
+                            PW_VERSION="$(cd apps/client-ui && node -p "require('@playwright/test/package.json').version" 2>/dev/null)"
+                            [ -z "$PW_VERSION" ] || PW_TAG="${PW_VERSION}-python3"
                         fi
                         # Drop Playwright images for other versions and the official images.
                         docker image ls trading-season-playwright --format '{{.Tag}}' | while read -r tag; do
-                            [ "$tag" = "$PW_VERSION" ] || docker image rm "trading-season-playwright:$tag" >/dev/null 2>&1
+                            [ "$tag" = "$PW_TAG" ] || docker image rm "trading-season-playwright:$tag" >/dev/null 2>&1
                         done
                         docker image ls mcr.microsoft.com/playwright --format '{{.Repository}}:{{.Tag}}' | while read -r image; do
                             docker image rm "$image" >/dev/null 2>&1
@@ -869,8 +956,8 @@ pipeline {
                         fi
 
                         echo "Only $((PROJECTED_KB / 1024 / 1024)) GiB will be free after workspace cleanup; removing all caches."
-                        if [ -n "$PW_VERSION" ]; then
-                            docker image rm "trading-season-playwright:$PW_VERSION" >/dev/null 2>&1
+                        if [ -n "$PW_TAG" ]; then
+                            docker image rm "trading-season-playwright:$PW_TAG" >/dev/null 2>&1
                         fi
                         docker builder prune -af 2>/dev/null
                         exit 0

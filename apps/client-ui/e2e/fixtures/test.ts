@@ -9,6 +9,12 @@ interface AuthFixtures {
    * token lifetime, or force the profile step to fail.
    */
   stubOptions: StubOptions;
+  /**
+   * Whether the browser has already finished the dashboard's first-run tour,
+   * which otherwise covers the dashboard. Set it to false to test the tour.
+   */
+  tourDone: boolean;
+  tourProgress: void;
   api: ApiStub;
   loginPage: LoginPage;
   registerPage: RegisterPage;
@@ -18,6 +24,17 @@ interface AuthFixtures {
 
 export const test = base.extend<AuthFixtures>({
   stubOptions: [{}, { option: true }],
+  tourDone: [true, { option: true }],
+
+  tourProgress: [
+    async ({ page, tourDone }, use) => {
+      if (tourDone) {
+        await page.addInitScript(() => localStorage.setItem('ts.tour.done', '1'));
+      }
+      await use();
+    },
+    { auto: true },
+  ],
 
   // Automatic so interception is always in place before the first navigation,
   // whether or not the test asks for the stub by name.

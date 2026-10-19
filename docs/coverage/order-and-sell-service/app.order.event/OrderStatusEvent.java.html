@@ -32,11 +32,11 @@ import java.util.UUID;
  *
  * @param accountId       the account the order was placed against; the message key, not part of the body
  * @param orderId         the order
- * @param status          {@code ACCEPTED}, {@code FILLED} or {@code REJECTED}
+ * @param status          ACCEPTED, FILLED, REJECTED or CANCELLED; triggering emits an updated ACCEPTED snapshot
  * @param symbol          the instrument's ticker
  * @param side            {@code BUY} or {@code SELL}
  * @param quantity        units ordered
- * @param price           the price the order was filled at, or would be; currently the indicative price
+ * @param price           actual fill quote when filled, otherwise the client display price
  * @param rejectionReason why the order was rejected, or {@code null} otherwise
  * @param occurredAt      when the order reached this status
  * @param order           the order row as committed with this status
@@ -68,8 +68,21 @@ import java.util.UUID;
      * @param acceptedAt      when the trading rules passed, or {@code null}
      * @param resolvedAt      when the order was filled or rejected, or {@code null}
      * @param simulatedAt     the replay time the client traded at, or {@code null}
+     * @param executionType persisted executionType
+     * @param limitPrice persisted limitPrice
+     * @param stopPrice persisted stopPrice
+     * @param referencePrice persisted referencePrice
+     * @param referenceAt persisted referenceAt
+     * @param sessionId persisted sessionId
+     * @param triggerPrice authoritative activation quote, null before triggering or for legacy orders
+     * @param triggeredAt persisted triggeredAt
+     * @param evaluatedAt persisted evaluatedAt
+     * @param reservedCash persisted reservedCash
+     * @param reservedShares persisted reservedShares
+     * @param executionPrice persisted executionPrice
+     * @param rejectionCode persisted rejectionCode
      */
-<span class="fc" id="L72">    public record OrderRecord(</span>
+<span class="fc" id="L85">    public record OrderRecord(</span>
             UUID clientReference,
             Integer instrumentId,
             String instrumentName,
@@ -78,7 +91,20 @@ import java.util.UUID;
             OffsetDateTime submittedAt,
             OffsetDateTime acceptedAt,
             OffsetDateTime resolvedAt,
-            OffsetDateTime simulatedAt) {
+            OffsetDateTime simulatedAt,
+            String executionType,
+            BigDecimal limitPrice,
+            BigDecimal stopPrice,
+            BigDecimal referencePrice,
+            OffsetDateTime referenceAt,
+            Long sessionId,
+            OffsetDateTime triggeredAt,
+            BigDecimal triggerPrice,
+            OffsetDateTime evaluatedAt,
+            BigDecimal reservedCash,
+            BigDecimal reservedShares,
+            BigDecimal executionPrice,
+            String rejectionCode) {
     }
 
     /**
@@ -99,7 +125,7 @@ import java.util.UUID;
      * @param quantityDelta     the signed change in units held: positive for a buy, negative for a sell
      * @param holdingQuantity   units of the instrument the account holds after the movement
      */
-<span class="fc" id="L102">    public record Execution(</span>
+<span class="fc" id="L128">    public record Execution(</span>
             UUID userId,
             Integer fillId,
             BigDecimal price,
@@ -121,7 +147,7 @@ import java.util.UUID;
      * @return the event describing that status
      */
     public static OrderStatusEvent from(Order order, Instrument instrument) {
-<span class="fc" id="L124">        return from(order, instrument, null);</span>
+<span class="fc" id="L150">        return from(order, instrument, null);</span>
     }
 
     /**
@@ -133,29 +159,42 @@ import java.util.UUID;
      * @return the event describing that status
      */
     public static OrderStatusEvent from(Order order, Instrument instrument, Execution execution) {
-<span class="fc bfc" id="L136" title="All 2 branches covered.">        OffsetDateTime occurredAt = order.getResolvedAt() != null ? order.getResolvedAt()</span>
-<span class="pc bpc" id="L137" title="1 of 2 branches missed.">                : order.getAcceptedAt() != null ? order.getAcceptedAt()</span>
-<span class="pc" id="L138">                : order.getSubmittedAt();</span>
-<span class="fc" id="L139">        return new OrderStatusEvent(</span>
-<span class="fc" id="L140">                order.getAccountId(),</span>
-<span class="fc" id="L141">                order.getOrderId(),</span>
-<span class="fc" id="L142">                order.getStatus(),</span>
-<span class="fc" id="L143">                instrument.getTicker(),</span>
-<span class="fc" id="L144">                order.getOrderType(),</span>
-<span class="fc" id="L145">                order.getQuantity(),</span>
-<span class="fc" id="L146">                order.getIndicativePrice(),</span>
-<span class="fc" id="L147">                order.getRejectionReason(),</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        OffsetDateTime occurredAt = order.getResolvedAt() != null ? order.getResolvedAt()</span>
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">                : order.getAcceptedAt() != null ? order.getAcceptedAt()</span>
+<span class="pc" id="L164">                : order.getSubmittedAt();</span>
+<span class="fc" id="L165">        return new OrderStatusEvent(</span>
+<span class="fc" id="L166">                order.getAccountId(),</span>
+<span class="fc" id="L167">                order.getOrderId(),</span>
+<span class="fc" id="L168">                order.getStatus(),</span>
+<span class="fc" id="L169">                instrument.getTicker(),</span>
+<span class="fc" id="L170">                order.getOrderType(),</span>
+<span class="fc" id="L171">                order.getQuantity(),</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">                execution != null ? execution.price() : order.getIndicativePrice(),</span>
+<span class="fc" id="L173">                order.getRejectionReason(),</span>
                 occurredAt,
                 new OrderRecord(
-<span class="fc" id="L150">                        order.getClientReference(),</span>
-<span class="fc" id="L151">                        order.getInstrumentId(),</span>
-<span class="fc" id="L152">                        instrument.getName(),</span>
-<span class="fc" id="L153">                        order.getIndicativePrice(),</span>
-<span class="fc" id="L154">                        order.getBufferPercent(),</span>
-<span class="fc" id="L155">                        order.getSubmittedAt(),</span>
-<span class="fc" id="L156">                        order.getAcceptedAt(),</span>
-<span class="fc" id="L157">                        order.getResolvedAt(),</span>
-<span class="fc" id="L158">                        order.getSimulatedAt()),</span>
+<span class="fc" id="L176">                        order.getClientReference(),</span>
+<span class="fc" id="L177">                        order.getInstrumentId(),</span>
+<span class="fc" id="L178">                        instrument.getName(),</span>
+<span class="fc" id="L179">                        order.getIndicativePrice(),</span>
+<span class="fc" id="L180">                        order.getBufferPercent(),</span>
+<span class="fc" id="L181">                        order.getSubmittedAt(),</span>
+<span class="fc" id="L182">                        order.getAcceptedAt(),</span>
+<span class="fc" id="L183">                        order.getResolvedAt(),</span>
+<span class="fc" id="L184">                        order.getSimulatedAt(),</span>
+<span class="fc" id="L185">                        order.getExecutionType(),</span>
+<span class="fc" id="L186">                        order.getLimitPrice(),</span>
+<span class="fc" id="L187">                        order.getStopPrice(),</span>
+<span class="fc" id="L188">                        order.getReferencePrice(),</span>
+<span class="fc" id="L189">                        order.getReferenceAt(),</span>
+<span class="fc" id="L190">                        order.getSessionId(),</span>
+<span class="fc" id="L191">                        order.getTriggeredAt(),</span>
+<span class="fc" id="L192">                        order.getTriggerPrice(),</span>
+<span class="fc" id="L193">                        order.getEvaluatedAt(),</span>
+<span class="fc" id="L194">                        order.getReservedCash(),</span>
+<span class="fc" id="L195">                        order.getReservedShares(),</span>
+<span class="fc" id="L196">                        order.getExecutionPrice(),</span>
+<span class="fc" id="L197">                        order.getRejectionCode()),</span>
                 execution);
     }
 }

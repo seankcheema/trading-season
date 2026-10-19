@@ -16,6 +16,8 @@ A trading simulation platform: an Angular client, two Spring Boot services for t
 | Stock Forecast | [apps/stock-forecast](apps/stock-forecast/README.md) | - | Offline Python research pipeline using real AAPL and SPY history; writes a static Trend card scorecard |
 | Database | [db](db/README.md) | 5432 | Migrations and schema for the shared `trading_season` database, and the tools that publish its history to Kafka and seed demo history |
 
+Java code that both Spring Boot services need is held once in [packages/trading-java-common](packages/trading-java-common/README.md) and compiled into each.
+
 ## Architecture
 
 ```mermaid
@@ -25,6 +27,7 @@ flowchart LR
     UI -- "/api/orders, /api/instruments" --> OS["Order and Sell Service<br/>Spring Boot :8081"]
     UI -- "all other /api/*" --> HT["Holdings and Trade Service<br/>Spring Boot :8082"]
 
+    OS -- "authoritative replay quotes" --> HT
     OS -. "cached JWKS" .-> Auth
     HT -. "cached JWKS" .-> Auth
     RS["Reporting Service<br/>Flask :8083"] -. "cached JWKS" .-> Auth
@@ -53,7 +56,7 @@ flowchart LR
 
 The UI reaches both Java services through one relative `/api` prefix that the dev proxy and the Nginx image split by path. The Java services never call the Auth Service per request: they verify tokens locally against its cached public keys. The Reporting UI calls the Auth Service and the Reporting Service through a proxy on its own origin. It never reads Kafka or the database itself, and neither does the Reporting Service read the database: its report runs are what the reporting consumer has built from `trade-events`, and its activity, customers and orders screens are answered from a read model the service builds out of the two topics' files. The report runs are served to accounts with the `ANALYST` or `ADMIN` role and the other screens to `ADMIN` only, so traders cannot use any of it; see [roles](apps/auth-service/README.md#roles).
 
-The Order and Sell Service publishes one `trade-events` message after each committed order status change (ACCEPTED, FILLED or REJECTED), keyed by account id. Three consumer groups read the topic independently:
+The Order and Sell Service publishes one `trade-events` message after each committed order status change (ACCEPTED, FILLED, REJECTED or CANCELLED), keyed by account id. A latched Stop also publishes an updated ACCEPTED snapshot. Three consumer groups read the topic independently:
 
 | Consumer group | Lives in | On each event |
 | --- | --- | --- |
@@ -129,24 +132,25 @@ sequenceDiagram
     participant K as Kafka trade-events
 
     UI->>OS: POST /api/orders
-    OS->>DB: Transaction 1: insert order as PENDING, run validation rules
+    OS->>DB: Transaction 1: snapshot quote/preference, insert PENDING, validate
     alt A rule fails
         OS->>DB: Mark REJECTED, write audit entry, commit
         OS->>K: REJECTED
     else All rules pass
-        OS->>DB: Mark ACCEPTED, commit
+        OS->>DB: Reserve resources, mark ACCEPTED, commit
         OS->>K: ACCEPTED
-        OS->>DB: Transaction 2: fill, cash, holding movement, holding, audit, mark FILLED, commit
+        Note over OS,DB: Conditional orders wait for eligible ticks or cancellation
+        OS->>DB: Transaction 2 when eligible: fill, ledger, release reservation, mark FILLED
         OS->>K: FILLED
     end
     OS-->>UI: 201 with the order outcome
 ```
 
-Acceptance and execution are separate transactions, so an order is never recorded as FILLED before its execution has committed. If execution fails, the order stays ACCEPTED with an `EXECUTION_FAILED` audit entry and the response carries that state; nothing retries it automatically. Each message is published only after its transaction commits, so a consumer never sees a status the database does not hold.
+Acceptance and execution are separate transactions, so an order is never recorded as FILLED before its execution has committed. If execution fails, the order stays ACCEPTED with an `EXECUTION_FAILED` audit entry and the response carries that state; the evaluator retries it with bounded backoff. Each message is published only after its transaction commits, so a consumer never sees a status the database does not hold.
 
 ## Data ownership
 
-Every service writes only its own tables. The schema is defined once, in [db/migrations](db/migrations), and no service runs migrations itself.
+Every service writes only its own tables. The [Order API](apps/order-and-sell-service/api.md) describes conditional execution, immutable buffers and reservations; [trading preferences](apps/holdings-and-trade-service/api.md#trading-preferences) belong to Holdings and Trade. The schema is defined once, in [db/migrations](db/migrations), and no service runs migrations itself.
 
 ```mermaid
 flowchart TB
@@ -192,7 +196,7 @@ flowchart LR
         T7["Reporting UI"]
         T8["Reporting feed tools"]
     end
-    Tests --> Docs["Javadocs"] --> Sonar["SonarQube analysis<br/>and quality gate"] --> E2E["Playwright E2E"] --> Stack["Build local<br/>Docker stack"] --> Flow["Kafka end-to-end<br/>flow"]
+    Tests --> Sonar["SonarQube analysis<br/>and quality gate"] --> E2E["Playwright E2E"] --> Stack["Build local<br/>Docker stack"] --> Flow["Kafka end-to-end<br/>flow"]
 ```
 
 ## Getting started
@@ -210,35 +214,9 @@ The UI is at http://localhost:4200 and the Reporting UI at http://localhost:4300
 
 ### Local processes (Windows)
 
-```powershell
-npm --prefix apps/client-ui ci
-npm --prefix apps/reporting-ui ci
-npm --prefix apps/auth-service ci
-python -m venv apps/reporting-service/venv
-apps/reporting-service/venv/Scripts/python -m pip install -r apps/reporting-service/requirements.txt
-Copy-Item apps/auth-service/.env.example apps/auth-service/.env
-node apps/auth-service/scripts/generate-dev-keys.mjs | Add-Content apps/auth-service/.env
-$env:SPRING_DATASOURCE_PASSWORD = 'password'
-.\scripts\start-local.ps1
-```
-
-The script starts the Client UI on 4200, the Reporting UI on 4300, the Auth Service, both Java services, the Reporting Service on 8083 and its consumer, and stops with an instruction if a project's dependencies are not installed. This needs a running `trading_season` database; see [db/README.md](db/README.md) to create and migrate one, and [apps/market-data](apps/market-data/README.md) to load synthetic market data.
+Follow the [Local setup (Windows) guide](docs/local-setup/windows.md) for terminal commands to install dependencies, configure authentication, prepare local PostgreSQL, migrate and seed data, and start the services with optional local Kafka. Docker Compose is not required.
 
 On Linux, `scripts/setup-local.sh` installs the dependencies and starts both UIs, the Auth Service and both Java services. When it starts the database from the Compose file it also starts the Compose broker and creates both topics; when it finds a local PostgreSQL it starts no broker, so start the Compose `kafka` and `kafka-init` services first. It does not start the Reporting Service or its consumer; start them as [apps/reporting-service](apps/reporting-service/README.md#local-development) describes.
-
-Reporting reads Kafka and nothing else, so everything the Reporting UI shows needs a Kafka broker on `localhost:29092`. The script handles the three cases:
-
-| Broker | What the script does |
-| --- | --- |
-| Already listening on `localhost:29092`, for example the `kafka` and `kafka-init` services of the Compose file | Uses it |
-| Not running, and `-KafkaHome` or `KAFKA_HOME` names an unpacked [Apache Kafka](https://kafka.apache.org/downloads) distribution | Starts a single-node broker from it with the JDK, keeps its data in `%LOCALAPPDATA%\trading-season\kafka`, and creates `trade-events` and the compacted `platform-records`, each with three partitions. For a machine without Docker |
-| Neither | Sets `app.events.enabled=false` on both Java services and `EVENTS_ENABLED=false` on the auth service, does not start the consumer, and warns that the Reporting UI shows nothing new |
-
-```powershell
-.\scripts\start-local.ps1 -KafkaHome C:\tools\kafka_2.13-4.1.1
-```
-
-Only what the services do while a broker is running is published. The consumer writes a report when it starts and then every minute (`-ReportIntervalMinutes`; the Compose stack uses 15), so an order placed in the Client UI appears on the Reporting UI's console within seconds and in its report runs within that time. `-SkipReporting` starts the stack without the Reporting Service and its consumer, for a machine without Python. See [apps/reporting-service](apps/reporting-service/README.md).
 
 ### History for reporting
 
@@ -275,6 +253,7 @@ Run from the repository root. There is no root npm project.
 | UI end-to-end | `npm --prefix apps/client-ui run e2e` |
 | Reporting UI build | `npm --prefix apps/reporting-ui run build` |
 | Reporting UI tests | `npm --prefix apps/reporting-ui test -- --no-watch` |
+| Reporting UI integration tests | `npm --prefix apps/reporting-ui run e2e` |
 | Holdings and Trade tests | `mvn -B -f apps/holdings-and-trade-service/pom.xml test` |
 | Order and Sell tests | `mvn -B -f apps/order-and-sell-service/pom.xml test` |
 | Auth tests and lint | `npm --prefix apps/auth-service test` and `npm --prefix apps/auth-service run lint` |

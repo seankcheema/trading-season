@@ -3,3 +3,4 @@
 psycopg[binary]==3.2.13
 confluent-kafka==2.15.1
 pytest==7.4.3
+pytest-cov==4.1.0

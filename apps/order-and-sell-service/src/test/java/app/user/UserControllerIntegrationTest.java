@@ -41,6 +41,9 @@ class UserControllerIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private jakarta.persistence.EntityManager entityManager;
+
     @BeforeEach
     void cleanDatabase() {
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
@@ -108,5 +111,26 @@ class UserControllerIntegrationTest {
         mockMvc.perform(get("/api/users/me"))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void sharedProfilePersistsExecutionPreferenceWithoutPersistingReservationSnapshot() {
+        UUID userId = UUID.randomUUID();
+        registerUser(userId, "alice", "alice@example.com");
+        User user = userRepository.findById(userId).orElseThrow();
+        user.setExecutionBufferPercent(new BigDecimal("1.25"));
+        user.setReservedCash(new BigDecimal("950.00"));
+        org.junit.jupiter.api.Assertions.assertEquals(new BigDecimal("950.00"), user.getReservedCash());
+
+        userRepository.saveAndFlush(user);
+        entityManager.clear();
+
+        User reloaded = userRepository.findById(userId).orElseThrow();
+        org.junit.jupiter.api.Assertions.assertEquals(0,
+                new BigDecimal("1.25").compareTo(reloaded.getExecutionBufferPercent()));
+        org.junit.jupiter.api.Assertions.assertEquals(BigDecimal.ZERO, reloaded.getReservedCash());
+        org.junit.jupiter.api.Assertions.assertEquals(0,
+                new BigDecimal("10000.00").compareTo(reloaded.getAvailableFunds()));
     }
 }

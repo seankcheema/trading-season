@@ -1,8 +1,6 @@
 package app.user;
 
-import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
 import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Immutable;
@@ -25,18 +23,7 @@ import java.util.UUID;
 @Immutable
 @IdClass(TermsAcceptanceId.class)
 @Table(name = "terms_acceptances")
-public class TermsAcceptance {
-
-    @Id
-    @Column(name = "user_id", updatable = false, nullable = false)
-    private UUID userId;
-
-    @Id
-    @Column(name = "terms_version", updatable = false, nullable = false)
-    private String termsVersion;
-
-    @Column(name = "accepted_at", updatable = false, nullable = false)
-    private OffsetDateTime acceptedAt;
+public class TermsAcceptance extends TermsAcceptanceBase {
 
     /**
      * Required by Hibernate.
@@ -52,35 +39,6 @@ public class TermsAcceptance {
      * @param acceptedAt   when the client accepted
      */
     public TermsAcceptance(UUID userId, String termsVersion, OffsetDateTime acceptedAt) {
-        this.userId = userId;
-        this.termsVersion = termsVersion;
-        this.acceptedAt = acceptedAt;
-    }
-
-    /**
-     * Returns the client's user id.
-     *
-     * @return the user id
-     */
-    public UUID getUserId() {
-        return userId;
-    }
-
-    /**
-     * Returns the version of the terms the client accepted.
-     *
-     * @return the terms version
-     */
-    public String getTermsVersion() {
-        return termsVersion;
-    }
-
-    /**
-     * Returns when the client accepted.
-     *
-     * @return the acceptance time
-     */
-    public OffsetDateTime getAcceptedAt() {
-        return acceptedAt;
+        super(userId, termsVersion, acceptedAt);
     }
 }

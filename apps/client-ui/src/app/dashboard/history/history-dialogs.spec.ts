@@ -2,9 +2,13 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { AccountStore } from '../accounts/account-store.service';
+import { CashTransaction } from '../accounts/account.models';
 import { InstrumentRef, OrderResult } from '../orders/order.models';
 import { OrderService } from '../orders/order.service';
 import { TransactionsDialogComponent } from './transactions-dialog.component';
+import { Subject, throwError } from 'rxjs';
+import { vi } from 'vitest';
+import { orderHistoryRow, cashHistoryRow } from '../shared/activity';
 
 const CATALOGUE: InstrumentRef[] = ['AAPL', 'MSFT'].map((symbol, index) => ({
   instrumentId: 7 + index,
@@ -64,6 +68,7 @@ describe('history dialogs', () => {
   let http: HttpTestingController;
 
   beforeEach(() => {
+    sessionStorage.clear();
     TestBed.configureTestingModule({
       providers: [provideHttpClient(), provideHttpClientTesting()],
     });
@@ -73,7 +78,7 @@ describe('history dialogs', () => {
   afterEach(() => http.verify());
 
   describe('TransactionsDialogComponent', () => {
-    const CASH = [
+    const CASH: CashTransaction[] = [
       { cashTransactionId: 1, amount: 500, reason: 'DEPOSIT', createdAt: '2026-01-05T15:00:00Z' },
       { cashTransactionId: 2, amount: 50, reason: 'WITHDRAWAL', createdAt: '2026-01-05T19:00:00Z' },
     ];
@@ -127,6 +132,7 @@ describe('history dialogs', () => {
     it('filters by type', () => {
       seedOrders();
       const fixture = open();
+      click(fixture, '[data-testid="transactions-filters"]');
       const typed = (type: string) => {
         click(fixture, `[data-testid="transactions-filter-${type}"]`);
         return rows(fixture, 'transactions-row').length;
@@ -138,10 +144,225 @@ describe('history dialogs', () => {
       expect(typed('all')).toBe(5);
     });
 
+    it('filters by status and combines it with the type filter', () => {
+      seedOrders();
+      const fixture = open();
+      const statuses = () => rows(fixture, 'transactions-row').map((row) => row.dataset['status']);
+      click(fixture, '[data-testid="transactions-filters"]');
+      click(fixture, '[data-testid="transactions-status-completed"]');
+      expect(statuses()).toEqual(['COMPLETED', 'COMPLETED']);
+      click(fixture, '[data-testid="transactions-filter-buy"]');
+      expect(statuses()).toEqual([]);
+      click(fixture, '[data-testid="transactions-filter-all"]');
+      click(fixture, '[data-testid="transactions-status-all"]');
+      expect(statuses()).toHaveLength(5);
+    });
+
+    it('filters by order kind and shows non-market kinds beside the type', () => {
+      const service = TestBed.inject(OrderService);
+      service.loadOrders().subscribe();
+      http.expectOne('/api/orders').flush([
+        order({ orderId: 1 }),
+        order({ orderId: 2, executionType: 'LIMIT', limitPrice: 95, status: 'ACCEPTED' }),
+        order({ orderId: 3, executionType: 'STOP', stopPrice: 90, status: 'ACCEPTED' }),
+      ]);
+      service.instruments().subscribe();
+      http.expectOne('/api/instruments').flush(CATALOGUE);
+      const fixture = open();
+      const ids = () => rows(fixture, 'transactions-row').length;
+      click(fixture, '[data-testid="transactions-filters"]');
+      click(fixture, '[data-testid="transactions-execution-limit"]');
+      expect(ids()).toBe(1);
+      expect(rows(fixture, 'transaction-execution').map((el) => el.textContent?.trim())).toEqual([
+        'Limit',
+      ]);
+      click(fixture, '[data-testid="transactions-execution-market"]');
+      expect(ids()).toBe(1);
+      expect(rows(fixture, 'transaction-execution')).toHaveLength(0);
+      click(fixture, '[data-testid="transactions-execution-all"]');
+      expect(ids()).toBe(5);
+    });
+
+    it('wires the header, close button, filter escape key and order menu to the dialog', () => {
+      const service = TestBed.inject(OrderService);
+      service.loadOrders().subscribe();
+      http.expectOne('/api/orders').flush([order({ orderId: 1, status: 'ACCEPTED' })]);
+      service.instruments().subscribe();
+      http.expectOne('/api/instruments').flush(CATALOGUE);
+      const fixture = open();
+      const component = fixture.componentInstance;
+      const root: HTMLElement = fixture.nativeElement;
+
+      (root.querySelector('[app-sort-header]') as HTMLElement).click();
+      fixture.detectChanges();
+      expect(component['sortDirection']()).toBe('asc');
+
+      click(fixture, '[data-testid="transactions-filters"]');
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+      root.querySelector('[data-testid="transactions-filters-panel"]')!.dispatchEvent(escape);
+      fixture.detectChanges();
+      expect(component['filtersOpen']()).toBe(false);
+
+      const edit = vi.spyOn(service, 'editOrder').mockImplementation(() => {});
+      const cancel = vi.spyOn(service, 'cancelOrder').mockReturnValue(new Subject<OrderResult>());
+      const menuItem = (name: string) =>
+        [...root.querySelectorAll<HTMLElement>('[role="menuitem"], button')].find(
+          (el) => el.textContent?.trim() === name,
+        )!;
+      // jsdom does not implement the modal dialog the cancel confirmation opens.
+      const confirmation = root.querySelector('dialog') as HTMLDialogElement;
+      confirmation.showModal = vi.fn();
+      confirmation.close = vi.fn();
+      menuItem('Edit order').click();
+      expect(edit).toHaveBeenCalledWith(1);
+      menuItem('Cancel order').click();
+      fixture.detectChanges();
+      menuItem('Confirm cancellation').click();
+      expect(cancel).toHaveBeenCalledWith(1);
+
+      const closed = vi.fn();
+      component.closed.subscribe(closed);
+      click(fixture, '[aria-label="Close recent transactions"]');
+      expect(closed).toHaveBeenCalledOnce();
+    });
+
+    it('filters by account, names the account on each row and leaves out shared cash', () => {
+      const service = TestBed.inject(OrderService);
+      service.loadOrders().subscribe();
+      http.expectOne('/api/orders').flush([
+        order({ orderId: 1, accountId: 1 }),
+        order({ orderId: 2, accountId: 2 }),
+      ]);
+      service.instruments().subscribe();
+      http.expectOne('/api/instruments').flush(CATALOGUE);
+      const fixture = open();
+      const component = fixture.componentInstance;
+      expect(rows(fixture, 'transaction-account').map((el) => el.textContent?.trim())).toEqual([
+        'All accounts',
+        'Account',
+        'Account',
+        'All accounts',
+      ]);
+      TestBed.inject(AccountStore)['_accounts'].set([
+        { accountId: 1, name: 'Main', openedDate: '2026-01-01' },
+        { accountId: 2, name: 'Growth', openedDate: '2026-01-01' },
+      ]);
+      fixture.detectChanges();
+      click(fixture, '[data-testid="transactions-filters"]');
+      const pressed = (id: string) =>
+        fixture.nativeElement
+          .querySelector(`[data-testid="transactions-account-${id}"]`)
+          .getAttribute('aria-pressed');
+      expect(pressed('all')).toBe('true');
+      click(fixture, '[data-testid="transactions-account-2"]');
+      expect(pressed('2')).toBe('true');
+      expect(pressed('all')).toBe('false');
+      expect(rows(fixture, 'transactions-row')).toHaveLength(1);
+      expect(component['activeFilters']()).toBe(1);
+      click(fixture, '[data-testid="transactions-account-1"]');
+      expect(rows(fixture, 'transactions-row')).toHaveLength(1);
+      click(fixture, '[data-testid="transactions-account-all"]');
+      expect(rows(fixture, 'transactions-row')).toHaveLength(4);
+      component['accountId'].set(2);
+      component['execution'].set('LIMIT');
+      expect(component['activeFilters']()).toBe(2);
+      fixture.detectChanges();
+      click(fixture, '[data-testid="transactions-filters-clear"]');
+      expect(component['activeFilters']()).toBe(0);
+      expect(rows(fixture, 'transactions-row')).toHaveLength(4);
+    });
+
+    it('searches asset labels and toggles sorting in both directions', () => {
+      seedOrders(); const fixture = open(); const component = fixture.componentInstance;
+      const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+      input.value = ' aapl '; input.dispatchEvent(new Event('input')); fixture.detectChanges();
+      expect(rows(fixture, 'transactions-row')).toHaveLength(2);
+      component['sortBy']('date'); expect(component['sortDirection']()).toBe('asc');
+      component['sortBy']('date'); expect(component['sortDirection']()).toBe('desc');
+      component['sortBy']('shares'); expect(component['sortKey']()).toBe('shares');
+      input.value = 'unknown'; input.dispatchEvent(new Event('input')); fixture.detectChanges();
+      expect(rows(fixture, 'transactions-row')).toHaveLength(0);
+    });
+
+    it('prevents duplicate cancellation, refreshes balances and reports failures', () => {
+      seedOrders(); const fixture = open(); const component = fixture.componentInstance;
+      const service = TestBed.inject(OrderService); const store = TestBed.inject(AccountStore);
+      const pending = new Subject<OrderResult>();
+      const cancel = vi.spyOn(service, 'cancelOrder').mockReturnValue(pending);
+      const reload = vi.spyOn(store, 'load').mockImplementation(() => {});
+      const row = orderHistoryRow(order({ status: 'ACCEPTED' }), CATALOGUE, 'Main');
+      component['cancelOrder'](cashHistoryRow(CASH[0])); expect(cancel).not.toHaveBeenCalled();
+      component['cancelOrder'](row); component['cancelOrder'](row);
+      expect(cancel).toHaveBeenCalledOnce(); expect(component['cancelling']().has(1)).toBe(true);
+      pending.next(order({ status: 'CANCELLED' }));
+      expect(component['cancelling']().size).toBe(0); expect(reload).toHaveBeenCalledWith(true);
+      cancel.mockReturnValue(throwError(() => new Error('offline')));
+      component['cancelOrder'](row); expect(component['loadError']()).toBe(true);
+      expect(component['cancelling']().size).toBe(0);
+    });
+
+    it('loads audit once, ignores cash and retries failed audit requests', () => {
+      seedOrders(); const fixture = open(); const component = fixture.componentInstance;
+      const audit = vi.spyOn(TestBed.inject(OrderService), 'orderAudit');
+      const row = orderHistoryRow(order(), CATALOGUE, 'Main');
+      component['toggleAudit'](cashHistoryRow(CASH[0])); expect(audit).not.toHaveBeenCalled();
+      component['toggleAudit'](row);
+      component['toggleAudit'](row); component['toggleAudit'](row);
+      expect(audit).toHaveBeenCalledOnce();
+      http.expectOne('/api/orders/1/audit').flush({}, { status: 503, statusText: 'Unavailable' });
+      fixture.detectChanges(); expect(component['auditErrors']().has(1)).toBe(true);
+      expect(fixture.nativeElement.textContent).toContain('Unable to load this order');
+      component['toggleAudit'](row); component['toggleAudit'](row);
+      http.expectOne('/api/orders/1/audit').flush([]); fixture.detectChanges();
+      expect(component['auditLoading']().size).toBe(0);
+      expect(component['auditErrors']().size).toBe(0);
+      expect(fixture.nativeElement.textContent).toContain('No audit events were recorded');
+      component['toggleAudit'](row); component['toggleAudit'](row);
+      expect(audit).toHaveBeenCalledTimes(2);
+    });
+
+    it.each(['REJECTED', 'EXECUTION_FAILED'])('marks %s audit failures in the loss color', (eventType) => {
+      const fixture = open();
+      expect(fixture.componentInstance['auditMarkerClass']({ eventType, price: 100, occurredAt: '', detail: null }))
+        .toBe('bg-loss');
+    });
+
+    it.each([
+      ['FILLED', 'bg-gain'],
+      ['PENDING', 'bg-pending'],
+      ['ACCEPTED', 'bg-primary'],
+    ])('marks %s audit events with %s', (eventType, expected) => {
+      const fixture = open();
+      expect(
+        fixture.componentInstance['auditMarkerClass']({ eventType, price: 100, occurredAt: '', detail: null }),
+      ).toBe(expected);
+    });
+
+    it('closes only the filter panel on Escape and clears the filters', () => {
+      seedOrders();
+      const fixture = open();
+      const component = fixture.componentInstance;
+      const event = new Event('keydown');
+      const stop = vi.spyOn(event, 'stopPropagation');
+      component['closeFilters'](event);
+      expect(stop).not.toHaveBeenCalled();
+      click(fixture, '[data-testid="transactions-filters"]');
+      click(fixture, '[data-testid="transactions-filter-buy"]');
+      click(fixture, '[data-testid="transactions-filters-clear"]');
+      expect(rows(fixture, 'transactions-row')).toHaveLength(5);
+      fixture.nativeElement.querySelector('[data-testid="transactions-filters-panel"]').previousElementSibling.click();
+      fixture.detectChanges();
+      expect(component['filtersOpen']()).toBe(false);
+      component['filtersOpen'].set(true);
+      component['closeFilters'](event);
+      expect(stop).toHaveBeenCalledOnce();
+      expect(component['filtersOpen']()).toBe(false);
+    });
+
     it('colors and signs only cash amounts', () => {
       seedOrders();
       const fixture = open();
-      const amount = (row: HTMLElement) => row.firstElementChild!.lastElementChild as HTMLElement;
+      const amount = (row: HTMLElement) => row.querySelector('[data-testid="transaction-amount"]') as HTMLElement;
       for (const row of rows(fixture, 'transactions-row')) {
         const cell = amount(row);
         if (row.dataset['status'] === 'COMPLETED') {
@@ -154,12 +375,44 @@ describe('history dialogs', () => {
       }
     });
 
-    it('does not make rows clickable', () => {
+    it('expands an order into its pending-to-final audit timeline', () => {
       seedOrders();
       const fixture = open();
+      click(fixture, '[data-testid="transactions-order-1"]');
       expect(
-        fixture.nativeElement.querySelectorAll('[data-testid="transactions-row"] button'),
-      ).toHaveLength(0);
+        fixture.nativeElement.querySelector('[data-testid="audit-trail-1"]')?.textContent,
+      ).toContain('Loading audit trail');
+      http.expectOne('/api/orders/1/audit').flush([
+        {
+          eventType: 'PENDING',
+          price: 100,
+          occurredAt: '2026-01-05T15:59:00Z',
+          detail: null,
+        },
+        {
+          eventType: 'ACCEPTED',
+          price: 100,
+          occurredAt: '2026-01-05T15:59:30Z',
+          detail: null,
+        },
+        {
+          eventType: 'FILLED',
+          price: 100,
+          occurredAt: '2026-01-05T16:00:00Z',
+          detail: 'Filled 2 @ 100.00',
+        },
+      ]);
+      fixture.detectChanges();
+
+      const trail = fixture.nativeElement.querySelector('[data-testid="audit-trail-1"]');
+      expect(trail.textContent).toContain('PENDING');
+      expect(trail.textContent).toContain('ACCEPTED');
+      expect(trail.textContent).toContain('FILLED');
+      expect(trail.textContent).toContain('$100.00');
+      expect(fixture.nativeElement.querySelector('[data-testid="transactions-order-1"]')?.getAttribute('aria-expanded')).toBe('true');
+
+      click(fixture, '[data-testid="transactions-order-1"]');
+      expect(fixture.nativeElement.querySelector('[data-testid="audit-trail-1"]')).toBeNull();
     });
 
     it('shows placeholder rows until the cash ledger arrives', () => {
@@ -171,8 +424,8 @@ describe('history dialogs', () => {
       const placeholders = rows(fixture, 'transactions-row-skeleton');
 
       expect(placeholders).toHaveLength(6);
-      // One block under each of the seven columns, hidden from a screen reader, which is told instead.
-      expect(placeholders[0].children).toHaveLength(7);
+      // Seven data placeholders, with reserved audit and action columns on either side.
+      expect(placeholders[0].children).toHaveLength(10);
       expect(placeholders[0].getAttribute('aria-hidden')).toBe('true');
       expect(table.querySelector('[role="status"]')?.textContent).toContain('Loading transactions…');
       expect(table.textContent).not.toContain('No transactions match these filters.');

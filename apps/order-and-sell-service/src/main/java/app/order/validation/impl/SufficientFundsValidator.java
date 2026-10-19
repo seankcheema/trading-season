@@ -23,8 +23,9 @@ import java.math.BigDecimal;
 @Component
 public class SufficientFundsValidator implements OrderValidator {
 
-    /** Creates an instance of this class. */
+    /** Creates a stateless validator with no dependencies to initialize. */
     public SufficientFundsValidator() {
+        // No initialization is needed; validation uses only the supplied arguments.
     }
 
     /**

@@ -22,6 +22,9 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 @Tag("unit")
 class UserServiceUnitTest {
+    @org.mockito.Mock
+    private app.account.AccountRepository reservationAccounts;
+
 
     private static final UUID USER_ID = UUID.fromString("7c9e6679-7425-40de-944b-e07fc1f90ae7");
 
@@ -39,6 +42,7 @@ class UserServiceUnitTest {
     @BeforeEach
     void setUp() {
         userService = new UserService(userRepository, userAccountRepository, termsAcceptanceRepository);
+        org.springframework.test.util.ReflectionTestUtils.setField(userService, "accounts", reservationAccounts);
     }
 
     @Test
@@ -332,5 +336,18 @@ class UserServiceUnitTest {
         user.setTraderLevel("INTERMEDIATE");
         user.setAvailableFunds(new BigDecimal("10000.00"));
         return user;
+    }
+
+    @Test void savesExecutionPreferenceUnderTheUserLock() {
+        User user = createTestUser(USER_ID);
+        when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
+        assertEquals(new BigDecimal("2.25"), userService.saveExecutionSettings(USER_ID, new ExecutionSettings(new BigDecimal("2.25"))).executionBufferPercent());
+        verify(userRepository).save(user);
+    }
+    @Test void profileIncludesCashReservedAcrossAccounts() {
+        User user = createTestUser(USER_ID);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(reservationAccounts.reservedCash(USER_ID)).thenReturn(new BigDecimal("950"));
+        assertEquals(new BigDecimal("950"), userService.getOwnAccount(USER_ID).getReservedCash());
     }
 }

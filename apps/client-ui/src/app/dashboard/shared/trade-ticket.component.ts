@@ -1,8 +1,11 @@
+import { ExecutionControlsComponent } from './execution-controls.component';
+import { ExecutionType } from '../orders/order.models';
 import { affordableShares, boundedShares, wholeShares } from './share-limits';
 import { CurrencyPipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  viewChild,
   computed,
   input,
   output,
@@ -17,6 +20,10 @@ export interface TradeTicketDraft {
   symbol: string;
   side: OrderSide;
   quantity: number;
+  executionType?: ExecutionType;
+  limitPrice?: number;
+  stopPrice?: number;
+  reservationPrice?: number;
   estimatedValue: number;
   sessionId: number | null;
   marketTimestamp: string;
@@ -25,11 +32,11 @@ export interface TradeTicketDraft {
 @Component({
   selector: 'app-trade-ticket',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CurrencyPipe],
+  imports: [CurrencyPipe, ExecutionControlsComponent],
   host: { class: 'block' },
   template: `
     <section
-      class="border-border bg-card flex h-full min-h-0 flex-col rounded-xl border p-3"
+      class="border-border bg-card dash-scroll flex h-full min-h-0 flex-col overflow-y-auto rounded-xl border p-3"
       aria-label="Order execution"
     >
       <div
@@ -63,8 +70,8 @@ export interface TradeTicketDraft {
         </button>
       </div>
 
-      <div class="border-border mt-2.5 rounded-xl border p-3">
-        <div class="flex items-center justify-between gap-4">
+      <app-execution-controls class="mt-3 block" [price]="price()" [side]="side()" [quantity]="quantity()">
+        <div shareHeader class="flex items-center justify-between gap-4">
           <label
             for="future-trade-quantity"
             class="text-muted-foreground text-xs font-medium tracking-wide uppercase"
@@ -72,7 +79,7 @@ export interface TradeTicketDraft {
           >
           <span class="text-muted-foreground text-xs tabular-nums">Max {{ maxShares() }}</span>
         </div>
-        <input
+        <input shareQuantity
           id="future-trade-quantity"
           step="1"
           [disabled]="maxShares() === 0 || busy() || !ready()"
@@ -83,23 +90,17 @@ export interface TradeTicketDraft {
           [value]="quantity()"
           (input)="onQuantityInput($event)"
         />
-        <input
+        <input shareSlider
           [disabled]="busy() || !ready()"
           type="range"
           min="0"
           [max]="maxShares()"
           [value]="quantity()"
-          class="accent-primary mt-2 w-full"
+          class="accent-primary w-full"
           aria-label="Shares"
           (input)="onQuantityInput($event)"
         />
-      </div>
-
-      <dl class="bg-muted/60 mt-2.5 space-y-1.5 rounded-xl p-3 text-xs">
-        <div class="flex justify-between gap-4">
-          <dt class="text-muted-foreground">Market price</dt>
-          <dd class="tabular-nums">{{ price() | currency: 'USD' }}</dd>
-        </div>
+        <dl orderSummary class="space-y-2">
         <div class="flex justify-between gap-4">
           <dt class="text-muted-foreground">Shares</dt>
           <dd class="tabular-nums">{{ quantity() }}</dd>
@@ -117,6 +118,7 @@ export interface TradeTicketDraft {
           <dd class="tabular-nums">{{ draft().estimatedValue | currency: 'USD' }}</dd>
         </div>
       </dl>
+        </app-execution-controls>
 
       <div class="min-h-2 flex-1"></div>
       <button
@@ -127,7 +129,7 @@ export interface TradeTicketDraft {
             ? 'bg-primary text-primary-foreground hover:bg-primary/85'
             : 'bg-loss hover:bg-loss/85 text-white'
         "
-        [disabled]="quantity() === 0 || busy() || !ready()"
+        [disabled]="quantity() === 0 || busy() || !ready() || !execution()?.valid()"
         (click)="submitOrder()"
       >
         {{
@@ -159,6 +161,7 @@ export interface TradeTicketDraft {
   `,
 })
 export class TradeTicketComponent {
+  readonly execution = viewChild(ExecutionControlsComponent);
   readonly symbol = input.required<string>();
   readonly price = input.required<number>();
   readonly accountId = input('');
@@ -192,7 +195,7 @@ export class TradeTicketComponent {
 
   protected readonly maxShares = computed(() =>
     this.side() === 'buy'
-      ? affordableShares(this.cashBalance(), this.price())
+      ? affordableShares(this.cashBalance(), this.execution()?.reservationPriceFor(this.price()) ?? this.price())
       : wholeShares(this.heldShares()),
   );
   protected readonly cashAfter = computed(() =>
@@ -204,7 +207,9 @@ export class TradeTicketComponent {
     accountId: this.accountId(),
     symbol: this.symbol(),
     side: this.side(),
+    ...this.execution()?.parameters(),
     quantity: this.quantity(),
+    reservationPrice: this.execution()?.reservationPriceFor(this.price()),
     estimatedValue: this.quantity() * this.price(),
     sessionId: this.sessionId(),
     marketTimestamp: this.marketTimestamp(),
@@ -223,7 +228,8 @@ export class TradeTicketComponent {
   }
 
   protected submitOrder(): void {
-    if (!this.ready() || this.busy() || !this.quantity() || this.quantity() > this.maxShares()) {
+    const blocked = !this.execution()?.valid() || !this.ready() || this.busy();
+    if (blocked || !this.quantity() || this.quantity() > this.maxShares()) {
       return;
     }
 

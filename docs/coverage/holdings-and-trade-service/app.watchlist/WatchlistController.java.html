@@ -4,7 +4,13 @@ import app.auth.AuthenticatedUser;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /** Authenticated watchlist endpoints; ownership comes only from the token subject. */
@@ -18,7 +24,7 @@ public class WatchlistController {
      *
      * @param service saved stock business logic
      */
-<span class="fc" id="L21">    public WatchlistController(WatchlistService service) { this.service = service; }</span>
+<span class="fc" id="L27">    public WatchlistController(WatchlistService service) { this.service = service; }</span>
 
     /**
      * Lists the caller's saved stocks.
@@ -28,7 +34,7 @@ public class WatchlistController {
      */
     @GetMapping
     public List&lt;WatchlistRepository.Entry&gt; list(@AuthenticationPrincipal Jwt jwt) {
-<span class="fc" id="L31">        return service.list(AuthenticatedUser.from(jwt).userId());</span>
+<span class="fc" id="L37">        return service.list(AuthenticatedUser.from(jwt).userId());</span>
     }
 
     /**
@@ -42,7 +48,7 @@ public class WatchlistController {
      */
     @PutMapping(&quot;/{symbol}&quot;)
     public WatchlistRepository.Entry add(@AuthenticationPrincipal Jwt jwt, @PathVariable String symbol) {
-<span class="fc" id="L45">        return service.add(AuthenticatedUser.from(jwt).userId(), symbol);</span>
+<span class="fc" id="L51">        return service.add(AuthenticatedUser.from(jwt).userId(), symbol);</span>
     }
 
     /**
@@ -54,7 +60,7 @@ public class WatchlistController {
     @DeleteMapping(&quot;/{symbol}&quot;)
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void remove(@AuthenticationPrincipal Jwt jwt, @PathVariable String symbol) {
-<span class="fc" id="L57">        service.remove(AuthenticatedUser.from(jwt).userId(), symbol);</span>
-<span class="fc" id="L58">    }</span>
+<span class="fc" id="L63">        service.remove(AuthenticatedUser.from(jwt).userId(), symbol);</span>
+<span class="fc" id="L64">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

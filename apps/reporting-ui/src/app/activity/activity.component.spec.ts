@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { Observable, of, throwError } from 'rxjs';
-import { activity } from '../../testing/console-fixtures';
+import { activity, orderRow } from '../../testing/console-fixtures';
 import { text } from '../../testing/dom';
 import { Activity, ActivityRange } from '../reporting/console.models';
 import { ReportingApiService } from '../reporting/reporting-api.service';
@@ -9,6 +9,7 @@ import { ACTIVITY_REFRESH_MS, ActivityComponent, RANGE_KEY } from './activity.co
 
 describe('ActivityComponent', () => {
   let fixture: ComponentFixture<ActivityComponent>;
+  const ordersIn = vi.fn();
   let load: ReturnType<typeof vi.fn<(range: ActivityRange) => Observable<Activity>>>;
 
   beforeEach(() => {
@@ -27,7 +28,7 @@ describe('ActivityComponent', () => {
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
-        { provide: ReportingApiService, useValue: { activity: (range: ActivityRange) => load(range) } },
+        { provide: ReportingApiService, useValue: { activity: (range: ActivityRange) => load(range), ordersIn } },
       ],
     });
     fixture = TestBed.createComponent(ActivityComponent);
@@ -110,7 +111,7 @@ describe('ActivityComponent', () => {
     expect(bars.map((bar) => bar.style.width)).toEqual(['60%', '10%', '10%', '20%']);
     expect(bars.map((bar) => bar.className.match(/bg-\w+/)![0])).toEqual([
       'bg-gain',
-      'bg-primary',
+      'bg-pending',
       'bg-primary',
       'bg-loss',
     ]);
@@ -338,7 +339,7 @@ describe('ActivityComponent', () => {
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
-        { provide: ReportingApiService, useValue: { activity: (range: ActivityRange) => load(range) } },
+        { provide: ReportingApiService, useValue: { activity: (range: ActivityRange) => load(range), ordersIn } },
       ],
     });
     fixture = TestBed.createComponent(ActivityComponent);
@@ -362,19 +363,39 @@ describe('ActivityComponent', () => {
     expect(root.querySelector('.skeleton')).toBeNull();
   });
 
-  it('exports the status split of the chosen range as csv', () => {
+  it('exports every order of the chosen range as csv', async () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
     const blobs: Blob[] = [];
     URL.createObjectURL = ((blob: Blob) => (blobs.push(blob), 'blob:csv')) as typeof URL.createObjectURL;
     URL.revokeObjectURL = vi.fn();
+    ordersIn.mockReturnValue(
+      of({ orders: [orderRow({ orderId: 7, symbol: 'AAPL' })], transfers: [], total: 1, sessionId: null }),
+    );
     const root = render();
 
     root.querySelector<HTMLButtonElement>('app-export-menu button')!.click();
     fixture.detectChanges();
     root.querySelector<HTMLButtonElement>('[role="menuitem"]')!.click();
 
-    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('activity-7d.csv');
-    expect(blobs[0].size).toBeGreaterThan(0);
+    expect(ordersIn).toHaveBeenCalledWith('7d');
+    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('activity-orders-7d.csv');
+    const lines = (await blobs[0].text()).split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain('"Order","Time"');
+    expect(lines[1]).toContain('"7"');
+    expect(lines[1]).toContain('"AAPL"');
     click.mockRestore();
+  });
+
+  it('says so when the orders cannot be exported', () => {
+    ordersIn.mockReturnValue(throwError(() => new Error('down')));
+    const root = render();
+
+    root.querySelector<HTMLButtonElement>('app-export-menu button')!.click();
+    fixture.detectChanges();
+    root.querySelector<HTMLButtonElement>('[role="menuitem"]')!.click();
+    fixture.detectChanges();
+
+    expect(root.querySelector('[role="alert"]')?.textContent).toContain("couldn't export");
   });
 });

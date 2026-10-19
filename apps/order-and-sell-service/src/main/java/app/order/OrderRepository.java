@@ -36,6 +36,36 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
     @Query("SELECT o FROM Order o JOIN Account a ON a.id = o.accountId "
             + "WHERE a.userId = :userId ORDER BY o.submittedAt DESC, o.orderId DESC")
     List<Order> findAllByOwningUserId(UUID userId);
+
+    /**
+     * Finds one order only when it belongs to the supplied user. This keeps a
+     * detail read scoped by the verified token subject instead of trusting an
+     * id in the URL.
+     *
+     * @param orderId the requested order
+     * @param userId the caller's user id from the token's sub claim
+     * @return the owned order, or empty when it is absent or belongs to someone else
+     */
+    @Query("SELECT o FROM Order o JOIN Account a ON a.id = o.accountId "
+            + "WHERE o.orderId = :orderId AND a.userId = :userId")
+    Optional<Order> findByOrderIdAndOwningUserId(Integer orderId, UUID userId);
+    /** Locks a persisted order before transition.
+     * @param id order identifier
+     * @return current order */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM Order o WHERE o.orderId = :id")
+    Optional<Order> findByIdForUpdate(Integer id);
+
+    /** Lists executable orders with server context, including after a restart.
+     * @return accepted orders in submission order */
+    @Query("SELECT o FROM Order o WHERE o.status = 'ACCEPTED' AND o.referencePrice IS NOT NULL ORDER BY o.orderId")
+    List<Order> findExecutableOrders();
+
+    /** Reads all open reservations owned by a user.
+     * @param userId owner
+     * @return accepted orders */
+    @Query("SELECT o FROM Order o JOIN Account a ON a.id = o.accountId WHERE a.userId = :userId AND o.status = 'ACCEPTED'")
+    List<Order> findReservations(java.util.UUID userId);
 }
 
 

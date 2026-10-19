@@ -19,6 +19,7 @@ Follow nested AGENTS.md instructions for the area being changed. The reporting s
 ## Working rules
 
 - Keep deployable applications in apps and operational configuration in infrastructure. Keep Angular components that only one app uses inside that app (see apps/client-ui/shared-ui-components); extract a component into a top-level packages directory only once a second app actually consumes it, since that is the point npm workspace tooling becomes worth the added complexity.
+- Java code both Spring Boot services need belongs in [packages/trading-java-common](packages/trading-java-common/README.md), which each service compiles as an extra source root; do not copy a class between the two services. Both services' tests and Javadocs must be rerun and regenerated after a change there.
 - Inspect source, manifests, tests, and configuration before relying on documentation. Resolve disagreements by correcting docs to match implemented behavior.
 - The reporting service reads Kafka only and has no database connection; keep it that way. When reporting needs to show something new, publish it from the service that owns the row (`trade-events` for an order status, `platform-records` for everything else) and extend [db/tools/reporting_feed.py](db/tools/reporting_feed.py) so history can be republished in the same shape.
 - Authentication (sign-up credentials, login, refresh, token issuing) is the NestJS auth service alone. The Java services only verify its RS256 tokens. Profile registration lives only in Holdings and Trade (`POST /api/registration`); do not add it to Order and Sell, and do not assume the two stores share users or credentials beyond the token `sub`.
@@ -40,6 +41,7 @@ Run from repository root unless a working directory is specified:
 | Reporting UI dependencies | npm --prefix apps/reporting-ui ci |
 | Reporting UI build | npm --prefix apps/reporting-ui run build |
 | Reporting UI tests | npm --prefix apps/reporting-ui test -- --no-watch |
+| Reporting UI integration tests | npm --prefix apps/reporting-ui run e2e (needs Chromium and the Reporting Service's Python requirements) |
 | Holdings and Trade tests | mvn -B -f apps/holdings-and-trade-service/pom.xml test |
 | Order and Sell tests | mvn -B -f apps/order-and-sell-service/pom.xml test |
 | Auth tests | npm --prefix apps/auth-service test |

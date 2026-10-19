@@ -87,7 +87,7 @@ test('recent transactions label every row by type, show its status, and sign onl
   await expect(tag(2)).toHaveText('buy');
   await expect(tag(3)).toHaveText('sell');
   await expect(tag(4)).toHaveText('buy');
-  await expect(tag(0)).toHaveClass(/text-amber-400/);
+  await expect(tag(0)).toHaveClass(/text-pending/);
   await expect(tag(1)).toHaveClass(/text-primary/);
   await expect(tag(2)).toHaveCSS('color', GAIN);
   await expect(tag(3)).toHaveCSS('color', LOSS);
@@ -123,6 +123,7 @@ test('view all opens every transaction, including cash, and filters by type', as
   await expect(rows).toHaveCount(4);
   await expect(rows.first()).toHaveAttribute('data-status', 'COMPLETED');
 
+  await dialog.getByTestId('transactions-filters').click();
   await dialog.getByTestId('transactions-filter-deposit').click();
   await expect(rows).toHaveCount(1);
   await dialog.getByTestId('transactions-filter-withdrawal').click();
@@ -133,6 +134,10 @@ test('view all opens every transaction, including cash, and filters by type', as
   await expect(rows).toHaveCount(2);
   await dialog.getByTestId('transactions-filter-all').click();
   await expect(rows).toHaveCount(4);
+  // Escape closes only the filter panel, leaving the dialog open.
+  await page.keyboard.press('Escape');
+  await expect(dialog.getByTestId('transactions-filters-panel')).toBeHidden();
+  await expect(dialog).toBeVisible();
 
   // Sorting by value puts the largest first, and a second click reverses it.
   await dialog.getByRole('button', { name: 'Sort by Value' }).click();
@@ -143,6 +148,34 @@ test('view all opens every transaction, including cash, and filters by type', as
 
   await dialog.getByRole('button', { name: 'Close recent transactions' }).click();
   await expect(dialog).toBeHidden();
+});
+
+test('an order row expands into its audit timeline from pending to its final status', async ({
+  page,
+}) => {
+  await page.getByTestId('open-transactions').click();
+  const dialog = page.getByRole('dialog', { name: 'Recent Transactions' });
+  const order = dialog.getByTestId('transactions-order-1');
+  await expect(order).toHaveAttribute('aria-expanded', 'false');
+
+  await order.click();
+  await expect(order).toHaveAttribute('aria-expanded', 'true');
+  const trail = dialog.getByTestId('audit-trail-1');
+  const entries = trail.locator('.audit-entry');
+  await expect(entries).toHaveCount(3);
+
+  // Oldest first, each stage with its price and the time it was recorded.
+  await expect(entries.nth(0)).toContainText('PENDING');
+  await expect(entries.nth(1)).toContainText('ACCEPTED');
+  await expect(entries.nth(2)).toContainText('FILLED');
+  for (let stage = 0; stage < 3; stage++) {
+    await expect(entries.nth(stage)).toContainText('$200.00');
+    await expect(entries.nth(stage).locator('time')).toHaveAttribute('datetime', /^2026-01-05T14:31/);
+  }
+
+  await order.click();
+  await expect(order).toHaveAttribute('aria-expanded', 'false');
+  await expect(trail).toBeHidden();
 });
 
 test('a pending order updates to filled by itself, with the balances it moved', async ({

@@ -2,6 +2,7 @@
 
 This service owns order submission, validation, execution, instrument reference data, and order history on port 8081. Holdings and Trade owns profiles, accounts, cash operations, and holdings reads on port 8082. Both share the business database.
 
+- Classes both Java services need (the market feed, token verification wiring, the base classes of shared entities) live in [packages/trading-java-common](../../packages/trading-java-common/README.md), not here. Change them there and run both services' tests.
 - Resolve user ownership from the verified token subject before reading or writing an account.
 - Keep validation and response mapping in controllers, business logic in services, and persistence in repositories.
 - Commit the accepted order in its own transaction before executing it (BR-06). Execute fills, shared user cash balance updates, cash transactions, holding movements, holdings, and the execution audit change in one separate transaction (BR-09). A persistence failure during execution rolls back only the execution; the accepted order stays on record with an `EXECUTION_FAILED` audit entry.

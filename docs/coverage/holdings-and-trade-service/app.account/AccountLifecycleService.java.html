@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AccountLifecycleService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">holdings-and-trade-service</a> &gt; <a href="index.source.html" class="el_package">app.account</a> &gt; <span class="el_source">AccountLifecycleService.java</span></div><h1>AccountLifecycleService.java</h1><pre class="source lang-java linenums">package app.account;
+
+import app.auth.ForbiddenException;
+import app.record.TradingAccountRecord;
+import app.user.UserRepository;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Validates and changes portfolio lifecycle without deleting financial history.
+ * User then account locks serialize transfers, concurrent closures, and order acceptance.
+ * Cash is shared: account cash is checked here, while shared user funds remain available
+ * through any remaining active account. A user can create another active account later.
+ */
+@Service
+public class AccountLifecycleService {
+    private final AccountRepository accounts;
+    private final UserRepository users;
+    private final ApplicationEventPublisher events;
+
+    /**
+     * Creates lifecycle management.
+     * @param accounts account persistence and row locks
+     * @param users shared cash row lock
+     * @param events committed account reporting records
+     */
+    public AccountLifecycleService(AccountRepository accounts, UserRepository users,
+<span class="fc" id="L33">            ApplicationEventPublisher events) {</span>
+<span class="fc" id="L34">        this.accounts = accounts; this.users = users; this.events = events;</span>
+<span class="fc" id="L35">    }</span>
+
+    /**
+     * Lists retained archived accounts belonging to the caller.
+     * @param userId verified owner
+     * @return archived accounts newest first
+     */
+    @Transactional(readOnly = true)
+    public List&lt;Account&gt; archived(UUID userId) {
+<span class="fc" id="L44">        return accounts.findByUserIdOrderByOpenedDateDesc(userId).stream()</span>
+<span class="fc" id="L45">                .filter(a -&gt; &quot;ARCHIVED&quot;.equals(a.getStatus())).toList();</span>
+    }
+
+    /**
+     * Explains lifecycle eligibility; mutations always repeat these checks under locks.
+     * @param id account id
+     * @param userId verified owner
+     * @return blockers for each operation
+     * @throws AccountNotFoundException if missing
+     * @throws ForbiddenException if unowned
+     */
+    @Transactional(readOnly = true)
+<span class="fc" id="L57">    public Eligibility eligibility(Integer id, UUID userId) { return checks(owned(id, userId, false)); }</span>
+
+    /**
+     * Archives an eligible account, retaining every ledger and historical relationship.
+     * @param id account id
+     * @param userId verified owner
+     * @return read-only archived account
+     * @throws AccountStateException if any requirement fails or already archived
+     * @throws AccountNotFoundException if missing
+     * @throws ForbiddenException if unowned
+     */
+    @Transactional
+    public Account archive(Integer id, UUID userId) {
+<span class="fc" id="L70">        Account account = owned(id, userId, true);</span>
+<span class="fc" id="L71">        return archiveLocked(account);</span>
+    }
+
+    private Account archiveLocked(Account account) {
+<span class="fc" id="L75">        require(checks(account).archiveBlockers());</span>
+<span class="fc" id="L76">        account.setStatus(&quot;ARCHIVED&quot;); account.setArchivedAt(Instant.now());</span>
+<span class="fc" id="L77">        accounts.save(account);</span>
+<span class="fc" id="L78">        events.publishEvent(TradingAccountRecord.from(account));</span>
+<span class="fc" id="L79">        return account;</span>
+    }
+
+    /**
+     * Hides an account from the client by archiving it after explicit confirmation.
+     * No account, holding, transaction, order, or valuation row is deleted.
+     * @param id account id
+     * @param userId verified owner
+     * @param confirmed explicit user confirmation
+     * @throws IllegalArgumentException if confirmation is absent
+     * @throws AccountStateException if assets or open orders remain, or already archived
+     * @throws AccountNotFoundException if missing
+     * @throws ForbiddenException if unowned
+     */
+    @Transactional
+    public void delete(Integer id, UUID userId, boolean confirmed) {
+        // Check ownership before reporting confirmation errors.
+<span class="fc" id="L96">        Account account = owned(id, userId, true);</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (!confirmed) throw new IllegalArgumentException(&quot;Explicit deletion confirmation is required&quot;);</span>
+<span class="fc" id="L98">        archiveLocked(account);</span>
+<span class="fc" id="L99">    }</span>
+
+    private Account owned(Integer id, UUID userId, boolean lock) {
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        if (lock) users.findByIdForUpdate(userId);</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        Account account = (lock ? accounts.findByIdForUpdate(id) : accounts.findById(id))</span>
+<span class="fc" id="L104">                .orElseThrow(() -&gt; new AccountNotFoundException(id));</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (!account.getUserId().equals(userId)) throw new ForbiddenException(&quot;You do not have access to this account&quot;);</span>
+<span class="fc" id="L106">        return account;</span>
+    }
+
+    private Eligibility checks(Account account) {
+<span class="fc" id="L110">        Integer id = account.getId();</span>
+<span class="fc" id="L111">        List&lt;String&gt; archive = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        if (!&quot;ACTIVE&quot;.equals(account.getStatus())) archive.add(&quot;Account is already archived&quot;);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        if (account.getCashBalance().signum() != 0) archive.add(&quot;Account contains cash&quot;);</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        if (accounts.countNonzeroHoldings(id) &gt; 0)</span>
+<span class="fc" id="L115">            archive.add(&quot;Account contains active holdings&quot;);</span>
+        // Any nonterminal state blocks, including future pending/triggered/partial states.
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (accounts.countUnresolvedOrders(id) &gt; 0)</span>
+<span class="fc" id="L118">            archive.add(&quot;Pending orders must be resolved.&quot;);</span>
+<span class="fc" id="L119">        return new Eligibility(List.copyOf(archive), List.copyOf(archive));</span>
+    }
+
+    private static void require(List&lt;String&gt; blockers) {
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (!blockers.isEmpty()) throw new AccountStateException(String.join(&quot;; &quot;, blockers));</span>
+<span class="fc" id="L124">    }</span>
+
+    /**
+     * Current reasons operations are unavailable.
+     * @param archiveBlockers unmet archive requirements; empty means eligible
+     * @param deleteBlockers unmet delete (archive) requirements; empty means eligible
+     */
+<span class="fc" id="L131">    public record Eligibility(List&lt;String&gt; archiveBlockers, List&lt;String&gt; deleteBlockers) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

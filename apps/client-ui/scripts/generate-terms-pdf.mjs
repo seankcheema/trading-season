@@ -6,7 +6,7 @@
 //
 //   npm --prefix apps/client-ui run terms:pdf
 //
-// The output path may be given as an argument; it defaults to docs/terms-and-conditions.pdf at
+// The output path may be given as an argument; it defaults to docs/pdf/terms-and-conditions.pdf at
 // the repository root. Printing uses the Chromium that Playwright installs for the e2e suite.
 import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -16,7 +16,7 @@ import ts from 'typescript';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const source = resolve(here, '../src/app/dashboard/terms/terms-content.ts');
-const output = resolve(process.argv[2] ?? resolve(here, '../../../docs/terms-and-conditions.pdf'));
+const output = resolve(process.argv[2] ?? resolve(here, '../../../docs/pdf/terms-and-conditions.pdf'));
 
 const { TERMS_VERSION, TERMS_SECTIONS } = await loadTerms(source);
 
