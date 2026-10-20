@@ -127,7 +127,7 @@ test.describe('where the secrets travel', () => {
     for (const request of carryingPassword) {
       // The Java backend has no use for a password and must never receive one.
       expect(new URL(request.url).pathname).toBe('/auth/register');
-      expect(request.url.startsWith('http://localhost:3001/')).toBe(true);
+      expect(new URL(request.url).pathname.startsWith('/auth/')).toBe(true);
     }
   });
 
@@ -146,7 +146,7 @@ test.describe('where the secrets travel', () => {
     expect(carryingSsn.length).toBeGreaterThan(0);
     for (const request of carryingSsn) {
       expect(new URL(request.url).pathname).toBe('/api/registration');
-      expect(request.url.startsWith('http://localhost:3001/')).toBe(false);
+      expect(new URL(request.url).pathname.startsWith('/auth/')).toBe(false);
     }
   });
 

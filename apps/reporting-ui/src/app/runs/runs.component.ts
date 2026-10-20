@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideCircleAlert, lucideDownload, lucideInbox, lucideRefreshCw } from '@ng-icons/lucide';
+import { lucideCircleAlert, lucideDownload, lucideInbox } from '@ng-icons/lucide';
 import { Observable, catchError, map, switchMap, throwError } from 'rxjs';
 import {
   count,
@@ -99,7 +99,7 @@ interface SavedChart {
     SkeletonCardComponent,
     SkeletonKpisComponent,
   ],
-  providers: [provideIcons({ lucideCircleAlert, lucideDownload, lucideInbox, lucideRefreshCw })],
+  providers: [provideIcons({ lucideCircleAlert, lucideDownload, lucideInbox })],
   // From 1280px wide the screen fills the window and its lists scroll inside their
   // cards; a window shorter than the minimum scrolls the page instead. Narrower,
   // the cards stack and the page scrolls.
@@ -119,13 +119,15 @@ export class RunsComponent {
   protected readonly subtitle = computed(() => {
     const interval = this.store.scheduler()?.interval_minutes;
     const minutes = interval === 1 ? 'minute' : `${interval} minutes`;
-    const every = interval ? ` every ${minutes}` : '';
+    const every = interval ? `every ${minutes}` : null;
     const report = this.store.report();
     if (!report) {
-      return `Written by the reporting consumer${every} · each run replaces the one before`;
+      return every
+        ? `Live from Kafka trade-events · run archives written ${every}`
+        : 'Live from Kafka trade-events';
     }
-    const replaced = every ? ` · replaced${every}` : '';
-    return `Run ${report.runId} · generated ${dateTime(report.generatedAt)}${replaced}`;
+    const cadence = every ? ` · run archives ${every}` : '';
+    return `Run ${report.runId} · generated ${dateTime(report.generatedAt)} · live from Kafka${cadence}`;
   });
 
   protected readonly ranges = RANGES;
