@@ -44,7 +44,7 @@
     "vitest": "^4.0.8"
   },
   "overrides": {
-    "vite": "8.1.5",
+    "vite": "8.3.4",
     "@angular-devkit/core": "21.2.25",
     "@angular-devkit/schematics": "21.2.25",
     "@schematics/angular": "21.2.25",
