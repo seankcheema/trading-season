@@ -68,7 +68,6 @@ describe('history dialogs', () => {
   let http: HttpTestingController;
 
   beforeEach(() => {
-    sessionStorage.clear();
     TestBed.configureTestingModule({
       providers: [provideHttpClient(), provideHttpClientTesting()],
     });
@@ -324,7 +323,7 @@ describe('history dialogs', () => {
     it.each(['REJECTED', 'EXECUTION_FAILED'])('marks %s audit failures in the loss color', (eventType) => {
       const fixture = open();
       expect(fixture.componentInstance['auditMarkerClass']({ eventType, price: 100, occurredAt: '', detail: null }))
-        .toBe('bg-loss');
+        .toBe('bg-[#fb7185]');
     });
 
     it.each([

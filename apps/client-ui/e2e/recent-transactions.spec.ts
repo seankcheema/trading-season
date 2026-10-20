@@ -87,7 +87,7 @@ test('recent transactions label every row by type, show its status, and sign onl
   await expect(tag(2)).toHaveText('buy');
   await expect(tag(3)).toHaveText('sell');
   await expect(tag(4)).toHaveText('buy');
-  await expect(tag(0)).toHaveClass(/text-pending/);
+  await expect(tag(0)).toHaveClass(/text-amber-400/);
   await expect(tag(1)).toHaveClass(/text-primary/);
   await expect(tag(2)).toHaveCSS('color', GAIN);
   await expect(tag(3)).toHaveCSS('color', LOSS);

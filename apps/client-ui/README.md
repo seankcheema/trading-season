@@ -9,11 +9,25 @@ Angular 21 single-page app with standalone components, signals, reactive forms, 
 | `/dashboard` | signed in | Accounts, holdings, portfolio history, watchlist, market ticker, order dialog, recent transactions, [first-run tour](#first-run-tour) |
 | `/dashboard/markets/:symbol` | signed in | Full-screen instrument page: chart modes and indicators, account and simulation-time controls, order ticket, recent orders |
 
-The market page places the account selector beside the simulation-time control. Its right panel matches the chart column's height on desktop and scrolls internally. Trading is the default tab, with Available Cash and Portfolio Value above Order Execution; Recent Orders shares that panel. Compact cash and portfolio cards sit above the order ticket. The Buy/Sell action sits at the bottom, with flexible space after the estimated cost or proceeds. The account and simulation-time dropdowns and the profile button are 46px tall and vertically centered beside the search field and back button. Switching tabs preserves the order draft. Smaller screens stack the chart and tools.
+The market page places the account selector beside the simulation-time control. Its right panel matches the chart column's height on desktop and scrolls internally. Trading is the default tab, with Available Cash and Portfolio Value above Order Execution; Overview, News, AI, and Recent Orders share that panel. Compact cash and portfolio cards sit above the order ticket. The Buy/Sell action sits at the bottom, with flexible space after the estimated cost or proceeds. The account and simulation-time dropdowns and the profile and notification buttons are 46px tall and vertically centered beside the search field and back button. Switching tabs preserves the order draft. Smaller screens stack the chart and tools.
 
-Live prices, candles, and the tick stream come from the Java market API. Metrics on the market page are demo data. Users are signed out after a period of inactivity, 10 minutes by default and configurable in settings.
+Live prices, candles, and the tick stream come from the Java market API. Metrics, news, and AI commentary on the market page are demo data. Users are signed out after a period of inactivity, 10 minutes by default and configurable in settings.
 
 A user who has not accepted the platform terms in force sees them on the dashboard and on the market page in a dialog that cannot be dismissed, with everything behind it inert. They sign by typing their name and accept, or sign out. The wording and its version are in [terms-content.ts](src/app/dashboard/terms/terms-content.ts); the version must match the one [Holdings and Trade Service](../holdings-and-trade-service/README.md) and [Order and Sell Service](../order-and-sell-service/README.md) have in force, which a test in each of them checks. After changing the wording, run `npm --prefix apps/client-ui run terms:pdf` to regenerate [the PDF](../../docs/pdf/terms-and-conditions.pdf) from it.
+
+## Dua insights
+
+Dua is a fixed 52px shark launcher at bottom-right on the dashboard and market page, without reserved layout space. The panel starts closed and closes on navigation or a click outside the panel and launcher. Outside clicks keep focus on the clicked control; Escape and the minimize button return focus to the launcher. Its supplied [launcher image](public/assets/assistant/shark-launcher-light-512.png) centers the fin at rest (2.2x scale); hover, keyboard focus, pending notifications and open chat reveal the face (1.35x scale), using a 450ms transition disabled for reduced motion. The initial header reads Dua - Free Plan.
+
+The choice-based assistant uses existing data and factual templates:
+
+- **Daily review:** illustrative Market Overview (+1.8% S&P 500, Today), Portfolio Impact (+$385, Today), and Tomorrow's Outlook (3 events, Up Next). Explanations clarify that figures and schedules are fictional, not actual market or account data.
+- **My holdings:** three static placeholder cards styled like Stock Insights: Portfolio Growth (+12.4%, $2,450, This Month), Sector Concentration (68% technology, Current), and Top Performer (NVIDIA +32.8%, $1,280, This Month). Explanations identify these as examples, not selected-account calculations.
+- **This stock:** three illustrative Growth, Valuation and Risk previews using the supplied example figures (+24.8%, -18%, 65%). Every card shows the captured market date; the explanations identify the example data, and the header reads Stock Insights. No history or fundamentals requests are made.
+
+The 360px-wide panel shows one consistent-height card at a time, with three navigation bars for each choice. Cards use a continuous teal/purple result-body gradient without black outer gutters, fading to dark at the bottom, while the header stays black. Large white numbers and directional arrows accompany short, safely interpolated takeaways with key results in bold. Stock-list changes retain signs and green/red colors. Compact lists scroll internally; card content remains accessible on short viewports or enlarged text. A circled question-mark icon opens Explain these numbers at the top right beside the card title; returning from explanations restores the same snapshot. Refresh/retry is an icon beside close, with snapshot time only beside the title. See the [canonical insight and interaction rules](../../docs/dua-insights-mvp-plan.md) for dimensions and calculations.
+
+Existing market and holdings data establish a notification baseline independently of the displayed placeholders. Changes to rounded insight results or the trading date can trigger one red **1** badge, without extra requests. Clicking it opens chat and clears the badge in one click. Further notifications are suppressed across navigation/account changes until a full page refresh. Hover does not acknowledge it. Preserve logout, account/simulation context, terms blocking, loading skeletons and unavailable states. No backend, model, free text, persistent chat history or trading action is added.
 
 ## First-run tour
 
@@ -103,10 +117,6 @@ sequenceDiagram
 
 Network and refresh-service failures keep the credentials so the request can be retried; sign-out happens on explicit logout, inactivity, or missing or rejected refresh credentials.
 
-### Selected account
-
-The account chosen in the header is never part of a URL, where it would reach browser history, server logs and shared links. [AccountStore](src/app/dashboard/accounts/account-store.service.ts) holds it for the dashboard and the market page, and keeps it in this tab's `sessionStorage` under `ts.accounts.selected`, so moving between the two pages or reloading keeps it, and a new tab starts on the first account. Sign-out forgets it, and a saved id that is not one of the user's accounts selects the first one. Links made before this carried `?accountId=`; [dropAccountIdGuard](src/app/core/drop-account-id.guard.ts) opens them without it.
-
 ## Loading states
 
 Recent activity rows show order details and plain-text status beneath the transaction label, with the timestamp beneath the amount. Buy, Sell, Deposit and Withdrawal badges appear immediately to the right of the ticker or transaction label, vertically centered on that line. The dashboard and market page share these rows.
@@ -134,16 +144,11 @@ A placeholder is the `skeleton` class in [src/styles.css](src/styles.css), sized
 
 ## Themes
 
-The app comes in the design system's dark theme, which is the default, and a light one. The switch is the sun or moon button in the header of the landing page, the dashboard and the market page, and at the top right of the sign-in and registration pages.
+Dark is the default. The sun or moon button switches themes from the landing page, dashboard and market page headers, and the top right of sign-in and registration.
 
-| Piece | What it does |
-| --- | --- |
-| [src/styles.css](src/styles.css) | The light tokens on `:root`, the dark ones on `:root.dark`. Light keeps the brand's ink and cyan but deepens each color used as text, primary, gain, loss and pending, until it reads at 4.5:1 on a white card. Besides the SpartanNG tokens there are tokens for the hero card, the surfaces the trading charts float, and the chart indicators |
-| [ThemeService](src/app/core/theme/theme.service.ts) | Adds or removes the `dark` class on `<html>`, keeps the choice in this browser's `localStorage` under `ts.settings.theme`, and follows a choice made in another open tab. On the server it changes nothing but the class |
-| [ThemeToggleComponent](src/app/core/theme/theme-toggle.component.ts) | The switch. Its label names the theme a click gives |
-| [src/index.html](src/index.html) | Ships `class="dark"` and a script that removes it when light was saved, before the first paint, so a reload or a prerendered page does not flash dark |
+[ThemeService](src/app/core/theme/theme.service.ts) switches the `dark` class on `<html>`, saves the choice in `localStorage` under `ts.settings.theme`, and follows changes from other open tabs. [index.html](src/index.html) applies the saved choice before the first paint. If storage is unavailable, switching still works for the current page.
 
-Use a token, not a literal color, in new markup: a literal looks right in one theme only. The [Reporting UI](../reporting-ui/README.md#theme) declares the same values and has its own switch; the choice is kept per origin, so each app remembers its own.
+[ThemeToggleComponent](src/app/core/theme/theme-toggle.component.ts) labels the button with the theme it will select. [styles.css](src/styles.css) defines light tokens on `:root` and dark tokens on `:root.dark`, including chart surfaces, indicators and status colors. Use these tokens for theme-aware content. Dua uses theme tokens for its insight gradients, header, metric text, explanations and directional colors; its chat choices and controls follow the shared surface and text tokens. The greeting and review-choice labels use 14px text, with 12px descriptions and padded rows for readability; the same sizing covers Daily Review, My Holdings and This Stock. Their shortened descriptions stay on one line, with an ellipsis when space is limited.
 
 ## Commands
 
@@ -183,3 +188,31 @@ Settings > Trading Preferences saves a user-wide 0-10% execution buffer, default
 Market chart indicators start at the first available candle, using available history until their full period is reached. SMA, EMA and Bollinger Bands use up to 20 candles; RSI uses up to 14 price changes and starts at a neutral 50. Latest appears at the top right beside enabled indicator labels when the chart is away from the latest bars, including both comparison charts.
 
 Each comparison chart places its ticker, price, USD dollar change, signed percentage change, chart controls and Latest in one header row above the plot, wrapping only when space requires it. Comparison mode hides the active indicator badges while keeping their chart overlays and RSI enabled.
+
+
+
+This stock previews use a large percentage, a larger white result headline with emphasized words, with supporting descriptions available from the question-mark icon. Each card shows its position (01 / 03 through 03 / 03) and the captured market date. Direction arrows are large and light green/red; Daily review and My holdings also use illustrative cards, with existing navigation and notification behavior. Revenue, valuation and geographic figures remain illustrative until a real fundamentals source is implemented.
+
+Stock preview metric titles sit above the number in larger white text. The small metadata row shows the captured market date (MM/DD/YYYY) and card count, not a financial reporting date. The header reads Stock Insights; explanations state that figures are illustrative. Reduced card height and bottom padding keep navigation close to the description.
+
+All Daily review, My holdings and stock preview cards share the same label-above-number layout, larger white metric labels, consistent top spacing, and a period-or-date/card-count row. The date is the viewed market context, not a financial reporting date. Card heading and metadata spacing is compact; signed values, directional colors, consistent section heights and internal scrolling are preserved.
+
+The stock section header reads Stock Insights. Stock metric titles have 14px of spacing above them after the date/card-count row. These stock figures remain illustrative, as described in the explanation panel.
+
+My holdings uses the same gradient, metric-first typography, circled explanation action and three-card navigation as Stock Insights. Its metadata row displays This Month or Current rather than a date. Refresh returns to Portfolio Growth. These examples do not derive from selected-account holdings, sector classification or monthly return history; Daily review also uses illustrative placeholders and existing notification behavior is preserved.
+
+Daily review uses the shared three-card illustrative layout with Today/Up Next labels, large metrics, short result headlines with descriptions behind the question-mark icon. The explanation icon states that all figures and events are examples, not actual market data or the selected account's results. No event-calendar or market-news requests are made. Existing pure market/holdings calculations remain available for tests and notification baselines; they do not supply the displayed placeholder cards.
+
+All three insight choices keep supporting gray descriptions off the main cards. The circled question mark opens a card-specific explanation with the same gradient and black header: a short result summary, Why it matters reasoning from the placeholder example, and a compact illustrative-data clarification. Returning restores the same card and snapshot without requests or recalculation.
+
+Insight sections size naturally to their tallest card instead of reserving a fixed 320px. All slides share one grid cell so navigation stays in place as cards change and text wraps responsively. Inactive slides remain invisible, inert and hidden from assistive technology; overflowing content retains scrolling on short viewports or with enlarged text. Compact bottom padding keeps the headline close to navigation.
+
+Question-mark explanation views also use content-driven height, matching insight-card padding and the same viewport height cap. Short explanations have no reserved blank space below their text; long explanations scroll internally when required by viewport size or enlarged text.
+
+Card changes use a 380ms fade/short slide with the same gentle ease-in-out as resizing, and content-view changes ease the measured panel height over 380ms with gentle ease-in-out while remaining anchored above the launcher. Rapid changes continue from the current animated height; reduced-motion preferences disable both effects. The final size remains content-driven and viewport-constrained, with 12px card bottom padding and 12px navigation margins.
+
+Information views use 36px bottom padding so their last paragraph has the same breathing room as the insight content above navigation. Their height remains content-driven and uses the shared resize transition.
+
+Information views use a consistent 14px type scale and 1.55 line height, with semibold headings/emphasis and regular body copy. Opening and returning use a 280ms content entrance and a 380ms height transition. The panel bottom remains anchored 12px above the fixed launcher; resizing changes the top edge only. Reduced-motion preferences disable animation.
+
+Card transitions animate opacity and a small visual translation only; the shared grid row and navigation never change size or position during a card switch. Navigation indicator colors fade over the same 380ms without layout movement. Reduced motion switches cards and indicators immediately.

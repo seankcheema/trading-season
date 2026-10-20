@@ -1,0 +1,372 @@
+<section
+  #panel
+  class="dua-panel"
+  [class.minimized]="session.minimized()"
+  [attr.inert]="session.minimized() ? '' : null"
+  [attr.aria-hidden]="session.minimized()"
+  role="region"
+  aria-label="Dua insights"
+  tabindex="-1"
+  (keydown.escape)="minimize()"
+>
+  <header class="dua-header">
+    @if (choice()) {
+      <button
+        class="icon-button"
+        type="button"
+        [attr.aria-label]="explaining() ? 'Back to results' : 'Back to choices'"
+        (click)="backToPrevious()"
+      >
+        <ng-icon name="lucideChevronLeft" aria-hidden="true" />
+      </button>
+    } @else {
+      <span class="dua-avatar" aria-hidden="true">
+        @if (!imagesFailed()) {
+          <img
+            src="/assets/assistant/shark-launcher-light-512.png"
+            alt=""
+            (error)="imageFailed()"
+          />
+        } @else {
+          D
+        }
+      </span>
+    }
+    <div class="header-title">
+      <h2 [class.dua-title]="!choice()">
+        {{ title() }}
+        @if (!choice()) {
+          <span class="plan-label"> - Free Plan</span>
+        }
+      </h2>
+      @if (choice() && asOf()) {
+        <small class="header-timestamp">{{ asOf() }}</small>
+      }
+    </div>
+    @if (choice() && !explaining()) {
+      <button
+        class="icon-button"
+        type="button"
+        [attr.aria-label]="message() ? 'Retry' : 'Refresh'"
+        [title]="message() ? 'Retry' : 'Refresh'"
+        [disabled]="loading()"
+        (click)="select(choice()!)"
+      >
+        <ng-icon name="lucideRefreshCw" aria-hidden="true" />
+      </button>
+    }
+    <button class="icon-button" type="button" aria-label="Minimize Dua" (click)="minimize()">
+      <ng-icon name="lucideX" aria-hidden="true" />
+    </button>
+  </header>
+  <div class="dua-body">
+    @if (!choice()) {
+      <p class="greeting">What would you like to review?</p>
+      <div class="choices">
+        <button type="button" aria-label="Daily Review" (click)="select('daily')">
+          <span class="choice-icon"><ng-icon name="lucideNewspaper" aria-hidden="true" /></span>
+          <span class="choice-copy"
+            ><span class="choice-title">Daily Review</span
+            ><small>Market highlights</small></span
+          >
+          <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
+        </button>
+        <button type="button" aria-label="My Holdings" (click)="select('holdings')">
+          <span class="choice-icon"><ng-icon name="lucideChartPie" aria-hidden="true" /></span>
+          <span class="choice-copy"
+            ><span class="choice-title">My Holdings</span
+            ><small>Portfolio highlights</small></span
+          >
+          <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
+        </button>
+        @if (symbol()) {
+          <button type="button" aria-label="This Stock" (click)="select('stock')">
+            <span class="choice-icon"><ng-icon name="lucideScanSearch" aria-hidden="true" /></span>
+            <span class="choice-copy"
+              ><span class="choice-title">This Stock</span
+              ><small>Growth and risk (demo)</small></span
+            >
+            <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
+          </button>
+        }
+      </div>
+    } @else if (explaining()) {
+      @if (explainedCard(); as card) {
+        <article class="insight-explanation">
+          <h3>{{ card.title }}</h3>
+          <div class="card-content">
+            @if (card.takeaway) {
+              <p class="takeaway">
+                @for (part of takeawayParts(card.takeaway); track $index) {
+                  @if (part.emphasis) {
+                    <strong>{{ part.text }}</strong>
+                  } @else {
+                    {{ part.text }}
+                  }
+                }
+              </p>
+            }
+            @if (card.purpose) {
+              <h4>Why it matters</h4>
+              <p class="explanation-reason">{{ card.purpose }}</p>
+            }
+            @if (explanations()[0]; as explanation) {
+              <h4>About these figures</h4>
+              <p class="example-context">{{ explanation.description }}</p>
+            }
+          </div>
+        </article>
+      }
+    } @else {
+      @if (loading()) {
+        <span class="visually-hidden" role="status">Fetching stock insights</span>
+        <div class="skeleton insight-skeleton" aria-hidden="true"></div>
+        <div class="skeleton insight-skeleton short" aria-hidden="true"></div>
+      }
+      <div class="insights" aria-live="polite">
+        @for (card of cards(); track $index) {
+          <article
+            class="insight-card"
+            [class.illustrative-card]="card.illustrative"
+            [class.inactive]="activeCard() !== $index"
+            [attr.aria-hidden]="activeCard() !== $index ? 'true' : null"
+            [attr.inert]="activeCard() !== $index ? '' : null"
+          >
+            <div class="card-heading">
+              @if (card.title) {
+                <h3>
+                  {{ card.title }}
+                  @if (card.title === 'Today' && snapshotDate()) {
+                    {{ snapshotDate() }}
+                  }
+                </h3>
+              }
+              <button
+                class="explain-action"
+                type="button"
+                aria-label="Explain these numbers"
+                title="Explain these numbers"
+                (click)="explaining.set(true)"
+              >
+                <ng-icon name="lucideCircleHelp" aria-hidden="true" />
+              </button>
+            </div>
+            <div class="card-content">
+              <small class="card-meta">
+                {{ card.period ?? snapshotDate() }}
+                <span
+                  >{{ ($index + 1).toString().padStart(2, '0') }} /
+                  {{ cards().length.toString().padStart(2, '0') }}</span
+                >
+              </small>
+              @if (card.metrics?.length) {
+                <dl
+                  class="overview-metrics"
+                  [class.daily-metrics]="choice() === 'daily' && !card.illustrative"
+                  [class.today-metrics]="choice() === 'stock' && card.title === 'Today'"
+                  [class.count-metrics]="card.distribution && card.metrics?.length === 3"
+                >
+                  @for (metric of card.metrics; track $index) {
+                    <div
+                      [class.primary-metric]="
+                        $first &&
+                        (choice() !== 'daily' || card.illustrative) &&
+                        card.title !== 'Performance drivers'
+                      "
+                    >
+                      <dt>
+                        @if (metric.symbol && metric.symbol !== symbol() && choice() !== 'daily') {
+                          <a
+                            class="ticker-link"
+                            [routerLink]="['/dashboard/markets', metric.symbol.toLowerCase()]"
+                            [queryParams]="{ accountId: account.selectedAccountId() }"
+                            [attr.aria-label]="'Open ' + metric.symbol + ' stock analysis'"
+                          >
+                            {{ metric.label
+                            }}<ng-icon name="lucideExternalLink" aria-hidden="true" />
+                          </a>
+                        } @else {
+                          {{ metric.label }}
+                        }
+                      </dt>
+                      <dd [class.compact-value]="metric.value.length > 13">
+                        <strong
+                          [class.gain]="metric.tone === 'gain'"
+                          [class.loss]="metric.tone === 'loss'"
+                          >{{ metric.value }}</strong
+                        >
+                        @if (metric.tone) {
+                          <ng-icon
+                            [name]="
+                              metric.tone === 'gain' ? 'lucideArrowUpRight' : 'lucideArrowDownRight'
+                            "
+                            [class.gain]="metric.tone === 'gain'"
+                            [class.loss]="metric.tone === 'loss'"
+                            role="img"
+                            [attr.aria-label]="metric.tone === 'gain' ? 'Up' : 'Down'"
+                          />
+                        }
+                      </dd>
+                      @if (metric.stocks?.length) {
+                        <ul
+                          class="stock-list"
+                          tabindex="0"
+                          [attr.aria-label]="metric.label + ' stocks'"
+                        >
+                          @for (stock of metric.stocks; track stock.symbol) {
+                            <li>
+                              <a
+                                class="ticker-link"
+                                [routerLink]="['/dashboard/markets', stock.symbol.toLowerCase()]"
+                                [queryParams]="{ accountId: account.selectedAccountId() }"
+                                [attr.aria-label]="'Open ' + stock.symbol + ' stock analysis'"
+                                >{{ stock.symbol }}</a
+                              >
+                              <span
+                                [class.gain]="stock.change.startsWith('+')"
+                                [class.loss]="stock.change.startsWith('-')"
+                                >{{ stock.change }}</span
+                              >
+                            </li>
+                          }
+                        </ul>
+                      }
+                      @if (metric.subtext) {
+                        <small class="metric-subtext">
+                          {{ metric.subtext }}
+                        </small>
+                      }
+                    </div>
+                  }
+                </dl>
+              } @else if (!card.takeaway) {
+                <p class="fact-line">
+                  @for (part of responseParts(card.text); track $index) {
+                    @if (part.emphasis) {
+                      <strong
+                        [class.gain]="part.tone === 'gain'"
+                        [class.loss]="part.tone === 'loss'"
+                        >{{ part.text }}</strong
+                      >
+                    } @else {
+                      {{ part.text }}
+                    }
+                  }
+                </p>
+              }
+              @if (card.sparkline?.length) {
+                <svg
+                  class="insight-sparkline"
+                  [class.gain]="card.metrics?.[0]?.tone === 'gain'"
+                  [class.loss]="card.metrics?.[0]?.tone === 'loss'"
+                  viewBox="0 0 240 44"
+                  role="img"
+                  aria-label="Closing prices of the last five completed candles"
+                >
+                  <path class="chart-baseline" d="M4 42H236" />
+                  <polyline [attr.points]="chartPoints(card.sparkline!)" />
+                </svg>
+              }
+              @if (card.distribution && choice() !== 'daily') {
+                <div class="distribution" aria-hidden="true">
+                  @for (segment of card.distribution; track segment.label) {
+                    @if (segment.value > 0) {
+                      <span
+                        [style.flex-grow]="segment.value"
+                        [class.gain]="segment.tone === 'gain'"
+                        [class.loss]="segment.tone === 'loss'"
+                      ></span>
+                    }
+                  }
+                </div>
+              }
+              @if (card.takeaway) {
+                <p class="takeaway">
+                  @for (part of takeawayParts(card.takeaway); track $index) {
+                    @if (part.emphasis) {
+                      <strong>{{ part.text }}</strong>
+                    } @else {
+                      {{ part.text }}
+                    }
+                  }
+                </p>
+              }
+              @if (card.note) {
+                <small class="overview-note">{{ card.note }}</small>
+              }
+            </div>
+          </article>
+        }
+        @if (message()) {
+          <p class="feedback" role="status">{{ message() }}</p>
+        }
+      </div>
+      @if (cards().length > 1) {
+        <nav class="card-navigation" aria-label="Insight cards">
+          <button
+            class="icon-button"
+            type="button"
+            aria-label="Previous insight"
+            [disabled]="activeCard() === 0"
+            (click)="activeCard.set(activeCard() - 1)"
+          >
+            <ng-icon name="lucideChevronLeft" aria-hidden="true" />
+          </button>
+          @for (card of cards(); track $index) {
+            <button
+              class="card-indicator"
+              type="button"
+              [class.active]="activeCard() === $index"
+              [attr.aria-label]="'Show ' + card.title"
+              [attr.aria-current]="activeCard() === $index ? 'step' : null"
+              (click)="activeCard.set($index)"
+            ></button>
+          }
+          <button
+            class="icon-button"
+            type="button"
+            aria-label="Next insight"
+            [disabled]="activeCard() === cards().length - 1"
+            (click)="activeCard.set(activeCard() + 1)"
+          >
+            <ng-icon name="lucideChevronRight" aria-hidden="true" />
+          </button>
+        </nav>
+      }
+      @if (snapshotDisconnected()) {
+        <small class="timestamp">Live feed was disconnected when this snapshot was taken.</small>
+      }
+    }
+  </div>
+</section>
+<button
+  #launcher
+  class="dua-launcher"
+  type="button"
+  aria-label="Dua insights"
+  [attr.aria-expanded]="!session.minimized()"
+  [attr.aria-description]="hasUpdates() ? '1 new insight update. Click to open chat.' : null"
+  (pointerenter)="hovered.set($event.pointerType === 'mouse')"
+  (pointerleave)="hovered.set(false)"
+  (focus)="focused.set(launcher.matches(':focus-visible'))"
+  (blur)="focused.set(false)"
+  (click)="toggle()"
+>
+  <span class="launcher-clip">
+    @if (imagesFailed()) {
+      <span class="fallback">Dua</span>
+    } @else {
+      <img
+        class="launcher-art"
+        [class.face-visible]="faceVisible()"
+        src="/assets/assistant/shark-launcher-light-512.png"
+        alt=""
+        draggable="false"
+        (error)="imageFailed()"
+      />
+    }
+  </span>
+  @if (hasUpdates() && session.minimized()) {
+    <span class="notification-count" aria-label="1 new insight update">1</span>
+  }
+</button>

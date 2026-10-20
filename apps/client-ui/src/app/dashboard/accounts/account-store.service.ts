@@ -1,7 +1,6 @@
 import { TokenStorageService } from '../../core/auth/token-storage.service';
-import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Injectable, PLATFORM_ID, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import {
   Observable,
   Subject,
@@ -32,10 +31,6 @@ export type AccountLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 // Most recent cash transactions shown on the dashboard.
 const CASH_TRANSACTION_LIMIT = 20;
 
-// Where this tab keeps the selected account, so a reload or a move between the dashboard
-// and the market page keeps it. Never in the URL, where it would reach history and logs.
-export const SELECTED_ACCOUNT_STORAGE_KEY = 'ts.accounts.selected';
-
 // Most cash transactions the backend returns in one read; the full transaction history uses it.
 const CASH_HISTORY_LIMIT = 200;
 
@@ -46,15 +41,13 @@ const CASH_HISTORY_LIMIT = 200;
 export class AccountStore {
   private readonly _http = inject(HttpClient);
   private readonly _apiUrl = inject(BACKEND_API_URL);
-  private readonly _isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
 
   private readonly _accounts = signal<Account[]>([]);
   private readonly _holdings = signal(new Map<number, AccountHolding[]>());
   private readonly _cashBalance = signal(0);
   private readonly _profile = signal<UserProfile | null>(null);
   private readonly _cashTransactions = signal<CashTransaction[]>([]);
-  // A saved id that is not one of the user's accounts selects nothing; see selectedAccount.
-  private readonly _selectedAccountId = signal<number | null>(this.readSelection());
+  private readonly _selectedAccountId = signal<number | null>(null);
 
   private revision = 0;
   private readonly cancelled = new Subject<void>();
@@ -74,39 +67,11 @@ export class AccountStore {
       this._profile.set(null);
       this._cashTransactions.set([]);
       this._selectedAccountId.set(null);
-      this.saveSelection(null);
       this.status.set('idle');
       this.refreshError.set('');
       this.loadedAt = 0;
       this.loading = false;
     });
-  }
-
-  private readSelection(): number | null {
-    if (!this._isBrowser) {
-      return null;
-    }
-    try {
-      const id = Number(sessionStorage.getItem(SELECTED_ACCOUNT_STORAGE_KEY));
-      return Number.isInteger(id) && id > 0 ? id : null;
-    } catch {
-      return null;
-    }
-  }
-
-  private saveSelection(accountId: number | null): void {
-    if (!this._isBrowser) {
-      return;
-    }
-    try {
-      if (accountId === null) {
-        sessionStorage.removeItem(SELECTED_ACCOUNT_STORAGE_KEY);
-      } else {
-        sessionStorage.setItem(SELECTED_ACCOUNT_STORAGE_KEY, String(accountId));
-      }
-    } catch {
-      // The selection still holds until the page is reloaded.
-    }
   }
 
   private invalidate(): void {
@@ -240,7 +205,6 @@ export class AccountStore {
       return false;
     }
     this._selectedAccountId.set(accountId);
-    this.saveSelection(accountId);
     if (refresh && (this.stale || (this.loadedAt && Date.now() - this.loadedAt >= 60_000))) {
       this.load(true);
     }

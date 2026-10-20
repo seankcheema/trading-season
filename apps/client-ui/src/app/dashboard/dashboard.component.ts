@@ -1,3 +1,4 @@
+import { DuaComponent } from '../dua/dua.component';
 import { OrderEditorComponent } from './shared/order-editor.component';
 import { SegmentedTab, SegmentedTabsComponent } from './shared/segmented-tabs.component';
 import { WatchlistStore } from './watchlist/watchlist-store.service';
@@ -47,6 +48,7 @@ import { Subscription } from 'rxjs';
 import { Router } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { AuthService } from '../core/auth/auth.service';
+import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 import { Instrument, PricePoint, Timeframe, findInstrument } from './mock-data';
 import { MarketDataService, MarketSnapshot, MarketTickEvent } from './market-data.service';
 import { AccountStore } from './accounts/account-store.service';
@@ -76,7 +78,6 @@ import { TickAnimations } from './shared/tick-animations';
 import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
 import { DashboardTourComponent, TourExit } from './tour/dashboard-tour.component';
 import { TourProgressService } from './tour/tour-progress.service';
-import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 
 type HeaderDropdown = 'account' | 'market-clock' | 'profile';
 
@@ -91,6 +92,7 @@ type AccountDialog =
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ThemeToggleComponent,
+    DuaComponent,
     OrderEditorComponent,
     ActivityRowComponent,
     ActivityRowSkeletonComponent,
@@ -133,6 +135,7 @@ type AccountDialog =
   styleUrl: './dashboard.component.css',
 })
 export class DashboardComponent implements OnInit, OnDestroy {
+  protected readonly duaConnected = signal(false);
   protected readonly clock = inject(MarketClockService);
   private readonly marketData = inject(MarketDataService);
   private readonly platformId = inject(PLATFORM_ID);
@@ -156,6 +159,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly accounts = this.accountStore.accounts;
   protected readonly selectedAccount = this.accountStore.selectedAccount;
   protected readonly selectedAccountId = this.accountStore.selectedAccountId;
+  private initialAccountRestored = false;
+  private readonly restoreAccount = effect(() => {
+    const id = Number(this._router.routerState.snapshot.root.firstChild?.queryParams['accountId']);
+    if (this.accountStore.status() === 'ready' && !this.initialAccountRestored) {
+      this.initialAccountRestored = true;
+      if (id > 0) {
+        this.accountStore.selectAccount(id);
+      }
+    }
+  });
   protected readonly hasAccounts = computed(() => this.accounts().length > 0);
   // Until the accounts arrive there is no balance, holding or cash transfer to show, so the
   // cards that depend on them show placeholders instead of zeros and empty states.
@@ -186,7 +199,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       ? this.accountStore.cashBalance()
       : cashAt(this.accountStore.cashBalance(), this.orderService.orders(), at);
   });
-  private readonly simulationHoldings = computed(() => {
+  protected readonly simulationHoldings = computed(() => {
     const at = this.marketTimeMillis();
     return new Map(
       [...this.accountStore.holdingsByAccount()].map(([accountId, current]) => [
@@ -725,7 +738,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.loadAssetCharts(snapshot.sessionId, this.marketGeneration);
     this.disconnectMarket = this.marketData.connect(snapshot.sessionId, {
       tick: (event) => this.queueTickBatch(event),
-      status: () => undefined,
+      status: (connected) => this.zone.run(() => this.duaConnected.set(connected)),
       resync: () => this.loadMarketSnapshot(),
     });
   }

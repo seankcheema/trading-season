@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="design_doc_mode" content="canvas">
+<title>AI launcher — shark mascot</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+body{background:transparent}
+a{color:var(--primary)}a:hover{color:var(--ts-cyan-mid)}
+.ab{position:absolute;width:380px;background:var(--background);border:1px solid var(--border);border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:20px}
+.badge{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--muted-foreground)}
+.badge b{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:20px;padding:0 6px;border-radius:9999px;background:var(--primary-15);color:var(--primary);font-size:11px}
+.hero{display:flex;align-items:center;justify-content:center;height:150px;border-radius:12px;background:var(--card)}
+.row{display:flex;align-items:center;gap:16px}
+.cap{font-size:11px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--muted-foreground)}
+.note{margin:0;font-size:13px;line-height:1.5;color:var(--muted-foreground);text-wrap:pretty}
+.fab{position:relative;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:9999px;overflow:hidden;border:0;padding:0;cursor:pointer;transition:transform 150ms cubic-bezier(.16,1,.3,1),box-shadow 150ms}
+.fab svg{width:100%;height:100%;display:block}
+.fab:hover{transform:translateY(-2px);box-shadow:0 8px 20px -6px rgba(0,0,0,.6)}
+.fab:active{transform:translateY(0)}
+.fab:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring-50)}
+.fab .fin{transform-box:fill-box;transform-origin:50% 100%}
+.fab:hover .fin{animation:fin-wiggle 600ms ease-in-out}
+.fab .eyes{transform-box:fill-box;transform-origin:center}
+.fab:hover .eyes{animation:blink 600ms ease-in-out}
+.fab .wave{transform-box:fill-box;transform-origin:15% 90%}
+.fab:hover .wave{animation:wave 700ms ease-in-out}
+@keyframes wave{0%,100%{transform:rotate(0)}25%{transform:rotate(-18deg)}50%{transform:rotate(6deg)}75%{transform:rotate(-12deg)}}
+@keyframes fin-wiggle{0%,100%{transform:rotate(0)}30%{transform:rotate(-8deg)}65%{transform:rotate(5deg)}}
+@keyframes blink{0%,40%,60%,100%{transform:scaleY(1)}50%{transform:scaleY(.1)}}
+.light{background:#eefaff;color:#0e0e0e;--bg:#eefaff}
+.dark{--bg:#1a1a1a;background:#1a1a1a;color:#eefaff;box-shadow:inset 0 0 0 1px rgba(238,250,255,.15)}
+.brand{background:#00bbff;color:#0e0e0e;--bg:#00bbff}
+.fab .dot{animation:none}.fab:hover .dot{animation:typing 900ms ease-in-out infinite}.fab:hover .dot:nth-child(2){animation-delay:150ms}.fab:hover .dot:nth-child(3){animation-delay:300ms}
+@keyframes typing{0%,100%{opacity:.35}50%{opacity:1}}
+.fab .tilt{transform-box:view-box;transform-origin:32px 64px;transition:transform 200ms cubic-bezier(.16,1,.3,1)}.fab:hover .tilt{transform:rotate(-6deg)}
+.panel{position:absolute;right:20px;bottom:88px;width:300px;background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-dialog);overflow:hidden;transform-origin:100% 100%;animation:ts-pop-in 200ms cubic-bezier(.16,1,.3,1) both}
+.panel header{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 14px;border-bottom:1px solid var(--border)}
+.panel .x{margin-left:auto;display:flex;width:28px;height:28px;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;color:var(--muted-foreground);cursor:pointer}
+.panel .x:hover{background:var(--muted);color:var(--foreground)}
+.bubble{margin:14px;padding:10px 12px;border-radius:12px 12px 12px 4px;background:var(--muted);font-size:14px;line-height:1.45}
+.ask{display:flex;gap:8px;margin:0 14px 14px}
+.ask input{flex:1;min-width:0;height:36px;padding:0 12px;border-radius:8px;border:1px solid var(--input);background:var(--input-30);font-size:14px;outline:none}
+.ask input:focus{border-color:var(--ring);box-shadow:0 0 0 3px var(--ring-50)}
+.ask button{height:36px;width:36px;border:0;border-radius:8px;background:var(--primary);color:var(--primary-foreground);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 14px 12px}
+.chips span{height:28px;display:inline-flex;align-items:center;padding:0 10px;border-radius:9999px;border:1px solid var(--border);font-size:12px;color:var(--muted-foreground)}
+</style>
+</head>
+<body>
+<div class="ab" id="3a" style="left:0px;top:0px">
+<span class="badge"><b>3a</b>Toothy grin</span>
+<div class="hero"><button class="fab light" style="width:96px;height:96px" data-shark="toothy" aria-label="Open assistant"></button></div>
+<div class="row"><button class="fab light" style="width:56px;height:56px" data-shark="toothy" aria-label="Open assistant"></button><button class="fab dark" style="width:56px;height:56px" data-shark="toothy" aria-label="Open assistant"></button><button class="fab brand" style="width:56px;height:56px" data-shark="toothy" aria-label="Open assistant"></button><span style="flex:1"></span><button class="fab light" style="width:40px;height:40px" data-shark="toothy" aria-label="Open assistant"></button><button class="fab light" style="width:28px;height:28px" data-shark="toothy" aria-label="Open assistant"></button></div>
+<p class="note">1a with an open grin and two little teeth. Still one line weight, but it reads as a shark instead of a ghost.</p>
+</div>
+<div class="ab" id="3b" style="left:420px;top:0px">
+<span class="badge"><b>3b</b>Waterline</span>
+<div class="hero"><button class="fab light" style="width:96px;height:96px" data-shark="water" aria-label="Open assistant"></button></div>
+<div class="row"><button class="fab light" style="width:56px;height:56px" data-shark="water" aria-label="Open assistant"></button><button class="fab dark" style="width:56px;height:56px" data-shark="water" aria-label="Open assistant"></button><button class="fab brand" style="width:56px;height:56px" data-shark="water" aria-label="Open assistant"></button><span style="flex:1"></span><button class="fab light" style="width:40px;height:40px" data-shark="water" aria-label="Open assistant"></button><button class="fab light" style="width:28px;height:28px" data-shark="water" aria-label="Open assistant"></button></div>
+<p class="note">Head above a wave line that cuts across the circle. Ties back to the chart-line motif and makes the “surfacing” idea explicit.</p>
+</div>
+<div class="ab" id="3c" style="left:840px;top:0px">
+<span class="badge"><b>3c</b>Tilt + wave</span>
+<div class="hero"><button class="fab light" style="width:96px;height:96px" data-shark="waving" aria-label="Open assistant"></button></div>
+<div class="row"><button class="fab light" style="width:56px;height:56px" data-shark="waving" aria-label="Open assistant"></button><button class="fab dark" style="width:56px;height:56px" data-shark="waving" aria-label="Open assistant"></button><button class="fab brand" style="width:56px;height:56px" data-shark="waving" aria-label="Open assistant"></button><span style="flex:1"></span><button class="fab light" style="width:40px;height:40px" data-shark="waving" aria-label="Open assistant"></button><button class="fab light" style="width:28px;height:28px" data-shark="waving" aria-label="Open assistant"></button></div>
+<p class="note">Head tilted, a fin raised at the edge. Hover tilts it further and the fin waves. The friendliest version of 1a.</p>
+</div>
+<div class="ab" id="3d" style="left:0px;top:500px">
+<span class="badge"><b>3d</b>Solid</span>
+<div class="hero"><button class="fab light" style="width:96px;height:96px" data-shark="solid" aria-label="Open assistant"></button></div>
+<div class="row"><button class="fab light" style="width:56px;height:56px" data-shark="solid" aria-label="Open assistant"></button><button class="fab dark" style="width:56px;height:56px" data-shark="solid" aria-label="Open assistant"></button><button class="fab brand" style="width:56px;height:56px" data-shark="solid" aria-label="Open assistant"></button><span style="flex:1"></span><button class="fab light" style="width:40px;height:40px" data-shark="solid" aria-label="Open assistant"></button><button class="fab light" style="width:28px;height:28px" data-shark="solid" aria-label="Open assistant"></button></div>
+<p class="note">Filled silhouette with cut-out eyes and smile. Strongest at 28px and on busy screens; closest to a Notion-style glyph.</p>
+</div>
+<div class="ab" id="3e" style="left:420px;top:500px">
+<span class="badge"><b>3e</b>Belly + blush</span>
+<div class="hero"><button class="fab light" style="width:96px;height:96px" data-shark="blush" aria-label="Open assistant"></button></div>
+<div class="row"><button class="fab light" style="width:56px;height:56px" data-shark="blush" aria-label="Open assistant"></button><button class="fab dark" style="width:56px;height:56px" data-shark="blush" aria-label="Open assistant"></button><button class="fab brand" style="width:56px;height:56px" data-shark="blush" aria-label="Open assistant"></button><span style="flex:1"></span><button class="fab light" style="width:40px;height:40px" data-shark="blush" aria-label="Open assistant"></button><button class="fab light" style="width:28px;height:28px" data-shark="blush" aria-label="Open assistant"></button></div>
+<p class="note">1a plus a faint belly curve and pink cheeks. The smallest step toward round 2’s character, while staying line-drawn.</p>
+</div>
+<div class="ab" id="3f" style="left:840px;top:500px">
+<span class="badge"><b>3f</b>Typing</span>
+<div class="hero"><button class="fab light" style="width:96px;height:96px" data-shark="thinking" aria-label="Open assistant"></button></div>
+<div class="row"><button class="fab light" style="width:56px;height:56px" data-shark="thinking" aria-label="Open assistant"></button><button class="fab dark" style="width:56px;height:56px" data-shark="thinking" aria-label="Open assistant"></button><button class="fab brand" style="width:56px;height:56px" data-shark="thinking" aria-label="Open assistant"></button><span style="flex:1"></span><button class="fab light" style="width:40px;height:40px" data-shark="thinking" aria-label="Open assistant"></button><button class="fab light" style="width:28px;height:28px" data-shark="thinking" aria-label="Open assistant"></button></div>
+<p class="note">1a with a “…” bubble so it says chat at a glance. On hover the dots pulse like it’s typing. Good for when replies are loading.</p>
+</div>
+<div class="ab" id="2a" style="left:0px;top:1000px">
+<span class="badge"><b>2a</b>Waving buddy</span>
+<div class="hero" style="height:170px"><button class="fab light" style="width:120px;height:120px" data-shark="wave" aria-label="Open assistant"></button></div>
+<div class="row"><button class="fab light" style="width:56px;height:56px" data-shark="wave" aria-label="Open assistant"></button><button class="fab dark" style="width:56px;height:56px" data-shark="wave" aria-label="Open assistant"></button><button class="fab brand" style="width:56px;height:56px" data-shark="wave" aria-label="Open assistant"></button><span style="flex:1"></span><button class="fab light" style="width:40px;height:40px" data-shark="wave" aria-label="Open assistant"></button><button class="fab light" style="width:28px;height:28px" data-shark="wave" aria-label="Open assistant"></button></div>
+<p class="note">Chubby full-body bust with a steel-blue back and frost belly. Big shiny eyes, blush and a one-tooth grin; the right fin waves hello on hover.</p>
+</div>
+<div class="ab" id="2b" style="left:420px;top:1000px">
+<span class="badge"><b>2b</b>Rim peek</span>
+<div class="hero" style="height:170px"><button class="fab light" style="width:120px;height:120px" data-shark="rim" aria-label="Open assistant"></button></div>
+<div class="row"><button class="fab light" style="width:56px;height:56px" data-shark="rim" aria-label="Open assistant"></button><button class="fab dark" style="width:56px;height:56px" data-shark="rim" aria-label="Open assistant"></button><button class="fab brand" style="width:56px;height:56px" data-shark="rim" aria-label="Open assistant"></button><span style="flex:1"></span><button class="fab light" style="width:40px;height:40px" data-shark="rim" aria-label="Open assistant"></button><button class="fab light" style="width:28px;height:28px" data-shark="rim" aria-label="Open assistant"></button></div>
+<p class="note">Surfaces from the bottom edge and grips the rim with both fins, like it’s popping up to chat. Keeps the 1a idea, with much more character.</p>
+</div>
+<div class="ab" id="2c" style="left:840px;top:1000px">
+<span class="badge"><b>2c</b>Help-desk shark</span>
+<div class="hero" style="height:170px"><button class="fab light" style="width:120px;height:120px" data-shark="headset" aria-label="Open assistant"></button></div>
+<div class="row"><button class="fab light" style="width:56px;height:56px" data-shark="headset" aria-label="Open assistant"></button><button class="fab dark" style="width:56px;height:56px" data-shark="headset" aria-label="Open assistant"></button><button class="fab brand" style="width:56px;height:56px" data-shark="headset" aria-label="Open assistant"></button><span style="flex:1"></span><button class="fab light" style="width:40px;height:40px" data-shark="headset" aria-label="Open assistant"></button><button class="fab light" style="width:28px;height:28px" data-shark="headset" aria-label="Open assistant"></button></div>
+<p class="note">Same buddy wearing a little headset, so it reads as “assistant” at a glance. The mic tip is brand cyan.</p>
+</div>
+
+<div class="ab" id="1a" style="left:0;top:1500px">
+<span class="badge"><b>1a</b>Peek</span>
+<div class="hero"><button class="fab light" style="width:96px;height:96px" data-shark="peek" aria-label="Open assistant"></button></div>
+<div class="row"><button class="fab light" style="width:56px;height:56px" data-shark="peek" aria-label="Open assistant"></button><button class="fab dark" style="width:56px;height:56px" data-shark="peek" aria-label="Open assistant"></button><button class="fab brand" style="width:56px;height:56px" data-shark="peek" aria-label="Open assistant"></button><span style="flex:1"></span><button class="fab light" style="width:40px;height:40px" data-shark="peek" aria-label="Open assistant"></button><button class="fab light" style="width:28px;height:28px" data-shark="peek" aria-label="Open assistant"></button></div>
+<p class="note">Head and dorsal fin rising out of the bottom edge, like it's surfacing to help. Reads as a character even at 28px.</p>
+</div>
+
+<div class="ab" id="1b" style="left:420px;top:1500px">
+<span class="badge"><b>1b</b>Fin</span>
+<div class="hero"><button class="fab light" style="width:96px;height:96px" data-shark="fin" aria-label="Open assistant"></button></div>
+<div class="row"><button class="fab light" style="width:56px;height:56px" data-shark="fin" aria-label="Open assistant"></button><button class="fab dark" style="width:56px;height:56px" data-shark="fin" aria-label="Open assistant"></button><button class="fab brand" style="width:56px;height:56px" data-shark="fin" aria-label="Open assistant"></button><span style="flex:1"></span><button class="fab light" style="width:40px;height:40px" data-shark="fin" aria-label="Open assistant"></button><button class="fab light" style="width:28px;height:28px" data-shark="fin" aria-label="Open assistant"></button></div>
+<p class="note">Most minimal: one fin cutting a wave line. The wave echoes the TradingSeason chart line. Least character, cleanest glyph.</p>
+</div>
+
+<div class="ab" id="1c" style="left:840px;top:1500px">
+<span class="badge"><b>1c</b>Face</span>
+<div class="hero"><button class="fab light" style="width:96px;height:96px" data-shark="face" aria-label="Open assistant"></button></div>
+<div class="row"><button class="fab light" style="width:56px;height:56px" data-shark="face" aria-label="Open assistant"></button><button class="fab dark" style="width:56px;height:56px" data-shark="face" aria-label="Open assistant"></button><button class="fab brand" style="width:56px;height:56px" data-shark="face" aria-label="Open assistant"></button><span style="flex:1"></span><button class="fab light" style="width:40px;height:40px" data-shark="face" aria-label="Open assistant"></button><button class="fab light" style="width:28px;height:28px" data-shark="face" aria-label="Open assistant"></button></div>
+<p class="note">Full chubby front view with side fins and tiny zig-zag teeth. Most mascot-like; details get busy below 40px.</p>
+</div>
+
+<div class="ab" id="1d" style="left:0;top:1970px;width:380px;height:560px;padding:0;overflow:hidden">
+<span class="badge" style="position:absolute;left:24px;top:24px"><b>1d</b>In context · click the launcher</span>
+<div id="ctx-panel"></div>
+<button id="ctx-fab" class="fab light" style="position:absolute;right:20px;bottom:20px;width:56px;height:56px;box-shadow:0 8px 24px -8px rgba(0,0,0,.7)" data-shark="wave" aria-label="Open assistant" aria-expanded="false"></button>
+</div>
+
+<div class="ab" style="left:420px;top:1970px;width:800px">
+<span class="cap">Notes</span>
+<p class="note">Round 3 (3a–3f) iterates on 1a: same line drawing, each with one added idea. Round 2 (2a–2c) adds character: two-tone body, big glossy eyes, blush, a one-tooth grin and fins that gesture. Rounds 2 and 1 are kept below for comparison. All are original drawings, not Jeff the Land Shark (a Marvel character). They borrow the same feel: round, small, friendly, a little goofy. The style follows Notion's illustration approach: one stroke weight (2.5 on a 64 grid), round caps, dot eyes, flat fills, no gradients.</p>
+<p class="note">Hover: the button lifts 2px, the fin wiggles and the eyes blink once. Colorways: frost (stands out on the dark app; recommended), ink with hairline (quiet), cyan (on brand, but competes with the primary buttons).</p>
+<p class="note">These are hand-built vector sketches. If you go ahead, an illustrator should redraw the final mascot.</p>
+</div>
+
+<script>
+const INK = '#0e0e0e', TOP = '#5a94b2', BELLY = '#eefaff', BLUSH = '#ff7a95';
+const eye = (x, y, r) => '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="' + INK + '"/><circle cx="' + (x - r * .32) + '" cy="' + (y - r * .34) + '" r="' + r * .34 + '" fill="#fff"/><circle cx="' + (x + r * .34) + '" cy="' + (y + r * .3) + '" r="' + r * .16 + '" fill="#fff"/>';
+const ln = 'stroke="' + INK + '" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"';
+const bust = (wave, extra) =>
+  '<path class="fin" d="M29.5 17 C31.5 10 35.5 6.5 41 5.5 C39.4 10 39.4 14 40.6 18.5 Z" fill="' + TOP + '" ' + ln + '/>' +
+  '<path d="M14 46 C8.5 47 6 51 6.5 54.5 C10 54.5 13.5 52.5 16 49.5 Z" fill="' + TOP + '" ' + ln + '/>' +
+  (wave ? '<path class="wave" d="M50 43 C55 39 57 33.5 56 30 C52.3 31 49.6 35 48.4 39.5 Z" fill="' + TOP + '" ' + ln + '/>' : '<path d="M50 46 C55.5 47 58 51 57.5 54.5 C54 54.5 50.5 52.5 48 49.5 Z" fill="' + TOP + '" ' + ln + '/>') +
+  '<path d="M12.5 44 C12.5 27 21.5 16.5 32 16.5 C42.5 16.5 51.5 27 51.5 44 C51.5 56 43 62.5 32 62.5 C21 62.5 12.5 56 12.5 44 Z" fill="' + TOP + '" ' + ln + '/>' +
+  '<path d="M17.5 50 C20.5 44 26 42 32 42 C38 42 43.5 44 46.5 50 C45.5 57 40 61 32 61 C24 61 18.5 57 17.5 50 Z" fill="' + BELLY + '"/>' +
+  '<path d="M16.6 33 q-1.3 2.2 0 4.4 M19.2 32.4 q-1.3 2.2 0 4.4" fill="none" stroke="' + INK + '" stroke-width="1.5" stroke-linecap="round" opacity=".55"/>' +
+  '<ellipse cx="18.6" cy="38.6" rx="2.6" ry="1.6" fill="' + BLUSH + '" opacity=".6"/><ellipse cx="45.4" cy="38.6" rx="2.6" ry="1.6" fill="' + BLUSH + '" opacity=".6"/>' +
+  '<g class="eyes">' + eye(24.5, 31.5, 4.3) + eye(39.5, 31.5, 4.3) + '</g>' +
+  '<path d="M26.5 38.5 Q32 45 37.5 38.5 Q32 40.6 26.5 38.5 Z" fill="' + INK + '" ' + ln + ' stroke-width="1.6"/><path d="M30.7 39.6 l1.3 2 l1.3 -2 Z" fill="#fff"/>' + (extra || '');
+const headset = '<path d="M14.5 33 C14.5 15.5 49.5 15.5 49.5 33" fill="none" stroke="' + INK + '" stroke-width="2.6" stroke-linecap="round"/>' +
+  '<rect x="10.5" y="29" width="6.5" height="10" rx="3" fill="#1a1a1a" stroke="' + INK + '" stroke-width="1.6"/><rect x="47" y="29" width="6.5" height="10" rx="3" fill="#1a1a1a" stroke="' + INK + '" stroke-width="1.6"/>' +
+  '<path d="M14 38.5 C14 44.5 18 47.5 24 47" fill="none" stroke="' + INK + '" stroke-width="1.8" stroke-linecap="round"/><circle cx="25" cy="46.8" r="2" fill="#00bbff" stroke="' + INK + '" stroke-width="1.3"/>';
+const rim =
+  '<path class="fin" d="M29 33 C31 25 35 20.5 41 19 C39.4 24 39.4 29 40.8 34 Z" fill="' + TOP + '" ' + ln + '/>' +
+  '<path d="M9.5 72 C9.5 47 19.5 32.5 32 32.5 C44.5 32.5 54.5 47 54.5 72 Z" fill="' + TOP + '" ' + ln + '/>' +
+  '<path d="M19 72 C19 61 24.5 55.5 32 55.5 C39.5 55.5 45 61 45 72 Z" fill="' + BELLY + '"/>' +
+  '<path d="M15 45 q-1.3 2.2 0 4.4 M17.6 44 q-1.3 2.2 0 4.4" fill="none" stroke="' + INK + '" stroke-width="1.5" stroke-linecap="round" opacity=".55"/>' +
+  '<ellipse cx="19.5" cy="51" rx="2.5" ry="1.5" fill="' + BLUSH + '" opacity=".6"/><ellipse cx="44.5" cy="51" rx="2.5" ry="1.5" fill="' + BLUSH + '" opacity=".6"/>' +
+  '<g class="eyes">' + eye(25, 44.5, 4) + eye(39, 44.5, 4) + '</g>' +
+  '<path d="M27.5 51 Q32 56.5 36.5 51 Q32 52.8 27.5 51 Z" fill="' + INK + '" ' + ln + ' stroke-width="1.6"/><path d="M30.8 52 l1.2 1.8 l1.2 -1.8 Z" fill="#fff"/>' +
+  '<path d="M11.5 59 C12 53.5 18.5 52 22.5 55 C23 57.8 20.5 60 16 60.5 Z" fill="' + TOP + '" ' + ln + '/><path d="M52.5 59 C52 53.5 45.5 52 41.5 55 C41 57.8 43.5 60 48 60.5 Z" fill="' + TOP + '" ' + ln + '/>';
+const LN = '<g fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">';
+const FIN = '<path class="fin" d="M28 34 C29.5 25.5 33.5 20 39.5 18 C38.3 23.5 38.3 29 40 35"/>';
+const BODY = '<path d="M12 68 C12 45 20.5 33.5 32 33.5 C43.5 33.5 52 45 52 68"/>';
+const GILLS = '<path d="M44.5 48.5 l2.6 -2.6 M45.5 53 l2.6 -2.6"/>';
+const EYES = (y) => '<g class="eyes" fill="currentColor"><circle cx="26.5" cy="' + y + '" r="2.1"/><circle cx="37.5" cy="' + y + '" r="2.1"/></g>';
+const SMILE = '<path d="M28.6 53 q3.4 2.4 6.8 0"/>';
+const S = {
+  toothy: LN + FIN + BODY + GILLS + '</g>' + EYES(45.5) + '<path d="M26 51.5 Q32 59 38 51.5 Q32 53.6 26 51.5 Z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M28.6 52.7 l1.3 1.9 l1.3 -1.6 Z M32.8 53 l1.3 1.6 l1.3 -1.9 Z" fill="var(--bg)"/>',
+  water: LN + '<path class="fin" d="M28.5 35 C30 26.5 34 21 40 19 C38.8 24.5 38.8 30 40.5 36"/><path d="M14 58 C14 44 22 34.5 32 34.5 C42 34.5 50 44 50 58"/><path d="M42.5 47 l2.4 -2.4"/><path d="M29.5 51.5 q2.5 1.8 5 0"/><path d="M2 58 q5 -3.6 10 0 t10 0 t10 0 t10 0 t10 0 t10 0 t10 0"/><path d="M18 64.5 h6 M36 64.5 h9" opacity=".5"/></g><g class="eyes" fill="currentColor"><circle cx="27" cy="45" r="2.1"/><circle cx="37" cy="45" r="2.1"/></g>',
+  waving: '<g class="tilt">' + LN + FIN + BODY + GILLS + SMILE + '</g>' + EYES(46) + '</g>' + LN + '<path class="wave" d="M47.5 62 C48.5 55.5 52 51 57 49.5 C57 54 55.5 58.5 52.5 62"/></g>',
+  solid: '<path class="fin" d="M27.5 35 C29 25.5 33.5 19.5 40 17.5 C38.6 23.5 38.6 29.5 40.6 36 Z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M11 70 C11 45.5 20 33 32 33 C44 33 53 45.5 53 70 Z" fill="currentColor"/><g class="eyes" fill="var(--bg)"><circle cx="26.5" cy="46" r="2.6"/><circle cx="37.5" cy="46" r="2.6"/></g><path d="M28.4 53 q3.6 2.6 7.2 0" fill="none" stroke="var(--bg)" stroke-width="2.4" stroke-linecap="round"/><path d="M45 49 l2.6 -2.6 M46 53.5 l2.6 -2.6" fill="none" stroke="var(--bg)" stroke-width="2" stroke-linecap="round" opacity=".7"/>',
+  blush: LN + FIN + BODY + GILLS + SMILE + '<path d="M21.5 66 C23.5 59.5 40.5 59.5 42.5 66" stroke-width="1.8" opacity=".45"/></g>' + EYES(46) + '<ellipse cx="22.5" cy="50.5" rx="2.6" ry="1.5" fill="#ff7a95" opacity=".6"/><ellipse cx="41.5" cy="50.5" rx="2.6" ry="1.5" fill="#ff7a95" opacity=".6"/>',
+  thinking: LN + FIN + BODY + GILLS + SMILE + '<path d="M9 14.5 h13 a5.5 5.5 0 0 1 0 11 h-6.5 l-3.5 3 v-3 h-3 a5.5 5.5 0 0 1 0 -11 Z" stroke-width="2"/></g>' + EYES(46) + '<g fill="currentColor"><circle class="dot" cx="11" cy="20" r="1.5"/><circle class="dot" cx="15.5" cy="20" r="1.5"/><circle class="dot" cx="20" cy="20" r="1.5"/></g>',
+
+  wave: bust(true),
+  headset: bust(false, headset),
+  rim: rim,
+  peek: '<g fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path class="fin" d="M29.5 33.8 C30.6 28.4 33.3 25 37.2 23.6 C36.5 27 36.6 30.6 37.8 34.4"/><path d="M12 68 C12 45 20.5 33.5 32 33.5 C43.5 33.5 52 45 52 68"/><path d="M44.5 48.5 l2.6 -2.6 M45.5 53 l2.6 -2.6"/><path d="M28.6 53 q3.4 2.4 6.8 0"/></g><g class="eyes" fill="currentColor"><circle cx="26.5" cy="45" r="2.1"/><circle cx="37.5" cy="45" r="2.1"/></g>',
+  fin: '<path class="fin" d="M24.5 41.5 C26.5 30 32.5 22 41.5 19.5 C39.5 27.5 39.5 34.5 41.5 41.5 Z" fill="currentColor"/><path d="M6 42.5 q6.5 -4.2 13 0 t13 0 t13 0 t13 0" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>',
+  face: '<g fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path class="fin" d="M28.5 20.5 C30.5 14 34 10.5 38.5 9.5 C37.6 13.5 37.6 17.5 38.6 21"/><path d="M15 40 C9.5 41.5 8 45.5 8.6 48 C12 47.7 15.2 46.2 17.5 44.5"/><path d="M49 40 C54.5 41.5 56 45.5 55.4 48 C52 47.7 48.8 46.2 46.5 44.5"/><path d="M14.5 38.5 C14.5 27 22 20 32 20 C42 20 49.5 27 49.5 38.5 C49.5 47 42 51.5 32 51.5 C22 51.5 14.5 47 14.5 38.5 Z"/><path d="M28 40 l2 2 l2 -2 l2 2 l2 -2"/><path d="M21.5 46 C26 48.5 38 48.5 42.5 46" stroke-width="1.6" opacity=".45"/></g><g class="eyes" fill="currentColor"><circle cx="26" cy="33.5" r="2.1"/><circle cx="38" cy="33.5" r="2.1"/></g>'
+};
+const svg = (k) => '<svg viewBox="0 0 64 64" aria-hidden="true">' + S[k] + '</svg>';
+document.querySelectorAll('[data-shark]').forEach((el) => { el.innerHTML = svg(el.dataset.shark); });
+
+const fab = document.getElementById('ctx-fab'), slot = document.getElementById('ctx-panel');
+const X = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+function render(open) {
+  fab.setAttribute('aria-expanded', open);
+  fab.setAttribute('aria-label', open ? 'Close assistant' : 'Open assistant');
+  fab.innerHTML = open ? X : svg('wave');
+  slot.innerHTML = open ? '<section class="panel" role="dialog" aria-label="Assistant"><header><span class="fab light" style="width:32px;height:32px;cursor:default">' + svg('wave') + '</span><span style="font-size:14px;font-weight:600">Assistant</span><button class="x" aria-label="Close assistant">' + X.replace('22','16').replace('22','16') + '</button></header><div class="bubble">Hi! I can explain your portfolio, look up a stock, or walk you through placing a trade.</div><div class="chips"><span>How is my portfolio doing?</span><span>What is a spread?</span><span>Find NVDA</span></div><form class="ask" onsubmit="return false"><input placeholder="Ask anything" aria-label="Message"><button aria-label="Send"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></form></section>' : '';
+  const x = slot.querySelector('.x'); if (x) x.onclick = () => render(false);
+}
+fab.onclick = () => render(fab.getAttribute('aria-expanded') !== 'true');
+render(false);
+</script>
+</body>
+</html>
