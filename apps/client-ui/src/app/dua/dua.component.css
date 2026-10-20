@@ -820,41 +820,44 @@ article h3 {
   height: auto;
   max-height: min(440px, calc(100dvh - 200px));
   margin: 0;
-  padding: 12px 18px 8px;
+  padding: 12px 18px 36px;
   border: 0;
   color: #fff;
+  font-size: 14px;
+  line-height: 1.55;
 }
 .insight-explanation:first-child {
   padding-top: 12px;
 }
+.insight-explanation h3,
+.insight-explanation h4 {
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+}
 .insight-explanation h3 {
-  color: #fff;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 8px;
+  margin: 0 0 12px;
   flex-shrink: 0;
 }
+.insight-explanation h4 {
+  margin: 16px 0 6px;
+}
 .insight-explanation .takeaway {
-  font-size: 18px;
-  line-height: 1.4;
-  margin: 4px 0 12px;
+  font-size: inherit;
+  line-height: inherit;
+  margin: 0 0 12px;
 }
 .insight-explanation .takeaway strong {
-  font-weight: 700;
-}
-.insight-explanation h4 {
-  font-size: 12px;
   font-weight: 600;
-  margin: 12px 0 4px;
 }
-.explanation-reason {
-  font-size: 13px;
-  line-height: 1.5;
+.explanation-reason,
+.example-context {
+  font-size: inherit;
+  line-height: inherit;
 }
 .example-context {
-  font-size: 11px;
-  line-height: 1.5;
   color: #c3c9cf;
 }
 
@@ -891,21 +894,21 @@ article h3 {
   opacity: 1;
   transform: translateY(0);
   transition:
-    opacity 180ms ease-out,
-    transform 180ms ease-out,
+    opacity 380ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 380ms cubic-bezier(0.4, 0, 0.2, 1),
     visibility 0s;
 }
 .insights .insight-card.inactive {
   opacity: 0;
   transform: translateY(5px);
   transition:
-    opacity 180ms ease-out,
-    transform 180ms ease-out,
-    visibility 0s 180ms;
+    opacity 380ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 380ms cubic-bezier(0.4, 0, 0.2, 1),
+    visibility 0s 380ms;
 }
 .insights,
 .insight-explanation {
-  animation: dua-content-enter 180ms ease-out;
+  animation: dua-content-enter 280ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 @keyframes dua-content-enter {
   from {
@@ -936,6 +939,13 @@ article h3 {
   }
 }
 
-.insight-explanation {
-  padding-bottom: 24px;
+.card-indicator::after {
+  transition:
+    background-color 380ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 380ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-indicator::after {
+    transition: none;
+  }
 }

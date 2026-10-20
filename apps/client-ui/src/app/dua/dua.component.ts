@@ -202,8 +202,8 @@ export class DuaComponent {
       const from = interruptedHeight ?? previous.height;
       if (Math.abs(from - bounds.height) < 1) return;
       const animation = panel.animate([{ height: `${from}px` }, { height: `${bounds.height}px` }], {
-        duration: 240,
-        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+        duration: 380,
+        easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
       });
       this.resizeAnimation = animation;
       animation.onfinish = () => {
