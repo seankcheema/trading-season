@@ -47,14 +47,14 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                // The reporting and database tool tests run as root in Docker; make
-                // their output deletable before the checkout cleans the workspace.
+                // Containers that run as root (the reporting and database tool
+                // tests, and anything a Compose service writes into a mount) can
+                // leave files and directories the jenkins user cannot delete or
+                // chmod. The checkout wipes the workspace first and fails with
+                // "Operation not permitted" on one, so hand the whole workspace
+                // back to this user before it runs.
                 sh '''
-                    for directory in apps/reporting-service db/tools; do
-                        if [ -d "$directory" ]; then
-                            docker run --rm -v "$(pwd)":/ws -w /ws alpine:latest chmod -R a+rwX "/ws/$directory" || true
-                        fi
-                    done
+                    docker run --rm -v "$(pwd)":/ws alpine:latest chown -R "$(id -u):$(id -g)" /ws || true
                 '''
                 script {
                     // Keep the multibranch job's SCM settings and add a depth-1 clone.
@@ -987,7 +987,10 @@ pipeline {
             }
             script {
                 try {
-                    // Reports were archived by the stage post blocks.
+                    // Reports were archived by the stage post blocks. Take
+                    // ownership first so root-owned files from test containers
+                    // do not leave a workspace the next build cannot clean.
+                    sh(script: 'docker run --rm -v "$(pwd)":/ws alpine:latest chown -R "$(id -u):$(id -g)" /ws || true', returnStatus: true)
                     deleteDir()
                 } catch (err) {
                     echo "Workspace cleanup failed: ${err}; preserving the original build result."
