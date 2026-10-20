@@ -1,5 +1,7 @@
 package app.user;
 
+import app.account.AccountRepository;
+import app.cash.CashTransactionRepository;
 import app.support.UserAccountFixture;
 import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,12 +52,21 @@ class UserControllerIntegrationTest {
     private TermsAcceptanceRepository termsAcceptanceRepository;
 
     @Autowired
+    private AccountRepository accountRepository;
+
+    @Autowired
+    private CashTransactionRepository cashTransactionRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void cleanDatabase() {
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
         termsAcceptanceRepository.deleteAll();
+        // Registration books the opening funds on the default account, so both go first.
+        cashTransactionRepository.deleteAll();
+        accountRepository.deleteAll();
         userRepository.deleteAll();
         UserAccountFixture.deleteAll(jdbcTemplate);
     }

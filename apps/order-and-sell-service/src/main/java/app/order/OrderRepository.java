@@ -1,5 +1,7 @@
 package app.order;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
@@ -30,12 +32,15 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
      * the caller's verified token, never from the request, so this cannot
      * return another user's orders.
      *
-     * @param userId the owning user's id, from the token's {@code sub} claim
-     * @return the user's orders, newest submission first; empty if they have none
+     * @param userId   the owning user's id, from the token's {@code sub} claim
+     * @param pageable the page to read (BR-11); its sort is ignored in favour of newest first
+     * @return that page of the user's orders, newest submission first, with the
+     *         total count; empty if they have none
      */
-    @Query("SELECT o FROM Order o JOIN Account a ON a.id = o.accountId "
-            + "WHERE a.userId = :userId ORDER BY o.submittedAt DESC, o.orderId DESC")
-    List<Order> findAllByOwningUserId(UUID userId);
+    @Query(value = "SELECT o FROM Order o JOIN Account a ON a.id = o.accountId "
+            + "WHERE a.userId = :userId ORDER BY o.submittedAt DESC, o.orderId DESC",
+            countQuery = "SELECT count(o) FROM Order o JOIN Account a ON a.id = o.accountId WHERE a.userId = :userId")
+    Page<Order> findAllByOwningUserId(UUID userId, Pageable pageable);
 
     /**
      * Finds one order only when it belongs to the supplied user. This keeps a

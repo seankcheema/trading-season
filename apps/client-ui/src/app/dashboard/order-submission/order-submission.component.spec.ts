@@ -148,6 +148,17 @@ describe('OrderSubmissionComponent', () => {
     http.verify();
   });
 
+  it('tells the trader the price the order filled at, not the price they saw', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const component = setup().componentInstance;
+    component['shares'].set(2);
+    component['submit']();
+    http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
+    http.expectOne({ method: 'POST', url: '/api/orders' }).flush(filledOrder({ executionPrice: 320.1 }));
+    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 2 AAPL at $320.10.');
+    http.verify();
+  });
+
   it.each(['LIMIT', 'STOP', 'STOP_LIMIT'] as const)('shows a placement toast for an accepted %s order without inline status text', (type) => {
     const http = TestBed.inject(HttpTestingController);
     const fixture = setup();
@@ -293,11 +304,11 @@ describe('OrderSubmissionComponent', () => {
     http.expectOne({ method: 'POST', url: '/api/orders' }).flush(
       filledOrder({
         status: 'REJECTED',
-        rejectionReason: 'BR-09: insufficient funds for this order',
+        rejectionReason: 'BR-05: insufficient funds for this order',
       }),
     );
 
-    expect(component['rejectionReason']()).toBe('BR-09: insufficient funds for this order');
+    expect(component['rejectionReason']()).toBe('BR-05: insufficient funds for this order');
     expect(component['errorMessage']()).toBe('');
     expect(component['filled']()).toBe(false);
     // A rejection leaves the ticket usable, so the trader can change it and retry.

@@ -39,6 +39,7 @@ import static org.mockito.Mockito.when;
 class CashTransactionServiceUnitTest {
 
     private static final UUID USER_ID = UUID.fromString("7c9e6679-7425-40de-944b-e07fc1f90ae7");
+    private static final UUID REF = UUID.fromString("c0ffee00-0000-4000-8000-000000000001");
 
     @Mock
     private CashTransactionRepository cashTransactionRepository;
@@ -69,7 +70,7 @@ class CashTransactionServiceUnitTest {
             return posted;
         });
 
-        CashTransaction saved = service.move(USER_ID, new BigDecimal("25.00"), "WITHDRAWAL");
+        CashTransaction saved = service.move(USER_ID, new BigDecimal("25.00"), "WITHDRAWAL", REF);
 
         ArgumentCaptor<CashTransferRecord> raised = ArgumentCaptor.forClass(CashTransferRecord.class);
         verify(events).publishEvent(raised.capture());
@@ -91,7 +92,7 @@ class CashTransactionServiceUnitTest {
         givenUserWithAccount(user, 7);
 
         assertThrows(InsufficientFundsException.class,
-                () -> service.move(USER_ID, new BigDecimal("10.01"), "WITHDRAWAL"));
+                () -> service.move(USER_ID, new BigDecimal("10.01"), "WITHDRAWAL", REF));
 
         verify(events, never()).publishEvent(any());
     }
@@ -103,7 +104,7 @@ class CashTransactionServiceUnitTest {
         when(cashTransactionRepository.save(any(CashTransaction.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        CashTransaction saved = service.move(USER_ID, new BigDecimal("50.25"), "DEPOSIT");
+        CashTransaction saved = service.move(USER_ID, new BigDecimal("50.25"), "DEPOSIT", REF);
 
         assertEquals(new BigDecimal("150.25"), user.getAvailableFunds());
         assertEquals(new BigDecimal("50.25"), saved.getAmount());
@@ -120,7 +121,7 @@ class CashTransactionServiceUnitTest {
         when(cashTransactionRepository.save(any(CashTransaction.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        CashTransaction saved = service.move(USER_ID, new BigDecimal("25.00"), "WITHDRAWAL");
+        CashTransaction saved = service.move(USER_ID, new BigDecimal("25.00"), "WITHDRAWAL", REF);
 
         assertEquals(new BigDecimal("75.00"), user.getAvailableFunds());
         // Stored signed, so the ledger sums to the balance it backs.
@@ -135,7 +136,7 @@ class CashTransactionServiceUnitTest {
         when(cashTransactionRepository.save(any(CashTransaction.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        service.move(USER_ID, new BigDecimal("100.00"), "WITHDRAWAL");
+        service.move(USER_ID, new BigDecimal("100.00"), "WITHDRAWAL", REF);
 
         assertEquals(new BigDecimal("0.00"), user.getAvailableFunds());
     }
@@ -146,7 +147,7 @@ class CashTransactionServiceUnitTest {
         givenUserWithAccount(user, 7);
 
         assertThrows(InsufficientFundsException.class,
-                () -> service.move(USER_ID, new BigDecimal("10.01"), "WITHDRAWAL"));
+                () -> service.move(USER_ID, new BigDecimal("10.01"), "WITHDRAWAL", REF));
 
         assertEquals(new BigDecimal("10.00"), user.getAvailableFunds());
         verify(userRepository, never()).save(any(User.class));
@@ -160,7 +161,7 @@ class CashTransactionServiceUnitTest {
         when(cashTransactionRepository.save(any(CashTransaction.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        service.move(USER_ID, BigDecimal.ONE, "WITHDRAWAL");
+        service.move(USER_ID, BigDecimal.ONE, "WITHDRAWAL", REF);
 
         verify(userRepository).findByIdForUpdate(USER_ID);
         verify(userRepository, never()).findById(USER_ID);
@@ -171,7 +172,7 @@ class CashTransactionServiceUnitTest {
         when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.empty());
 
         assertThrows(UserNotFoundException.class,
-                () -> service.move(USER_ID, BigDecimal.TEN, "DEPOSIT"));
+                () -> service.move(USER_ID, BigDecimal.TEN, "DEPOSIT", REF));
 
         verify(cashTransactionRepository, never()).save(any(CashTransaction.class));
     }
@@ -184,17 +185,74 @@ class CashTransactionServiceUnitTest {
                 .thenReturn(List.of());
 
         assertThrows(AccountNotFoundException.class,
-                () -> service.move(USER_ID, BigDecimal.ONE, "DEPOSIT"));
+                () -> service.move(USER_ID, BigDecimal.ONE, "DEPOSIT", REF));
     }
 
     @Test
     void anAmountThatIsNotPositiveIsRejectedBeforeAnythingIsRead() {
         assertThrows(IllegalArgumentException.class,
-                () -> service.move(USER_ID, BigDecimal.ZERO, "DEPOSIT"));
+                () -> service.move(USER_ID, BigDecimal.ZERO, "DEPOSIT", REF));
         assertThrows(IllegalArgumentException.class,
-                () -> service.move(USER_ID, new BigDecimal("-1"), "DEPOSIT"));
+                () -> service.move(USER_ID, new BigDecimal("-1"), "DEPOSIT", REF));
         assertThrows(IllegalArgumentException.class,
-                () -> service.move(USER_ID, null, "DEPOSIT"));
+                () -> service.move(USER_ID, null, "DEPOSIT", REF));
+
+        verify(userRepository, never()).findByIdForUpdate(any());
+    }
+
+    @Test
+    void aRepeatedClientReferenceReturnsTheOriginalRowAndMovesNothing() {
+        User user = user(new BigDecimal("100.00"));
+        givenUserWithAccount(user, 7);
+        CashTransaction earlier = new CashTransaction();
+        earlier.setCashTransactionId(31);
+        earlier.setAccountId(7);
+        earlier.setAmount(new BigDecimal("25.00"));
+        earlier.setReason("DEPOSIT");
+        earlier.setClientReference(REF);
+        when(cashTransactionRepository.findByClientReference(REF)).thenReturn(Optional.of(earlier));
+        Account owner = new Account();
+        owner.setId(7);
+        owner.setUserId(USER_ID);
+        when(accountRepository.findById(7)).thenReturn(Optional.of(owner));
+
+        CashTransaction result = service.move(USER_ID, new BigDecimal("25.00"), "DEPOSIT", REF);
+
+        assertSame(earlier, result);
+        assertEquals(new BigDecimal("100.00"), user.getAvailableFunds());
+        verify(userRepository, never()).save(any(User.class));
+        verify(cashTransactionRepository, never()).save(any(CashTransaction.class));
+        verify(events, never()).publishEvent(any());
+    }
+
+    @Test
+    void anotherUsersClientReferenceIsNotReplayedForTheCaller() {
+        // The key belongs to someone else's movement, so it is not theirs to repeat; the
+        // insert goes ahead and the unique constraint refuses the duplicate key.
+        User user = user(new BigDecimal("100.00"));
+        givenUserWithAccount(user, 7);
+        CashTransaction theirs = new CashTransaction();
+        theirs.setAccountId(99);
+        theirs.setClientReference(REF);
+        when(cashTransactionRepository.findByClientReference(REF)).thenReturn(Optional.of(theirs));
+        Account stranger = new Account();
+        stranger.setId(99);
+        stranger.setUserId(UUID.randomUUID());
+        when(accountRepository.findById(99)).thenReturn(Optional.of(stranger));
+        when(cashTransactionRepository.save(any(CashTransaction.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        CashTransaction saved = service.move(USER_ID, new BigDecimal("5.00"), "DEPOSIT", REF);
+
+        assertEquals(REF, saved.getClientReference());
+        assertEquals(7, saved.getAccountId());
+        verify(cashTransactionRepository).save(any(CashTransaction.class));
+    }
+
+    @Test
+    void aMissingClientReferenceIsRejectedBeforeAnythingIsRead() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.move(USER_ID, BigDecimal.TEN, "DEPOSIT", null));
 
         verify(userRepository, never()).findByIdForUpdate(any());
     }
@@ -202,9 +260,9 @@ class CashTransactionServiceUnitTest {
     @Test
     void anUnknownReasonIsRejected() {
         assertThrows(IllegalArgumentException.class,
-                () -> service.move(USER_ID, BigDecimal.TEN, "ORDER_FILL"));
+                () -> service.move(USER_ID, BigDecimal.TEN, "ORDER_FILL", REF));
         assertThrows(IllegalArgumentException.class,
-                () -> service.move(USER_ID, BigDecimal.TEN, null));
+                () -> service.move(USER_ID, BigDecimal.TEN, null, REF));
 
         verify(userRepository, never()).findByIdForUpdate(any());
     }
@@ -265,7 +323,7 @@ class CashTransactionServiceUnitTest {
     @Test void withdrawalCannotSpendCashReservedForOpenBuyOrders() {
         User user = user(new BigDecimal("100.00")); givenUserWithAccount(user, 7);
         when(accountRepository.reservedCash(USER_ID)).thenReturn(new BigDecimal("80.00"));
-        assertThrows(InsufficientFundsException.class, () -> service.move(USER_ID, new BigDecimal("20.01"), "WITHDRAWAL"));
+        assertThrows(InsufficientFundsException.class, () -> service.move(USER_ID, new BigDecimal("20.01"), "WITHDRAWAL", REF));
         assertEquals(new BigDecimal("100.00"), user.getAvailableFunds());
         verify(cashTransactionRepository, never()).save(any(CashTransaction.class));
     }
@@ -273,7 +331,7 @@ class CashTransactionServiceUnitTest {
         User user = user(new BigDecimal("100.00")); givenUserWithAccount(user, 7);
         when(accountRepository.reservedCash(USER_ID)).thenReturn(new BigDecimal("80.00"));
         when(cashTransactionRepository.save(any(CashTransaction.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        service.move(USER_ID, new BigDecimal("20.00"), "WITHDRAWAL");
+        service.move(USER_ID, new BigDecimal("20.00"), "WITHDRAWAL", REF);
         assertEquals(new BigDecimal("80.00"), user.getAvailableFunds());
     }
 }

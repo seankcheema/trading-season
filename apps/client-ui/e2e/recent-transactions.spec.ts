@@ -56,8 +56,9 @@ const SEED: SeedAccount = {
 const GAIN = 'rgb(37, 235, 105)';
 const LOSS = 'rgb(255, 61, 90)';
 
-// A pending order is picked up by the next poll, which runs every five seconds.
-const POLL_TIMEOUT = 15_000;
+// A settled order reaches the page on its next open of the order status stream. The stub
+// cannot hold a stream open, so that is the page's reconnect, which backs off to ten seconds.
+const STREAM_TIMEOUT = 20_000;
 
 test.use({ stubOptions: { accounts: [SEED] } });
 
@@ -225,24 +226,22 @@ test('a pending order updates to filled by itself, with the balances it moved', 
   await expect(pendingRow).toContainText('MSFT');
   await expect(dashboardPage.cash).toHaveText('Cash $5,000.00');
 
-  // The backend settles the order; the page is never told.
+  // The backend settles the order and pushes the status; the page asks for nothing.
   api.resolveOrder(USER.email, 2, { status: 'FILLED' });
 
   await expect(dashboardPage.recentTransactions.locator('li[data-status="PENDING"]')).toHaveCount(
     0,
-    { timeout: POLL_TIMEOUT },
+    { timeout: STREAM_TIMEOUT },
   );
   await expect(dashboardPage.recentTransactions.locator('li[data-status="FILLED"]')).toHaveCount(2);
   // The fill moved cash and added the position without a reload.
   await expect(dashboardPage.cash).toHaveText('Cash $4,600.00');
   await expect(dashboardPage.assets.getByTestId('asset-row-MSFT')).toBeVisible();
 
-  // With nothing pending left, the page stops reading the history.
-  const reads = () =>
-    api.requests.filter((r) => r.method === 'GET' && r.url.endsWith('/api/orders')).length;
-  const before = reads();
-  await page.waitForTimeout(6_000);
-  expect(reads()).toBe(before);
+  // The status arrived on the order stream, with the bearer token the stream requires.
+  const streams = api.requests.filter((r) => r.url.endsWith('/api/orders/stream'));
+  expect(streams.length).toBeGreaterThan(0);
+  expect(streams[0].headers['authorization']).toMatch(/^Bearer /);
 });
 
 test('a pending order that is rejected shows its reason without a reload', async ({
@@ -254,7 +253,7 @@ test('a pending order that is rejected shows its reason without a reload', async
   api.resolveOrder(USER.email, 2, { status: 'REJECTED', rejectionReason: 'Insufficient funds' });
 
   const rejected = dashboardPage.recentTransactions.locator('li[data-status="REJECTED"]');
-  await expect(rejected).toHaveCount(2, { timeout: POLL_TIMEOUT });
+  await expect(rejected).toHaveCount(2, { timeout: STREAM_TIMEOUT });
   await expect(dashboardPage.recentTransactions).toContainText('Insufficient funds');
   await expect(dashboardPage.cash).toHaveText('Cash $5,000.00');
   await expect(page.getByTestId('open-order-history')).toHaveCount(0);

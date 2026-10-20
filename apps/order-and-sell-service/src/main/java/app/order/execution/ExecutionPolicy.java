@@ -3,17 +3,41 @@ package app.order.execution;
 import app.order.Order;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.DayOfWeek;
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 
-/** Pure, inclusive stock execution conditions and adverse-price protection. */
+/**
+ * Pure, inclusive stock execution conditions and adverse-price protection, and
+ * the hours of the simulated session every instrument trades on: Monday to
+ * Friday, {@link #SESSION_OPEN} to {@link #SESSION_CLOSE} in {@link #MARKET_ZONE}.
+ */
 public final class ExecutionPolicy {
+    /** The zone the simulated session is defined in. */
+    public static final ZoneId MARKET_ZONE = ZoneId.of("America/Chicago");
+    /** The first second an order can be placed on a trading day. */
+    public static final LocalTime SESSION_OPEN = LocalTime.of(8, 30);
+    /** The regular close: orders are refused from this second and day orders expire at it. */
+    public static final LocalTime SESSION_CLOSE = LocalTime.of(15, 0);
     private ExecutionPolicy() { }
     /** Returns the submission day's regular market close, independent of wall-clock time.
      * @param order instruction with an authoritative submission position
-     * @return 15:00 America/Chicago on that simulation date */
-    public static java.time.OffsetDateTime expiresAt(Order order) {
-        var zone = java.time.ZoneId.of("America/Chicago");
-        return order.getReferenceAt().atZoneSameInstant(zone).toLocalDate()
-                .atTime(15, 0).atZone(zone).toOffsetDateTime();
+     * @return {@link #SESSION_CLOSE} in {@link #MARKET_ZONE} on that simulation date */
+    public static OffsetDateTime expiresAt(Order order) {
+        return order.getReferenceAt().atZoneSameInstant(MARKET_ZONE).toLocalDate()
+                .atTime(SESSION_CLOSE).atZone(MARKET_ZONE).toOffsetDateTime();
+    }
+    /** Tells whether the market is open at an authoritative position (BR-05).
+     * @param at a simulated position, in any offset
+     * @return true Monday to Friday from the open up to, not including, the close */
+    public static boolean isDuringSession(OffsetDateTime at) {
+        ZonedDateTime local = at.atZoneSameInstant(MARKET_ZONE);
+        DayOfWeek day = local.getDayOfWeek();
+        LocalTime time = local.toLocalTime();
+        return day != DayOfWeek.SATURDAY && day != DayOfWeek.SUNDAY
+                && !time.isBefore(SESSION_OPEN) && time.isBefore(SESSION_CLOSE);
     }
     /** Computes the adverse execution boundary at database price precision.
      * @param side BUY or SELL

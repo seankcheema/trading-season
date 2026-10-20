@@ -107,6 +107,16 @@ Network and refresh-service failures keep the credentials so the request can be 
 
 The account chosen in the header is never part of a URL, where it would reach browser history, server logs and shared links. [AccountStore](src/app/dashboard/accounts/account-store.service.ts) holds it for the dashboard and the market page, and keeps it in this tab's `sessionStorage` under `ts.accounts.selected`, so moving between the two pages or reloading keeps it, and a new tab starts on the first account. Sign-out forgets it, and a saved id that is not one of the user's accounts selects the first one. Links made before this carried `?accountId=`; [dropAccountIdGuard](src/app/core/drop-account-id.guard.ts) opens them without it.
 
+## Order status
+
+An order's status changes on screen without a refresh (BR-07). While signed in, [OrderService](src/app/dashboard/orders/order.service.ts) holds `GET /api/orders/stream` open and applies each `order-status` event the [Order and Sell Service](../order-and-sell-service/README.md) pushes from Kafka: the order's row moves to `ACCEPTED`, `FILLED`, `REJECTED` or `CANCELLED` the moment the backend commits it, a resolved order releases its reservation, and a fill triggers the same cash and holdings refresh the dashboard already does after a submission. The stream needs the bearer header, which the browser's `EventSource` cannot send, so the service reads it through `fetch` and the same token renewal the HTTP interceptor uses.
+
+A status never moves backwards, so an `ACCEPTED` event arriving after the submission response already said `FILLED` changes nothing. An event for an order the page has not loaded re-reads the order history. If the stream drops, the service reopens it after 2 s, doubling to a 10 s cap, and re-reads the history once on reconnection because the backend replays nothing. The stream closes on sign-out and reopens on the next sign-in. The Nginx image turns proxy buffering off for `/api/orders` so frames are forwarded as they arrive.
+
+The order history behind the dashboard and the market page is read from `GET /api/orders` page by page, in the endpoint's default page size, until a short page arrives (BR-11), so every view that derives cash or holdings from past orders still sees all of them.
+
+A fill that lands after the submission response, such as a limit or stop order's, is announced by the service with the `executionPrice` the Order and Sell Service settled at (BR-08); the submission toasts use the same field and fall back to the indicative price when a response has none.
+
 ## Loading states
 
 Recent activity rows show order details and plain-text status beneath the transaction label, with the timestamp beneath the amount. Buy, Sell, Deposit and Withdrawal badges appear immediately to the right of the ticker or transaction label, vertically centered on that line. The dashboard and market page share these rows.

@@ -997,7 +997,7 @@ describe('MarketPageComponent', () => {
       simulatedAt: '2026-01-05T15:01:00.000Z',
     });
     expect(req.request.body.clientReference).toBeTruthy();
-    req.flush(order({ accountId: 2 }));
+    req.flush(order({ accountId: 2, executionPrice: 226.1 }));
     http
       .expectOne('/api/accounts/2/holdings')
       .flush([{ symbol: 'AAPL', quantity: 2, averageCost: 225.8 }]);
@@ -1008,7 +1008,7 @@ describe('MarketPageComponent', () => {
     expect(fixture.componentInstance['recentOrders']()[0].status).toBe('FILLED');
     expect(fixture.componentInstance['orderMessage']()).toBe('');
     expect(fixture.nativeElement.querySelector('app-trade-ticket [role="status"]')).toBeNull();
-    expect(TestBed.inject(ToastService).messages()[0].message).toContain('Filled 2 AAPL');
+    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 2 AAPL at $226.10.');
     http.verify();
   });
   it('reports an accepted order that is still open', async () => {

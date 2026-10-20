@@ -19,12 +19,27 @@ DEFAULT_CONFIG = SCRIPTS / "config" / "synthetic-market-data-2026-v1.json"
 
 @dataclass(frozen=True, slots=True)
 class Stock:
+    """One simulated price series and the instrument it prices.
+
+    Trading is limited to US equities (sponsor clarification of BR-12, 20
+    October 2026), so every series is a US equity quoted in US dollars on the
+    one simulated session, and V001 only lets a US equity link to a price
+    series. The class, market, currency and ticker fields keep their defaults.
+    """
     symbol: str
     company_name: str
     starting_price: Decimal
     sector: str
     average_volume: int
     base_volatility: Decimal
+    asset_class: str = "Equity"
+    market: str | None = "US"
+    currency: str = "USD"
+    ticker: str | None = None
+
+    @property
+    def instrument_ticker(self) -> str:
+        return self.ticker or self.symbol
 
 STOCKS = (
     Stock("AAPL", "Apple Inc.", Decimal("224.15"), "Technology", 55_000_000, Decimal("0.22")),
