@@ -80,6 +80,8 @@ export interface StoredCashTransaction {
   amount: number;
   reason: 'DEPOSIT' | 'WITHDRAWAL';
   createdAt: string;
+  // The idempotency key the page sent; absent on seeded rows.
+  clientReference?: string;
 }
 
 interface OwnedTradingAccount extends TradingAccount {
@@ -271,6 +273,7 @@ export class ApiStub {
     await page.route('**/api/registration/account-exists', (route) => this.accountExists(route));
     await page.route(/\/api\/me\/watchlist(?:\/[^/?]+)?$/, (route) => this.watchlist(route));
     await page.route('**/api/orders', (route) => this.orderRequest(route));
+    await page.route('**/api/orders/stream', (route) => this.orderStream(route));
     await page.route(/\/api\/orders\/\d+\/audit$/, (route) => this.orderAuditRequest(route));
     await page.route('**/api/instruments', async (route) => {
       if (await this.caller(route))
@@ -495,7 +498,7 @@ export class ApiStub {
         },
         {
           eventType: 'FILLED',
-          price: order.indicativePrice,
+          price: order.executionPrice ?? order.indicativePrice,
           occurredAt: order.resolvedAt ?? order.submittedAt,
           detail: null,
         },
@@ -535,10 +538,30 @@ export class ApiStub {
     }
   }
 
+  // Order status frames per owner id, queued until the page next opens the stream.
+  private readonly streamFrames = new Map<string, string[]>();
+
+  /**
+   * GET /api/orders/stream as the page reads it: a fulfilled route cannot stay open, so each
+   * open delivers the `order-status` events queued since the last one and then ends, and the
+   * page's own reconnect collects the next batch within its backoff.
+   */
+  private async orderStream(route: Route): Promise<void> {
+    const ownerId = await this.caller(route);
+    if (!ownerId) return;
+    const frames = this.streamFrames.get(ownerId) ?? [];
+    this.streamFrames.set(ownerId, []);
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: frames.join('') + 'event: heartbeat\ndata: {}\n\n',
+    });
+  }
+
   /**
    * Settles a pending order the way the backend does on its own, without any request from the
-   * page: a fill moves cash and holdings, a rejection records why. The page only learns of it
-   * by reading the order history again.
+   * page: a fill moves cash and holdings, a rejection records why. The page learns of it from
+   * the `order-status` frame queued for its stream, as it would from the Kafka-fed push.
    */
   resolveOrder(
     email: string,
@@ -570,6 +593,15 @@ export class ApiStub {
       rejectionReason: outcome.status === 'REJECTED' ? outcome.rejectionReason : null,
       resolvedAt: pending.submittedAt,
     };
+    const frame = {
+      orderId,
+      status: outcome.status,
+      rejectionReason: orders[index].rejectionReason,
+      order: { resolvedAt: orders[index].resolvedAt },
+    };
+    const queue = this.streamFrames.get(owner.id) ?? [];
+    queue.push(`event: order-status\ndata: ${JSON.stringify(frame)}\n\n`);
+    this.streamFrames.set(owner.id, queue);
   }
 
   /** Trading accounts the business backend holds for a user, oldest first. */
@@ -712,6 +744,19 @@ export class ApiStub {
     }
 
     account.profile = profile;
+    // The backend books the opening funds as the first deposit, so the ledger shows them.
+    const openingFunds = Number(profile['availableFunds'] ?? 0);
+    if (openingFunds > 0) {
+      this.cashTransactions.set(account.id, [
+        ...(this.cashTransactions.get(account.id) ?? []),
+        {
+          cashTransactionId: this.nextId++,
+          amount: openingFunds,
+          reason: 'DEPOSIT',
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    }
     await this.json(route, 201, { userId: account.id, email: account.email });
   }
 
@@ -1053,6 +1098,7 @@ export class ApiStub {
     const body = this.body(route);
     const amount = body['amount'];
     const reason = body['reason'];
+    const clientReference = body['clientReference'];
     const funds = Number(user.profile['availableFunds'] ?? 0);
     if (typeof amount !== 'number' || amount <= 0 || amount > MAX_CASH_AMOUNT) {
       await this.json(route, 400, { error: 'amount: must be greater than 0' });
@@ -1060,6 +1106,16 @@ export class ApiStub {
     }
     if (reason !== 'DEPOSIT' && reason !== 'WITHDRAWAL') {
       await this.json(route, 400, { error: 'reason: must be DEPOSIT or WITHDRAWAL' });
+      return;
+    }
+    if (typeof clientReference !== 'string' || !clientReference) {
+      await this.json(route, 400, { error: 'clientReference: must be a UUID' });
+      return;
+    }
+    // A retried request returns the original transaction and moves nothing, as the backend does.
+    const repeated = ledger.find((entry) => entry.clientReference === clientReference);
+    if (repeated) {
+      await this.json(route, 201, repeated);
       return;
     }
     if (reason === 'WITHDRAWAL' && amount > funds) {
@@ -1071,6 +1127,7 @@ export class ApiStub {
       amount,
       reason,
       createdAt: new Date().toISOString(),
+      clientReference,
     };
     this.cashTransactions.set(ownerId, [...ledger, transaction]);
     user.profile['availableFunds'] =

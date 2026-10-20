@@ -18,10 +18,10 @@ All require a bearer token except the public market reads.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | POST | `/api/orders` | Submit a buy or sell order. Returns 201 with the outcome (`FILLED`, `REJECTED`, or `ACCEPTED` while open) |
-| GET | `/api/orders` | The caller's orders across all their accounts, newest first |
-| GET | `/api/orders/{orderId}/audit` | One of the caller's orders as its audit trail, oldest first: `eventType`, `price` (the order's indicative price), `occurredAt`, `detail`. Another caller's order is 404, the same as a missing one |
+| GET | `/api/orders` | One page of the caller's orders across all their accounts, newest first (BR-11): `page` (zero-based, default 0) and `size` (default 50, at most 200); the total travels in the `X-Total-Count` header |
+| GET | `/api/orders/{orderId}/audit` | One of the caller's orders as its audit trail, oldest first: `eventType`, `price` (the quote that stage was priced against, BR-15: the execution quote for `FILLED`, the activation quote for `TRIGGERED`, otherwise the authoritative submission quote), `occurredAt`, `detail`. Another caller's order is 404, the same as a missing one |
 | GET | `/api/orders/stream` | Server-Sent Events: an `order-status` event with each committed status change's JSON body, and a `heartbeat` every 15 seconds |
-| GET | `/api/instruments` | Every instrument with `tradable` and `simulatedStockSymbol` |
+| GET | `/api/instruments` | Every instrument (US equities only, as seeded by the [market data import](../market-data/README.md#universe)) with `assetClass`, `market`, `currency`, `tradable` and `simulatedStockSymbol` |
 | GET | `/api/users/me` | The caller's profile, without the SSN |
 | GET | `/api/market/snapshot`, `/candles`, `/stream` | Public market data (snapshot, OHLCV candles, SSE ticks) |
 | PUT | `/api/market/clock` | Move the shared replay cursor |
@@ -46,8 +46,9 @@ flowchart TB
         subgraph Rules["OrderValidator rules"]
             V1[AccountCredentialsValidator]
             V2[TradabilityValidator]
-            V3[SufficientFundsValidator]
-            V4[SufficientHoldingsValidator]
+            V3[MarketHoursValidator]
+            V4[SufficientFundsValidator]
+            V5[SufficientHoldingsValidator]
         end
         OE[OrderExecutionService]
         AT[AuditTrailService]
@@ -145,7 +146,7 @@ The Reporting Service reads Kafka, not the database, so everything it shows of a
 | `order` | Always | The order row and the execution fields documented in [Order API](api.md), including: `clientReference`, `instrumentId`, `instrumentName`, `indicativePrice`, `bufferPercent`, `submittedAt`, `acceptedAt`, `resolvedAt`, `simulatedAt` |
 | `execution` | `FILLED` only, otherwise null | What executing the order wrote: `userId`, `fillId`, `price`, `quantity`, `filledAt`; the cash posting `cashTransactionId` and `cashAmount` with the owner's `availableFunds` after it; the holding movement `holdingMovementId` and `quantityDelta` with the `holdingQuantity` it left |
 
-The frames on `GET /api/orders/stream` are these same bodies.
+The frames on `GET /api/orders/stream` are these same bodies. The stream needs the bearer header, which the browser's native `EventSource` cannot send; the Client UI reads it through `fetch` with the header set (see [its README](../client-ui/README.md#order-status)). Only the caller's own order events are pushed.
 
 The audit trail holds more than statuses, an execution failure for one, so it travels on its own: `AuditTrailService` raises an `AuditEntryRecord` for every entry, and `PlatformRecordPublisher` sends it to `platform-records` after the commit, keyed `ORDER_AUDIT:<auditId>`, with `type`, `auditId`, `orderId`, `eventType`, `detail` and `recordedAt`. The topic is compacted and shared with the Holdings and Trade and auth services; the record types are listed in the [Reporting Service README](../reporting-service/README.md#what-arrives).
 
@@ -166,7 +167,23 @@ stateDiagram-v2
     FILLED --> [*]
 ```
 
-Every transition is recorded in `audit_trail` and published to `platform-records`, and every committed `ACCEPTED`, `FILLED`, `REJECTED` and `CANCELLED` status is also published to `trade-events`. A new validation rule is a new `OrderValidator` class; the pipeline discovers it automatically and stops at the first rejection.
+Every transition is recorded in `audit_trail` and published to `platform-records`, and every committed `ACCEPTED`, `FILLED`, `REJECTED` and `CANCELLED` status is also published to `trade-events`. A new validation rule is a new `OrderValidator` class; the pipeline discovers it automatically and stops at the first rejection. The rules see the authoritative submission quote and position, not the client's indicative price and display time: `MarketHoursValidator` rejects an order whose position falls outside the simulated session, Monday to Friday 08:30 to 15:00 America/Chicago (BR-05), the same close a day order expires at.
+
+### Audit trail
+
+Each `audit_trail` row is written to stand on its own as the record of that event, without needing any other row to interpret it (BR-14), and the [V016 migration](../../db/README.md#trade-record) stops it being changed or removed afterwards. A submitted order writes these entries, in order:
+
+| Event | Detail |
+| --- | --- |
+| `PENDING` | `Submitted by user <id> on account <n>: <side> <quantity> <ticker> <execution type> at indicative price <price>[, limit <price>][, stop <price>], market quote <reference price> in session <id> at <reference time>, buffer <percent>%, client reference <uuid>` |
+| `ACCEPTED` | `Passed trading rules at market quote <reference price> with buffer <percent>%`; a replacement adds a second `ACCEPTED` entry naming the order it replaces |
+| `REJECTED` | The rule or execution check that failed, prefixed with its requirement, such as `BR-05` |
+| `TRIGGERED` | `Stop triggered at <quote>` |
+| `FILLED` | `Filled <quantity> @ <price> (market quote in session <id> at <time>); cash <signed amount> for user <id>; holding <signed quantity> on account <n>` |
+| `CANCELLED` | `Cancelled by owner`, `Day order expired at market close`, or `Replaced by order #<id>` |
+| `EXECUTION_FAILED` | The exception that rolled the execution back, truncated to 255 characters |
+
+`GET /api/orders/{orderId}/audit` serves them with the quote each stage was priced against (BR-15).
 
 ## Configuration
 

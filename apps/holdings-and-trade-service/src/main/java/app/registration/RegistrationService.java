@@ -4,6 +4,8 @@ import app.account.AccountService;
 import app.auth.AuthenticatedUser;
 import app.auth.ConflictException;
 import app.auth.ForbiddenException;
+import app.cash.CashTransaction;
+import app.cash.CashTransactionService;
 import app.user.User;
 import app.user.UserAccountRepository;
 import app.user.UserRepository;
@@ -12,7 +14,9 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 /**
  * Creates business accounts for users already signed up with the auth service,
@@ -29,30 +33,38 @@ public class RegistrationService {
     private final AccountService accountService;
     private final UserAccountRepository userAccountRepository;
     private final ApplicationEventPublisher events;
+    private final CashTransactionService cashTransactionService;
 
     /**
      * Creates the service.
      *
      * @param userRepository         persistence for business accounts
-     * @param accountService  service for managing user accounts
-     * @param userAccountRepository read-only access to the credential records
-     *                              the auth service owns
-     * @param events                publisher of the {@link CustomerProfileRecord} raised for a new profile
+     * @param accountService         service for managing user accounts
+     * @param userAccountRepository  read-only access to the credential records
+     *                               the auth service owns
+     * @param events                 publisher of the {@link CustomerProfileRecord} raised for a new profile
+     * @param cashTransactionService books the opening funds as the first deposit
      */
     public RegistrationService(UserRepository userRepository, AccountService accountService,
-                               UserAccountRepository userAccountRepository, ApplicationEventPublisher events) {
+                               UserAccountRepository userAccountRepository, ApplicationEventPublisher events,
+                               CashTransactionService cashTransactionService) {
         this.userRepository = userRepository;
         this.accountService = accountService;
         this.userAccountRepository = userAccountRepository;
         this.events = events;
+        this.cashTransactionService = cashTransactionService;
     }
 
     /**
      * Creates the business account for the authenticated caller from the
      * registration form's profile details. Also creates a default "Main Account"
-     * for the new user. The profile is raised as a {@link CustomerProfileRecord}
-     * and published to Kafka after the commit, as the account is by
-     * {@link AccountService#createAccount}.
+     * for the new user and books the opening funds on it as the first
+     * {@code DEPOSIT} in the cash ledger, so the ledger sums to the balance
+     * from the start (BR-10). The profile is raised as a
+     * {@link CustomerProfileRecord} after that deposit, so it carries the funded
+     * balance, and is published to Kafka after the commit, as the account is by
+     * {@link AccountService#createAccount} and the deposit by
+     * {@link CashTransactionService#move}.
      *
      * @param caller  the user identified by the verified access token
      * @param request the profile details
@@ -78,15 +90,21 @@ public class RegistrationService {
         user.setAddress(request.address());
         user.setDateOfBirth(request.dateOfBirth());
         user.setTraderLevel(request.traderLevel());
-        user.setAvailableFunds(request.availableFunds());
+        // The balance starts at zero and is raised by the opening deposit below,
+        // so every unit of cash the user ever holds has a ledger row behind it.
+        user.setAvailableFunds(BigDecimal.ZERO);
         user.setCreatedAt(OffsetDateTime.now());
         userRepository.save(user);
-        events.publishEvent(CustomerProfileRecord.from(user));
 
-        // Create a default "Main Account" for the new user
+        // Create a default "Main Account" for the new user, then book the opening
+        // funds on it as the first deposit.
         accountService.createDefaultAccountForUser(caller.userId());
+        cashTransactionService.move(caller.userId(), request.availableFunds(),
+                CashTransaction.REASON_DEPOSIT, UUID.randomUUID());
 
-        return user;
+        User funded = userRepository.findById(caller.userId()).orElse(user);
+        events.publishEvent(CustomerProfileRecord.from(funded));
+        return funded;
     }
 
     /**

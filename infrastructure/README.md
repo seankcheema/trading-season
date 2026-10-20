@@ -48,6 +48,7 @@ docker compose --project-name trading-season-local -f infrastructure/docker-comp
 - `client-ui` does the same for its three upstreams: `/api/orders`, `/api/instruments` and `/api/me/watchlist` and the rest of `/api` go to the two Java services and `/auth` goes to `auth-service`, so it starts after all three. Both UI containers are local stand-ins for S3 behind CloudFront (see [Static UIs on S3](#static-uis-on-s3)); nothing deploys them.
 - To inspect the topic: `docker compose --project-name trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --all-groups` shows each group's lag.
 - Opt-in profiles: `initialize` (first-time empty database) and `seed` (market data steps 0002 to 0004; see [apps/market-data](../apps/market-data/README.md)).
+- `scripts/backup-database.sh` and `scripts/restore-database.sh` take and restore a dump of the database; see [Database backup and restore](#database-backup-and-restore).
 - For Linux VMs, `scripts/setup-local.sh` at the repository root reuses a local PostgreSQL or starts `db` and `kafka` from this Compose file and waits for `kafka` to be healthy, and runs the applications on the host against `localhost:29092`. With a local PostgreSQL it starts no broker, and it never starts the reporting service or its consumer.
 
 ### Kafka on its own host
@@ -122,6 +123,22 @@ None of this is created or tested here.
 ### Java service images
 
 The two Java service images build from the repository root: both Compose files use `context: ../..` and name each service's Dockerfile by path, because the build compiles [packages/trading-java-common](../packages/trading-java-common/README.md) together with the service. To build one by hand, run `docker build -f apps/<service>/Dockerfile .` from the repository root; building from inside the service folder fails because the shared source is outside it.
+
+## Database backup and restore
+
+The database holds the permanent [trade record](../db/README.md#trade-record), which must survive a failed deployment. Triggers stop rows being changed or removed, but not a dropped table, a dropped database, or a deleted `db_data` volume. A backup is the only recovery from those, and nothing takes one automatically: take one before every deployment, manual migration, or `down -v`.
+
+Both scripts need the PostgreSQL client tools on PATH, at the server's major version or newer, and run from the repository root in Bash (Git Bash on Windows). They read the password from `PGPASSWORD`, then `SPRING_DATASOURCE_PASSWORD`, and connect to `localhost:5432` as `trading_season` unless `PGHOST`, `PGPORT`, `PGUSER`, or `PGDATABASE` say otherwise. The Compose database is reachable that way while the stack is up.
+
+```sh
+./scripts/backup-database.sh
+./scripts/restore-database.sh backups/trading_season-20261019T120000Z.dump trading_season_restored
+```
+
+- `backup-database.sh` writes a compressed, timestamped dump to `backups/`, which git ignores, and fails without leaving a file if the dump cannot be read back. `--exclude-market-data` skips the replay rows, which the market-data scripts can regenerate, and keeps the dump small; `--output-dir` changes the destination.
+- `restore-database.sh` restores only into a database that does not exist yet, in one transaction, then prints the trade record row counts and the number of protection triggers (22 once V017 is applied). It never restores over an existing database.
+- To recover, restore into a new database, check the counts, then point every service at it (`SPRING_DATASOURCE_URL` for the Java services, `DB_NAME` for the auth service) and restart them. Keep the damaged database until the restored one is confirmed.
+- Dumps contain personal data and password hashes. Store them off the database host and never commit them. There is no schedule, rotation, or off-site copy; those remain to be set up for any real deployment.
 
 ## Jenkins
 

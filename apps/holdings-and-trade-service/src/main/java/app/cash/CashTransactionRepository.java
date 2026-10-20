@@ -6,12 +6,21 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Repository for accessing {@link CashTransaction} entities.
  */
 public interface CashTransactionRepository extends JpaRepository<CashTransaction, Integer> {
+
+    /**
+     * Finds the movement a client already posted under an idempotency key.
+     *
+     * @param clientReference the key the client sent with a deposit or withdrawal
+     * @return the row booked for it, if any
+     */
+    Optional<CashTransaction> findByClientReference(UUID clientReference);
 
     /**
      * Lists the funding history of every account the given user owns, newest

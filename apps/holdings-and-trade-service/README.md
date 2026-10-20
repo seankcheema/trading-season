@@ -16,7 +16,7 @@ All require a bearer token except where marked public.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | POST | `/api/registration/account-exists` | Whether an email is registered (public) |
-| POST | `/api/registration` | Create the caller's profile and a default account |
+| POST | `/api/registration` | Create the caller's profile and a default account, and book the opening funds as the first deposit |
 | GET | `/api/users/me` | The caller's profile, without the SSN; `termsAccepted` reports whether they accepted the platform terms in force |
 | PUT | `/api/users/me/terms-acceptance` | Record that the caller accepts the platform terms; returns the updated profile |
 | GET, POST | `/api/me/accounts` | List ACTIVE accounts (newest first) or open an account |
@@ -29,7 +29,7 @@ All require a bearer token except where marked public.
 | GET | `/api/accounts/{accountId}/holdings` | Positions with symbol and average cost |
 | GET | `/api/accounts/{accountId}/portfolio-history` | Value observations; `timeframe` is `1D`, `5D`, `1W`, `1M`, or `1Y` |
 | POST | `/api/accounts/{accountId}/portfolio-valuations` | Record a server-calculated value now |
-| GET, POST | `/api/me/cash-transactions` | List or record a deposit or withdrawal |
+| GET, POST | `/api/me/cash-transactions` | List or record a deposit or withdrawal; a POST carries a `clientReference` UUID and a repeat of it returns the original row |
 | GET | `/api/me/watchlist` | The caller's saved stocks |
 | PUT, DELETE | `/api/me/watchlist/{symbol}` | Save or remove a stock |
 | GET | `/api/market/snapshot`, `/candles`, `/stream` | Public market data (snapshot, OHLCV candles, SSE ticks) |
@@ -39,9 +39,9 @@ Account deletion is archival, never physical deletion. See the [lifecycle API](a
 
 Behavior worth knowing:
 
-- Registration needs a bearer token whose `email` matches the profile email, a nonblank name and address, SSN as `NNN-NN-NNNN`, a past date of birth, `traderLevel` of `BEGINNER`, `INTERMEDIATE`, or `ADVANCED`, and `availableFunds` of at least 5000.00. Credentials are created first with the Auth Service; this service never sees a password.
+- Registration needs a bearer token whose `email` matches the profile email, a nonblank name and address, SSN as `NNN-NN-NNNN`, a past date of birth, `traderLevel` of `BEGINNER`, `INTERMEDIATE`, or `ADVANCED`, and `availableFunds` of at least 5000.00. Credentials are created first with the Auth Service; this service never sees a password. The opening funds are booked as a `DEPOSIT` row on the default account, so the cash ledger sums to `users.available_funds` from the first moment (BR-10) and the opening credit appears in the funding history.
 - Accepting the terms takes `{"termsVersion": "..."}`, the version the client displayed. A version other than the one in force (`UserService.CURRENT_TERMS_VERSION`) is 409, so an acceptance is never recorded against wording the user did not see. Each acceptance is one `terms_acceptances` row; accepting again keeps the first row and its time. Changing the version makes every profile report `termsAccepted: false` until its owner accepts again.
-- Cash belongs to the user, not the account: every account shares `users.available_funds`. Each deposit or withdrawal updates that balance and appends a `cash_transactions` row in one transaction with the user row locked. A withdrawal above the balance is 422.
+- Cash belongs to the user, not the account: every account shares `users.available_funds`. Each deposit or withdrawal updates that balance and appends a `cash_transactions` row in one transaction with the user row locked. A withdrawal above the balance is 422. Every POST carries a `clientReference` UUID; a repeat with the same reference returns the original row and moves nothing, so a retried request never posts twice (section 9.1). The reference is unique in the database, which is the backstop for two concurrent retries.
 - A holding's `averageCost` is derived by replaying `holding_movements` and `fills` oldest first as a moving weighted average. This service never writes those tables.
 - Portfolio history is recorded once a minute for eligible accounts, by the Kafka consumer when an order fills, and on request from the UI after a fill; captures within the same minute are coalesced. Value is held quantity times replay price, falling back to average cost; cash is excluded.
 - Candles come from the seeded one-minute data and are capped at 500 points. The stream keeps 30 events for `Last-Event-ID` reconnection and then asks the client to reload the snapshot.
@@ -117,10 +117,13 @@ sequenceDiagram
     Auth-->>Client: Access token
     Client->>H: POST /api/registration + profile
     H->>H: Token email must equal profile email (else 403)
-    H->>DB: Insert users row with token sub as user_id
+    H->>DB: Insert users row with token sub as user_id and zero funds
     H->>DB: Insert default account "Main Account"
+    H->>DB: Book the opening funds as a DEPOSIT row and raise available_funds
     H-->>Client: 201 userId and email
 ```
+
+The profile record for reporting is raised after the opening deposit, so it carries the funded balance.
 
 ### Cash movement
 
@@ -130,9 +133,11 @@ sequenceDiagram
     participant S as CashTransactionService
     participant DB as PostgreSQL
 
-    C->>S: move(userId, amount, reason)
+    C->>S: move(userId, amount, reason, clientReference)
     S->>DB: Lock users row
-    alt Withdrawal above available funds
+    alt clientReference already booked for this user
+        S-->>C: 201 the original transaction, nothing moved
+    else Withdrawal above available funds
         S-->>C: 422
     else Allowed
         S->>DB: Update available_funds
@@ -173,7 +178,7 @@ The Reporting Service reads Kafka, not the database. Each service method that wr
 | --- | --- | --- | --- |
 | `CUSTOMER_PROFILE` | A profile is registered | `CUSTOMER_PROFILE:<userId>` | `userId`, `firstName`, `lastName`, `traderLevel`, `availableFunds`, `sessionTimeoutMinutes`, `lastActivityAt`, `createdAt`, `asOf` |
 | `TRADING_ACCOUNT` | An account is opened or renamed | `TRADING_ACCOUNT:<accountId>` | `accountId`, `userId`, `name`, `openedDate`, `currency`, `status`, `archivedAt` |
-| `CASH_TRANSFER` | A deposit or withdrawal is booked | `CASH_TRANSFER:<cashTransactionId>` | `cashTransactionId`, `accountId`, `userId`, `amount`, `reason`, `createdAt`, and the `availableFunds` it left |
+| `CASH_TRANSFER` | A deposit or withdrawal is booked, including the opening deposit at registration | `CASH_TRANSFER:<cashTransactionId>` | `cashTransactionId`, `accountId`, `userId`, `amount`, `reason`, `createdAt`, and the `availableFunds` it left |
 | `PORTFOLIO_VALUATION` | A valuation is captured | `PORTFOLIO_VALUATION:<accountId>` | `valuationId`, `accountId`, `observedAt`, `portfolioValue` |
 | `MARKET_SESSION` | The service has started | `MARKET_SESSION:current` | `sessionId`, the newest completed simulation session |
 
@@ -204,6 +209,7 @@ sequenceDiagram
 ```
 
 Parquet-backed sessions read raw ticks from the archive: `MARKET_REPLAY_ARCHIVE_LOCATION` first, then the location recorded at import, then the matching archive under `apps/market-data/db/seeds`. A missing partition returns an unavailable error rather than falling back to one-minute candles.
+
 
 ## Configuration
 

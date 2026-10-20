@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * Request DTO for a deposit or withdrawal.
@@ -15,8 +16,10 @@ import java.math.BigDecimal;
  * caller never names an account: cash belongs to the user, and the service
  * resolves the account the ledger row is booked against.
  *
- * @param amount how much to move, in whole cents, greater than 0
- * @param reason {@code DEPOSIT} or {@code WITHDRAWAL}
+ * @param amount          how much to move, in whole cents, greater than 0
+ * @param reason          {@code DEPOSIT} or {@code WITHDRAWAL}
+ * @param clientReference client-generated idempotency key; a retry with the
+ *                        same key returns the original transaction (section 9.1)
  */
 public record CashTransactionRequest(
         @NotNull(message = "must be greater than 0")
@@ -27,6 +30,9 @@ public record CashTransactionRequest(
 
         @NotNull(message = "must be DEPOSIT or WITHDRAWAL")
         @Pattern(regexp = "DEPOSIT|WITHDRAWAL", message = "must be DEPOSIT or WITHDRAWAL")
-        String reason
+        String reason,
+
+        @NotNull(message = "must be a UUID")
+        UUID clientReference
 ) {
 }

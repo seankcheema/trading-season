@@ -4,6 +4,7 @@ import app.account.AccountService;
 import app.auth.AuthenticatedUser;
 import app.auth.ConflictException;
 import app.auth.ForbiddenException;
+import app.cash.CashTransactionService;
 import app.record.CustomerProfileRecord;
 import app.user.User;
 import app.user.UserAccountRepository;
@@ -19,10 +20,13 @@ import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,11 +49,15 @@ class RegistrationServiceUnitTest {
     @Mock
     private ApplicationEventPublisher events;
 
+    @Mock
+    private CashTransactionService cashTransactionService;
+
     private RegistrationService registrationService;
 
     @BeforeEach
     void setUp() {
-        registrationService = new RegistrationService(userRepository, accountService, userAccountRepository, events);
+        registrationService = new RegistrationService(userRepository, accountService, userAccountRepository, events,
+                cashTransactionService);
     }
 
     @Test
@@ -65,6 +73,48 @@ class RegistrationServiceUnitTest {
         assertEquals(USER_ID, profile.userId());
         assertEquals("CUSTOMER_PROFILE", profile.recordType());
         assertEquals(USER_ID.toString(), profile.recordId());
+    }
+
+    @Test
+    void registerBooksTheOpeningFundsAsTheFirstDepositAfterTheAccountExists() {
+        // BR-10: the balance is backed by the ledger from the start, so the user is saved
+        // with zero funds and the opening amount arrives as a deposit on the new account.
+        AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "test@example.com");
+        when(userRepository.existsById(USER_ID)).thenReturn(false);
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        registrationService.register(caller, request("test@example.com"));
+
+        ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(saved.capture());
+        assertEquals(0, BigDecimal.ZERO.compareTo(saved.getValue().getAvailableFunds()));
+        ArgumentCaptor<UUID> reference = ArgumentCaptor.forClass(UUID.class);
+        var order = inOrder(accountService, cashTransactionService);
+        order.verify(accountService).createDefaultAccountForUser(USER_ID);
+        order.verify(cashTransactionService).move(eq(USER_ID), eq(new BigDecimal("7500.00")), eq("DEPOSIT"),
+                reference.capture());
+        assertNotNull(reference.getValue());
+    }
+
+    @Test
+    void registerRaisesTheProfileWithTheFundedBalance() {
+        // The deposit raises the balance inside the same transaction, so reporting must see
+        // the funded profile rather than a zero that a later record would have to correct.
+        AuthenticatedUser caller = new AuthenticatedUser(USER_ID, "test@example.com");
+        when(userRepository.existsById(USER_ID)).thenReturn(false);
+        User funded = new User();
+        funded.setUserId(USER_ID);
+        funded.setFirstName("John");
+        funded.setLastName("Doe");
+        funded.setAvailableFunds(new BigDecimal("7500.00"));
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(funded));
+
+        User result = registrationService.register(caller, request("test@example.com"));
+
+        ArgumentCaptor<CustomerProfileRecord> raised = ArgumentCaptor.forClass(CustomerProfileRecord.class);
+        verify(events).publishEvent(raised.capture());
+        assertEquals(0, new BigDecimal("7500.00").compareTo(raised.getValue().availableFunds()));
+        assertSame(funded, result);
     }
 
     private static RegistrationRequest request(String email) {
@@ -101,7 +151,8 @@ class RegistrationServiceUnitTest {
         assertEquals("123 Main St", user.getAddress());
         assertEquals(LocalDate.of(1990, 1, 1), user.getDateOfBirth());
         assertEquals("INTERMEDIATE", user.getTraderLevel());
-        assertEquals(new BigDecimal("7500.00"), user.getAvailableFunds());
+        // The opening funds are booked as a deposit after the save, not written to the row directly.
+        assertEquals(0, BigDecimal.ZERO.compareTo(user.getAvailableFunds()));
         assertNotNull(user.getCreatedAt());
     }
 

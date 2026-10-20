@@ -27,14 +27,24 @@ flowchart LR
 
 | Step | Script | Notes |
 | --- | --- | --- |
-| 0001 | `0001-initialize-database.py --database-url URL --empty-database` | Applies V001 and V002 to an empty schema. Never use it for seeding |
+| 0001 | `0001-initialize-database.py --database-url URL --empty-database` | Applies every migration in `db/migrations`, in file order, to an empty schema. Never use it for seeding |
 | 0002 | `0002-generate-synthetic-market-data.py [--start-date D --end-date D] [--regenerate]` | No database access. Replacing a different archive needs `--regenerate` and is validated in staging |
 | 0003 | `0003-validate-synthetic-market-data.py` | Checksums, exact one-second coverage, unique sequences, spreads, candle agreement |
 | 0004 | `0004-import-synthetic-market-data.py --database-url URL [--tick-storage parquet\|postgres] [--replace] [--available-disk-gb N]` | Per-month checkpoints are verified and skipped on rerun. The session stays `RUNNING` until every month is verified |
 
-The full year is 61,074,000 ticks and 1,017,900 candles (about 1.5 GiB compressed). Use a date range for tests. Parquet mode, the default, keeps raw ticks in the archive and imports only candles; do not delete the archive afterwards, since replay and checkpoint verification read it. `postgres` mode also loads raw ticks and needs far more disk.
+The full year is 61,074,000 ticks and 1,017,900 candles for the 10 symbols below (about 1.5 GiB compressed). Use a date range for tests. Parquet mode, the default, keeps raw ticks in the archive and imports only candles; do not delete the archive afterwards, since replay and checkpoint verification read it. `postgres` mode also loads raw ticks and needs far more disk.
 
 The importer checks free disk before each month. For a remote or containerized database, pass `--available-disk-gb` or set `MARKET_DATA_AVAILABLE_DISK_GB`, otherwise it fails closed.
+
+## Universe
+
+[lib/common.py](db/scripts/python/lib/common.py) defines the simulated series. Trading is limited to US equities, as the sponsor clarified for BR-12 on 20 October 2026, so every series is a US equity priced in US dollars on the single simulated session (America/Chicago, 08:30 to 14:59:59, weekdays) and becomes one tradable instrument on import, linked through `instruments.simulated_stock_symbol`. V001 allows that link for US equities only, so an instrument of any other class or market cannot be priced and therefore cannot trade.
+
+| Class | Market | Instruments | Simulated symbol |
+| --- | --- | --- | --- |
+| Equity | US | AAPL, AMZN, GOOGL, JPM, META, MSFT, NVDA, TSLA, UNH, XOM | The ticker |
+
+Changing the list changes the archive: regenerate with `--regenerate`, then import with `--replace`.
 
 ## Run on Windows
 
@@ -48,7 +58,7 @@ apps/market-data/db/scripts/powershell/setup-market-data.ps1 `
   -AvailableDiskGb $freeDiskGb
 ```
 
-The launcher creates the virtual environment, installs dependencies, then generates, validates, and imports. Useful switches: `-StartDate`/`-EndDate` (for example `2026-01-05` to `2026-01-06`), `-Regenerate`, `-Replace`, `-TickStorage`, and `-InitializeDisposableDatabase` for a first-time empty database only. `setup-database.ps1 -DatabaseUrl URL` applies just V001 and V002.
+The launcher creates the virtual environment, installs dependencies, then generates, validates, and imports. Useful switches: `-StartDate`/`-EndDate` (for example `2026-01-05` to `2026-01-06`), `-Regenerate`, `-Replace`, `-TickStorage`, and `-InitializeDisposableDatabase` for a first-time empty database only. `setup-database.ps1 -DatabaseUrl URL` applies every migration to an empty database.
 
 On Linux, run the numbered scripts directly with Python 3 after `pip install -r apps/market-data/db/scripts/python/requirements.txt` (CI uses the smaller `requirements-ci.txt`).
 
@@ -57,4 +67,5 @@ On Linux, run the numbered scripts directly with Python 3 after `pip install -r 
 - Local Compose runs `db-init` (all migrations) automatically; its opt-in `initialize` and `seed` profiles run the steps above. Set `MARKET_DATA_AVAILABLE_DISK_GB` before using `seed`.
 - Jenkins builds [Dockerfile.market-data](../../infrastructure/docker/Dockerfile.market-data) and runs a two-day integration: initialize, restart the database, generate, validate, then import twice. Each script runs under coverage.py, and the merged report is the coverage SonarQube shows for these scripts.
 - `python apps/market-data/db/scripts/python/tests/test_watchlist_migration.py` validates the watchlist migration against a disposable cluster when PostgreSQL binaries are on `PATH`.
-- `python apps/market-data/db/scripts/python/tests/test_terms_acceptances_migration.py` does the same for the terms acceptance migration.
+- `python apps/market-data/db/scripts/python/tests/test_terms_acceptances_migration.py` does the same for the terms acceptance migration, and `test_instrument_price_links.py` for the migration that lets every instrument class link to a price series.
+- `python -m pytest apps/market-data/db/scripts/python/tests` runs those together with `test_stock_universe.py`, which needs no database and checks that the universe covers every class and market the BRS names and fits the schema's symbol and ticker rules.
