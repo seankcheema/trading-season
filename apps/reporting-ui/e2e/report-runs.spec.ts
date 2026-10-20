@@ -233,7 +233,7 @@ test.describe('Report run charts', () => {
       const download = page.waitForEvent('download');
       await page.getByRole('button', { name: `Download ${title} as PNG` }).click();
 
-      // All time is the file the report job wrote, asked for with no range.
+      // All time is the latest snapshot of the run, asked for with no range.
       expect(new URL((await requested).url()).search).toBe('');
       const saved = await download;
       const bytes = await readFile((await saved.path())!);
@@ -272,41 +272,5 @@ test.describe('Report run charts', () => {
     await page.getByRole('button', { name: 'Download Trades per day as PNG' }).click();
 
     await expect(page.getByRole('alert')).toContainText("We couldn't download that chart.");
-  });
-});
-
-test.describe('Refreshing a run', () => {
-  test('reads the latest run again on demand', async ({ page, openAsAdmin }) => {
-    await openAsAdmin('/runs');
-    await expect(heading(page)).toBeVisible();
-    await expectTiles(page, '7d');
-
-    const reread = page.waitForResponse((response) =>
-      response.url().includes('/api/reporting/runs/latest'),
-    );
-    await page.getByRole('button', { name: 'Refresh' }).click();
-
-    expect((await reread).status()).toBe(200);
-    await expect(page.getByRole('button', { name: 'Refresh' })).toBeEnabled();
-    await expectTiles(page, '7d');
-  });
-
-  test('keeps the last run on screen, and says so, when the refresh fails', async ({
-    page,
-    openAsAdmin,
-  }) => {
-    await openAsAdmin('/runs');
-    await expect(heading(page)).toBeVisible();
-    await expectTiles(page, '7d');
-    await page.route('**/api/reporting/runs/latest**', (route) =>
-      route.fulfill({ status: 500, json: { error: 'down' } }),
-    );
-
-    await page.getByRole('button', { name: 'Refresh' }).click();
-
-    await expect(
-      page.getByRole('status').filter({ hasText: "We couldn't refresh the report" }),
-    ).toContainText('This is still the run generated');
-    await expectTiles(page, '7d');
   });
 });

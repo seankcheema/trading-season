@@ -26,8 +26,8 @@ export class ReportingApiService {
     return this._http.get<RunList>(`${this._api}/runs`);
   }
 
-  // 404 until the reporting consumer has written its first run. All time is the run
-  // as it was written; a narrower range is cut from it in the viewer's days.
+  // 404 until trade-events are available. All time is the latest live snapshot from
+  // Kafka-backed files; a narrower range is cut from that snapshot in the viewer's days.
   latestReport(range: ActivityRange = 'all'): Observable<Report> {
     return this._http.get<Report>(`${this._api}/runs/latest`, { params: this.rangeOf(range) });
   }
@@ -68,7 +68,8 @@ export class ReportingApiService {
   }
 
   // A chart PNG. Fetched as a blob because an <img src> cannot carry the bearer token.
-  // All time is the file the report job wrote; a narrower range is drawn by the service.
+  // The latest run is rendered at download time from live data; earlier runs are read from
+  // their saved files unless a narrower range is asked for.
   runFile(runId: string, name: string, range: ActivityRange = 'all'): Observable<Blob> {
     return this._http.get(
       `${this._api}/runs/${encodeURIComponent(runId)}/files/${encodeURIComponent(name)}`,

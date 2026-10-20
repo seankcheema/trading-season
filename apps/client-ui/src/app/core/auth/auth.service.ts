@@ -78,7 +78,7 @@ export class AuthService {
     if (!refreshToken) {
       return of(undefined);
     }
-    return this._http.post<unknown>(`${this._authApiUrl}/auth/logout`, { refreshToken }).pipe(
+    return this._http.post<unknown>(`${this._authApiUrl}/logout`, { refreshToken }).pipe(
       map(() => undefined),
       // The local session is already gone; a failed revoke shouldn't block signing out.
       catchError(() => of(undefined)),
@@ -103,7 +103,7 @@ export class AuthService {
     }
     const current = () => this._storage.revision === revision;
     const result = defer(() => this._http
-      .post<AuthTokens>(`${this._authApiUrl}/auth/refresh`, { refreshToken }))
+      .post<AuthTokens>(`${this._authApiUrl}/refresh`, { refreshToken }))
       .pipe(
         map((tokens) => {
           if (!current()) {
@@ -139,7 +139,7 @@ export class AuthService {
     credentials: Credentials,
   ): Observable<AuthTokens> {
     return this._http
-      .post<AuthTokens>(`${this._authApiUrl}/auth/${endpoint}`, credentials)
+      .post<AuthTokens>(`${this._authApiUrl}/${endpoint}`, credentials)
       .pipe(tap((tokens) => this._storage.save(tokens)));
   }
 }

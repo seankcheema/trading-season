@@ -42,7 +42,7 @@ describe('AuthService', () => {
   it('logs in with only email and password and stores the tokens', async () => {
     const result = firstValueFrom(service.login('jane@example.com', 'secret-pass1!'));
 
-    const req = http.expectOne('http://localhost:3001/auth/login');
+    const req = http.expectOne('/auth/login');
     expect(req.request.body).toEqual({ email: 'jane@example.com', password: 'secret-pass1!' });
     req.flush(TOKENS);
     await result;
@@ -54,7 +54,7 @@ describe('AuthService', () => {
   it('does not store anything when login fails', async () => {
     const result = firstValueFrom(service.login('jane@example.com', 'wrong'));
     http
-      .expectOne('http://localhost:3001/auth/login')
+      .expectOne('/auth/login')
       .flush({ message: 'Invalid credentials' }, { status: 401, statusText: 'Unauthorized' });
 
     await expect(result).rejects.toBeInstanceOf(HttpErrorResponse);
@@ -64,7 +64,7 @@ describe('AuthService', () => {
   it('registers credentials with the auth service, then the profile with the backend', async () => {
     const result = firstValueFrom(service.register(DETAILS));
 
-    const authReq = http.expectOne('http://localhost:3001/auth/register');
+    const authReq = http.expectOne('/auth/register');
     expect(authReq.request.body).toEqual({ email: DETAILS.email, password: DETAILS.password });
     authReq.flush(TOKENS);
 
@@ -91,9 +91,9 @@ describe('AuthService', () => {
     const result = firstValueFrom(service.register(DETAILS));
 
     http
-      .expectOne('http://localhost:3001/auth/register')
+      .expectOne('/auth/register')
       .flush({ message: 'Email is already in use' }, { status: 409, statusText: 'Conflict' });
-    const loginReq = http.expectOne('http://localhost:3001/auth/login');
+    const loginReq = http.expectOne('/auth/login');
     expect(loginReq.request.body).toEqual({ email: DETAILS.email, password: DETAILS.password });
     loginReq.flush(TOKENS);
     http.expectOne('/api/registration').flush({}, { status: 201, statusText: 'Created' });
@@ -106,10 +106,10 @@ describe('AuthService', () => {
     const result = firstValueFrom(service.register(DETAILS));
 
     http
-      .expectOne('http://localhost:3001/auth/register')
+      .expectOne('/auth/register')
       .flush({ message: 'Email is already in use' }, { status: 409, statusText: 'Conflict' });
     http
-      .expectOne('http://localhost:3001/auth/login')
+      .expectOne('/auth/login')
       .flush({ message: 'Invalid credentials' }, { status: 401, statusText: 'Unauthorized' });
 
     await expect(result).rejects.toBeInstanceOf(EmailTakenError);
@@ -119,7 +119,7 @@ describe('AuthService', () => {
   it('clears the session and reports the profile step when the backend rejects the profile', async () => {
     const result = firstValueFrom(service.register(DETAILS));
 
-    http.expectOne('http://localhost:3001/auth/register').flush(TOKENS);
+    http.expectOne('/auth/register').flush(TOKENS);
     http
       .expectOne('/api/registration')
       .flush({ error: 'username: must not be blank' }, { status: 400, statusText: 'Bad Request' });
@@ -134,7 +134,7 @@ describe('AuthService', () => {
     storage.save({ ...TOKENS, expiresIn: -1 });
 
     const result = firstValueFrom(service.ensureValidSession());
-    const req = http.expectOne('http://localhost:3001/auth/refresh');
+    const req = http.expectOne('/auth/refresh');
     expect(req.request.body).toEqual({ refreshToken: 'refresh' });
     req.flush({ ...TOKENS, accessToken: 'rotated' });
 
@@ -147,7 +147,7 @@ describe('AuthService', () => {
 
     const result = firstValueFrom(service.logout());
     expect(service.isAuthenticated()).toBe(false);
-    const req = http.expectOne('http://localhost:3001/auth/logout');
+    const req = http.expectOne('/auth/logout');
     expect(req.request.body).toEqual({ refreshToken: 'refresh' });
     req.flush({ message: 'Logged out successfully' });
 
@@ -157,7 +157,7 @@ describe('AuthService', () => {
   it('reports an auth-step failure for any registration error other than a taken email', async () => {
     const result = firstValueFrom(service.register(DETAILS)).catch((e: unknown) => e);
     http
-      .expectOne('http://localhost:3001/auth/register')
+      .expectOne('/auth/register')
       .flush({}, { status: 500, statusText: 'Server Error' });
     const error = await result;
     expect(error).toBeInstanceOf(RegistrationStepError);
@@ -167,10 +167,10 @@ describe('AuthService', () => {
   it('reports an auth-step failure when the resume login fails for another reason', async () => {
     const result = firstValueFrom(service.register(DETAILS)).catch((e: unknown) => e);
     http
-      .expectOne('http://localhost:3001/auth/register')
+      .expectOne('/auth/register')
       .flush({}, { status: 409, statusText: 'Conflict' });
     http
-      .expectOne('http://localhost:3001/auth/login')
+      .expectOne('/auth/login')
       .flush({}, { status: 503, statusText: 'Unavailable' });
     const error = await result;
     expect(error).toBeInstanceOf(RegistrationStepError);
@@ -179,12 +179,12 @@ describe('AuthService', () => {
 
   it('signs out locally even when there is no refresh token or revoking it fails', async () => {
     await firstValueFrom(service.logout());
-    http.expectNone('http://localhost:3001/auth/logout');
+    http.expectNone('/auth/logout');
 
     storage.save(TOKENS);
     const result = firstValueFrom(service.logout());
     http
-      .expectOne('http://localhost:3001/auth/logout')
+      .expectOne('/auth/logout')
       .flush({}, { status: 500, statusText: 'Server Error' });
     await result;
     expect(service.isAuthenticated()).toBe(false);
@@ -193,14 +193,14 @@ describe('AuthService', () => {
   it('answers true without refreshing while the access token is valid', async () => {
     storage.save(TOKENS);
     expect(await firstValueFrom(service.ensureValidSession())).toBe(true);
-    http.expectNone('http://localhost:3001/auth/refresh');
+    http.expectNone('/auth/refresh');
   });
 
   it('shares one in-flight refresh between callers', async () => {
     storage.save({ ...TOKENS, expiresIn: -1 });
     const first = firstValueFrom(service.ensureValidSession());
     const second = firstValueFrom(service.ensureValidSession());
-    http.expectOne('http://localhost:3001/auth/refresh').flush(TOKENS);
+    http.expectOne('/auth/refresh').flush(TOKENS);
     expect(await Promise.all([first, second])).toEqual([true, true]);
   });
 
@@ -216,7 +216,7 @@ describe('AuthService', () => {
     storage.save({ ...TOKENS, expiresIn: -1 });
     const result = firstValueFrom(service.ensureValidSession());
     http
-      .expectOne('http://localhost:3001/auth/refresh')
+      .expectOne('/auth/refresh')
       .flush({}, { status, statusText: 'Refused' });
     expect(await result).toBe(false);
     expect(service.isAuthenticated()).toBe(false);
@@ -226,7 +226,7 @@ describe('AuthService', () => {
     storage.save({ ...TOKENS, expiresIn: -1 });
     const result = firstValueFrom(service.ensureValidSession()).catch((e: unknown) => e);
     http
-      .expectOne('http://localhost:3001/auth/refresh')
+      .expectOne('/auth/refresh')
       .flush({}, { status: 503, statusText: 'Unavailable' });
     expect(await result).toBeInstanceOf(HttpErrorResponse);
     expect(service.isAuthenticated()).toBe(true);
@@ -235,7 +235,7 @@ describe('AuthService', () => {
   it('discards a refresh result that arrives after the session changed', async () => {
     storage.save({ ...TOKENS, expiresIn: -1 });
     const result = firstValueFrom(service.ensureValidSession());
-    const request = http.expectOne('http://localhost:3001/auth/refresh');
+    const request = http.expectOne('/auth/refresh');
     storage.clear();
     request.flush({ ...TOKENS, accessToken: 'late' });
     expect(await result).toBe(false);
@@ -245,7 +245,7 @@ describe('AuthService', () => {
   it('ignores a refresh failure that arrives after the session changed', async () => {
     storage.save({ ...TOKENS, expiresIn: -1 });
     const result = firstValueFrom(service.ensureValidSession());
-    const request = http.expectOne('http://localhost:3001/auth/refresh');
+    const request = http.expectOne('/auth/refresh');
     storage.clear();
     request.flush({}, { status: 500, statusText: 'Server Error' });
     expect(await result).toBe(false);

@@ -149,7 +149,7 @@ $env:SPRING_DATASOURCE_PASSWORD = $password
 .\scripts\start-local.ps1 -KafkaHome $kafkaHome
 ```
 
-The launcher starts the processes and streams their logs in this terminal. Wait for the service startup messages before opening the UIs:
+The launcher starts the processes and prints one status line for each as it starts listening, then "All services ready". It echoes only error lines from the services; the full logs are in a temporary folder whose path it prints, removed on exit. Pass `-ShowLogs` to stream every service's raw log in the terminal instead. A service that exits stops the stack and its last log lines are printed first. Wait for "All services ready" before opening the UIs; the ports are:
 
 | Service | Port |
 | --- | ---: |
@@ -171,8 +171,8 @@ Reporting reads Kafka and nothing else, so everything the Reporting UI shows nee
 
 | Broker | What the script does |
 | --- | --- |
-| Already listening on `localhost:29092`, for example the `kafka` and `kafka-init` services of the Compose file | Uses it |
-| Not running, and `-KafkaHome` or `KAFKA_HOME` names an unpacked [Apache Kafka](https://kafka.apache.org/downloads) distribution | Starts a single-node broker from it with the JDK, keeps its data in `%LOCALAPPDATA%\trading-season\kafka`, and creates `trade-events` and the compacted `platform-records`, each with three partitions. For a machine without Docker. The broker runs with the log cleaner off (`log.cleaner.enable=false`), because Windows cannot rename the index files compaction swaps and Kafka would shut the broker down; `platform-records` is therefore not compacted here, which only costs disk |
+| Already listening on `localhost:29092`, for example the `kafka` service of the Compose file | Uses it |
+| Not running, and `-KafkaHome` or `KAFKA_HOME` names an unpacked [Apache Kafka](https://kafka.apache.org/downloads) distribution | Starts a single-node broker from it with the JDK, keeps its data in `%LOCALAPPDATA%\trading-season\kafka`, and creates `trade-events` and the compacted `platform-records`, each with three partitions. For a machine without Docker. The broker runs with the log cleaner off (`log.cleaner.enable=false`), because Windows cannot rename the index files compaction swaps and Kafka would shut the broker down; `platform-records` is therefore not compacted here, which only costs disk. Retention is off too (`log.retention.ms=-1`): Windows cannot delete a segment older than the default seven days either, and Kafka would take the log directory offline and stop the broker, so events are kept indefinitely. Before each start the script also deletes leftover `*.deleted` files in the broker's data directory: Kafka leaves them when the broker is stopped within a minute of a metadata snapshot cleanup, and Windows then refuses to delete them (read-only), which stops the next start with an `AccessDeniedException` |
 | Neither | Sets `app.events.enabled=false` on both Java services and `EVENTS_ENABLED=false` on the auth service, does not start the consumer, and warns that the Reporting UI shows nothing new |
 
 ```powershell

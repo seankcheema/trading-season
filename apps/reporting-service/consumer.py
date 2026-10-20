@@ -1,11 +1,18 @@
 """
 The reporting consumer process: consumer group reporting-ingester.
 
-Runs as its own container (python consumer.py) beside the gunicorn web
-service. It polls trade-events and platform-records, appends each message to
-that topic's event store, commits the offset only after the line is on disk,
-and runs the report job on a schedule. Exactly one instance may run at a
-time: two processes must never append to the same partition file.
+Runs as a child of serve.py (python consumer.py) beside the gunicorn web
+service in the same container. It polls trade-events and platform-records,
+appends each message to that topic's event store, commits the offset only
+after the line is on disk, and runs the report job on a schedule. Exactly one
+instance may run at a time: two processes must never append to the same
+partition file.
+
+Where it reads from is decided by the files, not by the broker's committed
+offsets. Each assigned partition resumes after the last offset in its file, or
+from the start of the topic when it has no file. A container that starts with
+an empty disk, as a replaced ECS task does, therefore replays everything the
+broker still holds instead of continuing from a commit whose data is gone.
 
 These two topics are everything the reporting service knows. Neither this
 process nor the web service connects to the trading database.
@@ -27,18 +34,38 @@ logger = logging.getLogger(__name__)
 class KafkaSource:
     """Thin wrapper over confluent_kafka.Consumer so the loop can be tested with a fake."""
 
-    def __init__(self, bootstrap_servers, group_id, topics, on_assign=None):
+    def __init__(self, bootstrap_servers, group_id, topics, on_assign=None, resume_offset=None):
+        """
+        on_assign is called, with no arguments, whenever partitions are assigned.
+        resume_offset(topic, partition) names the offset to read from in an
+        assigned partition, or None to read it from the beginning. Without it
+        the group's committed offsets decide.
+        """
         from confluent_kafka import Consumer  # imported here so tests need no broker library
 
         topics = [topics] if isinstance(topics, str) else list(topics)
+        self._on_assign = on_assign
+        self._resume_offset = resume_offset
         self._consumer = Consumer({
             'bootstrap.servers': bootstrap_servers,
             'group.id': group_id,
             'enable.auto.commit': False,
             'auto.offset.reset': 'earliest',
         })
-        self._consumer.subscribe(topics, on_assign=lambda consumer, partitions: on_assign() if on_assign else None)
+        self._consumer.subscribe(topics, on_assign=self._assigned)
         logger.info('Subscribed to %s as group %s via %s', ', '.join(topics), group_id, bootstrap_servers)
+
+    def _assigned(self, consumer, partitions):
+        if self._on_assign is not None:
+            self._on_assign()
+        if self._resume_offset is None:
+            return
+        from confluent_kafka import OFFSET_BEGINNING
+
+        for partition in partitions:
+            resume = self._resume_offset(partition.topic, partition.partition)
+            partition.offset = OFFSET_BEGINNING if resume is None else resume
+        consumer.assign(partitions)
 
     def poll(self, timeout):
         return self._consumer.poll(timeout)
@@ -63,6 +90,12 @@ class TopicStores:
     def refresh(self):
         for store in self._stores.values():
             store.refresh()
+
+    def resume_offset(self, topic, partition):
+        """The offset after the last line written for a partition, or None if it has no lines."""
+        store = self._stores.get(topic)
+        last = None if store is None else store.last_offset(partition)
+        return None if last is None else last + 1
 
     def append(self, message, key, body):
         """Append to the store of the message's topic. A topic nobody stores is not written."""
@@ -190,7 +223,7 @@ def main():
                                     first_run_at=datetime.now(timezone.utc))
 
     source = KafkaSource(config['KAFKA_BOOTSTRAP_SERVERS'], config['REPORTING_CONSUMER_GROUP'],
-                         topics, on_assign=stores.refresh)
+                         topics, on_assign=stores.refresh, resume_offset=stores.resume_offset)
     try:
         run_consumer_loop(source, stores, stop)
     finally:
@@ -198,5 +231,5 @@ def main():
             scheduler.shutdown(wait=True)
 
 
-if __name__ == '__main__':  # pragma: no cover - the container entry point
+if __name__ == '__main__':  # pragma: no cover - started by serve.py
     main()
