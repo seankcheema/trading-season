@@ -27,7 +27,12 @@
         }
       </span>
     }
-    <h2>{{ title() }}</h2>
+    <h2 [class.dua-title]="!choice()">
+      {{ title() }}
+      @if (!choice()) {
+        <span class="plan-label"> - Free Plan</span>
+      }
+    </h2>
     <button class="icon-button" type="button" aria-label="Minimize Dua" (click)="minimize()">
       <ng-icon name="lucideX" aria-hidden="true" />
     </button>

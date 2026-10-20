@@ -62,6 +62,11 @@ test('Dua starts closed, reviews holdings, minimizes and follows stock navigatio
   await panel.getByRole('button', { name: 'This stock', exact: true }).click();
   await expect(panel).toContainText('since session open');
   await expect(panel).toContainText('Not enough completed candles');
+  await page.goBack();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(panel).toBeHidden();
+  await page.getByRole('button', { name: 'Dua insights', exact: true }).click();
+  await expect(panel).toBeVisible();
   await panel.press('Escape');
   await expect(panel).toBeHidden();
   await expect(page.getByRole('button', { name: 'Dua insights', exact: true })).toBeFocused();

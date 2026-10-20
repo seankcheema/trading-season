@@ -204,11 +204,11 @@ describe('Dua panel', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.launcher-art.face-visible')).toBeNull();
     click('Dua insights');
-    expect(fixture.nativeElement.querySelector('h2').textContent.trim()).toBe('Dua');
+    expect(fixture.nativeElement.querySelector('h2').textContent.trim()).toBe('Dua - Free Plan');
     click('Daily review');
     expect(fixture.nativeElement.querySelector('h2').textContent.trim()).toBe('Daily review');
     click('Back to choices');
-    expect(fixture.nativeElement.querySelector('h2').textContent.trim()).toBe('Dua');
+    expect(fixture.nativeElement.querySelector('h2').textContent.trim()).toBe('Dua - Free Plan');
     fixture.destroy();
   });
 });

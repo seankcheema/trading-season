@@ -139,6 +139,14 @@ h2 {
   font-size: 14px;
   font-weight: 600;
 }
+.dua-title {
+  font-size: 18px;
+}
+.plan-label {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
 .icon-button {
   display: grid;
   place-items: center;

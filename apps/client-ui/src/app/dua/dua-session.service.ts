@@ -1,4 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { NavigationStart, Router } from '@angular/router';
 import { TokenStorageService } from '../core/auth/token-storage.service';
 
 @Injectable({ providedIn: 'root' })
@@ -23,6 +25,11 @@ export class DuaSession {
   }
 
   constructor() {
+    inject(Router)
+      .events.pipe(takeUntilDestroyed())
+      .subscribe((event) => {
+        if (event instanceof NavigationStart) this.minimized.set(true);
+      });
     inject(TokenStorageService).onIdentityChange(() => {
       this.seenInsights.clear();
       this.minimized.set(true);
