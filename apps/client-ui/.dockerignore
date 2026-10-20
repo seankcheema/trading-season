@@ -1,0 +1,8 @@
+node_modules
+dist
+coverage
+reports
+.angular
+.visual-check
+playwright-report
+test-results

@@ -3,8 +3,8 @@ import { TERMS_VERSION } from '../../src/app/dashboard/terms/terms-content';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import type { Page, Route } from '@playwright/test';
 
-/** Origin of the NestJS auth service, matching AUTH_API_URL in the application. */
-export const AUTH_ORIGIN = 'http://localhost:3001';
+/** Path prefix of the NestJS auth service, matching AUTH_API_URL in the application. */
+export const AUTH_PATH = '/auth';
 
 /** Issuer claim the real auth service puts on access tokens. */
 const ISSUER = 'https://auth.dualeapa.com';
@@ -254,7 +254,7 @@ export class ApiStub {
       const url = response.url();
       // Only API traffic: reading every bundle and asset body would be slow
       // and tells us nothing about where the secrets went.
-      if (!url.startsWith(AUTH_ORIGIN) && !url.includes('/api/')) {
+      if (!new URL(url).pathname.startsWith(AUTH_PATH + '/') && !url.includes('/api/')) {
         return;
       }
       this.pendingResponses.push(
@@ -265,10 +265,10 @@ export class ApiStub {
       );
     });
 
-    await page.route(AUTH_ORIGIN + '/auth/register', (route) => this.registerCredentials(route));
-    await page.route(AUTH_ORIGIN + '/auth/login', (route) => this.login(route));
-    await page.route(AUTH_ORIGIN + '/auth/refresh', (route) => this.refresh(route));
-    await page.route(AUTH_ORIGIN + '/auth/logout', (route) => this.logout(route));
+    await page.route('**/auth/register', (route) => this.registerCredentials(route));
+    await page.route('**/auth/login', (route) => this.login(route));
+    await page.route('**/auth/refresh', (route) => this.refresh(route));
+    await page.route('**/auth/logout', (route) => this.logout(route));
     await page.route('**/api/registration', (route) => this.registerProfile(route));
     await page.route('**/api/registration/account-exists', (route) => this.accountExists(route));
     await page.route(/\/api\/me\/watchlist(?:\/[^/?]+)?$/, (route) => this.watchlist(route));

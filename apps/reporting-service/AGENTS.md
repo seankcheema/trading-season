@@ -11,7 +11,8 @@
 - Analysts and admins are staff, not customers: keep them out of the customer list and out of the single-customer endpoint.
 - Never return password hashes, SSNs, addresses or dates of birth, and never add a read model column that could hold one.
 - Filter in SQL, aggregate in Python, and compare timestamps as UTC: SQLite hands them back naive.
-- The pipeline greps this service's log for `Stored trade event orderId=` and `Stored platform record type=`; keep those lines when changing [consumer.py](consumer.py).
+- The pipeline greps this service's log for `Stored trade event orderId=` and `Stored platform record type=`; keep those lines when changing [consumer.py](consumer.py). The consumer and gunicorn are two processes of one container started by [serve.py](serve.py), so both write to the same log stream. Keep exactly one consumer: never start it inside a gunicorn worker, and never run two replicas.
+- The consumer's start offset comes from the event files, not from the group's committed offsets, so a task with an empty disk replays Kafka. Keep that in [consumer.py](consumer.py) when changing how partitions are assigned.
 - For SonarQube or static-analysis fixes, preserve the current HTTP contract and auth boundaries first. Prefer small, behavior-preserving refactors with matching test updates over suppressing findings.
 - Treat dependency pins as runtime compatibility constraints. If Python-version support changes, update [requirements.txt](requirements.txt), Docker build assumptions, and tests together.
 - Use `python -m pytest` from this directory for local validation. When adjusting quality tooling, keep coverage artifacts and report paths consistent with the Reporting Service stage in the [Jenkinsfile](../../infrastructure/jenkins/Jenkinsfile).

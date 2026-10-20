@@ -14,6 +14,8 @@ export type ReportState = 'loading' | 'ready' | 'empty' | 'error';
 
 // Where this browser remembers the range Report runs was last showing.
 export const RUNS_RANGE_KEY = 'ts.reporting.runs-range';
+// How often the latest report snapshot is refreshed.
+export const LIVE_REPORT_POLL_MS = 5_000;
 // How often the scheduler status is checked for a newer run.
 export const STATUS_POLL_MS = 30_000;
 // A run later than this past its expected time is shown as overdue.
@@ -78,16 +80,7 @@ export class ReportStore {
         tap(() => this.refreshing.set(true)),
         switchMap(() =>
           forkJoin({
-            report: this._api.latestReport(this.range()).pipe(
-              map((report): ReportOutcome => ({ kind: 'report', report })),
-              catchError((error: unknown) =>
-                of<ReportOutcome>(
-                  error instanceof HttpErrorResponse && error.status === 404
-                    ? { kind: 'none' }
-                    : { kind: 'failed' },
-                ),
-              ),
-            ),
+            report: this.loadReport(),
             runs: this._api.runs().pipe(catchError(() => of(null))),
             status: this._api.schedulerStatus().pipe(catchError(() => of(null))),
           }),
@@ -106,7 +99,15 @@ export class ReportStore {
         }
       });
 
-    // The consumer writes a new run on its own schedule; pick it up without a reload.
+    // Keep report runs live from Kafka-backed event files without a manual refresh.
+    timer(LIVE_REPORT_POLL_MS, LIVE_REPORT_POLL_MS)
+      .pipe(
+        switchMap(() => this.loadReport()),
+        takeUntilDestroyed(),
+      )
+      .subscribe((report) => this.applyReport(report));
+
+    // The scheduler status and run list still come from the service's run metadata.
     timer(STATUS_POLL_MS, STATUS_POLL_MS)
       .pipe(
         switchMap(() => this._api.schedulerStatus().pipe(catchError(() => EMPTY))),
@@ -114,8 +115,7 @@ export class ReportStore {
       )
       .subscribe((status) => {
         this.scheduler.set(status);
-        const shown = this.report()?.runId ?? null;
-        if (status.latest_run !== shown || this.state() === 'error') {
+        if (status.latest_run !== this.latestRunId() || this.state() === 'error') {
           this._reload.next();
         }
       });
@@ -140,6 +140,19 @@ export class ReportStore {
     this.range.set(range);
     rememberRange(RUNS_RANGE_KEY, range);
     this._reload.next();
+  }
+
+  private loadReport() {
+    return this._api.latestReport(this.range()).pipe(
+      map((report): ReportOutcome => ({ kind: 'report', report })),
+      catchError((error: unknown) =>
+        of<ReportOutcome>(
+          error instanceof HttpErrorResponse && error.status === 404
+            ? { kind: 'none' }
+            : { kind: 'failed' },
+        ),
+      ),
+    );
   }
 
   private applyReport(outcome: ReportOutcome): void {

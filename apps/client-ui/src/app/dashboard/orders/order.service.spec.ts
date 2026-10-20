@@ -608,12 +608,12 @@ describe('OrderService', () => {
       try {
         TestBed.inject(TokenStorageService).save({ ...tokens, expiresIn: -1 });
         TestBed.tick();
-        http.expectOne('http://localhost:3001/auth/refresh').flush({}, { status: 500, statusText: 'Down' });
+        http.expectOne('/auth/refresh').flush({}, { status: 500, statusText: 'Down' });
         expect(stream.fetch).not.toHaveBeenCalled();
 
         const opened = stream.opening();
         vi.advanceTimersByTime(STREAM_RECONNECT_MS.initial);
-        http.expectOne('http://localhost:3001/auth/refresh').flush({ ...tokens, accessToken: 'renewed' });
+        http.expectOne('/auth/refresh').flush({ ...tokens, accessToken: 'renewed' });
         await opened;
         await settle();
         expect((stream.requests[0].headers as Record<string, string>)['Authorization']).toBe('Bearer renewed');

@@ -10,7 +10,7 @@ import pytest
 
 from event_store import EventStore
 from report_run import (CHARTS, build_insights, build_segment_insights, draw_chart, load_events, parse_occurred_at,
-                        ranged_report, run_report, zone_name)
+                        live_report, ranged_report, run_report, zone_name)
 
 PNG_MAGIC = b'\x89PNG\r\n\x1a\n'
 
@@ -220,6 +220,27 @@ class TestRunReport:
         assert [row['total'] for row in report['activityBySegment']] == [0, 0, 0]
         for name in report['files']:
             assert (tmp_path / 'runs' / report['runId'] / name).read_bytes().startswith(PNG_MAGIC)
+
+
+class TestLiveReport:
+
+    def test_returns_none_when_there_are_no_trade_events(self, tmp_path, db_session):
+        assert live_report(tmp_path, db_session) is None
+
+    def test_builds_a_snapshot_without_writing_run_files(self, events_on_disk, db_session, test_account):
+        # Make the fixture account the one the events call account 1.
+        test_account.account_id = 1
+        db_session.commit()
+
+        snapshot = live_report(events_on_disk, db_session, now=datetime(2026, 10, 7, 0, 0, tzinfo=timezone.utc))
+
+        assert snapshot['runId'] == '20261007T000000Z'
+        assert snapshot['generatedAt'] == '2026-10-07T00:00:00+00:00'
+        assert snapshot['eventCount'] == 5
+        assert snapshot['statusCounts'] == {'FILLED': 4, 'REJECTED': 1}
+        assert snapshot['files'] == ['volume_by_symbol.png', 'daily_trades.png', 'volume_by_segment.png',
+                                     'trades_per_account.png']
+        assert not (events_on_disk / 'runs').exists()
 
 
 class TestZones:

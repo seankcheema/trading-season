@@ -1,5 +1,11 @@
 [
   {
+    "context": ["/auth"],
+    "target": "http://localhost:3001",
+    "secure": false,
+    "changeOrigin": true
+  },
+  {
     "context": ["/api/orders", "/api/instruments"],
     "target": "http://localhost:8081",
     "secure": false,

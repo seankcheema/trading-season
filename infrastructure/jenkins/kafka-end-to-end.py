@@ -2,13 +2,13 @@
 One trade order through the trade-events topic and its three consumers, and
 into a reporting service that has no database.
 
-Run inside the reporting-consumer container of the local Compose stack
+Run inside the reporting-service container of the local Compose stack
 (the Jenkins "Kafka End-to-End Flow" stage does this), where every service
 is reachable by its Compose name and the reporting files are at hand. The
 trading database is not: nothing in this container can reach it, which is
 the point, and the first step checks it.
 
-    docker compose ... exec -T reporting-consumer python - < infrastructure/jenkins/kafka-end-to-end.py
+    docker compose ... exec -T reporting-service python - < infrastructure/jenkins/kafka-end-to-end.py
 
 It registers a trader, opens that trader's order-status stream, places a BUY
 order, and then verifies what each consumer did with the two messages

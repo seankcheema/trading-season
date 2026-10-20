@@ -11,16 +11,6 @@
     [value]="store.range()"
     (valueChange)="store.setRange($event)"
   />
-  <button
-    type="button"
-    class="ghost-button"
-    data-print-hide="true"
-    [disabled]="store.refreshing()"
-    (click)="store.refresh()"
-  >
-    <ng-icon name="lucideRefreshCw" size="16" />
-    {{ store.refreshing() ? 'Refreshing…' : 'Refresh' }}
-  </button>
   <app-export-menu [csv]="false" />
 </app-page-header>
 

@@ -66,13 +66,14 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    Browser --> Auth["Auth Service :3001<br/>login, register, refresh, logout"]
-    Browser -- "/api" --> Proxy["dev proxy or Nginx"]
+    Browser -- "/auth" --> Proxy["dev proxy, Nginx or CloudFront"]
+    Browser -- "/api" --> Proxy
+    Proxy -- "/auth: login, register, refresh, logout" --> Auth["Auth Service :3001"]
     Proxy -- "/api/orders, /api/instruments" --> OS["Order and Sell :8081"]
     Proxy -- "everything else under /api" --> HT["Holdings and Trade :8082"]
 ```
 
-The split is configured twice: [proxy.conf.json](proxy.conf.json) for `ng serve` and [nginx.conf](nginx.conf) for the container image. Add a new backend path to both. The auth service is called directly; its CORS policy allows the dev origin.
+The split is configured twice: [proxy.conf.json](proxy.conf.json) for `ng serve` and [nginx.conf](nginx.conf) for the local container image. Add a new backend path to both. The auth service is reached through the same proxy on `/auth`, so every call is same origin and needs no CORS entry. A deployment on S3 must route the same paths; see [Static UIs on S3](../../infrastructure/README.md#static-uis-on-s3).
 
 ### Token renewal
 
@@ -168,7 +169,7 @@ npm --prefix apps/client-ui run e2e
 
 `ng serve` runs on port 4200 and proxies `/api` as above. Use `--no-watch` for Angular tests; Vitest's `--run` is not supported by the builder.
 
-The production [Dockerfile](Dockerfile) builds the app and serves it through unprivileged Nginx, with SPA fallback and the `/api` proxy.
+The [Dockerfile](Dockerfile) builds the app and serves it through unprivileged Nginx, with SPA fallback and the `/api` and `/auth` proxies. It is the local stand-in for S3 behind CloudFront, used by Local Compose only (Jenkins builds no UI image), not the deployable artifact: deploy `dist/client-ui/browser` to S3 as [Static UIs on S3](../../infrastructure/README.md#static-uis-on-s3) describes.
 
 ## Tests
 

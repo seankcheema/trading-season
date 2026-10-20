@@ -204,7 +204,7 @@ The property `app.events.enabled` (default `true`) registers both publishers and
 
 ## Run and test
 
-Start a migrated database ([db/README.md](../../db/README.md)), the auth service, and the Kafka broker with its topics from the Compose file (`docker compose -f infrastructure/docker-compose/docker-compose.local.yml up -d kafka-init`), then:
+Start a migrated database ([db/README.md](../../db/README.md)), the auth service, and the Kafka broker with its topics from the Compose file (`docker compose -f infrastructure/docker-compose/docker-compose.local.yml up -d kafka`; it creates the topics and is healthy once they exist), then:
 
 ```sh
 mvn spring-boot:run
