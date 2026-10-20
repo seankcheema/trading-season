@@ -38,7 +38,8 @@ public class AuditTrailService {
      *
      * @param orderId   the order the event belongs to
      * @param eventType one of {@link app.order.Order}'s STATUS_* constants
-     * @param detail    optional human-readable context, e.g. a rejection reason
+     * @param detail    optional human-readable context, e.g. the submitted terms,
+     *                  the pricing decision, or a rejection reason
      */
     public void record(Integer orderId, String eventType, String detail) {
         AuditTrail entry = new AuditTrail();

@@ -93,8 +93,9 @@ def generate(root: Path=DEFAULT_DATASET, config_path: Path=DEFAULT_CONFIG, start
     if not days: raise ValueError("Date range contains no weekdays")
     if (root/"manifest.json").exists() and not regenerate:
         existing=load_manifest(root)
-        if existing["config"]==config and existing["sessions"]==[str(d) for d in days]: return existing
-        raise ValueError("Existing archive differs; use --regenerate to replace ticks and candles together")
+        if (existing["config"]==config and existing["sessions"]==[str(d) for d in days]
+                and existing["symbols"]==[{"symbol":s.symbol,"name":s.company_name} for s in STOCKS]): return existing
+        raise ValueError("Existing archive differs in config, sessions or symbols; use --regenerate to replace ticks and candles together")
     report = progress or (lambda current, total, label: None)
     staging=root.with_name(f".{root.name}.staging-{uuid.uuid4().hex}"); staging.mkdir(parents=True)
     tick_files=[]; candle_files=[]

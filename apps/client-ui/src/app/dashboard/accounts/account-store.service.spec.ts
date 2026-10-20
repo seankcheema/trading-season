@@ -252,7 +252,11 @@ describe('AccountStore', () => {
       store.deposit(125.5).subscribe(() => (done = true));
 
       const post = http.expectOne({ method: 'POST', url: '/api/me/cash-transactions' });
-      expect(post.request.body).toEqual({ amount: 125.5, reason: 'DEPOSIT' });
+      expect(post.request.body).toMatchObject({ amount: 125.5, reason: 'DEPOSIT' });
+      // The idempotency key the backend dedupes a retry on.
+      expect(post.request.body.clientReference).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      );
       post.flush({});
       http.expectOne('/api/users/me').flush({ availableFunds: 5_125.5 });
       http.expectOne(isCashTransactions).flush([cash(9, 'DEPOSIT')]);
@@ -267,7 +271,7 @@ describe('AccountStore', () => {
       store.withdraw(50).subscribe();
 
       const post = http.expectOne({ method: 'POST', url: '/api/me/cash-transactions' });
-      expect(post.request.body).toEqual({ amount: 50, reason: 'WITHDRAWAL' });
+      expect(post.request.body).toMatchObject({ amount: 50, reason: 'WITHDRAWAL' });
       post.flush({});
       http.expectOne('/api/users/me').flush({ availableFunds: 4_950 });
       http.expectOne(isCashTransactions).flush([cash(10, 'WITHDRAWAL')]);
