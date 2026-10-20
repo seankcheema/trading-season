@@ -108,21 +108,9 @@ import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
 
-type InsightTab = 'trading' | 'overview' | 'news' | 'ai' | 'recent-orders';
+type InsightTab = 'trading' | 'recent-orders';
 
 type ToolbarMenu = 'indicators' | 'chart-mode' | 'comparison';
-
-interface AiMessage {
-  role: 'user' | 'assistant';
-  text: string;
-}
-
-interface DemoNewsStory {
-  age: string;
-  category: string;
-  title: string;
-  includeSymbol?: boolean;
-}
 
 interface MarketStats {
   bid: number;
@@ -596,36 +584,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     () => this.chartModes.find((option) => option.value === this.chartMode()) ?? this.chartModes[0],
   );
   protected readonly insightTab = signal<InsightTab>('trading');
-  protected readonly demoNews: readonly DemoNewsStory[] = [
-    {
-      age: '12 min ago',
-      category: 'Market update',
-      title: 'holds near its session high as trading activity increases.',
-      includeSymbol: true,
-    },
-    {
-      age: '48 min ago',
-      category: 'Sector watch',
-      title: 'Large-cap peers trade higher as investors favor established companies.',
-    },
-    {
-      age: '2 hr ago',
-      category: 'Company outlook',
-      title: 'Analysts continue to focus on demand, margins, and the next earnings update.',
-    },
-    {
-      age: '4 hr ago',
-      category: 'Macroeconomy',
-      title: 'Treasury yields ease as markets assess latest economic data.',
-    },
-    {
-      age: '5 hr ago',
-      category: 'Earnings',
-      title: 'Tech stocks extend gains ahead of key earnings reports this week.',
-    },
-  ];
-  protected readonly aiDraft = signal('');
-  protected readonly aiMessages = signal<AiMessage[]>([]);
   protected readonly toolsCollapsed = signal(false);
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
   protected readonly enabledIndicators = signal<readonly TechnicalIndicator[]>([]);
@@ -917,23 +875,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
         ? enabled.filter((candidate) => candidate !== indicator)
         : [...enabled, indicator],
     );
-  }
-
-  protected submitAiPrompt(event: Event, symbol: string): void {
-    event.preventDefault();
-    const prompt = this.aiDraft().trim();
-    if (!prompt) {
-      return;
-    }
-    this.aiMessages.update((messages) => [
-      ...messages,
-      { role: 'user', text: prompt },
-      {
-        role: 'assistant',
-        text: `${symbol} is in a simulated session. I can help explain its price, range, volume, and chart in plain language.`,
-      },
-    ]);
-    this.aiDraft.set('');
   }
 
   @HostListener('document:click', ['$event'])

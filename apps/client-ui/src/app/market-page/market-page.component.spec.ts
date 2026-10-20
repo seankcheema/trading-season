@@ -256,7 +256,7 @@ describe('MarketPageComponent', () => {
     quantity.value = '3';
     quantity.dispatchEvent(new Event('input'));
     fixture.detectChanges();
-    fixture.componentInstance['insightTab'].set('news');
+    fixture.componentInstance['insightTab'].set('recent-orders');
     fixture.detectChanges();
     expect(root.querySelector('app-trade-ticket')).toBe(ticket);
     expect((root.querySelector('.trading-content') as HTMLElement).hidden).toBe(true);
@@ -574,89 +574,19 @@ describe('MarketPageComponent', () => {
     expect(profile.className).not.toContain('border-primary');
   });
 
-  it('renders overview and news feeds plus an empty AI chat state', async () => {
-    const fixture = await setup();
-    fixture.componentInstance['insightTab'].set('overview');
-    fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).not.toContain('Current market read');
-    expect(fixture.nativeElement.textContent).toContain('Short-term risk');
-    expect(fixture.nativeElement.textContent).toContain('Popularity');
-    expect(fixture.nativeElement.textContent).toContain('Sentiment');
-    expect(fixture.nativeElement.textContent).toContain('Bullish');
-    expect(fixture.nativeElement.querySelectorAll('.overview-card')).toHaveLength(6);
-    expect(fixture.nativeElement.querySelectorAll('.overview-card-icon')).toHaveLength(4);
-    expect(fixture.nativeElement.querySelectorAll('[role="progressbar"]')).toHaveLength(4);
-    expect(fixture.nativeElement.querySelectorAll('.overview-progress span')).toHaveLength(20);
-    expect(fixture.nativeElement.querySelector('.overview-summary')?.textContent).toContain(
-      'AAPL shows steady strength, elevated activity, and positive sentiment',
-    );
-    expect(fixture.nativeElement.querySelector('.overview-summary')?.textContent).toContain(
-      'Signal scores are illustrative',
-    );
-    expect(
-      fixture.nativeElement
-        .querySelector('[aria-label="Short-term risk level"]')
-        ?.getAttribute('aria-valuenow'),
-    ).toBe('3');
-    expect(fixture.nativeElement.querySelector('[aria-label="Key level strength"]')).toBeNull();
-    expect(fixture.nativeElement.querySelector('[aria-label="Activity level"]')).toBeNull();
-    expect(fixture.nativeElement.querySelector('.overview-risk')?.textContent).toContain(
-      'Moderate',
-    );
-    expect(fixture.nativeElement.textContent).not.toContain('Reconnecting');
-    const tabs = Array.from(
-      fixture.nativeElement.querySelectorAll('[role="tab"]'),
-    ) as HTMLButtonElement[];
-    expect(tabs.find((tab) => tab.textContent?.trim() === 'Overview')?.classList).toContain(
-      'bg-primary',
-    );
-    tabs.find((tab) => tab.textContent?.trim() === 'News')?.click();
-    fixture.detectChanges();
-    expect(tabs.find((tab) => tab.textContent?.trim() === 'News')?.classList).toContain(
-      'bg-primary',
-    );
-    expect(fixture.nativeElement.textContent).toContain('Latest headlines');
-    expect(fixture.nativeElement.querySelector('.news-hero')).toBeNull();
-    expect(fixture.nativeElement.querySelectorAll('.news-story').length).toBe(5);
-    expect(fixture.nativeElement.querySelector('.news-story')?.textContent).toContain(
-      'AAPL holds near its session high',
-    );
-    expect(fixture.nativeElement.textContent).toContain('Market update');
-    expect(fixture.nativeElement.textContent).toContain('Sector watch');
-    expect(fixture.nativeElement.textContent).toContain('Company outlook');
-    expect(fixture.nativeElement.textContent).toContain('Macroeconomy');
-    expect(fixture.nativeElement.textContent).toContain('Earnings');
-    expect(fixture.nativeElement.querySelectorAll('.news-arrow')).toHaveLength(5);
-    tabs.find((tab) => tab.textContent?.trim() === 'AI')?.click();
-    fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Ask about AAPL');
-    expect(fixture.nativeElement.textContent).toContain('Explore the chart');
-    expect(fixture.nativeElement.querySelector('[aria-label="Ask market AI"]')).not.toBeNull();
-    expect(fixture.nativeElement.querySelectorAll('.insight-item').length).toBe(0);
-    expect(fixture.nativeElement.querySelectorAll('[aria-hidden="true"]')).not.toHaveLength(0);
-  });
-
-  it('submits a prompt from the AI chat composer', async () => {
+  it('offers only Trading and Recent Orders in the market tools', async () => {
     const fixture = await setup();
     const tabs = Array.from(
       fixture.nativeElement.querySelectorAll('[role="tab"]'),
     ) as HTMLButtonElement[];
-    tabs.find((tab) => tab.textContent?.trim() === 'AI')?.click();
+    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual(['Trading', 'Recent Orders']);
+    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+    tabs[1].click();
     fixture.detectChanges();
-
-    const input = fixture.nativeElement.querySelector(
-      '[aria-label="Ask market AI"]',
-    ) as HTMLInputElement;
-    input.value = 'Explain today’s volume';
-    input.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
-    (
-      fixture.nativeElement.querySelector('[aria-label="Send question"]') as HTMLButtonElement
-    ).click();
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.textContent).toContain('Explain today’s volume');
-    expect(fixture.nativeElement.textContent).toContain('simulated session');
+    expect(tabs[1].getAttribute('aria-selected')).toBe('true');
+    expect(fixture.nativeElement.querySelector('.overview-feed')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.news-feed')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[aria-label="Ask market AI"]')).toBeNull();
   });
 
   it('includes recent orders and expands the chart when tools are collapsed', async () => {
