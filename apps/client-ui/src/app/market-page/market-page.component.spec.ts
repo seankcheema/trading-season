@@ -574,6 +574,24 @@ describe('MarketPageComponent', () => {
     expect(profile.className).not.toContain('border-primary');
   });
 
+  it('toggles live tailing for both comparison charts from the navigation bar', async () => {
+    const fixture = await setup('aapl', 'msft');
+    const button = fixture.nativeElement.querySelector('[aria-label="Live tailing"]') as HTMLButtonElement;
+    expect(button.closest('.chart-control-bar')).toBeNull();
+    expect(button.previousElementSibling?.classList).toContain('chart-control-bar');
+    expect(button.textContent).toContain('Live tailing');
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    const charts = fixture.debugElement.queryAll(By.directive(PriceChartComponent));
+    expect(charts).toHaveLength(2);
+    button.click();
+    fixture.detectChanges();
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(charts.every((chart) => !chart.componentInstance.liveTailing())).toBe(true);
+    button.click();
+    fixture.detectChanges();
+    expect(charts.every((chart) => chart.componentInstance.liveTailing())).toBe(true);
+  });
+
   it('offers only Trading and Recent Orders in the market tools', async () => {
     const fixture = await setup();
     const tabs = Array.from(

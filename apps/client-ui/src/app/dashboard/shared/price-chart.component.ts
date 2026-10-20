@@ -18,6 +18,7 @@ import {
   effect,
   inject,
   input,
+  model,
   signal,
   untracked,
   viewChild,
@@ -199,6 +200,23 @@ interface TooltipPosition {
             >
           }
         </div>
+        @if (showLiveTailing()) {
+          <button
+            type="button"
+            class="chart-control live-tailing-control flex shrink-0 items-center gap-1 rounded-lg border px-2 backdrop-blur-sm"
+            [class.text-primary]="liveTailing()"
+            [class.bg-primary/15]="liveTailing()"
+            [attr.aria-pressed]="liveTailing()"
+            aria-label="Live tailing"
+            [title]="liveTailing() ? 'Stop following latest bars' : 'Follow latest bars'"
+            (click)="liveTailing.set(!liveTailing())"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m13 2-3 8H4l7 12 3-8h6L13 2Z" />
+            </svg>
+            Live tailing
+          </button>
+        }
       }
       <div class="chart-top-right">
         @if (showIndicatorLabels() && priceIndicatorsEnabled().length) {
@@ -538,9 +556,22 @@ interface TooltipPosition {
     }
   `,
   styles: `
-    .chart-control-bar {
-      border-color: color-mix(in srgb, var(--foreground) 28%, transparent);
+    .chart-control-bar,
+    .chart-control.live-tailing-control {
+      border: 1px solid color-mix(in srgb, var(--foreground) 28%, transparent);
+      border-radius: 0.5rem;
       background: var(--raised);
+    }
+    .chart-control.live-tailing-control {
+      height: 1.875rem;
+    }
+    .chart-control.live-tailing-control[aria-pressed='true'] {
+      border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+      background: #57d7ff;
+      color: #08131a;
+    }
+    .chart-control.live-tailing-control[aria-pressed='true']:hover {
+      background: #8ae5ff;
     }
     .chart-control {
       min-width: 1.5rem;
@@ -775,6 +806,8 @@ export class PriceChartComponent {
   readonly timezone = input('UTC');
   readonly interactive = input(false, { transform: booleanAttribute });
   readonly interactionKey = input('');
+  readonly liveTailing = model(false);
+  readonly showLiveTailing = input(false);
   readonly showCurrentPrice = input(false, { transform: booleanAttribute });
   readonly showIndicatorLabels = input(true);
   readonly enabledIndicators = input<readonly TechnicalIndicator[]>([]);
@@ -848,6 +881,15 @@ export class PriceChartComponent {
     effect(() => {
       this.seriesKey();
       untracked(() => this.resetView());
+    });
+
+    effect(() => {
+      const following = this.liveTailing();
+      const interactive = this.interactive();
+      this.activePoints();
+      if (following && interactive) {
+        untracked(() => this.goLatest());
+      }
     });
 
     afterNextRender(() => {
@@ -1352,7 +1394,7 @@ export class PriceChartComponent {
     const rect = plot.getBoundingClientRect();
     if (this.dragStart) {
       const delta = ((event.clientX - this.dragStart.x) / rect.width) * count;
-      this.setView(this.dragStart.start - delta, count);
+      this.panView(this.dragStart.start - delta, count);
       return;
     }
     const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
@@ -1405,7 +1447,7 @@ export class PriceChartComponent {
     const rect = plot.getBoundingClientRect();
     const anchor = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
     if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
-      this.setView(
+      this.panView(
         this.viewStart() + (event.deltaX / rect.width) * this.viewCount(),
         this.viewCount(),
       );
@@ -1425,7 +1467,15 @@ export class PriceChartComponent {
   }
 
   protected pan(amount: number): void {
-    this.setView(this.viewStart() + this.viewCount() * amount, this.viewCount());
+    this.panView(this.viewStart() + this.viewCount() * amount, this.viewCount());
+  }
+
+  private panView(start: number, count: number): void {
+    const previousStart = this.viewStart();
+    this.setView(start, count);
+    if (this.viewStart() !== previousStart && !this.atLatest()) {
+      this.liveTailing.set(false);
+    }
   }
 
   protected goLatest(): void {

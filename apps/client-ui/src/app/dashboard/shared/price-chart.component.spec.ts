@@ -566,6 +566,66 @@ describe('PriceChartComponent', () => {
     expect(fixture.componentInstance['hoverIndex']()).toBe(0);
   });
 
+  it('tails incoming bars at the current zoom only while enabled', () => {
+    const points = Array.from({ length: 120 }, (_, index) => ({
+      time: new Date(2026, 0, 1, 9, index),
+      value: 100 + index,
+    }));
+    const fixture = setup('1D', points, true);
+    const chart = fixture.componentInstance;
+    chart['zoom'](0.8);
+    chart['pan'](-0.5);
+    const count = chart['viewCount']();
+    fixture.componentRef.setInput('liveTailing', true);
+    fixture.detectChanges();
+    expect(chart['atLatest']()).toBe(true);
+    const next = { time: new Date(2026, 0, 1, 11, 1), value: 230 };
+    fixture.componentRef.setInput('points', [...points, next]);
+    fixture.detectChanges();
+    expect(chart['visiblePoints']().at(-1)).toEqual(next);
+    expect(chart['viewCount']()).toBe(count);
+    fixture.componentRef.setInput('liveTailing', false);
+    fixture.detectChanges();
+    const start = chart['viewStart']();
+    fixture.componentRef.setInput('points', [...points, next, { ...next, value: 231 }]);
+    fixture.detectChanges();
+    expect(chart['viewStart']()).toBe(start);
+    expect(chart['visiblePoints']().at(-1)).toEqual(next);
+    expect(chart['atLatest']()).toBe(false);
+  });
+
+  it.each(['buttons', 'drag', 'wheel'])('disables live tailing after panning back with %s', (method) => {
+    const points = Array.from({ length: 120 }, (_, index) => ({
+      time: new Date(2026, 0, 1, 9, index),
+      value: 100 + index,
+    }));
+    const fixture = setup('1D', points, true);
+    const chart = fixture.componentInstance;
+    fixture.componentRef.setInput('liveTailing', true);
+    fixture.detectChanges();
+    const plot = fixture.nativeElement.querySelector('[role="group"]') as HTMLElement;
+    vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue({
+      left: 0, width: 400, top: 0, height: 200,
+    } as DOMRect);
+    if (method === 'buttons') {
+      chart['pan'](-0.25);
+    } else if (method === 'drag') {
+      chart['onPointerDown']({ clientX: 100, pointerId: 1 } as PointerEvent, plot);
+      expect(chart.liveTailing()).toBe(true);
+      chart['onPointerMove']({ clientX: 200 } as PointerEvent, plot);
+      chart['onPointerUp']({ pointerId: 1 } as PointerEvent, plot);
+    } else {
+      chart['onWheel'](new WheelEvent('wheel', { deltaX: -100, deltaY: 0, clientX: 200 }), plot);
+    }
+    fixture.detectChanges();
+    expect(chart.liveTailing()).toBe(false);
+    expect(chart['atLatest']()).toBe(false);
+    const start = chart['viewStart']();
+    fixture.componentRef.setInput('points', [...points, { time: new Date(2026, 0, 1, 12), value: 240 }]);
+    fixture.detectChanges();
+    expect(chart['viewStart']()).toBe(start);
+  });
+
   it('should zoom and return to the latest bars', () => {
     const points = Array.from({ length: 120 }, (_, index) => ({
       time: new Date(2026, 0, 1, 9, index),

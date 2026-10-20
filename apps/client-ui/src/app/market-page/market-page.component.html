@@ -457,6 +457,8 @@
                               class="h-full"
                               interactive
                               [showCurrentPrice]="true"
+                              [(liveTailing)]="liveTailing"
+                              [showLiveTailing]="true"
                               [interactionKey]="active.symbol"
                               [candles]="chartCandles()"
                               [points]="chartPoints()"
@@ -536,6 +538,8 @@
                               class="h-full"
                               interactive
                               [showCurrentPrice]="true"
+                              [(liveTailing)]="liveTailing"
+                              [showLiveTailing]="true"
                               [interactionKey]="compared.symbol"
                               [candles]="comparisonChartCandles()"
                               [points]="comparisonChartPoints()"
@@ -580,6 +584,8 @@
                           class="h-full"
                           interactive
                           [showCurrentPrice]="true"
+                              [(liveTailing)]="liveTailing"
+                              [showLiveTailing]="true"
                           [interactionKey]="active.symbol"
                           [candles]="chartCandles()"
                           [points]="chartPoints()"

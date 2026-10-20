@@ -158,7 +158,7 @@ interface MarketStats {
     MarketClockService,
 
     provideIcons({
-      lucideActivity,
+          lucideActivity,
       lucideBell,
       lucideSettings,
       lucideLogOut,
@@ -583,6 +583,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly selectedChartMode = computed(
     () => this.chartModes.find((option) => option.value === this.chartMode()) ?? this.chartModes[0],
   );
+  protected readonly liveTailing = signal(true);
   protected readonly insightTab = signal<InsightTab>('trading');
   protected readonly toolsCollapsed = signal(false);
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
