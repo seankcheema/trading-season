@@ -672,6 +672,50 @@ describe('history dialogs', () => {
         expect(text).not.toContain('AAPL');
       });
 
+      it('downloads the filtered rows as a PDF file', async () => {
+        const fixture = open();
+        let blob: Blob | null = null;
+        URL.createObjectURL = vi.fn((made: Blob) => {
+          blob = made;
+          return 'blob:statement';
+        });
+        URL.revokeObjectURL = vi.fn();
+        let downloaded = '';
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+          this: HTMLAnchorElement,
+        ) {
+          downloaded = this.download;
+        });
+
+        click(fixture, '[data-testid="transactions-export"]');
+        click(fixture, '[data-testid="transactions-export-pdf"]');
+        await vi.waitFor(() => expect(downloaded).toMatch(/\.pdf$/));
+
+        expect((blob as unknown as Blob).type).toBe('application/pdf');
+      });
+
+      it('closes only the export menu on Escape', () => {
+        const fixture = open();
+        const root: HTMLElement = fixture.nativeElement;
+        const escape = () =>
+          root
+            .querySelector('[data-testid="transactions-export"]')!
+            .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        const outer = vi.fn();
+        root.addEventListener('keydown', outer);
+
+        click(fixture, '[data-testid="transactions-export"]');
+        expect(fixture.componentInstance['exportOpen']()).toBe(true);
+        escape();
+        fixture.detectChanges();
+        expect(fixture.componentInstance['exportOpen']()).toBe(false);
+        expect(outer).not.toHaveBeenCalled();
+
+        // With the menu already shut, Escape is left for the dialog around it.
+        escape();
+        expect(outer).toHaveBeenCalledOnce();
+      });
+
       it('reports a failed export', async () => {
         const fixture = open();
         URL.createObjectURL = vi.fn(() => {

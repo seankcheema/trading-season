@@ -783,12 +783,7 @@ function matchesFilters(
   if (query && !row.label.toLowerCase().includes(query)) {
     return false;
   }
-  if (
-    (range.from !== null || range.to !== null) &&
-    (!Number.isFinite(row.at) ||
-      (range.from !== null && row.at < range.from) ||
-      (range.to !== null && row.at > range.to))
-  ) {
+  if (!withinRange(row.at, range)) {
     return false;
   }
   return (
@@ -813,6 +808,12 @@ function dayRange(from: string, to: string): DayRange {
     from: Number.isFinite(start) ? start : null,
     to: Number.isFinite(end) ? end : null,
   };
+}
+
+// An open range admits every row. Once either end is set, a row with no usable time (NaN) fails
+// both comparisons and is left out.
+function withinRange(at: number, range: DayRange): boolean {
+  return (range.from === null || at >= range.from) && (range.to === null || at <= range.to);
 }
 
 function matchesChoice<T>(choice: 'all' | T, value: T | null): boolean {

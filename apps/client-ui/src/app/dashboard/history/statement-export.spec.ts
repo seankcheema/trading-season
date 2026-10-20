@@ -1,5 +1,11 @@
 import { HistoryRow } from '../shared/activity';
-import { statementCsv, statementFilename, statementPdf } from './statement-export';
+import {
+  downloadStatement,
+  statementCsv,
+  statementFilename,
+  statementPdf,
+} from './statement-export';
+import { vi } from 'vitest';
 
 function row(overrides: Partial<HistoryRow> = {}): HistoryRow {
   return {
@@ -68,6 +74,11 @@ describe('statement export', () => {
       expect(csv).toContain(",'@sum,");
     });
 
+    it('falls back to the date as given when the time cannot be read', () => {
+      const csv = statementCsv([row({ at: Number.NaN, date: 'sometime' })]);
+      expect(csv).toContain('\r\nsometime,AAPL,');
+    });
+
     it('is just the header for no rows', () => {
       expect(statementCsv([]).replace('﻿', '').split('\r\n').filter(Boolean)).toHaveLength(1);
     });
@@ -87,6 +98,53 @@ describe('statement export', () => {
       expect(blob.type).toBe('application/pdf');
       const bytes = new Uint8Array(await blob.arrayBuffer());
       expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe('%PDF-');
+    });
+
+    it('handles every kind of row, including a single one and an unreadable date', async () => {
+      const deposit = row({ ...WITHDRAWAL, side: 'Deposit', positive: true, value: 500 });
+      const rowsOfEachKind = [
+        row({ executionType: 'LIMIT' }),
+        row({ executionType: null, shares: null, price: null, at: Number.NaN }),
+        deposit,
+      ];
+      for (const rows of [rowsOfEachKind, [row()]]) {
+        const blob = await statementPdf(rows, new Date('2026-03-04T10:00:00Z'));
+        expect(blob.size).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  describe('downloadStatement', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    async function download(format: 'csv' | 'pdf'): Promise<{ blob: Blob; filename: string }> {
+      let blob!: Blob;
+      let filename = '';
+      URL.createObjectURL = vi.fn((made: Blob) => {
+        blob = made;
+        return 'blob:statement';
+      });
+      URL.revokeObjectURL = vi.fn();
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+        this: HTMLAnchorElement,
+      ) {
+        filename = this.download;
+      });
+      await downloadStatement(format, [row()], new Date('2026-03-04T10:00:00Z'));
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:statement');
+      return { blob, filename };
+    }
+
+    it('saves a CSV with its filename', async () => {
+      const { blob, filename } = await download('csv');
+      expect(blob.type).toBe('text/csv;charset=utf-8');
+      expect(filename).toBe('account-statement-2026-03-04.csv');
+    });
+
+    it('saves a PDF with its filename', async () => {
+      const { blob, filename } = await download('pdf');
+      expect(blob.type).toBe('application/pdf');
+      expect(filename).toBe('account-statement-2026-03-04.pdf');
     });
   });
 });
