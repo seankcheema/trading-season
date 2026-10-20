@@ -192,6 +192,10 @@ Insight sections size naturally to their tallest card instead of reserving a fix
 
 Question-mark explanation views also use content-driven height, matching insight-card padding and the same viewport height cap. Short explanations have no reserved blank space below their text; long explanations scroll internally when required by viewport size or enlarged text.
 
-Card changes use a 180ms fade/short slide, and content-view changes ease the measured panel height over 240ms while remaining anchored above the launcher. Rapid changes continue from the current animated height; reduced-motion preferences disable both effects. The final size remains content-driven and viewport-constrained, with 12px card bottom padding and 12px navigation margins.
+Card changes use a 380ms fade/short slide with the same gentle ease-in-out as resizing, and content-view changes ease the measured panel height over 380ms with gentle ease-in-out while remaining anchored above the launcher. Rapid changes continue from the current animated height; reduced-motion preferences disable both effects. The final size remains content-driven and viewport-constrained, with 12px card bottom padding and 12px navigation margins.
 
-Information views use 24px bottom padding so their last paragraph has the same breathing room as the insight content above navigation. Their height remains content-driven and uses the shared resize transition.
+Information views use 36px bottom padding so their last paragraph has the same breathing room as the insight content above navigation. Their height remains content-driven and uses the shared resize transition.
+
+Information views use a consistent 14px type scale and 1.55 line height, with semibold headings/emphasis and regular body copy. Opening and returning use a 280ms content entrance and a 380ms height transition. The panel bottom remains anchored 12px above the fixed launcher; resizing changes the top edge only. Reduced-motion preferences disable animation.
+
+Card transitions animate opacity and a small visual translation only; the shared grid row and navigation never change size or position during a card switch. Navigation indicator colors fade over the same 380ms without layout movement. Reduced motion switches cards and indicators immediately.

@@ -80,8 +80,20 @@ test('Dua starts closed, reviews holdings, minimizes and follows stock navigatio
     )
     .toBe(0);
   const initialCard = await panel.locator('.insight-card:not(.inactive)').boundingBox();
+  const navigationBefore = await panel.locator('.card-navigation').boundingBox();
+  const panelBottomBefore = await panel.evaluate((el) => el.getBoundingClientRect().bottom);
   await panel.getByRole('button', { name: 'Next insight', exact: true }).click();
   await expect(panel).toContainText('Sector concentration');
+  const navigationAfter = await panel.locator('.card-navigation').boundingBox();
+  expect(navigationAfter!.y).toBeCloseTo(navigationBefore!.y, 1);
+  expect(await panel.evaluate((el) => el.getBoundingClientRect().bottom)).toBeCloseTo(
+    panelBottomBefore,
+    1,
+  );
+  await expect(panel.locator('.insight-card:not(.inactive)')).toHaveCSS(
+    'transition-duration',
+    '0.38s, 0.38s, 0s',
+  );
   expect((await panel.locator('.insight-card:not(.inactive)').boundingBox())!.height).toBe(
     initialCard!.height,
   );
@@ -95,7 +107,11 @@ test('Dua starts closed, reviews holdings, minimizes and follows stock navigatio
   );
   await panel.getByRole('button', { name: 'Previous insight', exact: true }).click();
   await expect(panel).toContainText('Sector concentration');
+  const anchoredBottom = await panel.evaluate((el) => el.getBoundingClientRect().bottom);
   await panel.getByRole('button', { name: 'Explain these numbers', exact: true }).click();
+  expect(
+    Math.abs((await panel.evaluate((el) => el.getBoundingClientRect().bottom)) - anchoredBottom),
+  ).toBeLessThanOrEqual(1);
   await expect(panel.getByRole('heading', { name: 'Explain these numbers' })).toBeVisible();
   await expect(panel).toContainText('not calculated from your account');
   await expect(panel).toContainText('Why it matters');
@@ -111,7 +127,7 @@ test('Dua starts closed, reviews holdings, minimizes and follows stock navigatio
   const lastParagraph = await panel.locator('.example-context').boundingBox();
   expect(
     explanationBounds!.y + explanationBounds!.height - lastParagraph!.y - lastParagraph!.height,
-  ).toBeLessThanOrEqual(32);
+  ).toBeLessThanOrEqual(44);
   await expect(panel).toHaveCSS('background-image', /radial-gradient/);
   await panel.getByRole('button', { name: 'Back to results', exact: true }).click();
   await expect(panel).toContainText('Sector concentration');
