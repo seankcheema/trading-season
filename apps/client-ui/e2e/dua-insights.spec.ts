@@ -52,16 +52,82 @@ test('Dua starts closed, reviews holdings, minimizes and follows stock navigatio
   await page.getByRole('button', { name: 'Dua insights', exact: true }).click();
   await expect(panel).toBeVisible();
   await expect(panel.getByRole('textbox')).toHaveCount(0);
+  await panel.getByRole('button', { name: 'Daily review', exact: true }).click();
+  await expect(panel.locator('.card-indicator')).toHaveCount(3);
+  await expect(panel).toContainText('Market overview');
+  await expect(panel.locator('.stock-list')).toHaveCount(0);
+  await expect(panel.locator('.dua-header')).toHaveCSS('background-color', 'rgb(12, 14, 16)');
+  await expect(panel.locator('.insight-card:not(.inactive)')).toHaveCSS(
+    'background-color',
+    'rgba(0, 0, 0, 0)',
+  );
+  await panel.getByRole('button', { name: 'Next insight', exact: true }).click();
+  await expect(panel).toContainText('Portfolio impact');
+  expect(await panel.locator('.stock-list li').count()).toBeLessThanOrEqual(4);
+  await panel.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(panel).toContainText('Market overview');
+  await panel.getByRole('button', { name: 'Back to choices', exact: true }).click();
   await panel.getByRole('button', { name: 'My holdings', exact: true }).click();
-  await expect(panel).toContainText('below average purchase cost');
-  await expect(panel).toContainText('Unrealized loss');
-  await panel.getByRole('button', { name: 'View stock', exact: true }).click();
+  await expect(panel).toContainText('Portfolio growth');
+  await expect(panel).toContainText('+12.4%');
+  await expect(panel.locator('.insight-card:not(.inactive)')).toHaveCount(1);
+  await expect(panel.locator('.insight-card.inactive')).toHaveCount(2);
+  await expect
+    .poll(() =>
+      panel.evaluate(
+        (el) => el.getAnimations().filter((animation) => animation.playState === 'running').length,
+      ),
+    )
+    .toBe(0);
+  const initialCard = await panel.locator('.insight-card:not(.inactive)').boundingBox();
+  await panel.getByRole('button', { name: 'Next insight', exact: true }).click();
+  await expect(panel).toContainText('Sector concentration');
+  expect((await panel.locator('.insight-card:not(.inactive)').boundingBox())!.height).toBe(
+    initialCard!.height,
+  );
+  expect(
+    await panel.locator('.dua-body').evaluate((el) => el.scrollHeight <= el.clientHeight),
+  ).toBe(true);
+  await panel.getByRole('button', { name: 'Show Top performer', exact: true }).click();
+  await expect(panel).toContainText('Top performer');
+  expect((await panel.locator('.insight-card:not(.inactive)').boundingBox())!.height).toBe(
+    initialCard!.height,
+  );
+  await panel.getByRole('button', { name: 'Previous insight', exact: true }).click();
+  await expect(panel).toContainText('Sector concentration');
+  await panel.getByRole('button', { name: 'Explain these numbers', exact: true }).click();
+  await expect(panel.getByRole('heading', { name: 'Explain these numbers' })).toBeVisible();
+  await expect(panel).toContainText('not calculated from your account');
+  await expect(panel).toContainText('Why it matters');
+  await expect(panel.locator('.insight-explanation')).toBeVisible();
+  await expect
+    .poll(() =>
+      panel.evaluate(
+        (el) => el.getAnimations().filter((animation) => animation.playState === 'running').length,
+      ),
+    )
+    .toBe(0);
+  const explanationBounds = await panel.locator('.insight-explanation').boundingBox();
+  const lastParagraph = await panel.locator('.example-context').boundingBox();
+  expect(
+    explanationBounds!.y + explanationBounds!.height - lastParagraph!.y - lastParagraph!.height,
+  ).toBeLessThanOrEqual(32);
+  await expect(panel).toHaveCSS('background-image', /radial-gradient/);
+  await panel.getByRole('button', { name: 'Back to results', exact: true }).click();
+  await expect(panel).toContainText('Sector concentration');
+  await panel.getByRole('button', { name: 'Back to choices', exact: true }).click();
+  await page.goto('/dashboard/markets/aapl?accountId=1');
   await expect(page).toHaveURL(/\/dashboard\/markets\/aapl/);
   await expect(panel).toBeHidden();
   await page.getByRole('button', { name: 'Dua insights', exact: true }).click();
   await panel.getByRole('button', { name: 'This stock', exact: true }).click();
-  await expect(panel).toContainText('since session open');
-  await expect(panel).toContainText('Not enough completed candles');
+  await expect(panel).toContainText('Growth insight');
+  await expect(panel).toContainText('+24.8%');
+  await expect(panel.locator('.card-meta')).toContainText(/\d{2}\/\d{2}\/\d{4}/);
+  await panel.getByRole('button', { name: 'Next insight', exact: true }).click();
+  await expect(panel).toContainText('Valuation insight');
+  await expect(panel).toContainText('-18%');
+  await expect(panel.locator('.card-meta')).toContainText(/\d{2}\/\d{2}\/\d{4}/);
   await page.goBack();
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(panel).toBeHidden();
@@ -90,12 +156,23 @@ test('Dua remains a compact overlay on mobile and supports reduced motion', asyn
   await page.getByRole('button', { name: 'Dua insights', exact: true }).click();
   await expect(panel).toBeVisible();
   const bounds = await panel.boundingBox();
-  expect(bounds!.width).toBeLessThanOrEqual(320);
-  expect(bounds!.height).toBeLessThanOrEqual(400);
+  expect(bounds!.width).toBeLessThanOrEqual(360);
+  expect(bounds!.height).toBeLessThanOrEqual(560);
   expect(bounds!.x).toBeGreaterThanOrEqual(0);
   expect(bounds!.y).toBeGreaterThanOrEqual(0);
   await expect(page.locator('app-dua .launcher-art')).toHaveClass(/face-visible/);
   await expect(page.locator('app-dua .launcher-art')).toHaveCSS('transition-duration', '0s');
+  await panel.getByRole('button', { name: 'Daily review', exact: true }).click();
+  await expect(panel.locator('.insights')).toHaveCSS('animation-name', 'none');
+  await expect(panel.locator('.insight-card:not(.inactive)')).toHaveCSS(
+    'transition-duration',
+    '0s',
+  );
+  await panel.getByRole('button', { name: 'Explain these numbers', exact: true }).click();
+  await expect(panel.locator('.insight-explanation')).toHaveCSS('animation-name', 'none');
+  expect(await panel.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
+  await panel.getByRole('button', { name: 'Back to results', exact: true }).click();
+
   const failedImages = await page
     .locator('app-dua img')
     .evaluateAll((images) => images.some((img) => !(img as HTMLImageElement).naturalWidth));

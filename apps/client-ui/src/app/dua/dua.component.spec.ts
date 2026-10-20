@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
-import { of, Subject, throwError } from 'rxjs';
+import { of } from 'rxjs';
 import { vi } from 'vitest';
 import { AccountStore } from '../dashboard/accounts/account-store.service';
 import { MarketDataService } from '../dashboard/market-data.service';
@@ -13,6 +13,7 @@ import { TokenStorageService } from '../core/auth/token-storage.service';
 describe('Dua panel', () => {
   let session: DuaSession;
   const account = {
+    selectedAccount: signal({ accountId: 1, name: 'Investing' }),
     selectedAccountId: signal<number | null>(1),
     needsTermsAcceptance: signal(false),
     status: signal('ready'),
@@ -88,49 +89,147 @@ describe('Dua panel', () => {
   it('calculates selected insights and clears results on account changes', () => {
     const { fixture, click, text } = setup();
     click('Daily review');
-    expect(text()).toContain('up 10.0%');
+    expect(fixture.nativeElement.querySelector('.takeaway').textContent).toContain(
+      'market closed on a high note',
+    );
+    expect(fixture.nativeElement.querySelector('.insight-card strong')).not.toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('.insight-card:not(.inactive)').length).toBe(1);
+    expect(fixture.nativeElement.querySelector('.distribution')).toBeNull();
+    click('Next insight');
+    expect(text()).toContain('$385');
+    expect(fixture.nativeElement.querySelector('[aria-label="Up"]')).not.toBeNull();
     account.selectedAccountId.set(2);
     fixture.detectChanges();
     expect(text()).toContain('What would you like');
-    expect(text()).not.toContain('up 10.0%');
+    expect(text()).not.toContain('$385');
   });
   it('handles empty holdings, missing prices and terms blocking', () => {
     const { fixture, click, text } = setup();
     fixture.componentRef.setInput('quotes', []);
     fixture.detectChanges();
     click('My holdings');
-    expect(text()).toContain('unavailable market prices');
+    expect(text()).toContain('+12.4%');
     click('Back to choices');
     fixture.componentRef.setInput('holdings', []);
     fixture.detectChanges();
     click('Daily review');
-    expect(text()).toContain('No holdings');
+    expect(text()).toContain('Market overview');
     account.needsTermsAcceptance.set(true);
     fixture.detectChanges();
     expect(fixture.nativeElement.hidden).toBe(true);
   });
-  it('offers stock direction and recovers from failed history requests', () => {
+  it('shows three disclosed illustrative cards without fetching stock history', () => {
     const { fixture, click, text } = setup();
     fixture.componentRef.setInput('symbol', 'AAPL');
     fixture.detectChanges();
     click('This stock');
-    expect(text()).toContain('Not enough completed candles');
-    market.candles.mockReturnValue(throwError(() => new Error('offline')));
+    expect(text()).toContain('Stock Insights');
+    expect(text()).toContain('+24.8%');
+    expect(fixture.nativeElement.querySelector('.card-meta').textContent).toContain('01/05/2026');
+    expect(fixture.nativeElement.querySelectorAll('.card-indicator').length).toBe(3);
+    click('Next insight');
+    expect(text()).toContain('-18%');
+    expect(fixture.nativeElement.querySelector('.card-meta').textContent).toContain('01/05/2026');
+    click('Next insight');
+    expect(text()).toContain('65%');
+    expect(text()).toContain('03 / 03');
+    expect(market.candles).not.toHaveBeenCalled();
     click('Refresh');
-    expect(text()).toContain('Please retry');
-    expect(fixture.nativeElement.querySelector('.skeleton')).toBeNull();
+    expect(text()).toContain('Growth insight');
   });
-  it('cancels outstanding history when the clock seeks', () => {
-    const response = new Subject();
-    market.candles.mockReturnValue(response);
+  it('shows holdings placeholders with periods and restores them after explanations', () => {
+    const { fixture, click, text } = setup();
+    click('My holdings');
+    expect(text()).toContain('This Month');
+    expect(text()).toContain('+12.4%');
+    click('Next insight');
+    expect(text()).toContain('68%');
+    expect(text()).toContain('Current');
+    expect(text()).not.toContain('A downturn in this sector');
+    click('Explain these numbers');
+    expect(text()).toContain('Why it matters');
+    expect(text()).toContain('A downturn in this sector');
+    expect(fixture.nativeElement.querySelector('.insight-explanation')).not.toBeNull();
+    expect(text()).toContain('not calculated from your account');
+    click('Back to results');
+    expect(text()).toContain('68%');
+    click('Next insight');
+    expect(text()).toContain('+32.8%');
+    expect(fixture.nativeElement.querySelectorAll('.card-indicator').length).toBe(3);
+    click('Refresh');
+    expect(text()).toContain('+12.4%');
+  });
+  it('keeps the daily market review available for an account without holdings', () => {
+    const { fixture, click, text } = setup();
+    fixture.componentRef.setInput('holdings', []);
+    fixture.detectChanges();
+    click('Daily review');
+    expect(text()).toContain('Market overview');
+    expect(
+      fixture.nativeElement.querySelector('.insight-card').querySelectorAll('.overview-metrics dt')
+        .length,
+    ).toBe(1);
+    expect(fixture.nativeElement.querySelectorAll('.card-indicator').length).toBe(3);
+    click('Show Portfolio impact');
+    expect(text()).toContain('Portfolio impact');
+    click('Refresh');
+    expect(text()).toContain('Market overview');
+    expect(fixture.nativeElement.querySelector('.stock-list')).toBeNull();
+    expect(text().toLowerCase()).not.toContain('simulat');
+    expect(text()).not.toContain('Investing');
+  });
+  it('keeps only the current card accessible while inactive cards share layout sizing', () => {
     const { fixture, click } = setup();
+    click('Daily review');
+    expect(fixture.nativeElement.querySelectorAll('.insight-card').length).toBe(3);
+    expect(
+      fixture.nativeElement.querySelectorAll('.insight-card.inactive[inert][aria-hidden="true"]')
+        .length,
+    ).toBe(2);
+    click('Next insight');
+    expect(
+      fixture.nativeElement.querySelector('.insight-card:not(.inactive) h3').textContent,
+    ).toContain('Portfolio impact');
+  });
+  it('shows all three daily examples with periods and explanatory limitations', () => {
+    const { fixture, click, text } = setup();
+    click('Daily review');
+    expect(text()).toContain('+1.8%');
+    expect(text()).toContain('Today');
+    click('Next insight');
+    expect(text()).toContain('$385');
+    click('Next insight');
+    expect(text()).toContain('Up Next');
+    expect(text()).toContain('Three key events');
+    expect(fixture.nativeElement.querySelectorAll('.card-indicator').length).toBe(3);
+    click('Explain these numbers');
+    expect(text()).toContain("not today's actual market data");
+    click('Back to results');
+    expect(text()).toContain('Up Next');
+    click('Refresh');
+    expect(text()).toContain('+1.8%');
+  });
+  it('returns from explanations to the same stock snapshot without fetching or recalculating', () => {
+    const { fixture, click, text } = setup();
     fixture.componentRef.setInput('symbol', 'AAPL');
     fixture.detectChanges();
     click('This stock');
-    expect(response.observed).toBe(true);
-    clock.clockUpdating.set(true);
+    const original = text();
+    const requests = market.candles.mock.calls.length;
+    click('Explain these numbers');
+    expect(text()).toContain('not figures for the selected stock');
+    fixture.componentRef.setInput('quotes', [
+      { symbol: 'AAPL', name: 'Apple', price: 999, change: 899, changePercent: 899 },
+    ]);
     fixture.detectChanges();
-    expect(response.observed).toBe(false);
+    click('Back to results');
+    expect(text()).toBe(original);
+    expect(market.candles.mock.calls.length).toBe(requests);
+    click('Explain these numbers');
+    account.selectedAccountId.set(2);
+    fixture.detectChanges();
+    expect(text()).toContain('What would you like to review');
+    expect(text()).not.toContain('not figures for the selected stock');
   });
   it('uses one launcher image and handles missing artwork with an accessible fallback', () => {
     const { fixture } = setup();

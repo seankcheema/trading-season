@@ -1,4 +1,5 @@
 import {
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
@@ -11,20 +12,23 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { Router } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
+  lucideArrowUpRight,
+  lucideArrowDownRight,
   lucideChartPie,
   lucideChevronLeft,
   lucideChevronRight,
+  lucideCircleHelp,
+  lucideExternalLink,
   lucideNewspaper,
+  lucideRefreshCw,
   lucideScanSearch,
   lucideX,
 } from '@ng-icons/lucide';
-import { Subscription } from 'rxjs';
 import { AccountHolding } from '../dashboard/accounts/account.models';
 import { AccountStore } from '../dashboard/accounts/account-store.service';
-import { MarketDataService } from '../dashboard/market-data.service';
 import { Instrument } from '../dashboard/mock-data';
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
 import { DuaSession } from './dua-session.service';
@@ -33,21 +37,31 @@ import {
   DuaChoice,
   dailyCard,
   dailyReview,
-  directionCard,
   holdingCards,
-  percentChange,
+  stockPreviewCards,
+  holdingsPreviewCards,
+  dailyPreviewCards,
+  DUA_EXPLANATIONS,
+  insightTextParts,
+  sparklinePoints,
+  takeawayParts,
 } from './dua-insights';
 
 @Component({
   selector: 'app-dua',
   host: { '[hidden]': 'account.needsTermsAcceptance()' },
-  imports: [NgIcon],
+  imports: [NgIcon, RouterLink],
   providers: [
     provideIcons({
+      lucideArrowUpRight,
+      lucideArrowDownRight,
       lucideChartPie,
       lucideChevronLeft,
       lucideChevronRight,
+      lucideCircleHelp,
+      lucideExternalLink,
       lucideNewspaper,
+      lucideRefreshCw,
       lucideScanSearch,
       lucideX,
     }),
@@ -57,6 +71,9 @@ import {
   styleUrl: './dua.component.css',
 })
 export class DuaComponent {
+  protected readonly takeawayParts = takeawayParts;
+  protected readonly responseParts = insightTextParts;
+  protected readonly chartPoints = sparklinePoints;
   readonly holdings = input<readonly AccountHolding[]>([]);
   readonly quotes = input<readonly Instrument[]>([]);
   readonly symbol = input('');
@@ -64,35 +81,45 @@ export class DuaComponent {
   protected readonly session = inject(DuaSession);
   protected readonly account = inject(AccountStore);
   protected readonly clock = inject(MarketClockService);
-  private readonly market = inject(MarketDataService);
-  private readonly router = inject(Router);
   protected readonly hovered = signal(false);
   protected readonly focused = signal(false);
   protected readonly hasUpdates = signal(false);
+  protected readonly explaining = signal(false);
+  protected readonly explanations = computed(() => {
+    const choice = this.choice();
+    return choice ? DUA_EXPLANATIONS[choice] : [];
+  });
   protected readonly faceVisible = computed(
     () => !this.session.minimized() || this.hasUpdates() || this.hovered() || this.focused(),
   );
   protected readonly title = computed(() =>
-    this.choice() === 'daily'
-      ? 'Daily review'
-      : this.choice() === 'holdings'
-        ? 'My holdings'
-        : this.choice() === 'stock'
-          ? this.symbol()
-          : 'Dua',
+    this.explaining()
+      ? 'Explain these numbers'
+      : this.choice() === 'daily'
+        ? 'Daily review'
+        : this.choice() === 'holdings'
+          ? 'My holdings'
+          : this.choice() === 'stock'
+            ? 'Stock Insights'
+            : 'Dua',
   );
   protected readonly imagesFailed = signal(false);
+  protected readonly activeCard = signal(0);
   protected readonly cards = signal<DuaCard[]>([]);
+  protected readonly explainedCard = computed(() => this.cards()[this.activeCard()]);
   protected readonly choice = signal<DuaChoice | null>(null);
   protected readonly loading = signal(false);
   protected readonly message = signal('');
   protected readonly asOf = signal('');
+  protected readonly snapshotDate = signal('');
+  protected readonly snapshotContext = signal('');
   protected readonly snapshotDisconnected = signal(false);
   private readonly launcher = viewChild<ElementRef<HTMLButtonElement>>('launcher');
   private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
-  private request?: Subscription;
   private timers: ReturnType<typeof setTimeout>[] = [];
   private lastTime = '';
+  private resizeAnimation?: Animation;
+  private panelSize?: { height: number; width: number };
 
   constructor() {
     effect(() => {
@@ -144,8 +171,47 @@ export class DuaComponent {
       const context = `${accountId}:${sessionId}:${symbol}`;
       this.hasUpdates.set(this.session.hasNewInformation(context, fingerprint, !minimized));
     });
+    afterRenderEffect(() => {
+      // Measure after Angular renders the destination view, then animate from the prior size.
+      this.choice();
+      this.activeCard();
+      this.explaining();
+      this.cards();
+      const minimized = this.session.minimized();
+      const panel = this.panel()?.nativeElement;
+      if (!panel) return;
+      const interruptedHeight = this.resizeAnimation
+        ? panel.getBoundingClientRect().height
+        : undefined;
+      this.resizeAnimation?.cancel();
+      this.resizeAnimation = undefined;
+      const bounds = panel.getBoundingClientRect();
+      const previous = this.panelSize;
+      this.panelSize = minimized ? undefined : { height: bounds.height, width: bounds.width };
+      const reducedMotion =
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (
+        minimized ||
+        !previous ||
+        reducedMotion ||
+        typeof panel.animate !== 'function' ||
+        Math.abs(previous.width - bounds.width) > 1
+      )
+        return;
+      const from = interruptedHeight ?? previous.height;
+      if (Math.abs(from - bounds.height) < 1) return;
+      const animation = panel.animate([{ height: `${from}px` }, { height: `${bounds.height}px` }], {
+        duration: 240,
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      });
+      this.resizeAnimation = animation;
+      animation.onfinish = () => {
+        if (this.resizeAnimation === animation) this.resizeAnimation = undefined;
+      };
+    });
     inject(DestroyRef).onDestroy(() => {
-      this.request?.unsubscribe();
+      this.resizeAnimation?.cancel();
       this.clearTimers();
     });
   }
@@ -179,13 +245,21 @@ export class DuaComponent {
   }
 
   protected back(): void {
-    this.request?.unsubscribe();
+    this.activeCard.set(0);
     this.choice.set(null);
     this.cards.set([]);
     this.message.set('');
     this.asOf.set('');
+    this.snapshotDate.set('');
     this.snapshotDisconnected.set(false);
     this.loading.set(false);
+    this.explaining.set(false);
+    this.snapshotContext.set('');
+  }
+
+  protected backToPrevious(): void {
+    if (this.explaining()) this.explaining.set(false);
+    else this.back();
   }
 
   protected select(choice: DuaChoice): void {
@@ -201,90 +275,31 @@ export class DuaComponent {
       return;
     }
     const at = this.clock.currentMarketTimestamp();
+    this.snapshotContext.set(this.account.selectedAccount()?.name ?? 'No account selected');
     this.snapshotDisconnected.set(!this.connected());
+    this.snapshotDate.set(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: this.clock.marketCalendar().timezone,
+        month: '2-digit',
+        day: '2-digit',
+        year: 'numeric',
+      }).format(new Date(at)),
+    );
     this.asOf.set(
       new Intl.DateTimeFormat('en-US', {
         timeZone: this.clock.marketCalendar().timezone,
-        month: 'short',
-        day: 'numeric',
         hour: 'numeric',
         minute: '2-digit',
-        timeZoneName: 'short',
       }).format(new Date(at)),
     );
-    const holdings = this.holdings();
-    const quotes = this.quotes();
-    if (choice !== 'stock') {
-      if (!holdings.some((h) => h.quantity > 0)) {
-        this.message.set('No holdings in this account to review yet.');
-        return;
-      }
-      this.cards.set(
-        choice === 'daily' ? dailyReview(holdings, quotes) : holdingCards(holdings, quotes),
-      );
-      const missing = holdings.some(
-        (h) =>
-          h.quantity > 0 &&
-          !quotes.some(
-            (q) =>
-              q.symbol === h.symbol &&
-              percentChange(q.price, choice === 'daily' ? q.price - q.change : h.averageCost) !==
-                null,
-          ),
-      );
-      this.message.set(
-        missing
-          ? 'Some holdings have unavailable market prices or baselines and are omitted.'
-          : this.cards().length
-            ? ''
-            : choice === 'daily'
-              ? 'No positive or negative moves with a valid baseline are available.'
-              : 'Position performance is unavailable without a valid average purchase cost.',
-      );
-      return;
-    }
-    const symbol = this.symbol();
-    const quote = quotes.find((q) => q.symbol === symbol);
-    const daily = quote ? dailyCard(quote) : null;
-    this.cards.set(daily ? [daily] : []);
-    if (!daily) this.message.set('Movement since open is unavailable for this stock.');
-    const sessionId = this.clock.marketSessionId();
-    if (sessionId === null) {
-      this.message.set('Market history is unavailable.');
-      return;
-    }
-    this.loading.set(true);
-    this.request = this.market.candles(sessionId, symbol, '1D').subscribe({
-      next: (series) => {
-        // Retained cache entries may belong to a different replay cursor.
-        if (
-          Math.floor(Date.parse(series.marketTimestamp) / 60_000) !==
-          Math.floor(Date.parse(at) / 60_000)
-        )
-          return;
-        this.cards.set([
-          ...(daily ? [daily] : []),
-          directionCard(symbol, series.points, at, this.clock.marketCalendar().timezone),
-        ]);
-      },
-      error: () => {
-        this.loading.set(false);
-        this.message.set('Recent price history is unavailable. Please retry.');
-      },
-      complete: () => {
-        this.loading.set(false);
-        if (this.cards().length === (daily ? 1 : 0))
-          this.message.set(
-            'Recent price history is unavailable for this market time. Please retry.',
-          );
-      },
-    });
-  }
-
-  protected viewStock(symbol: string): void {
-    this.session.minimized.set(true);
-    void this.router.navigate(['/dashboard/markets', symbol.toLowerCase()], {
-      queryParams: { accountId: this.account.selectedAccountId() },
-    });
+    this.cards.set(
+      choice === 'daily'
+        ? dailyPreviewCards()
+        : choice === 'holdings'
+          ? holdingsPreviewCards()
+          : stockPreviewCards(),
+    );
+    this.asOf.set('');
+    this.snapshotDisconnected.set(false);
   }
 }
