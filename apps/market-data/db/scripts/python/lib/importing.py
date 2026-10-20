@@ -207,8 +207,8 @@ async def _prepare_session(connection: asyncpg.Connection, manifest: dict[str, A
         # One tradable instrument per simulated series. Orders reference instrument_id, and
         # nothing else creates these rows, so without this an imported archive gives the
         # dashboard prices it cannot trade against. simulated_stock_symbol is the link the
-        # API hands clients to map a quote back to an instrument; since V012 it applies to
-        # every class (BR-12), so the class, market and currency come from each Stock.
+        # API hands clients to map a quote back to an instrument; V001 allows it only for
+        # US equities, which is what every simulated series is (BR-12 as clarified).
         await connection.executemany("""INSERT INTO instruments(ticker,name,asset_class,market,currency,is_tradable,simulated_stock_symbol)
           VALUES($1,$2,$3,$4,$5,TRUE,$6) ON CONFLICT(ticker) DO UPDATE SET name=excluded.name,
           asset_class=excluded.asset_class,market=excluded.market,currency=excluded.currency,

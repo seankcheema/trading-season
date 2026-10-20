@@ -19,13 +19,12 @@ DEFAULT_CONFIG = SCRIPTS / "config" / "synthetic-market-data-2026-v1.json"
 
 @dataclass(frozen=True, slots=True)
 class Stock:
-    """One simulated price series and the instrument it prices (BR-12).
+    """One simulated price series and the instrument it prices.
 
-    The simulator keys every price table on ``symbol`` (at most five characters),
-    so an FX pair or crypto asset is simulated under a short symbol and traded
-    under its full ``ticker``. Every series is quoted in US dollars on the one
-    simulated session; the instrument's ``market`` is set for equities only,
-    as the schema requires.
+    Trading is limited to US equities (sponsor clarification of BR-12, 20
+    October 2026), so every series is a US equity quoted in US dollars on the
+    one simulated session, and V001 only lets a US equity link to a price
+    series. The class, market, currency and ticker fields keep their defaults.
     """
     symbol: str
     company_name: str
@@ -53,28 +52,6 @@ STOCKS = (
     Stock("TSLA", "Tesla, Inc.", Decimal("250.00"), "Consumer Discretionary", 90_000_000, Decimal("0.55")),
     Stock("UNH", "UnitedHealth Group Incorporated", Decimal("575.60"), "Health Care", 3_200_000, Decimal("0.19")),
     Stock("XOM", "Exxon Mobil Corporation", Decimal("118.80"), "Energy", 15_000_000, Decimal("0.24")),
-    # UK equities, quoted in US dollars.
-    Stock("VOD", "Vodafone Group Plc", Decimal("9.45"), "Telecommunications", 4_500_000, Decimal("0.24"), market="UK"),
-    Stock("HSBA", "HSBC Holdings plc", Decimal("42.30"), "Financials", 2_800_000, Decimal("0.21"), market="UK"),
-    Stock("BP", "BP p.l.c.", Decimal("31.60"), "Energy", 6_000_000, Decimal("0.25"), market="UK"),
-    # Indian equities, quoted in US dollars.
-    Stock("RELI", "Reliance Industries Limited", Decimal("34.80"), "Energy", 3_000_000, Decimal("0.27"), market="IN"),
-    Stock("TCS", "Tata Consultancy Services Limited", Decimal("47.90"), "Information Technology", 1_900_000, Decimal("0.23"), market="IN"),
-    Stock("INFY", "Infosys Limited", Decimal("18.20"), "Information Technology", 5_200_000, Decimal("0.26"), market="IN"),
-    # Foreign exchange: one unit of the base currency in US dollars.
-    Stock("EUR", "Euro / US Dollar", Decimal("1.0850"), "Foreign Exchange", 20_000_000, Decimal("0.08"),
-          asset_class="FX", market=None, ticker="EURUSD"),
-    Stock("GBP", "British Pound / US Dollar", Decimal("1.2700"), "Foreign Exchange", 12_000_000, Decimal("0.09"),
-          asset_class="FX", market=None, ticker="GBPUSD"),
-    Stock("INR", "Indian Rupee / US Dollar", Decimal("0.0120"), "Foreign Exchange", 8_000_000, Decimal("0.05"),
-          asset_class="FX", market=None, ticker="INRUSD"),
-    # Crypto assets in US dollars.
-    Stock("BTC", "Bitcoin / US Dollar", Decimal("65000.00"), "Crypto Assets", 1_200_000, Decimal("0.65"),
-          asset_class="Crypto", market=None, ticker="BTCUSD"),
-    Stock("ETH", "Ether / US Dollar", Decimal("3200.00"), "Crypto Assets", 2_500_000, Decimal("0.75"),
-          asset_class="Crypto", market=None, ticker="ETHUSD"),
-    Stock("SOL", "Solana / US Dollar", Decimal("150.00"), "Crypto Assets", 3_800_000, Decimal("0.90"),
-          asset_class="Crypto", market=None, ticker="SOLUSD"),
 )
 
 def load_json(path: Path) -> dict[str, Any]:

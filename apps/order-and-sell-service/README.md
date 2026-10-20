@@ -21,7 +21,7 @@ All require a bearer token except the public market reads.
 | GET | `/api/orders` | One page of the caller's orders across all their accounts, newest first (BR-11): `page` (zero-based, default 0) and `size` (default 50, at most 200); the total travels in the `X-Total-Count` header |
 | GET | `/api/orders/{orderId}/audit` | One of the caller's orders as its audit trail, oldest first: `eventType`, `price` (the quote that stage was priced against, BR-15: the execution quote for `FILLED`, the activation quote for `TRIGGERED`, otherwise the authoritative submission quote), `occurredAt`, `detail`. Another caller's order is 404, the same as a missing one |
 | GET | `/api/orders/stream` | Server-Sent Events: an `order-status` event with each committed status change's JSON body, and a `heartbeat` every 15 seconds |
-| GET | `/api/instruments` | Every instrument (UK, US and Indian equities, FX pairs and crypto assets, as seeded by the [market data import](../market-data/README.md#universe)) with `assetClass`, `market`, `currency`, `tradable` and `simulatedStockSymbol` |
+| GET | `/api/instruments` | Every instrument (US equities only, as seeded by the [market data import](../market-data/README.md#universe)) with `assetClass`, `market`, `currency`, `tradable` and `simulatedStockSymbol` |
 | GET | `/api/users/me` | The caller's profile, without the SSN |
 | GET | `/api/market/snapshot`, `/candles`, `/stream` | Public market data (snapshot, OHLCV candles, SSE ticks) |
 | PUT | `/api/market/clock` | Move the shared replay cursor |

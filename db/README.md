@@ -16,7 +16,6 @@ The Reporting Service does not connect to it. What reporting shows is published 
 | [V011__Execution_preferences_and_order_types.sql](migrations/V011__Execution_preferences_and_order_types.sql) | Saved execution buffers, conditional orders, immutable quote context and reservations |
 | [V012__Stop_trigger_reference.sql](migrations/V012__Stop_trigger_reference.sql) | Latched stop activation quote |
 | [V013__Order_audit_lifecycle.sql](migrations/V013__Order_audit_lifecycle.sql) | Conditional-order, cancellation and expiry audit events |
-| [V014__Instrument_price_links.sql](migrations/V014__Instrument_price_links.sql) | Lets an instrument of any class link to its simulated price series through `instruments.simulated_stock_symbol`; V001 allowed the link for US equities only, so FX, crypto and UK or Indian equities could not be priced (BR-12) |
 | [V015__Cash_transaction_client_reference.sql](migrations/V015__Cash_transaction_client_reference.sql) | `cash_transactions.client_reference`, unique when present: the key a client sends with a deposit or withdrawal so a retry posts once (BR-10, section 9.1). Order fills and older rows keep it null |
 | [V016__Protect_trade_records.sql](migrations/V016__Protect_trade_records.sql) | Triggers that make the [trade record](#trade-record) append-only (BR-14, section 9.4) |
 | [V017__Protect_client_identity.sql](migrations/V017__Protect_client_identity.sql) | Triggers that fix the identity of the client the trade record is attributed to, and make `terms_acceptances` append-only |

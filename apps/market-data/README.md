@@ -32,23 +32,19 @@ flowchart LR
 | 0003 | `0003-validate-synthetic-market-data.py` | Checksums, exact one-second coverage, unique sequences, spreads, candle agreement |
 | 0004 | `0004-import-synthetic-market-data.py --database-url URL [--tick-storage parquet\|postgres] [--replace] [--available-disk-gb N]` | Per-month checkpoints are verified and skipped on rerun. The session stays `RUNNING` until every month is verified |
 
-The full year is 134,362,800 ticks and 2,239,380 candles for the 22 symbols below (roughly 3.3 GiB compressed). Use a date range for tests. Parquet mode, the default, keeps raw ticks in the archive and imports only candles; do not delete the archive afterwards, since replay and checkpoint verification read it. `postgres` mode also loads raw ticks and needs far more disk.
+The full year is 61,074,000 ticks and 1,017,900 candles for the 10 symbols below (about 1.5 GiB compressed). Use a date range for tests. Parquet mode, the default, keeps raw ticks in the archive and imports only candles; do not delete the archive afterwards, since replay and checkpoint verification read it. `postgres` mode also loads raw ticks and needs far more disk.
 
 The importer checks free disk before each month. For a remote or containerized database, pass `--available-disk-gb` or set `MARKET_DATA_AVAILABLE_DISK_GB`, otherwise it fails closed.
 
 ## Universe
 
-[lib/common.py](db/scripts/python/lib/common.py) defines the simulated series. Each one is priced in US dollars on the single simulated session (America/Chicago, 08:30 to 14:59:59, weekdays) and becomes one tradable instrument on import, linked through `instruments.simulated_stock_symbol`. The BRS asks for every class below (BR-12); per-market trading hours and native currencies are not modelled.
+[lib/common.py](db/scripts/python/lib/common.py) defines the simulated series. Trading is limited to US equities, as the sponsor clarified for BR-12 on 20 October 2026, so every series is a US equity priced in US dollars on the single simulated session (America/Chicago, 08:30 to 14:59:59, weekdays) and becomes one tradable instrument on import, linked through `instruments.simulated_stock_symbol`. V001 allows that link for US equities only, so an instrument of any other class or market cannot be priced and therefore cannot trade.
 
 | Class | Market | Instruments | Simulated symbol |
 | --- | --- | --- | --- |
 | Equity | US | AAPL, AMZN, GOOGL, JPM, META, MSFT, NVDA, TSLA, UNH, XOM | The ticker |
-| Equity | UK | VOD, HSBA, BP | The ticker |
-| Equity | IN | RELI, TCS, INFY | The ticker |
-| FX | none | EURUSD, GBPUSD, INRUSD (one unit of the base currency in US dollars) | EUR, GBP, INR |
-| Crypto | none | BTCUSD, ETHUSD, SOLUSD | BTC, ETH, SOL |
 
-Every price table keys on a symbol of at most five characters, so FX pairs and crypto assets are simulated under the short symbol and traded under the full ticker. Changing the list changes the archive: regenerate with `--regenerate`, then import with `--replace`.
+Changing the list changes the archive: regenerate with `--regenerate`, then import with `--replace`.
 
 ## Run on Windows
 
