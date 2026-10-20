@@ -183,14 +183,20 @@ test.describe('Orders', () => {
     ];
     const ascending = [...expected].sort((a, b) => a - b);
 
+    const descending = [...ascending].reverse();
+    // The rows are re-sorted after the click, so wait for either order rather than read
+    // whatever is on screen at that moment.
     await sortByAmount.click();
-    const firstClick = await amounts();
-    expect(firstClick).toHaveLength(expected.length);
-    const clickedAscending = firstClick[0] === ascending[0];
-    expect(firstClick).toEqual(clickedAscending ? ascending : [...ascending].reverse());
+    await expect
+      .poll(async () => {
+        const shown = await amounts();
+        return [ascending, descending].some((order) => order.join() === shown.join());
+      })
+      .toBe(true);
+    const clickedAscending = (await amounts())[0] === ascending[0];
 
     await sortByAmount.click();
-    await expect.poll(amounts).toEqual(clickedAscending ? [...ascending].reverse() : ascending);
+    await expect.poll(amounts).toEqual(clickedAscending ? descending : ascending);
   });
 
   test('exports the rows on screen as CSV', async ({ page, openAsAdmin }) => {
