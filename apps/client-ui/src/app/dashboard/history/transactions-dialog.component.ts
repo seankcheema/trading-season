@@ -8,12 +8,19 @@ import {
   computed,
   inject,
   input,
+  linkedSignal,
   output,
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideFilter } from '@ng-icons/lucide';
+import {
+  lucideCalendar,
+  lucideChevronLeft,
+  lucideChevronRight,
+  lucideDownload,
+  lucideFilter,
+} from '@ng-icons/lucide';
 import { CashTransaction } from '../accounts/account.models';
 import { AccountStore } from '../accounts/account-store.service';
 import { OrderService } from '../orders/order.service';
@@ -29,6 +36,7 @@ import {
 import { ACTIVITY_STATUS_CLASSES } from '../shared/activity-row.component';
 import { DashboardDialogComponent } from '../shared/dashboard-dialog.component';
 import { SortHeaderComponent } from '../shared/sort-header.component';
+import { StatementFormat, downloadStatement } from './statement-export';
 
 type TypeFilter = 'all' | HistoryRow['side'];
 type StatusFilter = 'all' | HistoryRow['status'];
@@ -50,6 +58,9 @@ const STATUS_FILTERS: readonly { id: StatusFilter; label: string }[] = [
   { id: 'CANCELLED', label: 'Cancelled' },
   { id: 'COMPLETED', label: 'Completed' },
 ];
+
+// How many transactions one page of the table shows.
+const PAGE_SIZE = 15;
 
 type ExecutionFilter = 'all' | ExecutionType;
 type AccountFilter = 'all' | number;
@@ -76,7 +87,15 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
   selector: 'app-transactions-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CancelOrderButtonComponent, CurrencyPipe, DashboardDialogComponent, DatePipe, NgIcon, NgTemplateOutlet, SortHeaderComponent],
-  providers: [provideIcons({ lucideFilter })],
+  providers: [
+    provideIcons({
+      lucideCalendar,
+      lucideChevronLeft,
+      lucideChevronRight,
+      lucideDownload,
+      lucideFilter,
+    }),
+  ],
   template: `
     <app-dashboard-dialog
       dialogTitle="Recent Transactions"
@@ -228,13 +247,80 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
           [value]="query()"
           (input)="onQuery($event)"
         />
-        <span
-          class="text-muted-foreground ml-auto text-xs tabular-nums"
-          data-testid="transactions-count"
-        >
-          {{ rows().length }} {{ rows().length === 1 ? 'transaction' : 'transactions' }}
-        </span>
+        <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Date range">
+          <label class="date-field border-input bg-input/30 hover:bg-muted relative flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors">
+            <ng-icon name="lucideCalendar" class="text-muted-foreground text-[16px]" aria-hidden="true" />
+            <input
+              type="date"
+              class="w-[7.5rem] cursor-pointer bg-transparent text-sm outline-none"
+              aria-label="From date"
+              data-testid="transactions-from"
+              [value]="fromDate()"
+              [attr.max]="toDate() || null"
+              (input)="onFromDate($event)"
+            />
+          </label>
+          <span class="text-muted-foreground text-xs">To</span>
+          <label class="date-field border-input bg-input/30 hover:bg-muted relative flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors">
+            <ng-icon name="lucideCalendar" class="text-muted-foreground text-[16px]" aria-hidden="true" />
+            <input
+              type="date"
+              class="w-[7.5rem] cursor-pointer bg-transparent text-sm outline-none"
+              aria-label="To date"
+              data-testid="transactions-to"
+              [value]="toDate()"
+              [attr.min]="fromDate() || null"
+              (input)="onToDate($event)"
+            />
+          </label>
+        </div>
+        <div class="relative ml-auto" (keydown.escape)="closeExport($event)">
+          <button
+            type="button"
+            class="border-input bg-input/30 hover:bg-muted flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            aria-haspopup="true"
+            data-testid="transactions-export"
+            [attr.aria-expanded]="exportOpen()"
+            [disabled]="loading() || exporting() || rows().length === 0"
+            (click)="exportOpen.set(!exportOpen())"
+          >
+            <ng-icon name="lucideDownload" class="text-[16px]" />
+            Export
+          </button>
+          @if (exportOpen()) {
+            <div class="fixed inset-0 z-10" aria-hidden="true" (click)="exportOpen.set(false)"></div>
+            <div
+              class="border-border bg-popover absolute top-full right-0 z-20 mt-1 w-40 rounded-xl border p-1 shadow-lg"
+              role="group"
+              aria-label="Export statement"
+              data-testid="transactions-export-menu"
+            >
+              <button
+                type="button"
+                class="hover:bg-muted w-full cursor-pointer rounded-md px-2.5 py-1.5 text-left text-sm"
+                data-testid="transactions-export-csv"
+                (click)="exportStatement('csv')"
+              >
+                Download CSV
+              </button>
+              <button
+                type="button"
+                class="hover:bg-muted w-full cursor-pointer rounded-md px-2.5 py-1.5 text-left text-sm"
+                data-testid="transactions-export-pdf"
+                (click)="exportStatement('pdf')"
+              >
+                Download PDF
+              </button>
+            </div>
+          }
+        </div>
       </div>
+
+      @if (exportError()) {
+        <p class="text-loss mb-3 text-xs" role="status" data-testid="transactions-export-error">
+          Unable to export your statement. Please try again.
+        </p>
+      }
 
       @if (loadError()) {
         <p class="text-loss mb-3 text-xs" role="status" data-testid="transactions-error">
@@ -244,7 +330,7 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
 
       <div class="overflow-x-auto">
         <div class="min-w-[54rem]" data-testid="transactions-table">
-          <div class="history-grid dash-table-head grid gap-2 px-2">
+          <div class="history-grid dash-table-head txn-gutter grid gap-2 px-2">
             <span aria-hidden="true"></span>
             @for (column of columns; track column.key) {
               <button
@@ -258,8 +344,8 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
             }
             <span><span class="sr-only">Actions</span></span>
           </div>
-          <ul class="dash-scroll h-[min(60vh,32.5rem)] overflow-y-auto pb-4">
-            @for (row of rows(); track row.key) {
+          <ul class="txn-scroll h-[min(60vh,32.5rem)] overflow-y-auto pb-4">
+            @for (row of pageRows(); track row.key) {
               <li data-testid="transactions-row" [attr.data-status]="row.status">
                 @if (row.kind === 'trade' && row.orderId !== null) {
                 <div class="history-grid hover:bg-muted/50 grid w-full items-center gap-2 rounded-md px-2 py-2.5 text-left text-sm transition-colors">
@@ -362,6 +448,49 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
               }
             }
           </ul>
+          <!-- The pager sits in the middle. The count ends where the Value column does: the right padding is the actions column (2rem) and one gap (0.5rem). -->
+          <div class="txn-gutter mt-6 grid min-h-10 grid-cols-[1fr_auto_1fr] items-center gap-2 px-2 py-1">
+            @if (pageCount() > 1) {
+              <nav
+                class="col-start-2 flex items-center gap-2"
+                aria-label="Transactions pages"
+              >
+                <button
+                  type="button"
+                  class="border-input bg-input/30 hover:bg-muted flex size-8 cursor-pointer items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Previous page"
+                  data-testid="transactions-prev"
+                  [disabled]="currentPage() === 1"
+                  (click)="page.set(currentPage() - 1)"
+                >
+                  <ng-icon name="lucideChevronLeft" class="text-[16px]" />
+                </button>
+                <span
+                  class="text-muted-foreground min-w-24 text-center text-xs tabular-nums"
+                  aria-live="polite"
+                  data-testid="transactions-page"
+                >
+                  Page {{ currentPage() }} of {{ pageCount() }}
+                </span>
+                <button
+                  type="button"
+                  class="border-input bg-input/30 hover:bg-muted flex size-8 cursor-pointer items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Next page"
+                  data-testid="transactions-next"
+                  [disabled]="currentPage() === pageCount()"
+                  (click)="page.set(currentPage() + 1)"
+                >
+                  <ng-icon name="lucideChevronRight" class="text-[16px]" />
+                </button>
+              </nav>
+            }
+            <p
+              class="text-muted-foreground col-start-3 pr-10 text-right text-xs tabular-nums"
+              data-testid="transactions-count"
+            >
+              {{ countLabel() }}
+            </p>
+          </div>
         </div>
       </div>
     </app-dashboard-dialog>
@@ -408,12 +537,18 @@ export class TransactionsDialogComponent implements OnInit {
       Number(this.accountId() !== 'all'),
   );
   protected readonly query = signal('');
+  // The first and last day shown, as yyyy-mm-dd in the browser's time zone, or '' for no limit.
+  protected readonly fromDate = signal('');
+  protected readonly toDate = signal('');
   protected readonly sortKey = signal<HistorySortKey>('date');
   protected readonly sortDirection = signal<SortDirection>('desc');
   protected readonly loading = signal(true);
   // How many placeholder rows stand in for the table while it loads.
   protected readonly skeletonRows = [1, 2, 3, 4, 5, 6] as const;
   protected readonly loadError = signal(false);
+  protected readonly exportOpen = signal(false);
+  protected readonly exporting = signal(false);
+  protected readonly exportError = signal(false);
   protected readonly cancelling = signal<ReadonlySet<number>>(new Set());
   protected cancelOrder(row: HistoryRow): void {
     if (row.orderId === null || this.cancelling().has(row.orderId)) {
@@ -455,13 +590,52 @@ export class TransactionsDialogComponent implements OnInit {
     const execution = this.execution();
     const accountId = this.accountId();
     const query = this.query().trim().toLowerCase();
+    const range = dayRange(this.fromDate(), this.toDate());
     return sortHistoryRows(
       this.allRows().filter((row) =>
-        matchesFilters(row, type, status, execution, accountId, query),
+        matchesFilters(row, type, status, execution, accountId, query, range),
       ),
       this.sortKey(),
       this.sortDirection(),
     );
+  });
+
+  // Changing what is listed or how it is ordered goes back to the first page.
+  private readonly view = computed(() =>
+    [
+      this.type(),
+      this.status(),
+      this.execution(),
+      this.accountId(),
+      this.query(),
+      this.fromDate(),
+      this.toDate(),
+      this.sortKey(),
+      this.sortDirection(),
+    ].join('|'),
+  );
+  protected readonly page = linkedSignal<string, number>({
+    source: this.view,
+    computation: () => 1,
+  });
+  protected readonly pageCount = computed(() =>
+    Math.max(1, Math.ceil(this.rows().length / PAGE_SIZE)),
+  );
+  // The page in use, held inside the pages that exist when rows leave (a cancelled order).
+  protected readonly currentPage = computed(() => Math.min(this.page(), this.pageCount()));
+  protected readonly pageRows = computed(() => {
+    const start = (this.currentPage() - 1) * PAGE_SIZE;
+    return this.rows().slice(start, start + PAGE_SIZE);
+  });
+  // Which transactions the page holds out of all of them, such as "16-30 of 40 transactions".
+  protected readonly countLabel = computed(() => {
+    const total = this.rows().length;
+    if (this.pageCount() === 1) {
+      return `${total} ${total === 1 ? 'transaction' : 'transactions'}`;
+    }
+    const first = (this.currentPage() - 1) * PAGE_SIZE + 1;
+    const last = first + this.pageRows().length - 1;
+    return `${first}–${last} of ${total} transactions`;
   });
 
   ngOnInit(): void {
@@ -488,6 +662,28 @@ export class TransactionsDialogComponent implements OnInit {
     }
   }
 
+  // Escape closes just the export menu, not the dialog around it.
+  protected closeExport(event: Event): void {
+    if (this.exportOpen()) {
+      event.stopPropagation();
+      this.exportOpen.set(false);
+    }
+  }
+
+  // Exports the rows as filtered and sorted on screen.
+  protected async exportStatement(format: StatementFormat): Promise<void> {
+    this.exportOpen.set(false);
+    this.exportError.set(false);
+    this.exporting.set(true);
+    try {
+      await downloadStatement(format, this.rows());
+    } catch {
+      this.exportError.set(true);
+    } finally {
+      this.exporting.set(false);
+    }
+  }
+
   protected clearFilters(): void {
     this.type.set('all');
     this.status.set('all');
@@ -497,6 +693,14 @@ export class TransactionsDialogComponent implements OnInit {
 
   protected executionLabel(execution: ExecutionType): string {
     return EXECUTION_LABELS[execution];
+  }
+
+  protected onFromDate(event: Event): void {
+    this.fromDate.set((event.target as HTMLInputElement).value);
+  }
+
+  protected onToDate(event: Event): void {
+    this.toDate.set((event.target as HTMLInputElement).value);
   }
 
   protected onQuery(event: Event): void {
@@ -574,8 +778,12 @@ function matchesFilters(
   execution: ExecutionFilter,
   accountId: AccountFilter,
   query: string,
+  range: DayRange,
 ): boolean {
   if (query && !row.label.toLowerCase().includes(query)) {
+    return false;
+  }
+  if (!withinRange(row.at, range)) {
     return false;
   }
   return (
@@ -584,6 +792,28 @@ function matchesFilters(
     matchesChoice(execution, row.executionType) &&
     matchesChoice(accountId, row.accountId)
   );
+}
+
+interface DayRange {
+  from: number | null;
+  to: number | null;
+}
+
+// Both days are included: the range runs from the start of the first to the end of the last, in
+// the browser's time zone, which is also how the table shows each date.
+function dayRange(from: string, to: string): DayRange {
+  const start = from ? new Date(`${from}T00:00:00`).getTime() : Number.NaN;
+  const end = to ? new Date(`${to}T23:59:59.999`).getTime() : Number.NaN;
+  return {
+    from: Number.isFinite(start) ? start : null,
+    to: Number.isFinite(end) ? end : null,
+  };
+}
+
+// An open range admits every row. Once either end is set, a row with no usable time (NaN) fails
+// both comparisons and is left out.
+function withinRange(at: number, range: DayRange): boolean {
+  return (range.from === null || at >= range.from) && (range.to === null || at <= range.to);
 }
 
 function matchesChoice<T>(choice: 'all' | T, value: T | null): boolean {

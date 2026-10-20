@@ -208,7 +208,7 @@ flowchart LR
 
 ## Getting started
 
-Requirements: Node.js 24.8+ (24.x), npm 11.16, JDK 21, Maven 3.9+, and Docker (or a local PostgreSQL 16).
+Requirements: Node.js 24.8+ (24.x), npm 11.6, JDK 21, Maven 3.9+, and Docker (or a local PostgreSQL 16).
 
 ### Docker stack
 

@@ -57,24 +57,33 @@ pipeline {
                     docker run --rm -v "$(pwd)":/ws alpine:latest chown -R "$(id -u):$(id -g)" /ws || true
                 '''
                 script {
-                    // Keep the multibranch job's SCM settings and add a depth-1 clone.
-                    def shallowExtensions = scm.extensions + [[
-                        $class: 'CloneOption',
-                        depth: 1,
-                        honorRefspec: true,
-                        noTags: true,
-                        reference: '',
-                        shallow: true,
-                        timeout: 10
-                    ]]
-                    checkout([
-                        $class: 'GitSCM',
-                        branches: scm.branches,
-                        doGenerateSubmoduleConfigurations: false,
-                        extensions: shallowExtensions,
-                        submoduleCfg: [],
-                        userRemoteConfigs: scm.userRemoteConfigs
-                    ])
+                    if (hasCloneOption(scm)) {
+                        // The job already sets a clone option (the local macOS job
+                        // does: depth 1, one branch). Reuse its SCM as is. Copying
+                        // its extension objects into a variable would fail the
+                        // build, because CloneOption cannot be serialized into the
+                        // pipeline state.
+                        checkout scm
+                    } else {
+                        // Keep the multibranch job's SCM settings and add a depth-1 clone.
+                        def shallowExtensions = scm.extensions + [[
+                            $class: 'CloneOption',
+                            depth: 1,
+                            honorRefspec: true,
+                            noTags: true,
+                            reference: '',
+                            shallow: true,
+                            timeout: 10
+                        ]]
+                        checkout([
+                            $class: 'GitSCM',
+                            branches: scm.branches,
+                            doGenerateSubmoduleConfigurations: false,
+                            extensions: shallowExtensions,
+                            submoduleCfg: [],
+                            userRemoteConfigs: scm.userRemoteConfigs
+                        ])
+                    }
                 }
             }
         }
@@ -998,4 +1007,11 @@ pipeline {
             }
         }
     }
+}
+
+// True when the job's SCM already carries a clone option. Kept out of CPS so the
+// extension objects, which are not serializable, never enter the pipeline state.
+@NonCPS
+boolean hasCloneOption(def scmConfig) {
+    return scmConfig.extensions.any { it instanceof hudson.plugins.git.extensions.impl.CloneOption }
 }
