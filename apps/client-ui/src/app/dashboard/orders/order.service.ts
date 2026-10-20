@@ -349,6 +349,8 @@ export class OrderService {
         event = line.slice('event:'.length).trim();
       } else if (line.startsWith('data:')) {
         data.push(line.slice('data:'.length).trimStart());
+      } else {
+        // Comments (`:` heartbeats), `id:` and `retry:` lines carry nothing this stream uses.
       }
     }
     if (event !== 'order-status') {
