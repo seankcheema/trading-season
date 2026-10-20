@@ -52,7 +52,7 @@ flowchart LR
     RUI -- "/api/reporting" --> RS
 ```
 
-The UI reaches both Java services through one relative `/api` prefix that the dev proxy and the Nginx image split by path. The Java services never call the Auth Service per request: they verify tokens locally against its cached public keys. The Reporting UI calls the Auth Service and the Reporting Service through a proxy on its own origin. It never reads Kafka or the database itself, and neither does the Reporting Service read the database: its report runs are what its own consumer has built from `trade-events`, and its activity, customers and orders screens are answered from a read model the service builds out of the two topics' files. The report runs are served to accounts with the `ANALYST` or `ADMIN` role and the other screens to `ADMIN` only, so traders cannot use any of it; see [roles](apps/auth-service/README.md#roles).
+The UI reaches both Java services through one relative `/api` prefix, and the Auth Service through a relative `/auth` prefix, that the dev proxy and the local Nginx image split by path (CloudFront does the same in the [S3 layout](infrastructure/README.md#static-uis-on-s3)). The Java services never call the Auth Service per request: they verify tokens locally against its cached public keys. The Reporting UI calls the Auth Service and the Reporting Service through a proxy on its own origin. It never reads Kafka or the database itself, and neither does the Reporting Service read the database: its report runs are what its own consumer has built from `trade-events`, and its activity, customers and orders screens are answered from a read model the service builds out of the two topics' files. The report runs are served to accounts with the `ANALYST` or `ADMIN` role and the other screens to `ADMIN` only, so traders cannot use any of it; see [roles](apps/auth-service/README.md#roles).
 
 The Order and Sell Service publishes one `trade-events` message after each committed order status change (ACCEPTED, FILLED, REJECTED or CANCELLED), keyed by account id. A latched Stop also publishes an updated ACCEPTED snapshot. Three consumer groups read the topic independently:
 
@@ -196,7 +196,7 @@ flowchart LR
         T7["Reporting UI"]
         T8["Reporting feed tools"]
     end
-    Tests --> Sonar["SonarQube analysis<br/>and quality gate"] --> E2E["Playwright E2E"] --> Stack["Build local<br/>Docker stack"] --> Flow["Kafka end-to-end<br/>flow"]
+    Tests --> Sonar["SonarQube analysis<br/>and quality gate"] --> E2E["Playwright E2E"] --> Bundles["Build UI bundles<br/>for S3"] --> Stack["Build local<br/>Docker stack"] --> Flow["Kafka end-to-end<br/>flow"]
 ```
 
 ## Getting started
@@ -210,7 +210,7 @@ node apps/auth-service/scripts/generate-dev-keys.mjs | Add-Content infrastructur
 docker compose --project-name trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml up -d --build
 ```
 
-The UI is at http://localhost:4200 and the Reporting UI at http://localhost:4300. The database is created and migrated automatically, and the `kafka` container creates the `trade-events` and `platform-records` topics as it starts, so the auth service, the Java services and the Reporting Service wait for it to report healthy. See [infrastructure/README.md](infrastructure/README.md) for ports and the broker.
+The UI is at http://localhost:4200 and the Reporting UI at http://localhost:4300. Their containers are a local stand-in for S3 behind CloudFront; the deployable form of each UI is its `dist/<app>/browser` folder. The database is created and migrated automatically, and the `kafka` container creates the `trade-events` and `platform-records` topics as it starts, so the auth service, the Java services and the Reporting Service wait for it to report healthy. See [infrastructure/README.md](infrastructure/README.md) for ports and the broker.
 
 ### Local processes (Windows)
 

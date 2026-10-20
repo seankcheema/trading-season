@@ -127,7 +127,7 @@ flowchart LR
     Proxy -- "/auth" --> Auth["Auth Service :3001"]
 ```
 
-Both backends are called on the UI's own origin, so neither needs a CORS entry for port 4300. The split is configured twice: [proxy.conf.json](proxy.conf.json) for `ng serve` and [nginx.conf](nginx.conf) for the container image. Add a new backend path to both. This differs from the Client UI, which calls the Auth Service directly.
+Both backends are called on the UI's own origin, so neither needs a CORS entry for port 4300. The split is configured twice: [proxy.conf.json](proxy.conf.json) for `ng serve` and [nginx.conf](nginx.conf) for the local container image. Add a new backend path to both. The Client UI does the same for `/auth`.
 
 Token handling matches the Client UI: the interceptor adds the bearer token to `/api/reporting` calls, refreshes an expired access token through `POST /auth/refresh`, retries once after a 401, and sends the user to `/login` when the refresh token is missing or rejected. The session is kept in `localStorage` under its own key, separate from the Client UI's because the two apps are different origins.
 
@@ -244,7 +244,7 @@ What the screens show depends on what is running:
 
 Messages exist only for what the services did while a Kafka broker was running. What was already in the database, or was written to it by SQL, reaches every screen once [republish_history.py](../../db/README.md#reporting-feed-tools) has published it. [seed_demo_history.py](../../db/README.md#reporting-feed-tools) gives a development database six months of history to republish.
 
-The production [Dockerfile](Dockerfile) builds the app and serves it through unprivileged Nginx, with SPA fallback and the two proxies. In [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) the container starts after `reporting-service` and `auth-service`, because Nginx resolves both upstream names when it starts.
+The [Dockerfile](Dockerfile) builds the app and serves it through unprivileged Nginx, with SPA fallback and the two proxies. It is the local stand-in for S3 behind CloudFront, not the deployable artifact: deploy `dist/reporting-ui/browser` to S3 as [Static UIs on S3](../../infrastructure/README.md#static-uis-on-s3) describes. In [Local Compose](../../infrastructure/docker-compose/docker-compose.local.yml) the container starts after `reporting-service` and `auth-service`, because Nginx resolves both upstream names when it starts.
 
 ## Tests
 

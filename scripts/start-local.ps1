@@ -9,7 +9,12 @@ param(
     [ValidateRange(1, 1440)][int]$ReportIntervalMinutes = 1,
 
     # Start without the Reporting Service and its consumer, which need Python.
-    [switch]$SkipReporting
+    [switch]$SkipReporting,
+
+    # Stream every service's raw log into this console. By default each service
+    # gets one status line and only errors are echoed; the logs stay in the
+    # temporary folder named at startup until the script exits.
+    [switch]$ShowLogs
 )
 
 # This script requires Node.js 24.8.0 (exactly), npm 11.16.0, JDK 21, and Maven 3.9+,
@@ -89,6 +94,14 @@ function Test-PortOpen {
     finally {
         $client.Dispose()
     }
+}
+
+# Unlike Test-PortOpen this also sees a server that listens on IPv6 only, as a
+# dev server bound to "localhost" can.
+function Test-PortListening {
+    param([Parameter(Mandatory)][int]$Port)
+
+    return [bool](Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)
 }
 
 if (-not (Test-Path -LiteralPath $envFile -PathType Leaf)) {
@@ -181,7 +194,11 @@ function Start-LocalService {
         [Parameter(Mandatory)][string[]]$ArgumentList,
         [Parameter(Mandatory)][string]$WorkingDirectory,
         # Variables the process starts with; this shell's own values are restored.
-        [hashtable]$Environment = @{}
+        [hashtable]$Environment = @{},
+        # Name shown in status lines, and the port that tells the console the
+        # service is ready (0 when it has none).
+        [string]$Label = $Name,
+        [int]$Port = 0
     )
 
     $stdout = Join-Path $logDirectory "$Name.out.log"
@@ -195,6 +212,9 @@ function Start-LocalService {
         $process = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList `
             -WorkingDirectory $WorkingDirectory -NoNewWindow -PassThru `
             -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+        # Opening the handle now is what lets ExitCode be read after the process
+        # has exited; without it the code comes back empty.
+        $null = $process.Handle
     }
     finally {
         foreach ($variable in $previous.Keys) {
@@ -204,6 +224,8 @@ function Start-LocalService {
 
     return [pscustomobject]@{
         Name = $Name
+        Label = $Label
+        Port = $Port
         Process = $process
         Stdout = $stdout
         Stderr = $stderr
@@ -212,8 +234,27 @@ function Start-LocalService {
     }
 }
 
+function Write-Status {
+    param(
+        [Parameter(Mandatory)][string]$State,
+        [Parameter(Mandatory)][string]$Label,
+        [string]$Detail = '',
+        [ConsoleColor]$Color = 'Green'
+    )
+
+    Write-Host ('  {0,-9}' -f $State) -ForegroundColor $Color -NoNewline
+    Write-Host ('{0,-26}{1}' -f $Label, $Detail)
+}
+
+# Lines worth showing when the raw logs are not streamed.
+$errorLinePattern = '\b(ERROR|FATAL|SEVERE)\b|Exception in thread|Traceback \(most recent call last\)'
+
 function Write-NewLogLines {
-    param([Parameter(Mandatory)]$Service)
+    param(
+        [Parameter(Mandatory)]$Service,
+        # Print only error lines; the position still moves past the rest.
+        [switch]$ErrorsOnly
+    )
 
     foreach ($stream in @('Stdout', 'Stderr')) {
         $path = $Service.$stream
@@ -223,9 +264,29 @@ function Write-NewLogLines {
         $lines = @(Get-Content -LiteralPath $path)
         $offsetProperty = "${stream}Line"
         for ($index = $Service.$offsetProperty; $index -lt $lines.Count; $index++) {
-            Write-Host "[$($Service.Name)] $($lines[$index])"
+            if (-not $ErrorsOnly -or $lines[$index] -match $errorLinePattern) {
+                Write-Host "[$($Service.Name)] $($lines[$index])"
+            }
         }
         $Service.$offsetProperty = $lines.Count
+    }
+}
+
+function Show-LogTail {
+    param([Parameter(Mandatory)]$Service, [int]$Lines = 40)
+
+    foreach ($stream in @('Stderr', 'Stdout')) {
+        $path = $Service.$stream
+        if (-not (Test-Path -LiteralPath $path)) {
+            continue
+        }
+        $tail = @(Get-Content -LiteralPath $path -Tail $Lines)
+        if ($tail.Count -gt 0) {
+            Write-Host "--- last $($tail.Count) lines of $($Service.Label) ($($stream.ToLower())) ---" -ForegroundColor DarkGray
+            foreach ($line in $tail) {
+                Write-Host "  $line"
+            }
+        }
     }
 }
 
@@ -288,7 +349,7 @@ function Start-KafkaBroker {
             Remove-Item -LiteralPath $_.FullName -Force
         }
 
-    $broker = Start-LocalService -Name 'kafka' -FilePath $java -WorkingDirectory $kafkaRoot -ArgumentList @(
+    $broker = Start-LocalService -Name 'kafka' -Label 'Kafka' -Port $brokerPort -FilePath $java -WorkingDirectory $kafkaRoot -ArgumentList @(
         '-Xmx512m', '-Xms256m', '-Djava.net.preferIPv4Stack=true', '-cp', "`"$kafkaClasspath`"",
         "`"-Dlog4j2.configurationFile=$kafkaLogConfig`"", 'kafka.Kafka', "`"$configFile`"")
 
@@ -322,18 +383,39 @@ function Confirm-Topics {
     }
 }
 
+$startedAt = [System.Diagnostics.Stopwatch]::StartNew()
 try {
+    Write-Host 'Trading Season local stack'
+    if ($ShowLogs) {
+        Write-Host "  Logs stream below; they are also in $logDirectory"
+    }
+    else {
+        Write-Host "  Logs: $logDirectory (removed on exit; -ShowLogs streams them here)" -ForegroundColor DarkGray
+    }
+    Write-Host ''
+    Write-Status -State 'ready' -Label 'PostgreSQL' -Detail "${dbHost}:${parsedDbPort}"
+
     if ($KafkaHome) {
-        if (-not $brokerRunning) {
-            Write-Host "Starting a Kafka broker on localhost:$brokerPort from $KafkaHome."
+        if ($brokerRunning) {
+            Write-Status -State 'ready' -Label 'Kafka' -Detail "localhost:$brokerPort (already running)"
+        }
+        else {
+            Write-Status -State 'starting' -Label 'Kafka' -Detail "broker from $KafkaHome" -Color Yellow
             $broker = Start-KafkaBroker
             $processes += $broker
             if (-not (Test-PortOpen -Port $brokerPort)) {
-                Write-NewLogLines -Service $broker
+                Show-LogTail -Service $broker
                 throw "The Kafka broker did not start listening on localhost:$brokerPort."
             }
+            Write-Status -State 'ready' -Label 'Kafka' -Detail "localhost:$brokerPort"
         }
         Confirm-Topics
+    }
+    elseif ($brokerRunning) {
+        Write-Status -State 'ready' -Label 'Kafka' -Detail "localhost:$brokerPort (already running)"
+    }
+    else {
+        Write-Status -State 'off' -Label 'Kafka' -Detail "no broker on localhost:$brokerPort; events are off (pass -KafkaHome, see README.md)" -Color Yellow
     }
 
     # The auth service publishes every sign-in it changes for reporting. By
@@ -343,7 +425,7 @@ try {
     if (-not $eventsEnabled -and [string]::IsNullOrWhiteSpace($env:EVENTS_ENABLED)) {
         $authEnvironment.EVENTS_ENABLED = 'false'
     }
-    $processes += Start-LocalService -Name 'auth' -FilePath $npm `
+    $processes += Start-LocalService -Name 'auth' -Label 'Auth service' -Port 3001 -FilePath $npm `
         -ArgumentList @('run', 'start:dev') -WorkingDirectory $authDirectory -Environment $authEnvironment
 
     $businessEnvironment = @{
@@ -355,10 +437,10 @@ try {
         # Without a broker the Java services would wait on one at every order.
         $businessEnvironment.APP_EVENTS_ENABLED = 'false'
     }
-    $processes += Start-LocalService -Name 'holdings-and-trade' -FilePath $maven `
+    $processes += Start-LocalService -Name 'holdings-and-trade' -Label 'Holdings and Trade' -Port 8082 -FilePath $maven `
         -ArgumentList @('spring-boot:run') -WorkingDirectory $holdingsDirectory -Environment $businessEnvironment
 
-    $processes += Start-LocalService -Name 'order-and-sell' -FilePath $maven `
+    $processes += Start-LocalService -Name 'order-and-sell' -Label 'Order and Sell' -Port 8081 -FilePath $maven `
         -ArgumentList @('spring-boot:run') -WorkingDirectory $orderDirectory -Environment $businessEnvironment
 
     if (-not $SkipReporting) {
@@ -376,39 +458,73 @@ try {
         }
         # Both processes run from the service directory, so they share its
         # default files directory, data/reporting.
-        $processes += Start-LocalService -Name 'reporting' -FilePath $reportingPython `
+        $processes += Start-LocalService -Name 'reporting' -Label 'Reporting service' -Port 8083 -FilePath $reportingPython `
             -ArgumentList @('app.py') -WorkingDirectory $reportingDirectory -Environment $reportingEnvironment
 
         if ($eventsEnabled) {
-            $processes += Start-LocalService -Name 'reporting-consumer' -FilePath $reportingPython `
+            $processes += Start-LocalService -Name 'reporting-consumer' -Label 'Reporting consumer' -FilePath $reportingPython `
                 -ArgumentList @('consumer.py') -WorkingDirectory $reportingDirectory -Environment $reportingEnvironment
         }
     }
+    else {
+        Write-Status -State 'skipped' -Label 'Reporting service' -Detail 'the reporting UI signs in but cannot load a report' -Color Yellow
+    }
 
-    $processes += Start-LocalService -Name 'ui' -FilePath $npm `
+    $processes += Start-LocalService -Name 'ui' -Label 'Client UI' -Port 4200 -FilePath $npm `
         -ArgumentList @('start') -WorkingDirectory $clientUiDirectory
 
     # Serves on 4300 and proxies /auth to the auth service and /api/reporting to
     # the Reporting Service, both started above.
-    $processes += Start-LocalService -Name 'reporting-ui' -FilePath $npm `
+    $processes += Start-LocalService -Name 'reporting-ui' -Label 'Reporting UI' -Port 4300 -FilePath $npm `
         -ArgumentList @('start') -WorkingDirectory $reportingUiDirectory
 
-    Write-Host 'Starting UI :4200, reporting UI :4300, auth :3001, order-and-sell :8081, and holdings-and-trade :8082. Press Ctrl+C to stop all services.'
-    if ($SkipReporting) {
-        Write-Host 'Reporting was skipped: the reporting UI signs in but cannot load a report.'
-    }
-    elseif ($eventsEnabled) {
-        Write-Host "Starting the Reporting Service :8083 and its consumer. What the services publish from now on reaches the reporting UI's console within seconds and its report runs within $ReportIntervalMinutes minute(s). History written before this, or by SQL, needs db/tools/republish_history.py once (see db/README.md)."
-    }
-    else {
-        Write-Warning "No Kafka broker on localhost:$brokerPort, so events are off and the reporting consumer was not started. Reporting reads Kafka only, so the reporting UI shows nothing new: no report, or the last one written, and the console as it last stood. Start the Compose kafka and kafka-init services, or pass -KafkaHome (see README.md)."
-    }
+    Write-Host ''
+    Write-Host 'Starting services (the first start compiles the apps and can take a minute or two)...'
+
+    # Services still to report ready; a service without a port is ready once it
+    # is running. Ports are probed once a second, logs scanned every two.
+    $pending = @($processes | Where-Object { $_.Name -ne 'kafka' })
+    $probeClock = [System.Diagnostics.Stopwatch]::StartNew()
+    $logClock = [System.Diagnostics.Stopwatch]::StartNew()
     while ($true) {
         foreach ($service in $processes) {
-            Write-NewLogLines -Service $service
+            if ($ShowLogs) {
+                Write-NewLogLines -Service $service
+            }
             $service.Process.Refresh()
             if ($service.Process.HasExited) {
-                throw "$($service.Name) exited with code $($service.Process.ExitCode)."
+                if (-not $ShowLogs) {
+                    Show-LogTail -Service $service
+                }
+                throw "$($service.Label) exited with code $($service.Process.ExitCode)."
+            }
+        }
+
+        if (-not $ShowLogs -and $logClock.ElapsedMilliseconds -ge 2000) {
+            $logClock.Restart()
+            foreach ($service in $processes) {
+                Write-NewLogLines -Service $service -ErrorsOnly
+            }
+        }
+
+        if ($pending.Count -gt 0 -and $probeClock.ElapsedMilliseconds -ge 1000) {
+            $probeClock.Restart()
+            foreach ($service in @($pending)) {
+                if (-not $service.Port -or (Test-PortListening -Port $service.Port)) {
+                    $detail = if ($service.Port) { "http://localhost:$($service.Port)" } else { 'running' }
+                    Write-Status -State 'ready' -Label $service.Label -Detail $detail
+                    $pending = @($pending | Where-Object { $_ -ne $service })
+                }
+            }
+            if ($pending.Count -eq 0) {
+                Write-Host ''
+                Write-Host ("All services ready in {0:N0}s. Press Ctrl+C to stop them." -f $startedAt.Elapsed.TotalSeconds) -ForegroundColor Green
+                if ($eventsEnabled -and -not $SkipReporting) {
+                    Write-Host "Anything the services publish from now on reaches the reporting console within seconds and its report within $ReportIntervalMinutes minute(s). History written earlier, or by SQL, needs db/tools/republish_history.py once (see db/README.md)." -ForegroundColor DarkGray
+                }
+                elseif (-not $eventsEnabled) {
+                    Write-Host 'Events are off, so the reporting UI shows nothing new: no report, or the last one written, and the console as it last stood.' -ForegroundColor Yellow
+                }
             }
         }
         Start-Sleep -Milliseconds 250
@@ -416,9 +532,15 @@ try {
 }
 finally {
     # Newest first, so the broker outlives the services that talk to it.
+    if ($processes.Count -gt 0) {
+        Write-Host ''
+        Write-Host 'Stopping services...'
+    }
     [array]::Reverse($processes)
     foreach ($service in $processes) {
-        Write-NewLogLines -Service $service
+        if ($ShowLogs) {
+            Write-NewLogLines -Service $service
+        }
         $service.Process.Refresh()
         if (-not $service.Process.HasExited) {
             Start-Process -FilePath 'taskkill.exe' -ArgumentList @('/PID', $service.Process.Id, '/T', '/F') `

@@ -149,7 +149,7 @@ $env:SPRING_DATASOURCE_PASSWORD = $password
 .\scripts\start-local.ps1 -KafkaHome $kafkaHome
 ```
 
-The launcher starts the processes and streams their logs in this terminal. Wait for the service startup messages before opening the UIs:
+The launcher starts the processes and prints one status line for each as it starts listening, then "All services ready". It echoes only error lines from the services; the full logs are in a temporary folder whose path it prints, removed on exit. Pass `-ShowLogs` to stream every service's raw log in the terminal instead. A service that exits stops the stack and its last log lines are printed first. Wait for "All services ready" before opening the UIs; the ports are:
 
 | Service | Port |
 | --- | ---: |

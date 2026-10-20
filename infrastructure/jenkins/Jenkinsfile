@@ -589,6 +589,33 @@ pipeline {
             }
         }
 
+        // The deployable form of both UIs is the static folder an S3 bucket
+        // serves (see "Static UIs on S3" in infrastructure/README.md), not a
+        // container image. This stage builds that folder on the agent and
+        // archives it; nothing is uploaded and no AWS credentials are used.
+        stage('Build UI Bundles') {
+            when {
+                expression { currentBuild.currentResult == 'SUCCESS' }
+            }
+            steps {
+                sh '''
+                    set -eu
+                    rm -rf ui-bundles
+                    mkdir -p ui-bundles
+                    for app in client-ui reporting-ui; do
+                        npm --prefix "apps/$app" run build
+                        test -s "apps/$app/dist/$app/browser/index.html"
+                        tar -czf "ui-bundles/$app-${BUILD_NUMBER}.tar.gz" -C "apps/$app/dist/$app/browser" .
+                    done
+                '''
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'ui-bundles/*.tar.gz', fingerprint: true
+                }
+            }
+        }
+
         // Nothing depends on this stack, and building its images is the
         // heaviest step, so it runs last once every test has passed.
         stage('Build Local Docker Stack') {
@@ -616,7 +643,9 @@ pipeline {
                     # Disposable stack: always start from an empty database.
                     compose down -v --remove-orphans
 
-                    if ! compose up -d --build auth-service client-ui db db-init holdings-and-trade-service kafka order-and-sell-service reporting-service reporting-ui; then
+                    # The UIs are not part of this stack: they deploy as static files (see
+                    # Build UI Bundles), so no UI image is built or started here.
+                    if ! compose up -d --build auth-service db db-init holdings-and-trade-service kafka order-and-sell-service reporting-service; then
                         compose logs --no-color db-init >&2 || true
                         exit 1
                     fi
@@ -626,7 +655,7 @@ pipeline {
                     # waits for that, so there is no separate topic step to wait on.
                     compose ps
 
-                    EXPECTED_SERVICES="auth-service client-ui db holdings-and-trade-service kafka order-and-sell-service reporting-service reporting-ui"
+                    EXPECTED_SERVICES="auth-service db holdings-and-trade-service kafka order-and-sell-service reporting-service"
                     RUNNING_SERVICES="$(compose ps --services --filter status=running | sort | tr '\\n' ' ' | sed 's/ $//')"
                     if [ "$RUNNING_SERVICES" != "$EXPECTED_SERVICES" ]; then
                         echo "Expected running services: $EXPECTED_SERVICES" >&2
@@ -669,8 +698,6 @@ pipeline {
                         return 1
                     }
 
-                    check_http client-ui / '<app-root'
-                    check_http reporting-ui / '<app-root'
                     check_http reporting-service /health '"status": "healthy"' 8083
                     # The Java services and the auth service have no healthcheck, so
                     # prove each answers on its own port. These paths are public: the

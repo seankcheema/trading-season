@@ -9,7 +9,7 @@ import { TokenStorageService } from './token-storage.service';
 
 const tokens = { accessToken: 'old', refreshToken: 'refresh', expiresIn: 900 };
 const rotated = { accessToken: 'new', refreshToken: 'rotated', expiresIn: 900 };
-const refreshUrl = 'http://localhost:3001/auth/refresh';
+const refreshUrl = '/auth/refresh';
 
 describe('authenticated request renewal', () => {
   let client: HttpClient;
@@ -143,11 +143,11 @@ describe('authenticated request renewal', () => {
     const refresh = http.expectOne(refreshUrl);
     if (action === 'logout') {
       const logout = firstValueFrom(auth.logout());
-      http.expectOne('http://localhost:3001/auth/logout').flush({});
+      http.expectOne('/auth/logout').flush({});
       await logout;
     } else {
       const login = firstValueFrom(auth.login('user@example.com', 'password'));
-      http.expectOne('http://localhost:3001/auth/login').flush({ ...tokens, accessToken: 'other' });
+      http.expectOne('/auth/login').flush({ ...tokens, accessToken: 'other' });
       await login;
     }
     refresh.flush(rotated);
