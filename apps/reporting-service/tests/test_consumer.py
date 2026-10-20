@@ -87,6 +87,16 @@ class TestHandleMessage:
 class TestTopicStores:
     """One consumer reads both topics; each message goes to its own topic's files."""
 
+    def test_resume_offset_is_the_one_after_the_last_line_of_the_partition_file(self, tmp_path):
+        stores = TopicStores({TRADE_EVENTS: EventStore(tmp_path, TRADE_EVENTS),
+                              PLATFORM_RECORDS: EventStore(tmp_path, PLATFORM_RECORDS)})
+        handle_message(message(0, 9), stores)
+
+        assert stores.resume_offset(TRADE_EVENTS, 0) == 10
+        assert stores.resume_offset(TRADE_EVENTS, 1) is None, 'no file for that partition'
+        assert stores.resume_offset(PLATFORM_RECORDS, 0) is None, 'nothing written for that topic'
+        assert stores.resume_offset('unknown-topic', 0) is None
+
     RECORD = {'type': 'CASH_TRANSFER', 'cashTransactionId': 31, 'accountId': 7, 'amount': -25.0,
               'reason': 'WITHDRAWAL', 'createdAt': '2026-10-06T09:30:00Z'}
 
@@ -261,6 +271,7 @@ def fake_confluent_kafka(mocker):
     """
     module = types.ModuleType('confluent_kafka')
     module.Consumer = MagicMock(name='Consumer')
+    module.OFFSET_BEGINNING = -2
     mocker.patch.dict(sys.modules, {'confluent_kafka': module})
     return module.Consumer
 
@@ -299,6 +310,22 @@ class TestKafkaSource:
 
         on_assign = consumer_cls.return_value.subscribe.call_args.kwargs['on_assign']
         assert on_assign(consumer_cls.return_value, []) is None
+
+    def test_assigned_partitions_resume_where_the_files_end(self, mocker):
+        consumer_cls = fake_confluent_kafka(mocker)
+        refreshed = []
+        starts = {('trade-events', 0): 5, ('trade-events', 1): None}
+        KafkaSource('kafka:9092', 'reporting-ingester', 'trade-events', on_assign=lambda: refreshed.append(True),
+                    resume_offset=lambda topic, partition: starts[(topic, partition)])
+        client = consumer_cls.return_value
+        partitions = [types.SimpleNamespace(topic='trade-events', partition=0, offset=-1001),
+                      types.SimpleNamespace(topic='trade-events', partition=1, offset=40)]
+
+        client.subscribe.call_args.kwargs['on_assign'](client, partitions)
+
+        assert refreshed == [True], 'the files are re-read before the offsets are chosen'
+        assert [p.offset for p in partitions] == [5, -2], 'after the last line, or from the start of the topic'
+        client.assign.assert_called_once_with(partitions)
 
     def test_delegates_poll_commit_and_close(self, mocker):
         client = fake_confluent_kafka(mocker).return_value
@@ -339,6 +366,7 @@ class TestMain:
                                              ['trade-events', 'platform-records'])
         stores = loop.call_args.args[1]
         assert source_cls.call_args.kwargs['on_assign'] == stores.refresh
+        assert source_cls.call_args.kwargs['resume_offset'] == stores.resume_offset
         assert isinstance(stores, TopicStores)
         assert {name: store.topic for name, store in stores._stores.items()} == {
             'trade-events': 'trade-events', 'platform-records': 'platform-records'}

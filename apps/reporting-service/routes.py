@@ -31,6 +31,7 @@ import run_store
 logger = logging.getLogger(__name__)
 
 api_bp = Blueprint('api', __name__, url_prefix='/api/reporting')
+PNG_MIMETYPE = 'image/png'
 
 
 def _files_dir():
@@ -121,11 +122,19 @@ def list_runs():
 
 
 @reads_read_model
+def _live_report():
+    """The latest report snapshot from current event files, or None when there are no trade events yet."""
+    files_dir = _files_dir()
+    latest = run_store.latest_run_id(files_dir)
+    return report_run.live_report(files_dir, db.session, run_id=latest)
+
+
+@reads_read_model
 def _cut_to_range(report, range_key, tz_offset):
     """
-    A run's figures over a range narrower than all time. The range is the one
-    Activity cuts, in the viewer's days, except that it ends when the run was
-    generated: a run is a snapshot, and stays one whatever part of it is read.
+    A report snapshot's figures over a range narrower than all time. The range
+    is the one Activity cuts, in the viewer's days, except that it ends when
+    the snapshot was generated.
     """
     generated = report_run.parse_occurred_at(report.get('generatedAt')) or datetime.now(timezone.utc)
     start, _step, _count = console.window(range_key, generated, tz_offset)
@@ -138,13 +147,14 @@ def _cut_to_range(report, range_key, tz_offset):
 @require_auth
 @require_role(*REPORT_READER_ROLES)
 def latest_report():
-    """GET /api/reporting/runs/latest: the latest run's report.json, or its figures over a narrower range."""
+    """GET /api/reporting/runs/latest: the latest live snapshot, or its figures over a narrower range."""
     range_key, tz_offset, refusal = _range_query(console.ALL_TIME)
     if refusal:
         return refusal
     files_dir = _files_dir()
     run_id = run_store.latest_run_id(files_dir)
-    report = run_store.read_report(files_dir, run_id) if run_id else None
+    persisted = run_store.read_report(files_dir, run_id) if run_id else None
+    report = _live_report() or persisted
     if report is None:
         return jsonify({'error': 'No report has been generated yet'}), 404
     if range_key != console.ALL_TIME:
@@ -160,23 +170,35 @@ def _not_found():
 @require_auth
 @require_role(*REPORT_READER_ROLES)
 def run_file(run_id, name):
-    """GET /api/reporting/runs/<run_id>/files/<name>: one PNG chart of a run, over all of it or a range."""
+    """GET /api/reporting/runs/<run_id>/files/<name>: one PNG chart of a run snapshot, over all of it or a range."""
     if not run_store.is_safe_run_id(run_id) or not run_store.is_safe_file_name(name):
         return _not_found()
     range_key, tz_offset, refusal = _range_query(console.ALL_TIME)
     if refusal:
         return refusal
+
+    # The latest run shown on screen is live data from event files, so its
+    # chart is drawn when requested rather than served from a stale PNG.
+    live = _live_report()
+    if live is not None and run_id == live.get('runId') and name in report_run.CHARTS:
+        report = live if range_key == console.ALL_TIME else _cut_to_range(live, range_key, tz_offset)
+        chart = report_run.draw_chart(report, name)
+        response = current_app.response_class(chart, mimetype=PNG_MIMETYPE)
+        response.cache_control.no_cache = True
+        response.cache_control.max_age = 0
+        return response
+
     directory = run_store.runs_dir(_files_dir()) / run_id
     if not (directory / name).is_file():
         return _not_found()
     if range_key == console.ALL_TIME:
-        return send_from_directory(directory, name, mimetype='image/png', max_age=0)
+        return send_from_directory(directory, name, mimetype=PNG_MIMETYPE, max_age=0)
     # The file on disk is the run over all time. A narrower range is drawn when it is asked for.
     report = run_store.read_report(_files_dir(), run_id)
     if report is None or name not in report_run.CHARTS:
         return _not_found()
     chart = report_run.draw_chart(_cut_to_range(report, range_key, tz_offset), name)
-    response = current_app.response_class(chart, mimetype='image/png')
+    response = current_app.response_class(chart, mimetype=PNG_MIMETYPE)
     response.cache_control.no_cache = True
     response.cache_control.max_age = 0
     return response

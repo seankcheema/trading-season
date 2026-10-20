@@ -382,11 +382,10 @@ select_databases() {
     export DB_PASSWORD="${SPRING_DATASOURCE_PASSWORD:-changeme}"
     docker_compose up -d db kafka || fail 'Docker database or broker startup failed. Review the Compose output above.'
     wait_for_compose_health db || fail 'Docker database did not become healthy within two minutes.'
-    wait_for_compose_health kafka || fail 'Docker Kafka broker did not become healthy within two minutes.'
-    # Separate from the broker starting: auto-creation is disabled, so
-    # trade-events and platform-records exist only once this one-shot
-    # container has run.
-    docker_compose up -d kafka-init || fail 'Creating the Kafka topics failed. Review the Compose output above.'
+    # Auto-creation is disabled, so trade-events and platform-records exist only
+    # because the broker container creates them as it starts; it reports
+    # healthy only once both do.
+    wait_for_compose_health kafka || fail 'Docker Kafka broker and its topics did not become healthy within two minutes.'
     if [[ "$had_database" == true && -n "$existing_broker" ]]; then
         ready 'Docker database and broker — the existing containers are healthy; skipping startup.'
     else

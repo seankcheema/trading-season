@@ -353,6 +353,38 @@ def collect_insights(events, session, zone=timezone.utc):
     return insights
 
 
+def _infer_live_run_id(events, fallback):
+    """A stable run id for the current event snapshot: the newest event time, or fallback."""
+    newest = fallback
+    for event in events:
+        occurred = parse_occurred_at(event.get('occurredAt'))
+        if occurred is not None and occurred > newest:
+            newest = occurred
+    return newest.strftime(RUN_ID_FORMAT)
+
+
+def live_report(files_dir, session, now=None, run_id=None):
+    """
+    The latest report snapshot from current event files, without writing run files.
+
+    Returns None when no trade event has been stored yet.
+    """
+    events = load_events(files_dir)
+    if not events:
+        return None
+
+    generated = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    insights = collect_insights(events, session)
+    return {
+        'runId': run_id or _infer_live_run_id(events, generated),
+        'generatedAt': generated.isoformat(),
+        'timezone': 'UTC',
+        'eventCount': len(events),
+        **insights,
+        'files': list(CHARTS),
+    }
+
+
 def ranged_report(files_dir, session, report, start, zone=timezone.utc):
     """
     A run's figures for the part of it that begins at start: the shape of its

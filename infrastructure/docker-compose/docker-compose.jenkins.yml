@@ -69,9 +69,10 @@ services:
       db-init:
         condition: service_completed_successfully
       # It publishes every sign-in it creates or changes to platform-records,
-      # and auto-creation is off, so the topic must exist first.
-      kafka-init:
-        condition: service_completed_successfully
+      # and auto-creation is off, so the topic must exist first; the kafka
+      # healthcheck passes only once it does.
+      kafka:
+        condition: service_healthy
     environment:
       NODE_ENV: development
       PORT: 3001
@@ -91,10 +92,12 @@ services:
   # Event broker for two topics. trade-events: Order and Sell publishes one
   # message per committed order status change; three consumer groups read it:
   # order-status-pusher (Order and Sell), portfolio-valuation-capture (Holdings
-  # and Trade) and reporting-ingester (reporting-consumer). platform-records:
+  # and Trade) and reporting-ingester (reporting-service). platform-records:
   # the auth service and both Java services publish the current state of the
   # rows reporting shows that an order status does not carry;
   # reporting-ingester is its only reader.
+  # The broker also creates both topics when it starts (kafka-start.sh), so
+  # this one container is all a host that runs only Kafka needs.
   kafka:
     # Single-node KRaft: no ZooKeeper, and the controller quorum is this same
     # node. Sized for a developer machine, not durability -- one replica of
@@ -102,6 +105,10 @@ services:
     # binary, with no /opt/kafka/bin, so the healthcheck below and every
     # console tool used to verify the topic would not exist.
     image: apache/kafka:4.1.1
+    # Replaces the image's start command with a wrapper that starts the broker
+    # and then creates the topics; see the script for why it traps SIGTERM.
+    command: ["/bin/bash", "/kafka-start.sh"]
+    restart: unless-stopped
     ports:
       # Host-facing listener only. In-network clients use kafka:9092, which is
       # deliberately not published.
@@ -139,7 +146,7 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
       # Deliberate. Auto-creation would build a topic on first publish with the
       # broker default of one partition, silently discarding the partition
-      # count kafka-init sets and the per-account ordering that depends on it.
+      # count kafka-start.sh sets and the per-account ordering that depends on it.
       # A typo in a topic name must fail, not create a topic.
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       # Development sizing; the launch script defaults to -Xmx1G -Xms1G.
@@ -150,53 +157,20 @@ services:
       CLUSTER_ID: "5L6g3nShT-eMCtK--X86sw"
     volumes:
       - kafka_data:/var/lib/kafka/data
-    # Required, not cosmetic. A real API call rather than a port check: the
-    # listener socket binds before the broker serves requests, so a TCP probe
-    # reports ready too early. And scripts/setup-local.sh waits on a literal
-    # `healthy`, falling back to `.State.Status` when no healthcheck exists --
-    # which returns `running` forever and stalls startup for its full budget.
+      - ../docker/kafka-start.sh:/kafka-start.sh:ro
+    # Required, not cosmetic. Healthy means the broker answers an API call and
+    # both topics exist, which is what every service that depends on it needs.
+    # A real API call rather than a port check: the listener socket binds
+    # before the broker serves requests, so a TCP probe reports ready too
+    # early. And scripts/setup-local.sh waits on a literal `healthy`, falling
+    # back to `.State.Status` when no healthcheck exists -- which returns
+    # `running` forever and stalls startup for its full budget.
     healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic trade-events >/dev/null 2>&1 && /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic platform-records >/dev/null 2>&1"]
       interval: 10s
       timeout: 20s
       retries: 15
       start_period: 30s
-    networks:
-      - ci-network
-
-  # Topic creation. Auto-creation is disabled on the broker, so the topic
-  # exists only once this one-shot container has run.
-  kafka-init:
-    image: apache/kafka:4.1.1
-    depends_on:
-      kafka:
-        condition: service_healthy
-    # Overriding the entrypoint is required: this image's own entrypoint starts
-    # a broker, so preserving it would run a second one. Same pattern as
-    # market-data-seed.
-    entrypoint: ["/bin/sh", "-ec"]
-    # Three partitions is a decision, not a default. Kafka guarantees order
-    # only within a partition, and the pipeline design depends on the account
-    # id keying all of one account's events to one partition. The count can be
-    # raised later but never safely lowered, and raising it re-hashes keys, so
-    # events already written and events written afterwards would land in
-    # different partitions for the same account.
-    # --if-not-exists makes a rerun a no-op rather than an error.
-    # platform-records is compacted: each message is the current state of one
-    # row, keyed by its type and id, so only the latest per key is ever needed.
-    command:
-      - |
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
-          --create --if-not-exists --topic trade-events \
-          --partitions 3 --replication-factor 1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
-          --create --if-not-exists --topic platform-records \
-          --partitions 3 --replication-factor 1 \
-          --config cleanup.policy=compact
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
-          --describe --topic trade-events
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
-          --describe --topic platform-records
     networks:
       - ci-network
 
@@ -213,9 +187,10 @@ services:
       db-init:
         condition: service_completed_successfully
       # Consumer group portfolio-valuation-capture reads trade-events, so the
-      # topic must exist before the first poll.
-      kafka-init:
-        condition: service_completed_successfully
+      # topic must exist before the first poll; the kafka healthcheck passes
+      # only once it does.
+      kafka:
+        condition: service_healthy
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
       SPRING_DATASOURCE_USERNAME: trading_season
@@ -241,9 +216,10 @@ services:
       db-init:
         condition: service_completed_successfully
       # The service publishes to trade-events and auto-creation is off, so the
-      # topic must exist before the first order resolves.
-      kafka-init:
-        condition: service_completed_successfully
+      # topic must exist before the first order resolves; the kafka healthcheck
+      # passes only once it does.
+      kafka:
+        condition: service_healthy
     environment:
       EXECUTION_MARKET_URL: http://holdings-and-trade-service:8082
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/trading_season
@@ -257,17 +233,21 @@ services:
     networks:
       - ci-network
 
-  # Reporting Service: portfolio analytics, trade history, performance metrics
+  # Reporting Service: the web API and the Kafka consumer in one container;
+  # see docker-compose.local.yml. Exactly one replica.
   reporting-service:
     build:
       context: ../../apps/reporting-service
       dockerfile: Dockerfile
     ports:
       - "8083:8083"
-    # No database: everything it serves is read from reporting_files.
+    # No database: everything it serves is read from reporting_files, which its
+    # own consumer fills from Kafka.
     depends_on:
       auth-service:
         condition: service_started
+      kafka:
+        condition: service_healthy
     environment:
       FLASK_ENV: production
       FLASK_DEBUG: "false"
@@ -276,38 +256,18 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200,http://localhost:4300}
       REPORTING_SERVICE_PORT: 8083
       REPORTING_SERVICE_HOST: 0.0.0.0
-      # The web service only serves; the consumer below runs the report job.
-      SCHEDULER_ENABLED: "false"
-      SCHEDULER_INTERVAL_MINUTES: 15
-      REPORTING_FILES_DIR: /data/reporting
-    volumes:
-      - reporting_files:/data/reporting:ro
-    networks:
-      - ci-network
-
-  # Reporting consumer: consumer group reporting-ingester. Same image as
-  # reporting-service, different process; see docker-compose.local.yml.
-  reporting-consumer:
-    build:
-      context: ../../apps/reporting-service
-      dockerfile: Dockerfile
-    command: ["python", "consumer.py"]
-    depends_on:
-      kafka-init:
-        condition: service_completed_successfully
-    environment:
-      FLASK_ENV: production
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_TRADE_EVENTS_TOPIC: trade-events
       KAFKA_PLATFORM_RECORDS_TOPIC: platform-records
       REPORTING_CONSUMER_GROUP: reporting-ingester
-      REPORTING_FILES_DIR: /data/reporting
+      # Read by the consumer process only; the web workers never start a scheduler.
       SCHEDULER_ENABLED: "true"
       SCHEDULER_INTERVAL_MINUTES: 15
+      REPORTING_FILES_DIR: /data/reporting
     volumes:
       - reporting_files:/data/reporting
-    healthcheck:
-      disable: true
+    # serve.py exits when either process dies; this brings both back.
+    restart: unless-stopped
     stop_grace_period: 20s
     networks:
       - ci-network

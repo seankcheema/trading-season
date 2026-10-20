@@ -3,7 +3,12 @@ import { TestBed } from '@angular/core/testing';
 import { Subject, of, throwError } from 'rxjs';
 import { profile, report, run, schedulerStatus } from '../../testing/fixtures';
 import { Report } from './report.models';
-import { ReportStore, RUNS_RANGE_KEY, STATUS_POLL_MS } from './report-store.service';
+import {
+  LIVE_REPORT_POLL_MS,
+  ReportStore,
+  RUNS_RANGE_KEY,
+  STATUS_POLL_MS,
+} from './report-store.service';
 import { ReportingApiService } from './reporting-api.service';
 
 const httpError = (status: number) => throwError(() => new HttpErrorResponse({ status }));
@@ -163,18 +168,32 @@ describe('ReportStore', () => {
     expect(store.report()?.runId).toBe('20261008T200000Z');
   });
 
+  it('reloads the latest report on the live poll interval', () => {
+    const store = create();
+
+    api.latestReport.mockReturnValue(of(report({ runId: '20261008T200000Z' })));
+    vi.advanceTimersByTime(LIVE_REPORT_POLL_MS);
+
+    expect(store.report()?.runId).toBe('20261008T200000Z');
+  });
+
   it('picks up a new run when the scheduler reports one', () => {
     const store = create();
-    expect(api.latestReport).toHaveBeenCalledTimes(1);
+    expect(api.runs).toHaveBeenCalledTimes(1);
 
-    // Same run: nothing to reload.
+    // Same run: the scheduler poll updates status only.
     vi.advanceTimersByTime(STATUS_POLL_MS);
-    expect(api.latestReport).toHaveBeenCalledTimes(1);
+    expect(api.runs).toHaveBeenCalledTimes(1);
 
     api.schedulerStatus.mockReturnValue(of(schedulerStatus({ latest_run: '20261008T200000Z' })));
+    api.runs.mockReturnValue(
+      of({ latest: '20261008T200000Z', runs: [run({ runId: '20261008T200000Z' })], timestamp: '' }),
+    );
     api.latestReport.mockReturnValue(of(report({ runId: '20261008T200000Z' })));
     vi.advanceTimersByTime(STATUS_POLL_MS);
 
+    expect(api.runs).toHaveBeenCalledTimes(2);
+    expect(store.latestRunId()).toBe('20261008T200000Z');
     expect(store.report()?.runId).toBe('20261008T200000Z');
   });
 

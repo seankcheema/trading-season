@@ -1,0 +1,25 @@
+# Override for the host that runs only Kafka (the EC2 instance). Use it with
+# the local file and start nothing but the broker:
+#
+#   KAFKA_ADVERTISED_HOST=<this instance's private DNS name> \
+#     docker compose -f docker-compose.local.yml -f docker-compose.kafka-ec2.yml up -d kafka
+#
+# Clients outside this host, such as ECS tasks, reach the broker on port 9092
+# and are told to reconnect to the advertised address, so it must name this
+# instance as they see it. Use the private DNS name, not a public IP: it
+# survives a stop and start. Allow 9092 in the security group from the ECS
+# tasks only. The listener is PLAINTEXT with no authentication, so it must
+# never be reachable from outside the VPC. Not a production-ready setup.
+#
+# Keep kafka_data on a dedicated EBS volume that is not deleted when the
+# instance is terminated; it holds every event reporting rebuilds from. See
+# the infrastructure README.
+services:
+  kafka:
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://${KAFKA_ADVERTISED_HOST:?set KAFKA_ADVERTISED_HOST to this instance's private DNS name}:9092,EXTERNAL://localhost:29092"
+      # Real data lives here: more than the developer-machine sizing of the
+      # base file, which is 512 MB.
+      KAFKA_HEAP_OPTS: "-Xmx${KAFKA_HEAP_MB:-1024}m -Xms${KAFKA_HEAP_MB:-1024}m"
