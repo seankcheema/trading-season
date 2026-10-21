@@ -2,14 +2,28 @@ import { CandlePointDto } from '../market-data.service';
 import { PricePoint } from '../mock-data';
 
 export type ChartMode = 'line' | 'area' | 'candles' | 'ohlc' | 'volume' | 'percent';
-export type TechnicalIndicator = 'sma' | 'ema' | 'bollinger' | 'rsi';
+export type TechnicalIndicator = 'sma' | 'ema' | 'bollinger' | 'rsi' | 'risk';
 
 export const TECHNICAL_INDICATOR_PERIODS = {
   sma: 20,
   ema: 20,
   bollinger: 20,
   rsi: 14,
+  // The platform model's horizon: the chance the next 5 trading days are stormier than usual.
+  risk: 5,
 } as const satisfies Record<TechnicalIndicator, number>;
+
+/**
+ * One reading of the platform model for the risk pane: made at `time`, the chance
+ * (0 to 100) that the following days are more volatile than usual, and whether
+ * they turned out to be, once that window had closed by the simulated date
+ * (null while it has not).
+ */
+export interface RiskPoint {
+  time: Date;
+  value: number;
+  stormier: boolean | null;
+}
 
 export interface BollingerBandPoint {
   time: Date;

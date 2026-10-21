@@ -38,7 +38,7 @@ import { MIN_RECORD_DAYS, Reading, readingFor, recordLabel } from './platform-si
               </p>
             }
             @case ('ready') {
-              <div class="overview-card outlook-headline" data-testid="outlook-headline">
+              <div class="outlook-card outlook-headline" data-testid="outlook-headline">
                 <p class="text-muted-foreground text-xs">Next {{ horizon() }} trading days</p>
                 <p
                   class="text-lg font-semibold"
@@ -49,40 +49,73 @@ import { MIN_RECORD_DAYS, Reading, readingFor, recordLabel } from './platform-si
                 </p>
                 <p class="text-muted-foreground text-xs" data-testid="outlook-basis">
                   @if (r.source === 'model') {
-                    Based on the platform model (right
-                    {{ recordLabel(r.modelHits, r.modelDays) }} weeks on {{ symbol() }}).
+                    Headline from the platform model: its record on {{ symbol() }} beats the recent
+                    pattern.
                   } @else {
-                    Based on the recent pattern (right
-                    {{ recordLabel(r.ruleHits, r.ruleDays) }} weeks on {{ symbol() }}).
-                  }
-                </p>
-                <p class="text-muted-foreground text-xs" data-testid="outlook-other">
-                  @if (r.source === 'model') {
-                    The recent pattern read {{ r.ruleCall }}; it is right
-                    {{ recordLabel(r.ruleHits, r.ruleDays) }}.
-                  } @else {
-                    The platform model read {{ r.modelCall }} ({{
-                      r.probability | percent: '1.0-0'
-                    }}
-                    chance of stormier);
-                    @if (r.modelDays < minRecord) {
-                      it has {{ r.modelDays }} weeks of record on {{ symbol() }}, fewer than the
-                      {{ minRecord }} it needs for the headline.
-                    } @else {
-                      it is right {{ recordLabel(r.modelHits, r.modelDays) }}, so it does not get
-                      the headline yet.
-                    }
+                    Headline from the recent pattern: the platform model has not beaten it on
+                    {{ symbol() }} yet.
                   }
                 </p>
               </div>
-              <dl class="account-value-balances mt-2">
-                <div class="overview-card account-balance-card">
+              <dl class="outlook-grid mt-2">
+                <div
+                  class="outlook-card read-tile"
+                  [class.read-tile-shown]="r.source === 'model'"
+                  data-testid="outlook-model"
+                >
+                  <dt class="text-muted-foreground text-xs">
+                    Platform model
+                    @if (r.source === 'model') {
+                      <span class="read-badge">shown</span>
+                    }
+                  </dt>
+                  <dd
+                    class="text-base font-semibold capitalize"
+                    [class.text-loss]="r.modelCall === 'stormier'"
+                    [class.text-gain]="r.modelCall === 'calmer'"
+                  >
+                    {{ r.modelCall }}
+                  </dd>
+                  <dd class="text-muted-foreground text-xs">
+                    {{ r.probability | percent: '1.0-0' }} chance of stormier
+                    @if (r.modelDays >= minRecord) {
+                      · right {{ recordLabel(r.modelHits, r.modelDays) }}
+                    } @else {
+                      · {{ r.modelDays }} of {{ minRecord }} weeks of record
+                    }
+                  </dd>
+                </div>
+                <div
+                  class="outlook-card read-tile"
+                  [class.read-tile-shown]="r.source === 'rule'"
+                  data-testid="outlook-pattern"
+                >
+                  <dt class="text-muted-foreground text-xs">
+                    Recent pattern
+                    @if (r.source === 'rule') {
+                      <span class="read-badge">shown</span>
+                    }
+                  </dt>
+                  <dd
+                    class="text-base font-semibold capitalize"
+                    [class.text-loss]="r.ruleCall === 'stormier'"
+                    [class.text-gain]="r.ruleCall === 'calmer'"
+                  >
+                    {{ r.ruleCall }}
+                  </dd>
+                  <dd class="text-muted-foreground text-xs">
+                    next week like last · right {{ recordLabel(r.ruleHits, r.ruleDays) }}
+                  </dd>
+                </div>
+              </dl>
+              <dl class="outlook-grid mt-2">
+                <div class="outlook-card metric-tile">
                   <dt class="text-muted-foreground text-xs">Usual daily move</dt>
                   <dd class="text-base font-semibold tabular-nums">
                     {{ r.usualVolatility | percent: '1.1-1' }}
                   </dd>
                 </div>
-                <div class="overview-card account-balance-card">
+                <div class="outlook-card metric-tile">
                   <dt class="text-muted-foreground text-xs">Last {{ horizon() }} days</dt>
                   <dd class="text-base font-semibold tabular-nums">
                     {{ r.recentVolatility | percent: '1.1-1' }}
@@ -136,12 +169,12 @@ import { MIN_RECORD_DAYS, Reading, readingFor, recordLabel } from './platform-si
       }
       @default {
         <span class="sr-only" role="status">Loading risk outlook…</span>
-        <div class="overview-card" aria-hidden="true">
+        <div class="outlook-card" aria-hidden="true">
           <span class="skeleton h-3 w-28"></span>
           <span class="skeleton mt-1.5 h-6 w-40"></span>
           <span class="skeleton mt-1.5 h-3 w-full"></span>
         </div>
-        <div class="account-value-balances mt-2" aria-hidden="true">
+        <div class="outlook-grid mt-2" aria-hidden="true">
           <span class="skeleton h-14 w-full"></span>
           <span class="skeleton h-14 w-full"></span>
         </div>
@@ -155,10 +188,44 @@ import { MIN_RECORD_DAYS, Reading, readingFor, recordLabel } from './platform-si
       flex: 1;
       flex-direction: column;
     }
-    .outlook-headline {
+    /* The market page's card classes are scoped to that component, so the card styles its own. */
+    .outlook-card {
       display: grid;
+      min-width: 0;
+      align-content: start;
       gap: 0.15rem;
+      border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+      border-radius: 0.55rem;
+      background: color-mix(in srgb, var(--foreground) 1.8%, transparent);
+      padding: 0.45rem 0.65rem;
+    }
+    .outlook-headline {
       padding: 0.6rem 0.75rem;
+    }
+    .outlook-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      align-items: stretch;
+      gap: 0.4rem;
+    }
+    .metric-tile dd {
+      overflow-wrap: anywhere;
+    }
+    .read-tile {
+      gap: 0.1rem;
+    }
+    .read-tile-shown {
+      border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+      background: color-mix(in srgb, var(--primary) 5%, transparent);
+    }
+    .read-badge {
+      margin-left: 0.3rem;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--primary) 15%, transparent);
+      padding: 0.05rem 0.4rem;
+      color: var(--primary);
+      font-size: 0.625rem;
+      font-weight: 600;
     }
   `,
 })

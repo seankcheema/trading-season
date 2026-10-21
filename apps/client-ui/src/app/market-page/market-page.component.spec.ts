@@ -426,6 +426,7 @@ describe('MarketPageComponent', () => {
       'EMA 20',
       'Bollinger Bands 20 · 2σ',
       'RSI 14',
+      'Model risk 5-day',
     ]);
 
     options[0].click();
@@ -497,7 +498,9 @@ describe('MarketPageComponent', () => {
   it('positions the comparison menu under its trigger', async () => {
     const fixture = await setup();
     (
-      fixture.nativeElement.querySelector('[aria-controls="comparison-picker"]') as HTMLButtonElement
+      fixture.nativeElement.querySelector(
+        '[aria-controls="comparison-picker"]',
+      ) as HTMLButtonElement
     ).click();
     fixture.detectChanges();
 
@@ -1345,7 +1348,9 @@ describe('MarketPageComponent', () => {
       const instrument = component['instruments']().find((item) => item.symbol === 'MSFT')!;
       component['selectInstrument'](instrument);
       expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: null });
-      component['selectInstrument'](component['instruments']().find((item) => item.symbol === 'AAPL')!);
+      component['selectInstrument'](
+        component['instruments']().find((item) => item.symbol === 'AAPL')!,
+      );
       expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: 'msft' });
     });
 
@@ -1395,8 +1400,15 @@ describe('MarketPageComponent', () => {
 
     it('marks the chart empty when the market has no candles', async () => {
       const fixture = await setup();
-      marketData.candles.mockImplementationOnce((_s: number, symbol: string, timeframe: Timeframe) =>
-        of({ sessionId: 7, symbol, timeframe, marketTimestamp: SNAPSHOT.marketTimestamp, points: [] }),
+      marketData.candles.mockImplementationOnce(
+        (_s: number, symbol: string, timeframe: Timeframe) =>
+          of({
+            sessionId: 7,
+            symbol,
+            timeframe,
+            marketTimestamp: SNAPSHOT.marketTimestamp,
+            points: [],
+          }),
       );
       fixture.componentInstance['candleRevision'].update((revision) => revision + 1);
       fixture.detectChanges();
@@ -1435,11 +1447,13 @@ describe('MarketPageComponent', () => {
       const http = TestBed.inject(HttpTestingController);
       http.expectOne('/api/instruments').flush({}, { status: 500, statusText: 'Error' });
       http.expectOne('/api/orders').flush({}, { status: 500, statusText: 'Error' });
-      http.match(() => true).forEach((request) => {
-        if (!request.cancelled) {
-          request.flush({}, { status: 500, statusText: 'Error' });
-        }
-      });
+      http
+        .match(() => true)
+        .forEach((request) => {
+          if (!request.cancelled) {
+            request.flush({}, { status: 500, statusText: 'Error' });
+          }
+        });
       expect(fixture.componentInstance['catalogueStatus']()).toBe('error');
     });
   });

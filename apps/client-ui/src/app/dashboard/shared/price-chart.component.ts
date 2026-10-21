@@ -27,6 +27,7 @@ import {
   ChartMode,
   MarketCandlePoint,
   TECHNICAL_INDICATOR_PERIODS,
+  RiskPoint,
   TechnicalIndicator,
   bollingerBands,
   closePricePoints,
@@ -536,6 +537,48 @@ interface TooltipPosition {
         </div>
       </section>
     }
+    @if (riskEnabled()) {
+      <section
+        class="rsi-pane risk-pane"
+        aria-label="Model risk: chance the next 5 trading days are stormier than usual"
+        data-testid="risk-pane"
+      >
+        <div class="rsi-header">
+          <span>Model risk · next 5 days stormier than usual</span>
+          @if (latestRisk() !== undefined) {
+            <strong class="risk-value">{{ latestRisk() | number: '1.0-0' }}%</strong>
+          }
+          @if (riskBands().length) {
+            <em class="risk-key">shaded: turned out stormier</em>
+          }
+        </div>
+        <div class="rsi-grid">
+          <div class="rsi-plot">
+            @if (riskReadingsVisible() >= 3) {
+              <svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
+                @for (band of riskBands(); track band.x) {
+                  <rect class="risk-band" [attr.x]="band.x" y="0" [attr.width]="band.width" height="40" />
+                }
+                <line x1="0" y1="20" x2="100" y2="20" class="rsi-guide" />
+                <path class="rsi-line risk-line" [attr.d]="riskPath()" fill="none" />
+              </svg>
+            } @else {
+              <p class="risk-empty">
+                @if (riskSeries().length) {
+                  Daily readings: switch to 1M or 1Y to see them.
+                } @else {
+                  No model readings for this range yet.
+                }
+              </p>
+            }
+          </div>
+          <div class="rsi-axis" aria-hidden="true">
+            <span class="rsi-axis-70">100%</span>
+            <span class="rsi-axis-30">0%</span>
+          </div>
+        </div>
+      </section>
+    }
   `,
   styles: `
     .chart-control-bar {
@@ -727,6 +770,30 @@ interface TooltipPosition {
       stroke-dasharray: 3 3;
       vector-effect: non-scaling-stroke;
     }
+    .risk-line {
+      stroke: var(--indicator-risk);
+    }
+    .risk-value {
+      color: var(--indicator-risk);
+    }
+    .risk-key {
+      background: color-mix(in srgb, var(--indicator-risk) 12%, transparent);
+      color: var(--indicator-risk);
+    }
+    .risk-band {
+      fill: color-mix(in srgb, var(--indicator-risk) 14%, transparent);
+    }
+    .risk-empty {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 0.5rem;
+      color: var(--muted-foreground);
+      font-size: 0.625rem;
+      text-align: center;
+    }
     .rsi-line {
       stroke: var(--indicator-rsi);
       stroke-width: 1.5;
@@ -778,6 +845,8 @@ export class PriceChartComponent {
   readonly showCurrentPrice = input(false, { transform: booleanAttribute });
   readonly showIndicatorLabels = input(true);
   readonly enabledIndicators = input<readonly TechnicalIndicator[]>([]);
+  // The platform model's readings for the instrument, drawn in the risk pane when enabled.
+  readonly riskSeries = input<readonly RiskPoint[]>([]);
   // Fills the space under the line with a gradient in the trend color.
   readonly area = input(false, { transform: booleanAttribute });
   // Recorded observations use elapsed time and leave missing intervals disconnected.
@@ -877,11 +946,66 @@ export class PriceChartComponent {
     () => this.mode() !== 'volume' && this.mode() !== 'percent',
   );
   protected readonly rsiEnabled = computed(() => this.enabledIndicators().includes('rsi'));
+  protected readonly riskEnabled = computed(() => this.enabledIndicators().includes('risk'));
   protected readonly priceIndicatorsEnabled = computed(() =>
     this.enabledIndicators().filter(
-      (indicator): indicator is Exclude<TechnicalIndicator, 'rsi'> => indicator !== 'rsi',
+      (indicator): indicator is Exclude<TechnicalIndicator, 'rsi' | 'risk'> =>
+        indicator !== 'rsi' && indicator !== 'risk',
     ),
   );
+  // Each visible candle takes the reading in force at its time: the latest one made at
+  // or before it. The pane therefore follows the visible range whatever the candle size.
+  private readonly riskCoords = computed(() => {
+    const readings = [...this.riskSeries()].sort((a, b) => a.time.getTime() - b.time.getTime());
+    if (!this.riskEnabled() || !readings.length) {
+      return [];
+    }
+    const candles = this.visibleCandles();
+    const last = Math.max(candles.length - 1, 1);
+    const scale = { min: 0, max: 100, range: 100 };
+    let cursor = -1;
+    return candles.flatMap((candle, index) => {
+      while (cursor + 1 < readings.length && readings[cursor + 1].time <= candle.time) {
+        cursor++;
+      }
+      if (cursor < 0) {
+        return [];
+      }
+      const reading = readings[cursor];
+      return [
+        {
+          x: (index / last) * WIDTH,
+          y: (this.valueToY(reading.value, scale) / 100) * HEIGHT,
+          value: reading.value,
+          stormier: reading.stormier,
+          made: reading.time.getTime(),
+        },
+      ];
+    });
+  });
+  protected readonly riskPath = computed(() => this.smoothPath(this.riskCoords()));
+  protected readonly riskReadingsVisible = computed(
+    () => new Set(this.riskCoords().map((coord) => coord.made)).size,
+  );
+  protected readonly latestRisk = computed(() => this.riskCoords().at(-1)?.value);
+  // Shaded spans over candles whose reading's window turned out stormier than usual.
+  protected readonly riskBands = computed(() => {
+    const coords = this.riskCoords();
+    const bands: { x: number; width: number }[] = [];
+    const step = coords.length > 1 ? coords[1].x - coords[0].x : WIDTH;
+    for (const coord of coords) {
+      if (!coord.stormier) {
+        continue;
+      }
+      const previous = bands.at(-1);
+      if (previous && Math.abs(previous.x + previous.width - coord.x) < 1e-6) {
+        previous.width += step;
+      } else {
+        bands.push({ x: coord.x, width: step });
+      }
+    }
+    return bands;
+  });
   private readonly smaSeries = computed(() =>
     this.enabledIndicators().includes('sma')
       ? simpleMovingAverage(this.candles(), TECHNICAL_INDICATOR_PERIODS.sma)
