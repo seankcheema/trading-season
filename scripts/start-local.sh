@@ -10,6 +10,9 @@ readonly BROKER_PORT=29092
 readonly TRADE_EVENTS_TOPIC="trade-events"
 readonly PLATFORM_RECORDS_TOPIC="platform-records"
 readonly REQUIRED_JAVA=21
+# Seconds a service may take to open its port. The first start compiles the apps
+# and downloads dependencies.
+readonly STARTUP_TIMEOUT=600
 
 kafka_home="${KAFKA_HOME:-}"
 use_kafka=true
@@ -584,7 +587,11 @@ fi
 # listens on IPv4 only.
 broker_address="127.0.0.1:$BROKER_PORT"
 
-auth_env=(KAFKA_BOOTSTRAP_SERVERS="$broker_address" DB_PASSWORD="$SPRING_DATASOURCE_PASSWORD" DB_HOST="$db_host" DB_PORT="$db_port")
+# One database serves every service, so the Auth Service gets the same role and
+# name the Java services use and this script has just signed in with, whatever
+# an older apps/auth-service/.env says.
+auth_env=(KAFKA_BOOTSTRAP_SERVERS="$broker_address" DB_PASSWORD="$SPRING_DATASOURCE_PASSWORD"
+          DB_HOST="$db_host" DB_PORT="$db_port" DB_USER=trading_season DB_NAME=trading_season)
 java_env=(SPRING_DATASOURCE_PASSWORD="$SPRING_DATASOURCE_PASSWORD"
           SPRING_DATASOURCE_URL="jdbc:postgresql://$db_host:$db_port/trading_season"
           KAFKA_BOOTSTRAP_SERVERS="$broker_address")
@@ -644,6 +651,18 @@ while true; do
             all_ready=false
         fi
     done
+
+    # nest start --watch and similar dev servers outlive the app they supervise,
+    # so a process that is still running is not proof the service came up.
+    if [[ "$announced" == false ]] && ((SECONDS - started_at > STARTUP_TIMEOUT)); then
+        for ((i = 0; i < ${#svc_name[@]}; i++)); do
+            if [[ "${svc_ready[$i]}" != true ]]; then
+                [[ "$show_logs" == true ]] || show_log_tail "$i"
+                printf '[FAIL] %s did not start listening on port %s within %s seconds.\n' "${svc_label[$i]}" "${svc_port[$i]}" "$STARTUP_TIMEOUT" >&2
+            fi
+        done
+        exit 1
+    fi
 
     if [[ "$show_logs" == false ]] && ((tick % 2 == 0)); then
         for ((i = 0; i < ${#svc_name[@]}; i++)); do echo_new_errors "$i"; done
