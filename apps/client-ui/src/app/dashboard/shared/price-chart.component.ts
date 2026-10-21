@@ -231,7 +231,7 @@ interface TooltipPosition {
         #plot
         tabindex="0"
         role="group"
-        class="focus-visible:ring-ring/50 relative min-h-0 rounded-[2px] outline-none focus-visible:ring-2"
+        class="relative min-h-0 rounded-[2px]"
         [class.touch-none]="interactive()"
         [class.touch-pan-y]="!interactive()"
         [attr.aria-label]="ariaLabel()"
@@ -243,8 +243,10 @@ interface TooltipPosition {
         (pointerleave)="onPointerLeave()"
         (dblclick)="resetView()"
         (keydown)="onKeydown($event)"
-        (blur)="hoverIndex.set(null)"
+        (blur)="hoverIndex.set(null); keyboardInspecting.set(false)"
       >
+        <!-- Reads out the point the arrow keys land on; pointer hover stays silent. -->
+        <span class="sr-only" role="status">{{ keyboardAnnouncement() }}</span>
         @if (hovered(); as point) {
           <div
             class="bg-foreground/40 pointer-events-none absolute inset-y-0 w-px"
@@ -805,6 +807,8 @@ export class PriceChartComponent {
   protected readonly HEIGHT = HEIGHT;
   protected readonly viewBox = `0 0 ${WIDTH} ${HEIGHT}`;
   protected readonly hoverIndex = signal<number | null>(null);
+  // True while the arrow keys, rather than the pointer, choose the point being inspected.
+  protected readonly keyboardInspecting = signal(false);
   protected readonly viewStart = signal(0);
   protected readonly viewCount = signal(DEFAULT_VISIBLE_POINTS);
   private dragStart: { x: number; start: number } | null = null;
@@ -1281,6 +1285,22 @@ export class PriceChartComponent {
     });
   });
 
+  // The inspected point in words, for screen readers, while the keyboard inspects the chart.
+  protected readonly keyboardAnnouncement = computed(() => {
+    const index = this.hoverIndex();
+    if (!this.keyboardInspecting() || index === null) {
+      return '';
+    }
+    const point = this.describePoint(index);
+    if (!point) {
+      return '';
+    }
+    const change = `${point.changePercent >= 0 ? '+' : ''}${point.changePercent.toFixed(2)}%`;
+    const volume = point.volumeLabel ? `, volume ${point.volumeLabel}` : '';
+    const ohlc = point.ohlcLabel ? `, ${point.ohlcLabel}` : '';
+    return `${point.timeLabel}: ${point.valueLabel}, ${change}${volume}${ohlc}`;
+  });
+
   protected readonly ariaLabel = computed(() => {
     const points = this.visiblePoints();
     if (!points.length) {
@@ -1345,6 +1365,7 @@ export class PriceChartComponent {
   }
 
   protected onPointerMove(event: PointerEvent, plot: HTMLElement): void {
+    this.keyboardInspecting.set(false);
     const count = this.visiblePoints().length;
     if (!count) {
       return;
@@ -1477,12 +1498,14 @@ export class PriceChartComponent {
     };
     if (event.key in next) {
       event.preventDefault();
+      this.keyboardInspecting.set(true);
       this.hoverIndex.set(next[event.key]);
       return;
     }
     if (event.key === 'Escape' && this.hoverIndex() !== null) {
       // Clear the inspection without also closing an enclosing dialog.
       event.stopPropagation();
+      this.keyboardInspecting.set(false);
       this.hoverIndex.set(null);
     }
   }
