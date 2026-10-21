@@ -1,9 +1,13 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
+import { DOCUMENT } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   afterNextRender,
   computed,
+  inject,
   input,
   output,
   viewChild,
@@ -14,11 +18,12 @@ import { lucideX } from '@ng-icons/lucide';
 let nextDialogId = 0;
 
 // Modal shell for the dashboard's small form dialogs: backdrop, labelled header, close button,
-// Escape to close and initial focus. The form goes in the projected content.
+// Escape to close, initial focus, Tab kept inside the dialog, and focus handed back to the
+// control that opened it on close. The form goes in the projected content.
 @Component({
   selector: 'app-dashboard-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon],
+  imports: [CdkTrapFocus, NgIcon],
   providers: [provideIcons({ lucideX })],
   host: { '(document:keydown.escape)': 'dismiss()' },
   template: `
@@ -28,6 +33,7 @@ let nextDialogId = 0;
     >
       <section
         #dialog
+        cdkTrapFocus
         role="dialog"
         aria-modal="true"
         [attr.aria-labelledby]="titleId"
@@ -36,7 +42,7 @@ let nextDialogId = 0;
         [class]="sizeClass()"
         (click)="$event.stopPropagation()"
       >
-        <header class="border-border flex items-center justify-between gap-4 border-b px-5 py-3">
+        <div class="border-border flex items-center justify-between gap-4 border-b px-5 py-3">
           <h2 [id]="titleId" class="text-sm font-semibold">{{ dialogTitle() }}</h2>
           @if (dismissible()) {
             <button
@@ -48,7 +54,7 @@ let nextDialogId = 0;
               <ng-icon name="lucideX" class="text-[18px]" />
             </button>
           }
-        </header>
+        </div>
         <div class="p-5">
           <ng-content />
         </div>
@@ -81,6 +87,13 @@ let nextDialogId = 0;
           transform: translateY(8px) scale(0.98);
         }
       }
+
+      @media (prefers-reduced-motion: reduce) {
+        .dashboard-dialog-backdrop,
+        .dashboard-dialog {
+          animation: none;
+        }
+      }
     `,
   ],
 })
@@ -103,6 +116,10 @@ export class DashboardDialogComponent {
   protected readonly titleId = `dashboard-dialog-title-${nextDialogId++}`;
 
   constructor() {
+    // The control that opened the dialog: focus goes back to it when the dialog closes, so
+    // keyboard users carry on where they were instead of at the top of the page.
+    const opener = inject(DOCUMENT).activeElement as HTMLElement | null;
+    inject(DestroyRef).onDestroy(() => restoreFocus(opener, this._dialog().nativeElement));
     // Move focus into the dialog so keyboard and screen reader users land on its content.
     afterNextRender(() => this._dialog().nativeElement.focus());
   }
@@ -112,4 +129,16 @@ export class DashboardDialogComponent {
       this.closed.emit();
     }
   }
+}
+
+// Focuses the control a dialog was opened from. An item in a dropdown menu that has since
+// closed cannot take focus, so its menu's button does instead. Focus that has already moved on
+// to something outside the dialog is left where it is.
+export function restoreFocus(opener: HTMLElement | null, dialog: HTMLElement): void {
+  const active = dialog.ownerDocument.activeElement;
+  if (!opener?.isConnected || (active && active !== dialog.ownerDocument.body && !dialog.contains(active))) {
+    return;
+  }
+  const closedMenu = opener.closest('details:not([open])');
+  (closedMenu?.querySelector<HTMLElement>('summary') ?? opener).focus();
 }

@@ -1,3 +1,5 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
+import { DOCUMENT } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   DestroyRef,
@@ -23,11 +25,13 @@ import {
   IDLE_TIMEOUT_OPTIONS,
   SessionTimeoutService,
 } from '../../core/auth/session-timeout.service';
+import { restoreFocus } from '../shared/dashboard-dialog.component';
 
 @Component({
   selector: 'app-settings-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    CdkTrapFocus,
     ReactiveFormsModule,
     NgIcon,
     HlmFieldImports,
@@ -130,6 +134,9 @@ export class SettingsDialogComponent {
     this.idleTimeout.valueChanges
       .pipe(takeUntilDestroyed())
       .subscribe((value) => this._sessionTimeout.setTimeoutMinutes(Number(value)));
+    // Focus returns to the control that opened the dialog when it closes.
+    const opener = inject(DOCUMENT).activeElement as HTMLElement | null;
+    this.destroyRef.onDestroy(() => restoreFocus(opener, this._dialog().nativeElement));
     // Move focus into the dialog so keyboard and screen reader users land on its content.
     afterNextRender(() => this._dialog().nativeElement.focus());
   }

@@ -20,6 +20,58 @@ class HostComponent {
   readonly closed = vi.fn();
 }
 
+@Component({
+  imports: [DashboardDialogComponent],
+  template: `
+    <button type="button" id="opener" (click)="open.set(true)">Open</button>
+    <details id="menu">
+      <summary>Menu</summary>
+      <button type="button" id="menu-item" (click)="open.set(true)">From the menu</button>
+    </details>
+    @if (open()) {
+      <app-dashboard-dialog dialogTitle="Example" (closed)="open.set(false)">
+        <button type="button">Inside</button>
+      </app-dashboard-dialog>
+    }
+  `,
+})
+class FocusHostComponent {
+  readonly open = signal(false);
+}
+
+describe('DashboardDialogComponent focus', () => {
+  async function openFrom(id: string) {
+    const fixture = TestBed.createComponent(FocusHostComponent);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const opener = root.querySelector<HTMLButtonElement>(`#${id}`)!;
+    opener.focus();
+    opener.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    return { fixture, root, opener };
+  }
+
+  it('takes focus, and hands it back to the control that opened it on close', async () => {
+    const { fixture, root, opener } = await openFrom('opener');
+    const dialog = root.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(document.activeElement).toBe(dialog);
+    // The CDK focus trap's sentinels wrap Tab around inside the dialog.
+    expect(dialog.parentElement!.querySelectorAll('.cdk-focus-trap-anchor').length).toBe(2);
+
+    fixture.componentInstance.open.set(false);
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('hands focus to the menu button when the item that opened it has been hidden', async () => {
+    const { fixture, root } = await openFrom('menu-item');
+    fixture.componentInstance.open.set(false);
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(root.querySelector('#menu summary'));
+  });
+});
+
 describe('DashboardDialogComponent', () => {
   function render(dismissible = true) {
     const fixture = TestBed.createComponent(HostComponent);
