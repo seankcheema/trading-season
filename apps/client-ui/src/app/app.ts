@@ -2,6 +2,7 @@ import { HlmToaster } from '@shared/ui-components/toast';
 import { ToastService } from './notifications/toast.service';
 import { Component, inject, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { focusPageOnNavigation } from './core/a11y/route-focus';
 
 @Component({
   imports: [RouterOutlet, HlmToaster],
@@ -12,4 +13,8 @@ import { RouterOutlet } from '@angular/router';
 export class App {
   protected readonly toasts = inject(ToastService);
   protected readonly title = signal('trading-season-app');
+
+  constructor() {
+    focusPageOnNavigation();
+  }
 }
