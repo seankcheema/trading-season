@@ -587,6 +587,8 @@ pipeline {
             }
             post {
                 always {
+                    // Includes synthetic CSV/PDF account statements and the Dua request
+                    // transcript attached by the Client UI integration tests.
                     archiveArtifacts artifacts: 'apps/client-ui/reports/playwright/**/*, apps/reporting-ui/reports/playwright/**/*',
                                       allowEmptyArchive: true
                     // One report per suite. A suite that could not start leaves none,
