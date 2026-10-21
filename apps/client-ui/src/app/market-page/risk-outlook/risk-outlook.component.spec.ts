@@ -183,13 +183,18 @@ describe('RiskOutlookComponent', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     const headline = fixture.nativeElement.querySelector('[data-testid=outlook-headline]');
-    expect(headline.textContent).toContain('Expect bigger price swings');
+    expect(headline.textContent).toContain('Bigger price swings likely');
     expect(
       fixture.nativeElement.querySelector('[data-testid=outlook-direction]').textContent,
-    ).toContain('Up or down');
+    ).toContain('up or down, not a direction');
     expect(
       fixture.nativeElement.querySelector('[data-testid=outlook-basis]').textContent,
-    ).toContain('Based on the Trading Season model, accuracy so far 75%');
+    ).toContain('Right 75% of the time on AAPL so far');
+    // The proof is behind the Details toggle.
+    expect(fixture.nativeElement.querySelector('[data-testid=outlook-details]')).toBeNull();
+    fixture.nativeElement.querySelector('[data-testid=outlook-toggle]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
     expect(
       fixture.nativeElement
         .querySelector('[data-testid=outlook-pattern]')
@@ -216,7 +221,10 @@ describe('RiskOutlookComponent', () => {
     await fixture.whenStable();
     expect(
       fixture.nativeElement.querySelector('[data-testid=outlook-basis]').textContent,
-    ).toContain('Based on the recent pattern, accuracy so far 70%');
+    ).toContain('Right 70% of the time on XOM so far');
+    fixture.nativeElement.querySelector('[data-testid=outlook-toggle]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
     expect(
       fixture.nativeElement
         .querySelector('[data-testid=outlook-model]')
