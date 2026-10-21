@@ -14,7 +14,7 @@
         routerLink="/"
         class="flex h-16 items-center gap-2.5 px-1.5"
         [class]="collapsed() ? 'md:h-auto md:justify-center md:px-0' : ''"
-        aria-label="TradingSeason Reporting home"
+        [attr.aria-label]="collapsed() ? 'TradingSeason Reporting' : null"
       >
         <img src="2b-waves.svg" alt="" class="size-7 shrink-0" />
         <span class="flex flex-col leading-[1.15]" [class]="collapsed() ? 'md:hidden' : ''">

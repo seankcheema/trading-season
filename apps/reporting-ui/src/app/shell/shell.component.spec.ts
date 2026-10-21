@@ -114,7 +114,7 @@ describe('ShellComponent', () => {
       'Orders',
       'Report runs',
     ]);
-    expect(root.querySelector('aside a[aria-label="TradingSeason Reporting home"] > span')!.className).toContain(
+    expect(root.querySelector('aside a[aria-label="TradingSeason Reporting"] > span')!.className).toContain(
       'md:hidden',
     );
     expect(root.querySelector('button[aria-label="Log out"]')).not.toBeNull();
