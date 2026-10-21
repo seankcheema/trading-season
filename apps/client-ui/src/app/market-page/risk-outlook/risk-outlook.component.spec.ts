@@ -183,19 +183,22 @@ describe('RiskOutlookComponent', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     const headline = fixture.nativeElement.querySelector('[data-testid=outlook-headline]');
-    expect(headline.textContent).toContain('Stormier than usual');
+    expect(headline.textContent).toContain('Expect bigger price swings');
     expect(
       fixture.nativeElement.querySelector('[data-testid=outlook-basis]').textContent,
-    ).toContain('Headline from the platform model');
+    ).toContain('Based on the Trading Season model, accuracy so far 75%');
     expect(
       fixture.nativeElement
         .querySelector('[data-testid=outlook-pattern]')
         .textContent.replace(/\s+/g, ' '),
-    ).toContain('calmer next week like last · right 12 of 20');
+    ).toContain('Smaller swings Accuracy so far 60% (12 of 20 weeks)');
     expect(
       fixture.nativeElement.querySelector('[data-testid=outlook-model]').textContent,
-    ).toContain('shown');
+    ).toContain('leads');
     expect(fixture.nativeElement.textContent).toContain('never a recommendation');
+    expect(
+      fixture.nativeElement.querySelector('[data-testid=outlook-meter]').textContent,
+    ).toContain('Model estimate: 62% chance of bigger swings');
     expect(
       fixture.nativeElement.querySelector('[data-testid=outlook-recent]').textContent,
     ).toContain('No week has closed yet');
@@ -210,15 +213,15 @@ describe('RiskOutlookComponent', () => {
     await fixture.whenStable();
     expect(
       fixture.nativeElement.querySelector('[data-testid=outlook-basis]').textContent,
-    ).toContain('Headline from the recent pattern');
+    ).toContain('Based on the recent pattern, accuracy so far 70%');
     expect(
       fixture.nativeElement
         .querySelector('[data-testid=outlook-model]')
         .textContent.replace(/\s+/g, ' '),
-    ).toContain('calmer 62% chance of stormier · right 10 of 20');
+    ).toContain('Smaller swings Accuracy so far 50% (10 of 20 weeks)');
     expect(
       fixture.nativeElement.querySelector('[data-testid=outlook-pattern]').textContent,
-    ).toContain('shown');
+    ).toContain('leads');
     fixture.componentInstance.at.set('2026-06-01T15:00:00Z');
     fixture.detectChanges();
     await fixture.whenStable();

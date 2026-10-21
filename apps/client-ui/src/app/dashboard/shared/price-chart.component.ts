@@ -540,16 +540,16 @@ interface TooltipPosition {
     @if (riskEnabled()) {
       <section
         class="rsi-pane risk-pane"
-        aria-label="Model risk: chance the next 5 trading days are stormier than usual"
+        aria-label="Volatility outlook: the model's chance of bigger price swings over the next 5 trading days"
         data-testid="risk-pane"
       >
         <div class="rsi-header">
-          <span>Model risk · next 5 days stormier than usual</span>
+          <span>Volatility outlook · chance of bigger swings next 5 days</span>
           @if (latestRisk() !== undefined) {
             <strong class="risk-value">{{ latestRisk() | number: '1.0-0' }}%</strong>
           }
           @if (riskBands().length) {
-            <em class="risk-key">shaded: turned out stormier</em>
+            <em class="risk-key">shaded: weeks that had bigger swings</em>
           }
         </div>
         <div class="rsi-grid">

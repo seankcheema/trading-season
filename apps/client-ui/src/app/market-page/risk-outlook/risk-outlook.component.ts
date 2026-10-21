@@ -1,14 +1,16 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input } from '@angular/core';
 import { DatePipe, PercentPipe } from '@angular/common';
 import { PlatformSignalsService } from './platform-signals.service';
-import { MIN_RECORD_DAYS, Reading, readingFor, recordLabel } from './platform-signals';
+import { Call, MIN_RECORD_DAYS, Reading, readingFor } from './platform-signals';
 
 /**
- * The week-ahead risk card for one instrument: will the next trading days be
- * more volatile than usual for this stock? It reads the platform signal file
- * and shows the model's call only where the model's own track record on this
- * stock beats the rule "next week like last week"; otherwise it shows the
- * rule's call and says so. It never recommends a trade.
+ * The week-ahead volatility card for one instrument, in a user's words: should
+ * they expect bigger or smaller price swings over the next trading days than
+ * this stock's recent normal? It reads the platform signal file and gives the
+ * headline to the model only where the model's own track record on this stock
+ * beats the rule "next week like last week"; otherwise the rule's read leads and
+ * the model's sits beside it. It is about how much the price may move, never
+ * which way, and never a recommendation.
  */
 @Component({
   selector: 'app-risk-outlook',
@@ -18,7 +20,7 @@ import { MIN_RECORD_DAYS, Reading, readingFor, recordLabel } from './platform-si
   template: `
     @switch (store.status()) {
       @case ('error') {
-        <p class="text-loss text-xs" role="alert">Risk outlook unavailable.</p>
+        <p class="text-loss text-xs" role="alert">Volatility outlook unavailable.</p>
         <button type="button" class="text-primary mt-2 text-xs" (click)="store.load().subscribe()">
           Retry outlook
         </button>
@@ -38,50 +40,77 @@ import { MIN_RECORD_DAYS, Reading, readingFor, recordLabel } from './platform-si
               </p>
             }
             @case ('ready') {
-              <div class="outlook-card outlook-headline" data-testid="outlook-headline">
-                <p class="text-muted-foreground text-xs">Next {{ horizon() }} trading days</p>
-                <p
-                  class="text-lg font-semibold"
-                  [class.text-loss]="r.call === 'stormier'"
-                  [class.text-gain]="r.call === 'calmer'"
-                >
-                  {{ r.call === 'stormier' ? 'Stormier' : 'Calmer' }} than usual
+              <section
+                class="headline"
+                [class.headline-bigger]="r.call === 'stormier'"
+                [class.headline-smaller]="r.call === 'calmer'"
+                data-testid="outlook-headline"
+              >
+                <p class="headline-kicker">Next {{ horizon() }} trading days · {{ symbol() }}</p>
+                <h3 class="headline-title">Expect {{ swings(r.call) }} price swings</h3>
+                <p class="headline-detail">
+                  Daily moves are likely to be
+                  {{ r.call === 'stormier' ? 'larger' : 'smaller' }} than this stock's recent normal
+                  of about {{ r.usualVolatility | percent: '1.1-1' }} a day. The last
+                  {{ horizon() }} days averaged {{ r.recentVolatility | percent: '1.1-1' }}.
                 </p>
-                <p class="text-muted-foreground text-xs" data-testid="outlook-basis">
+                <p class="headline-source" data-testid="outlook-basis">
                   @if (r.source === 'model') {
-                    Headline from the platform model: its record on {{ symbol() }} beats the recent
-                    pattern.
+                    Based on the Trading Season model, accuracy so far
+                    {{ accuracy(r.modelHits, r.modelDays) | percent: '1.0-0' }} on {{ symbol() }}.
                   } @else {
-                    Headline from the recent pattern: the platform model has not beaten it on
-                    {{ symbol() }} yet.
+                    Based on the recent pattern, accuracy so far
+                    {{ accuracy(r.ruleHits, r.ruleDays) | percent: '1.0-0' }} on {{ symbol() }}.
                   }
                 </p>
-              </div>
-              <dl class="outlook-grid mt-2">
+              </section>
+
+              <section class="meter-block" aria-label="Model estimate" data-testid="outlook-meter">
+                <div class="meter-labels">
+                  <span>Smaller swings</span>
+                  <span>Bigger swings</span>
+                </div>
+                <div class="meter" role="img" [attr.aria-label]="meterLabel(r.probability)">
+                  <span class="meter-midline" aria-hidden="true"></span>
+                  <span
+                    class="meter-marker"
+                    aria-hidden="true"
+                    [style.left.%]="r.probability * 100"
+                  ></span>
+                </div>
+                <p class="meter-caption">
+                  Model estimate: {{ r.probability | percent: '1.0-0' }} chance of bigger swings
+                </p>
+              </section>
+
+              <dl class="outlook-grid mt-3">
                 <div
                   class="outlook-card read-tile"
                   [class.read-tile-shown]="r.source === 'model'"
                   data-testid="outlook-model"
                 >
-                  <dt class="text-muted-foreground text-xs">
-                    Platform model
+                  <dt class="tile-label">
+                    Trading Season model
                     @if (r.source === 'model') {
-                      <span class="read-badge">shown</span>
+                      <span class="read-badge">leads</span>
                     }
                   </dt>
                   <dd
-                    class="text-base font-semibold capitalize"
+                    class="tile-call"
                     [class.text-loss]="r.modelCall === 'stormier'"
                     [class.text-gain]="r.modelCall === 'calmer'"
                   >
-                    {{ r.modelCall }}
+                    {{ label(r.modelCall) }}
                   </dd>
-                  <dd class="text-muted-foreground text-xs">
-                    {{ r.probability | percent: '1.0-0' }} chance of stormier
+                  <dd class="tile-note">
                     @if (r.modelDays >= minRecord) {
-                      · right {{ recordLabel(r.modelHits, r.modelDays) }}
+                      Accuracy so far
+                      {{ accuracy(r.modelHits, r.modelDays) | percent: '1.0-0' }} ({{
+                        r.modelHits
+                      }}
+                      of {{ r.modelDays }} weeks)
                     } @else {
-                      · {{ r.modelDays }} of {{ minRecord }} weeks of record
+                      Still learning: {{ r.modelDays }} of {{ minRecord }} weeks of record
                     }
                   </dd>
                 </div>
@@ -90,56 +119,49 @@ import { MIN_RECORD_DAYS, Reading, readingFor, recordLabel } from './platform-si
                   [class.read-tile-shown]="r.source === 'rule'"
                   data-testid="outlook-pattern"
                 >
-                  <dt class="text-muted-foreground text-xs">
+                  <dt class="tile-label">
                     Recent pattern
                     @if (r.source === 'rule') {
-                      <span class="read-badge">shown</span>
+                      <span class="read-badge">leads</span>
                     }
                   </dt>
                   <dd
-                    class="text-base font-semibold capitalize"
+                    class="tile-call"
                     [class.text-loss]="r.ruleCall === 'stormier'"
                     [class.text-gain]="r.ruleCall === 'calmer'"
                   >
-                    {{ r.ruleCall }}
+                    {{ label(r.ruleCall) }}
                   </dd>
-                  <dd class="text-muted-foreground text-xs">
-                    next week like last · right {{ recordLabel(r.ruleHits, r.ruleDays) }}
-                  </dd>
-                </div>
-              </dl>
-              <dl class="outlook-grid mt-2">
-                <div class="outlook-card metric-tile">
-                  <dt class="text-muted-foreground text-xs">Usual daily move</dt>
-                  <dd class="text-base font-semibold tabular-nums">
-                    {{ r.usualVolatility | percent: '1.1-1' }}
-                  </dd>
-                </div>
-                <div class="outlook-card metric-tile">
-                  <dt class="text-muted-foreground text-xs">Last {{ horizon() }} days</dt>
-                  <dd class="text-base font-semibold tabular-nums">
-                    {{ r.recentVolatility | percent: '1.1-1' }}
+                  <dd class="tile-note">
+                    Accuracy so far {{ accuracy(r.ruleHits, r.ruleDays) | percent: '1.0-0' }} ({{
+                      r.ruleHits
+                    }}
+                    of {{ r.ruleDays }} weeks)
                   </dd>
                 </div>
               </dl>
-              <p class="text-muted-foreground mt-2 text-xs">As of the {{ r.asOf }} close.</p>
+              <p class="text-muted-foreground mt-2 text-xs">
+                Whichever has the better record on {{ symbol() }} leads. As of the
+                {{ r.asOf }} close.
+              </p>
+
               <section class="mt-3" aria-label="Recent reads" data-testid="outlook-recent">
-                <h3 class="text-muted-foreground text-xs font-medium">
-                  Recent reads, once their week had closed
-                </h3>
+                <h4 class="text-muted-foreground text-xs font-medium">
+                  Recent reads and how they turned out
+                </h4>
                 @if (r.recent.length) {
-                  <ul class="mt-1 divide-y divide-border text-xs">
+                  <ul class="divide-border mt-1 divide-y text-xs">
                     @for (read of r.recent; track read.date) {
                       <li
                         class="flex items-center justify-between gap-2 py-1"
                         data-testid="outlook-read"
                       >
-                        <span class="text-muted-foreground tabular-nums">{{
-                          read.date | date: 'MMM d'
-                        }}</span>
-                        <span class="min-w-0 flex-1 truncate capitalize">
-                          {{ read.call }}
-                          <span class="text-muted-foreground normal-case">
+                        <span class="text-muted-foreground tabular-nums">
+                          {{ read.date | date: 'MMM d' }}
+                        </span>
+                        <span class="min-w-0 flex-1 truncate">
+                          {{ label(read.call) }}
+                          <span class="text-muted-foreground">
                             ({{ read.source === 'model' ? 'model' : 'pattern' }})
                           </span>
                         </span>
@@ -148,7 +170,7 @@ import { MIN_RECORD_DAYS, Reading, readingFor, recordLabel } from './platform-si
                           [class.text-gain]="read.hit"
                           [class.text-loss]="!read.hit"
                         >
-                          {{ read.hit ? 'came true' : 'did not' }}
+                          {{ read.hit ? 'Correct' : 'Missed' }}
                         </span>
                       </li>
                     }
@@ -160,23 +182,23 @@ import { MIN_RECORD_DAYS, Reading, readingFor, recordLabel } from './platform-si
                 }
               </section>
               <p class="text-muted-foreground mt-auto pt-3 text-xs">
-                A read on how much this stock may move, not on which way. Simulated market; this is
-                never a recommendation to buy or sell.
+                This is about how much the price may move, not which way. Simulated market; never a
+                recommendation to buy or sell.
               </p>
             }
           }
         }
       }
       @default {
-        <span class="sr-only" role="status">Loading risk outlook…</span>
+        <span class="sr-only" role="status">Loading volatility outlook…</span>
         <div class="outlook-card" aria-hidden="true">
           <span class="skeleton h-3 w-28"></span>
-          <span class="skeleton mt-1.5 h-6 w-40"></span>
+          <span class="skeleton mt-1.5 h-7 w-48"></span>
           <span class="skeleton mt-1.5 h-3 w-full"></span>
         </div>
-        <div class="outlook-grid mt-2" aria-hidden="true">
-          <span class="skeleton h-14 w-full"></span>
-          <span class="skeleton h-14 w-full"></span>
+        <div class="outlook-grid mt-3" aria-hidden="true">
+          <span class="skeleton h-16 w-full"></span>
+          <span class="skeleton h-16 w-full"></span>
         </div>
       }
     }
@@ -199,8 +221,91 @@ import { MIN_RECORD_DAYS, Reading, readingFor, recordLabel } from './platform-si
       background: color-mix(in srgb, var(--foreground) 1.8%, transparent);
       padding: 0.45rem 0.65rem;
     }
-    .outlook-headline {
-      padding: 0.6rem 0.75rem;
+    .headline {
+      display: grid;
+      gap: 0.3rem;
+      border: 1px solid var(--border);
+      border-radius: 0.7rem;
+      padding: 0.8rem 0.9rem;
+    }
+    .headline-bigger {
+      border-color: color-mix(in srgb, var(--color-loss) 45%, var(--border));
+      background: color-mix(in srgb, var(--color-loss) 12%, transparent);
+    }
+    .headline-smaller {
+      border-color: color-mix(in srgb, var(--color-gain) 45%, var(--border));
+      background: color-mix(in srgb, var(--color-gain) 12%, transparent);
+    }
+    .headline-kicker {
+      color: var(--muted-foreground);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .headline-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .headline-bigger .headline-title {
+      color: var(--color-loss);
+    }
+    .headline-smaller .headline-title {
+      color: var(--color-gain);
+    }
+    .headline-detail {
+      font-size: 0.8125rem;
+      line-height: 1.35;
+    }
+    .headline-source {
+      color: var(--muted-foreground);
+      font-size: 0.75rem;
+    }
+    .meter-block {
+      margin-top: 0.75rem;
+    }
+    .meter-labels {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted-foreground);
+      font-size: 0.6875rem;
+    }
+    .meter {
+      position: relative;
+      margin-top: 0.25rem;
+      height: 0.5rem;
+      border-radius: 999px;
+      background: linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--color-gain) 55%, transparent),
+        color-mix(in srgb, var(--muted-foreground) 30%, transparent) 50%,
+        color-mix(in srgb, var(--color-loss) 55%, transparent)
+      );
+    }
+    .meter-midline {
+      position: absolute;
+      top: -0.2rem;
+      bottom: -0.2rem;
+      left: 50%;
+      width: 1px;
+      background: color-mix(in srgb, var(--foreground) 40%, transparent);
+    }
+    .meter-marker {
+      position: absolute;
+      top: 50%;
+      width: 0.9rem;
+      height: 0.9rem;
+      border: 2px solid var(--background);
+      border-radius: 999px;
+      background: var(--foreground);
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 30%, transparent);
+      transform: translate(-50%, -50%);
+    }
+    .meter-caption {
+      margin-top: 0.35rem;
+      font-size: 0.75rem;
+      font-weight: 600;
     }
     .outlook-grid {
       display: grid;
@@ -208,15 +313,25 @@ import { MIN_RECORD_DAYS, Reading, readingFor, recordLabel } from './platform-si
       align-items: stretch;
       gap: 0.4rem;
     }
-    .metric-tile dd {
-      overflow-wrap: anywhere;
-    }
     .read-tile {
       gap: 0.1rem;
     }
     .read-tile-shown {
       border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
       background: color-mix(in srgb, var(--primary) 5%, transparent);
+    }
+    .tile-label {
+      color: var(--muted-foreground);
+      font-size: 0.6875rem;
+    }
+    .tile-call {
+      font-size: 1rem;
+      font-weight: 700;
+    }
+    .tile-note {
+      color: var(--muted-foreground);
+      font-size: 0.6875rem;
+      overflow-wrap: anywhere;
     }
     .read-badge {
       margin-left: 0.3rem;
@@ -233,7 +348,6 @@ export class RiskOutlookComponent {
   readonly symbol = input.required<string>();
   readonly marketTimestamp = input.required<string>();
   protected readonly store = inject(PlatformSignalsService);
-  protected readonly recordLabel = recordLabel;
   protected readonly minRecord = MIN_RECORD_DAYS;
   protected readonly horizon = computed(() => this.store.signals()?.horizonDays ?? 5);
   protected readonly reading = computed<Reading | null>(() => {
@@ -248,5 +362,22 @@ export class RiskOutlookComponent {
         this.store.load().subscribe({ error: () => undefined });
       }
     });
+  }
+
+  /** "bigger" or "smaller", the user's words for the two calls. */
+  protected swings(call: Call): 'bigger' | 'smaller' {
+    return call === 'stormier' ? 'bigger' : 'smaller';
+  }
+
+  protected label(call: Call): string {
+    return call === 'stormier' ? 'Bigger swings' : 'Smaller swings';
+  }
+
+  protected accuracy(hits: number, days: number): number {
+    return days ? hits / days : 0;
+  }
+
+  protected meterLabel(probability: number): string {
+    return `Model estimate: ${Math.round(probability * 100)} percent chance of bigger swings`;
   }
 }

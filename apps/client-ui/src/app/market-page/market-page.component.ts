@@ -577,7 +577,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       detail: ' · 2σ',
     },
     { value: 'rsi', label: 'RSI', period: TECHNICAL_INDICATOR_PERIODS.rsi, detail: '' },
-    { value: 'risk', label: 'Model risk', period: TECHNICAL_INDICATOR_PERIODS.risk, detail: '-day' },
+    { value: 'risk', label: 'Volatility outlook', period: TECHNICAL_INDICATOR_PERIODS.risk, detail: '-day' },
   ] as const satisfies readonly {
     value: TechnicalIndicator;
     label: string;
