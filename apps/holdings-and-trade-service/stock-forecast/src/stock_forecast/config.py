@@ -136,6 +136,7 @@ PLATFORM_HORIZON_CSV = REPORTS_DIR / "platform_horizon.csv"
 # The platform risk signal the client UI reads (export-platform-signals.py): the horizon
 # the platform-trained LSTM scores, and where the document goes.
 PLATFORM_SIGNAL_HORIZON = 5
+PLATFORM_SIGNAL_FIRST_MONTH = "2026-07"  # monthly retraining scores from here; earlier months are its history
 PLATFORM_SIGNALS_JSON = REPO_ROOT / "apps" / "client-ui" / "public" / "forecast" / "platform-signals.json"
 PLATFORM_SIGNALS_SUMMARY_CSV = REPORTS_DIR / "platform_signals_summary.csv"
 SYMBOL_COMPARISON_CSV = REPORTS_DIR / "symbol_comparison.csv"

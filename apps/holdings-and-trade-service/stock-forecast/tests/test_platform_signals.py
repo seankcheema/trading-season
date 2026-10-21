@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 
 from stock_forecast.platform_horizon import horizon_daily
-from stock_forecast.platform_signals import (DAY_FIELDS, build_signals, summarise_signals, symbol_days, validate_signals,
-                                             write_signals)
+from stock_forecast.platform_signals import (DAY_FIELDS, build_signals, monthly_platform_probabilities,
+                                             summarise_signals, symbol_days, validate_signals, write_signals)
 from tests.test_platform_horizon import platform_like
 
 H = 5
@@ -91,6 +91,28 @@ class DocumentTests(unittest.TestCase):
         last = self.document["symbols"]["AAPL"]["days"][-1]
         self.assertEqual(table.loc["AAPL", "days_scored"], last["modelDays"])
         self.assertAlmostEqual(table.loc["AAPL", "model_accuracy"], last["modelHits"] / last["modelDays"])
+
+
+
+
+class MonthlyRetrainingTests(unittest.TestCase):
+    def test_each_month_is_scored_by_a_model_that_stopped_on_the_month_before(self):
+        data = platform_like()
+        calls = []
+
+        def fake_trainer(datasets, horizon, train_end, val_end, verbose):
+            calls.append((train_end, val_end))
+            return {symbol: pd.Series(0.5, index=d.loc[val_end:].index[1:]) for symbol, d in datasets.items()}
+
+        probs = monthly_platform_probabilities({"AAPL": data, "MSFT": data}, H, first_month="2026-07",
+                                               trainer=fake_trainer)
+        self.assertEqual(calls[0], ("2026-05-31", "2026-06-30"))
+        self.assertEqual(calls[1], ("2026-06-30", "2026-07-31"))
+        self.assertEqual(len(calls), 6)  # July to December
+        series = probs["AAPL"]
+        self.assertEqual(series.index.min().strftime("%Y-%m"), "2026-07")
+        self.assertEqual(series.index.max().strftime("%Y-%m"), "2026-12")
+        self.assertTrue(series.index.is_monotonic_increasing and series.index.is_unique)
 
 
 if __name__ == "__main__":

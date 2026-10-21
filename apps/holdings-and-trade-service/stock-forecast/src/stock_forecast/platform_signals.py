@@ -23,6 +23,7 @@ from typing import Callable
 import pandas as pd
 
 from . import config
+from .platform_calibration import _progress
 from .platform_demo import load_platform_prices, platform_dataset
 from .platform_horizon import horizon_daily, platform_horizon_lstm
 
@@ -140,14 +141,60 @@ def summarise_signals(document: dict) -> pd.DataFrame:
     return table
 
 
+Trainer = Callable[..., dict[str, pd.Series]]
+
+
+def monthly_platform_probabilities(
+    datasets: dict[str, pd.DataFrame],
+    horizon: int = config.PLATFORM_SIGNAL_HORIZON,
+    first_month: str = config.PLATFORM_SIGNAL_FIRST_MONTH,
+    trainer: Trainer = platform_horizon_lstm,
+    verbose: int = 2,
+) -> dict[str, pd.Series]:
+    """Retrain every month: fit on the days before the previous month, stop on it, score the month itself.
+
+    Each month's model has seen one more month of this market than the last,
+    the way a production model would be refreshed. The first scored month is
+    first_month; the last is the last month the datasets cover.
+    """
+    index = next(iter(datasets.values())).index
+    months = [m for m in index.to_period("M").unique() if str(m) >= first_month]
+    parts: dict[str, list[pd.Series]] = {symbol: [] for symbol in datasets}
+    for month in months:
+        start = month.to_timestamp()
+        val_end = (start - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+        train_end = ((month - 1).to_timestamp() - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+        _progress(f"[all symbols] {month}: training on days to {train_end}, stopping on days to {val_end}")
+        scored = trainer(datasets, horizon, train_end=train_end, val_end=val_end, verbose=verbose)
+        end = (month + 1).to_timestamp() - pd.Timedelta(days=1)
+        for symbol, series in scored.items():
+            parts[symbol].append(series.loc[start:end])
+    return {symbol: pd.concat(series_list) for symbol, series_list in parts.items()}
+
+
 def export_signals(
     horizon: int = config.PLATFORM_SIGNAL_HORIZON,
     load: Callable[[], dict[str, pd.DataFrame]] = load_platform_prices,
     verbose: int = 2,
+    retrain: str = "once",
 ) -> tuple[dict, Path]:
-    """Train the platform model, build the document and write it; returns both."""
+    """Train the platform model, build the document and write it; returns both.
+
+    retrain "once" trains a single model on the days to PLATFORM_LSTM_TRAIN_END;
+    "monthly" refreshes it every month (monthly_platform_probabilities).
+    """
+    if retrain not in ("once", "monthly"):
+        raise ValueError(f"retrain must be once or monthly, got {retrain}")
     prices = load()
     datasets = {symbol: platform_dataset(prices, symbol) for symbol in sorted(prices)}
-    probabilities = platform_horizon_lstm(datasets, horizon, verbose=verbose)
+    if retrain == "monthly":
+        probabilities = monthly_platform_probabilities(datasets, horizon, verbose=verbose)
+    else:
+        probabilities = platform_horizon_lstm(datasets, horizon, verbose=verbose)
     document = build_signals(datasets, probabilities, horizon)
+    if retrain == "monthly":
+        document["model"] = (
+            f"LSTM trained on the platform's market, every symbol pooled, refreshed every month from "
+            f"{config.PLATFORM_SIGNAL_FIRST_MONTH}: each month is scored by a model fit on the days before the "
+            f"previous month and early-stopped on it")
     return document, write_signals(document)
