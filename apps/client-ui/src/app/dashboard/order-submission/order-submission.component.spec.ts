@@ -98,6 +98,16 @@ describe('OrderSubmissionComponent', () => {
     expect(component['cashAfter']()).toBeCloseTo(9366.82);
   });
 
+  it('should deduct the limit a buy reserves from cash after', () => {
+    const fixture = setup();
+    const component = fixture.componentInstance;
+    component.execution()!.executionType.set('LIMIT');
+    component.execution()!.limitPrice.set(320);
+    component['shares'].set(2);
+    expect(component['orderValue']()).toBeCloseTo(633.18);
+    expect(component['cashAfter']()).toBeCloseTo(9360);
+  });
+
   it.each(['2026-01-06T17:00:00Z', '2026-01-05T16:00:00Z', 'invalid'])(
     'uses the selected replay timestamp %s at submission with a real-time fallback',
     (timestamp) => {

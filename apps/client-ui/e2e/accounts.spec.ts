@@ -397,9 +397,13 @@ test.describe('rewinding executed trades', () => {
       ['2026-01-05T09:30', 1, '$451.60', '$1,251.60'],
       ['2026-01-05T09:29', 0, '$0.00', '$1,000.00'],
     ] as const) {
-      await page.getByTestId('market-clock-dropdown').locator('summary').click();
-      await page.getByLabel('Simulated time', { exact: true }).fill(time);
-      await page.getByRole('button', { name: 'Apply time', exact: true }).click();
+      // The simulated time is set from Settings > Market clock.
+      await page.getByLabel('Open profile menu').click();
+      await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+      const settings = page.getByRole('dialog', { name: 'Settings' });
+      await settings.getByLabel('Simulated time', { exact: true }).fill(time);
+      await settings.getByRole('button', { name: 'Apply time', exact: true }).click();
+      await page.keyboard.press('Escape');
       await expect(activity.locator('[data-kind="trade"]')).toHaveCount(count);
       await expect(dashboardPage.portfolioValue).toHaveText(portfolio);
       await expect(dashboardPage.netWorth).toHaveText(worth);

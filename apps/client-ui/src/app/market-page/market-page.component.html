@@ -15,12 +15,7 @@
         />
       </div>
       <div class="market-header-controls flex flex-wrap items-center justify-end gap-2">
-        <app-market-clock-control
-          data-testid="market-clock-dropdown"
-          [open]="openHeaderDropdown() === 'market-clock'"
-          (openChange)="openHeaderDropdown.set($event ? 'market-clock' : null)"
-          (snapshotApplied)="onClockSnapshot($event)"
-        />
+        <app-market-clock-control data-testid="market-clock" />
         <app-account-control
           data-testid="account-dropdown"
           [store]="accountStore"
@@ -786,7 +781,7 @@
 </main>
 
 @if (settingsOpen()) {
-  <app-settings-dialog (closed)="settingsOpen.set(false)" />
+  <app-settings-dialog (closed)="settingsOpen.set(false)" (clockApplied)="onClockSnapshot($event)" />
 }
 
 @if (accountDialog(); as dialog) {

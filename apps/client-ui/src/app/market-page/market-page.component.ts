@@ -191,7 +191,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly openHeaderDropdown = signal<
-    'account' | 'market-clock' | 'profile' | 'notifications' | null
+    'account' | 'profile' | 'notifications' | null
   >(null);
   protected readonly profileInitials = this.accountStore.initials;
   protected readonly settingsOpen = signal(false);
@@ -298,7 +298,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly availableCash = computed(() => {
     const draft = this.tradeTicket()?.draft();
     return draft?.side === 'buy'
-      ? Math.max(0, this.cashBalance() - draft.estimatedValue)
+      ? Math.max(0, this.cashBalance() - (draft.reservationPrice ? draft.quantity * draft.reservationPrice : draft.estimatedValue))
       : this.cashBalance();
   });
   protected readonly heldShares = computed(() =>
@@ -846,7 +846,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
 
     if (!(
       target instanceof Element &&
-      target.closest('app-dashboard-header-dropdown, app-market-clock-control, app-account-control')
+      target.closest('app-dashboard-header-dropdown, app-account-control')
     )) {
       this.openHeaderDropdown.set(null);
     }

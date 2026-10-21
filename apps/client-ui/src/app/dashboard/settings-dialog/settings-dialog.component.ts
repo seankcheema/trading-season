@@ -12,6 +12,8 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ExecutionSettingsService } from './execution-settings.service';
+import { MarketClockFormComponent } from '../shared/market-clock-form.component';
+import { MarketSnapshot } from '../market-data.service';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideX } from '@ng-icons/lucide';
 import { HlmFieldImports } from '@shared/ui-components/field';
@@ -34,6 +36,7 @@ import {
     HlmNativeSelectImports,
     HlmButtonImports,
     HlmSeparatorImports,
+    MarketClockFormComponent,
   ],
   providers: [provideIcons({ lucideX })],
   host: { '(document:keydown.escape)': 'closed.emit()' },
@@ -46,6 +49,8 @@ export class SettingsDialogComponent {
 
   private readonly settings = inject(ExecutionSettingsService);
   readonly closed = output<void>();
+  // A new simulated time from the Market clock section; the opening page reloads from it.
+  readonly clockApplied = output<MarketSnapshot>();
   protected readonly loading = signal(true);
   protected readonly saving = signal(false);
   protected readonly saved = signal(false);

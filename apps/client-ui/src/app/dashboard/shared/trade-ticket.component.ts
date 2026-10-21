@@ -198,9 +198,11 @@ export class TradeTicketComponent {
       ? affordableShares(this.cashBalance(), this.execution()?.reservationPriceFor(this.price()) ?? this.price())
       : wholeShares(this.heldShares()),
   );
+  // A buy holds back what the server reserves (the limit, or the price plus the execution
+  // buffer), so cash after shows that rather than the estimate at the shown price (BR-13).
   protected readonly cashAfter = computed(() =>
     this.side() === 'buy'
-      ? this.cashBalance() - this.quantity() * this.price()
+      ? this.cashBalance() - this.quantity() * (this.execution()?.reservationPriceFor(this.price()) ?? this.price())
       : this.cashBalance() + this.quantity() * this.price(),
   );
   readonly draft = computed<TradeTicketDraft>(() => ({

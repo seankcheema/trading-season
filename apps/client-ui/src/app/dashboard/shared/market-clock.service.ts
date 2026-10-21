@@ -61,6 +61,16 @@ export class MarketClockService {
       day: 'numeric',
     })}`;
   });
+  // Regular hours are 08:30 to 15:00 CT; after the close the simulated clock keeps running with
+  // prices held until midnight. No timestamp yet reads as open, so nothing is flagged early.
+  readonly marketOpen = computed(() => {
+    const timestamp = this.currentMarketTimestamp();
+    if (!timestamp) {
+      return true;
+    }
+    const time = this.isoToMarketLocal(timestamp).slice(11);
+    return time >= '08:30' && time < '15:00';
+  });
   readonly marketDateTimeMin = computed(() => {
     const calendar = this.marketCalendar();
     return this.isoToMarketLocal(calendar.firstTimestamp);

@@ -1,72 +1,37 @@
-import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
-import { provideIcons } from '@ng-icons/core';
-import { lucideCalendarClock, lucideChevronDown } from '@ng-icons/lucide';
-import { DashboardHeaderDropdownComponent } from './dashboard-header-dropdown.component';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideCalendarClock } from '@ng-icons/lucide';
 import { MarketClockService } from './market-clock.service';
-import { MarketSnapshot } from '../market-data.service';
+
+// The simulated market time shown in a page header, read-only. The time is changed from
+// Settings > Market clock (MarketClockFormComponent); after the 15:00 close the clock keeps
+// running with prices held, and the header marks the market closed.
 @Component({
   selector: 'app-market-clock-control',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'block w-60 min-w-0 max-w-full' },
-  imports: [DashboardHeaderDropdownComponent],
-  providers: [provideIcons({ lucideCalendarClock, lucideChevronDown })],
+  imports: [NgIcon],
+  providers: [provideIcons({ lucideCalendarClock })],
   template: `
-    <app-dashboard-header-dropdown
-      class="block"
-      [triggerClass]="triggerClass()"
-      iconName="lucideCalendarClock"
-      [label]="clock.marketClockLabel()"
-      ariaLabel="Change simulated market time"
-      [open]="open()"
-      (openChange)="openChange.emit($event)"
-      containerClass="w-full"
-      panelClass="w-full p-3"
+    <div
+      class="border-border bg-card flex h-9 w-full min-w-0 items-center gap-2 rounded-lg border px-3 text-sm"
+      role="status"
+      aria-label="Simulated market time"
     >
-      <p class="text-sm font-medium tabular-nums">{{ clock.marketClockLabel() }}</p>
-      <p class="text-muted-foreground mt-1 text-xs">
-        Range: {{ clock.marketClockShortRangeLabel() }}
-      </p>
-      <label for="market-date-time" class="text-muted-foreground mt-3 block text-xs"
-        >Simulated time</label
-      >
-      <input
-        #marketDateTimeInput
-        id="market-date-time"
-        type="datetime-local"
-        class="border-border bg-background mt-2 h-9 w-full rounded-lg border px-3 text-sm"
-        [value]="clock.marketDateTime()"
-        [attr.min]="clock.marketDateTimeMin()"
-        [attr.max]="clock.marketDateTimeMax()"
-        (input)="clock.marketDateTime.set($any($event.target).value)"
-        (change)="clock.marketDateTime.set($any($event.target).value)"
-      />
-      @if (clock.clockError()) {
-        <p class="text-loss mt-2 text-xs">{{ clock.clockError() }}</p>
+      <ng-icon name="lucideCalendarClock" class="shrink-0 text-[16px]" />
+      <span class="min-w-0 flex-1 truncate text-left leading-tight tabular-nums">{{
+        clock.marketClockLabel()
+      }}</span>
+      @if (!clock.marketOpen()) {
+        <span
+          class="bg-muted text-muted-foreground shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
+          data-testid="market-closed"
+          >Closed</span
+        >
       }
-      <button
-        type="button"
-        class="bg-primary text-primary-foreground mt-3 h-9 w-full rounded-lg text-sm font-medium disabled:opacity-50"
-        [disabled]="
-          clock.clockUpdating() || !clock.marketDateTime() || clock.marketSessionId() === null
-        "
-        (click)="apply(marketDateTimeInput.value)"
-      >
-        {{ clock.clockUpdating() ? 'Updating…' : 'Apply time' }}
-      </button>
-    </app-dashboard-header-dropdown>
+    </div>
   `,
 })
 export class MarketClockControlComponent {
   readonly clock = inject(MarketClockService);
-  readonly triggerClass = input('');
-  readonly open = input(false);
-  readonly openChange = output<boolean>();
-  readonly snapshotApplied = output<MarketSnapshot>();
-  protected apply(value: string): void {
-    this.clock.applyMarketDateTime(
-      value,
-      (snapshot) => this.snapshotApplied.emit(snapshot),
-      () => this.openChange.emit(false),
-    );
-  }
 }

@@ -4,6 +4,9 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { SessionTimeoutService } from '../../core/auth/session-timeout.service';
 import { SettingsDialogComponent } from './settings-dialog.component';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { MarketClockService } from '../shared/market-clock.service';
 
 describe('SettingsDialogComponent', () => {
   let setTimeoutMinutes: ReturnType<typeof vi.fn>;
@@ -12,7 +15,7 @@ describe('SettingsDialogComponent', () => {
     setTimeoutMinutes = vi.fn();
     await TestBed.configureTestingModule({
       imports: [SettingsDialogComponent],
-      providers: [{ provide: ExecutionSettingsService, useValue: { load: () => of({ executionBufferPercent: 0 }), save: (executionBufferPercent: number) => of({ executionBufferPercent }) } },
+      providers: [provideHttpClient(), provideHttpClientTesting(), MarketClockService, { provide: ExecutionSettingsService, useValue: { load: () => of({ executionBufferPercent: 0 }), save: (executionBufferPercent: number) => of({ executionBufferPercent }) } },
         {
           provide: SessionTimeoutService,
           useValue: { timeoutMinutes: signal(15), setTimeoutMinutes },
@@ -30,6 +33,43 @@ describe('SettingsDialogComponent', () => {
     const select = element.querySelector('#idleTimeout') as HTMLSelectElement;
     return { element, select, closed };
   }
+
+  it('moves the simulated market clock and reports the new snapshot', () => {
+    const clock = TestBed.inject(MarketClockService);
+    const snapshot = {
+      sessionId: 7,
+      status: 'CLOSED',
+      marketTimestamp: '2026-01-05T22:00:00Z',
+      serverTimestamp: '2026-01-05T22:00:00Z',
+      calendar: {
+        timezone: 'America/Chicago',
+        firstTimestamp: '2026-01-05T14:30:00Z',
+        lastTimestamp: '2026-01-06T05:59:59Z',
+        tradingDates: ['2026-01-05'],
+      },
+      stocks: [],
+    };
+    clock.sync({ ...snapshot, status: 'OPEN', marketTimestamp: '2026-01-05T14:30:00Z' });
+    const fixture = TestBed.createComponent(SettingsDialogComponent);
+    const applied = vi.fn();
+    fixture.componentInstance.clockApplied.subscribe(applied);
+    fixture.detectChanges();
+    const section = fixture.nativeElement.querySelector('[data-testid="market-clock-settings"]') as HTMLElement;
+    const input = section.querySelector('#market-date-time') as HTMLInputElement;
+    expect(section.textContent).toContain('Market clock');
+    expect(input.max).toBe('2026-01-05T23:59');
+
+    input.value = '2026-01-05T16:00';
+    (Array.from(section.querySelectorAll('button')).find((b) => b.textContent?.includes('Apply time')) as HTMLButtonElement).click();
+    const request = TestBed.inject(HttpTestingController).expectOne('/api/market/clock?sessionId=7');
+    expect(request.request.body).toEqual({ timestamp: '2026-01-05T22:00:00.000Z' });
+    request.flush(snapshot);
+
+    expect(applied).toHaveBeenCalledWith(snapshot);
+    expect(clock.marketOpen()).toBe(true);
+    clock.sync(snapshot);
+    expect(clock.marketOpen()).toBe(false);
+  });
 
   it('is a labelled modal dialog', () => {
     const { element } = render();

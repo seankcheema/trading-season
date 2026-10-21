@@ -86,7 +86,7 @@ test('executes a trade and shows recent orders within the full-screen layout', a
     expect(Math.abs(bounds!.y - mainBounds!.y)).toBeLessThan(2);
     expect(Math.abs(bounds!.height - mainBounds!.height)).toBeLessThan(2);
     expect(accountBounds!.y).toBeGreaterThan(bounds!.y);
-    const clockBounds = await page.getByTestId('market-clock-dropdown').boundingBox();
+    const clockBounds = await page.getByTestId('market-clock').boundingBox();
     const pickerBounds = await page.getByTestId('account-dropdown').boundingBox();
     expect(pickerBounds!.x).toBeGreaterThan(clockBounds!.x);
     expect(pickerBounds!.width).toBe(clockBounds!.width);
@@ -110,8 +110,10 @@ test('executes a trade and shows recent orders within the full-screen layout', a
         searchBounds!.y + searchBounds!.height / 2,
       );
     }
-    for (const id of ['market-clock-dropdown', 'account-dropdown']) {
-      const trigger = await page.getByTestId(id).locator('summary').boundingBox();
+    for (const trigger of [
+      await page.getByTestId('market-clock').locator('[role="status"]').boundingBox(),
+      await page.getByTestId('account-dropdown').locator('summary').boundingBox(),
+    ]) {
       expect(trigger!.height).toBe(36);
       expect(trigger!.y + trigger!.height / 2).toBe(searchBounds!.y + searchBounds!.height / 2);
     }
@@ -222,18 +224,22 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   await page.getByRole('tab', { name: 'Recent Orders', exact: true }).click();
   const history = page.getByTestId('market-recent-orders');
   await expect(history).toContainText('2 @ $225.80 · MARKET · Filled');
-  const clock = page.getByTestId('market-clock-dropdown');
-  await clock.locator('summary').click();
-  await clock.locator('input').fill('2026-01-05T08:30');
-  await clock.getByRole('button', { name: 'Apply time' }).click();
+  // The simulated time is set from Settings > Market clock.
+  const setClock = async (time: string) => {
+    await page.getByLabel('Open profile menu').click();
+    await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+    const settings = page.getByRole('dialog', { name: 'Settings' });
+    await settings.getByLabel('Simulated time', { exact: true }).fill(time);
+    await settings.getByRole('button', { name: 'Apply time' }).click();
+    await page.keyboard.press('Escape');
+  };
+  await setClock('2026-01-05T08:30');
   await expect(history).toContainText('No orders at this simulated time.');
   // Rewinding changes history and portfolio views, while trading limits use persisted balances.
   await expect(page.locator('app-trade-ticket')).toContainText('$4,548.40');
   await expect(page.getByTestId('account-portfolio-value')).toContainText('$0.00');
   expect(api.fundsOf(USER.email)).toBeCloseTo(4548.4);
-  await clock.locator('summary').click();
-  await clock.locator('input').fill('2026-01-05T09:00');
-  await clock.getByRole('button', { name: 'Apply time' }).click();
+  await setClock('2026-01-05T09:00');
   await expect(history).toContainText('2 @ $225.80 · MARKET · Filled');
   expect(
     api.requests.filter((r) => r.method === 'POST' && r.url.endsWith('/api/orders')),

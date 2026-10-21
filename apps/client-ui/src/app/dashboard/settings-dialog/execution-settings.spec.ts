@@ -2,9 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { SettingsDialogComponent } from './settings-dialog.component';
+import { MarketClockService } from '../shared/market-clock.service';
 
 describe('Persisted execution settings', () => {
-  beforeEach(() => TestBed.configureTestingModule({ imports: [SettingsDialogComponent], providers: [provideHttpClient(), provideHttpClientTesting()] }));
+  beforeEach(() => TestBed.configureTestingModule({ imports: [SettingsDialogComponent], providers: [provideHttpClient(), provideHttpClientTesting(), MarketClockService] }));
   afterEach(() => TestBed.inject(HttpTestingController).verify());
   it('loads the saved value, validates percentages and confirms a persisted update', () => {
     const fixture = TestBed.createComponent(SettingsDialogComponent); fixture.detectChanges();
