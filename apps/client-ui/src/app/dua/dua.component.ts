@@ -32,6 +32,8 @@ import { AccountStore } from '../dashboard/accounts/account-store.service';
 import { Instrument } from '../dashboard/mock-data';
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
 import { DuaSession } from './dua-session.service';
+import { PlatformSignalsService } from '../market-page/risk-outlook/platform-signals.service';
+import { readingFor } from '../market-page/risk-outlook/platform-signals';
 import {
   DuaCard,
   DuaChoice,
@@ -42,6 +44,7 @@ import {
   holdingsPreviewCards,
   dailyPreviewCards,
   DUA_EXPLANATIONS,
+  outlookCard,
   insightTextParts,
   sparklinePoints,
   takeawayParts,
@@ -81,6 +84,40 @@ export class DuaComponent {
   protected readonly session = inject(DuaSession);
   protected readonly account = inject(AccountStore);
   protected readonly clock = inject(MarketClockService);
+  protected readonly signals = inject(PlatformSignalsService);
+  // The stock the outlook choice is about: the open instrument, else the first holding.
+  protected readonly outlookSymbol = computed(
+    () => this.symbol() || this.holdings()[0]?.symbol || '',
+  );
+  protected readonly outlook = computed(() => {
+    const signals = this.signals.signals();
+    const at = this.clock.currentMarketTimestamp();
+    const symbol = this.outlookSymbol();
+    return signals && symbol && Number.isFinite(Date.parse(at))
+      ? readingFor(signals, symbol, at)
+      : null;
+  });
+  protected readonly outlookTeaser = computed(() => {
+    const symbol = this.outlookSymbol();
+    const reading = this.outlook();
+    if (!symbol) {
+      return '';
+    }
+    if (reading?.kind !== 'ready') {
+      return `${symbol} · the week-ahead read`;
+    }
+    const hits = reading.source === 'model' ? reading.modelHits : reading.ruleHits;
+    const days = reading.source === 'model' ? reading.modelDays : reading.ruleDays;
+    const swings = reading.call === 'stormier' ? 'bigger' : 'smaller';
+    return days
+      ? `${symbol} · ${swings} swings likely · right ${Math.round((hits / days) * 100)}% so far`
+      : `${symbol} · ${swings} swings likely`;
+  });
+  private readonly loadOutlook = effect(() => {
+    if (!this.session.minimized() && this.signals.status() === 'idle') {
+      this.signals.load().subscribe({ error: () => undefined });
+    }
+  });
   protected readonly hovered = signal(false);
   protected readonly focused = signal(false);
   protected readonly hasUpdates = signal(false);
@@ -101,7 +138,9 @@ export class DuaComponent {
           ? 'My holdings'
           : this.choice() === 'stock'
             ? 'Stock Insights'
-            : 'Dua',
+            : this.choice() === 'outlook'
+              ? 'Volatility outlook'
+              : 'Dua',
   );
   protected readonly imagesFailed = signal(false);
   protected readonly activeCard = signal(0);
@@ -292,6 +331,22 @@ export class DuaComponent {
         minute: '2-digit',
       }).format(new Date(at)),
     );
+    if (choice === 'outlook') {
+      const reading = this.outlook();
+      if (reading?.kind !== 'ready') {
+        this.cards.set([]);
+        this.message.set(
+          reading?.kind === 'too-early'
+            ? `No outlook for ${this.outlookSymbol()} yet: the model's readings start ${reading.firstDay}.`
+            : `No outlook for ${this.outlookSymbol()} at this time.`,
+        );
+        return;
+      }
+      this.cards.set([outlookCard(this.outlookSymbol(), reading)]);
+      this.asOf.set('');
+      this.snapshotDisconnected.set(false);
+      return;
+    }
     this.cards.set(
       choice === 'daily'
         ? dailyPreviewCards()

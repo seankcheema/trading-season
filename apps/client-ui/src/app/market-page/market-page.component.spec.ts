@@ -88,6 +88,7 @@ describe('MarketPageComponent', () => {
     accountId = '',
     orders: OrderResult[] = [],
     profile: { termsAccepted?: boolean } = {},
+    tab = '',
   ): Promise<ComponentFixture<MarketPageComponent>> {
     // The account this tab chose earlier, as AccountStore keeps it; never a URL parameter.
     if (accountId) {
@@ -108,7 +109,7 @@ describe('MarketPageComponent', () => {
           provide: ActivatedRoute,
           useValue: {
             paramMap: of(convertToParamMap({ symbol })),
-            queryParamMap: of(convertToParamMap({ compare })),
+            queryParamMap: of(convertToParamMap(tab ? { compare, tab } : { compare })),
           },
         },
         { provide: MarketDataService, useValue: marketData },
@@ -583,6 +584,12 @@ describe('MarketPageComponent', () => {
     expect(header.classList).not.toContain('border-b');
     expect(profile.classList).toContain('border-border');
     expect(profile.className).not.toContain('border-primary');
+  });
+
+  it('opens the Outlook tool when the link asks for it', async () => {
+    const fixture = await setup('aapl', '', '', [], {}, 'outlook');
+    expect(fixture.componentInstance['insightTab']()).toBe('outlook');
+    expect(fixture.nativeElement.querySelector('[data-testid="market-outlook"]')).not.toBeNull();
   });
 
   it('offers Trading, Overview, News, AI, Outlook and Recent Orders in the market tools', async () => {

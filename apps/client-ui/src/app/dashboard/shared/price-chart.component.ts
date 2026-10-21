@@ -544,14 +544,19 @@ interface TooltipPosition {
         data-testid="risk-pane"
       >
         <div class="rsi-header">
-          <span>Volatility outlook · chance of bigger swings (up or down) next 5 days</span>
+          <span>How likely are bigger swings next week? The model's call, day by day</span>
           @if (latestRisk() !== undefined) {
-            <strong class="risk-value">{{ latestRisk() | number: '1.0-0' }}%</strong>
-          }
-          @if (riskBands().length) {
-            <em class="risk-key">shaded: weeks that had bigger swings</em>
+            <strong class="risk-value">now {{ latestRisk() | number: '1.0-0' }}%</strong>
           }
         </div>
+        <p class="risk-legend" data-testid="risk-legend">
+          <span><i class="risk-legend-line"></i> model's chance of bigger swings (up or down)</span>
+          <span><i class="risk-legend-band"></i> weeks that did have bigger swings</span>
+          @if (riskDots().length) {
+            <span><i class="risk-legend-dot risk-dot-hit"></i> call came true</span>
+            <span><i class="risk-legend-dot risk-dot-miss"></i> missed</span>
+          }
+        </p>
         <div class="rsi-grid">
           <div class="rsi-plot">
             @if (riskReadingsVisible() >= 3) {
@@ -567,6 +572,19 @@ interface TooltipPosition {
                 }
                 <line x1="0" y1="20" x2="100" y2="20" class="rsi-guide" />
                 <path class="rsi-line risk-line" [attr.d]="riskPath()" fill="none" />
+                @for (dot of riskDots(); track dot.x) {
+                  <circle
+                    class="risk-dot"
+                    [class.risk-dot-hit]="dot.hit"
+                    [class.risk-dot-miss]="!dot.hit"
+                    [attr.cx]="dot.x"
+                    [attr.cy]="dot.y"
+                    r="0.9"
+                  />
+                }
+                @if (riskCoords().at(-1); as last) {
+                  <circle class="risk-now" [attr.cx]="last.x" [attr.cy]="last.y" r="1.2" />
+                }
               </svg>
             } @else {
               <p class="risk-empty">
@@ -578,9 +596,10 @@ interface TooltipPosition {
               </p>
             }
           </div>
-          <div class="rsi-axis" aria-hidden="true">
-            <span class="rsi-axis-70">100%</span>
-            <span class="rsi-axis-30">0%</span>
+          <div class="rsi-axis risk-axis" aria-hidden="true">
+            <span class="rsi-axis-70">More likely</span>
+            <span class="risk-axis-50">50%</span>
+            <span class="rsi-axis-30">Less likely</span>
           </div>
         </div>
       </section>
@@ -789,6 +808,65 @@ interface TooltipPosition {
     .risk-band {
       fill: color-mix(in srgb, var(--indicator-risk) 14%, transparent);
     }
+    .risk-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.2rem 0.75rem;
+      margin: 0.15rem 0 0.25rem;
+      color: var(--muted-foreground);
+      font-size: 0.625rem;
+    }
+    .risk-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .risk-legend i {
+      display: inline-block;
+    }
+    .risk-legend-line {
+      width: 0.9rem;
+      height: 2px;
+      background: var(--indicator-risk);
+    }
+    .risk-legend-band {
+      width: 0.7rem;
+      height: 0.55rem;
+      background: color-mix(in srgb, var(--indicator-risk) 24%, transparent);
+    }
+    .risk-legend-dot {
+      width: 0.45rem;
+      height: 0.45rem;
+      border-radius: 999px;
+    }
+    .risk-dot-hit {
+      fill: var(--color-gain);
+      background: var(--color-gain);
+    }
+    .risk-dot-miss {
+      fill: var(--color-loss);
+      background: var(--color-loss);
+    }
+    .risk-dot {
+      stroke: var(--background);
+      stroke-width: 0.3;
+      vector-effect: non-scaling-stroke;
+    }
+    .risk-now {
+      fill: var(--indicator-risk);
+      stroke: var(--background);
+      stroke-width: 0.4;
+      vector-effect: non-scaling-stroke;
+    }
+    .risk-axis {
+      font-size: 0.5625rem;
+    }
+    .risk-axis-50 {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    }
     .risk-empty {
       position: absolute;
       inset: 0;
@@ -990,6 +1068,18 @@ export class PriceChartComponent {
     });
   });
   protected readonly riskPath = computed(() => this.smoothPath(this.riskCoords()));
+  protected readonly riskDots = computed(() => {
+    const seen = new Set<number>();
+    const dots: { x: number; y: number; hit: boolean }[] = [];
+    for (const coord of this.riskCoords()) {
+      if (coord.stormier === null || seen.has(coord.made)) {
+        continue;
+      }
+      seen.add(coord.made);
+      dots.push({ x: coord.x, y: coord.y, hit: coord.value > 50 === coord.stormier });
+    }
+    return dots.length <= 40 ? dots : [];
+  });
   protected readonly riskReadingsVisible = computed(
     () => new Set(this.riskCoords().map((coord) => coord.made)).size,
   );

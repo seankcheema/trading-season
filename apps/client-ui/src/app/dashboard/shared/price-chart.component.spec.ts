@@ -854,6 +854,12 @@ describe('TimeframeToggleComponent', () => {
       // Two adjacent stormier candles merge into one band.
       expect(pane.querySelectorAll('rect.risk-band')).toHaveLength(1);
       expect(pane.textContent).toContain('70%');
+      // Two readings had closed windows: the 30% call missed a stormier week, the 55% call got it.
+      expect(pane.querySelectorAll('circle.risk-dot')).toHaveLength(2);
+      expect(pane.querySelectorAll('circle.risk-dot.risk-dot-hit')).toHaveLength(1);
+      expect(pane.querySelector('[data-testid=risk-legend]').textContent).toContain(
+        'call came true',
+      );
       // The risk indicator is a pane, not a price overlay.
       expect(fixture.nativeElement.querySelector('.chart-indicator-key')).toBeNull();
     });

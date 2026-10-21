@@ -9,6 +9,7 @@ import { MarketClockService } from '../dashboard/shared/market-clock.service';
 import { DuaComponent } from './dua.component';
 import { DuaSession } from './dua-session.service';
 import { TokenStorageService } from '../core/auth/token-storage.service';
+import { PlatformSignalsService } from '../market-page/risk-outlook/platform-signals.service';
 
 describe('Dua panel', () => {
   let session: DuaSession;
@@ -25,6 +26,32 @@ describe('Dua panel', () => {
     marketCalendar: signal({ timezone: 'America/Chicago' }),
   };
   const market = { candles: vi.fn() };
+  // Readings for AAPL on the trading days before the clock, as the signal file carries them.
+  const outlookDays = Array.from({ length: 12 }, (_, i) => ({
+    date: `2025-12-${String(i + 10).padStart(2, '0')}`,
+    probability: 0.62,
+    call: 'stormier',
+    usualVolatility: 0.011,
+    recentVolatility: 0.009,
+    modelHits: 15,
+    modelDays: 20,
+    ruleHits: 12,
+    ruleDays: 20,
+    outcome: 'stormier',
+  }));
+  const signals = {
+    signals: signal({
+      generatedAt: '2025-12-31T00:00:00Z',
+      question: 'q',
+      horizonDays: 5,
+      usualWindowDays: 40,
+      model: 'm',
+      rule: 'r',
+      symbols: { AAPL: { firstDay: '2025-12-10', lastDay: '2025-12-21', days: outlookDays } },
+    }),
+    status: signal('ready'),
+    load: vi.fn(() => of(null)),
+  };
   beforeEach(() => {
     account.needsTermsAcceptance.set(false);
     account.selectedAccountId.set(1);
@@ -42,6 +69,7 @@ describe('Dua panel', () => {
         { provide: TokenStorageService, useValue: { onIdentityChange: () => {} } },
         { provide: MarketClockService, useValue: clock },
         { provide: MarketDataService, useValue: market },
+        { provide: PlatformSignalsService, useValue: signals },
       ],
     });
     session = TestBed.inject(DuaSession);
@@ -309,5 +337,19 @@ describe('Dua panel', () => {
     click('Back to choices');
     expect(fixture.nativeElement.querySelector('h2').textContent.trim().replace(/\s+/g, ' ')).toBe('Dua - Free Plan');
     fixture.destroy();
+  });
+
+  it('offers a live volatility outlook first, shows its card and links to the full outlook', () => {
+    const { fixture, click } = setup();
+    click('Dua insights');
+    const choice = fixture.nativeElement.querySelector('[data-testid=dua-outlook-choice]');
+    expect(choice.textContent.replace(/\s+/g, ' ')).toContain('Volatility outlook LIVE');
+    expect(choice.textContent).toContain('AAPL · bigger swings likely · right 75% so far');
+    click('Volatility outlook');
+    expect(fixture.nativeElement.textContent).toContain('bigger price swings likely');
+    expect(fixture.nativeElement.textContent).toContain('62% chance of bigger swings');
+    expect(fixture.nativeElement.textContent).toContain('75% (15 of 20 weeks)');
+    const open = fixture.nativeElement.querySelector('[data-testid=dua-outlook-open]');
+    expect(open.getAttribute('href')).toBe('/dashboard/markets/aapl?tab=outlook');
   });
 });

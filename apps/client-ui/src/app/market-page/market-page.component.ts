@@ -812,6 +812,11 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     );
     this.routeSubscription.add(
       this.route.queryParamMap.subscribe((params) => {
+        // A tab name in the query opens that tool, so a link can land on the Outlook card.
+        if (params.get('tab') === 'outlook') {
+          this.insightTab.set('outlook');
+          this.toolsCollapsed.set(false);
+        }
         const rawSymbol = params.get('compare') ?? '';
         const symbol = normalizeMarketSymbol(rawSymbol);
         this.comparisonSymbol.set(symbol);

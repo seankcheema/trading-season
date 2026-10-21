@@ -2,7 +2,7 @@ import { AccountHolding } from '../dashboard/accounts/account.models';
 import { CandlePointDto } from '../dashboard/market-data.service';
 import { Instrument } from '../dashboard/mock-data';
 
-export type DuaChoice = 'daily' | 'holdings' | 'stock';
+export type DuaChoice = 'daily' | 'holdings' | 'stock' | 'outlook';
 export interface DuaCard {
   symbol?: string;
   symbols?: string[];
@@ -499,6 +499,18 @@ export function stockPreviewCards(): DuaCard[] {
 
 export const DUA_EXPLANATIONS: Record<DuaChoice, readonly { term: string; description: string }[]> =
   {
+    outlook: [
+      {
+        term: 'Where this read comes from',
+        description:
+          'The Trading Season model is trained on this market and scores every stock daily. The card shows its read when its track record on the stock beats the simple pattern "next week like last week"; otherwise the pattern leads and the model sits beside it. Accuracy counts only weeks that have already closed.',
+      },
+      {
+        term: 'What it does not say',
+        description:
+          'How much the price may move over the next five trading days, up or down. It says nothing about direction and is never a recommendation to buy or sell. Simulated market.',
+      },
+    ],
     daily: [
       {
         term: 'Illustrative daily review',
@@ -595,5 +607,45 @@ export function directionCard(
         : 'Recent closes do not show a consistent rise or fall.',
     text: `${symbol} ${rising ? 'rose' : falling ? 'fell' : 'had mixed movement'} across the last 5 completed candles.`,
     detail: `${time(new Date(Date.parse(completed[0].timestamp) + 60_000).toISOString())} to ${time(new Date(Date.parse(completed[4].timestamp) + 60_000).toISOString())}: ${change >= 0 ? '+' : ''}${change.toFixed(1)}% from first close to last.`,
+  };
+}
+
+/** The week-ahead volatility card from a ready Outlook reading, in the same words as the market page's card. */
+export function outlookCard(
+  symbol: string,
+  reading: {
+    call: 'stormier' | 'calmer';
+    source: 'model' | 'rule';
+    probability: number;
+    usualVolatility: number;
+    recentVolatility: number;
+    modelHits: number;
+    modelDays: number;
+    ruleHits: number;
+    ruleDays: number;
+  },
+): DuaCard {
+  const bigger = reading.call === 'stormier';
+  const hits = reading.source === 'model' ? reading.modelHits : reading.ruleHits;
+  const days = reading.source === 'model' ? reading.modelDays : reading.ruleDays;
+  const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
+  return {
+    symbol,
+    title: 'Volatility outlook',
+    period: 'Next 5 trading days',
+    text: `${symbol}: ${bigger ? 'bigger' : 'smaller'} price swings likely over the next 5 trading days, up or down.`,
+    takeaway: `${symbol}: ${bigger ? 'bigger' : 'smaller'} price swings likely. Up or down: how far the price may move, not which way.`,
+    purpose: `${reading.source === 'model' ? 'The Trading Season model' : 'The recent pattern'} leads on ${symbol} because its record there is the better one: right ${days ? Math.round((hits / days) * 100) : 0}% of the time over ${days} closed weeks.`,
+    metrics: [
+      {
+        label: 'Model estimate',
+        value: `${Math.round(reading.probability * 100)}% chance of bigger swings`,
+        tone: bigger ? 'loss' : 'gain',
+        primary: true,
+      },
+      { label: 'Accuracy so far', value: days ? `${Math.round((hits / days) * 100)}% (${hits} of ${days} weeks)` : 'No closed weeks yet' },
+      { label: 'Usual daily move', value: pct(reading.usualVolatility) },
+      { label: 'Last 5 days', value: pct(reading.recentVolatility) },
+    ],
   };
 }

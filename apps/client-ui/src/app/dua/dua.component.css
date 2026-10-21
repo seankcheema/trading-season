@@ -201,6 +201,73 @@ p {
   border-color: color-mix(in srgb, var(--primary) 40%, transparent);
   background: color-mix(in srgb, var(--primary) 6%, transparent);
 }
+/* The volatility outlook choice: a gradient border that breathes, so it reads as live. */
+.choices button.choice-outlook {
+  position: relative;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--card), var(--card)) padding-box,
+    linear-gradient(120deg, var(--primary), var(--color-loss), var(--primary)) border-box;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent);
+  animation: outlook-pulse 2.4s ease-in-out infinite;
+}
+.choices button.choice-outlook:hover {
+  background:
+    linear-gradient(
+        color-mix(in srgb, var(--primary) 8%, var(--card)),
+        color-mix(in srgb, var(--primary) 8%, var(--card))
+      )
+      padding-box,
+    linear-gradient(120deg, var(--primary), var(--color-loss), var(--primary)) border-box;
+}
+@keyframes outlook-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 0%, transparent);
+  }
+}
+.choice-icon-outlook {
+  background: linear-gradient(135deg, var(--primary), var(--color-loss));
+  color: var(--primary-foreground);
+}
+.choice-badge {
+  margin-left: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-loss) 18%, transparent);
+  padding: 1px 6px;
+  color: var(--color-loss);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  vertical-align: middle;
+}
+.outlook-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  border-radius: 12px;
+  background: linear-gradient(120deg, var(--primary), color-mix(in srgb, var(--primary) 70%, var(--color-loss)));
+  padding: 11px 12px;
+  color: var(--primary-foreground);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--primary) 30%, transparent);
+}
+.outlook-cta:hover {
+  filter: brightness(1.08);
+  text-decoration: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .choices button.choice-outlook {
+    animation: none;
+  }
+}
 .choice-icon {
   display: grid;
   place-items: center;
