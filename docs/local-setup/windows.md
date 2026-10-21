@@ -100,16 +100,36 @@ privilege column.
 
 ## 3. Migrate and seed the database
 
-For a new local database, apply the checked-in migrations in filename order as the application role. Stop if any migration fails:
+Run the migration script as the database owner before seeding or starting services.
+Use the same command for an empty database and an existing database that has a
+`public.schema_migrations` ledger:
 
 ```powershell
-Get-ChildItem db/migrations/V*.sql | Sort-Object Name | ForEach-Object {
-    psql $databaseUrl -X -v ON_ERROR_STOP=1 -f $_.FullName
-    if ($LASTEXITCODE -ne 0) { throw "Migration failed: $($_.Name)" }
-}
+.\scripts\migrate-local.ps1 -DatabaseUrl $databaseUrl
 ```
 
-Use this block once for a fresh database. For an existing database, apply only outstanding files as described in the [database guide](../../db/README.md); do not rerun V001 against an initialized schema. The Compose migration ledger is not created by these commands.
+The script applies pending files in filename order and records each filename in
+the same transaction as its schema changes. Rerunning skips recorded files,
+including both V009 files. It stops on the first failure; earlier successful
+migrations remain applied and the failed migration is rolled back. The database
+and login must already exist (step 2); the script does not recreate either or seed data.
+
+For an existing database created by the old manual setup loop, there may be no
+ledger. The script refuses to guess which migrations ran. Verify the last file
+successfully applied from your setup records and schema, then supply its exact
+filename once. For example, only if every file through V013 was applied:
+
+```powershell
+.\scripts\migrate-local.ps1 -DatabaseUrl $databaseUrl `
+    -BaselineThrough 'V013__Order_audit_lifecycle.sql'
+```
+
+This records files through V013 without executing them, then applies V015 and
+later files. V015 adds the cash-history `client_reference` column. Do not use
+this baseline on a database missing any earlier migration. A baseline is refused
+on an empty database or when a ledger already exists. After that first run,
+omit `-BaselineThrough`. See the [migration list](../../db/README.md) to identify
+files; do not rerun the old all-files loop on an existing schema.
 
 Verify table and sequence access:
 
@@ -140,6 +160,11 @@ Test-Path (Join-Path $kafkaHome 'libs') # Must print True
 ```
 
 The launcher uses IPv4 for the local Kafka JVM and broker connections.
+Port availability and service readiness checks use the .NET TCP listener table
+for IPv4 and IPv6, avoiding the Windows CIM provider used by `Get-NetTCPConnection`.
+
+After pulling updates, rerun `.\scripts\migrate-local.ps1 -DatabaseUrl $databaseUrl`
+before starting the services. The launcher does not run migrations itself.
 
 Start Kafka and create its topics through the launcher, then start all
 services:

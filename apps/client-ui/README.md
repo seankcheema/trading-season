@@ -135,6 +135,8 @@ A fill that lands after the submission response, such as a limit or stop order's
 
 Recent activity rows show order details and plain-text status beneath the transaction label, with the timestamp beneath the amount. Buy, Sell, Deposit and Withdrawal badges appear immediately to the right of the ticker or transaction label, vertically centered on that line. The dashboard and market page share these rows.
 
+If cash history cannot be loaded, Recent Transactions keeps the available transactions visible without a warning banner. Failed order cancellations show a separate cancellation error.
+
 The Recent Transactions dialog names the account each order was placed in (cash transfers show "All accounts", since cash is shared) and marks limit, stop and stop-limit orders beneath the type. Its filter panel narrows by type, status, order kind (market, limit, stop, stop-limit) and account; choosing an account or an order kind leaves out cash transfers, which belong to no single account and have no order kind.
 
 A From and To date field beside the symbol filter, each opening the browser's calendar, limits the table to those days inclusive, in the browser's time zone (the zone the table's own dates are shown in). Either end can be left empty, and each field stops at the other. The range combines with the filter panel and the symbol filter and is not counted in the filter badge.

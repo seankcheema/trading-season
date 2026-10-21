@@ -296,7 +296,10 @@ describe('history dialogs', () => {
       pending.next(order({ status: 'CANCELLED' }));
       expect(component['cancelling']().size).toBe(0); expect(reload).toHaveBeenCalledWith(true);
       cancel.mockReturnValue(throwError(() => new Error('offline')));
-      component['cancelOrder'](row); expect(component['loadError']()).toBe(true);
+      component['cancelOrder'](row); expect(component['cancelError']()).toBe(true);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('[data-testid="transactions-cancel-error"]')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="transactions-error"]')).toBeNull();
       expect(component['cancelling']().size).toBe(0);
     });
 
@@ -436,16 +439,17 @@ describe('history dialogs', () => {
       expect(table.textContent).toContain('No transactions match these filters.');
     });
 
-    it('still shows the recent transfers when the full ledger cannot be loaded', () => {
+    it('keeps available transactions without a warning when cash history fails', () => {
+      seedOrders();
       const fixture = TestBed.createComponent(TransactionsDialogComponent);
       fixture.detectChanges();
       http
         .expectOne((request) => request.url === '/api/me/cash-transactions')
         .flush({}, { status: 500, statusText: 'Error' });
       fixture.detectChanges();
-      expect(
-        fixture.nativeElement.querySelector('[data-testid="transactions-error"]'),
-      ).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="transactions-error"]')).toBeNull();
+      expect(rows(fixture, 'transactions-row-skeleton')).toHaveLength(0);
+      expect(rows(fixture, 'transactions-row').length).toBeGreaterThan(0);
     });
 
     describe('pagination', () => {
