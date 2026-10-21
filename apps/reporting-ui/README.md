@@ -147,7 +147,7 @@ A role change takes effect at the account's next sign-in or token refresh. See [
 
 The screens reproduce the TradingSeason design system's reporting console: the sidebar shell, Activity, Customers, the customer page, Orders and the order dialog, with the kit's layout, spacing, type and copy. The design system export itself is not checked in.
 
-The tokens are declared in [src/styles.css](src/styles.css) with the same values as the Client UI's two themes (see [Theme](#theme)), and Tailwind v4 maps them to utilities. Text takes the font's own line height, as the kit does. The kit's components are ported once, in [src/app/shared](src/app/shared):
+The tokens are declared in [src/styles.css](src/styles.css) with the same values as the Client UI's dark theme, and Tailwind v4 maps them to utilities. Text takes the font's own line height, as the kit does. The kit's components are ported once, in [src/app/shared](src/app/shared):
 
 | Kit component | Here |
 | --- | --- |
@@ -189,23 +189,12 @@ The kit is a proposal drawn on sample data. Where the product has no such data, 
 | The chart row holds Notional traded and Orders by status | A third card, Client segments: each trader level's notional and its share, traders and orders in the range | The business requirements ask for activity by client segment, which the kit predates |
 | Three sidebar entries | A fourth, Report runs, and for an analyst only that one | The Kafka-backed report snapshots are a product requirement the kit predates |
 | No way to sign out | A log out button beside the signed-in user | The kit does not draw one |
-| Dark only | A light theme as well, switched beside log out and on the sign-in page | Asked for; see [Theme](#theme) |
 | No loading state | Placeholders in the screen's layout while its first load is in flight | The kit is drawn on sample data, which is never on its way |
 | Most traded shows a price sparkline under "Today" whatever the range | The column is named after the chosen range and plots the symbol's fill prices in it | The label follows what is plotted |
 
 Report runs is not in the kit. It is built from the kit's vocabulary as Activity uses it: the headline tiles, cards, the 6px bars of Orders by status, and filled orders in the gain color with rejected ones in the loss color. Its header carries the range toggle Activity has, with the same five ranges, and it opens on 7D and afterwards on the range last chosen in this browser, which it remembers apart from Activity's. Its figures are drawn in the page from what the service answers for the latest live snapshot over that range: all time is the full snapshot with days in UTC, and a narrower range is the service's cut of that snapshot in the viewer's days, ending when the snapshot was generated. The days of Trades per day are also given to screen readers as a table that names the zone, and the column under the pointer is read out above the chart. The PNG charts for the latest snapshot are rendered by the Reporting Service at download time, in the light theme's surface and colors whatever the theme on screen; a file of a narrower range carries the range in its name. When a run archive is more than a minute late the header says Overdue with the time it was expected, which is how a consumer that is not running shows; an on-time archive shows nothing there.
 
 This app does not use the Client UI's [shared-ui-components](../client-ui/shared-ui-components/README.md). Its own markup is styled directly from the tokens, so that library still has one consumer.
-
-### Theme
-
-The screens come in the design system's dark theme, which is the default, and a light one. The switch is the sun or moon button beside log out in the sidebar, and at the top right of the sign-in page. It works as the [Client UI's](../client-ui/README.md#themes) does:
-
-- [src/styles.css](src/styles.css) declares the light tokens on `:root` and the dark ones on `:root.dark`, with the Client UI's values. Gain, loss and pending are darker in light so that they read as text on a white card.
-- [ThemeService](src/app/core/theme/theme.service.ts) adds or removes the `dark` class on `<html>` and keeps the choice in this browser's `localStorage` under `ts.settings.theme`; other open tabs follow it. A script in [src/index.html](src/index.html) applies a saved light theme before the first paint, so a reload does not flash dark.
-- Everything the app hands out is light, whatever the theme on screen: the dark tokens are declared for `@media screen` only, so [Export PDF](#export-pdf) prints with the light ones, and the Reporting Service draws the chart PNGs in the light colors. CSV files carry no colors.
-
-Use a token, not a literal color, in new markup: a literal looks right in one theme only.
 
 ### Export PDF
 
@@ -214,7 +203,7 @@ Export PDF, on every screen, prints the screen through the browser's print dialo
 - The page is 1376 by 973 CSS pixels, A4's landscape proportions, so the content is as wide as a laptop window and still fits paper. In print every breakpoint counts as reached, because a width query in print answers for the sheet the browser has in mind and not for that page; the breakpoint variants are redefined in the stylesheet to say so.
 - The sidebar, the Export button and the download links are left out. A line at the top, shown only in print, carries the product name, when the export was made and who made it. The Activity range and the filters of Orders and Customers stay, so the document says what it covers.
 - Nothing scrolls or clips: every list and table is printed whole, over as many pages as it needs. A card stays on one page; a card that holds a list breaks between its rows.
-- The printout is in the light theme whatever the theme on screen, and the page margins are covered in its background so no frame shows around a page.
+- The dark theme is kept, and the page margins are covered in the app's background so no frame shows around a page.
 
 In the print dialog choose "Save as PDF". The dialog's own Paper size and Margins are overridden by the page the stylesheet sets. A table that runs over several pages does not repeat its column headings, because the tables are grids and not HTML tables.
 

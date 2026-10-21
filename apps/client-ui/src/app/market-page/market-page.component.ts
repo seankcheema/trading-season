@@ -19,6 +19,7 @@ import { AccountControlComponent } from '../dashboard/shared/account-control.com
 import { MarketClockControlComponent } from '../dashboard/shared/market-clock-control.component';
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
 import { RiskOutlookComponent } from './risk-outlook/risk-outlook.component';
+import { DuaComponent } from '../dua/dua.component';
 import { PlatformSignalsService } from './risk-outlook/platform-signals.service';
 import { riskPointsFor } from './risk-outlook/platform-signals';
 import {
@@ -33,6 +34,7 @@ import {
   CurrencyPipe,
   DecimalPipe,
   isPlatformBrowser,
+  TitleCasePipe,
 } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -72,6 +74,13 @@ import {
   lucideSlidersHorizontal,
   lucideUserRound,
   lucideX,
+  lucideBell,
+  lucideBotMessageSquare,
+  lucideMessageSquareText,
+  lucideSendHorizontal,
+  lucideShieldCheck,
+  lucideTrendingUp,
+  lucideUsersRound,
 } from '@ng-icons/lucide';
 import { Subscription } from 'rxjs';
 import { Instrument, Timeframe, findInstrument } from '../dashboard/mock-data';
@@ -102,7 +111,7 @@ import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
 
-type InsightTab = 'trading' | 'recent-orders' | 'outlook';
+type InsightTab = 'trading' | 'overview' | 'news' | 'ai' | 'outlook' | 'recent-orders';
 
 type ToolbarMenu = 'indicators' | 'chart-mode' | 'comparison';
 
@@ -116,12 +125,26 @@ interface MarketStats {
   trend: 'Uptrend' | 'Downtrend';
 }
 
+interface AiMessage {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+interface DemoNewsStory {
+  age: string;
+  category: string;
+  title: string;
+  includeSymbol?: boolean;
+}
+
 @Component({
   selector: 'app-market-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RiskOutlookComponent,
     ThemeToggleComponent,
+    DuaComponent,
+    TitleCasePipe,
     NgTemplateOutlet,
     OrderEditorComponent,
     WatchlistStarComponent,
@@ -170,6 +193,13 @@ interface MarketStats {
       lucideSlidersHorizontal,
       lucideUserRound,
       lucideX,
+      lucideBell,
+      lucideBotMessageSquare,
+      lucideMessageSquareText,
+      lucideSendHorizontal,
+      lucideShieldCheck,
+      lucideTrendingUp,
+      lucideUsersRound,
     }),
   ],
   templateUrl: './market-page.component.html',
@@ -272,7 +302,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     return Number.isFinite(at) ? at : null;
   });
 
-  private readonly simulationHoldings = computed(
+  protected readonly simulationHoldings = computed(
     () =>
       new Map(
         [...this.accountStore.holdingsByAccount()].map(([id, current]) => [
@@ -550,6 +580,36 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   );
   protected readonly insightTab = signal<InsightTab>('trading');
   protected readonly toolsCollapsed = signal(false);
+  protected readonly demoNews: readonly DemoNewsStory[] = [
+    {
+      age: '12 min ago',
+      category: 'Market update',
+      title: 'holds near its session high as trading activity increases.',
+      includeSymbol: true,
+    },
+    {
+      age: '48 min ago',
+      category: 'Sector watch',
+      title: 'Large-cap peers trade higher as investors favor established companies.',
+    },
+    {
+      age: '2 hr ago',
+      category: 'Company outlook',
+      title: 'Analysts continue to focus on demand, margins, and the next earnings update.',
+    },
+    {
+      age: '4 hr ago',
+      category: 'Macroeconomy',
+      title: 'Treasury yields ease as markets assess latest economic data.',
+    },
+    {
+      age: '5 hr ago',
+      category: 'Earnings',
+      title: 'Tech stocks extend gains ahead of key earnings reports this week.',
+    },
+  ];
+  protected readonly aiDraft = signal('');
+  protected readonly aiMessages = signal<AiMessage[]>([]);
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
   protected readonly enabledIndicators = signal<readonly TechnicalIndicator[]>([]);
   private readonly platformSignals = inject(PlatformSignalsService);
@@ -841,6 +901,23 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected toggleToolbarMenu(menu: ToolbarMenu): void {
     this.openToolbarMenu.update((open) => (open === menu ? null : menu));
     this.positionToolbarMenu();
+  }
+
+  protected submitAiPrompt(event: Event, symbol: string): void {
+    event.preventDefault();
+    const prompt = this.aiDraft().trim();
+    if (!prompt) {
+      return;
+    }
+    this.aiMessages.update((messages) => [
+      ...messages,
+      { role: 'user', text: prompt },
+      {
+        role: 'assistant',
+        text: `${symbol} is in a simulated session. I can help explain its price, range, volume, and chart in plain language.`,
+      },
+    ]);
+    this.aiDraft.set('');
   }
 
   protected toggleIndicator(indicator: TechnicalIndicator): void {

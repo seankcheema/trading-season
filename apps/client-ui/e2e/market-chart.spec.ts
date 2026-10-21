@@ -103,7 +103,7 @@ test('executes a trade and shows recent orders within the full-screen layout', a
     expect(pickerBounds!.y + pickerBounds!.height / 2).toBe(
       searchBounds!.y + searchBounds!.height / 2,
     );
-    for (const id of ['profile-dropdown']) {
+    for (const id of ['notifications-dropdown', 'profile-dropdown']) {
       const iconBounds = await page.getByTestId(id).locator('summary').boundingBox();
       expect(iconBounds!.height).toBe(36);
       expect(iconBounds!.y + iconBounds!.height / 2).toBe(
@@ -117,7 +117,7 @@ test('executes a trade and shows recent orders within the full-screen layout', a
     }
     expect(ticketBounds!.y).toBeGreaterThanOrEqual(accountBounds!.y + accountBounds!.height);
     await page.locator('#future-trade-quantity').fill('2');
-    for (const name of ['Recent Orders']) {
+    for (const name of ['Overview', 'News', 'AI', 'Outlook', 'Recent Orders']) {
       await page.getByRole('tab', { name, exact: true }).click();
       await expect(page.locator('app-trade-ticket')).toBeHidden();
     }

@@ -1,3 +1,4 @@
+import { DuaComponent } from '../dua/dua.component';
 import { OrderEditorComponent } from './shared/order-editor.component';
 import { SegmentedTab, SegmentedTabsComponent } from './shared/segmented-tabs.component';
 import { WatchlistStore } from './watchlist/watchlist-store.service';
@@ -91,6 +92,7 @@ type AccountDialog =
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ThemeToggleComponent,
+    DuaComponent,
     OrderEditorComponent,
     ActivityRowComponent,
     ActivityRowSkeletonComponent,
@@ -133,6 +135,7 @@ type AccountDialog =
   styleUrl: './dashboard.component.css',
 })
 export class DashboardComponent implements OnInit, OnDestroy {
+  protected readonly duaConnected = signal(false);
   protected readonly clock = inject(MarketClockService);
   private readonly marketData = inject(MarketDataService);
   private readonly platformId = inject(PLATFORM_ID);
@@ -186,7 +189,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       ? this.accountStore.cashBalance()
       : cashAt(this.accountStore.cashBalance(), this.orderService.orders(), at);
   });
-  private readonly simulationHoldings = computed(() => {
+  protected readonly simulationHoldings = computed(() => {
     const at = this.marketTimeMillis();
     return new Map(
       [...this.accountStore.holdingsByAccount()].map(([accountId, current]) => [
@@ -725,7 +728,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.loadAssetCharts(snapshot.sessionId, this.marketGeneration);
     this.disconnectMarket = this.marketData.connect(snapshot.sessionId, {
       tick: (event) => this.queueTickBatch(event),
-      status: () => undefined,
+      status: (connected) => this.zone.run(() => this.duaConnected.set(connected)),
       resync: () => this.loadMarketSnapshot(),
     });
   }
