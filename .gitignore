@@ -40,6 +40,9 @@ TradingSeason Design System/
 db/tools/reports/
 db/tools/coverage/
 db/tools/.coverage
+apps/holdings-and-trade-service/stock-forecast/reports/junit/
+apps/holdings-and-trade-service/stock-forecast/coverage/
+apps/holdings-and-trade-service/stock-forecast/.coverage
 __pycache__/
 __pycachee__/
 *.pyc
