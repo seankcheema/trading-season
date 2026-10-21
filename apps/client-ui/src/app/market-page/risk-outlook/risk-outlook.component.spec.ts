@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { PlatformSignals, SignalDay, readingFor } from './platform-signals';
+import { PlatformSignals, SignalDay, readingFor, recentReads } from './platform-signals';
 import { PLATFORM_SIGNALS_URL } from './platform-signals.service';
 import { RiskOutlookComponent } from './risk-outlook.component';
 
@@ -84,6 +84,41 @@ describe('readingFor', () => {
   });
 });
 
+describe('recentReads', () => {
+  // Twelve daily reads; the model leads from the start, calls alternate, outcomes are all stormier.
+  const days = Array.from({ length: 12 }, (_, i) =>
+    day(`2026-07-${String(i + 1).padStart(2, '0')}`, {
+      call: i % 2 ? 'stormier' : 'calmer',
+      outcome: 'stormier',
+    }),
+  );
+
+  it('lists only reads whose window had closed, most recent first, capped at six', () => {
+    const reads = recentReads(days, 11, 5);
+    expect(reads.map((r) => r.date)).toEqual([
+      '2026-07-07',
+      '2026-07-06',
+      '2026-07-05',
+      '2026-07-04',
+      '2026-07-03',
+      '2026-07-02',
+    ]);
+    expect(reads.every((r) => r.source === 'model')).toBe(true);
+    // 07-07 is index 6: an even index called calmer, and every outcome was stormier, so it missed.
+    expect(reads[0]).toMatchObject({ call: 'calmer', outcome: 'stormier', hit: false });
+    expect(reads[1]).toMatchObject({ call: 'stormier', hit: true });
+  });
+
+  it('is empty before any window has closed', () => {
+    expect(recentReads(days, 4, 5)).toEqual([]);
+  });
+
+  it('skips reads whose outcome the file does not carry', () => {
+    const partial = days.map((d, i) => (i === 2 ? { ...d, outcome: null } : d));
+    expect(recentReads(partial, 11, 5).map((r) => r.date)).not.toContain('2026-07-03');
+  });
+});
+
 @Component({
   imports: [RiskOutlookComponent],
   template: `<app-risk-outlook [symbol]="symbol()" [marketTimestamp]="at()" />`,
@@ -114,8 +149,16 @@ describe('RiskOutlookComponent', () => {
     expect(headline.textContent).toContain('Stormier than usual');
     expect(
       fixture.nativeElement.querySelector('[data-testid=outlook-basis]').textContent,
-    ).toContain('Platform model, right 15 of 20');
+    ).toContain('Based on the platform model (right 15 of 20 weeks on AAPL)');
+    expect(
+      fixture.nativeElement
+        .querySelector('[data-testid=outlook-other]')
+        .textContent.replace(/\s+/g, ' '),
+    ).toContain('The recent pattern read calmer; it is right 12 of 20.');
     expect(fixture.nativeElement.textContent).toContain('never a recommendation');
+    expect(
+      fixture.nativeElement.querySelector('[data-testid=outlook-recent]').textContent,
+    ).toContain('No week has closed yet');
   });
 
   it('follows the symbol and the simulated time', async () => {
@@ -127,7 +170,12 @@ describe('RiskOutlookComponent', () => {
     await fixture.whenStable();
     expect(
       fixture.nativeElement.querySelector('[data-testid=outlook-basis]').textContent,
-    ).toContain('Recent pattern');
+    ).toContain('Based on the recent pattern (right 14 of 20 weeks on XOM)');
+    expect(
+      fixture.nativeElement
+        .querySelector('[data-testid=outlook-other]')
+        .textContent.replace(/\s+/g, ' '),
+    ).toContain('The platform model read calmer (62% chance of stormier); it is right 10 of 20');
     fixture.componentInstance.at.set('2026-06-01T15:00:00Z');
     fixture.detectChanges();
     await fixture.whenStable();

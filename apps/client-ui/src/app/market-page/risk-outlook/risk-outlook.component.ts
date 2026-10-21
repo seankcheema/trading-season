@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input } from '@angular/core';
-import { PercentPipe } from '@angular/common';
+import { DatePipe, PercentPipe } from '@angular/common';
 import { PlatformSignalsService } from './platform-signals.service';
-import { Reading, readingFor, recordLabel } from './platform-signals';
+import { MIN_RECORD_DAYS, Reading, readingFor, recordLabel } from './platform-signals';
 
 /**
  * The week-ahead risk card for one instrument: will the next trading days be
@@ -12,7 +12,7 @@ import { Reading, readingFor, recordLabel } from './platform-signals';
  */
 @Component({
   selector: 'app-risk-outlook',
-  imports: [PercentPipe],
+  imports: [DatePipe, PercentPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'risk-outlook' },
   template: `
@@ -49,16 +49,29 @@ import { Reading, readingFor, recordLabel } from './platform-signals';
                 </p>
                 <p class="text-muted-foreground text-xs" data-testid="outlook-basis">
                   @if (r.source === 'model') {
-                    Platform model, right {{ recordLabel(r.modelHits, r.modelDays) }} times so far
-                    on {{ symbol() }}, against {{ recordLabel(r.ruleHits, r.ruleDays) }} for
-                    assuming last week repeats.
+                    Based on the platform model (right
+                    {{ recordLabel(r.modelHits, r.modelDays) }} weeks on {{ symbol() }}).
                   } @else {
-                    Recent pattern. The platform model has not beaten it on {{ symbol() }}
-                    @if (recordLabel(r.modelDays, r.modelDays)) {
-                      ({{ recordLabel(r.modelHits, r.modelDays) }} right, against
-                      {{ recordLabel(r.ruleHits, r.ruleDays) }} for the pattern)
+                    Based on the recent pattern (right
+                    {{ recordLabel(r.ruleHits, r.ruleDays) }} weeks on {{ symbol() }}).
+                  }
+                </p>
+                <p class="text-muted-foreground text-xs" data-testid="outlook-other">
+                  @if (r.source === 'model') {
+                    The recent pattern read {{ r.ruleCall }}; it is right
+                    {{ recordLabel(r.ruleHits, r.ruleDays) }}.
+                  } @else {
+                    The platform model read {{ r.modelCall }} ({{
+                      r.probability | percent: '1.0-0'
+                    }}
+                    chance of stormier);
+                    @if (r.modelDays < minRecord) {
+                      it has {{ r.modelDays }} weeks of record on {{ symbol() }}, fewer than the
+                      {{ minRecord }} it needs for the headline.
+                    } @else {
+                      it is right {{ recordLabel(r.modelHits, r.modelDays) }}, so it does not get
+                      the headline yet.
                     }
-                    so the pattern is shown.
                   }
                 </p>
               </div>
@@ -76,10 +89,43 @@ import { Reading, readingFor, recordLabel } from './platform-signals';
                   </dd>
                 </div>
               </dl>
-              <p class="text-muted-foreground mt-2 text-xs">
-                Model probability of a stormier week: {{ r.probability | percent: '1.0-0' }}. As of
-                the {{ r.asOf }} close.
-              </p>
+              <p class="text-muted-foreground mt-2 text-xs">As of the {{ r.asOf }} close.</p>
+              <section class="mt-3" aria-label="Recent reads" data-testid="outlook-recent">
+                <h3 class="text-muted-foreground text-xs font-medium">
+                  Recent reads, once their week had closed
+                </h3>
+                @if (r.recent.length) {
+                  <ul class="mt-1 divide-y divide-border text-xs">
+                    @for (read of r.recent; track read.date) {
+                      <li
+                        class="flex items-center justify-between gap-2 py-1"
+                        data-testid="outlook-read"
+                      >
+                        <span class="text-muted-foreground tabular-nums">{{
+                          read.date | date: 'MMM d'
+                        }}</span>
+                        <span class="min-w-0 flex-1 truncate capitalize">
+                          {{ read.call }}
+                          <span class="text-muted-foreground normal-case">
+                            ({{ read.source === 'model' ? 'model' : 'pattern' }})
+                          </span>
+                        </span>
+                        <span
+                          class="font-medium"
+                          [class.text-gain]="read.hit"
+                          [class.text-loss]="!read.hit"
+                        >
+                          {{ read.hit ? 'came true' : 'did not' }}
+                        </span>
+                      </li>
+                    }
+                  </ul>
+                } @else {
+                  <p class="text-muted-foreground mt-1 text-xs">
+                    No week has closed yet at this simulated date.
+                  </p>
+                }
+              </section>
               <p class="text-muted-foreground mt-auto pt-3 text-xs">
                 A read on how much this stock may move, not on which way. Simulated market; this is
                 never a recommendation to buy or sell.
@@ -121,6 +167,7 @@ export class RiskOutlookComponent {
   readonly marketTimestamp = input.required<string>();
   protected readonly store = inject(PlatformSignalsService);
   protected readonly recordLabel = recordLabel;
+  protected readonly minRecord = MIN_RECORD_DAYS;
   protected readonly horizon = computed(() => this.store.signals()?.horizonDays ?? 5);
   protected readonly reading = computed<Reading | null>(() => {
     const signals = this.store.signals();
