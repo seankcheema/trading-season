@@ -201,11 +201,21 @@ This app does not use the Client UI's [shared-ui-components](../client-ui/shared
 
 The screens come in the design system's dark theme, which is the default, and a light one. The switch is the sun or moon button beside log out in the sidebar, and at the top right of the sign-in page. It works as the [Client UI's](../client-ui/README.md#themes) does:
 
-- [src/styles.css](src/styles.css) declares the light tokens on `:root` and the dark ones on `:root.dark`, with the Client UI's values. Gain, loss and pending are darker in light so that they read as text on a white card.
+- [src/styles.css](src/styles.css) declares the light tokens on `:root` and the dark ones on `:root.dark`, with the Client UI's values. Primary, gain, loss and pending are darker in light so that they read as text on a white card and on their own 15 percent tint, and field outlines reach 3:1 against the card.
 - [ThemeService](src/app/core/theme/theme.service.ts) adds or removes the `dark` class on `<html>` and keeps the choice in this browser's `localStorage` under `ts.settings.theme`; other open tabs follow it. A script in [src/index.html](src/index.html) applies a saved light theme before the first paint, so a reload does not flash dark.
 - Everything the app hands out is light, whatever the theme on screen: the dark tokens are declared for `@media screen` only, so [Export PDF](#export-pdf) prints with the light ones, and the Reporting Service draws the chart PNGs in the light colors. CSV files carry no colors.
 
 Use a token, not a literal color, in new markup: a literal looks right in one theme only.
+
+### Accessibility
+
+The target is WCAG 2.2 level AA, with the same conventions as the [Client UI's](../client-ui/README.md#accessibility). Where this app differs:
+
+- Focus is one `:focus-visible` outline rule in [src/styles.css](src/styles.css), not a box-shadow, so it shows in Windows high contrast.
+- [DialogComponent](src/app/shared/dialog.component.ts) wraps Tab inside the card and gives focus back to its opener on close. The export menu and the filter select follow the menu button and listbox patterns: opened from the keyboard they take focus, the arrow keys, Home and End move between items, and Escape closes them back onto the button.
+- The orders and customers lists and Most traded are ARIA tables, with `aria-sort` on the sorted column. A click anywhere on an order or customer row opens it; the order number and the customer's name are the button and link that do so from the keyboard. The scrollable lists on Activity are focusable.
+- Every route has a title, and navigating moves focus to the new page's heading. A failed sign-in moves focus to the first invalid field.
+- [e2e/accessibility.spec.ts](e2e/accessibility.spec.ts) scans the sign-in page, every screen, the export menu, a filter list and the order dialog with axe-core in both themes, and fails on any violation. It runs with `npm --prefix apps/reporting-ui run e2e`.
 
 ### Export PDF
 
