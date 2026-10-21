@@ -284,7 +284,7 @@ In the [Jenkins pipeline](../../infrastructure/README.md#jenkins) the suite runs
 - A figure on Activity has no change pill when the period before the range has nothing to compare with, which is always so for all time. Today is mostly zeros until the day's first order.
 - A client segment is the level a trader holds now. The level a trader held when an order was placed is not kept, so a promoted trader takes their earlier orders into the new segment.
 - Activity, Customers and Orders are as current as the topics. A customer's portfolio value can be up to 15 minutes old, because scheduled valuations are published at most that often; everything else is on screen at the next refresh.
-- An analyst's "Orders per account" card names each account and its trader. Whether an analyst's work needs clients by name is a decision for the business; the other three cards name nobody.
+- An analyst's "Orders per account" card names each account only, never its trader; no card on a report run names a client. The admin console still shows names.
 - A transfer row opens nothing: the service has no endpoint for a single cash transaction.
 - The Activity ranges are fixed at today, 7, 30 and 90 days, and all time; there is no custom range. All time plots a point per day for a history of up to 366 days. Beyond that a point covers several days and is labelled with the day it starts.
 - The service keeps only the newest scheduled run file on disk. Report runs still shows a live latest snapshot over the chosen range; a run still on disk beside it is listed under Earlier runs with its PNG charts only, over all time.

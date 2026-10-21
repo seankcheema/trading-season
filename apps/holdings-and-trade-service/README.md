@@ -15,7 +15,7 @@ All require a bearer token except where marked public.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| POST | `/api/registration/account-exists` | Whether an email is registered (public) |
+| POST | `/api/registration/account-exists` | Whether an email is registered (requires a token, so it cannot be used to probe emails) |
 | POST | `/api/registration` | Create the caller's profile and a default account, and book the opening funds as the first deposit |
 | GET | `/api/users/me` | The caller's profile, without the SSN; `termsAccepted` reports whether they accepted the platform terms in force |
 | PUT | `/api/users/me/terms-acceptance` | Record that the caller accepts the platform terms; returns the updated profile |
@@ -207,6 +207,8 @@ sequenceDiagram
     M->>R: setClock(timestamp)
     R-->>UI: Snapshot at nearest tick at or before timestamp
 ```
+
+The shared cursor walks a trading day's one-second frames, then keeps running past the 15:00 close: each second after the last frame advances the simulated time with prices held at the close and the snapshot status `CLOSED`, until 23:59:59 America/Chicago, when it moves to the next seeded day's open (after the last day, back to the first). Setting the clock to an evening time lands there directly. Quotes carry the simulated time, so an order placed after the close is priced and then rejected by the market-hours rule (BR-05).
 
 Parquet-backed sessions read raw ticks from the archive: `MARKET_REPLAY_ARCHIVE_LOCATION` first, then the location recorded at import, then the matching archive under `apps/market-data/db/seeds`. A missing partition returns an unavailable error rather than falling back to one-minute candles.
 

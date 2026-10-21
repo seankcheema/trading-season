@@ -49,7 +49,8 @@ docker compose --project-name trading-season-local -f infrastructure/docker-comp
 - To inspect the topic: `docker compose --project-name trading-season-local -f infrastructure/docker-compose/docker-compose.local.yml exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --all-groups` shows each group's lag.
 - Opt-in profiles: `initialize` (first-time empty database) and `seed` (market data steps 0002 to 0004; see [apps/market-data](../apps/market-data/README.md)).
 - `scripts/backup-database.sh` and `scripts/restore-database.sh` take and restore a dump of the database; see [Database backup and restore](#database-backup-and-restore).
-- For Linux VMs, `scripts/setup-local.sh` at the repository root reuses a local PostgreSQL or starts `db` and `kafka` from this Compose file and waits for `kafka` to be healthy, and runs the applications on the host against `localhost:29092`. With a local PostgreSQL it starts no broker, and it never starts the reporting service or its consumer.
+- Long-running services restart unless stopped; the one-shot `db-init`, `db-initialize` and `market-data-seed` do not.
+- For Linux VMs, `scripts/setup-local.sh` at the repository root reuses a local PostgreSQL or starts `db` and `kafka` from this Compose file and waits for `kafka` to be healthy, applies every pending migration through the `db-init` service, and runs the applications on the host against `localhost:29092`. With a local PostgreSQL it starts no broker, and it never starts the reporting service or its consumer.
 
 ### Kafka on its own host
 

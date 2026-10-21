@@ -7,9 +7,9 @@ Angular 21 single-page app with standalone components, signals, reactive forms, 
 | `/` | none | Landing page |
 | `/login`, `/register` | guests only | Sign in and registration |
 | `/dashboard` | signed in | Accounts, holdings, portfolio history, watchlist, market ticker, order dialog, recent transactions, [first-run tour](#first-run-tour) |
-| `/dashboard/markets/:symbol` | signed in | Full-screen instrument page: chart modes and indicators, account and simulation-time controls, order ticket, recent orders |
+| `/dashboard/markets/:symbol` | signed in | Full-screen instrument page: chart modes and indicators, account control and simulated market time, order ticket, recent orders |
 
-The market page places the account selector beside the simulation-time control. Its right panel matches the chart column's height on desktop and scrolls internally. Trading is the default tab, with Available Cash and Portfolio Value above Order Execution; Recent Orders shares that panel. Compact cash and portfolio cards sit above the order ticket. The Buy/Sell action sits at the bottom, with flexible space after the estimated cost or proceeds. The account and simulation-time dropdowns and the profile button are 46px tall and vertically centered beside the search field and back button. Switching tabs preserves the order draft. Smaller screens stack the chart and tools.
+Both page headers show the simulated market time read-only, with a Closed badge outside 8:30 AM to 3:00 PM CT; the time is changed in Settings > Market clock, which reports the new time back to the page that opened it. After the close the clock keeps running with prices held until midnight, then moves to the next trading day. The market page places the account selector beside the market time. Its right panel matches the chart column's height on desktop and scrolls internally. Trading is the default tab, with Available Cash and Portfolio Value above Order Execution; Recent Orders shares that panel. Compact cash and portfolio cards sit above the order ticket. The Buy/Sell action sits at the bottom, with flexible space after the estimated cost or proceeds. The account and simulation-time dropdowns and the profile button are 46px tall and vertically centered beside the search field and back button. Switching tabs preserves the order draft. Smaller screens stack the chart and tools.
 
 Live prices, candles, and the tick stream come from the Java market API. Metrics on the market page are demo data. Users are signed out after a period of inactivity, 10 minutes by default and configurable in settings.
 
@@ -114,6 +114,8 @@ An order's status changes on screen without a refresh (BR-07). While signed in, 
 A status never moves backwards, so an `ACCEPTED` event arriving after the submission response already said `FILLED` changes nothing. An event for an order the page has not loaded re-reads the order history. If the stream drops, the service reopens it after 2 s, doubling to a 10 s cap, and re-reads the history once on reconnection because the backend replays nothing. The stream closes on sign-out and reopens on the next sign-in. The Nginx image turns proxy buffering off for `/api/orders` so frames are forwarded as they arrive.
 
 The order history behind the dashboard and the market page is read from `GET /api/orders` page by page, in the endpoint's default page size, until a short page arrives (BR-11), so every view that derives cash or holdings from past orders still sees all of them.
+
+A buy ticket's cash after deducts what the server reserves, the limit price or the price plus the execution buffer, while the estimated cost stays at the shown price (BR-13). When a pushed status names an order the page has not loaded, or a reconnect re-reads the history, the orders that resolved in between are announced the same way as a pushed fill, so cash and holdings refresh (BR-10).
 
 A fill that lands after the submission response, such as a limit or stop order's, is announced by the service with the `executionPrice` the Order and Sell Service settled at (BR-08); the submission toasts use the same field and fall back to the indicative price when a response has none.
 
