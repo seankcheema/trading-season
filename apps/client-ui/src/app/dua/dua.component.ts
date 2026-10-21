@@ -47,6 +47,12 @@ import {
   takeawayParts,
 } from './dua-insights';
 
+const CHOICE_TITLES: Record<DuaChoice, string> = {
+  daily: 'Daily Review',
+  holdings: 'My Holdings',
+  stock: 'Stock Insights',
+};
+
 @Component({
   selector: 'app-dua',
   host: {
@@ -95,17 +101,13 @@ export class DuaComponent {
   protected readonly faceVisible = computed(
     () => !this.session.minimized() || this.hasUpdates() || this.hovered() || this.focused(),
   );
-  protected readonly title = computed(() =>
-    this.explaining()
-      ? 'Explain these numbers'
-      : this.choice() === 'daily'
-        ? 'Daily Review'
-        : this.choice() === 'holdings'
-          ? 'My Holdings'
-          : this.choice() === 'stock'
-            ? 'Stock Insights'
-            : 'Dua',
-  );
+  protected readonly title = computed(() => {
+    if (this.explaining()) {
+      return 'Explain these numbers';
+    }
+    const choice = this.choice();
+    return choice ? CHOICE_TITLES[choice] : 'Dua';
+  });
   protected readonly imagesFailed = signal(false);
   protected readonly activeCard = signal(0);
   protected readonly cards = signal<DuaCard[]>([]);
@@ -137,7 +139,9 @@ export class DuaComponent {
     });
     effect(() => {
       const time = this.clock.currentMarketTimestamp();
-      if (time < this.lastTime) untracked(() => this.back());
+      if (time < this.lastTime) {
+        untracked(() => this.back());
+      }
       this.lastTime = time;
     });
     effect(() => {
@@ -148,15 +152,16 @@ export class DuaComponent {
       const minimized = this.session.minimized();
       const quotes = this.quotes();
       const holdings = this.holdings();
-      if (
+      const accountUnavailable =
         this.account.needsTermsAcceptance() ||
         this.clock.clockUpdating() ||
-        this.account.status() !== 'ready' ||
+        this.account.status() !== 'ready';
+      const contextMissing =
         accountId === null ||
         sessionId === null ||
         !Number.isFinite(Date.parse(at)) ||
-        !quotes.length
-      ) {
+        !quotes.length;
+      if (accountUnavailable || contextMissing) {
         this.hasUpdates.set(false);
         return;
       }
@@ -182,7 +187,9 @@ export class DuaComponent {
       this.cards();
       const minimized = this.session.minimized();
       const panel = this.panel()?.nativeElement;
-      if (!panel) return;
+      if (!panel) {
+        return;
+      }
       const interruptedHeight = this.resizeAnimation
         ? panel.getBoundingClientRect().height
         : undefined;
@@ -194,23 +201,23 @@ export class DuaComponent {
       const reducedMotion =
         typeof window.matchMedia === 'function' &&
         window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (
-        minimized ||
-        !previous ||
-        reducedMotion ||
-        typeof panel.animate !== 'function' ||
-        Math.abs(previous.width - bounds.width) > 1
-      )
+      const cannotAnimate = minimized || reducedMotion || typeof panel.animate !== 'function';
+      if (!previous || cannotAnimate || Math.abs(previous.width - bounds.width) > 1) {
         return;
+      }
       const from = interruptedHeight ?? previous.height;
-      if (Math.abs(from - bounds.height) < 1) return;
+      if (Math.abs(from - bounds.height) < 1) {
+        return;
+      }
       const animation = panel.animate([{ height: `${from}px` }, { height: `${bounds.height}px` }], {
         duration: 380,
         easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
       });
       this.resizeAnimation = animation;
       animation.onfinish = () => {
-        if (this.resizeAnimation === animation) this.resizeAnimation = undefined;
+        if (this.resizeAnimation === animation) {
+          this.resizeAnimation = undefined;
+        }
       };
     });
     inject(DestroyRef).onDestroy(() => {
@@ -241,11 +248,15 @@ export class DuaComponent {
   }
 
   protected closeOnOutsideClick(event: MouseEvent): void {
-    if (this.session.minimized()) return;
+    if (this.session.minimized()) {
+      return;
+    }
     const path = event.composedPath();
     const panel = this.panel()?.nativeElement;
     const launcher = this.launcher()?.nativeElement;
-    if ((panel && path.includes(panel)) || (launcher && path.includes(launcher))) return;
+    if ((panel && path.includes(panel)) || (launcher && path.includes(launcher))) {
+      return;
+    }
     // Leave focus on the control the user clicked, rather than returning to the launcher.
     this.minimize(false);
   }
@@ -254,7 +265,9 @@ export class DuaComponent {
     this.clearTimers();
     this.session.minimized.set(true);
     this.focused.set(false);
-    if (restoreFocus) this.launcher()?.nativeElement.focus();
+    if (restoreFocus) {
+      this.launcher()?.nativeElement.focus();
+    }
   }
 
   protected back(): void {
@@ -271,8 +284,11 @@ export class DuaComponent {
   }
 
   protected backToPrevious(): void {
-    if (this.explaining()) this.explaining.set(false);
-    else this.back();
+    if (this.explaining()) {
+      this.explaining.set(false);
+    } else {
+      this.back();
+    }
   }
 
   protected select(choice: DuaChoice): void {

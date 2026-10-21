@@ -28,7 +28,9 @@ export interface DuaCard {
 }
 
 export function sparklinePoints(values: readonly number[]): string {
-  if (values.length < 2 || values.some((value) => !Number.isFinite(value))) return '';
+  if (values.length < 2 || values.some((value) => !Number.isFinite(value))) {
+    return '';
+  }
   const min = Math.min(...values);
   const range = Math.max(...values) - min;
   return values
@@ -60,15 +62,19 @@ export function takeawayParts(text: string): { text: string; emphasis: boolean }
     .filter((part) => part.text.length > 0);
 }
 
+const isPositiveNumber = (value: number): boolean => Number.isFinite(value) && value > 0;
+
 export function percentChange(price: number, baseline: number): number | null {
-  return Number.isFinite(price) && price > 0 && Number.isFinite(baseline) && baseline > 0
+  return isPositiveNumber(price) && isPositiveNumber(baseline)
     ? ((price - baseline) / baseline) * 100
     : null;
 }
 
 export function dailyCard(stock: Instrument): DuaCard | null {
   const change = percentChange(stock.price, stock.price - stock.change);
-  if (change === null) return null;
+  if (change === null) {
+    return null;
+  }
   return {
     symbol: stock.symbol,
     title: 'Today',
@@ -108,16 +114,27 @@ function positions(holdings: readonly AccountHolding[], quotes: readonly Instrum
     });
 }
 
+function gainTakeaway(gain: number, cost: number): string {
+  if (gain > 0) {
+    return `Your holdings are UP ${signedMoney(gain)} (${signedPercent((gain / cost) * 100)}) since purchase. This gain is unrealized because you still hold the shares.`;
+  }
+  if (gain < 0) {
+    return `Your holdings are DOWN ${Math.abs((gain / cost) * 100).toFixed(1)}% since purchase - ${money(Math.abs(gain))} below what you paid.`;
+  }
+  return 'Your holdings are at their purchase cost.';
+}
+
 export function holdingCards(
   holdings: readonly AccountHolding[],
   quotes: readonly Instrument[],
 ): DuaCard[] {
   const rows = positions(holdings, quotes);
-  if (!rows.length)
+  if (!rows.length) {
     return ['Portfolio snapshot', 'Performance drivers', 'Exposure'].map((title) => ({
       title,
       text: 'No holdings in this account to review yet.',
     }));
+  }
   const completePrices = rows.every((p) => p.value !== null);
   const completeCosts = rows.every((p) => p.cost !== null);
   const total = rows.reduce((sum, p) => sum + (p.value ?? 0), 0);
@@ -146,11 +163,7 @@ export function holdingCards(
     ],
     note: !performanceValid ? 'Some prices, quantities or purchase costs are missing.' : undefined,
     takeaway: performanceValid
-      ? gain > 0
-        ? `Your holdings are UP ${signedMoney(gain)} (${signedPercent((gain / cost) * 100)}) since purchase. This gain is unrealized because you still hold the shares.`
-        : gain < 0
-          ? `Your holdings are DOWN ${Math.abs((gain / cost) * 100).toFixed(1)}% since purchase - ${money(Math.abs(gain))} below what you paid.`
-          : 'Your holdings are at their purchase cost.'
+      ? gainTakeaway(gain, cost)
       : totalsValid
         ? 'Current value is available, but gains need complete purchase costs.'
         : 'Some prices are missing, so the full picture is unavailable.',
@@ -239,6 +252,21 @@ export function holdingCards(
   return [summary, performance, concentration];
 }
 
+function marketTakeaway(up: number, down: number, validCount: number): string {
+  if (!validCount) {
+    return 'There is not enough price data for a market review yet.';
+  }
+  if (up > down) {
+    return `${up} of ${validCount} tracked stocks are UP today. Gains are more widespread than declines.`;
+  }
+  if (down > up) {
+    return `${down} of ${validCount} tracked stocks are DOWN today. Declines are more widespread than gains.`;
+  }
+  return up === 0
+    ? `All ${validCount} tracked stocks with valid prices are unchanged since open.`
+    : 'The tracked market is evenly split between rising and falling stocks since open.';
+}
+
 export function dailyReview(
   _holdings: readonly AccountHolding[],
   quotes: readonly Instrument[],
@@ -279,15 +307,7 @@ export function dailyReview(
             { label: 'Down', value: String(down), tone: 'loss' },
           ]
         : [],
-      takeaway: !valid.length
-        ? 'There is not enough price data for a market review yet.'
-        : up > down
-          ? `${up} of ${valid.length} tracked stocks are UP today. Gains are more widespread than declines.`
-          : down > up
-            ? `${down} of ${valid.length} tracked stocks are DOWN today. Declines are more widespread than gains.`
-            : up === 0
-              ? `All ${valid.length} tracked stocks with valid prices are unchanged since open.`
-              : 'The tracked market is evenly split between rising and falling stocks since open.',
+      takeaway: marketTakeaway(up, down, valid.length),
       text: valid.length
         ? `${up} up, ${down} down since open.`
         : 'Tracked market movement is unavailable without valid opening prices.',
@@ -547,24 +567,27 @@ export function directionCard(
   const at = Date.parse(cursor);
   const date = (time: number) =>
     new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(time);
+  const isCompleteToday = (p: CandlePointDto): boolean => {
+    const opened = Date.parse(p.timestamp);
+    return (
+      Number.isFinite(opened) &&
+      opened + 60_000 <= at &&
+      date(opened) === date(at) &&
+      isPositiveNumber(p.close)
+    );
+  };
   const completed = points
-    .filter(
-      (p) =>
-        Number.isFinite(Date.parse(p.timestamp)) &&
-        Date.parse(p.timestamp) + 60_000 <= at &&
-        date(Date.parse(p.timestamp)) === date(at) &&
-        Number.isFinite(p.close) &&
-        p.close > 0,
-    )
+    .filter(isCompleteToday)
     .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
     .slice(-5);
-  if (completed.length < 5)
+  if (completed.length < 5) {
     return {
       symbol,
       title: 'Recent direction',
       takeaway: 'A little more completed price history is needed.',
       text: 'Not enough completed candles to describe recent direction.',
     };
+  }
   const rising = completed.slice(1).every((p, i) => p.close > completed[i].close);
   const falling = completed.slice(1).every((p, i) => p.close < completed[i].close);
   const change = percentChange(completed[4].close, completed[0].close)!;
