@@ -55,6 +55,11 @@ DIRECTION_THRESHOLD = 0.5  # call "up" when the predicted probability is above t
 DIRECTION_SWEEP_LOOKBACKS = [20, 30, 60]
 DIRECTION_SWEEP_UNITS = [16, 32, 64]
 CONFIDENCE_BUCKETS = 5
+# Buy signal (extra-buy-signal.py): flag a day when P(up) is at or above a cutoff.
+# Each candidate is tried on one year and the one with the largest edge over
+# that year's up-rate is scored on the next; it needs BUY_SIGNAL_MIN_DAYS flags.
+BUY_SIGNAL_CUTOFFS = [0.52, 0.54, 0.56, 0.58, 0.60, 0.62, 0.65]
+BUY_SIGNAL_MIN_DAYS = 20
 
 # Volatility model: predicts the probability that tomorrow is a big-move day,
 # meaning its return, up or down, is larger than BIG_MOVE_QUANTILE of training
@@ -125,7 +130,8 @@ TEST_DIRECTION_CSV = REPORTS_DIR / "test_direction_results.csv"
 VOLATILITY_RESULTS_CSV = REPORTS_DIR / "volatility_results.csv"
 TEST_VOLATILITY_CSV = REPORTS_DIR / "test_volatility_results.csv"
 WALK_FORWARD_VOLATILITY_CSV = REPORTS_DIR / "walk_forward_volatility.csv"
-MARKET_CONDITIONS_CSV = REPORTS_DIR / "market_conditions.csv"
+BUY_SIGNAL_CSV = REPORTS_DIR / "buy_signal.csv"
+MARKET_CONDITIONS_CSV =REPORTS_DIR / "market_conditions.csv"
 AUTOCORRELATION_CSV = REPORTS_DIR / "return_autocorrelation.csv"
 SCORECARD_JSON = REPO_ROOT / "apps" / "client-ui" / "public" / "forecast" / "scorecard.json"
 PRICE_CHART = REPORTS_DIR / "aapl_price.png"

@@ -43,6 +43,10 @@ Inputs (`DIRECTION_FEATURES`): today's return, SPY's return, volume change, 10-d
 
 [reports/README.md](reports/README.md) explains every chart for readers without a machine learning background.
 
+### Buy signal
+
+`buy_signal.py` asks when the direction model would tell a client to buy: a day is flagged when P(up) is at or above a cutoff from `BUY_SIGNAL_CUTOFFS`. The bar is that year's up-rate, not 50%, because buying every day already wins on every up day; `edge` is the flagged days' up-rate minus every day's. A cutoff counts only with at least `BUY_SIGNAL_MIN_DAYS` flagged days and a positive edge; otherwise there is no signal. `scripts/extra-buy-signal.py` chooses each walk-forward year's cutoff on the year before, from one model fit on the years before that, and scores it on the year itself. It also records the cutoff a test run would freeze, chosen on validation; those validation metrics are the days it was chosen on and flatter the rule. It writes `reports/buy_signal.csv`, never reads the test years, and `--no-lstm` runs the indicator regression alone. Nothing in the platform shows this signal to clients.
+
 ## Volatility models
 
 A second track predicts how big tomorrow's move will be instead of its direction. A big-move day is one whose return, up or down, is larger than `BIG_MOVE_QUANTILE` (the median) of training-day moves; `pipeline.big_move_threshold` cuts that threshold from training labels only and reuses it unchanged. Walk-forward folds cut their own threshold from their training years. The metrics are the direction ones under generic names (`accuracy`, `call_rate`, `event_rate`); the bar to clear each year is the better of answering "big" or "calm" every day. Inputs (`VOLATILITY_FEATURES`) add `abs_ret` and `spy_abs_ret`, today's AAPL and SPY move sizes. Volatility runs log to `reports/volatility_results.csv`, not `results.csv`, whose columns are return and direction metrics.
@@ -137,6 +141,7 @@ Run from `apps/holdings-and-trade-service/stock-forecast` with the virtual envir
 | 10h | `python scripts/extra-vix-family.py` | `reports/vix_family_comparison.csv` | Week 3, about 30 minutes |
 | 10i | `python scripts/extra-horizons.py` | `reports/horizon_comparison.csv` | Week 3; seconds with `--no-lstm`, about 30 minutes with the LSTM |
 | 10j | `python scripts/extra-platform-spike.py` | `reports/platform_spike.csv` and `.png` | Any time; under a minute |
+| 10k | `python scripts/extra-buy-signal.py` | `reports/buy_signal.csv` | Any time before the test run; seconds with `--no-lstm`, minutes with the LSTM |
 | 11 | `python scripts/0005-export-scorecard.py --model lstm-direction` | `reports/test_results.csv`, `reports/test_direction_results.csv`, test confidence charts, real `scorecard.json` | Once, Oct 22, after the final review |
 | 12 | `python scripts/0005-export-scorecard.py --model lstm-volatility` | `reports/test_volatility_results.csv`, test volatility charts; no scorecard | Once, Oct 22, after the final review |
 

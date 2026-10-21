@@ -83,6 +83,14 @@ The direction LSTM beat "always up" in only 2 of 6 years, averaging 52.8% agains
 
 **`lstm_direction_loss.png`**: how the model's error changed while it learned. Training error (blue) keeps falling, but validation error (orange) starts rising after about 8 rounds. That means the model began memorising the training years instead of learning something general, so training stopped and the best earlier version was kept.
 
+## Would it tell a client to buy?
+
+**`buy_signal.csv`**: a "buy" flag goes up on days the model's probability of an up day is at or above a cutoff, such as 58%. The cutoff for each year is picked using only the year before, then tested on the year itself. A flag is useful only if flagged days go up more often than an ordinary day, because buying every day already catches every up day.
+
+The direction LSTM's flagged days beat an ordinary day in 4 of 6 years (2018-2023), but only by about one point on average: 258 of its 464 flagged days went up, about 5 more than buying on any 464 days of the same years would have caught. That is well within luck. The best cutoff also moved from year to year (52% to 58%), so there is no stable rule. The simpler indicator regression did worse: no flags at all in two years, and a better-than-ordinary result in only 2 of 6.
+
+The validation row shows a 62% cutoff with 77% of 26 flagged days going up. Those are the same days the cutoff was picked on, so that number flatters the rule and is not evidence. **The model is not good enough to tell a client to buy, and the platform does not do so.**
+
 ## Predicting big-move days instead
 
 Because up-or-down turned out to be close to a coin flip, a second model asks an easier, well-known question: **will tomorrow be a big-move day?** A big-move day is one where the price moves more than 0.87% in either direction, which is the typical move size in the training years, so about half of training days qualify.
