@@ -27,6 +27,9 @@ export default defineConfig({
     ['html', { outputFolder: 'reports/playwright/html', open: 'never' }],
     ['junit', { outputFile: 'reports/playwright/junit.xml' }],
   ],
+  // The default 5s is tight for a full page load plus Angular bootstrap on a
+  // shared CI agent running two workers.
+  expect: { timeout: 10_000 },
   outputDir: 'reports/playwright/artifacts',
   use: {
     baseURL: 'http://localhost:4200',

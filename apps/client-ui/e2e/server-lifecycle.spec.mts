@@ -13,10 +13,13 @@ test('owned server closes active connections, exits and releases its port', asyn
   const response = await fetch(`http://localhost:${server.port}`);
   assert.equal(await response.text(), 'ready');
   const socket = createConnection({ port: server.port });
+  // Closing the server resets this socket; the reset is expected, not a failure.
+  socket.on('error', () => {});
+  const closed = new Promise((resolve) => socket.once('close', resolve));
   await new Promise((resolve) => socket.once('connect', resolve));
   socket.write('GET /hang HTTP/1.1\r\nHost: localhost\r\n\r\n');
   await server.close();
-  socket.destroy();
+  await closed;
   await assert.rejects(fetch(`http://localhost:${server.port}`));
   await server.close();
 });
