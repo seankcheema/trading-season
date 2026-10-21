@@ -53,7 +53,8 @@ if args.model == "lstm-volatility":
     buckets.to_csv(config.REPORTS_DIR / "volatility_confidence_test.csv", index=False)
     plot_confidence(buckets, max(actual.mean(), 1 - actual.mean()),
                     config.REPORTS_DIR / "volatility_confidence_test.png",
-                    "LSTM volatility: accuracy by confidence, test", baseline_label="one answer every day", ylabel="Big-move accuracy (%)")
+                    "LSTM volatility: accuracy by confidence, test", baseline_label="one answer every day", ylabel="Big-move accuracy (%)",
+                    event_rate_label="share of big-move days")
     plot_event_probability(splits.test.index, prob, actual, config.REPORTS_DIR / "volatility_probability_test.png",
                            "LSTM volatility: predicted vs actual big-move days, test", event="big-move day")
     for r in rows:

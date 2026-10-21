@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from scipy.stats import binomtest
 
 from . import config
 from .pipeline import direction_baselines, direction_lstm_predictions
@@ -35,6 +36,7 @@ def signal_metrics(actual_returns: np.ndarray, prob_up: np.ndarray, cutoff: floa
     return {
         "days": int(len(actual)),
         "signals": signals,
+        "hits": int(up[flagged].sum()),
         "signal_rate": signals / len(actual) if len(actual) else float("nan"),
         "hit_rate": hit_rate,
         "up_rate": float(up.mean()),
@@ -107,3 +109,37 @@ def validation_cutoffs(train: pd.DataFrame, val: pd.DataFrame, with_lstm: bool =
         m = signal_metrics(actual, prob[:-1], cutoff)
         rows.append({"model": name, "cutoff": cutoff, "chosen_edge": m["edge"], **m})
     return rows
+
+
+def luck_p_value(hits: int, signals: int, expected_rate: float) -> float:
+    """Chance of at least this many up days among the flagged days if flagging were luck.
+
+    One-sided binomial test against expected_rate, the up-rate the same days
+    would have had without the model. Below 0.05 would be hard to call luck.
+    """
+    if signals == 0:
+        return float("nan")
+    return float(binomtest(int(hits), int(signals), float(expected_rate), alternative="greater").pvalue)
+
+
+def summarise_signals(walk: pd.DataFrame) -> pd.DataFrame:
+    """One row per model over the walk-forward years: did flagged days beat ordinary days, and by luck?
+
+    expected_hits is what each year's up-rate predicts for that year's flagged
+    days, summed; p_value tests the pooled hits against that expectation.
+    """
+    walk = walk.assign(expected_hits=walk["signals"] * walk["up_rate"], beat_up_rate=walk["edge"] > 0)
+    summary = walk.groupby("model").agg(
+        years=("year", "nunique"),
+        years_with_signal=("signals", lambda s: int((s > 0).sum())),
+        years_beating_up_rate=("beat_up_rate", "sum"),
+        flagged_days=("signals", "sum"),
+        hits=("hits", "sum"),
+        expected_hits=("expected_hits", "sum"),
+        mean_edge=("edge", "mean"),
+    )
+    summary["p_value"] = [
+        luck_p_value(row.hits, row.flagged_days, row.expected_hits / row.flagged_days) if row.flagged_days else float("nan")
+        for row in summary.itertuples()
+    ]
+    return summary.reset_index()

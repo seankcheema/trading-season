@@ -147,7 +147,8 @@ def train_volatility_model(features: list[str]) -> None:
     buckets.to_csv(config.REPORTS_DIR / "volatility_confidence_validation.csv", index=False)
     plot_confidence(buckets, majority, config.REPORTS_DIR / "volatility_confidence_validation.png",
                     "LSTM volatility: accuracy by confidence, validation 2022-2023",
-                    baseline_label="one answer every day", ylabel="Big-move accuracy (%)")
+                    baseline_label="one answer every day", ylabel="Big-move accuracy (%)",
+                    event_rate_label="share of big-move days")
     plot_event_probability(splits.val.index, best.prob_up, actual, config.REPORTS_DIR / "volatility_probability.png",
                            "LSTM volatility: predicted vs actual big-move days, validation 2022-2023",
                            event="big-move day")

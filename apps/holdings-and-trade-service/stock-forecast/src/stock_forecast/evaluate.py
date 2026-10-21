@@ -298,21 +298,64 @@ def plot_walk_forward(
 
 def plot_confidence(
     table: pd.DataFrame, always_up_rate: float, path: Path, title: str, baseline_label: str = "always up",
-    ylabel: str = "Direction accuracy (%)",
+    ylabel: str = "Direction accuracy (%)", event_rate_label: str | None = "share of days that went up",
 ) -> Path:
-    """Accuracy per confidence bucket, with a constant-answer rate as the bar to clear."""
+    """Accuracy per confidence bucket, with a constant-answer rate as the bar to clear.
+
+    When the table has each bucket's event rate (actual_up_rate or event_rate)
+    it is drawn as a marker on every bar: a bar that merely tracks its marker
+    shows a model that calls the event every day, not one that knows when.
+    """
     fig, ax = plt.subplots(figsize=(8, 4.5))
     labels = [f"{b}" for b in table["bucket"]]
-    ax.bar(labels, table["accuracy"] * 100)
+    ax.bar(labels, table["accuracy"] * 100, label="accuracy")
+    rate_col = next((c for c in ("actual_up_rate", "event_rate") if c in table), None)
+    if event_rate_label and rate_col:
+        ax.scatter(labels, table[rate_col] * 100, color="black", marker="_", s=400, linewidths=2, zorder=3,
+                   label=event_rate_label)
     ax.axhline(always_up_rate * 100, linestyle="--", color="black", linewidth=1, label=baseline_label)
     ax.axhline(50, linestyle=":", color="grey", linewidth=1, label="coin flip")
     ax.set_xlabel("Confidence bucket (1 = least sure, equal days in each)")
     ax.set_ylabel(ylabel)
-    lo = min(table["accuracy"].min(), always_up_rate, 0.5) * 100
-    hi = max(table["accuracy"].max(), always_up_rate) * 100
+    rates = table[rate_col] if rate_col and event_rate_label else table["accuracy"]
+    lo = min(table["accuracy"].min(), rates.min(), always_up_rate, 0.5) * 100
+    hi = max(table["accuracy"].max(), rates.max(), always_up_rate) * 100
     ax.set_ylim(max(0, lo - 5), min(100, hi + 5))
     ax.set_title(title)
     ax.legend()
+    return _save(fig, path)
+
+
+def plot_buy_signal(walk: pd.DataFrame, path: Path, title: str) -> Path:
+    """Per walk-forward year: how often each model's flagged days went up, against every day's up-rate.
+
+    A year with no flagged days gets no bar. The day count sits on each bar
+    so a high rate on a handful of days is not mistaken for a result.
+    """
+    years = sorted(walk["year"].unique())
+    models = list(dict.fromkeys(walk["model"]))
+    width = 0.8 / max(len(models), 1)
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    x = np.arange(len(years))
+    for i, model in enumerate(models):
+        rows = walk[walk["model"] == model].set_index("year").reindex(years)
+        offset = x + (i - (len(models) - 1) / 2) * width
+        ax.bar(offset, rows["hit_rate"] * 100, width, color=_model_color(model), label=f"{model}: flagged days up")
+        for xi, (rate, n) in zip(offset, zip(rows["hit_rate"], rows["signals"])):
+            if n > 0:
+                ax.annotate(f"{int(n)} d", (xi, rate * 100), xytext=(0, 2), textcoords="offset points",
+                            ha="center", fontsize=7)
+    up = walk.groupby("year")["up_rate"].first().reindex(years)
+    ax.scatter(x, up * 100, color="black", marker="_", s=600, linewidths=2, zorder=3, label="every day's up-rate (bar to clear)")
+    ax.set_xticks(x, [str(y) for y in years])
+    ax.set_xlabel("Test year (cutoff chosen on the year before)")
+    ax.set_ylabel("Share of days that went up (%)")
+    lo = np.nanmin([walk["hit_rate"].min(), up.min()]) * 100
+    hi = np.nanmax([walk["hit_rate"].max(), up.max()]) * 100
+    # Head-room above the tallest bar keeps the legend off the bars.
+    ax.set_ylim(max(0, lo - 8), min(100, hi + 14))
+    ax.set_title(title)
+    ax.legend(fontsize=8, loc="upper left")
     return _save(fig, path)
 
 

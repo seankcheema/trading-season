@@ -1,0 +1,3 @@
+model,years,years_with_signal,years_beating_up_rate,flagged_days,hits,expected_hits,mean_edge,p_value
+LSTM direction,6,6,4,464,258,252.90273111956466,0.01082244102343105,0.3345509104048661
+Logistic regression (indicators),6,4,2,250,127,130.23532465282855,-0.014057735163910665,0.68205914116212
