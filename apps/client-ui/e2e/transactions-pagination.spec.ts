@@ -41,6 +41,10 @@ test('a page taller than the box shows a scrollbar and keeps the columns aligned
   await page.getByTestId('open-transactions').click();
   const dialog = page.getByRole('dialog', { name: 'Recent Transactions' });
   await expect(dialog.getByTestId('transactions-row')).toHaveCount(15);
+  // The dialog scales in over 200ms. Measured mid-animation, two edges read a few pixels apart.
+  await dialog.evaluate((el) =>
+    Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished)),
+  );
 
   const list = dialog.getByTestId('transactions-table').locator('ul');
   const scroll = await list.evaluate((el) => ({
