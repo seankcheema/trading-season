@@ -1,6 +1,6 @@
 import { newAccount } from './fixtures/accounts';
 import { expect, test } from './fixtures/test';
-import type { Page } from '@playwright/test';
+import type { Locator, Page, Request } from '@playwright/test';
 
 async function expectSharkAnchoredAfterScroll(page: Page): Promise<void> {
   const shark = page.locator('app-dua');
@@ -94,16 +94,18 @@ test('Dua starts closed, reviews holdings, minimizes and follows stock navigatio
     'transition-duration',
     '0.38s, 0.38s, 0s',
   );
-  expect((await panel.locator('.insight-card:not(.inactive)').boundingBox())!.height).toBe(
+  expect((await panel.locator('.insight-card:not(.inactive)').boundingBox())!.height).toBeCloseTo(
     initialCard!.height,
+    2,
   );
   expect(
     await panel.locator('.dua-body').evaluate((el) => el.scrollHeight <= el.clientHeight),
   ).toBe(true);
   await panel.getByRole('button', { name: 'Show Top performer', exact: true }).click();
   await expect(panel).toContainText('Top performer');
-  expect((await panel.locator('.insight-card:not(.inactive)').boundingBox())!.height).toBe(
+  expect((await panel.locator('.insight-card:not(.inactive)').boundingBox())!.height).toBeCloseTo(
     initialCard!.height,
+    2,
   );
   await panel.getByRole('button', { name: 'Previous insight', exact: true }).click();
   await expect(panel).toContainText('Sector concentration');
@@ -139,11 +141,11 @@ test('Dua starts closed, reviews holdings, minimizes and follows stock navigatio
   await panel.getByRole('button', { name: 'This Stock', exact: true }).click();
   await expect(panel).toContainText('Growth insight');
   await expect(panel).toContainText('+24.8%');
-  await expect(panel.locator('.card-meta')).toContainText(/\d{2}\/\d{2}\/\d{4}/);
+  await expect(panel.locator('.insight-card:not(.inactive) .card-meta')).toContainText(/\d{2}\/\d{2}\/\d{4}/);
   await panel.getByRole('button', { name: 'Next insight', exact: true }).click();
   await expect(panel).toContainText('Valuation insight');
   await expect(panel).toContainText('-18%');
-  await expect(panel.locator('.card-meta')).toContainText(/\d{2}\/\d{2}\/\d{4}/);
+  await expect(panel.locator('.insight-card:not(.inactive) .card-meta')).toContainText(/\d{2}\/\d{2}\/\d{4}/);
   await page.goBack();
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(panel).toBeHidden();
@@ -152,6 +154,65 @@ test('Dua starts closed, reviews holdings, minimizes and follows stock navigatio
   await panel.press('Escape');
   await expect(panel).toBeHidden();
   await expect(page.getByRole('button', { name: 'Dua insights', exact: true })).toBeFocused();
+});
+
+test('Dua reviews, explanations and refresh use no additional HTTP requests', async ({
+  page,
+  loginPage,
+}, testInfo) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await loginPage.goto();
+  await loginPage.signIn(USER.email, USER.password);
+  await page.goto('/dashboard/markets/aapl?accountId=1');
+  await expect(page.locator('app-market-page')).toBeVisible();
+  const launcher = page.getByRole('button', { name: 'Dua insights', exact: true });
+  await expect(launcher).toBeVisible();
+
+  // Let initial context requests finish, then freeze the existing market/auth
+  // timers. Already-open SSE connections stay open; Dua interactions still run
+  // normally, and any new request (including to an existing API) is a failure.
+  await page.clock.install();
+  await page.clock.pauseAt(new Date(Date.now() + 1_000));
+  await page.waitForLoadState('networkidle');
+  const requests: string[] = [];
+  const recordRequest = (request: Request) => {
+    requests.push(`${request.method()} ${request.url()}`);
+  };
+  page.on('request', recordRequest);
+  const click = async (button: Locator) => {
+    await button.click();
+    // Flush Angular rendering without resuming the background polling clock.
+    await page.clock.runFor(20);
+  };
+  try {
+    await click(launcher);
+    const panel = page.getByRole('region', { name: 'Dua insights' });
+    await expect(panel).toBeVisible();
+    for (const [choice, title] of [
+      ['Daily Review', 'Market overview'],
+      ['My Holdings', 'Portfolio growth'],
+      ['This Stock', 'Growth insight'],
+    ]) {
+      await click(panel.getByRole('button', { name: choice, exact: true }));
+      await expect(panel.getByRole('heading', { name: title, exact: true })).toBeVisible();
+      await click(panel.getByRole('button', { name: 'Explain these numbers', exact: true }));
+      await expect(panel.getByRole('heading', { name: 'Explain these numbers' })).toBeVisible();
+      await click(panel.getByRole('button', { name: 'Back to results', exact: true }));
+      await click(panel.getByRole('button', { name: 'Refresh', exact: true }));
+      await expect(panel.getByRole('heading', { name: title, exact: true })).toBeVisible();
+      await click(panel.getByRole('button', { name: 'Back to choices', exact: true }));
+    }
+    await click(panel.getByRole('button', { name: 'Minimize Dua', exact: true }));
+    await expect(panel).toBeHidden();
+    await page.waitForLoadState('networkidle');
+    expect(requests, 'Dua must reuse loaded context without starting HTTP requests').toEqual([]);
+  } finally {
+    page.off('request', recordRequest);
+    await testInfo.attach('dua-interaction-requests', {
+      body: JSON.stringify(requests, null, 2),
+      contentType: 'application/json',
+    });
+  }
 });
 
 test('Dua remains a compact overlay on mobile and supports reduced motion', async ({

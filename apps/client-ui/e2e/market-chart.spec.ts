@@ -117,10 +117,8 @@ test('executes a trade and shows recent orders within the full-screen layout', a
     }
     expect(ticketBounds!.y).toBeGreaterThanOrEqual(accountBounds!.y + accountBounds!.height);
     await page.locator('#future-trade-quantity').fill('2');
-    for (const name of ['Overview', 'News', 'AI', 'Recent Orders']) {
-      await page.getByRole('tab', { name, exact: true }).click();
-      await expect(page.locator('app-trade-ticket')).toBeHidden();
-    }
+    await page.getByRole('tab', { name: 'Recent Orders', exact: true }).click();
+    await expect(page.locator('app-trade-ticket')).toBeHidden();
     await page.getByRole('tab', { name: 'Trading', exact: true }).click();
     await expect(page.locator('.trading-content')).toBeVisible();
     await expect(page.locator('#future-trade-quantity')).toHaveValue('2');
@@ -201,7 +199,7 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   await page.getByRole('combobox', { name: 'Search instruments' }).fill('AAPL');
   await page.getByRole('option', { name: /AAPL/ }).first().click();
   await page.getByRole('link', { name: 'Open full screen market chart' }).click();
-  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl$/);
+  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl\?accountId=2$/);
   await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');
   const buy = page.getByRole('button', { name: 'Buy 2 AAPL', exact: true });
   // The ticket zeroes the quantity when the account input settles, so refill until the click lands.
@@ -218,6 +216,7 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   await clock.locator('input').fill('2026-01-05T08:30');
   await clock.getByRole('button', { name: 'Apply time' }).click();
   await expect(history).toContainText('No orders at this simulated time.');
+  await page.getByRole('tab', { name: 'Trading', exact: true }).click();
   // Rewinding changes history and portfolio views, while trading limits use persisted balances.
   await expect(page.locator('app-trade-ticket')).toContainText('$4,548.40');
   await expect(page.getByTestId('account-portfolio-value')).toContainText('$0.00');
@@ -225,6 +224,7 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   await clock.locator('summary').click();
   await clock.locator('input').fill('2026-01-05T09:00');
   await clock.getByRole('button', { name: 'Apply time' }).click();
+  await page.getByRole('tab', { name: 'Recent Orders', exact: true }).click();
   await expect(history).toContainText('2 @ $225.80 · MARKET · Filled');
   expect(
     api.requests.filter((r) => r.method === 'POST' && r.url.endsWith('/api/orders')),

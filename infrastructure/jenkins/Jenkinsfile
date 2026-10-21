@@ -605,6 +605,12 @@ pipeline {
                     for app in client-ui reporting-ui; do
                         npm --prefix "apps/$app" run build
                         test -s "apps/$app/dist/$app/browser/index.html"
+                        if [ "$app" = client-ui ]; then
+                            test -s "apps/$app/dist/$app/browser/assets/assistant/shark-launcher-light-512.png" || {
+                                echo "Client UI bundle is missing the nonempty Dua launcher image." >&2
+                                exit 1
+                            }
+                        fi
                         tar -czf "ui-bundles/$app-${BUILD_NUMBER}.tar.gz" -C "apps/$app/dist/$app/browser" .
                     done
                 '''

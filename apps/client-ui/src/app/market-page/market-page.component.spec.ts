@@ -1353,9 +1353,9 @@ describe('MarketPageComponent', () => {
       const component = fixture.componentInstance;
       const instrument = component['instruments']().find((item) => item.symbol === 'MSFT')!;
       component['selectInstrument'](instrument);
-      expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: null });
+      expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: null, accountId: 1 });
       component['selectInstrument'](component['instruments']().find((item) => item.symbol === 'AAPL')!);
-      expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: 'msft' });
+      expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: 'msft', accountId: 1 });
     });
 
     it('reflects stream connection status and reloads the snapshot on resync', async () => {

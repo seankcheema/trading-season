@@ -148,6 +148,9 @@ test.describe('Theme', () => {
 
     await panel.getByRole('button', { name: 'Daily Review', exact: true }).click();
     await page.getByRole('button', { name: 'Switch to dark theme' }).click();
+    // The theme toggle is outside Dua, so it closes the panel without resetting its choice.
+    await expect(panel).toBeHidden();
+    await page.getByRole('button', { name: 'Dua insights', exact: true }).click();
     await expect(panel.locator('.dua-header')).toHaveCSS('background-color', 'rgb(12, 14, 16)');
     await expect(panel.locator('.insight-card:not(.inactive) .primary-metric strong')).toHaveCSS('color', 'rgb(255, 255, 255)');
     await page.screenshot({ path: 'reports/playwright/theme-dua-daily-dark.png' });

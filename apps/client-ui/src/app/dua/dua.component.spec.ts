@@ -120,7 +120,7 @@ describe('Dua panel', () => {
   it('calculates selected insights and clears results on account changes', () => {
     const { fixture, click, text } = setup();
     click('Daily Review');
-    expect(fixture.nativeElement.querySelector('.takeaway').textContent).toContain(
+    expect(fixture.nativeElement.querySelector('.takeaway').textContent.replace(/\s+/g, ' ')).toContain(
       'market closed on a high note',
     );
     expect(fixture.nativeElement.querySelector('.insight-card strong')).not.toBeNull();
@@ -334,11 +334,11 @@ describe('Dua panel', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.launcher-art.face-visible')).toBeNull();
     click('Dua insights');
-    expect(fixture.nativeElement.querySelector('h2').textContent.trim()).toBe('Dua - Free Plan');
+    expect(fixture.nativeElement.querySelector('h2').textContent.replace(/\s+/g, ' ').trim()).toBe('Dua - Free Plan');
     click('Daily Review');
-    expect(fixture.nativeElement.querySelector('h2').textContent.trim()).toBe('Daily Review');
+    expect(fixture.nativeElement.querySelector('h2').textContent.replace(/\s+/g, ' ').trim()).toBe('Daily Review');
     click('Back to choices');
-    expect(fixture.nativeElement.querySelector('h2').textContent.trim()).toBe('Dua - Free Plan');
+    expect(fixture.nativeElement.querySelector('h2').textContent.replace(/\s+/g, ' ').trim()).toBe('Dua - Free Plan');
     fixture.destroy();
   });
 });
