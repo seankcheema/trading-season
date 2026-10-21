@@ -456,6 +456,22 @@ describe('OrderDetailComponent', () => {
     expect(text(root())).not.toContain('Nothing posted');
   });
 
+  it('labels each stage price by the quote it came from', () => {
+    render(
+      of(
+        orderDetail({
+          audit: [
+            { eventType: 'PENDING', detail: null, recordedAt: '2026-10-08T20:44:10+00:00', price: 101, priceKind: 'REFERENCE' },
+            { eventType: 'TRIGGERED', detail: null, recordedAt: '2026-10-08T20:44:11+00:00', price: 104, priceKind: 'TRIGGER' },
+            { eventType: 'FILLED', detail: null, recordedAt: '2026-10-08T20:44:12+00:00', price: 104.5, priceKind: 'FILL' },
+          ],
+        }),
+      ),
+    );
+    const prices = Array.from(root().querySelectorAll('[data-stage-price]')).map((price) => text(price));
+    expect(prices).toEqual(['$101.00 market quote', '$104.00 trigger quote', '$104.50 fill price']);
+  });
+
   it('lists the audit trail in order, colored by what each event means', () => {
     render(
       of(

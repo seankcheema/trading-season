@@ -601,12 +601,9 @@ components:
         accountName:
           type: string
           nullable: true
-        userName:
-          type: string
-          nullable: true
         label:
           type: string
-          description: Account name and trader name, or the account id when the account is unknown.
+          description: Account name, or the account id when the account is unknown. Runs reach analysts, so they name no trader.
       required: [accountId, total, filled, rejected, label]
     DailyCount:
       type: object
@@ -929,8 +926,8 @@ components:
           $ref: '#/components/schemas/OrderSide'
         type:
           type: string
-          enum: [MARKET]
-          description: The product has no other kind of order.
+          enum: [MARKET, LIMIT, STOP, STOP_LIMIT]
+          description: The order's execution type; orders from before limit and stop orders existed read MARKET.
         quantity:
           type: number
         price:
@@ -1119,14 +1116,15 @@ components:
                     type: number
                     nullable: true
                     description: |
-                      The fill's price on the entry that records the fill, and
-                      the price the order asked for on every other entry. Null
-                      when the order carried no price. An audit row holds no
-                      price of its own; this is taken from the order and its fill.
+                      The quote the stage was priced against (BR-15): the fill's
+                      price on the FILLED entry, the activation quote on TRIGGERED,
+                      and the submission quote on every other entry; an order from
+                      before server quotes falls back to the price it asked for.
+                      Null when the order carried no price.
                   priceKind:
                     type: string
                     nullable: true
-                    enum: [INDICATIVE, FILL]
+                    enum: [INDICATIVE, REFERENCE, TRIGGER, FILL]
                     description: Which of the two price is. Null when price is.
                 required: [eventType, detail, recordedAt, price, priceKind]
           required: [userEmail, bufferPercent, acceptedAt, resolvedAt, simulatedAt, fill, ledger, audit]

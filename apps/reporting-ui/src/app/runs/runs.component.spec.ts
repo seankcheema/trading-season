@@ -296,7 +296,7 @@ describe('RunsComponent', () => {
     const accounts = card(render(), 'Orders per account');
 
     expect(meters(accounts)).toEqual([
-      'Growth (Sean Cheema) 5 orders 4 filled · 1 rejected',
+      'Growth 5 orders 4 filled · 1 rejected',
       '12 3 orders 2 filled · 1 rejected',
     ]);
     expect(widths(accounts)).toEqual(['bg-gain 80%', 'bg-loss 20%', 'bg-gain 40%', 'bg-loss 20%']);

@@ -22,8 +22,7 @@ export interface TradesPerAccount {
   filled: number;
   rejected: number;
   accountName?: string | null;
-  userName?: string | null;
-  // Account name and trader name, or the account id when the account is unknown.
+  // Account name, or the account id when the account is unknown. Runs name no trader.
   label: string;
 }
 
