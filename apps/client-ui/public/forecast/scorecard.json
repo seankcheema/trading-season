@@ -1,0 +1,10 @@
+{
+  "symbol": "AAPL",
+  "model": "LSTM, 30-day window",
+  "testPeriod": "2024-01-02 to 2026-09-29",
+  "directionAccuracy": 0.0,
+  "alwaysUpAccuracy": 0.0,
+  "modelReturnRmse": 0.0,
+  "naiveReturnRmse": 0.0,
+  "status": "placeholder"
+}
