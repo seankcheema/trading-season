@@ -95,6 +95,7 @@ import { TickAnimations } from '../dashboard/shared/tick-animations';
 import { TimeframeToggleComponent } from '../dashboard/shared/timeframe-toggle.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
 import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
+import { MenuKeyboardDirective } from '../dashboard/shared/menu-keyboard.directive';
 
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
@@ -117,6 +118,7 @@ interface MarketStats {
   selector: 'app-market-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    MenuKeyboardDirective,
     ThemeToggleComponent,
     NgTemplateOutlet,
     OrderEditorComponent,

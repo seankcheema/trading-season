@@ -351,18 +351,15 @@ describe('InstrumentSearchComponent enhancements', () => {
       expect(document.activeElement).toBe(input);
     });
 
-    it('lights the search icon and ring while focused', () => {
+    it('lights the search icon while focused, and keeps the shared focus outline', () => {
       render({ action: 'Trade' });
       const icon = root.querySelector('ng-icon')!;
       expect(icon.className).toContain('text-muted-foreground');
-      expect(input.className).toContain('focus-visible:ring-3');
+      // The global :focus-visible outline marks focus; nothing switches it off.
+      expect(input.className).not.toContain('outline-none');
+      expect(input.className).toContain('focus-visible:border-ring');
       focus();
       expect(icon.className).toContain('text-primary');
-    });
-
-    it('does not add a ring without an action', () => {
-      render();
-      expect(input.className).not.toContain('focus-visible:ring-3');
     });
 
     it('makes room on the right for the button and the hint', () => {

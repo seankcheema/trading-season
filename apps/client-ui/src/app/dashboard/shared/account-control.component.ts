@@ -11,6 +11,7 @@ import {
 import { DashboardHeaderDropdownComponent } from './dashboard-header-dropdown.component';
 import { AccountStore } from '../accounts/account-store.service';
 import { Account } from '../accounts/account.models';
+import { MenuKeyboardDirective } from './menu-keyboard.directive';
 
 @Component({
   selector: 'app-account-control',
@@ -26,7 +27,7 @@ import { Account } from '../accounts/account.models';
       }
     `,
   ],
-  imports: [CurrencyPipe, NgIcon, DashboardHeaderDropdownComponent],
+  imports: [MenuKeyboardDirective, CurrencyPipe, NgIcon, DashboardHeaderDropdownComponent],
   providers: [
     provideIcons({
       lucideBriefcaseBusiness,

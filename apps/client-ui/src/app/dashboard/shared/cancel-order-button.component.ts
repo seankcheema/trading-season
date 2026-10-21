@@ -1,13 +1,14 @@
 import { ChangeDetectionStrategy, Component, ElementRef, inject, input, output, viewChild } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideEllipsisVertical } from '@ng-icons/lucide';
+import { MenuKeyboardDirective } from './menu-keyboard.directive';
 
 let nextConfirmationId = 0;
 
 /** Compact order actions, with editing and a centered cancellation confirmation. */
 @Component({
   selector: 'app-cancel-order-button',
-  imports: [NgIcon],
+  imports: [MenuKeyboardDirective, NgIcon],
   providers: [provideIcons({ lucideEllipsisVertical })],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {

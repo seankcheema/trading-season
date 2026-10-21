@@ -6,11 +6,12 @@ import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, i
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ExecutionType } from '../orders/order.models';
 import { ExecutionSettingsService } from '../settings-dialog/execution-settings.service';
+import { MenuKeyboardDirective } from './menu-keyboard.directive';
 
 /** Compact stock execution controls shared by the dialog and full-screen ticket. */
 @Component({
   selector: 'app-execution-controls',
-  imports: [CurrencyPipe, NgTemplateOutlet, NgIcon, DashboardHeaderDropdownComponent],
+  imports: [MenuKeyboardDirective, CurrencyPipe, NgTemplateOutlet, NgIcon, DashboardHeaderDropdownComponent],
   providers: [provideIcons({ lucideCheck, lucideChevronDown, lucideZap, lucideTrendingUp, lucideCircleStop, lucideGitBranch })],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -90,7 +91,7 @@ import { ExecutionSettingsService } from '../settings-dialog/execution-settings.
         <div class="flex items-center gap-1.5">
           <span aria-hidden="true" class="text-muted-foreground text-base">$</span>
           <input aria-label="Limit price" aria-required="true" type="number" min="0.000001" step="0.000001"
-            class="border-border bg-muted/40 text-foreground focus-visible:ring-ring/35 h-8 min-w-0 w-full rounded-lg border px-2 text-base font-medium tabular-nums outline-none focus-visible:ring-2"
+            class="border-input bg-muted/40 text-foreground focus-visible:border-ring h-8 min-w-0 w-full rounded-lg border px-2 text-base font-medium tabular-nums"
             [class.border-primary]="limitPrice() === null" [class.bg-primary/10]="limitPrice() === null"
             [class.ring-1]="limitPrice() === null" [class.ring-primary/30]="limitPrice() === null"
             [attr.aria-invalid]="limitPrice() !== null && !validPrice(limitPrice())"
@@ -106,7 +107,7 @@ import { ExecutionSettingsService } from '../settings-dialog/execution-settings.
         <div class="flex items-center gap-1.5">
           <span aria-hidden="true" class="text-muted-foreground text-base">$</span>
           <input aria-label="Stop price" aria-required="true" type="number" min="0.000001" step="0.000001"
-            class="border-border bg-muted/40 text-foreground focus-visible:ring-ring/35 h-8 min-w-0 w-full rounded-lg border px-2 text-base font-medium tabular-nums outline-none focus-visible:ring-2"
+            class="border-input bg-muted/40 text-foreground focus-visible:border-ring h-8 min-w-0 w-full rounded-lg border px-2 text-base font-medium tabular-nums"
             [class.border-primary]="stopPrice() === null" [class.bg-primary/10]="stopPrice() === null"
             [class.ring-1]="stopPrice() === null" [class.ring-primary/30]="stopPrice() === null"
             [attr.aria-invalid]="stopPrice() !== null && !validPrice(stopPrice())"

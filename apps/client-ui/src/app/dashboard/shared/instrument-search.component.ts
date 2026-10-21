@@ -59,13 +59,14 @@ export interface SearchSuggestionGroup {
         [id]="inputId"
         type="search"
         role="combobox"
+        aria-autocomplete="list"
         autocomplete="off"
         [placeholder]="placeholder()"
         [class]="inputClasses()"
         [value]="query()"
         [attr.aria-expanded]="open()"
-        [attr.aria-controls]="listId"
-        [attr.aria-activedescendant]="open() ? optionId(activeIndex()) : null"
+        [attr.aria-controls]="open() && hasOptions() ? listId : null"
+        [attr.aria-activedescendant]="open() && hasOptions() ? optionId(activeIndex()) : null"
         [attr.aria-keyshortcuts]="shortcut() ? '/ Control+K Meta+K' : null"
         (input)="onInput($event)"
         (focus)="onFocus()"
@@ -104,18 +105,20 @@ export interface SearchSuggestionGroup {
       }
     </div>
 
-    @if (open()) {
-      <ul [id]="listId" role="listbox" [class]="resultsClasses()">
+    <!-- Says how many results there are as the query changes; the list itself is not a live region. -->
+    <span class="sr-only" role="status">{{ resultsAnnouncement() }}</span>
+    @if (open() && !hasOptions()) {
+      <div [class]="resultsClasses()" data-testid="search-no-results">
+        <p class="text-muted-foreground px-4 py-2 text-sm">No instruments match "{{ query() }}"</p>
+      </div>
+    } @else if (open()) {
+      <ul [id]="listId" role="listbox" aria-label="Instruments" [class]="resultsClasses()">
         @if (hasQuery()) {
           @for (instrument of results(); track instrument.symbol; let i = $index) {
             <ng-container
               [ngTemplateOutlet]="optionRow"
               [ngTemplateOutletContext]="{ $implicit: instrument, index: i }"
             />
-          } @empty {
-            <li class="text-muted-foreground px-4 py-2 text-sm">
-              No instruments match "{{ query() }}"
-            </li>
           }
         } @else {
           @for (group of suggestionGroups(); track group.label; let g = $index) {
@@ -218,6 +221,17 @@ export class InstrumentSearchComponent {
   protected readonly open = computed(
     () => this.focused() && (this.hasQuery() || this.suggestionGroups().length > 0),
   );
+  protected readonly hasOptions = computed(() => this.options().length > 0);
+  // Read out by the status region: how many instruments match what has been typed.
+  protected readonly resultsAnnouncement = computed(() => {
+    if (!this.open() || !this.hasQuery()) {
+      return '';
+    }
+    const count = this.results().length;
+    return count === 0
+      ? `No instruments match "${this.query()}"`
+      : `${count} ${count === 1 ? 'instrument' : 'instruments'} found`;
+  });
   protected readonly showHint = computed(() => this.shortcut() && !this.focused() && !this.query());
   protected readonly inputClasses = computed(() => {
     const right = this.action()
@@ -230,11 +244,10 @@ export class InstrumentSearchComponent {
     const size =
       this.size() === 'lg' ? `h-12 ${right} pl-12 text-base` : `h-11 ${right} pl-11 text-sm`;
     const base =
-      'border-border placeholder:text-muted-foreground focus-visible:border-ring block box-border w-full border py-0 transition-colors outline-none';
-    const ring = this.action() ? ' focus-visible:ring-ring/50 focus-visible:ring-3' : '';
+      'border-input placeholder:text-muted-foreground focus-visible:border-ring block box-border w-full border py-0 transition-colors';
     return this.embedded()
       ? `${base} ${size} rounded-none border-x-0 border-t-0 bg-transparent`
-      : `${base} ${size} bg-card rounded-xl${ring}`;
+      : `${base} ${size} bg-card rounded-xl`;
   });
   protected readonly resultsClasses = computed(() =>
     this.embedded()

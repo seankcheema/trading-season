@@ -29,6 +29,10 @@ function render<T>(component: new (...args: never[]) => T, inputs: Record<string
   return fixture;
 }
 
+// Presses a key on an element, as the browser would, bubbling up to its listeners.
+const key = (target: Element, key: string, shiftKey = false) =>
+  target.dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey, bubbles: true, cancelable: true }));
+
 describe('ChangePillComponent', () => {
   const classes = (element: HTMLElement) => Array.from(element.classList);
 
@@ -183,6 +187,26 @@ describe('ExportMenuComponent', () => {
     fixture.detectChanges();
     expect(items()).toHaveLength(0);
   });
+
+  it('works from the keyboard: opens on its first item, the arrows wrap, escape returns', async () => {
+    trigger().focus();
+    key(trigger(), 'ArrowDown');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(items()[0]);
+
+    key(items()[0], 'ArrowDown');
+    expect(document.activeElement).toBe(items()[1]);
+    key(items()[1], 'ArrowDown');
+    expect(document.activeElement).toBe(items()[0]);
+    key(items()[0], 'End');
+    expect(document.activeElement).toBe(items()[1]);
+
+    key(items()[1], 'Escape');
+    fixture.detectChanges();
+    expect(items()).toHaveLength(0);
+    expect(document.activeElement).toBe(trigger());
+  });
 });
 
 describe('FilterSelectComponent', () => {
@@ -250,6 +274,40 @@ describe('FilterSelectComponent', () => {
     fixture.componentRef.setInput('value', 'ACCEPTED');
     fixture.detectChanges();
     expect(trigger().textContent!.trim()).toBe('ACCEPTED');
+  });
+  it('works from the keyboard: opens on the chosen option, arrows move, a pick returns focus', async () => {
+    trigger().focus();
+    key(trigger(), 'ArrowDown');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(options()[0]);
+    // Options are reached with the arrow keys, not Tab.
+    expect(options().every((option) => option.tabIndex === -1)).toBe(true);
+
+    key(options()[0], 'ArrowDown');
+    expect(document.activeElement).toBe(options()[1]);
+    key(options()[1], 'End');
+    expect(document.activeElement).toBe(options()[2]);
+    key(options()[2], 'Home');
+    expect(document.activeElement).toBe(options()[0]);
+
+    options()[2].click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.value()).toBe('REJECTED');
+    expect(options()).toHaveLength(0);
+    expect(document.activeElement).toBe(trigger());
+  });
+
+  it('closes on escape back onto its button', async () => {
+    trigger().focus();
+    key(trigger(), 'ArrowDown');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    key(options()[0], 'Escape');
+    fixture.detectChanges();
+    expect(options()).toHaveLength(0);
+    expect(document.activeElement).toBe(trigger());
   });
 });
 
@@ -543,6 +601,48 @@ describe('DialogComponent', () => {
     root().querySelector<HTMLElement>('app-dialog')!.click();
     fixture.detectChanges();
     expect(dialog()).toBeNull();
+  });
+});
+
+@Component({
+  imports: [DialogComponent],
+  template: `
+    <button type="button" id="opener" (click)="open.set(true)">Open</button>
+    @if (open()) {
+      <app-dialog title="Order #7" closeLabel="Close order detail" (closed)="open.set(false)">
+        <button type="button" id="inside">Copy</button>
+      </app-dialog>
+    }
+  `,
+})
+class FocusDialogHost {
+  readonly open = signal(false);
+}
+
+describe('DialogComponent focus', () => {
+  it('keeps Tab inside the card and hands focus back to its opener on close', async () => {
+    const fixture = TestBed.createComponent(FocusDialogHost);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const opener = root.querySelector<HTMLButtonElement>('#opener')!;
+    opener.focus();
+    opener.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const close = root.querySelector<HTMLButtonElement>('button[aria-label="Close order detail"]')!;
+    const inside = root.querySelector<HTMLButtonElement>('#inside')!;
+    expect(document.activeElement).toBe(close);
+
+    inside.focus();
+    key(inside, 'Tab');
+    expect(document.activeElement).toBe(close);
+    key(close, 'Tab', true);
+    expect(document.activeElement).toBe(inside);
+
+    close.click();
+    fixture.detectChanges();
+    expect(root.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(opener);
   });
 });
 

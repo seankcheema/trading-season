@@ -35,6 +35,7 @@
         <app-dashboard-header-dropdown
           data-testid="profile-dropdown"
           ariaLabel="Open profile menu"
+          [triggerText]="profileInitials()"
           [open]="openHeaderDropdown() === 'profile'"
           (openChange)="openHeaderDropdown.set($event ? 'profile' : null)"
           containerClass="shrink-0"

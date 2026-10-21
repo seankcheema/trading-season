@@ -7,7 +7,7 @@ import { NgIcon } from '@ng-icons/core';
   imports: [NgIcon],
   template: `
     <details [class]="containerClasses()" [open]="open()" (toggle)="onToggle($event)" (keydown.escape)="onEscape($event)">
-      <summary [class]="triggerClasses()" [attr.aria-label]="ariaLabel()">
+      <summary [class]="triggerClasses()" [attr.aria-label]="accessibleName()">
         <ng-content select="[dropdownTrigger]">
           <ng-icon [name]="iconName()" class="shrink-0 text-[16px]" />
           @if (loading()) {
@@ -43,12 +43,22 @@ export class DashboardHeaderDropdownComponent {
   // The label is not known yet: the default trigger shows a placeholder in its place and
   // keeps the label for assistive technology.
   readonly loading = input(false);
+  // What the trigger does, such as "Select account".
   readonly ariaLabel = input.required<string>();
+  // The text a projected [dropdownTrigger] shows; the default trigger shows `label`.
+  readonly triggerText = input('');
   readonly open = input(false);
   readonly containerClass = input('');
   readonly triggerClass = input('');
   readonly panelClass = input('');
   readonly openChange = output<boolean>();
+
+  // The trigger's accessible name starts with the text it shows and goes on to what it does, so
+  // a voice control user can say what they see (WCAG 2.5.3): "Brokerage, Select account".
+  protected readonly accessibleName = computed(() => {
+    const shown = (this.triggerText() || this.label()).trim();
+    return shown ? `${shown}, ${this.ariaLabel()}` : this.ariaLabel();
+  });
 
   protected readonly containerClasses = computed(() =>
     ['header-dropdown relative min-w-0 max-w-[calc(100vw-2rem)]', this.containerClass()]
@@ -60,7 +70,7 @@ export class DashboardHeaderDropdownComponent {
   // its own shape without competing with the defaults for Tailwind precedence.
   protected readonly triggerClasses = computed(() =>
     [
-      'flex min-w-0 cursor-pointer list-none items-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/35',
+      'flex min-w-0 cursor-pointer list-none items-center transition-colors',
       this.triggerClass() ||
         'border-border bg-card hover:bg-muted focus-visible:border-ring h-9 w-full gap-2 rounded-lg border px-3 text-sm',
     ].join(' '),
