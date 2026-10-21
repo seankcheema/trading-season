@@ -615,7 +615,7 @@
                       aria-label="Instrument tools"
                     >
                       @for (
-                        tab of ['trading', 'recent-orders'];
+                        tab of ['trading', 'recent-orders', 'outlook'];
                         track tab
                       ) {
                         <button
@@ -630,7 +630,13 @@
                           [attr.aria-selected]="insightTab() === tab"
                           (click)="insightTab.set($any(tab))"
                         >
-                          {{ tab === 'recent-orders' ? 'Recent Orders' : 'Trading' }}
+                          {{
+                            tab === 'recent-orders'
+                              ? 'Recent Orders'
+                              : tab === 'outlook'
+                                ? 'Outlook'
+                                : 'Trading'
+                          }}
                         </button>
                       }
                     </div>
@@ -732,6 +738,19 @@
                   />
                 </div>
                 @switch (insightTab()) {
+                  @case ('outlook') {
+                    <div
+                      class="insight-content flex flex-col"
+                      role="tabpanel"
+                      aria-label="Outlook"
+                      data-testid="market-outlook"
+                    >
+                      <app-risk-outlook
+                        [symbol]="active.symbol"
+                        [marketTimestamp]="marketTimestamp()"
+                      />
+                    </div>
+                  }
                   @case ('recent-orders') {
                     <div
                       class="insight-content insight-feed"

@@ -133,6 +133,11 @@ PLATFORM_LSTM_UNITS = 16
 PLATFORM_CALIBRATION_CSV = REPORTS_DIR / "platform_calibration.csv"
 # The same question over the next H days (extra-platform-horizon.py); one file per horizon.
 PLATFORM_HORIZON_CSV = REPORTS_DIR / "platform_horizon.csv"
+# The platform risk signal the client UI reads (export-platform-signals.py): the horizon
+# the platform-trained LSTM scores, and where the document goes.
+PLATFORM_SIGNAL_HORIZON = 5
+PLATFORM_SIGNALS_JSON = REPO_ROOT / "apps" / "client-ui" / "public" / "forecast" / "platform-signals.json"
+PLATFORM_SIGNALS_SUMMARY_CSV = REPORTS_DIR / "platform_signals_summary.csv"
 SYMBOL_COMPARISON_CSV = REPORTS_DIR / "symbol_comparison.csv"
 RESULTS_CSV = REPORTS_DIR / "results.csv"
 TEST_RESULTS_CSV = REPORTS_DIR / "test_results.csv"

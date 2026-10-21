@@ -8,4 +8,5 @@ Offline Python research pipeline; see [README.md](README.md). It is not a servic
 - Never add fallbacks that substitute simulated data or invented predictions for a failed download, a missing package or an untrained model.
 - Add or update a test in `tests/` with every behavior change; run `python -m pytest` from this directory.
 - The scorecard fields are a contract with `apps/client-ui/src/app/market-page/forecast-scorecard`. Change both sides and the API reference together.
+- The platform signal file (`platform_signals.py`, written to `apps/client-ui/public/forecast/platform-signals.json`) is a contract with the market page's risk card in `apps/client-ui/src/app/market-page`. Change both sides together, and keep its track record free of lookahead: a day's counts cover only windows closed by that day.
 - Update README.md when commands, outputs or settings change. No emojis in Markdown.

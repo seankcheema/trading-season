@@ -18,6 +18,7 @@ import { TermsDialogComponent } from '../dashboard/terms/terms-dialog.component'
 import { AccountControlComponent } from '../dashboard/shared/account-control.component';
 import { MarketClockControlComponent } from '../dashboard/shared/market-clock-control.component';
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
+import { RiskOutlookComponent } from './risk-outlook/risk-outlook.component';
 import {
   ActivityItem,
   ActivityRowComponent,
@@ -99,7 +100,7 @@ import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
 
-type InsightTab = 'trading' | 'recent-orders';
+type InsightTab = 'trading' | 'recent-orders' | 'outlook';
 
 type ToolbarMenu = 'indicators' | 'chart-mode' | 'comparison';
 
@@ -117,6 +118,7 @@ interface MarketStats {
   selector: 'app-market-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    RiskOutlookComponent,
     ThemeToggleComponent,
     NgTemplateOutlet,
     OrderEditorComponent,

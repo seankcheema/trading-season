@@ -1,0 +1,151 @@
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { Component, signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { PlatformSignals, SignalDay, readingFor } from './platform-signals';
+import { PLATFORM_SIGNALS_URL } from './platform-signals.service';
+import { RiskOutlookComponent } from './risk-outlook.component';
+
+function day(date: string, overrides: Partial<SignalDay> = {}): SignalDay {
+  return {
+    date,
+    probability: 0.62,
+    call: 'stormier',
+    usualVolatility: 0.011,
+    recentVolatility: 0.009,
+    modelHits: 15,
+    modelDays: 20,
+    ruleHits: 12,
+    ruleDays: 20,
+    outcome: 'stormier',
+    ...overrides,
+  };
+}
+
+const SIGNALS: PlatformSignals = {
+  generatedAt: '2026-10-21T12:00:00+00:00',
+  question: 'Will the next 5 trading days be more volatile than usual for this stock?',
+  horizonDays: 5,
+  usualWindowDays: 40,
+  model: 'LSTM trained on the platform',
+  rule: 'The next 5 days will be like the last 5',
+  symbols: {
+    AAPL: {
+      firstDay: '2026-07-01',
+      lastDay: '2026-07-03',
+      days: [day('2026-07-01'), day('2026-07-02'), day('2026-07-03')],
+    },
+    XOM: {
+      firstDay: '2026-07-01',
+      lastDay: '2026-07-01',
+      // The model trails the rule here, and recent volatility is above usual.
+      days: [
+        day('2026-07-01', { modelHits: 10, ruleHits: 14, recentVolatility: 0.02, call: 'calmer' }),
+      ],
+    },
+  },
+};
+
+describe('readingFor', () => {
+  it('uses the latest close strictly before the simulated trading date', () => {
+    const reading = readingFor(SIGNALS, 'aapl', '2026-07-03T15:00:00Z');
+    expect(reading.kind).toBe('ready');
+    expect(reading.kind === 'ready' && reading.asOf).toBe('2026-07-02');
+  });
+
+  it('is too early before the first scored day and unknown for a symbol the file lacks', () => {
+    expect(readingFor(SIGNALS, 'AAPL', '2026-07-01T15:00:00Z')).toEqual({
+      kind: 'too-early',
+      firstDay: '2026-07-01',
+    });
+    expect(readingFor(SIGNALS, 'TSLA', '2026-07-03T15:00:00Z')).toEqual({ kind: 'unknown-symbol' });
+  });
+
+  it('shows the model call only where its record beats the rule', () => {
+    const model = readingFor(SIGNALS, 'AAPL', '2026-07-03T15:00:00Z');
+    expect(model.kind === 'ready' && [model.source, model.call]).toEqual(['model', 'stormier']);
+    const rule = readingFor(SIGNALS, 'XOM', '2026-07-02T15:00:00Z');
+    // The rule reads recent above usual as stormier even though the model said calmer.
+    expect(rule.kind === 'ready' && [rule.source, rule.call]).toEqual(['rule', 'stormier']);
+  });
+
+  it('falls back to the rule until the model has enough closed windows', () => {
+    const thin: PlatformSignals = {
+      ...SIGNALS,
+      symbols: {
+        AAPL: {
+          ...SIGNALS.symbols['AAPL'],
+          days: [day('2026-07-01', { modelHits: 9, modelDays: 10, ruleHits: 2, ruleDays: 10 })],
+        },
+      },
+    };
+    const reading = readingFor(thin, 'AAPL', '2026-07-02T15:00:00Z');
+    expect(reading.kind === 'ready' && reading.source).toBe('rule');
+  });
+});
+
+@Component({
+  imports: [RiskOutlookComponent],
+  template: `<app-risk-outlook [symbol]="symbol()" [marketTimestamp]="at()" />`,
+})
+class HostComponent {
+  readonly symbol = signal('AAPL');
+  readonly at = signal('2026-07-03T15:00:00Z');
+}
+
+describe('RiskOutlookComponent', () => {
+  function setup() {
+    TestBed.configureTestingModule({
+      imports: [HostComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    return { fixture, http: TestBed.inject(HttpTestingController) };
+  }
+
+  it('shows a skeleton while loading, then the reading', async () => {
+    const { fixture, http } = setup();
+    expect(fixture.nativeElement.querySelector('[role=status]').textContent).toContain('Loading');
+    http.expectOne(PLATFORM_SIGNALS_URL).flush(SIGNALS);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const headline = fixture.nativeElement.querySelector('[data-testid=outlook-headline]');
+    expect(headline.textContent).toContain('Stormier than usual');
+    expect(
+      fixture.nativeElement.querySelector('[data-testid=outlook-basis]').textContent,
+    ).toContain('Platform model, right 15 of 20');
+    expect(fixture.nativeElement.textContent).toContain('never a recommendation');
+  });
+
+  it('follows the symbol and the simulated time', async () => {
+    const { fixture, http } = setup();
+    http.expectOne(PLATFORM_SIGNALS_URL).flush(SIGNALS);
+    fixture.componentInstance.symbol.set('XOM');
+    fixture.componentInstance.at.set('2026-07-02T15:00:00Z');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid=outlook-basis]').textContent,
+    ).toContain('Recent pattern');
+    fixture.componentInstance.at.set('2026-06-01T15:00:00Z');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('No outlook yet');
+  });
+
+  it('offers a retry when the file cannot be loaded', async () => {
+    const { fixture, http } = setup();
+    http.expectOne(PLATFORM_SIGNALS_URL).flush('missing', { status: 404, statusText: 'Not Found' });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('[role=alert]').textContent).toContain(
+      'unavailable',
+    );
+    fixture.nativeElement.querySelector('button').click();
+    http.expectOne(PLATFORM_SIGNALS_URL).flush(SIGNALS);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('[data-testid=outlook-headline]')).not.toBeNull();
+  });
+});

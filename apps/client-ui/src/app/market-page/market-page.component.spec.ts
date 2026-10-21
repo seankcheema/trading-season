@@ -582,12 +582,16 @@ describe('MarketPageComponent', () => {
     expect(profile.className).not.toContain('border-primary');
   });
 
-  it('offers only the Trading and Recent Orders tabs in the market tools', async () => {
+  it('offers the Trading, Recent Orders and Outlook tabs in the market tools', async () => {
     const fixture = await setup();
     const tabs = Array.from(
       fixture.nativeElement.querySelectorAll('[role="tab"]'),
     ) as HTMLButtonElement[];
-    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual(['Trading', 'Recent Orders']);
+    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual([
+      'Trading',
+      'Recent Orders',
+      'Outlook',
+    ]);
     expect(tabs[0].classList).toContain('bg-primary');
     expect(fixture.nativeElement.querySelector('[aria-label="Ask market AI"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('.overview-summary')).toBeNull();
