@@ -5,8 +5,10 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 
 /**
- * A tradable asset: equity, FX pair, or crypto. Every quote, order, holding,
- * and fill hangs off this table.
+ * A tradable asset. Every quote, order, holding, and fill hangs off this table.
+ * Trading is limited to US equities (BR-12 as clarified on 20 October 2026):
+ * the schema only lets a US equity link to a simulated price series, so an
+ * instrument of any other class or market cannot be quoted or traded.
  */
 @Entity
 @Table(name = "instruments")

@@ -291,6 +291,11 @@ public class OrderService {
     }
 
     private Acceptance accept(OrderRequest request, UUID callerId) {
+        // The quote is an HTTP call to Holdings and Trade, so it is read before any row is locked.
+        // An outage is not an error here: the order is still recorded, as a rejection (BR-06).
+        Optional<Instrument> requested = instrumentRepository.findById(request.instrumentId());
+        app.order.execution.ExecutionQuoteSource.Quote quote = requested.map(found -> currentQuote(found, request))
+                .orElse(null);
         Account account = lockOwnedAccount(request.accountId(), callerId);
 
         Optional<Order> existing = orderRepository
@@ -308,7 +313,7 @@ public class OrderService {
         User user = userRepository.findById(account.getUserId())
                 .orElseThrow(() -> new IllegalStateException(
                         "Account " + account.getAccountId() + " has no owning user"));
-        Instrument instrument = instrumentRepository.findById(request.instrumentId())
+        Instrument instrument = requested
                 .orElseThrow(() -> new InstrumentNotFoundException("No instrument " + request.instrumentId()));
 
         if (request.bufferPercent() != null || !request.isPriceConfigurationValid()
@@ -316,10 +321,13 @@ public class OrderService {
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.BAD_REQUEST, "Invalid stock order parameters");
         }
-        var quote = quotes.current(instrument, request.sessionId());
-
         Order order = orderRepository.save(pendingOrder(request, account, instrument, user.getExecutionBufferPercent(), quote));
         auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, submissionDetail(order, instrument, callerId));
+        if (quote == null) {
+            return rejectedAcceptance(order, instrument,
+                    ValidationResult.reject(new app.order.execution.ExecutionQuoteSource.QuoteUnavailableException().getMessage()),
+                    "QUOTE_UNAVAILABLE");
+        }
 
         // The rules see the authoritative cost and submission position rather than the
         // client's price estimate and display time (BR-05 checks the market hours).
@@ -364,25 +372,39 @@ public class OrderService {
         if (order.getStopPrice() != null) {
             detail.append(", stop ").append(order.getStopPrice().toPlainString());
         }
-        detail.append(", market quote ").append(order.getReferencePrice().toPlainString())
-                .append(" in session ").append(order.getSessionId()).append(" at ").append(order.getReferenceAt())
-                .append(", buffer ").append(order.getBufferPercent().toPlainString()).append('%')
+        if (order.getReferencePrice() == null) {
+            detail.append(", no market quote available");
+        } else {
+            detail.append(", market quote ").append(order.getReferencePrice().toPlainString())
+                    .append(" in session ").append(order.getSessionId()).append(" at ").append(order.getReferenceAt());
+        }
+        detail.append(", buffer ").append(order.getBufferPercent().toPlainString()).append('%')
                 .append(", client reference ").append(order.getClientReference());
         return detail.toString();
+    }
+
+    /** The submission quote, or null when market data cannot price the order right now. */
+    private app.order.execution.ExecutionQuoteSource.Quote currentQuote(Instrument instrument, OrderRequest request) {
+        try {
+            return quotes.current(instrument, request.sessionId());
+        } catch (app.order.execution.ExecutionQuoteSource.QuoteUnavailableException unavailable) {
+            return null;
+        }
     }
 
     /** Locks the caller's profile and the account, proving the caller owns it. */
     private Account lockOwnedAccount(Integer accountId, UUID callerId) {
         Account visibleAccount = accountRepository.findById(accountId)
                 .orElseThrow(() -> new AccountNotFoundException("No account " + accountId));
-        if (!visibleAccount.getUserId().equals(callerId)) throw new ForbiddenException("You do not have access to this account");
+        // Another user's account answers like a missing one, so ids reveal nothing (BR-02).
+        if (!visibleAccount.getUserId().equals(callerId)) throw new AccountNotFoundException("No account " + accountId);
         userRepository.findByIdForUpdate(callerId)
                 .orElseThrow(() -> new IllegalStateException("Profile is not registered"));
         Account account = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new AccountNotFoundException("No account " + accountId));
         entityManager.refresh(account);
         if (!account.getUserId().equals(callerId)) {
-            throw new ForbiddenException("You do not have access to this account");
+            throw new AccountNotFoundException("No account " + accountId);
         }
         return account;
     }
@@ -411,11 +433,13 @@ public class OrderService {
         order.setExecutionType(request.executionType());
         order.setLimitPrice(request.limitPrice());
         order.setStopPrice(request.stopPrice());
-        order.setReferencePrice(quote.price());
-        order.setReferenceAt(quote.timestamp());
-        order.setEvaluatedAt(quote.timestamp());
-        order.setSessionId(quote.sessionId());
-        order.setSimulatedAt(quote.timestamp());
+        if (quote != null) {
+            order.setReferencePrice(quote.price());
+            order.setReferenceAt(quote.timestamp());
+            order.setEvaluatedAt(quote.timestamp());
+            order.setSessionId(quote.sessionId());
+            order.setSimulatedAt(quote.timestamp());
+        }
         order.setStatus(Order.STATUS_PENDING);
         order.setSubmittedAt(OffsetDateTime.now());
         return order;
@@ -446,9 +470,13 @@ public class OrderService {
     }
 
     private Acceptance rejectedAcceptance(Order pending, Instrument instrument, ValidationResult result) {
+        return rejectedAcceptance(pending, instrument, result, "TRADING_RULE_FAILED");
+    }
+
+    private Acceptance rejectedAcceptance(Order pending, Instrument instrument, ValidationResult result, String code) {
         pending.setStatus(Order.STATUS_REJECTED);
         pending.setRejectionReason(result.reason());
-        pending.setRejectionCode("TRADING_RULE_FAILED");
+        pending.setRejectionCode(code);
         pending.setReservedCash(BigDecimal.ZERO);
         pending.setReservedShares(BigDecimal.ZERO);
         pending.setResolvedAt(OffsetDateTime.now());

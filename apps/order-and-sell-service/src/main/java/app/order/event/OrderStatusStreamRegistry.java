@@ -44,14 +44,21 @@ public class OrderStatusStreamRegistry {
     }
 
     /**
-     * Opens a stream for a user. The emitter never times out on its own; the
-     * client closes it, or a failed send does.
+     * Opens a stream for a user that ends when the token that opened it expires,
+     * so a signed-out or expired session stops receiving events. The client
+     * reconnects with a renewed token.
      *
-     * @param userId the signed-in user's id from the token's {@code sub} claim
+     * @param userId    the signed-in user's id from the token's {@code sub} claim
+     * @param expiresAt when the opening token expires, or {@code null} for a token without an
+     *                  expiry claim, whose stream stays open until the client closes it
      * @return the emitter to return from the controller
      */
-    public SseEmitter subscribe(UUID userId) {
-        return register(userId, new SseEmitter(0L));
+    public SseEmitter subscribe(UUID userId, java.time.Instant expiresAt) {
+        if (expiresAt == null) {
+            return register(userId, new SseEmitter(0L));
+        }
+        long remaining = java.time.Duration.between(java.time.Instant.now(), expiresAt).toMillis();
+        return register(userId, new SseEmitter(Math.max(1L, remaining)));
     }
 
     /**

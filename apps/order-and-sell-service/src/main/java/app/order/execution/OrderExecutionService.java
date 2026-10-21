@@ -150,6 +150,10 @@ public class OrderExecutionService {
         if (!isEvaluable(order, quote)) return order;
         Optional<Order> ended = endedByTime(order, instrument, quote);
         if (ended.isPresent()) return ended.get();
+        // Tradability is re-checked here: an instrument can be suspended while an order is open (BR-05).
+        if (!Boolean.TRUE.equals(instrument.isTradable())) {
+            return reject(order, instrument, "BR-05: " + instrument.getTicker() + " is not currently tradable");
+        }
         if (credentials.findById(user.getUserId()).isEmpty()) return reject(order, instrument, "Credential account does not exist");
         boolean isBuy = Order.TYPE_BUY.equals(order.getOrderType());
         BigDecimal fillPrice = quote.price();
