@@ -22,7 +22,10 @@ RUN --mount=type=cache,target=/root/.m2,sharing=locked     mvn -B package -Dskip
 # Fresh base image: JRE-only Alpine variant. The JDK, Maven, source code,
 # and build cache from Stage 1 are NOT copied here — they never exist in the
 # final image. That's why the multi-stage image is significantly smaller.
-FROM eclipse-temurin:21-jre-alpine
+# A glibc-based runtime, not Alpine: the market replay reads the parquet tick archive
+# through DuckDB's JDBC driver, whose native library needs glibc and libstdc++. On
+# musl it fails to load and every snapshot answers "no replay prices available".
+FROM eclipse-temurin:21-jre
 LABEL maintainer="DuaLEAPa Team"
 
 WORKDIR /app
@@ -30,7 +33,7 @@ WORKDIR /app
 # Create a non-root group and user, then switch to it.
 # Running as root inside a container is unnecessary and increases blast radius
 # if the container is compromised.
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN groupadd --system appgroup && useradd --system --gid appgroup --shell /usr/sbin/nologin appuser
 USER appuser
 
 # Copy only the compiled jar from the build stage. Nothing else.
