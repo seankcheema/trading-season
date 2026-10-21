@@ -28,15 +28,20 @@ def pooled_volatility_predictions(
     units: int = config.VOLATILITY_UNITS,
     seed: int = config.SEED,
     verbose: int = 0,
+    purge: int = 1,
 ) -> dict[str, np.ndarray]:
     """Train one LSTM on every stock's training windows; return P(big move) for each stock's part.
 
-    As in pipeline.event_lstm_predictions, the last training and validation
-    labels, which belong to the next split, are never fitted or used to stop.
+    As in pipeline.event_lstm_predictions, the last `purge` training and
+    validation labels, which reach into the next split (1 for a next-day
+    label, H for a label over the next H days), are never fitted or used to
+    stop.
     """
+    if purge < 1:
+        raise ValueError(f"purge must be at least 1, got {purge}")
     X_train, y_train, X_val, y_val, prepared = [], [], [], [], {}
     for symbol, (train, val, part, history) in periods.items():
-        fit_train, stop_val = train.iloc[:-1], val.iloc[:-1]
+        fit_train, stop_val = train.iloc[:-purge], val.iloc[:-purge]
         threshold = big_move_threshold(train)
         scalers = fit_scalers(fit_train, feature_cols)  # per stock, training rows only
         X, _ = make_windows(fit_train, scalers, lookback)

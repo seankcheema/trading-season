@@ -43,6 +43,8 @@ ONE_ANSWER = "One answer every day"
 SAME_AS_TODAY = "Same as today"
 PLATFORM_LSTM = "LSTM trained on the platform"
 NO_RETRAIN_VARIANTS = (LSTM_RAW, LSTM_CALIBRATED, PERSISTENCE, BLEND, ONE_ANSWER, SAME_AS_TODAY)
+# The rules a client could follow without a model; the gate in summarise() is the best of them.
+RULE_VARIANTS = (ONE_ANSWER, SAME_AS_TODAY, "Same as the last H days")
 
 
 def _progress(message: str) -> None:
@@ -161,7 +163,7 @@ def summarise(rows: pd.DataFrame, months: list[str] | None = None) -> pd.DataFra
         out.append({"symbol": symbol, "variant": variant, "days": len(g), "months": g["month"].nunique(),
                     **{k: m[k] for k in ("accuracy", "auc", "brier_skill", "call_rate", "event_rate")}})
     table = pd.DataFrame(out)
-    rules = table[table["variant"].isin((ONE_ANSWER, SAME_AS_TODAY))].groupby("symbol")["accuracy"].max()
+    rules = table[table["variant"].isin(RULE_VARIANTS)].groupby("symbol")["accuracy"].max()
     table["rule_accuracy"] = table["symbol"].map(rules)
     table["usable"] = (table["accuracy"] > table["rule_accuracy"]) & (table["brier_skill"] > 0)
     return table

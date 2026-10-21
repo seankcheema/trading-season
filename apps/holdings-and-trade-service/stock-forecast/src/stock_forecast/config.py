@@ -131,6 +131,8 @@ PLATFORM_LSTM_VAL_END = "2026-06-30"
 PLATFORM_LSTM_LOOKBACK = 20  # a year of platform days is short; a 60-day window would leave too few
 PLATFORM_LSTM_UNITS = 16
 PLATFORM_CALIBRATION_CSV = REPORTS_DIR / "platform_calibration.csv"
+# The same question over the next H days (extra-platform-horizon.py); one file per horizon.
+PLATFORM_HORIZON_CSV = REPORTS_DIR / "platform_horizon.csv"
 SYMBOL_COMPARISON_CSV = REPORTS_DIR / "symbol_comparison.csv"
 RESULTS_CSV = REPORTS_DIR / "results.csv"
 TEST_RESULTS_CSV = REPORTS_DIR / "test_results.csv"
