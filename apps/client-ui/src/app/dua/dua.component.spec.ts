@@ -120,9 +120,9 @@ describe('Dua panel', () => {
   it('calculates selected insights and clears results on account changes', () => {
     const { fixture, click, text } = setup();
     click('Daily Review');
-    expect(fixture.nativeElement.querySelector('.takeaway').textContent.replace(/\s+/g, ' ')).toContain(
-      'market closed on a high note',
-    );
+    expect(
+      fixture.nativeElement.querySelector('.takeaway').textContent.replace(/\s+/g, ' '),
+    ).toContain('market closed on a high note');
     expect(fixture.nativeElement.querySelector('.insight-card strong')).not.toBeNull();
     expect(fixture.nativeElement.querySelectorAll('.insight-card:not(.inactive)').length).toBe(1);
     expect(fixture.nativeElement.querySelector('.distribution')).toBeNull();
@@ -334,11 +334,104 @@ describe('Dua panel', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.launcher-art.face-visible')).toBeNull();
     click('Dua insights');
-    expect(fixture.nativeElement.querySelector('h2').textContent.replace(/\s+/g, ' ').trim()).toBe('Dua - Free Plan');
+    expect(fixture.nativeElement.querySelector('h2').textContent.replace(/\s+/g, ' ').trim()).toBe(
+      'Dua - Free Plan',
+    );
     click('Daily Review');
-    expect(fixture.nativeElement.querySelector('h2').textContent.replace(/\s+/g, ' ').trim()).toBe('Daily Review');
+    expect(fixture.nativeElement.querySelector('h2').textContent.replace(/\s+/g, ' ').trim()).toBe(
+      'Daily Review',
+    );
     click('Back to choices');
-    expect(fixture.nativeElement.querySelector('h2').textContent.replace(/\s+/g, ' ').trim()).toBe('Dua - Free Plan');
+    expect(fixture.nativeElement.querySelector('h2').textContent.replace(/\s+/g, ' ').trim()).toBe(
+      'Dua - Free Plan',
+    );
     fixture.destroy();
+  });
+  it('focuses the panel after it opens', () => {
+    vi.useFakeTimers();
+    const { fixture, click } = setup();
+    click('Dua insights');
+    const panel = fixture.nativeElement.querySelector('[role="dialog"], .dua-panel') as HTMLElement;
+    const focus = vi.spyOn(panel, 'focus');
+    vi.runOnlyPendingTimers();
+    expect(focus).toHaveBeenCalled();
+    fixture.destroy();
+  });
+  it('reports unavailable data instead of a snapshot when the market clock is updating', () => {
+    const { fixture, click, text } = setup();
+    clock.clockUpdating.set(true);
+    fixture.detectChanges();
+    click('Daily Review');
+    expect(text()).toContain('Account or market data is unavailable. Please try again.');
+    expect(fixture.nativeElement.querySelector('.insight-card')).toBeNull();
+    fixture.destroy();
+  });
+  describe('panel resize animation', () => {
+    const animation = { cancel: vi.fn(), onfinish: null as null | (() => void) };
+    const animate = vi.fn((_keyframes: unknown, _options: unknown) => animation);
+    let height = 300;
+    let width = 400;
+    beforeEach(() => {
+      height = 300;
+      width = 400;
+      animation.cancel.mockClear();
+      animation.onfinish = null;
+      animate.mockClear();
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+        () => ({ height, width }) as DOMRect,
+      );
+      Object.defineProperty(HTMLElement.prototype, 'animate', {
+        configurable: true,
+        writable: true,
+        value: animate,
+      });
+    });
+    afterEach(() => {
+      vi.restoreAllMocks();
+      delete (HTMLElement.prototype as { animate?: unknown }).animate;
+    });
+    it('animates from the previous height, restarts from the current height when interrupted', () => {
+      const { fixture, click } = setup();
+      click('Dua insights');
+      expect(animate).not.toHaveBeenCalled();
+      height = 420;
+      click('Daily Review');
+      expect(animate).toHaveBeenCalledTimes(1);
+      expect(animate.mock.calls[0]).toEqual([
+        [{ height: '300px' }, { height: '420px' }],
+        expect.objectContaining({ duration: 380 }),
+      ]);
+      height = 520;
+      // The first measurement is taken mid-animation, before the running animation is cancelled.
+      vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValueOnce({
+        height: 350,
+        width,
+      } as DOMRect);
+      click('Next insight');
+      expect(animation.cancel).toHaveBeenCalled();
+      expect(animate).toHaveBeenCalledTimes(2);
+      expect(animate.mock.calls[1][0]).toEqual([{ height: '350px' }, { height: '520px' }]);
+      animation.onfinish?.();
+      height = 540;
+      click('Next insight');
+      expect(animation.cancel).toHaveBeenCalledTimes(1);
+      expect(animate).toHaveBeenCalledTimes(3);
+      fixture.destroy();
+    });
+    it('does not animate unchanged heights, width changes or reduced motion', () => {
+      const { fixture, click } = setup();
+      click('Dua insights');
+      click('Daily Review');
+      expect(animate).not.toHaveBeenCalled();
+      width = 500;
+      height = 450;
+      click('Next insight');
+      expect(animate).not.toHaveBeenCalled();
+      vi.stubGlobal('matchMedia', () => ({ matches: true }));
+      height = 600;
+      click('Next insight');
+      expect(animate).not.toHaveBeenCalled();
+      fixture.destroy();
+    });
   });
 });

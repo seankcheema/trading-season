@@ -5,13 +5,17 @@ const { reqHandler } = await import(process.argv[2]);
 const server = createServer(reqHandler);
 let stopping = false;
 function shutdown() {
-  if (stopping) return;
+  if (stopping) {
+    return;
+  }
   stopping = true;
   server.close(() => process.exit(0));
   server.closeAllConnections();
 }
 process.on('message', (message) => {
-  if (message?.type === 'shutdown') shutdown();
+  if (message?.type === 'shutdown') {
+    shutdown();
+  }
 });
 process.on('disconnect', shutdown);
 process.on('SIGINT', shutdown);

@@ -25,15 +25,21 @@ function launch(args, options) {
 }
 
 export async function stopChild({ child, done }, timeoutMs = 5_000) {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  if (child.connected) child.send({ type: 'shutdown' }, () => {});
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+  if (child.connected) {
+    child.send({ type: 'shutdown' }, () => {});
+  }
   let timer;
   const graceful = await Promise.race([
     done.then(() => true),
     new Promise((resolveTimeout) => { timer = setTimeout(() => resolveTimeout(false), timeoutMs); }),
   ]);
   clearTimeout(timer);
-  if (graceful) return;
+  if (graceful) {
+    return;
+  }
   child.kill('SIGKILL');
   let killTimer;
   try {
@@ -58,8 +64,12 @@ export async function runNode(args, timeoutMs = 300_000) {
         timer = setTimeout(() => reject(new Error('Client UI build timed out')), timeoutMs);
       }),
     ]);
-    if (result.error) throw result.error;
-    if (result.code !== 0) throw new Error(`Client UI build failed (${result.code ?? result.signal})`);
+    if (result.error) {
+      throw result.error;
+    }
+    if (result.code !== 0) {
+      throw new Error(`Client UI build failed (${result.code ?? result.signal})`);
+    }
   } finally {
     clearTimeout(timer);
     await stopChild(managed, 0);
@@ -75,7 +85,9 @@ export async function startServer(moduleUrl, { port = 4200, timeoutMs = 30_000 }
     const ready = await Promise.race([
       new Promise((resolveReady) => {
         managed.child.on('message', (message) => {
-          if (message?.type === 'ready') resolveReady(message);
+          if (message?.type === 'ready') {
+            resolveReady(message);
+          }
         });
       }),
       managed.done.then((result) => { throw result.error ?? new Error(`Test server exited before ready (${result.code ?? result.signal})`); }),
@@ -106,14 +118,18 @@ function available(url) {
 export default async function setup() {
   const url = 'http://localhost:4200';
   if (await available(url)) {
-    if (process.env['CI']) throw new Error(`${url} is already in use; CI requires its own test server`);
+    if (process.env['CI']) {
+      throw new Error(`${url} is already in use; CI requires its own test server`);
+    }
     return;
   }
   await runNode([resolve(appDir, 'node_modules/@angular/cli/bin/ng.js'), 'build']);
   const server = await startServer(pathToFileURL(resolve(appDir, 'dist/client-ui/server/server.mjs')).href);
   try {
     for (let attempt = 0; attempt < 30; attempt++) {
-      if (await available(url)) return server.close;
+      if (await available(url)) {
+        return server.close;
+      }
       await delay(100);
     }
     throw new Error('Client UI test server did not answer HTTP requests');
