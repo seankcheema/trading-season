@@ -69,9 +69,9 @@ EXPERIMENT_SEEDS = 5
 VOLATILITY_LOOKBACK = 60
 VOLATILITY_UNITS = 64
 
-# Paths. ROOT is apps/stock-forecast; REPO_ROOT is the trading-season checkout.
+# Paths. ROOT is apps/holdings-and-trade-service/stock-forecast; REPO_ROOT is the trading-season checkout.
 ROOT = Path(__file__).resolve().parents[2]
-REPO_ROOT = ROOT.parents[1]
+REPO_ROOT = ROOT.parents[2]
 DATA_DIR = ROOT / "data"
 MODELS_DIR = ROOT / "models"
 DIRECTION_MODEL_DIR = MODELS_DIR / "lstm-direction"

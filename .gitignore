@@ -23,8 +23,8 @@ apps/market-data/db/.venv/
 apps/market-data/db/seeds/.ipynb_checkpoints/
 
 # Stock forecast: model artifacts are rebuilt by the training scripts
-apps/stock-forecast/models/
-apps/stock-forecast/**/.ipynb_checkpoints/
+apps/holdings-and-trade-service/stock-forecast/models/
+apps/holdings-and-trade-service/stock-forecast/**/.ipynb_checkpoints/
 
 # macOS
 .DS_Store

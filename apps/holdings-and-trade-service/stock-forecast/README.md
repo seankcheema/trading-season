@@ -94,17 +94,17 @@ All dates and settings live in `src/stock_forecast/config.py`.
 ## Setup (Python 3.14, from the repository root)
 
 ```sh
-python3.14 -m venv apps/stock-forecast/.venv
-source apps/stock-forecast/.venv/bin/activate
+python3.14 -m venv apps/holdings-and-trade-service/stock-forecast/.venv
+source apps/holdings-and-trade-service/stock-forecast/.venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install --pre -r apps/stock-forecast/requirements.txt
+python -m pip install --pre -r apps/holdings-and-trade-service/stock-forecast/requirements.txt
 python -m ipykernel install --user --name stock-forecast --display-name "Python (Stock Forecast)"
 python -c "import tensorflow, yfinance"
 ```
 
 On Windows PowerShell, create the environment with
-`py -3.14 -m venv apps/stock-forecast/.venv` and activate it with
-`apps/stock-forecast/.venv/Scripts/Activate.ps1` before running the remaining commands.
+`py -3.14 -m venv apps/holdings-and-trade-service/stock-forecast/.venv` and activate it with
+`apps/holdings-and-trade-service/stock-forecast/.venv/Scripts/Activate.ps1` before running the remaining commands.
 
 TensorFlow 2.22 is currently a release candidate and provides the Python 3.14
 wheel used by this setup. `--pre` also makes prerelease dependencies available
@@ -113,7 +113,7 @@ runs CPU-only, which is enough for this data.
 
 ## Run order
 
-Run from `apps/stock-forecast` with the virtual environment active.
+Run from `apps/holdings-and-trade-service/stock-forecast` with the virtual environment active.
 
 | Step | Command | Writes | When |
 | --- | --- | --- | --- |
@@ -160,7 +160,7 @@ the chronological price and daily-return charts under `reports/`.
 ## Tests
 
 ```powershell
-cd apps/stock-forecast
+cd apps/holdings-and-trade-service/stock-forecast
 python -m pytest
 ```
 

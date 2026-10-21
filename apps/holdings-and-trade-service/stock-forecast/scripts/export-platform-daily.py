@@ -7,7 +7,7 @@ touches the trading_season database. From the repository root:
 
     docker run --rm \\
       -v trading-season-local_market_data_archive:/archive:ro \\
-      -v "$PWD/apps/stock-forecast:/sf" --entrypoint python \\
+      -v "$PWD/apps/holdings-and-trade-service/stock-forecast:/sf" --entrypoint python \\
       trading-season-local-market-data-seed /sf/scripts/export-platform-daily.py \\
       --archive /archive/synthetic-market-data-2026-v1 --out /sf/data/platform
 """
