@@ -1051,3 +1051,15 @@
     grid-template-columns: 1fr;
     grid-template-rows: none;
   }
+
+/* Six tools share one row: Trading, Overview, News, AI, Outlook, Recent Orders. */
+.insight-tabs {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.insight-tabs button {
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
+  font-size: 0.6875rem;
+  letter-spacing: -0.01em;
+}

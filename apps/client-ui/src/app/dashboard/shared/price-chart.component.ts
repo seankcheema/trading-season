@@ -795,7 +795,7 @@ interface TooltipPosition {
       stroke-dasharray: 3 3;
       vector-effect: non-scaling-stroke;
     }
-    .risk-line {
+    .rsi-line.risk-line {
       stroke: var(--indicator-risk);
     }
     .risk-value {
