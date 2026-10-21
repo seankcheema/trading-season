@@ -35,7 +35,7 @@ import {
 } from '../shared/activity';
 import { ACTIVITY_STATUS_CLASSES } from '../shared/activity-row.component';
 import { DashboardDialogComponent } from '../shared/dashboard-dialog.component';
-import { SortHeaderComponent } from '../shared/sort-header.component';
+import { SortHeaderComponent, ariaSort } from '../shared/sort-header.component';
 import { StatementFormat, downloadStatement } from './statement-export';
 
 type TypeFilter = 'all' | HistoryRow['side'];
@@ -241,14 +241,14 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
         </div>
         <input
           type="search"
-          class="border-input bg-input/30 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full max-w-[13.75rem] rounded-lg border px-3 text-sm outline-none focus-visible:ring-3"
+          class="border-input bg-input/30 placeholder:text-muted-foreground focus-visible:border-ring h-8 w-full max-w-[13.75rem] rounded-lg border px-3 text-sm"
           placeholder="Filter by symbol"
           aria-label="Filter by symbol"
           [value]="query()"
           (input)="onQuery($event)"
         />
         <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Date range">
-          <label class="date-field border-input bg-input/30 hover:bg-muted relative flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors">
+          <label class="date-field border-input bg-input/30 hover:bg-muted focus-within:outline-ring relative flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors focus-within:outline-2 focus-within:outline-offset-2">
             <ng-icon name="lucideCalendar" class="text-muted-foreground text-[16px]" aria-hidden="true" />
             <input
               type="date"
@@ -261,7 +261,7 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
             />
           </label>
           <span class="text-muted-foreground text-xs">To</span>
-          <label class="date-field border-input bg-input/30 hover:bg-muted relative flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors">
+          <label class="date-field border-input bg-input/30 hover:bg-muted focus-within:outline-ring relative flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors focus-within:outline-2 focus-within:outline-offset-2">
             <ng-icon name="lucideCalendar" class="text-muted-foreground text-[16px]" aria-hidden="true" />
             <input
               type="date"
@@ -329,35 +329,49 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
       }
 
       <div class="overflow-x-auto">
-        <div class="min-w-[54rem]" data-testid="transactions-table">
-          <div class="history-grid dash-table-head txn-gutter grid gap-2 px-2">
-            <span aria-hidden="true"></span>
+        <!-- An ARIA table, so screen readers announce each cell with its column. The rows keep
+             their list items for layout; each row's cells sit in its role="row". -->
+        <div class="min-w-[54rem]" data-testid="transactions-table" role="table" aria-label="Transactions">
+          <div class="history-grid dash-table-head txn-gutter grid gap-2 px-2" role="row">
+            <span role="columnheader"><span class="sr-only">Audit trail</span></span>
             @for (column of columns; track column.key) {
-              <button
-                app-sort-header
-                [label]="column.label"
-                [align]="column.align"
-                [active]="sortKey() === column.key"
-                [direction]="sortDirection()"
-                (toggled)="sortBy(column.key)"
-              ></button>
+              <div
+                role="columnheader"
+                class="flex min-w-0"
+                [class.justify-end]="column.align === 'right'"
+                [attr.aria-label]="column.label"
+                [attr.aria-sort]="ariaSort(sortKey() === column.key, sortDirection())"
+              >
+                <button
+                  app-sort-header
+                  [label]="column.label"
+                  [align]="column.align"
+                  [active]="sortKey() === column.key"
+                  [direction]="sortDirection()"
+                  (toggled)="sortBy(column.key)"
+                ></button>
+              </div>
             }
-            <span><span class="sr-only">Actions</span></span>
+            <span role="columnheader"><span class="sr-only">Actions</span></span>
           </div>
-          <ul class="txn-scroll h-[min(60vh,32.5rem)] overflow-y-auto pb-4">
+          <div class="txn-scroll h-[min(60vh,32.5rem)] overflow-y-auto pb-4" role="rowgroup">
             @for (row of pageRows(); track row.key) {
-              <li data-testid="transactions-row" [attr.data-status]="row.status">
+              <div data-testid="transactions-row" [attr.data-status]="row.status" role="none">
                 @if (row.kind === 'trade' && row.orderId !== null) {
-                <div class="history-grid hover:bg-muted/50 grid w-full items-center gap-2 rounded-md px-2 py-2.5 text-left text-sm transition-colors">
-                  <button type="button" class="text-muted-foreground flex h-4 w-4 cursor-pointer items-center justify-center transition-transform"
+                <div class="history-grid hover:bg-muted/50 grid w-full items-center gap-2 rounded-md px-2 py-2.5 text-left text-sm transition-colors" role="row">
+                  <span role="cell" class="flex items-center">
+                  <button type="button" class="text-muted-foreground flex size-6 cursor-pointer items-center justify-center rounded transition-transform"
                     [class.rotate-90]="expandedOrderId() === row.orderId" [class.text-primary]="expandedOrderId() === row.orderId"
                     [attr.aria-expanded]="expandedOrderId() === row.orderId" [attr.aria-label]="'Show audit trail for ' + row.label"
                     [attr.data-testid]="'transactions-order-' + row.orderId" (click)="toggleAudit(row)">
                     <svg viewBox="0 0 16 16" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" /></svg>
                   </button>
+                  </span>
                   <ng-container [ngTemplateOutlet]="rowCells" [ngTemplateOutletContext]="{ $implicit: row }"></ng-container>
                 </div>
                 @if (expandedOrderId() === row.orderId) {
+                  <div role="row">
+                  <div role="cell" aria-colspan="10">
                   <section class="audit-trail mb-2 ml-8 mr-2 border-l-2 border-foreground/50 py-1 pl-3 text-foreground/90" [attr.data-testid]="'audit-trail-' + row.orderId" aria-label="Order audit trail">
                     @if (auditLoading().has(row.orderId)) {
                       <p class="text-muted-foreground text-xs">Loading audit trail…</p>
@@ -373,26 +387,28 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
                       } @empty { <p class="text-muted-foreground text-xs">No audit events were recorded for this order.</p> }
                     }
                   </section>
+                  </div>
+                  </div>
                 }
                 } @else {
-                <div class="history-grid grid w-full cursor-default items-center gap-2 px-2 py-2.5 text-left text-sm">
-                  <span aria-hidden="true"></span>
+                <div class="history-grid grid w-full cursor-default items-center gap-2 px-2 py-2.5 text-left text-sm" role="row">
+                  <span role="cell"></span>
                   <ng-container [ngTemplateOutlet]="rowCells" [ngTemplateOutletContext]="{ $implicit: row }"></ng-container>
                 </div>
                 }
                 <ng-template #rowCells let-row>
-                  <span class="text-muted-foreground truncate tabular-nums">
+                  <span role="cell" class="text-muted-foreground truncate tabular-nums">
                     {{ row.date | date: 'MMM d, y, h:mm a' : '' : 'en-US' }}
                   </span>
-                  <span class="truncate font-medium">{{ row.label }}</span>
-                  <span class="text-muted-foreground truncate" data-testid="transaction-account">{{ row.account }}</span>
-                  <span class="truncate">
+                  <span role="cell" class="truncate font-medium">{{ row.label }}</span>
+                  <span role="cell" class="text-muted-foreground truncate" data-testid="transaction-account">{{ row.account }}</span>
+                  <span role="cell" class="truncate">
                     {{ row.side }}
                     @if (row.executionType && row.executionType !== 'MARKET') {
                       <span class="text-muted-foreground block text-[10px]" data-testid="transaction-execution">{{ executionLabel(row.executionType) }}</span>
                     }
                   </span>
-                  <span>
+                  <span role="cell">
                     <span
                       class="rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
                       [class]="tagClass(row)"
@@ -400,32 +416,33 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
                       {{ row.status.toLowerCase() }}
                     </span>
                   </span>
-                  <span class="truncate text-right tabular-nums">{{ row.shares ?? '—' }}</span>
-                  <span class="text-right tabular-nums">
+                  <span role="cell" class="truncate text-right tabular-nums">{{ row.shares ?? '—' }}</span>
+                  <span role="cell" class="text-right tabular-nums">
                     <span>
                       @if (row.price !== null) { {{ row.price | currency: 'USD' }} } @else { — }
                     </span>
                     @if (row.priceDetail) { <span class="text-muted-foreground block text-[10px]">{{ row.priceDetail }}</span> }
                   </span>
                   <span
+                    role="cell"
                     class="truncate text-right tabular-nums"
                     data-testid="transaction-amount"
                     [class]="row.kind === 'cash' ? (row.positive ? 'text-gain' : 'text-loss') : ''"
                   >
                     {{ sign(row) }}{{ row.value | currency: 'USD' }}
                   </span>
-                  <span class="flex self-stretch items-center justify-end" data-testid="transaction-actions">
+                  <span role="cell" class="flex self-stretch items-center justify-end" data-testid="transaction-actions">
                     @if (row.status === 'ACCEPTED' && row.orderId !== null) {
                       <app-cancel-order-button [orderLabel]="row.label" [busy]="cancelling().has(row.orderId)" (confirmed)="cancelOrder(row)" (edited)="orderService.editOrder(row.orderId!)" />
                     }
                   </span>
                 </ng-template>
-              </li>
+              </div>
             } @empty {
               @if (loading()) {
-                <li class="sr-only" role="status">Loading transactions…</li>
+                <div class="sr-only" role="row"><span role="cell"><span role="status">Loading transactions…</span></span></div>
                 @for (row of skeletonRows; track row) {
-                  <li
+                  <div
                     class="history-grid grid items-center gap-2 px-2 py-2.5"
                     aria-hidden="true"
                     data-testid="transactions-row-skeleton"
@@ -439,15 +456,15 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
                       <span class="skeleton ml-auto h-5 w-3/5"></span>
                     }
                     <span></span>
-                  </li>
+                  </div>
                 }
               } @else {
-                <li class="text-muted-foreground px-2 py-8 text-center text-sm">
-                  No transactions match these filters.
-                </li>
+                <div class="text-muted-foreground px-2 py-8 text-center text-sm" role="row">
+                  <span role="cell">No transactions match these filters.</span>
+                </div>
               }
             }
-          </ul>
+          </div>
           <!-- The pager sits in the middle. The count ends where the Value column does: the right padding is the actions column (2rem) and one gap (0.5rem). -->
           <div class="txn-gutter mt-6 grid min-h-10 grid-cols-[1fr_auto_1fr] items-center gap-2 px-2 py-1">
             @if (pageCount() > 1) {
@@ -509,6 +526,7 @@ export class TransactionsDialogComponent implements OnInit {
   protected readonly typeFilters = TYPE_FILTERS;
   protected readonly statusFilters = STATUS_FILTERS;
   protected readonly executionFilters = EXECUTION_FILTERS;
+  protected readonly ariaSort = ariaSort;
   protected readonly columns: readonly {
     key: HistorySortKey;
     label: string;

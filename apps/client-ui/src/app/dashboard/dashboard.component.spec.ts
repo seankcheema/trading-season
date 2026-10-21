@@ -1350,7 +1350,9 @@ describe('DashboardComponent', () => {
       expect(placeholders).toHaveLength(5);
       expect(placeholders[0].children).toHaveLength(5);
       expect(placeholders[0].getAttribute('aria-hidden')).toBe('true');
-      expect(table(fixture).querySelector('li[role="status"]')?.className).toContain('sr-only');
+      expect(table(fixture).querySelector('.sr-only [role="status"]')?.textContent).toContain(
+        'Loading watchlist',
+      );
 
       fixture.componentInstance['watchlist'].status.set('ready');
       fixture.detectChanges();
@@ -1364,7 +1366,7 @@ describe('DashboardComponent', () => {
       showWatchList(fixture);
       expect(table(fixture).textContent).toContain('Unable to refresh watchlist.');
 
-      (table(fixture).querySelector('li[role="status"] button') as HTMLElement).click();
+      (table(fixture).querySelector('[role="row"] button.underline') as HTMLElement).click();
 
       http.expectOne('/api/me/watchlist').flush([]);
     });

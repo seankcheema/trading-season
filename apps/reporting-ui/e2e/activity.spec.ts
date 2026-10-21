@@ -144,7 +144,7 @@ test.describe('Activity', () => {
     await openAsAdmin('/');
     await expect(heading(page)).toBeVisible();
 
-    const rows = card(page, /most traded/i).locator('li');
+    const rows = card(page, /most traded/i).locator('[role="rowgroup"] > [role="row"]');
     const expected = bySymbol('7d');
     await expect(rows).toHaveCount(expected.length);
     for (const [index, symbol] of expected.entries()) {

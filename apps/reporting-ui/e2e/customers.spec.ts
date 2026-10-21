@@ -180,10 +180,10 @@ test.describe('One customer', () => {
 
     await expectCount(page, rows, rows, 'rows');
     for (const order of own) {
-      await expect(page.getByRole('button', { name: `Open order ${order.orderId}` })).toBeVisible();
+      await expect(page.getByRole('button', { name: `Open order #${order.orderId}` })).toBeVisible();
     }
     for (const order of orders.filter((candidate) => !own.includes(candidate))) {
-      await expect(page.getByRole('button', { name: `Open order ${order.orderId}` })).toHaveCount(
+      await expect(page.getByRole('button', { name: `Open order #${order.orderId}` })).toHaveCount(
         0,
       );
     }

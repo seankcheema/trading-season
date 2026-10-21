@@ -44,6 +44,7 @@
         <app-dashboard-header-dropdown
           data-testid="profile-dropdown"
           ariaLabel="Open profile menu"
+          [triggerText]="profileInitials()"
           [open]="openHeaderDropdown() === 'profile'"
           (openChange)="onHeaderDropdownOpenChange('profile', $event)"
           containerClass="shrink-0"
@@ -87,8 +88,9 @@
     </header>
 
     <main
-      class="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2.25fr)] lg:grid-rows-[minmax(0,1fr)]"
+      class="relative grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2.25fr)] lg:grid-rows-[minmax(0,1fr)]"
     >
+      <h1 class="sr-only">Dashboard</h1>
       <!-- Left column -->
       <div class="flex min-w-0 flex-col gap-3 lg:min-h-0">
         <section class="net-worth-card dash-card shrink-0 p-5" data-tour="net-worth">
@@ -385,30 +387,38 @@
               aria-labelledby="assets-tab-watchlist"
               data-testid="watchlist-table"
             >
-              <div class="min-w-[40rem]">
+              <!-- ARIA tables, so screen readers announce each cell with its column. A click
+                   anywhere on a row opens the order ticket; the symbol is the button that does so
+                   from the keyboard. -->
+              <div class="min-w-[40rem]" role="table" aria-label="Watchlist">
                 <div
                   class="watchlist-table-grid dash-table-head bg-card sticky top-0 grid gap-1.5 px-2 whitespace-nowrap"
+                  role="row"
                 >
-                  <span>Asset</span>
-                  <span>Today</span>
-                  <span class="text-right">Price</span>
-                  <span class="text-right">Change</span>
-                  <span class="text-right">Change %</span>
+                  <span role="columnheader">Asset</span>
+                  <span role="columnheader">Today</span>
+                  <span role="columnheader" class="text-right">Price</span>
+                  <span role="columnheader" class="text-right">Change</span>
+                  <span role="columnheader" class="text-right">Change %</span>
                 </div>
 
-                <ul>
+                <div role="rowgroup">
                   @if (watchlist.error()) {
-                    <li role="status" class="text-loss px-2 py-2 text-xs">
-                      {{ watchlist.error() }}
-                      <button type="button" class="underline" (click)="refreshWatchlist()">
-                        Retry
-                      </button>
-                    </li>
+                    <div role="row" class="text-loss px-2 py-2 text-xs">
+                      <span role="cell">
+                        <span role="status">{{ watchlist.error() }}</span>
+                        <button type="button" class="underline" (click)="refreshWatchlist()">
+                          Retry
+                        </button>
+                      </span>
+                    </div>
                   }
                   @if (watchlist.status() === 'loading') {
-                    <li role="status" class="sr-only">Loading watchlist…</li>
+                    <div role="row" class="sr-only">
+                      <span role="cell"><span role="status">Loading watchlist…</span></span>
+                    </div>
                     @for (row of skeletonRows; track row) {
-                      <li
+                      <div
                         class="watchlist-table-grid grid items-center gap-1.5 px-2 py-2.5"
                         aria-hidden="true"
                         data-testid="watchlist-row-skeleton"
@@ -418,55 +428,70 @@
                         @for (cell of [1, 2, 3]; track cell) {
                           <span class="skeleton ml-auto h-5 w-14"></span>
                         }
-                      </li>
+                      </div>
                     }
                   }
                   @for (watched of watchedInstruments(); track watched.symbol) {
-                    <li>
-                      @if (watched.instrument; as instrument) {
-                        <button
-                          type="button"
-                          class="watchlist-table-grid hover:bg-muted grid w-full cursor-pointer items-center gap-1.5 rounded-lg px-2 py-2.5 text-left text-sm whitespace-nowrap transition-colors"
-                          [attr.aria-label]="'Watch list: ' + instrument.name"
-                          [attr.data-testid]="'watchlist-row-' + instrument.symbol"
-                          (click)="openOrder(instrument)"
-                        >
-                          <span class="font-medium">{{ instrument.symbol }}</span>
+                    @if (watched.instrument; as instrument) {
+                      <div
+                        role="row"
+                        class="watchlist-table-grid hover:bg-muted grid w-full cursor-pointer items-center gap-1.5 rounded-lg px-2 py-2.5 text-left text-sm whitespace-nowrap transition-colors"
+                        [attr.data-testid]="'watchlist-row-' + instrument.symbol"
+                        (click)="openOrder(instrument)"
+                      >
+                        <span role="cell">
+                          <button
+                            type="button"
+                            class="cursor-pointer rounded font-medium"
+                            [attr.aria-label]="'Trade ' + instrument.symbol"
+                            [attr.title]="instrument.name"
+                          >{{ instrument.symbol }}</button>
+                        </span>
+                        <span role="cell" class="min-w-0">
                           <app-daily-sparkline
                             [symbol]="instrument.symbol"
                             [points]="assetCharts()[instrument.symbol] ?? []"
                           />
-                          <span class="text-right tabular-nums">
-                            {{ instrument.price | currency: 'USD' }}
-                          </span>
-                          <span
-                            class="text-right tabular-nums"
-                            [class]="instrument.change >= 0 ? 'text-gain' : 'text-loss'"
-                          >
-                            {{ instrument.change >= 0 ? '+' : ''
-                            }}{{ instrument.change | currency: 'USD' }}
-                          </span>
-                          <span
-                            class="text-right tabular-nums"
-                            [class]="instrument.changePercent >= 0 ? 'text-gain' : 'text-loss'"
-                          >
-                            {{ instrument.changePercent | signedPercent }}
-                          </span>
-                        </button>
-                      } @else {
-                        <span class="text-muted-foreground flex min-h-11 items-center px-2 text-sm">
+                        </span>
+                        <span role="cell" class="text-right tabular-nums">
+                          {{ instrument.price | currency: 'USD' }}
+                        </span>
+                        <span
+                          role="cell"
+                          class="text-right tabular-nums"
+                          [class]="instrument.change >= 0 ? 'text-gain' : 'text-loss'"
+                        >
+                          {{ instrument.change >= 0 ? '+' : ''
+                          }}{{ instrument.change | currency: 'USD' }}
+                        </span>
+                        <span
+                          role="cell"
+                          class="text-right tabular-nums"
+                          [class]="instrument.changePercent >= 0 ? 'text-gain' : 'text-loss'"
+                        >
+                          {{ instrument.changePercent | signedPercent }}
+                        </span>
+                      </div>
+                    } @else {
+                      <div role="row">
+                        <span
+                          role="cell"
+                          class="text-muted-foreground flex min-h-11 items-center px-2 text-sm"
+                        >
                           {{ watched.symbol }} unavailable
                         </span>
-                      }
-                    </li>
+                      </div>
+                    }
                   } @empty {
                     @if (watchlist.status() === 'ready') {
-                      <li class="text-muted-foreground px-2 py-6 text-center text-sm">
-                        Search for a stock and click its star to add it to your watchlist.
-                      </li>
+                      <div class="text-muted-foreground px-2 py-6 text-center text-sm" role="row">
+                        <span role="cell">
+                          Search for a stock and click its star to add it to your watchlist.
+                        </span>
+                      </div>
                     }
                   }
-                </ul>
+                </div>
               </div>
             </div>
           } @else {
@@ -475,44 +500,52 @@
               role="tabpanel"
               aria-labelledby="assets-tab-assets"
             >
-              <div class="min-w-[59rem]" data-testid="assets-table">
+              <div class="min-w-[59rem]" data-testid="assets-table" role="table" aria-label="Assets">
                 <div
                   class="assets-table-grid dash-table-head bg-card sticky top-0 grid gap-1.5 px-2 whitespace-nowrap"
+                  role="row"
                 >
-                  <span>Asset</span>
-                  <span>Today</span>
-                  <span class="text-right">Shares</span>
-                  <span class="text-right">Avg Price</span>
-                  <span class="text-right">Price</span>
-                  <span class="text-right">Change</span>
-                  <span class="text-right">Change %</span>
-                  <span class="text-right">Value</span>
-                  <span class="text-right">Value $</span>
+                  <span role="columnheader">Asset</span>
+                  <span role="columnheader">Today</span>
+                  <span role="columnheader" class="text-right">Shares</span>
+                  <span role="columnheader" class="text-right">Avg Price</span>
+                  <span role="columnheader" class="text-right">Price</span>
+                  <span role="columnheader" class="text-right">Change</span>
+                  <span role="columnheader" class="text-right">Change %</span>
+                  <span role="columnheader" class="text-right">Value</span>
+                  <span role="columnheader" class="text-right">Value $</span>
                 </div>
 
-                <ul>
+                <div role="rowgroup">
                   @for (holding of visibleAssets(); track holding.symbol) {
-                    <li>
-                      <button
-                        type="button"
-                        class="assets-table-grid hover:bg-muted grid w-full cursor-pointer items-center gap-1.5 rounded-lg px-2 py-2.5 text-left text-sm whitespace-nowrap transition-colors"
-                        [attr.aria-label]="'Trade ' + holding.symbol"
-                        [attr.data-testid]="'asset-row-' + holding.symbol"
-                        (click)="openOrder(holding.instrument)"
-                      >
-                        <span class="font-medium">{{ holding.symbol }}</span>
-                        <app-daily-sparkline
-                          [symbol]="holding.symbol"
-                          [points]="assetCharts()[holding.symbol]"
-                        />
-                        <span class="text-right tabular-nums">{{ holding.shares }}</span>
-                        <span class="text-right tabular-nums">
+                    <div
+                      role="row"
+                      class="assets-table-grid hover:bg-muted grid w-full cursor-pointer items-center gap-1.5 rounded-lg px-2 py-2.5 text-left text-sm whitespace-nowrap transition-colors"
+                      [attr.data-testid]="'asset-row-' + holding.symbol"
+                      (click)="openOrder(holding.instrument)"
+                    >
+                        <span role="cell">
+                          <button
+                            type="button"
+                            class="cursor-pointer rounded font-medium"
+                            [attr.aria-label]="'Trade ' + holding.symbol"
+                          >{{ holding.symbol }}</button>
+                        </span>
+                        <span role="cell" class="min-w-0">
+                          <app-daily-sparkline
+                            [symbol]="holding.symbol"
+                            [points]="assetCharts()[holding.symbol]"
+                          />
+                        </span>
+                        <span role="cell" class="text-right tabular-nums">{{ holding.shares }}</span>
+                        <span role="cell" class="text-right tabular-nums">
                           {{ holding.costBasis | currency: 'USD' }}
                         </span>
-                        <span class="text-right tabular-nums">
+                        <span role="cell" class="text-right tabular-nums">
                           {{ holding.instrument.price | currency: 'USD' }}
                         </span>
                         <span
+                          role="cell"
                           class="text-right tabular-nums"
                           [class]="holding.instrument.change >= 0 ? 'text-gain' : 'text-loss'"
                         >
@@ -520,6 +553,7 @@
                           }}{{ holding.instrument.change | currency: 'USD' }}
                         </span>
                         <span
+                          role="cell"
                           class="text-right tabular-nums"
                           [class]="
                             holding.instrument.changePercent >= 0 ? 'text-gain' : 'text-loss'
@@ -527,23 +561,25 @@
                         >
                           {{ holding.instrument.changePercent | signedPercent }}
                         </span>
-                        <span class="text-right tabular-nums">
+                        <span role="cell" class="text-right tabular-nums">
                           {{ holding.value | currency: 'USD' }}
                         </span>
                         <span
+                          role="cell"
                           class="text-right tabular-nums"
                           [class]="holding.gainLoss >= 0 ? 'text-gain' : 'text-loss'"
                         >
                           {{ holding.gainLoss >= 0 ? '+' : ''
                           }}{{ holding.gainLoss | currency: 'USD' }}
                         </span>
-                      </button>
-                    </li>
+                    </div>
                   } @empty {
                     @if (accountsLoading()) {
-                      <li role="status" class="sr-only">Loading assets…</li>
+                      <div role="row" class="sr-only">
+                        <span role="cell"><span role="status">Loading assets…</span></span>
+                      </div>
                       @for (row of skeletonRows; track row) {
-                        <li
+                        <div
                           class="assets-table-grid grid items-center gap-1.5 px-2 py-2.5"
                           aria-hidden="true"
                           data-testid="asset-row-skeleton"
@@ -553,19 +589,21 @@
                           @for (cell of [1, 2, 3, 4, 5, 6, 7]; track cell) {
                             <span class="skeleton ml-auto h-5 w-14"></span>
                           }
-                        </li>
+                        </div>
                       }
                     } @else {
-                      <li class="text-muted-foreground px-2 py-6 text-center text-sm">
-                        {{
-                          hasAccounts()
-                            ? 'This account has no holdings yet.'
-                            : 'Create an account to start building a portfolio.'
-                        }}
-                      </li>
+                      <div class="text-muted-foreground px-2 py-6 text-center text-sm" role="row">
+                        <span role="cell">
+                          {{
+                            hasAccounts()
+                              ? 'This account has no holdings yet.'
+                              : 'Create an account to start building a portfolio.'
+                          }}
+                        </span>
+                      </div>
                     }
                   }
-                </ul>
+                </div>
               </div>
             </div>
           }

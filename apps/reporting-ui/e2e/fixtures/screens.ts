@@ -23,5 +23,5 @@ export async function expectCount(
 
 /** The rows of the table on screen, one per order, transfer or customer. */
 export function tableRows(page: Page): Locator {
-  return page.locator('main ul > li');
+  return page.locator('main [role="rowgroup"] > [role="row"]');
 }

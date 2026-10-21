@@ -56,7 +56,7 @@ describe('CustomersComponent', () => {
     fixture.detectChanges();
   };
 
-  const rows = () => Array.from(root().querySelectorAll<HTMLAnchorElement>('li > a'));
+  const rows = () => Array.from(root().querySelectorAll<HTMLElement>('[role="rowgroup"] > [role="row"]'));
   const names = () => rows().map((row) => text(row.querySelector('.font-medium')!));
   const counter = () => text(root().querySelector('.ml-auto.self-center')!);
   const choose = (label: string, option: string) => {
@@ -92,7 +92,7 @@ describe('CustomersComponent', () => {
       '0',
     ]);
     expect(last).not.toBe('—');
-    expect(rows()[0].getAttribute('href')).toBe('/customers/6f1c0a52-9d1e-4b62-8a51-0d6f6f3f6f10');
+    expect(rows()[0].querySelector('a')!.getAttribute('href')).toBe('/customers/6f1c0a52-9d1e-4b62-8a51-0d6f6f3f6f10');
     expect(cells(rows()[2])[6]).toBe('—');
   });
 
@@ -327,7 +327,7 @@ describe('CustomerDetailComponent', () => {
     render();
     const orders = card('Orders');
     const assets = () =>
-      Array.from(orders.querySelectorAll('app-order-table li > *')).map((row) => cells(row)[3]);
+      Array.from(orders.querySelectorAll('app-order-table [role="rowgroup"] > [role="row"]')).map((row) => cells(row)[3]);
     const choose = (label: string, option: string) => {
       const select = Array.from(orders.querySelectorAll('app-filter-select')).find(
         (candidate) => text(candidate.querySelector('.dash-label')!) === label,
@@ -371,7 +371,7 @@ describe('CustomerDetailComponent', () => {
     const orders = card('Orders');
 
     expect(cells(orders.querySelector('.dash-table-head')!)[2]).toBe('Account');
-    orders.querySelector<HTMLButtonElement>('li > button')!.click();
+    orders.querySelector<HTMLButtonElement>('[role="rowgroup"] > [role="row"] button')!.click();
     fixture.detectChanges();
     TestBed.tick();
     fixture.detectChanges();

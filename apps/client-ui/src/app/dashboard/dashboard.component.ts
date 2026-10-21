@@ -77,6 +77,7 @@ import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
 import { DashboardTourComponent, TourExit } from './tour/dashboard-tour.component';
 import { TourProgressService } from './tour/tour-progress.service';
 import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
+import { MenuKeyboardDirective } from './shared/menu-keyboard.directive';
 
 type HeaderDropdown = 'account' | 'market-clock' | 'profile';
 
@@ -90,6 +91,7 @@ type AccountDialog =
   selector: 'app-dashboard',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    MenuKeyboardDirective,
     ThemeToggleComponent,
     OrderEditorComponent,
     ActivityRowComponent,
@@ -265,7 +267,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // menu starts it again. The dashboard is inert behind it.
   protected readonly tourOpen = signal(false);
   private tourOffered = false;
-  private tourFromMenu = false;
   private readonly offerTour = effect(() => {
     if (this.accountStore.status() !== 'ready' || this.termsRequired() || this.tourOffered) {
       return;
@@ -815,27 +816,21 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected startTour(): void {
     this.openHeaderDropdown.set(null);
     this._tourProgress.saveStep(0);
-    this.tourFromMenu = true;
     this.tourOpen.set(true);
   }
 
   // Focus waits for the dashboard to stop being inert. Finishing hands over to the search;
-  // closing a tour started from the profile menu returns to the menu's button.
+  // closing or skipping the tour returns to the profile menu's button, where it can be
+  // started again, so focus never falls back to the top of the page.
   protected onTourFinished(exit: TourExit): void {
-    const fromMenu = this.tourFromMenu;
-    this.tourFromMenu = false;
     this.tourOpen.set(false);
     afterNextRender(
       () => {
         const selector =
           exit === 'find-stock'
             ? '[data-tour="search"] input'
-            : fromMenu
-              ? '[data-testid="profile-dropdown"] summary'
-              : null;
-        if (selector) {
-          this.document.querySelector<HTMLElement>(selector)?.focus();
-        }
+            : '[data-testid="profile-dropdown"] summary';
+        this.document.querySelector<HTMLElement>(selector)?.focus();
       },
       { injector: this._injector },
     );

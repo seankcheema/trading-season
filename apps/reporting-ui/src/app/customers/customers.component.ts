@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideCircleAlert, lucideSearch, lucideX } from '@ng-icons/lucide';
 import { Customer } from '../reporting/console.models';
@@ -12,7 +12,7 @@ import { FilterSelectComponent, SelectOption } from '../shared/filter-select.com
 import { live } from '../shared/live';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { SkeletonTableComponent } from '../shared/skeleton.component';
-import { SortHeaderComponent } from '../shared/sort-header.component';
+import { SortHeaderComponent, ariaSort } from '../shared/sort-header.component';
 
 // How often the customer list is read again.
 export const CUSTOMERS_REFRESH_MS = 30_000;
@@ -156,17 +156,25 @@ function sortValue(customer: Customer, key: CustomerSortKey): string | number {
           </div>
 
           <div class="dash-scroll min-h-0 flex-1 overflow-x-auto">
-            <div class="min-w-[760px]">
-              <div class="dash-table-head customer-grid bg-card sticky top-0 z-[1] px-2">
+            <div class="min-w-[760px]" role="table" aria-label="Customers">
+              <div class="dash-table-head customer-grid bg-card sticky top-0 z-[1] px-2" role="row">
                 @for (column of columns; track column.key) {
-                  <button
-                    app-sort-header
-                    [label]="column.label"
-                    [align]="column.right ? 'right' : 'left'"
-                    [active]="sort().key === column.key"
-                    [direction]="sort().direction"
-                    (toggled)="sortBy(column.key)"
-                  ></button>
+                  <div
+                    role="columnheader"
+                    class="flex min-w-0"
+                    [class.justify-end]="column.right"
+                    [attr.aria-label]="column.label"
+                    [attr.aria-sort]="ariaSort(sort().key === column.key, sort().direction)"
+                  >
+                    <button
+                      app-sort-header
+                      [label]="column.label"
+                      [align]="column.right ? 'right' : 'left'"
+                      [active]="sort().key === column.key"
+                      [direction]="sort().direction"
+                      (toggled)="sortBy(column.key)"
+                    ></button>
+                  </div>
                 }
               </div>
               @if (!visible().length) {
@@ -174,15 +182,16 @@ function sortValue(customer: Customer, key: CustomerSortKey): string | number {
                   No customers match these filters.
                 </p>
               }
-              <ul>
+              <!-- A click anywhere on a row opens the customer; the name is the link that does so
+                   from the keyboard. -->
+              <div role="rowgroup">
                 @for (customer of visible(); track customer.userId) {
-                  <li>
-                    <a
-                      class="row-button customer-grid"
-                      [routerLink]="['/customers', customer.userId]"
-                      [attr.aria-label]="'Open ' + customer.name"
-                    >
-                      <span class="flex min-w-0 items-center gap-2.5">
+                  <div
+                    role="row"
+                    class="row-button customer-grid"
+                    (click)="openCustomer(customer.userId, $event)"
+                  >
+                      <span role="cell" class="flex min-w-0 items-center gap-2.5">
                         <span
                           class="bg-primary/15 text-primary flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
                           aria-hidden="true"
@@ -190,33 +199,37 @@ function sortValue(customer: Customer, key: CustomerSortKey): string | number {
                           {{ initials(customer.name) }}
                         </span>
                         <span class="min-w-0">
-                          <span class="block truncate font-medium">{{ customer.name }}</span>
+                          <a
+                            class="block truncate rounded font-medium"
+                            [routerLink]="['/customers', customer.userId]"
+                            >{{ customer.name }}</a
+                          >
                           <span class="text-muted-foreground block truncate text-xs">
                             {{ customer.email }}
                           </span>
                         </span>
                       </span>
-                      <span>
+                      <span role="cell">
                         <app-change-pill tag [tone]="statusTone(customer.status)">
                           {{ customer.status.toLowerCase() }}
                         </app-change-pill>
                       </span>
-                      <span class="text-right tabular-nums">{{ count(customer.accounts) }}</span>
-                      <span class="text-right tabular-nums">{{ dollars(customer.cash) }}</span>
-                      <span class="text-right tabular-nums">{{ dollars(customer.portfolio) }}</span>
+                      <span role="cell" class="text-right tabular-nums">{{ count(customer.accounts) }}</span>
+                      <span role="cell" class="text-right tabular-nums">{{ dollars(customer.cash) }}</span>
+                      <span role="cell" class="text-right tabular-nums">{{ dollars(customer.portfolio) }}</span>
                       <span
+                        role="cell"
                         class="text-right tabular-nums"
                         [class.text-loss]="customer.failedAttempts >= warning"
                       >
                         {{ customer.failedAttempts }}
                       </span>
-                      <span class="text-muted-foreground text-right tabular-nums">
+                      <span role="cell" class="text-muted-foreground text-right tabular-nums">
                         {{ recent(customer.lastActiveAt) }}
                       </span>
-                    </a>
-                  </li>
+                  </div>
                 }
-              </ul>
+              </div>
             </div>
           </div>
         }
@@ -226,6 +239,8 @@ function sortValue(customer: Customer, key: CustomerSortKey): string | number {
 })
 export class CustomersComponent {
   private readonly _api = inject(ReportingApiService);
+  private readonly _router = inject(Router);
+  protected readonly ariaSort = ariaSort;
 
   protected readonly list = live(() => this._api.customers(), CUSTOMERS_REFRESH_MS);
   protected readonly customers = computed(() => this.list.data()?.customers ?? []);
@@ -301,6 +316,13 @@ export class CustomersComponent {
       (name) => next[name] === NO_FILTERS[name],
     );
     this.filters.set(cleared ? NO_FILTERS : next);
+  }
+
+  // A click on the row outside the name link, which navigates by itself.
+  protected openCustomer(userId: Customer['userId'], event: MouseEvent): void {
+    if (!(event.target as Element).closest('a')) {
+      void this._router.navigate(['/customers', userId]);
+    }
   }
 
   protected sortBy(key: CustomerSortKey): void {

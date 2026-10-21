@@ -86,8 +86,9 @@ describe('OrderTableComponent', () => {
   let fixture: ComponentFixture<OrderTableComponent>;
   const root = () => fixture.nativeElement as HTMLElement;
   // Every line, and the ones that open an order.
-  const lines = () => Array.from(root().querySelectorAll<HTMLElement>('li > *'));
-  const rows = () => Array.from(root().querySelectorAll<HTMLButtonElement>('li > button'));
+  const lines = () => Array.from(root().querySelectorAll<HTMLElement>('[role="rowgroup"] > [role="row"]'));
+  const rows = () =>
+    Array.from(root().querySelectorAll<HTMLElement>('[role="rowgroup"] > [role="row"]:not([data-transfer])'));
 
   const render = (inputs: Record<string, unknown> = {}) => {
     fixture = TestBed.createComponent(OrderTableComponent);
@@ -125,14 +126,14 @@ describe('OrderTableComponent', () => {
       'filled',
     ]);
     expect(time).toMatch(/^Oct \d{1,2}, \d{1,2}:44:12 [AP]M$/);
-    expect(rows()[0].getAttribute('aria-label')).toBe('Open order 10482');
+    expect(rows()[0].querySelector('button')!.getAttribute('aria-label')).toBe('Open order #10482');
   });
 
   it('shows a deposit and a withdrawal as cash that moved, with nothing to open', () => {
     render();
     const [deposit, withdrawal] = Array.from(root().querySelectorAll<HTMLElement>('[data-transfer]'));
 
-    expect(deposit.tagName).toBe('DIV');
+    expect(deposit.querySelector('button')).toBeNull();
     const [id, time, customer, ...rest] = cells(deposit);
     expect([id, customer, ...rest]).toEqual([
       '—',
@@ -217,7 +218,7 @@ describe('OrderBrowserComponent', () => {
     fixture.detectChanges();
   };
 
-  const shown = () => Array.from(root().querySelectorAll('app-order-table li > *')).map(line);
+  const shown = () => Array.from(root().querySelectorAll('app-order-table [role="rowgroup"] > [role="row"]')).map(line);
   const counter = () => text(root().querySelector('[data-count]')!);
   const captions = () =>
     Array.from(root().querySelectorAll('app-filter-select .dash-label')).map(text);
@@ -344,7 +345,7 @@ describe('OrderBrowserComponent', () => {
     const opened = vi.fn();
     fixture.componentInstance.opened.subscribe(opened);
 
-    root().querySelector<HTMLButtonElement>('app-order-table li > button')!.click();
+    root().querySelector<HTMLButtonElement>('app-order-table [role="rowgroup"] > [role="row"] button')!.click();
     expect(opened.mock.calls[0][0].orderId).toBe(10482);
   });
 
@@ -678,7 +679,7 @@ describe('OrdersComponent', () => {
     fixture.detectChanges();
   };
 
-  const shown = () => Array.from(root().querySelectorAll('app-order-table li > *')).map(line);
+  const shown = () => Array.from(root().querySelectorAll('app-order-table [role="rowgroup"] > [role="row"]')).map(line);
   const choose = (label: string, option: string) => {
     const select = Array.from(root().querySelectorAll('app-filter-select')).find(
       (candidate) => text(candidate.querySelector('.dash-label')!) === label,
@@ -716,7 +717,7 @@ describe('OrdersComponent', () => {
   it('opens an order from its row and closes it again', () => {
     render();
 
-    root().querySelector<HTMLButtonElement>('app-order-table li > button')!.click();
+    root().querySelector<HTMLButtonElement>('app-order-table [role="rowgroup"] > [role="row"] button')!.click();
     fixture.detectChanges();
     TestBed.tick();
     fixture.detectChanges();

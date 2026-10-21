@@ -294,7 +294,12 @@ function feedRow(item: FeedItem): FeedRow {
               </span>
             </div>
             @if (feed().length) {
-              <ul class="dash-scroll mt-2 max-h-96 min-h-0 lg:max-h-none lg:flex-1">
+              <!-- Focusable, so the list can be scrolled from the keyboard (WCAG 2.1.1). -->
+              <ul
+                class="dash-scroll mt-2 max-h-96 min-h-0 rounded lg:max-h-none lg:flex-1"
+                tabindex="0"
+                aria-label="Live activity"
+              >
                 @for (item of feed(); track $index; let last = $last) {
                   <li
                     class="flex items-center gap-3 py-2.5 text-sm"
@@ -322,22 +327,30 @@ function feedRow(item: FeedItem): FeedRow {
           <section class="dash-card flex min-h-0 flex-col p-5">
             <h2 class="text-sm font-semibold">Most traded</h2>
             @if (data.mostTraded.length) {
-              <div class="dash-table-head traded-grid mt-4">
-                <span>Asset</span>
-                <span>{{ rangeLabel() }}</span>
-                <span class="text-right">Orders</span>
-                <span class="text-right">Notional</span>
+              <div class="flex min-h-0 flex-col lg:flex-1" role="table" aria-label="Most traded">
+                <div class="dash-table-head traded-grid mt-4" role="row">
+                  <span role="columnheader">Asset</span>
+                  <span role="columnheader">{{ rangeLabel() }}</span>
+                  <span role="columnheader" class="text-right">Orders</span>
+                  <span role="columnheader" class="text-right">Notional</span>
+                </div>
+                <!-- Focusable, so the rows can be scrolled from the keyboard (WCAG 2.1.1). -->
+                <div
+                  class="dash-scroll max-h-96 min-h-0 rounded lg:max-h-none lg:flex-1"
+                  role="rowgroup"
+                  tabindex="0"
+                  aria-label="Most traded assets"
+                >
+                  @for (row of data.mostTraded; track row.symbol) {
+                    <div class="dash-table-row traded-grid" role="row">
+                      <span role="cell" class="font-medium">{{ row.symbol }}</span>
+                      <span role="cell" class="min-w-0"><app-sparkline [points]="row.prices" /></span>
+                      <span role="cell" class="text-right tabular-nums">{{ count(row.orders) }}</span>
+                      <span role="cell" class="text-right tabular-nums">{{ wholeDollars(row.notional) }}</span>
+                    </div>
+                  }
+                </div>
               </div>
-              <ul class="dash-scroll max-h-96 min-h-0 lg:max-h-none lg:flex-1">
-                @for (row of data.mostTraded; track row.symbol) {
-                  <li class="dash-table-row traded-grid">
-                    <span class="font-medium">{{ row.symbol }}</span>
-                    <app-sparkline [points]="row.prices" />
-                    <span class="text-right tabular-nums">{{ count(row.orders) }}</span>
-                    <span class="text-right tabular-nums">{{ wholeDollars(row.notional) }}</span>
-                  </li>
-                }
-              </ul>
             } @else {
               <p class="text-muted-foreground mt-4 text-sm">No orders were placed in this period.</p>
             }
@@ -415,9 +428,22 @@ export class ActivityComponent {
     return data.notional.points.map((point) => ({ value: point.value, label: label(point.at) }));
   });
 
+  // The chart's text alternative: the total, and where the series starts, peaks and ends, which
+  // is what the line shows at a glance (WCAG 1.1.1).
   protected readonly chartDescription = computed(() => {
     const data = this.activity.data()!;
-    return `Notional traded, ${this.rangeLabel()}: ${wholeDollars(data.notional.total)}`;
+    const summary = `Notional traded, ${this.rangeLabel()}: ${wholeDollars(data.notional.total)}`;
+    const points = this.chart();
+    if (points.length < 2) {
+      return summary;
+    }
+    const peak = points.reduce((best, point) => (point.value > best.value ? point : best));
+    const [first, last] = [points[0], points[points.length - 1]];
+    return (
+      `${summary}. ${wholeDollars(first.value)} at ${first.label}, ` +
+      `peak ${wholeDollars(peak.value)} at ${peak.label}, ` +
+      `${wholeDollars(last.value)} at ${last.label}.`
+    );
   });
 
   protected readonly statuses = computed(() => {

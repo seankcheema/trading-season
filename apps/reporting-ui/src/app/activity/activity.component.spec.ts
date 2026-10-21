@@ -42,7 +42,7 @@ describe('ActivityComponent', () => {
       (section) => text(section.querySelector('h2')!) === heading,
     )!;
   const rows = (section: HTMLElement) =>
-    Array.from(section.querySelectorAll('li')).map((row) => text(row));
+    Array.from(section.querySelectorAll('li, [role="rowgroup"] > [role="row"]')).map((row) => text(row));
 
   it('shows the headline figures against the prior period', () => {
     const root = render();
@@ -68,7 +68,7 @@ describe('ActivityComponent', () => {
 
     expect(text(notional.querySelector('p')!)).toBe('$6,044 +8.40%');
     expect(notional.querySelector('[role="img"]')!.getAttribute('aria-label')).toBe(
-      'Notional traded, Today: $6,044',
+      'Notional traded, Today: $6,044. $1,000 at 1 PM, peak $3,000 at 2 PM, $2,044 at 3 PM.',
     );
     expect(notional.querySelector('[data-line]')!.getAttribute('class')).toContain('stroke-gain');
     // The value axis starts at zero and climbs in round steps.
@@ -193,7 +193,7 @@ describe('ActivityComponent', () => {
     // The range stays in an exported PDF, which would not say what it covers without it.
     expect(root.querySelector('app-timeframe-toggle')!.hasAttribute('data-print-hide')).toBe(false);
     expect(card(root, 'Notional traded').querySelector('[role="img"]')!.getAttribute('aria-label')).toBe(
-      'Notional traded, 7D: $6,044',
+      'Notional traded, 7D: $6,044. $1,000 at Oct 8, peak $3,000 at Oct 8, $2,044 at Oct 8.',
     );
     const days = Array.from(root.querySelectorAll('[data-axis="x"] > span')).map(text);
     expect(days.every((label) => /^[A-Z][a-z]{2} \d{1,2}$/.test(label))).toBe(true);
@@ -260,7 +260,7 @@ describe('ActivityComponent', () => {
     const notional = card(root, 'Notional traded');
     expect(text(notional.querySelector('p')!)).toBe('$2,500');
     expect(notional.querySelector('[role="img"]')!.getAttribute('aria-label')).toBe(
-      'Notional traded, All time: $2,500',
+      'Notional traded, All time: $2,500. $1,000 at Apr 15, peak $1,500 at Apr 16, $1,500 at Apr 16.',
     );
     // Inside one year a day needs no year.
     expect(Array.from(notional.querySelectorAll('[data-axis="x"] > span')).map(text)).toEqual([

@@ -24,7 +24,7 @@ const SEED: SeedAccount = {
 
 // rgb() of the gain and loss colors in src/styles.css.
 const GAIN = 'rgb(37, 235, 105)';
-const LOSS = 'rgb(255, 61, 90)';
+const LOSS = 'rgb(255, 117, 137)';
 
 test.use({ stubOptions: { accounts: [SEED] } });
 
@@ -162,11 +162,11 @@ test.describe('assets dialog', () => {
 
     await page.getByTestId('open-assets').click();
     const dialog = page.getByRole('dialog', { name: 'Assets' });
-    // Shares follows the asset name among the row's text cells; the sparkline is not a span.
+    // The row's cells in order: the asset, its sparkline, then shares and the average cost.
     const row = dialog.getByTestId('assets-dialog-row-AAPL');
-    await expect(row.locator('> span').nth(1)).toHaveText('3');
+    await expect(row.getByRole('cell').nth(2)).toHaveText('3');
     // The average cost now blends the new purchase in with the two shares held before.
-    await expect(row.locator('> span').nth(2)).not.toHaveText('$200.00');
+    await expect(row.getByRole('cell').nth(3)).not.toHaveText('$200.00');
   });
 });
 
@@ -267,7 +267,9 @@ test.describe('search bar', () => {
     await expect(page.getByTestId('search-suggestions-Trending')).toHaveCount(0);
 
     await input.fill('zzzz');
-    await expect(page.getByRole('listbox')).toContainText('No instruments match "zzzz"');
+    // The message sits outside the listbox, which holds only instruments.
+    await expect(page.getByTestId('search-no-results')).toContainText('No instruments match "zzzz"');
+    await expect(page.getByRole('listbox')).toHaveCount(0);
 
     await input.fill('');
     await expect(page.getByTestId('search-suggestions-Trending')).toBeVisible();

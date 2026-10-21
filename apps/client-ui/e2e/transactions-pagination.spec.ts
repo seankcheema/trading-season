@@ -42,7 +42,7 @@ test('a page taller than the box shows a scrollbar and keeps the columns aligned
   const dialog = page.getByRole('dialog', { name: 'Recent Transactions' });
   await expect(dialog.getByTestId('transactions-row')).toHaveCount(15);
 
-  const list = dialog.getByTestId('transactions-table').locator('ul');
+  const list = dialog.getByTestId('transactions-table').locator('[role="rowgroup"]');
   const scroll = await list.evaluate((el) => ({
     scrolls: el.scrollHeight > el.clientHeight,
     // The scrollbar's gutter takes width from the list, so the rows are narrower than the box.

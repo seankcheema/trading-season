@@ -3,7 +3,18 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideChevronDown, lucideChevronUp, lucideChevronsUpDown } from '@ng-icons/lucide';
 import { SortDirection } from '../reporting/report-summary';
 
-// A table column heading that toggles sorting: first click sorts descending, then it flips.
+// The `aria-sort` of a column header: how its column is sorted, or nothing for the columns the
+// table is not sorted by. The Client UI has the same helper; keep the two alike.
+export function ariaSort(
+  active: boolean,
+  direction: SortDirection,
+): 'ascending' | 'descending' | null {
+  return active ? (direction === 'asc' ? 'ascending' : 'descending') : null;
+}
+
+// A table column heading that toggles sorting: first click sorts descending, then it flips. Put
+// it inside the column's `role="columnheader"`, which carries the column's name and
+// `aria-sort` (see ariaSort above); the button only sorts.
 @Component({
   selector: 'button[app-sort-header]',
   changeDetection: ChangeDetectionStrategy.OnPush,

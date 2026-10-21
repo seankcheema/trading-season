@@ -15,7 +15,7 @@ import {
 import { DailySparklineComponent } from '../shared/daily-sparkline.component';
 import { DashboardDialogComponent } from '../shared/dashboard-dialog.component';
 import { SignedPercentPipe } from '../shared/signed-percent.pipe';
-import { SortHeaderComponent } from '../shared/sort-header.component';
+import { SortHeaderComponent, ariaSort } from '../shared/sort-header.component';
 
 const FILTERS: readonly { id: AssetFilter; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -78,7 +78,7 @@ const FILTERS: readonly { id: AssetFilter; label: string }[] = [
         </div>
         <input
           type="search"
-          class="border-input bg-input/30 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full max-w-[13.75rem] rounded-lg border px-3 text-sm outline-none focus-visible:ring-3"
+          class="border-input bg-input/30 placeholder:text-muted-foreground focus-visible:border-ring h-8 w-full max-w-[13.75rem] rounded-lg border px-3 text-sm"
           placeholder="Filter by symbol or name"
           aria-label="Filter by symbol or name"
           [value]="query()"
@@ -90,69 +90,87 @@ const FILTERS: readonly { id: AssetFilter; label: string }[] = [
       </div>
 
       <div class="overflow-x-auto">
-        <div class="min-w-[62rem]" data-testid="assets-dialog-table">
-          <div class="assets-grid dash-table-head grid gap-2 px-2">
+        <!-- An ARIA table, so screen readers announce each cell with its column. A click anywhere
+             on a row opens the order ticket; the symbol is the button that does so from the
+             keyboard. -->
+        <div class="min-w-[62rem]" data-testid="assets-dialog-table" role="table" aria-label="Assets">
+          <div class="assets-grid dash-table-head grid gap-2 px-2" role="row">
             @for (column of columns; track column.key) {
-              <button
-                app-sort-header
-                [label]="column.label"
-                [align]="column.align"
-                [active]="sortKey() === column.key"
-                [direction]="sortDirection()"
-                (toggled)="sortBy(column.key)"
-              ></button>
+              <div
+                role="columnheader"
+                class="flex min-w-0"
+                [class.justify-end]="column.align === 'right'"
+                [attr.aria-label]="column.label"
+                [attr.aria-sort]="ariaSort(sortKey() === column.key, sortDirection())"
+              >
+                <button
+                  app-sort-header
+                  [label]="column.label"
+                  [align]="column.align"
+                  [active]="sortKey() === column.key"
+                  [direction]="sortDirection()"
+                  (toggled)="sortBy(column.key)"
+                ></button>
+              </div>
               @if (column.key === 'symbol') {
-                <span class="truncate">Today</span>
+                <span class="truncate" role="columnheader">Today</span>
               }
             }
           </div>
-          <ul class="dash-scroll h-[min(50vh,28rem)] overflow-y-auto pb-4">
+          <div class="dash-scroll h-[min(50vh,28rem)] overflow-y-auto pb-4" role="rowgroup">
             @for (row of rows(); track row.symbol) {
-              <li>
-                <button
-                  type="button"
-                  class="assets-grid hover:bg-muted grid w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2.5 text-left text-sm transition-colors"
-                  [attr.aria-label]="'Trade ' + row.symbol"
-                  [attr.data-testid]="'assets-dialog-row-' + row.symbol"
-                  (click)="selected.emit(row.instrument)"
-                >
-                  <span class="min-w-0">
-                    <span class="block truncate font-medium">{{ row.symbol }}</span>
+              <div
+                role="row"
+                class="assets-grid hover:bg-muted grid w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2.5 text-left text-sm transition-colors"
+                [attr.data-testid]="'assets-dialog-row-' + row.symbol"
+                (click)="selected.emit(row.instrument)"
+              >
+                  <span class="min-w-0" role="cell">
+                    <button
+                      type="button"
+                      class="block max-w-full cursor-pointer truncate rounded text-left font-medium"
+                      [attr.aria-label]="'Trade ' + row.symbol"
+                    >{{ row.symbol }}</button>
                     <span class="text-muted-foreground block truncate text-xs">{{ row.name }}</span>
                   </span>
-                  <app-daily-sparkline
-                    [symbol]="row.symbol"
-                    [points]="charts()[row.symbol] ?? []"
-                  />
-                  <span class="truncate text-right tabular-nums">{{ row.shares }}</span>
-                  <span class="truncate text-right tabular-nums">
+                  <span class="min-w-0" role="cell">
+                    <app-daily-sparkline
+                      [symbol]="row.symbol"
+                      [points]="charts()[row.symbol] ?? []"
+                    />
+                  </span>
+                  <span class="truncate text-right tabular-nums" role="cell">{{ row.shares }}</span>
+                  <span class="truncate text-right tabular-nums" role="cell">
                     {{ row.costBasis | currency: 'USD' }}
                   </span>
-                  <span class="truncate text-right tabular-nums">
+                  <span class="truncate text-right tabular-nums" role="cell">
                     {{ row.price | currency: 'USD' }}
                   </span>
                   <span
+                    role="cell"
                     class="truncate text-right tabular-nums"
                     [class]="row.changePercent >= 0 ? 'text-gain' : 'text-loss'"
                   >
                     {{ row.changePercent | signedPercent }}
                   </span>
-                  <span class="truncate text-right tabular-nums">
+                  <span class="truncate text-right tabular-nums" role="cell">
                     {{ row.value | currency: 'USD' }}
                   </span>
                   <span
+                    role="cell"
                     class="truncate text-right tabular-nums"
                     [class]="row.gainLoss >= 0 ? 'text-gain' : 'text-loss'"
                   >
                     {{ row.gainLoss >= 0 ? '+' : '' }}{{ row.gainLoss | currency: 'USD' }}
                   </span>
                   <span
+                    role="cell"
                     class="truncate text-right tabular-nums"
                     [class]="row.returnPercent >= 0 ? 'text-gain' : 'text-loss'"
                   >
                     {{ row.returnPercent | signedPercent }}
                   </span>
-                  <span class="flex items-center justify-end gap-2 tabular-nums">
+                  <span class="flex items-center justify-end gap-2 tabular-nums" role="cell">
                     <span
                       class="h-1 w-9 overflow-hidden rounded-full bg-foreground/10"
                       aria-hidden="true"
@@ -161,18 +179,19 @@ const FILTERS: readonly { id: AssetFilter; label: string }[] = [
                     </span>
                     <span data-testid="assets-weight">{{ row.weight.toFixed(1) }}%</span>
                   </span>
-                </button>
-              </li>
+              </div>
             } @empty {
-              <li class="text-muted-foreground px-2 py-8 text-center text-sm">
-                {{
-                  holdings().length
-                    ? 'No assets match these filters.'
-                    : 'This account has no holdings yet.'
-                }}
-              </li>
+              <div class="text-muted-foreground px-2 py-8 text-center text-sm" role="row">
+                <span role="cell">
+                  {{
+                    holdings().length
+                      ? 'No assets match these filters.'
+                      : 'This account has no holdings yet.'
+                  }}
+                </span>
+              </div>
             }
-          </ul>
+          </div>
         </div>
       </div>
     </app-dashboard-dialog>
@@ -187,6 +206,7 @@ export class AssetsDialogComponent {
   readonly selected = output<Instrument>();
 
   protected readonly filters = FILTERS;
+  protected readonly ariaSort = ariaSort;
   protected readonly columns: readonly {
     key: AssetSortKey;
     label: string;

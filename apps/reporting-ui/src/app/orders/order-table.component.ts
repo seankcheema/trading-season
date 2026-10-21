@@ -4,7 +4,7 @@ import { OrderRow } from '../reporting/console.models';
 import { count, daySeconds, dollars } from '../reporting/format';
 import { SortState, sortRows, toggleSort } from '../reporting/report-summary';
 import { ChangePillComponent, PillTone, statusTone } from '../shared/change-pill.component';
-import { SortHeaderComponent } from '../shared/sort-header.component';
+import { SortHeaderComponent, ariaSort } from '../shared/sort-header.component';
 import { LedgerRow, LedgerSortKey, ledgerSortValue } from './ledger-rows';
 
 // Money and shares coming in read as a gain, a sale as the loss color the kit gives it.
@@ -21,8 +21,10 @@ export const ORDER_TRACKS = '0.7fr 1fr 1.3fr 0.7fr 0.8fr 0.6fr 0.9fr 0.9fr 0.9fr
 export const ORDER_TABLE_MIN_WIDTH = 880;
 
 // The orders table of the Orders screen and of a customer's page, with the
-// deposits and withdrawals among the orders. An order's row opens the order; a
-// transfer has nothing more to show, so its row is not a button. On a
+// deposits and withdrawals among the orders. It is an ARIA table, so screen
+// readers announce each cell with its column. A click anywhere on an order's row
+// opens the order, and its first cell holds the button that does so from the
+// keyboard; a transfer has nothing more to show, so its row has no button. On a
 // customer's page the customer column gives way to the account, since every
 // row is theirs.
 @Component({
@@ -39,48 +41,59 @@ export const ORDER_TABLE_MIN_WIDTH = 880;
     }
   `,
   template: `
-    <div class="min-w-[880px]">
-      <div class="dash-table-head order-grid bg-card sticky top-0 z-[1] px-2">
+    <div class="min-w-[880px]" role="table" aria-label="Orders and transfers">
+      <div class="dash-table-head order-grid bg-card sticky top-0 z-[1] px-2" role="row">
         @for (column of columns(); track column.key) {
-          <button
-            app-sort-header
-            [label]="column.label"
-            [align]="column.right ? 'right' : 'left'"
-            [active]="sort().key === column.key"
-            [direction]="sort().direction"
-            (toggled)="sortBy(column.key)"
-          ></button>
+          <div
+            role="columnheader"
+            class="flex min-w-0"
+            [class.justify-end]="column.right"
+            [attr.aria-label]="column.label"
+            [attr.aria-sort]="ariaSort(sort().key === column.key, sort().direction)"
+          >
+            <button
+              app-sort-header
+              [label]="column.label"
+              [align]="column.right ? 'right' : 'left'"
+              [active]="sort().key === column.key"
+              [direction]="sort().direction"
+              (toggled)="sortBy(column.key)"
+            ></button>
+          </div>
         }
       </div>
-      <ul>
+      <div role="rowgroup">
         @for (row of sorted(); track row.key) {
-          <li>
-            @if (row.order; as order) {
-              <button
-                type="button"
-                class="row-button order-grid whitespace-nowrap"
-                [attr.aria-label]="'Open order ' + order.orderId"
-                (click)="opened.emit(order)"
-              >
-                <ng-container [ngTemplateOutlet]="cells" [ngTemplateOutletContext]="{ $implicit: row }" />
-              </button>
-            } @else {
-              <div
-                class="row-button order-grid cursor-default whitespace-nowrap hover:bg-transparent"
-                data-transfer
-              >
-                <ng-container [ngTemplateOutlet]="cells" [ngTemplateOutletContext]="{ $implicit: row }" />
-              </div>
-            }
-          </li>
+          @if (row.order; as order) {
+            <div role="row" class="row-button order-grid whitespace-nowrap" (click)="opened.emit(order)">
+              <span role="cell">
+                <button
+                  type="button"
+                  class="text-muted-foreground cursor-pointer rounded tabular-nums"
+                  [attr.aria-label]="'Open order #' + row.id"
+                >
+                  #{{ row.id }}
+                </button>
+              </span>
+              <ng-container [ngTemplateOutlet]="cells" [ngTemplateOutletContext]="{ $implicit: row }" />
+            </div>
+          } @else {
+            <div
+              role="row"
+              class="row-button order-grid cursor-default whitespace-nowrap hover:bg-transparent"
+              data-transfer
+            >
+              <span role="cell" class="text-muted-foreground tabular-nums">—</span>
+              <ng-container [ngTemplateOutlet]="cells" [ngTemplateOutletContext]="{ $implicit: row }" />
+            </div>
+          }
         }
-      </ul>
+      </div>
     </div>
 
     <ng-template #cells let-row>
-      <span class="text-muted-foreground tabular-nums">{{ row.order ? '#' + row.id : '—' }}</span>
-      <span class="truncate tabular-nums">{{ daySeconds(row.at) }}</span>
-      <span class="truncate">
+      <span role="cell" class="truncate tabular-nums">{{ daySeconds(row.at) }}</span>
+      <span role="cell" class="truncate">
         @if (showUser()) {
           {{ row.userName }}
           <span class="text-muted-foreground"> · {{ row.accountName }}</span>
@@ -88,16 +101,16 @@ export const ORDER_TABLE_MIN_WIDTH = 880;
           {{ row.accountName }}
         }
       </span>
-      <span class="font-medium">{{ row.symbol }}</span>
-      <span>
+      <span role="cell" class="font-medium">{{ row.symbol }}</span>
+      <span role="cell">
         <app-change-pill tag [tone]="sideTone(row)">{{ row.side.toLowerCase() }}</app-change-pill>
       </span>
-      <span class="text-right tabular-nums">
+      <span role="cell" class="text-right tabular-nums">
         {{ row.quantity === null ? '—' : count(row.quantity) }}
       </span>
-      <span class="text-right tabular-nums">{{ row.price === null ? '—' : dollars(row.price) }}</span>
-      <span class="text-right tabular-nums">{{ row.amount === null ? '—' : dollars(row.amount) }}</span>
-      <span class="text-right">
+      <span role="cell" class="text-right tabular-nums">{{ row.price === null ? '—' : dollars(row.price) }}</span>
+      <span role="cell" class="text-right tabular-nums">{{ row.amount === null ? '—' : dollars(row.amount) }}</span>
+      <span role="cell" class="text-right">
         <app-change-pill tag [tone]="statusTone(row.status)">
           {{ row.status.toLowerCase() }}
         </app-change-pill>
@@ -131,6 +144,7 @@ export class OrderTableComponent {
   protected readonly dollars = dollars;
   protected readonly daySeconds = daySeconds;
   protected readonly statusTone = statusTone;
+  protected readonly ariaSort = ariaSort;
 
   protected sideTone(row: LedgerRow): PillTone {
     return SIDE_TONES[row.side];
