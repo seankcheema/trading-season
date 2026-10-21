@@ -142,8 +142,8 @@ Run from `apps/holdings-and-trade-service/stock-forecast` with the virtual envir
 | 10i | `python scripts/extra-horizons.py` | `reports/horizon_comparison.csv` | Week 3; seconds with `--no-lstm`, about 30 minutes with the LSTM |
 | 10j | `python scripts/extra-platform-spike.py` | `reports/platform_spike.csv` and `.png` | Any time; under a minute |
 | 10k | `python scripts/extra-buy-signal.py` | `reports/buy_signal.csv`, `buy_signal_summary.csv` and `buy_signal.png` | Any time before the test run; seconds with `--no-lstm`, minutes with the LSTM |
-| 11 | `python scripts/0005-export-scorecard.py --model lstm-direction` | `reports/test_results.csv`, `reports/test_direction_results.csv`, test confidence charts, real `scorecard.json` | Once, Oct 22, after the final review |
-| 12 | `python scripts/0005-export-scorecard.py --model lstm-volatility` | `reports/test_volatility_results.csv`, test volatility charts; no scorecard | Once, Oct 22, after the final review |
+| 11 | `python scripts/0005-export-scorecard.py --model lstm-direction` | `reports/test_results.csv`, `reports/test_direction_results.csv`, test confidence charts, real `scorecard.json` | Once, Oct 22, after the final review and after [PREREGISTRATION.md](PREREGISTRATION.md) is committed |
+| 12 | `python scripts/0005-export-scorecard.py --model lstm-volatility` | `reports/test_volatility_results.csv`, test volatility charts; no scorecard | Once, Oct 22, same conditions as step 11 |
 
 `0003-train-lstm.py --features ret spy_ret volume_change` trains the return LSTM on several columns. With `--task direction`, `--sweep` tries every `DIRECTION_SWEEP_LOOKBACKS` and `DIRECTION_SWEEP_UNITS` pair on validation and saves the lowest-log-loss run; without it, `--lookback`, `--units` and `--seed` train one model (use `--seed` to check that a result is not one lucky initialisation). Copy the chosen settings into `DIRECTION_LOOKBACK` and `DIRECTION_UNITS`, which walk-forward uses. `--task volatility` takes the same options, tries the same grid, and its settings go in `VOLATILITY_LOOKBACK` and `VOLATILITY_UNITS`. `0005` accepts `--model lstm-direction`, `lstm`, `var`, `linear` or `lstm-volatility`, and refuses to rerun a test unless given `--force`; the volatility test has its own guard and never writes the scorecard.
 
@@ -168,6 +168,8 @@ the chronological price and daily-return charts under `reports/`.
 cd apps/holdings-and-trade-service/stock-forecast
 python -m pytest
 ```
+
+The Jenkins pipeline runs the same suite in a `python:3.14-slim` container from `requirements-ci.txt`, which leaves out TensorFlow and yfinance: the LSTM tests skip there and nothing touches the network. [PREREGISTRATION.md](PREREGISTRATION.md) fixes the frozen models, the expected test outcomes and the decision rules before the test years are scored.
 
 Tests use synthetic random-walk prices, so they need no network. The LSTM tests skip where TensorFlow is missing. `test_no_model_beats_a_coin_flip_on_a_random_walk` is a leak alarm: random-walk data has nothing to learn, so a model scoring 60% or more on it means future data reached its inputs.
 

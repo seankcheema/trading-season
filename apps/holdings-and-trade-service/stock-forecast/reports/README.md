@@ -155,6 +155,8 @@ What it means: the pipeline runs end to end on platform data, but the platform's
 
 ## Charts made after the final test
 
+What the test was expected to show, and what each outcome means, was written down and committed before it ran: see [PREREGISTRATION.md](../PREREGISTRATION.md).
+
 These appear only once the sealed 2024 to 2026 test has been run:
 
 - **`direction_confidence_test.png`**: the confidence chart for the test years.
