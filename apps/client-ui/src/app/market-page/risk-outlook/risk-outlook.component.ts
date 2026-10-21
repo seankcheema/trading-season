@@ -48,6 +48,9 @@ import { Call, MIN_RECORD_DAYS, Reading, readingFor } from './platform-signals';
               >
                 <p class="headline-kicker">Next {{ horizon() }} trading days · {{ symbol() }}</p>
                 <h3 class="headline-title">Expect {{ swings(r.call) }} price swings</h3>
+                <p class="headline-direction" data-testid="outlook-direction">
+                  Up or down: this is about how far the price may move, not which way.
+                </p>
                 <p class="headline-detail">
                   Daily moves are likely to be
                   {{ r.call === 'stormier' ? 'larger' : 'smaller' }} than this stock's recent normal
@@ -79,7 +82,8 @@ import { Call, MIN_RECORD_DAYS, Reading, readingFor } from './platform-signals';
                   ></span>
                 </div>
                 <p class="meter-caption">
-                  Model estimate: {{ r.probability | percent: '1.0-0' }} chance of bigger swings
+                  Model estimate: {{ r.probability | percent: '1.0-0' }} chance of bigger swings, in
+                  either direction
                 </p>
               </section>
 
@@ -253,6 +257,10 @@ import { Call, MIN_RECORD_DAYS, Reading, readingFor } from './platform-signals';
     }
     .headline-smaller .headline-title {
       color: var(--color-gain);
+    }
+    .headline-direction {
+      font-size: 0.8125rem;
+      font-weight: 600;
     }
     .headline-detail {
       font-size: 0.8125rem;

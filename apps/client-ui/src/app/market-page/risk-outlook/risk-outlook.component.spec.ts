@@ -185,6 +185,9 @@ describe('RiskOutlookComponent', () => {
     const headline = fixture.nativeElement.querySelector('[data-testid=outlook-headline]');
     expect(headline.textContent).toContain('Expect bigger price swings');
     expect(
+      fixture.nativeElement.querySelector('[data-testid=outlook-direction]').textContent,
+    ).toContain('Up or down');
+    expect(
       fixture.nativeElement.querySelector('[data-testid=outlook-basis]').textContent,
     ).toContain('Based on the Trading Season model, accuracy so far 75%');
     expect(

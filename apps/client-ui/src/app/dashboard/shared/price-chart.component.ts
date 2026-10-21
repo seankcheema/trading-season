@@ -544,7 +544,7 @@ interface TooltipPosition {
         data-testid="risk-pane"
       >
         <div class="rsi-header">
-          <span>Volatility outlook · chance of bigger swings next 5 days</span>
+          <span>Volatility outlook · chance of bigger swings (up or down) next 5 days</span>
           @if (latestRisk() !== undefined) {
             <strong class="risk-value">{{ latestRisk() | number: '1.0-0' }}%</strong>
           }
@@ -557,7 +557,13 @@ interface TooltipPosition {
             @if (riskReadingsVisible() >= 3) {
               <svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
                 @for (band of riskBands(); track band.x) {
-                  <rect class="risk-band" [attr.x]="band.x" y="0" [attr.width]="band.width" height="40" />
+                  <rect
+                    class="risk-band"
+                    [attr.x]="band.x"
+                    y="0"
+                    [attr.width]="band.width"
+                    height="40"
+                  />
                 }
                 <line x1="0" y1="20" x2="100" y2="20" class="rsi-guide" />
                 <path class="rsi-line risk-line" [attr.d]="riskPath()" fill="none" />
