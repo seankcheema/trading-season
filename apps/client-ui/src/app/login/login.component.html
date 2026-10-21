@@ -1,4 +1,5 @@
 <div class="bg-background relative flex min-h-screen items-center justify-center px-4 py-12">
+  <header>
   <a routerLink="/" class="fixed top-0 left-0 z-10 flex h-24 items-center gap-3 px-4 cursor-default md:h-28 md:px-8" aria-label="TradingSeason home">
     <img src="2b-waves.svg" alt="" class="size-11 md:size-14" />
     <span class="text-2xl font-semibold tracking-tight md:text-3xl">TradingSeason</span>
@@ -6,8 +7,10 @@
   <div class="fixed top-0 right-0 z-10 flex h-24 items-center px-4 md:h-28 md:px-8">
     <app-theme-toggle />
   </div>
+  </header>
 
-  <div hlmCard class="w-full max-w-sm rounded-[10px]">
+  <main class="w-full max-w-sm">
+  <div hlmCard class="w-full rounded-[10px]">
     <div hlmCardHeader class="text-center">
       <h1 hlmCardTitle class="text-xl">Welcome back</h1>
       <p hlmCardDescription>Sign in to your Trading Season account</p>
@@ -35,10 +38,12 @@
               placeholder="you@example.com"
               class="rounded-[5px] pl-8"
               formControlName="email"
+              aria-required="true"
+              [appDescribedBy]="form.controls.email.invalid && form.controls.email.touched ? 'email-error' : null"
             />
           </div>
           @if (form.controls.email.invalid && form.controls.email.touched) {
-            <p class="text-destructive text-sm">Enter a valid email address.</p>
+            <p id="email-error" class="text-destructive text-sm">Enter a valid email address.</p>
           }
         </div>
 
@@ -57,10 +62,12 @@
               placeholder="••••••••"
               class="rounded-[5px] px-8"
               formControlName="password"
+              aria-required="true"
+              [appDescribedBy]="form.controls.password.invalid && form.controls.password.touched ? 'password-error' : null"
             />
             <button
               type="button"
-              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 flex -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 transition-colors"
+              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 flex size-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0 transition-colors"
               (click)="togglePasswordVisibility()"
               [attr.aria-label]="showPassword() ? 'Hide password' : 'Show password'"
             >
@@ -68,7 +75,7 @@
             </button>
           </div>
           @if (form.controls.password.invalid && form.controls.password.touched) {
-            <p class="text-destructive text-sm">Password is required.</p>
+            <p id="password-error" class="text-destructive text-sm">Password is required.</p>
           }
         </div>
 
@@ -101,8 +108,9 @@
     <div hlmCardFooter class="justify-center">
       <p class="text-muted-foreground text-sm">
         Don't have an account?
-        <a routerLink="/register" class="text-primary font-medium hover:underline">Create one</a>
+        <a routerLink="/register" class="text-primary font-medium underline underline-offset-2">Create one</a>
       </p>
     </div>
   </div>
+  </main>
 </div>

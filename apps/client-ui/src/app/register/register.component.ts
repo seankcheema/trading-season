@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   computed,
   inject,
   signal,
@@ -34,7 +35,9 @@ import { HlmCardImports } from '@shared/ui-components/card';
 import { HlmInputImports } from '@shared/ui-components/input';
 import { toAuthErrorMessage } from '../core/auth/auth-error';
 import { AuthService } from '../core/auth/auth.service';
+import { focusFirstInvalid } from '../core/forms/focus-first-invalid';
 import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
+import { DescribedByDirective } from '../core/forms/described-by.directive';
 
 const SPECIAL_CHARACTER_PATTERN = /[^A-Za-z0-9]/;
 const NUMBER_PATTERN = /\d/;
@@ -55,6 +58,7 @@ function passwordsMatchValidator(): ValidatorFn {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    DescribedByDirective,
     ThemeToggleComponent,
     ReactiveFormsModule,
     RouterLink,
@@ -84,6 +88,7 @@ export class RegisterComponent {
   private readonly _authService = inject(AuthService);
   private readonly _router = inject(Router);
   private readonly _destroyRef = inject(DestroyRef);
+  private readonly _host: ElementRef<HTMLElement> = inject(ElementRef);
 
   protected readonly showPassword = signal(false);
   protected readonly showConfirmPassword = signal(false);
@@ -178,6 +183,7 @@ export class RegisterComponent {
 
     if (this.form.invalid) {
       this.form.markAllAsTouched();
+      focusFirstInvalid(this._host.nativeElement, this.form, 'confirmPassword');
       return;
     }
     if (this.loading()) {

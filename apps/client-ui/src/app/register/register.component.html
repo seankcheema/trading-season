@@ -1,4 +1,5 @@
 <div class="bg-background relative flex flex-col min-h-screen items-center justify-center px-4 py-12">
+  <header>
   <a routerLink="/" class="TS-logo fixed top-0 left-0 z-10 flex h-24 items-center gap-3 px-4 cursor-default md:h-28 md:px-8" aria-label="TradingSeason home">
     <img src="2b-waves.svg" alt="" class="size-11 md:size-14" />
     <span class="text-2xl font-semibold tracking-tight md:text-3xl">TradingSeason</span>
@@ -6,8 +7,10 @@
   <div class="fixed top-0 right-0 z-10 flex h-24 items-center px-4 md:h-28 md:px-8">
     <app-theme-toggle />
   </div>
+  </header>
 
-  <div hlmCard class="w-full max-w-md rounded-[10px]">
+  <main class="w-full max-w-md">
+  <div hlmCard class="w-full rounded-[10px]">
     <div hlmCardHeader class="text-center">
       <h1 hlmCardTitle class="text-xl">Create an account</h1>
       <p hlmCardDescription>Join Trading Season to get started</p>
@@ -15,6 +18,7 @@
 
     <div hlmCardContent>
       <form method="post" [formGroup]="form" (ngSubmit)="onSubmit()" novalidate class="flex flex-col gap-5">
+        <p class="text-muted-foreground text-xs">All fields are required unless marked optional.</p>
         <div class="grid grid-cols-2 gap-3">
           <div hlmField>
             <label hlmFieldLabel for="firstName" class="text-foreground">First name</label>
@@ -26,14 +30,16 @@
               placeholder="Jane"
               class="rounded-[5px]"
               formControlName="firstName"
+              aria-required="true"
+              [appDescribedBy]="form.controls.firstName.invalid && form.controls.firstName.touched ? 'firstName-error' : null"
             />
             @if (form.controls.firstName.invalid && form.controls.firstName.touched) {
-              <p class="text-destructive text-sm">First name is required.</p>
+              <p id="firstName-error" class="text-destructive text-sm">First name is required.</p>
             }
           </div>
 
           <div hlmField>
-            <label hlmFieldLabel for="middleName" class="text-foreground">Middle name</label>
+            <label hlmFieldLabel for="middleName" class="text-foreground">Middle name (optional)</label>
             <input
               hlmInput
               id="middleName"
@@ -56,9 +62,11 @@
             placeholder="Doe"
             class="rounded-[5px]"
             formControlName="lastName"
+            aria-required="true"
+            [appDescribedBy]="form.controls.lastName.invalid && form.controls.lastName.touched ? 'lastName-error' : null"
           />
           @if (form.controls.lastName.invalid && form.controls.lastName.touched) {
-            <p class="text-destructive text-sm">Last name is required.</p>
+            <p id="lastName-error" class="text-destructive text-sm">Last name is required.</p>
           }
         </div>
 
@@ -77,10 +85,12 @@
               placeholder="you@example.com"
               class="rounded-[5px] pl-8"
               formControlName="email"
+              aria-required="true"
+              [appDescribedBy]="form.controls.email.invalid && form.controls.email.touched ? 'email-error' : null"
             />
           </div>
           @if (form.controls.email.invalid && form.controls.email.touched) {
-            <p class="text-destructive text-sm">Enter a valid email address.</p>
+            <p id="email-error" class="text-destructive text-sm">Enter a valid email address.</p>
           }
         </div>
 
@@ -94,9 +104,11 @@
               autocomplete="bday"
               class="rounded-[5px]"
               formControlName="dateOfBirth"
+              aria-required="true"
+              [appDescribedBy]="form.controls.dateOfBirth.invalid && form.controls.dateOfBirth.touched ? 'dateOfBirth-error' : null"
             />
             @if (form.controls.dateOfBirth.invalid && form.controls.dateOfBirth.touched) {
-              <p class="text-destructive text-sm">Date of birth is required.</p>
+              <p id="dateOfBirth-error" class="text-destructive text-sm">Date of birth is required.</p>
             }
           </div>
 
@@ -113,19 +125,22 @@
                 placeholder="XXX-XX-XXXX"
                 class="rounded-[5px] pr-8"
                 formControlName="ssn"
+                aria-required="true"
+                [appDescribedBy]="form.controls.ssn.invalid && form.controls.ssn.touched ? 'ssn-hint ssn-error' : 'ssn-hint'"
                 (input)="onSsnInput($event)"
               />
               <button
                 type="button"
-                class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 flex -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 transition-colors"
+                class="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 flex size-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0 transition-colors"
                 (click)="toggleSsnVisibility()"
                 [attr.aria-label]="showSsn() ? 'Hide SSN' : 'Show SSN'"
               >
                 <ng-icon [name]="showSsn() ? 'lucideEyeOff' : 'lucideEye'" class="text-[16px]" />
               </button>
             </div>
+            <p id="ssn-hint" class="text-muted-foreground text-xs">Format: XXX-XX-XXXX</p>
             @if (form.controls.ssn.invalid && form.controls.ssn.touched) {
-              <p class="text-destructive text-sm">Enter SSN as XXX-XX-XXXX.</p>
+              <p id="ssn-error" class="text-destructive text-sm">Enter SSN as XXX-XX-XXXX.</p>
             }
           </div>
         </div>
@@ -145,10 +160,12 @@
               placeholder="123 Main St, Springfield"
               class="rounded-[5px] pl-8"
               formControlName="address"
+              aria-required="true"
+              [appDescribedBy]="form.controls.address.invalid && form.controls.address.touched ? 'address-error' : null"
             />
           </div>
           @if (form.controls.address.invalid && form.controls.address.touched) {
-            <p class="text-destructive text-sm">Address is required.</p>
+            <p id="address-error" class="text-destructive text-sm">Address is required.</p>
           }
         </div>
 
@@ -181,15 +198,17 @@
               placeholder="5000"
               class="rounded-[5px] pl-8"
               formControlName="availableFunds"
+              aria-required="true"
+              [appDescribedBy]="form.controls.availableFunds.invalid && form.controls.availableFunds.touched ? 'funds-hint availableFunds-error' : 'funds-hint'"
               (keydown)="onAvailableFundsKeydown($event)"
             />
           </div>
-          <p class="text-muted-foreground text-xs">
+          <p id="funds-hint" class="text-muted-foreground text-xs">
             This is just a starting point, not a commitment — you can deposit or withdraw later. A
             minimum of $5,000 is required to open an account.
           </p>
           @if (form.controls.availableFunds.invalid && form.controls.availableFunds.touched) {
-            <p class="text-destructive text-sm">Enter at least $5,000.</p>
+            <p id="availableFunds-error" class="text-destructive text-sm">Enter at least $5,000.</p>
           }
         </div>
 
@@ -208,40 +227,45 @@
               placeholder="••••••••"
               class="rounded-[5px] px-8"
               formControlName="password"
+              aria-required="true"
+              [appDescribedBy]="'password-rules'"
             />
             <button
               type="button"
-              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 flex -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 transition-colors"
+              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 flex size-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0 transition-colors"
               (click)="togglePasswordVisibility()"
               [attr.aria-label]="showPassword() ? 'Hide password' : 'Show password'"
             >
               <ng-icon [name]="showPassword() ? 'lucideEyeOff' : 'lucideEye'" class="text-[16px]" />
             </button>
           </div>
-          <ul class="mt-1 flex flex-col gap-0.5">
+          <ul id="password-rules" class="mt-1 flex flex-col gap-0.5" aria-label="Password requirements">
             <li
               class="flex items-center gap-1.5 text-xs"
               [class.text-muted-foreground]="!hasMinLength()"
               [class.text-gain]="hasMinLength()"
             >
-              <ng-icon [name]="hasMinLength() ? 'lucideCheck' : 'lucideX'" class="text-[12px]" />
+              <ng-icon [name]="hasMinLength() ? 'lucideCheck' : 'lucideX'" class="text-[12px]" aria-hidden="true" />
               At least 8 characters
+              <span class="sr-only">{{ hasMinLength() ? '(met)' : '(not met)' }}</span>
             </li>
             <li
               class="flex items-center gap-1.5 text-xs"
               [class.text-muted-foreground]="!hasNumber()"
               [class.text-gain]="hasNumber()"
             >
-              <ng-icon [name]="hasNumber() ? 'lucideCheck' : 'lucideX'" class="text-[12px]" />
+              <ng-icon [name]="hasNumber() ? 'lucideCheck' : 'lucideX'" class="text-[12px]" aria-hidden="true" />
               At least 1 number
+              <span class="sr-only">{{ hasNumber() ? '(met)' : '(not met)' }}</span>
             </li>
             <li
               class="flex items-center gap-1.5 text-xs"
               [class.text-muted-foreground]="!hasSpecialCharacter()"
               [class.text-gain]="hasSpecialCharacter()"
             >
-              <ng-icon [name]="hasSpecialCharacter() ? 'lucideCheck' : 'lucideX'" class="text-[12px]" />
+              <ng-icon [name]="hasSpecialCharacter() ? 'lucideCheck' : 'lucideX'" class="text-[12px]" aria-hidden="true" />
               At least 1 special character
+              <span class="sr-only">{{ hasSpecialCharacter() ? '(met)' : '(not met)' }}</span>
             </li>
           </ul>
         </div>
@@ -261,10 +285,12 @@
               placeholder="••••••••"
               class="rounded-[5px] px-8"
               formControlName="confirmPassword"
+              aria-required="true"
+              [appDescribedBy]="form.controls.confirmPassword.touched && form.errors?.['passwordMismatch'] ? 'confirmPassword-error' : null"
             />
             <button
               type="button"
-              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 flex -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 transition-colors"
+              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 flex size-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0 transition-colors"
               (click)="toggleConfirmPasswordVisibility()"
               [attr.aria-label]="
                 showConfirmPassword() ? 'Hide confirmation password' : 'Show confirmation password'
@@ -277,7 +303,7 @@
             </button>
           </div>
           @if (form.controls.confirmPassword.touched && form.errors?.['passwordMismatch']) {
-            <p class="text-destructive text-sm">Passwords do not match.</p>
+            <p id="confirmPassword-error" class="text-destructive text-sm">Passwords do not match.</p>
           }
         </div>
 
@@ -300,9 +326,10 @@
     <div hlmCardFooter class="justify-center">
       <p class="text-muted-foreground text-sm">
         Already have an account?
-        <a routerLink="/login" class="text-primary font-medium hover:underline">Sign in</a>
+        <a routerLink="/login" class="text-primary font-medium underline underline-offset-2">Sign in</a>
       </p>
     </div>
   </div>
+</main>
 </div>
 

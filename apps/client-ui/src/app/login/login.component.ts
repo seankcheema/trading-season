@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   computed,
   inject,
   signal,
@@ -19,13 +20,16 @@ import { toAuthErrorMessage } from '../core/auth/auth-error';
 import { AuthService } from '../core/auth/auth.service';
 import { LOGIN_LOCKOUT_MINUTES, LoginLockoutService } from '../core/auth/login-lockout.service';
 import { INACTIVE_SIGN_OUT_REASON } from '../core/auth/session-timeout.service';
+import { focusFirstInvalid } from '../core/forms/focus-first-invalid';
 import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
+import { DescribedByDirective } from '../core/forms/described-by.directive';
 
 @Component({
   selector: 'app-login',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    DescribedByDirective,
     ThemeToggleComponent,
     ReactiveFormsModule,
     RouterLink,
@@ -43,6 +47,7 @@ export class LoginComponent {
   private readonly _router = inject(Router);
   private readonly _destroyRef = inject(DestroyRef);
   private readonly _lockout = inject(LoginLockoutService);
+  private readonly _host: ElementRef<HTMLElement> = inject(ElementRef);
 
   // Why the user arrived here, when something other than a plain visit sent them.
   private readonly _reason = inject(ActivatedRoute).snapshot.queryParamMap.get('reason');
@@ -92,6 +97,7 @@ export class LoginComponent {
     }
     if (this.form.invalid) {
       this.form.markAllAsTouched();
+      focusFirstInvalid(this._host.nativeElement, this.form);
       return;
     }
     if (this.loading()) {

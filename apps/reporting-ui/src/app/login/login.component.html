@@ -1,4 +1,5 @@
 <div class="bg-background relative flex min-h-screen items-center justify-center px-4 py-12">
+  <header>
   <div class="fixed top-0 left-0 z-10 flex h-24 items-center gap-3 px-4 md:h-28 md:px-8">
     <img src="2b-waves.svg" alt="" class="size-11 md:size-14" />
     <span class="flex flex-col leading-[1.15]">
@@ -9,9 +10,11 @@
   <div class="fixed top-0 right-0 z-10 flex h-24 items-center px-4 md:h-28 md:px-8">
     <app-theme-toggle />
   </div>
+  </header>
 
+  <main class="w-full max-w-sm">
   <div
-    class="bg-card text-card-foreground ring-foreground/10 flex w-full max-w-sm flex-col gap-4 overflow-hidden rounded-[10px] pt-4 text-sm ring-1"
+    class="bg-card text-card-foreground ring-foreground/10 flex w-full flex-col gap-4 overflow-hidden rounded-[10px] pt-4 text-sm ring-1"
   >
     <div class="grid gap-1 px-4 text-center">
       <h1 class="text-xl leading-snug font-medium">Welcome back</h1>
@@ -39,6 +42,7 @@
               placeholder="you@example.com"
               class="auth-input"
               formControlName="email"
+              aria-required="true"
               [attr.aria-invalid]="form.controls.email.invalid && form.controls.email.touched"
               [attr.aria-describedby]="
                 form.controls.email.invalid && form.controls.email.touched ? 'email-error' : null
@@ -64,6 +68,7 @@
               placeholder="••••••••"
               class="auth-input"
               formControlName="password"
+              aria-required="true"
               [attr.aria-invalid]="form.controls.password.invalid && form.controls.password.touched"
               [attr.aria-describedby]="
                 form.controls.password.invalid && form.controls.password.touched
@@ -73,7 +78,7 @@
             />
             <button
               type="button"
-              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 flex -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 transition-colors"
+              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 flex size-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0 transition-colors"
               (click)="togglePasswordVisibility()"
               [attr.aria-label]="showPassword() ? 'Hide password' : 'Show password'"
             >
@@ -106,4 +111,5 @@
       </p>
     </div>
   </div>
+</main>
 </div>

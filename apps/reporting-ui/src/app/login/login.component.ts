@@ -1,5 +1,12 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  inject,
+  signal,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -11,6 +18,7 @@ import {
   NO_ACCESS_REASON,
   ReportingAccessError,
 } from '../core/auth/reporting-access';
+import { focusFirstInvalid } from '../core/forms/focus-first-invalid';
 import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 
 export const LOGIN_ERROR_MESSAGES = {
@@ -50,6 +58,7 @@ export class LoginComponent {
   private readonly _authService = inject(AuthService);
   private readonly _router = inject(Router);
   private readonly _destroyRef = inject(DestroyRef);
+  private readonly _host: ElementRef<HTMLElement> = inject(ElementRef);
 
   // Set when a signed-in account was sent here because it has no reporting role.
   protected readonly turnedAway =
@@ -79,6 +88,7 @@ export class LoginComponent {
   protected onSubmit(): void {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
+      focusFirstInvalid(this._host.nativeElement, this.form);
       return;
     }
     if (this.loading()) {

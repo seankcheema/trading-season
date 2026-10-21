@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   OnInit,
   computed,
   inject,
@@ -17,6 +18,7 @@ import { DashboardDialogComponent } from '../shared/dashboard-dialog.component';
 import { toAccountErrorMessage } from './account-error';
 import { AccountStore } from './account-store.service';
 import { Account } from './account.models';
+import { DescribedByDirective } from '../../core/forms/described-by.directive';
 
 export const ACCOUNT_NAME_MAX_LENGTH = 60;
 
@@ -26,6 +28,7 @@ export const ACCOUNT_NAME_MAX_LENGTH = 60;
   selector: 'app-account-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    DescribedByDirective,
     DashboardDialogComponent,
     HlmButtonImports,
     HlmFieldImports,
@@ -88,13 +91,15 @@ export const ACCOUNT_NAME_MAX_LENGTH = 60;
               class="rounded-[5px]"
               [attr.maxlength]="nameMaxLength"
               [formControl]="name"
+              aria-required="true"
+              [appDescribedBy]="(name.invalid && name.touched) || !editing() ? 'accountName-message' : null"
             />
             @if (name.invalid && name.touched) {
-              <p class="text-destructive text-sm">
+              <p id="accountName-message" class="text-destructive text-sm">
                 Enter an account name of up to {{ nameMaxLength }} characters.
               </p>
             } @else if (!editing()) {
-              <p class="text-muted-foreground text-sm">
+              <p id="accountName-message" class="text-muted-foreground text-sm">
                 The account starts with no holdings. It trades with the cash shared by all of your
                 accounts.
               </p>
@@ -155,6 +160,7 @@ export const ACCOUNT_NAME_MAX_LENGTH = 60;
 })
 export class AccountDialogComponent implements OnInit {
   private readonly _store = inject(AccountStore);
+  private readonly _host: ElementRef<HTMLElement> = inject(ElementRef);
 
   // The account to rename; null creates a new one.
   readonly account = input<Account | null>(null);
@@ -232,6 +238,8 @@ export class AccountDialogComponent implements OnInit {
     }
     if (this.name.invalid) {
       this.name.markAsTouched();
+      // Back to the field, so its error is read out with it.
+      this._host.nativeElement.querySelector<HTMLElement>('#accountName')?.focus();
       return;
     }
     const details = { name: this.name.value.trim() };

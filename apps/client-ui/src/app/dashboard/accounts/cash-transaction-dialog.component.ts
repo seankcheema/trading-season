@@ -2,6 +2,7 @@ import { CurrencyPipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   computed,
   inject,
   input,
@@ -24,6 +25,7 @@ import { toAccountErrorMessage } from './account-error';
 import { AccountStore } from './account-store.service';
 import { MAX_CASH_AMOUNT } from './account.models';
 import { toCents, wholeCentsValidator } from './money';
+import { DescribedByDirective } from '../../core/forms/described-by.directive';
 
 export type CashTransactionMode = 'deposit' | 'withdraw';
 
@@ -33,6 +35,7 @@ export type CashTransactionMode = 'deposit' | 'withdraw';
   selector: 'app-cash-transaction-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    DescribedByDirective,
     CurrencyPipe,
     DashboardDialogComponent,
     HlmButtonImports,
@@ -59,11 +62,17 @@ export type CashTransactionMode = 'deposit' | 'withdraw';
             placeholder="0.00"
             class="rounded-[5px]"
             [formControl]="amount"
+            aria-required="true"
+            appDescribedBy="cashAmount-message"
           />
           @if (amount.touched && amountError(); as message) {
-            <p class="text-destructive text-sm">{{ message }}</p>
+            <p id="cashAmount-message" class="text-destructive text-sm">{{ message }}</p>
           } @else {
-            <p class="text-muted-foreground text-sm tabular-nums" data-testid="cash-available">
+            <p
+              id="cashAmount-message"
+              class="text-muted-foreground text-sm tabular-nums"
+              data-testid="cash-available"
+            >
               Available cash: {{ cashBalance() | currency: 'USD' }}
             </p>
           }
@@ -98,6 +107,7 @@ export type CashTransactionMode = 'deposit' | 'withdraw';
 })
 export class CashTransactionDialogComponent {
   private readonly _store = inject(AccountStore);
+  private readonly _host: ElementRef<HTMLElement> = inject(ElementRef);
 
   readonly mode = input.required<CashTransactionMode>();
 
@@ -147,6 +157,8 @@ export class CashTransactionDialogComponent {
     }
     if (this.amount.invalid) {
       this.amount.markAsTouched();
+      // Back to the field, so its error is read out with it.
+      this._host.nativeElement.querySelector<HTMLElement>('#cashAmount')?.focus();
       return;
     }
     const amount = toCents(this.amount.value ?? 0);
