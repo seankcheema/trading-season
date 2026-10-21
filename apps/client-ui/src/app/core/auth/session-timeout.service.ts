@@ -19,8 +19,13 @@ const ACTIVITY_WRITE_INTERVAL_MS = 5_000;
 
 const ACTIVITY_EVENTS = ['mousedown', 'mousemove', 'keydown', 'wheel', 'scroll', 'touchstart'];
 
-// Signs the user out after a period without input. The countdown only runs while a session
-// exists. The last activity time is shared through localStorage, so input in another tab keeps
+// How long before the sign-out the user is warned and offered to stay signed in. WCAG 2.2.1
+// asks for at least 20 seconds to answer such a warning.
+export const IDLE_WARNING_MS = 60_000;
+
+// Signs the user out after a period without input, after warning them a minute beforehand
+// (`warning`, shown by SessionWarningComponent). Any input, or the warning's own button, keeps
+// the session going. The countdown only runs while a session exists. The last activity time is shared through localStorage, so input in another tab keeps
 // this one alive and a reload after the limit has passed still signs the user out.
 @Injectable({ providedIn: 'root' })
 export class SessionTimeoutService {
@@ -31,6 +36,10 @@ export class SessionTimeoutService {
 
   private readonly _timeoutMinutes = signal(this.readTimeoutMinutes());
   readonly timeoutMinutes = this._timeoutMinutes.asReadonly();
+
+  // True during the last minute before an inactivity sign-out.
+  private readonly _warning = signal(false);
+  readonly warning = this._warning.asReadonly();
 
   private _lastActivity: number | null = null;
   private _lastWrite = 0;
@@ -82,7 +91,18 @@ export class SessionTimeoutService {
     this.check();
   }
 
+  // Answers the warning: counts as activity, so the full limit starts again.
+  staySignedIn(): void {
+    if (this._lastActivity === null) {
+      return;
+    }
+    this._lastActivity = Date.now();
+    this.writeActivity(this._lastActivity);
+    this.check();
+  }
+
   private stop(): void {
+    this._warning.set(false);
     if (this._lastActivity === null) {
       return;
     }
@@ -108,6 +128,11 @@ export class SessionTimeoutService {
     if (now - this._lastWrite >= ACTIVITY_WRITE_INTERVAL_MS) {
       this.writeActivity(now);
     }
+    if (this._warning()) {
+      // The user is back: take the warning down and push the deadline out again.
+      this.writeActivity(now);
+      this.check();
+    }
   }
 
   // Signs out if the limit has passed, otherwise sleeps until it next could have. Activity only
@@ -124,7 +149,9 @@ export class SessionTimeoutService {
       this.signOut();
       return;
     }
-    this._timer = setTimeout(() => this.check(), remaining);
+    const warn = remaining <= IDLE_WARNING_MS;
+    this._warning.set(warn);
+    this._timer = setTimeout(() => this.check(), warn ? remaining : remaining - IDLE_WARNING_MS);
   }
 
   private signOut(): void {

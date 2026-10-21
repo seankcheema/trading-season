@@ -75,7 +75,7 @@ test('keeps popup and fullscreen charts visible while an uncached timeframe load
   await dialog.getByRole('button', { name: '5D', exact: true }).click();
   await received;
   await expect(dialog.locator('app-price-chart svg').first()).toBeVisible();
-  await expect(dialog.getByRole('status')).toContainText('Updating chart');
+  await expect(dialog.getByRole('status').filter({ hasText: 'Updating chart' })).toHaveCount(1);
   release();
   await expect(dialog.getByText('Updating chart…')).toHaveCount(0);
   await dialog.getByRole('link', { name: 'Open full screen market chart' }).click();

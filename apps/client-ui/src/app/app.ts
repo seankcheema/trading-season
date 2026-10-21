@@ -3,9 +3,10 @@ import { ToastService } from './notifications/toast.service';
 import { Component, inject, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { focusPageOnNavigation } from './core/a11y/route-focus';
+import { SessionWarningComponent } from './core/auth/session-warning.component';
 
 @Component({
-  imports: [RouterOutlet, HlmToaster],
+  imports: [RouterOutlet, HlmToaster, SessionWarningComponent],
   selector: 'app-root',
   styleUrl: './app.css',
   templateUrl: './app.html',

@@ -95,8 +95,8 @@ for (const viewport of [
       path: `reports/playwright/toast-${viewport.width}.png`,
       fullPage: true,
     });
-    await expect(toast.getByRole('button')).toHaveCount(0);
-    await expect(toast).not.toContainText(/\u00d7/);
+    // A toast can be dismissed: it holds one Dismiss button, which is an icon, not a glyph.
+    await expect(toast.getByRole('button', { name: 'Dismiss notification' })).toHaveCount(1);
 
     let toastId = 1;
     for (const [side, action] of [['buy', 'Buy'], ['sell', 'Sell'], ['sell', 'Sell']]) {
@@ -120,7 +120,7 @@ for (const viewport of [
     await page.emulateMedia({ reducedMotion: 'reduce' });
     expect(await toast.first().evaluate((el) => getComputedStyle(el).transitionDuration)).toBe('0s');
     expect(await toast.first().evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
-    await expect(toast.getByRole('button')).toHaveCount(0);
+    await expect(toast.getByRole('button', { name: 'Dismiss notification' })).toHaveCount(1);
 
     await expect(toast).toHaveCount(0);
     expect(errors).toEqual([]);

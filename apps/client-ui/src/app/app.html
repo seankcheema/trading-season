@@ -1,3 +1,10 @@
-﻿<router-outlet></router-outlet>
+<router-outlet></router-outlet>
 
-<hlm-toaster [messages]="toasts.messages()" />
+<app-session-warning />
+
+<hlm-toaster
+  [messages]="toasts.messages()"
+  (dismissed)="toasts.dismiss($event)"
+  (paused)="toasts.pause($event)"
+  (resumed)="toasts.resume($event)"
+/>

@@ -307,4 +307,45 @@ describe('SessionTimeoutService', () => {
     expect(logout).not.toHaveBeenCalled();
     expect(localStorage.getItem(TIMEOUT_KEY)).toBeNull();
   });
+  describe('warning', () => {
+    it('warns a minute before the sign-out and takes the warning down with it', () => {
+      const service = createService();
+      signIn();
+
+      vi.advanceTimersByTime(9 * MINUTE - 1);
+      expect(service.warning()).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(service.warning()).toBe(true);
+      expect(logout).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(MINUTE);
+      expect(logout).toHaveBeenCalledTimes(1);
+      expect(service.warning()).toBe(false);
+    });
+
+    it('starts the full limit again when the user chooses to stay', () => {
+      const service = createService();
+      signIn();
+      vi.advanceTimersByTime(9 * MINUTE + 30_000);
+
+      service.staySignedIn();
+      expect(service.warning()).toBe(false);
+      vi.advanceTimersByTime(10 * MINUTE - 1);
+      expect(logout).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(logout).toHaveBeenCalledTimes(1);
+    });
+
+    it('takes the warning down on any input', () => {
+      const service = createService();
+      signIn();
+      vi.advanceTimersByTime(9 * MINUTE + 10_000);
+      expect(service.warning()).toBe(true);
+
+      act('keydown');
+      expect(service.warning()).toBe(false);
+      vi.advanceTimersByTime(9 * MINUTE);
+      expect(logout).not.toHaveBeenCalled();
+    });
+  });
 });
