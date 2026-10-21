@@ -129,7 +129,8 @@ pipeline {
                         dir('apps/order-and-sell-service') {
                             sh '''
                                 set -eu
-                                sh "$WORKSPACE/infrastructure/jenkins/maven-retry.sh" -B -Dmaven.repo.local="$WORKSPACE/.m2/order-and-sell-service" clean test
+                                # A disposable PostgreSQL enables PostgresOrderConcurrencyTest, which H2 cannot run.
+                                sh "$WORKSPACE/infrastructure/jenkins/with-disposable-postgres.sh" \n                                    sh "$WORKSPACE/infrastructure/jenkins/maven-retry.sh" -B -Dmaven.repo.local="$WORKSPACE/.m2/order-and-sell-service" clean test
                                 test -s target/site/jacoco/jacoco.xml
                             '''
                         }

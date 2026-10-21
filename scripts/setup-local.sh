@@ -328,15 +328,16 @@ validate_or_initialize_docker_business() {
     required="$(docker_compose exec -T db psql -U trading_season -d trading_season -Atqc "$business_schema_query")"
     total="$(docker_compose exec -T db psql -U trading_season -d trading_season -Atqc "$business_total_query")"
     if [[ "$total" == 0 ]]; then
-        docker_compose exec -T db psql -v ON_ERROR_STOP=1 -U trading_season -d trading_season < db/migrations/V001__Initialize_database.sql || \
-            fail "Database schema initialization failed."
-        done_stage 'Schema — initialized empty Docker database with V001__Initialize_database.sql.'
+        # db-init runs infrastructure/docker/init-db.sh: every migration, in order, recorded in schema_migrations.
+        docker_compose run --rm db-init || fail "Database schema initialization failed."
+        done_stage 'Schema — initialized empty Docker database with every migration.'
         return
     fi
     removed="$(docker_compose exec -T db psql -U trading_season -d trading_season -Atqc "$business_v3_query")"
     [[ "$required" == 18 && "$removed" == 0 ]] || \
         fail "Docker schema is partial or unexpected ($required/18 required tables, $total total tables). No migrations were run."
-    ready 'Schema — existing Docker schema is valid; skipping.'
+    docker_compose run --rm db-init || fail "Applying pending migrations failed."
+    ready 'Schema — existing Docker schema is valid; pending migrations applied.'
 }
 
 check_docker_database_storage() {
