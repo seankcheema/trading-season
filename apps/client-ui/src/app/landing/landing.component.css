@@ -63,3 +63,16 @@
     opacity: 0;
   }
 }
+
+/* With reduced motion the graph is simply there: no draw-in, no fade, no pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .landing-reveal,
+  .landing-dot {
+    animation: none;
+  }
+
+  .landing-pulse {
+    animation: none;
+    opacity: 0;
+  }
+}

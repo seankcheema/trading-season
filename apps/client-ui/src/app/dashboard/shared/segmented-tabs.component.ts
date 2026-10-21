@@ -41,7 +41,7 @@ export interface SegmentedTab<T extends string = string> {
         <button
           type="button"
           role="tab"
-          class="focus-visible:ring-ring relative flex cursor-pointer items-center justify-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-semibold whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:outline-none"
+          class="relative flex cursor-pointer items-center justify-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-semibold whitespace-nowrap transition-colors"
           [class]="
             value() === tab.id
               ? 'text-primary-foreground'

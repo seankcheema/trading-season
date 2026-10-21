@@ -46,7 +46,7 @@ import { TERMS_SECTIONS, TERMS_VERSION } from './terms-content';
           role="region"
           aria-label="Terms and Conditions text"
           tabindex="0"
-          class="border-border focus-visible:ring-ring/50 max-h-[45vh] space-y-4 overflow-y-auto rounded-xl border p-4 outline-none focus-visible:ring-2"
+          class="border-border max-h-[45vh] space-y-4 overflow-y-auto rounded-xl border p-4"
         >
           @for (section of sections; track section.title) {
             <section class="space-y-2">

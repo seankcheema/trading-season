@@ -54,7 +54,7 @@ const SEED: SeedAccount = {
 
 // rgb() of the gain and loss colors in src/styles.css.
 const GAIN = 'rgb(37, 235, 105)';
-const LOSS = 'rgb(255, 61, 90)';
+const LOSS = 'rgb(255, 117, 137)';
 
 // A settled order reaches the page on its next open of the order status stream. The stub
 // cannot hold a stream open, so that is the page's reconnect, which backs off to ten seconds.

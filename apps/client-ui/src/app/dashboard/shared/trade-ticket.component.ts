@@ -86,7 +86,7 @@ export interface TradeTicketDraft {
           type="number"
           min="0"
           [max]="maxShares()"
-          class="mt-1 w-full bg-transparent text-3xl font-semibold tracking-tight tabular-nums outline-none"
+          class="mt-1 w-full bg-transparent text-3xl font-semibold tracking-tight tabular-nums"
           [value]="quantity()"
           (input)="onQuantityInput($event)"
         />

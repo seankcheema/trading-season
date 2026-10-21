@@ -154,7 +154,7 @@
             type="number"
             min="0"
             [max]="maxShares()"
-            class="mt-1 w-full bg-transparent text-4xl font-semibold tracking-tight tabular-nums outline-none disabled:opacity-50"
+            class="mt-1 w-full bg-transparent text-4xl font-semibold tracking-tight tabular-nums disabled:opacity-50"
             [value]="shares()"
             [disabled]="maxShares() === 0"
             (input)="onSharesInput($event)"

@@ -37,7 +37,7 @@ export class ThemeToggleComponent {
 
   protected readonly buttonClasses = computed(() =>
     [
-      'flex shrink-0 cursor-pointer items-center justify-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/35',
+      'flex shrink-0 cursor-pointer items-center justify-center transition-colors',
       this.buttonClass() ||
         'text-muted-foreground hover:bg-muted hover:text-foreground size-9 rounded-full',
     ].join(' '),
