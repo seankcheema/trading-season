@@ -3,6 +3,10 @@
 # to the bucket (see Static UIs on S3 in infrastructure/README.md).
 
 FROM node:24.8.0-alpine AS build
+# The Angular build is run inside the local Compose stack's Docker VM, which has a few
+# gigabytes in total. A capped V8 heap keeps the build inside that budget instead of
+# failing with "cannot allocate memory" when the rest of the stack is running.
+ENV NODE_OPTIONS=--max-old-space-size=2048
 
 WORKDIR /app
 
