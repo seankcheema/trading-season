@@ -1,6 +1,5 @@
 package app.account;
 
-import app.auth.ForbiddenException;
 import app.holding.CostBasis;
 import app.holding.Holding;
 import app.holding.HoldingMovementRepository;
@@ -78,20 +77,13 @@ public class AccountService {
      * @param accountId the account ID
      * @param userId    the authenticated user's UUID
      * @return the account
-     * @throws AccountNotFoundException if the account does not exist
-     * @throws ForbiddenException       if the account is owned by a different user
+     * @throws AccountNotFoundException if the account does not exist or belongs to another user, which answers the same
      */
     @Transactional(readOnly = true)
     public Account getAccountForUser(Integer accountId, UUID userId) {
+        // Another user's account answers like a missing one, so ids reveal nothing (BR-02).
         Account account = accountRepository.findByIdAndUserId(accountId, userId)
-                .orElseThrow(() -> {
-                    // Check if account exists at all to provide different error message
-                    if (accountRepository.existsById(accountId)) {
-                        return new ForbiddenException("You do not have access to this account");
-                    } else {
-                        return new AccountNotFoundException(accountId);
-                    }
-                });
+                .orElseThrow(() -> new AccountNotFoundException(accountId));
         return account;
     }
 
@@ -147,14 +139,13 @@ public class AccountService {
      * @param newName   the new account name
      * @return the updated account
      * @throws AccountStateException if the account is archived
-     * @throws AccountNotFoundException if the account does not exist
-     * @throws ForbiddenException       if the account is owned by a different user
+     * @throws AccountNotFoundException if the account does not exist or belongs to another user, which answers the same
      */
     @Transactional
     public Account updateAccountName(Integer accountId, UUID userId, String newName) {
         Account account = accountRepository.findByIdForUpdate(accountId)
                 .orElseThrow(() -> new AccountNotFoundException(accountId));
-        if (!account.getUserId().equals(userId)) throw new ForbiddenException("You do not have access to this account");
+        if (!account.getUserId().equals(userId)) throw new AccountNotFoundException(accountId);
         if (!"ACTIVE".equals(account.getStatus())) throw new AccountStateException("Archived accounts are read-only");
         account.setName(newName);
         Account saved = accountRepository.save(account);
@@ -169,8 +160,7 @@ public class AccountService {
      * @param accountId the account ID
      * @param userId    the authenticated user's UUID
      * @return a list of holdings for this account
-     * @throws AccountNotFoundException if the account does not exist
-     * @throws ForbiddenException       if the account is owned by a different user
+     * @throws AccountNotFoundException if the account does not exist or belongs to another user, which answers the same
      */
     @Transactional(readOnly = true)
     public List<HoldingWithCost> getHoldingsForAccount(Integer accountId, UUID userId) {

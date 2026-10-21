@@ -143,7 +143,7 @@ class AccountControllerIntegrationTest {
         // Other user tries to access
         mockMvc.perform(get("/api/accounts/" + saved.getId())
                 .with(tokenFor(otherId, "other@example.com")))
-            .andExpect(status().isForbidden())
+            .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.error").exists());
     }
 
@@ -208,7 +208,7 @@ class AccountControllerIntegrationTest {
 
         mockMvc.perform(get("/api/accounts/" + saved.getId() + "/holdings")
                 .with(tokenFor(otherId, "other@example.com")))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isNotFound());
     }
 
     @Test
@@ -314,7 +314,7 @@ class AccountControllerIntegrationTest {
                 .with(tokenFor(otherId, "other@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isNotFound());
 
         // Verify database was NOT changed
         Account unchanged = accountRepository.findById(saved.getId()).orElseThrow();
@@ -352,7 +352,7 @@ class AccountControllerIntegrationTest {
         // Bob cannot view Alice's account
         mockMvc.perform(get("/api/accounts/" + aliceSaved.getId())
                 .with(tokenFor(bobId, "bob@example.com")))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isNotFound());
 
         // Bob cannot update Alice's account
         Map<String, String> request = Map.of("name", "Hacked");
@@ -360,12 +360,12 @@ class AccountControllerIntegrationTest {
                 .with(tokenFor(bobId, "bob@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isNotFound());
 
         // Bob cannot view Alice's holdings
         mockMvc.perform(get("/api/accounts/" + aliceSaved.getId() + "/holdings")
                 .with(tokenFor(bobId, "bob@example.com")))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isNotFound());
 
         // Alice can still access her own account
         mockMvc.perform(get("/api/accounts/" + aliceSaved.getId())

@@ -48,7 +48,7 @@ class PortfolioValuationIntegrationTest {
             var request = path.equals("portfolio-history") ? get("/api/accounts/" + id + "/" + path)
                     : post("/api/accounts/" + id + "/" + path);
             http.perform(request.with(jwt().jwt(token -> token.subject(UUID.randomUUID().toString()))))
-                    .andExpect(status().isForbidden());
+                    .andExpect(status().isNotFound());
             var missing = path.equals("portfolio-history") ? get("/api/accounts/2147483647/" + path)
                     : post("/api/accounts/2147483647/" + path);
             http.perform(missing.with(jwt().jwt(token -> token.subject(owner.toString()))))
