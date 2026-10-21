@@ -359,6 +359,27 @@ def plot_buy_signal(walk: pd.DataFrame, path: Path, title: str) -> Path:
     return _save(fig, path)
 
 
+def plot_platform_calibration(summary: pd.DataFrame, path: Path, title: str, bar_variant: str) -> Path:
+    """Accuracy per platform symbol, one bar per variant, with the one-answer rule's accuracy as the mark to clear."""
+    symbols = list(dict.fromkeys(summary["symbol"]))
+    variants = [v for v in dict.fromkeys(summary["variant"]) if v != bar_variant]
+    width = 0.8 / max(len(variants), 1)
+    fig, ax = plt.subplots(figsize=(11, 4.8))
+    x = np.arange(len(symbols))
+    for i, variant in enumerate(variants):
+        rows = summary[summary["variant"] == variant].set_index("symbol").reindex(symbols)
+        # One colour per variant from the default cycle: three variants here start with "LSTM".
+        ax.bar(x + (i - (len(variants) - 1) / 2) * width, rows["accuracy"] * 100, width, label=variant)
+    bar = summary[summary["variant"] == bar_variant].set_index("symbol").reindex(symbols)["accuracy"]
+    ax.scatter(x, bar * 100, color="black", marker="_", s=500, linewidths=2, zorder=3, label=f"{bar_variant} (bar to clear)")
+    ax.set_xticks(x, symbols)
+    ax.set_ylabel("Big-move accuracy (%)")
+    ax.set_ylim(max(0, (summary["accuracy"].min() * 100) - 8), min(100, summary["accuracy"].max() * 100 + 16))
+    ax.set_title(title)
+    ax.legend(fontsize=7, loc="upper left", ncol=2)
+    return _save(fig, path)
+
+
 def plot_event_probability(
     dates: pd.Index, prob: np.ndarray, actual_event: np.ndarray, path: Path, title: str,
     event: str = "up-day", window: int = 20,

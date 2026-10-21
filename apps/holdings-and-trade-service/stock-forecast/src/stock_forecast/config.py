@@ -121,6 +121,16 @@ PLATFORM_RESULTS_CSV = REPORTS_DIR / "platform_demo.csv"
 PLATFORM_SIM_CONFIG = (REPO_ROOT / "apps" / "market-data" / "db" / "scripts" / "python" / "config"
                        / "synthetic-market-data-2026-v1.json")
 PLATFORM_SPIKE_CSV = REPORTS_DIR / "platform_spike.csv"
+# Calibrating the frozen model to the platform (extra-platform-calibration.py): the
+# simple persistence inputs, the earlier platform days a month needs before it is
+# scored, and the span one LSTM trained on the platform's own market fits and stops on.
+PLATFORM_PERSISTENCE_FEATURES = ["abs_ret", f"volatility_{VOLATILITY_WINDOW}"]
+PLATFORM_CALIBRATION_MIN_DAYS = 40
+PLATFORM_LSTM_TRAIN_END = "2026-05-31"
+PLATFORM_LSTM_VAL_END = "2026-06-30"
+PLATFORM_LSTM_LOOKBACK = 20  # a year of platform days is short; a 60-day window would leave too few
+PLATFORM_LSTM_UNITS = 16
+PLATFORM_CALIBRATION_CSV = REPORTS_DIR / "platform_calibration.csv"
 SYMBOL_COMPARISON_CSV = REPORTS_DIR / "symbol_comparison.csv"
 RESULTS_CSV = REPORTS_DIR / "results.csv"
 TEST_RESULTS_CSV = REPORTS_DIR / "test_results.csv"
