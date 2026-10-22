@@ -297,8 +297,8 @@ Generated Java documentation is checked in under [docs/JAVA_DOCS](docs/JAVA_DOCS
 
 ## Team
 
-- **Soli** - Team Lead
-- **Chris** - Scrum Master
+- **Mohammed** - Team Lead
+- **Soli** - Scrum Master
 - **Sean** - Meeting Scribe and Front End Developer
 - **Prisca** - Full Stack Developer
-- **Mohammed** - Full Stack Developer
+- **Chris** - Full Stack Developer
