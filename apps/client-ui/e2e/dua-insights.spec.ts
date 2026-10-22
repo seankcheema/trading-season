@@ -14,6 +14,25 @@ async function expectSharkAnchoredAfterScroll(page: Page): Promise<void> {
   await expect(shark.getByRole('button', { name: 'Dua insights', exact: true })).toBeInViewport();
 }
 
+// Resolves once no request other than the long-lived order stream has been in flight for half
+// a second. Playwright's own `networkidle` never fires while that stream is held open.
+function trackIdle(page: Page): () => Promise<void> {
+  const inFlight = new Set<Request>();
+  const tracked = (request: Request) => !request.url().endsWith('/api/orders/stream');
+  page.on('request', (request) => tracked(request) && inFlight.add(request));
+  page.on('requestfinished', (request) => inFlight.delete(request));
+  page.on('requestfailed', (request) => inFlight.delete(request));
+  return async () => {
+    for (;;) {
+      await expect.poll(() => [...inFlight].map((r) => r.url())).toEqual([]);
+      await page.waitForTimeout(500);
+      if (inFlight.size === 0) {
+        return;
+      }
+    }
+  };
+}
+
 const USER = newAccount();
 test.use({
   stubOptions: {
@@ -164,17 +183,21 @@ test('Dua reviews, explanations and refresh use no additional HTTP requests', as
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await loginPage.goto();
   await loginPage.signIn(USER.email, USER.password);
+  await expect(page).toHaveURL(/\/dashboard$/);
   await page.goto('/dashboard/markets/aapl?accountId=1');
   await expect(page.locator('app-market-page')).toBeVisible();
   const launcher = page.getByRole('button', { name: 'Dua insights', exact: true });
   await expect(launcher).toBeVisible();
+  // Requests of the page navigated away from are not tracked: their routes may never settle.
+  const networkIdle = trackIdle(page);
 
   // Let initial context requests finish, then freeze the existing market/auth
-  // timers. Already-open SSE connections stay open; Dua interactions still run
-  // normally, and any new request (including to an existing API) is a failure.
+  // timers. The order stream stays open (the stub holds it until an order changes), so
+  // it neither reconnects nor re-reads the history; Dua interactions still run normally,
+  // and any new request (including to an existing API) is a failure.
   await page.clock.install();
   await page.clock.pauseAt(new Date(Date.now() + 1_000));
-  await page.waitForLoadState('networkidle');
+  await networkIdle();
   const requests: string[] = [];
   const recordRequest = (request: Request) => {
     requests.push(`${request.method()} ${request.url()}`);
@@ -205,7 +228,7 @@ test('Dua reviews, explanations and refresh use no additional HTTP requests', as
     }
     await click(panel.getByRole('button', { name: 'Minimize Dua', exact: true }));
     await expect(panel).toBeHidden();
-    await page.waitForLoadState('networkidle');
+    await networkIdle();
     expect(requests, 'Dua must reuse loaded context without starting HTTP requests').toEqual([]);
   } finally {
     page.off('request', recordRequest);

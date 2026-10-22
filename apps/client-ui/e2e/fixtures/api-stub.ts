@@ -128,6 +128,8 @@ const HOLDINGS_PATH = /\/api\/accounts\/(\d+)\/holdings$/;
 const NAME_MAX_LENGTH = 60;
 const MAX_CASH_AMOUNT = 1_000_000;
 const DEFAULT_FUNDS = 5000;
+// How long an idle order stream is held before it ends and the page reconnects.
+const STREAM_IDLE_MS = 30_000;
 
 function base64url(value: string): string {
   return Buffer.from(value, 'utf8').toString('base64url');
@@ -541,21 +543,42 @@ export class ApiStub {
   // Order status frames per owner id, queued until the page next opens the stream.
   private readonly streamFrames = new Map<string, string[]>();
 
+  // Held /api/orders/stream requests per owner id, each released by the next queued frame.
+  private readonly streamWaiters = new Map<string, Array<() => void>>();
+
   /**
-   * GET /api/orders/stream as the page reads it: a fulfilled route cannot stay open, so each
-   * open delivers the `order-status` events queued since the last one and then ends, and the
-   * page's own reconnect collects the next batch within its backoff.
+   * GET /api/orders/stream as the page reads it. A fulfilled route cannot stay open, so a
+   * request with nothing queued is held, as the real endpoint holds its connection, until
+   * `resolveOrder` queues a frame (or a long idle limit passes). It then delivers the queued
+   * `order-status` events and ends, and the page's own reconnect opens the next one. Ending
+   * at once instead would make the page reconnect, and re-read its order history, every
+   * couple of seconds for as long as it is open.
    */
   private async orderStream(route: Route): Promise<void> {
     const ownerId = await this.caller(route);
     if (!ownerId) return;
+    if (!this.streamFrames.get(ownerId)?.length) {
+      await new Promise<void>((release) => {
+        const timer = setTimeout(release, STREAM_IDLE_MS);
+        const waiters = this.streamWaiters.get(ownerId) ?? [];
+        waiters.push(() => {
+          clearTimeout(timer);
+          release();
+        });
+        this.streamWaiters.set(ownerId, waiters);
+      });
+    }
     const frames = this.streamFrames.get(ownerId) ?? [];
     this.streamFrames.set(ownerId, []);
-    await route.fulfill({
-      status: 200,
-      contentType: 'text/event-stream',
-      body: frames.join('') + 'event: heartbeat\ndata: {}\n\n',
-    });
+    try {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: frames.join('') + 'event: heartbeat\ndata: {}\n\n',
+      });
+    } catch {
+      // The page closed while the request was held; there is nobody to deliver to.
+    }
   }
 
   /**
@@ -602,6 +625,7 @@ export class ApiStub {
     const queue = this.streamFrames.get(owner.id) ?? [];
     queue.push(`event: order-status\ndata: ${JSON.stringify(frame)}\n\n`);
     this.streamFrames.set(owner.id, queue);
+    this.streamWaiters.get(owner.id)?.splice(0).forEach((release) => release());
   }
 
   /** Trading accounts the business backend holds for a user, oldest first. */
