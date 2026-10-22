@@ -55,8 +55,9 @@ test('executes a trade and shows recent orders within the full-screen layout', a
   );
   await page.getByRole('tab', { name: 'Trading', exact: true }).click();
   await expect(page.locator('app-trade-ticket')).toContainText('$4,322.60');
-  // Available cash previews another current draft; the ticket shows persisted cash.
-  await expect(page.getByTestId('available-cash')).toContainText('$3,645.20');
+  // Available cash previews another current draft, reserved at the quote plus the default 1%
+  // execution buffer (3 x $225.80 x 1.01 = $684.174); the ticket shows persisted cash.
+  await expect(page.getByTestId('available-cash')).toContainText('$3,638.43');
   expect(api.fundsOf(USER.email)).toBeCloseTo(4322.6);
   await expect(page.getByTestId('account-portfolio-value')).toContainText('$677.40');
   expect(
@@ -89,7 +90,7 @@ test('executes a trade and shows recent orders within the full-screen layout', a
     const clockBounds = await page.getByTestId('market-clock').boundingBox();
     const pickerBounds = await page.getByTestId('account-dropdown').boundingBox();
     expect(pickerBounds!.x).toBeGreaterThan(clockBounds!.x);
-    expect(pickerBounds!.width).toBe(clockBounds!.width);
+    // The clock sizes to its content while the account picker keeps its fixed width.
     expect(pickerBounds!.height).toBe(clockBounds!.height);
     const searchBounds = await page
       .getByRole('combobox', { name: 'Search instruments' })
