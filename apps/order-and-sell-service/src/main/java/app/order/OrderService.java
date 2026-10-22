@@ -161,13 +161,13 @@ public class OrderService {
      * @param request the validated submission
      * @param callerId the caller's user id, from the token's {@code sub} claim
      * @return the persisted order in its current status
-     * @throws AccountNotFoundException    if {@code accountId} does not exist
-     * @throws ForbiddenException          if {@code accountId} belongs to another user, or the
-     *         caller has not accepted the platform terms in force
+     * @throws AccountNotFoundException    if {@code accountId} does not exist or belongs to
+     *         another user
+     * @throws ForbiddenException          if the account is archived, or the caller has not
+     *         accepted the platform terms in force
      * @throws InstrumentNotFoundException if {@code instrumentId} does not exist
      * @throws org.springframework.dao.DataAccessException if the acceptance transaction itself
      *         fails to persist; nothing is then on record
-     * @throws app.order.execution.ExecutionQuoteSource.QuoteUnavailableException if no authoritative submission quote exists
      * @throws org.springframework.web.server.ResponseStatusException if stock parameters are invalid
      * @throws IllegalStateException       if the account has no owning user
      */

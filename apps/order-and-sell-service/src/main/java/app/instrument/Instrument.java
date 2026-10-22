@@ -21,7 +21,7 @@ public class Instrument extends InstrumentBase {
     @Column(name = "asset_class", nullable = false)
     private String assetClass;
 
-    /** UK / US / IN for equities; null for FX and crypto. */
+    /** {@code US}: only US equities are traded (BR-12). */
     @Column
     private String market;
 
