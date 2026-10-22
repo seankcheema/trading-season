@@ -2157,6 +2157,38 @@ describe('DashboardComponent', () => {
       expect(page.querySelector('app-order-submission')).toBeNull();
     });
 
+    it('falls back to the first instrument when the market has no Apple', () => {
+      const fixture = createDashboard();
+      const component = fixture.componentInstance;
+      const others = MOCK_INSTRUMENTS.filter((instrument) => instrument.symbol !== 'AAPL');
+      component['instruments'].set(others);
+
+      component['onTourTicket'](true);
+
+      expect(component['orderSymbol']()).toBe(others[0].symbol);
+    });
+
+    it('opens no sample ticket before any instruments have loaded', () => {
+      const fixture = createDashboard();
+      const component = fixture.componentInstance;
+      component['instruments'].set([]);
+
+      component['onTourTicket'](true);
+
+      expect(component['orderSymbol']()).toBeNull();
+    });
+
+    it('leaves a ticket the user opened alone when the tour moves on', () => {
+      const fixture = createDashboard();
+      const component = fixture.componentInstance;
+      component['openOrder'](MOCK_INSTRUMENTS[1]);
+
+      component['onTourTicket'](true);
+      component['onTourTicket'](false);
+
+      expect(component['orderSymbol']()).toBe(MOCK_INSTRUMENTS[1].symbol);
+    });
+
     it('closes the sample ticket when the tour is dismissed', async () => {
       localStorage.setItem('ts.tour.step', '6');
       const fixture = createDashboard();

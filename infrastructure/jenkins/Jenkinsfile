@@ -88,21 +88,69 @@ pipeline {
             }
         }
 
+        // The three projects are independent. npm-ci-cached.sh restores node_modules
+        // from the last build with the same lockfile and Node, and runs npm ci otherwise.
         stage('Setup Dependencies') {
-            steps {
-                sh '''
-                    set -eu
-                    npm --prefix apps/client-ui ci
-                    npm --prefix apps/reporting-ui ci
-                    npm --prefix apps/auth-service ci
-                '''
+            failFast true
+            parallel {
+                stage('Client UI Dependencies') {
+                    steps {
+                        sh 'sh infrastructure/jenkins/npm-ci-cached.sh apps/client-ui'
+                    }
+                }
+                stage('Reporting UI Dependencies') {
+                    steps {
+                        sh 'sh infrastructure/jenkins/npm-ci-cached.sh apps/reporting-ui'
+                    }
+                }
+                stage('Auth Service Dependencies') {
+                    steps {
+                        sh 'sh infrastructure/jenkins/npm-ci-cached.sh apps/auth-service'
+                    }
+                }
             }
         }
         // Each suite runs once. Java branches use separate Maven repositories.
-        // E2E follows the parallel group to avoid browser CPU contention.
+        // The Playwright image builds beside the suites, since it only needs the
+        // @playwright/test version from node_modules. The browser suites themselves
+        // follow the parallel group to avoid browser CPU contention.
         stage('Test Suites') {
             failFast true
             parallel {
+                stage('Prepare Playwright Image') {
+                    steps {
+                        script {
+                            env.E2E_TEST_CONTAINER = 'trading-season-e2e-' + sh(
+                                script: 'printf %s "$BUILD_TAG" | sha256sum | cut -c1-16',
+                                returnStdout: true
+                            ).trim()
+                            // The E2E suites below start from this name.
+                            env.PW_IMAGE = 'trading-season-playwright:' + sh(
+                                script: '''cd apps/client-ui && node -p "require('@playwright/test/package.json').version"''',
+                                returnStdout: true
+                            ).trim() + '-python3'
+                        }
+                        // Chromium needs system libraries the agent lacks and the
+                        // jenkins user cannot install, so the suites run in a slim
+                        // Chromium-only image tagged with the @playwright/test version.
+                        // Python is in it too, for the Reporting Service.
+                        sh '''
+                            set -eu
+                            PW_VERSION="$(cd apps/client-ui && node -p "require('@playwright/test/package.json').version")"
+                            REPORTING_PW_VERSION="$(cd apps/reporting-ui && node -p "require('@playwright/test/package.json').version")"
+                            if [ "$PW_VERSION" != "$REPORTING_PW_VERSION" ]; then
+                                echo "Client UI uses @playwright/test $PW_VERSION and Reporting UI $REPORTING_PW_VERSION; the image holds browsers for one version, so they must match." >&2
+                                exit 1
+                            fi
+                            test "$PW_IMAGE" = "trading-season-playwright:${PW_VERSION}-python3"
+                            if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
+                                docker build --build-arg PLAYWRIGHT_VERSION="$PW_VERSION" \
+                                    -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
+                            fi
+                        '''
+                    }
+                }
+
                 stage('Holdings and Trade Service Tests') {
                     steps {
                         dir('apps/holdings-and-trade-service') {
@@ -432,35 +480,6 @@ pipeline {
             }
         }
 
-        stage('Quality Gate') {
-            when { expression { currentBuild.currentResult == 'SUCCESS' } }
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    script {
-                        def qualityGate = waitForQualityGate abortPipeline: false
-                        echo "SonarQube quality gate status: ${qualityGate.status}"
-                        if (qualityGate.status != 'OK') {
-                            withSonarQubeEnv('SonarQube') {
-                                sh '''
-                                    set -eu
-                                    QUALITY_GATE_FILE="${WORKSPACE}/sonar-quality-gate.json"
-                                    curl --fail --silent --show-error \
-                                      --user "${SONAR_AUTH_TOKEN}:" \
-                                      "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=DuaLeapa-Project" \
-                                      > "$QUALITY_GATE_FILE"
-                                    node -e 'const fs = require("node:fs"); const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); for (const condition of report.projectStatus?.conditions ?? []) console.log(`SonarQube condition: ${condition.metricKey} status=${condition.status} actual=${condition.actualValue ?? "-"} threshold=${condition.errorThreshold ?? "-"}`);' "$QUALITY_GATE_FILE"
-                                    rm -f "$QUALITY_GATE_FILE"
-                                '''
-                            }
-                        }
-                        if (qualityGate.status != 'OK') {
-                            error "SonarQube quality gate failed with status: ${qualityGate.status}"
-                        }
-                    }
-                }
-            }
-        }
-
         stage('Pre-E2E Disk Cleanup') {
             steps {
                 // Reports were archived by their own stages, and SonarQube Analysis
@@ -484,126 +503,12 @@ pipeline {
             }
         }
 
-        stage('End-to-End Tests') {
-            environment {
-                CI = 'true'
-            }
-            stages {
-                stage('Prepare Playwright Image') {
-                    steps {
-                        script {
-                            env.E2E_TEST_CONTAINER = 'trading-season-e2e-' + sh(
-                                script: 'printf %s "$BUILD_TAG" | sha256sum | cut -c1-16',
-                                returnStdout: true
-                            ).trim()
-                            // The suite stages below start from this name.
-                            env.PW_IMAGE = 'trading-season-playwright:' + sh(
-                                script: '''cd apps/client-ui && node -p "require('@playwright/test/package.json').version"''',
-                                returnStdout: true
-                            ).trim() + '-python3'
-                        }
-                        // Chromium needs system libraries the agent lacks and the
-                        // jenkins user cannot install, so the suites run in a slim
-                        // Chromium-only image tagged with the @playwright/test version.
-                        // Python is in it too, for the Reporting Service.
-                        sh '''
-                            set -eu
-                            PW_VERSION="$(cd apps/client-ui && node -p "require('@playwright/test/package.json').version")"
-                            REPORTING_PW_VERSION="$(cd apps/reporting-ui && node -p "require('@playwright/test/package.json').version")"
-                            if [ "$PW_VERSION" != "$REPORTING_PW_VERSION" ]; then
-                                echo "Client UI uses @playwright/test $PW_VERSION and Reporting UI $REPORTING_PW_VERSION; the image holds browsers for one version, so they must match." >&2
-                                exit 1
-                            fi
-                            test "$PW_IMAGE" = "trading-season-playwright:${PW_VERSION}-python3"
-                            if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
-                                docker build --build-arg PLAYWRIGHT_VERSION="$PW_VERSION" \
-                                    -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
-                            fi
-                        '''
-                    }
-                }
-                // The suites run side by side in separate containers, each with its
-                // own network namespace, so their loopback ports cannot collide.
-                // Neither stops the other on failure (no failFast), so a failure in
-                // one does not hide the second; the stage fails if either did.
-                stage('Suites') {
-                    parallel {
-                        stage('Client UI E2E') {
-                            steps {
-                                // The API is stubbed, so no backend or database is needed.
-                                // The workspace (with node_modules) and the Jenkins Node
-                                // are mounted in. --user keeps output owned by jenkins
-                                // and --ipc=host avoids Chromium crashes from the small
-                                // /dev/shm.
-                                sh '''
-                                    set -eu
-                                    NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
-                                    docker run --rm --name "${E2E_TEST_CONTAINER}-client" \
-                                        --user "$(id -u):$(id -g)" \
-                                        --ipc=host \
-                                        -v "$WORKSPACE:/workspace" \
-                                        -v "$NODE_HOME:/opt/node:ro" \
-                                        -e HOME=/tmp \
-                                        -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-                                        -e CI=true \
-                                        -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
-                                        -w /workspace/apps/client-ui \
-                                        "$PW_IMAGE" \
-                                        npm run e2e
-                                '''
-                            }
-                        }
-                        stage('Reporting UI E2E') {
-                            steps {
-                                // The suite starts the real Reporting Service, the Auth
-                                // Service stand-in and the built app inside this one
-                                // container, on loopback ports of its own. The service's
-                                // requirements go into a venv first, as in the Reporting
-                                // Service Tests stage; Kafka and the database are not
-                                // needed, the service reads seeded files.
-                                sh '''
-                                    set -eu
-                                    NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
-                                    docker run --rm --name "${E2E_TEST_CONTAINER}-reporting" \
-                                        --user "$(id -u):$(id -g)" \
-                                        --ipc=host \
-                                        -v "$WORKSPACE:/workspace" \
-                                        -v "$NODE_HOME:/opt/node:ro" \
-                                        -e HOME=/tmp \
-                                        -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-                                        -e CI=true \
-                                        -e PYTHONDONTWRITEBYTECODE=1 \
-                                        -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
-                                        -e E2E_PYTHON=/tmp/reporting-venv/bin/python \
-                                        -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
-                                        -w /workspace/apps/reporting-ui \
-                                        "$PW_IMAGE" \
-                                        sh -c "python3 -m venv /tmp/reporting-venv && /tmp/reporting-venv/bin/pip install -q -r /workspace/apps/reporting-service/requirements.txt && npm run e2e"
-                                '''
-                            }
-                        }
-                    }
-                }
-            }
-            post {
-                always {
-                    // Includes synthetic CSV/PDF account statements and the Dua request
-                    // transcript attached by the Client UI integration tests.
-                    archiveArtifacts artifacts: 'apps/client-ui/reports/playwright/**/*, apps/reporting-ui/reports/playwright/**/*',
-                                      allowEmptyArchive: true
-                    // One report per suite. A suite that could not start leaves none,
-                    // and the other still has to, or the stage reports nothing ran.
-                    junit testResults: 'apps/client-ui/reports/playwright/junit.xml, apps/reporting-ui/reports/playwright/junit.xml',
-                          allowEmptyResults: false,
-                          healthScaleFactor: 1.0
-                }
-            }
-        }
-
         // The deployable form of both UIs is the static folder an S3 bucket
         // serves (see "Static UIs on S3" in infrastructure/README.md), not a
         // container image. This stage builds that folder on the agent and
-        // archives it; nothing is uploaded and no AWS credentials are used.
+        // archives it; nothing is uploaded and no AWS credentials are used. It runs
+        // before the browser suites, which serve these same dist folders instead of
+        // building the apps again.
         stage('Build UI Bundles') {
             when {
                 expression { currentBuild.currentResult == 'SUCCESS' }
@@ -629,6 +534,118 @@ pipeline {
             post {
                 success {
                     archiveArtifacts artifacts: 'ui-bundles/*.tar.gz', fingerprint: true
+                }
+            }
+        }
+
+        // The quality gate's verdict is computed on the SonarQube server, so waiting for
+        // it overlaps the browser suites instead of delaying them. The Client UI and
+        // Reporting UI suites run side by side in separate containers, each with its own
+        // network namespace, so their loopback ports cannot collide. No branch stops the
+        // others on failure (no failFast), so a failure in one does not hide the rest;
+        // the stage fails if any did. Both suites serve the dist folders that Build UI
+        // Bundles produced (E2E_SKIP_BUILD), so neither builds its app a second time.
+        stage('Quality Gate and End-to-End Tests') {
+            environment {
+                CI = 'true'
+            }
+            parallel {
+                stage('Quality Gate') {
+                    when { expression { currentBuild.currentResult == 'SUCCESS' } }
+                    steps {
+                        timeout(time: 5, unit: 'MINUTES') {
+                            script {
+                                def qualityGate = waitForQualityGate abortPipeline: false
+                                echo "SonarQube quality gate status: ${qualityGate.status}"
+                                if (qualityGate.status != 'OK') {
+                                    withSonarQubeEnv('SonarQube') {
+                                        sh '''
+                                            set -eu
+                                            QUALITY_GATE_FILE="${WORKSPACE}/sonar-quality-gate.json"
+                                            curl --fail --silent --show-error \
+                                              --user "${SONAR_AUTH_TOKEN}:" \
+                                              "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=DuaLeapa-Project" \
+                                              > "$QUALITY_GATE_FILE"
+                                            node -e 'const fs = require("node:fs"); const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); for (const condition of report.projectStatus?.conditions ?? []) console.log(`SonarQube condition: ${condition.metricKey} status=${condition.status} actual=${condition.actualValue ?? "-"} threshold=${condition.errorThreshold ?? "-"}`);' "$QUALITY_GATE_FILE"
+                                            rm -f "$QUALITY_GATE_FILE"
+                                        '''
+                                    }
+                                }
+                                if (qualityGate.status != 'OK') {
+                                    error "SonarQube quality gate failed with status: ${qualityGate.status}"
+                                }
+                            }
+                        }
+                    }
+                }
+                stage('Client UI E2E') {
+                    steps {
+                        // The API is stubbed, so no backend or database is needed.
+                        // The workspace (with node_modules) and the Jenkins Node
+                        // are mounted in. --user keeps output owned by jenkins
+                        // and --ipc=host avoids Chromium crashes from the small
+                        // /dev/shm.
+                        sh '''
+                            set -eu
+                            NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
+                            docker run --rm --name "${E2E_TEST_CONTAINER}-client" \
+                                --user "$(id -u):$(id -g)" \
+                                --ipc=host \
+                                -v "$WORKSPACE:/workspace" \
+                                -v "$NODE_HOME:/opt/node:ro" \
+                                -e HOME=/tmp \
+                                -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+                                -e CI=true \
+                                -e E2E_SKIP_BUILD=1 \
+                                -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
+                                -w /workspace/apps/client-ui \
+                                "$PW_IMAGE" \
+                                npm run e2e
+                        '''
+                    }
+                }
+                stage('Reporting UI E2E') {
+                    steps {
+                        // The suite starts the real Reporting Service, the Auth
+                        // Service stand-in and the built app inside this one
+                        // container, on loopback ports of its own. The service's
+                        // requirements go into a venv first, as in the Reporting
+                        // Service Tests stage; Kafka and the database are not
+                        // needed, the service reads seeded files.
+                        sh '''
+                            set -eu
+                            NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
+                            docker run --rm --name "${E2E_TEST_CONTAINER}-reporting" \
+                                --user "$(id -u):$(id -g)" \
+                                --ipc=host \
+                                -v "$WORKSPACE:/workspace" \
+                                -v "$NODE_HOME:/opt/node:ro" \
+                                -e HOME=/tmp \
+                                -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+                                -e CI=true \
+                                -e E2E_SKIP_BUILD=1 \
+                                -e PYTHONDONTWRITEBYTECODE=1 \
+                                -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
+                                -e E2E_PYTHON=/tmp/reporting-venv/bin/python \
+                                -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
+                                -w /workspace/apps/reporting-ui \
+                                "$PW_IMAGE" \
+                                sh -c "python3 -m venv /tmp/reporting-venv && /tmp/reporting-venv/bin/pip install -q -r /workspace/apps/reporting-service/requirements.txt && npm run e2e"
+                        '''
+                    }
+                }
+            }
+            post {
+                always {
+                    // Includes synthetic CSV/PDF account statements and the Dua request
+                    // transcript attached by the Client UI integration tests.
+                    archiveArtifacts artifacts: 'apps/client-ui/reports/playwright/**/*, apps/reporting-ui/reports/playwright/**/*',
+                                      allowEmptyArchive: true
+                    // One report per suite. A suite that could not start leaves none,
+                    // and the other still has to, or the stage reports nothing ran.
+                    junit testResults: 'apps/client-ui/reports/playwright/junit.xml, apps/reporting-ui/reports/playwright/junit.xml',
+                          allowEmptyResults: false,
+                          healthScaleFactor: 1.0
                 }
             }
         }
@@ -994,6 +1011,7 @@ pipeline {
                         if [ -n "$PW_TAG" ]; then
                             docker image rm "trading-season-playwright:$PW_TAG" >/dev/null 2>&1
                         fi
+                        rm -rf "${NODE_MODULES_CACHE:-${HOME:-/tmp}/.cache/trading-season/node_modules}"
                         docker builder prune -af 2>/dev/null
                         exit 0
                     ''', returnStatus: true)

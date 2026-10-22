@@ -839,16 +839,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // spotlight. The ticket is closed again as the tour leaves the step, but never one the
   // user opened themselves.
   protected onTourTicket(needed: boolean): void {
-    if (needed) {
-      const instruments = this.instruments();
-      const sample = findInstrument('AAPL', instruments) ?? instruments[0];
-      if (sample && this.orderSymbol() === null) {
-        this.orderSymbol.set(sample.symbol);
-        this.tourOpenedOrder = true;
+    if (!needed) {
+      if (this.tourOpenedOrder) {
+        this.tourOpenedOrder = false;
+        this.orderSymbol.set(null);
       }
-    } else if (this.tourOpenedOrder) {
-      this.tourOpenedOrder = false;
-      this.orderSymbol.set(null);
+      return;
+    }
+    const instruments = this.instruments();
+    const sample = findInstrument('AAPL', instruments) ?? instruments[0];
+    if (sample && this.orderSymbol() === null) {
+      this.orderSymbol.set(sample.symbol);
+      this.tourOpenedOrder = true;
     }
   }
 

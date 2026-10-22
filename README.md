@@ -191,7 +191,7 @@ The Reporting Service neither writes nor reads the database. Its report runs tak
 
 ```mermaid
 flowchart LR
-    Pre["Toolchain and<br/>disk checks"] --> Checkout --> Deps["npm ci"]
+    Pre["Toolchain and<br/>disk checks"] --> Checkout --> Deps["Dependencies<br/>(cached npm ci)"]
     Deps --> Tests
     subgraph Tests["Parallel test suites"]
         T1["Holdings and Trade"]
@@ -202,8 +202,14 @@ flowchart LR
         T6["Market data"]
         T7["Reporting UI"]
         T8["Reporting feed tools"]
+        T9["Playwright image"]
     end
-    Tests --> Sonar["SonarQube analysis<br/>and quality gate"] --> E2E["Playwright E2E"] --> Bundles["Build UI bundles<br/>for S3"] --> Stack["Build local<br/>Docker stack"] --> Flow["Kafka end-to-end<br/>flow"]
+    Tests --> Sonar["SonarQube<br/>analysis"] --> Bundles["Build UI bundles<br/>for S3"] --> Gate
+    subgraph Gate["In parallel"]
+        G1["Quality gate"]
+        G2["Playwright E2E"]
+    end
+    Gate --> Stack["Build local<br/>Docker stack"] --> Flow["Kafka end-to-end<br/>flow"]
 ```
 
 ## Getting started

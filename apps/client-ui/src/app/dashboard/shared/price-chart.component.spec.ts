@@ -55,6 +55,39 @@ describe('PriceChartComponent', () => {
     return fixture;
   }
 
+  it('tracks the plot size reported by a ResizeObserver and disconnects it on destroy', async () => {
+    let report: ResizeObserverCallback = () => undefined;
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          report = callback;
+        }
+        observe = observe;
+        disconnect = disconnect;
+      },
+    );
+    try {
+      const fixture = setup();
+      await fixture.whenStable();
+      expect(observe).toHaveBeenCalledTimes(1);
+
+      report(
+        [{ contentRect: { width: 480, height: 240 } } as ResizeObserverEntry],
+        {} as ResizeObserver,
+      );
+
+      expect(fixture.componentInstance['_plotWidth']()).toBe(480);
+      expect(fixture.componentInstance['_plotHeight']()).toBe(240);
+      fixture.destroy();
+      expect(disconnect).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('keeps the daily right edge at session close and places the current sample inside the domain', () => {
     const open = Date.parse('2026-01-05T14:30:00Z'),
       close = Date.parse('2026-01-05T21:00:00Z');
