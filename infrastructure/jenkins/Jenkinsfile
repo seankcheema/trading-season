@@ -88,40 +88,21 @@ pipeline {
             }
         }
 
-        // Each npm project installs its dependencies (npm-ci-cached.sh restores
-        // node_modules from the last build with the same lockfile and Node, and runs
-        // npm ci otherwise) and then runs its own tests in one lane, so a slow install
-        // delays only that project. The Java, Python and market-data suites need no
-        // npm and start at once. Java branches use separate Maven repositories.
+        stage('Setup Dependencies') {
+            steps {
+                sh '''
+                    set -eu
+                    npm --prefix apps/client-ui ci
+                    npm --prefix apps/reporting-ui ci
+                    npm --prefix apps/auth-service ci
+                '''
+            }
+        }
+        // Each suite runs once. Java branches use separate Maven repositories.
+        // E2E follows the parallel group to avoid browser CPU contention.
         stage('Test Suites') {
             failFast true
             parallel {
-                // The service images compile from source inside Docker and use none of the
-                // test output, so they build beside the suites instead of after every
-                // test. Build Local Docker Stack only starts them.
-                stage('Build Local Stack Images') {
-                    steps {
-                        sh '''
-                            set -eu
-                            COMPOSE_FILE="infrastructure/docker-compose/docker-compose.local.yml"
-                            COMPOSE_ENV_FILE="infrastructure/docker-compose/.env"
-                            PROJECT_NAME="trading-season-local"
-                            compose() {
-                                sh infrastructure/docker/run-compose.sh --project-name "$PROJECT_NAME" --env-file "$COMPOSE_ENV_FILE" -f "$COMPOSE_FILE" "$@"
-                            }
-
-                            # Compose interpolates the whole file and the auth service
-                            # requires the JWT keys, so even a build needs the .env. Build
-                            # Local Docker Stack replaces it with the keypair it starts with.
-                            node apps/auth-service/scripts/generate-dev-keys.mjs > "$COMPOSE_ENV_FILE"
-
-                            # The UIs are not part of this stack (see Build UI Bundles); db and
-                            # kafka are pulled images.
-                            compose build auth-service holdings-and-trade-service order-and-sell-service reporting-service
-                        '''
-                    }
-                }
-
                 stage('Holdings and Trade Service Tests') {
                     steps {
                         dir('apps/holdings-and-trade-service') {
@@ -242,38 +223,29 @@ pipeline {
                     }
                 }
 
-                stage('Auth Service') {
-                    stages {
-                        stage('Auth Service Dependencies') {
-                            steps {
-                                sh 'sh infrastructure/jenkins/npm-ci-cached.sh apps/auth-service'
-                            }
+                stage('Auth Service Tests') {
+                    environment {
+                        CI = 'true'
+                    }
+                    steps {
+                        // The specs generate an ephemeral RSA keypair, so no JWT credentials are needed.
+                        dir('apps/auth-service') {
+                            sh '''
+                                set -eu
+                                npm run test:ci
+                                test -s coverage/lcov.info
+                                npm run build
+                                npm run lint
+                            '''
                         }
-                        stage('Auth Service Tests') {
-                            environment {
-                                CI = 'true'
-                            }
-                            steps {
-                                // The specs generate an ephemeral RSA keypair, so no JWT credentials are needed.
-                                dir('apps/auth-service') {
-                                    sh '''
-                                        set -eu
-                                        npm run test:ci
-                                        test -s coverage/lcov.info
-                                        npm run build
-                                        npm run lint
-                                    '''
-                                }
-                            }
-                            post {
-                                always {
-                                    archiveArtifacts artifacts: 'apps/auth-service/coverage/**/*, apps/auth-service/reports/**/*',
-                                                      allowEmptyArchive: true
-                                    junit testResults: 'apps/auth-service/reports/junit/*.xml',
-                                          allowEmptyResults: false,
-                                          healthScaleFactor: 1.0
-                                }
-                            }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'apps/auth-service/coverage/**/*, apps/auth-service/reports/**/*',
+                                              allowEmptyArchive: true
+                            junit testResults: 'apps/auth-service/reports/junit/*.xml',
+                                  allowEmptyResults: false,
+                                  healthScaleFactor: 1.0
                         }
                     }
                 }
@@ -373,184 +345,117 @@ pipeline {
                     }
                 }
 
-                stage('Client UI') {
-                    stages {
-                        stage('Client UI Dependencies') {
-                            steps {
-                                sh 'sh infrastructure/jenkins/npm-ci-cached.sh apps/client-ui'
-                            }
+                stage('Frontend Tests') {
+                    steps {
+                        dir('apps/client-ui') {
+                            // coverageThresholds in angular.json enforce the coverage floor.
+                            sh '''
+                                set -eu
+                                mkdir -p reports/junit
+                                npm test -- --no-watch --coverage --reporters=junit --reporters=default --output-file=reports/junit/ui.xml --coverage-reporters=text --coverage-reporters=html --coverage-reporters=lcovonly --coverage-reporters=cobertura
+                                test -s coverage/client-ui/lcov.info
+                            '''
                         }
-                        stage('Frontend Tests') {
-                            steps {
-                                dir('apps/client-ui') {
-                                    // coverageThresholds in angular.json enforce the coverage floor.
-                                    sh '''
-                                        set -eu
-                                        mkdir -p reports/junit
-                                        npm test -- --no-watch --coverage --reporters=junit --reporters=default --output-file=reports/junit/ui.xml --coverage-reporters=text --coverage-reporters=html --coverage-reporters=lcovonly --coverage-reporters=cobertura
-                                        test -s coverage/client-ui/lcov.info
-                                    '''
-                                }
-                            }
-                            post {
-                                always {
-                                    archiveArtifacts artifacts: 'apps/client-ui/coverage/**/*, apps/client-ui/reports/junit/*.xml',
-                                                      allowEmptyArchive: true
-                                    junit testResults: 'apps/client-ui/reports/junit/ui.xml', allowEmptyResults: false
-                                }
-                            }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'apps/client-ui/coverage/**/*, apps/client-ui/reports/junit/*.xml',
+                                              allowEmptyArchive: true
+                            junit testResults: 'apps/client-ui/reports/junit/ui.xml', allowEmptyResults: false
                         }
                     }
                 }
 
-                stage('Reporting UI') {
-                    stages {
-                        stage('Reporting UI Dependencies') {
-                            steps {
-                                sh 'sh infrastructure/jenkins/npm-ci-cached.sh apps/reporting-ui'
-                            }
+                stage('Reporting UI Tests') {
+                    steps {
+                        dir('apps/reporting-ui') {
+                            // coverageThresholds in angular.json enforce the coverage floor.
+                            sh '''
+                                set -eu
+                                mkdir -p reports/junit
+                                npm test -- --no-watch --coverage --reporters=junit --reporters=default --output-file=reports/junit/reporting-ui.xml --coverage-reporters=text --coverage-reporters=html --coverage-reporters=lcovonly --coverage-reporters=cobertura
+                                test -s coverage/reporting-ui/lcov.info
+                            '''
                         }
-                        stage('Reporting UI Tests') {
-                            steps {
-                                dir('apps/reporting-ui') {
-                                    // coverageThresholds in angular.json enforce the coverage floor.
-                                    sh '''
-                                        set -eu
-                                        mkdir -p reports/junit
-                                        npm test -- --no-watch --coverage --reporters=junit --reporters=default --output-file=reports/junit/reporting-ui.xml --coverage-reporters=text --coverage-reporters=html --coverage-reporters=lcovonly --coverage-reporters=cobertura
-                                        test -s coverage/reporting-ui/lcov.info
-                                    '''
-                                }
-                            }
-                            post {
-                                always {
-                                    archiveArtifacts artifacts: 'apps/reporting-ui/coverage/**/*, apps/reporting-ui/reports/junit/*.xml',
-                                                      allowEmptyArchive: true
-                                    junit testResults: 'apps/reporting-ui/reports/junit/reporting-ui.xml', allowEmptyResults: false
-                                }
-                            }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'apps/reporting-ui/coverage/**/*, apps/reporting-ui/reports/junit/*.xml',
+                                              allowEmptyArchive: true
+                            junit testResults: 'apps/reporting-ui/reports/junit/reporting-ui.xml', allowEmptyResults: false
                         }
                     }
                 }
             }
         }
 
-        // None of these depend on each other: the scanner reads the reports the suites
-        // left, the bundles need only node_modules, and the Playwright image only needs
-        // the @playwright/test version from node_modules (it is usually already built
-        // on the agent). The Quality Gate and end-to-end stage follows them.
-        stage('Analysis and UI Bundles') {
-            failFast true
-            parallel {
-                stage('SonarQube Analysis') {
-                    when { expression { currentBuild.currentResult == 'SUCCESS' } }
-                    steps {
-                        script {
-                            def scannerHome = tool(env.SONAR_SCANNER_TOOL ?: 'SonarScanner')
+        stage('SonarQube Analysis') {
+            when { expression { currentBuild.currentResult == 'SUCCESS' } }
+            steps {
+                script {
+                    def scannerHome = tool(env.SONAR_SCANNER_TOOL ?: 'SonarScanner')
 
-                            // The server URL and analysis token come from the 'SonarQube'
-                            // server under Manage Jenkins > System; the project key and
-                            // name are in sonar-project.properties.
+                    // The server URL and analysis token come from the 'SonarQube'
+                    // server under Manage Jenkins > System; the project key and
+                    // name are in sonar-project.properties.
+                    withSonarQubeEnv('SonarQube') {
+                        // The SonarQube container shares this host's Docker daemon
+                        // and may be stopped; start it, then wait for it to be ready.
+                        sh '''
+                            set -eu
+                            if [ "$(docker inspect --format '{{.State.Running}}' sonarqube 2>/dev/null || echo missing)" != "true" ]; then
+                                echo "SonarQube container is not running; starting it."
+                                docker start sonarqube
+                            fi
+                            STATUS_URL="${SONAR_HOST_URL:-http://localhost:9000}/api/system/status"
+                            for attempt in $(seq 1 60); do
+                                if curl --silent --max-time 10 "$STATUS_URL" | grep -q '"status":"UP"'; then
+                                    echo "SonarQube is up."
+                                    exit 0
+                                fi
+                                echo "Waiting for SonarQube to start (attempt $attempt of 60)."
+                                sleep 5
+                            done
+                            echo "SonarQube did not report UP within 5 minutes." >&2
+                            exit 1
+                        '''
+                        sh """
+                            set -eu
+                            node infrastructure/jenkins/jacoco-to-sonar-coverage.mjs \
+                              apps/holdings-and-trade-service apps/order-and-sell-service
+                            "${scannerHome}/bin/sonar-scanner" \
+                              -Dproject.settings=infrastructure/jenkins/sonar-project.properties \
+                              -Dsonar.projectVersion="\$BUILD_NUMBER"
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            when { expression { currentBuild.currentResult == 'SUCCESS' } }
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    script {
+                        def qualityGate = waitForQualityGate abortPipeline: false
+                        echo "SonarQube quality gate status: ${qualityGate.status}"
+                        if (qualityGate.status != 'OK') {
                             withSonarQubeEnv('SonarQube') {
-                                // The SonarQube container shares this host's Docker daemon
-                                // and may be stopped; start it, then wait for it to be ready.
                                 sh '''
                                     set -eu
-                                    if [ "$(docker inspect --format '{{.State.Running}}' sonarqube 2>/dev/null || echo missing)" != "true" ]; then
-                                        echo "SonarQube container is not running; starting it."
-                                        docker start sonarqube
-                                    fi
-                                    STATUS_URL="${SONAR_HOST_URL:-http://localhost:9000}/api/system/status"
-                                    for attempt in $(seq 1 60); do
-                                        if curl --silent --max-time 10 "$STATUS_URL" | grep -q '"status":"UP"'; then
-                                            echo "SonarQube is up."
-                                            exit 0
-                                        fi
-                                        echo "Waiting for SonarQube to start (attempt $attempt of 60)."
-                                        sleep 5
-                                    done
-                                    echo "SonarQube did not report UP within 5 minutes." >&2
-                                    exit 1
+                                    QUALITY_GATE_FILE="${WORKSPACE}/sonar-quality-gate.json"
+                                    curl --fail --silent --show-error \
+                                      --user "${SONAR_AUTH_TOKEN}:" \
+                                      "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=DuaLeapa-Project" \
+                                      > "$QUALITY_GATE_FILE"
+                                    node -e 'const fs = require("node:fs"); const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); for (const condition of report.projectStatus?.conditions ?? []) console.log(`SonarQube condition: ${condition.metricKey} status=${condition.status} actual=${condition.actualValue ?? "-"} threshold=${condition.errorThreshold ?? "-"}`);' "$QUALITY_GATE_FILE"
+                                    rm -f "$QUALITY_GATE_FILE"
                                 '''
-                                sh """
-                                    set -eu
-                                    node infrastructure/jenkins/jacoco-to-sonar-coverage.mjs \
-                                      apps/holdings-and-trade-service apps/order-and-sell-service
-                                    "${scannerHome}/bin/sonar-scanner" \
-                                      -Dproject.settings=infrastructure/jenkins/sonar-project.properties \
-                                      -Dsonar.projectVersion="\$BUILD_NUMBER"
-                                """
                             }
                         }
-                    }
-                }
-
-                // The deployable form of both UIs is the static folder an S3 bucket
-                // serves (see "Static UIs on S3" in infrastructure/README.md), not a
-                // container image. This stage builds that folder on the agent and
-                // archives it; nothing is uploaded and no AWS credentials are used. It runs
-                // before the browser suites, which serve these same dist folders instead of
-                // building the apps again.
-                stage('Build UI Bundles') {
-                    when {
-                        expression { currentBuild.currentResult == 'SUCCESS' }
-                    }
-                    steps {
-                        sh '''
-                            set -eu
-                            rm -rf ui-bundles
-                            mkdir -p ui-bundles
-                            for app in client-ui reporting-ui; do
-                                npm --prefix "apps/$app" run build
-                                test -s "apps/$app/dist/$app/browser/index.html"
-                                if [ "$app" = client-ui ]; then
-                                    test -s "apps/$app/dist/$app/browser/assets/assistant/shark-launcher-light-512.png" || {
-                                        echo "Client UI bundle is missing the nonempty Dua launcher image." >&2
-                                        exit 1
-                                    }
-                                fi
-                                tar -czf "ui-bundles/$app-${BUILD_NUMBER}.tar.gz" -C "apps/$app/dist/$app/browser" .
-                            done
-                        '''
-                    }
-                    post {
-                        success {
-                            archiveArtifacts artifacts: 'ui-bundles/*.tar.gz', fingerprint: true
+                        if (qualityGate.status != 'OK') {
+                            error "SonarQube quality gate failed with status: ${qualityGate.status}"
                         }
-                    }
-                }
-
-                stage('Prepare Playwright Image') {
-                    steps {
-                        script {
-                            env.E2E_TEST_CONTAINER = 'trading-season-e2e-' + sh(
-                                script: 'printf %s "$BUILD_TAG" | sha256sum | cut -c1-16',
-                                returnStdout: true
-                            ).trim()
-                            // The E2E suites below start from this name.
-                            env.PW_IMAGE = 'trading-season-playwright:' + sh(
-                                script: '''cd apps/client-ui && node -p "require('@playwright/test/package.json').version"''',
-                                returnStdout: true
-                            ).trim() + '-python3'
-                        }
-                        // Chromium needs system libraries the agent lacks and the
-                        // jenkins user cannot install, so the suites run in a slim
-                        // Chromium-only image tagged with the @playwright/test version.
-                        // Python is in it too, for the Reporting Service.
-                        sh '''
-                            set -eu
-                            PW_VERSION="$(cd apps/client-ui && node -p "require('@playwright/test/package.json').version")"
-                            REPORTING_PW_VERSION="$(cd apps/reporting-ui && node -p "require('@playwright/test/package.json').version")"
-                            if [ "$PW_VERSION" != "$REPORTING_PW_VERSION" ]; then
-                                echo "Client UI uses @playwright/test $PW_VERSION and Reporting UI $REPORTING_PW_VERSION; the image holds browsers for one version, so they must match." >&2
-                                exit 1
-                            fi
-                            test "$PW_IMAGE" = "trading-season-playwright:${PW_VERSION}-python3"
-                            if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
-                                docker build --build-arg PLAYWRIGHT_VERSION="$PW_VERSION" \
-                                    -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
-                            fi
-                        '''
                     }
                 }
             }
@@ -579,100 +484,104 @@ pipeline {
             }
         }
 
-        // The quality gate's verdict is computed on the SonarQube server, so waiting for
-        // it overlaps the browser suites instead of delaying them. The Client UI and
-        // Reporting UI suites run side by side in separate containers, each with its own
-        // network namespace, so their loopback ports cannot collide. No branch stops the
-        // others on failure (no failFast), so a failure in one does not hide the rest;
-        // the stage fails if any did. Both suites serve the dist folders that Build UI
-        // Bundles produced (E2E_SKIP_BUILD), so neither builds its app a second time.
-        stage('Quality Gate and End-to-End Tests') {
+        stage('End-to-End Tests') {
             environment {
                 CI = 'true'
             }
-            parallel {
-                stage('Quality Gate') {
-                    when { expression { currentBuild.currentResult == 'SUCCESS' } }
+            stages {
+                stage('Prepare Playwright Image') {
                     steps {
-                        timeout(time: 5, unit: 'MINUTES') {
-                            script {
-                                def qualityGate = waitForQualityGate abortPipeline: false
-                                echo "SonarQube quality gate status: ${qualityGate.status}"
-                                if (qualityGate.status != 'OK') {
-                                    withSonarQubeEnv('SonarQube') {
-                                        sh '''
-                                            set -eu
-                                            QUALITY_GATE_FILE="${WORKSPACE}/sonar-quality-gate.json"
-                                            curl --fail --silent --show-error \
-                                              --user "${SONAR_AUTH_TOKEN}:" \
-                                              "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=DuaLeapa-Project" \
-                                              > "$QUALITY_GATE_FILE"
-                                            node -e 'const fs = require("node:fs"); const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); for (const condition of report.projectStatus?.conditions ?? []) console.log(`SonarQube condition: ${condition.metricKey} status=${condition.status} actual=${condition.actualValue ?? "-"} threshold=${condition.errorThreshold ?? "-"}`);' "$QUALITY_GATE_FILE"
-                                            rm -f "$QUALITY_GATE_FILE"
-                                        '''
-                                    }
-                                }
-                                if (qualityGate.status != 'OK') {
-                                    error "SonarQube quality gate failed with status: ${qualityGate.status}"
-                                }
+                        script {
+                            env.E2E_TEST_CONTAINER = 'trading-season-e2e-' + sh(
+                                script: 'printf %s "$BUILD_TAG" | sha256sum | cut -c1-16',
+                                returnStdout: true
+                            ).trim()
+                            // The suite stages below start from this name.
+                            env.PW_IMAGE = 'trading-season-playwright:' + sh(
+                                script: '''cd apps/client-ui && node -p "require('@playwright/test/package.json').version"''',
+                                returnStdout: true
+                            ).trim() + '-python3'
+                        }
+                        // Chromium needs system libraries the agent lacks and the
+                        // jenkins user cannot install, so the suites run in a slim
+                        // Chromium-only image tagged with the @playwright/test version.
+                        // Python is in it too, for the Reporting Service.
+                        sh '''
+                            set -eu
+                            PW_VERSION="$(cd apps/client-ui && node -p "require('@playwright/test/package.json').version")"
+                            REPORTING_PW_VERSION="$(cd apps/reporting-ui && node -p "require('@playwright/test/package.json').version")"
+                            if [ "$PW_VERSION" != "$REPORTING_PW_VERSION" ]; then
+                                echo "Client UI uses @playwright/test $PW_VERSION and Reporting UI $REPORTING_PW_VERSION; the image holds browsers for one version, so they must match." >&2
+                                exit 1
+                            fi
+                            test "$PW_IMAGE" = "trading-season-playwright:${PW_VERSION}-python3"
+                            if ! docker image inspect "$PW_IMAGE" >/dev/null 2>&1; then
+                                docker build --build-arg PLAYWRIGHT_VERSION="$PW_VERSION" \
+                                    -t "$PW_IMAGE" - < "$WORKSPACE/infrastructure/docker/Dockerfile.playwright"
+                            fi
+                        '''
+                    }
+                }
+                // The suites run side by side in separate containers, each with its
+                // own network namespace, so their loopback ports cannot collide.
+                // Neither stops the other on failure (no failFast), so a failure in
+                // one does not hide the second; the stage fails if either did.
+                stage('Suites') {
+                    parallel {
+                        stage('Client UI E2E') {
+                            steps {
+                                // The API is stubbed, so no backend or database is needed.
+                                // The workspace (with node_modules) and the Jenkins Node
+                                // are mounted in. --user keeps output owned by jenkins
+                                // and --ipc=host avoids Chromium crashes from the small
+                                // /dev/shm.
+                                sh '''
+                                    set -eu
+                                    NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
+                                    docker run --rm --name "${E2E_TEST_CONTAINER}-client" \
+                                        --user "$(id -u):$(id -g)" \
+                                        --ipc=host \
+                                        -v "$WORKSPACE:/workspace" \
+                                        -v "$NODE_HOME:/opt/node:ro" \
+                                        -e HOME=/tmp \
+                                        -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+                                        -e CI=true \
+                                        -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
+                                        -w /workspace/apps/client-ui \
+                                        "$PW_IMAGE" \
+                                        npm run e2e
+                                '''
                             }
                         }
-                    }
-                }
-                stage('Client UI E2E') {
-                    steps {
-                        // The API is stubbed, so no backend or database is needed.
-                        // The workspace (with node_modules) and the Jenkins Node
-                        // are mounted in. --user keeps output owned by jenkins
-                        // and --ipc=host avoids Chromium crashes from the small
-                        // /dev/shm.
-                        sh '''
-                            set -eu
-                            NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
-                            docker run --rm --name "${E2E_TEST_CONTAINER}-client" \
-                                --user "$(id -u):$(id -g)" \
-                                --ipc=host \
-                                -v "$WORKSPACE:/workspace" \
-                                -v "$NODE_HOME:/opt/node:ro" \
-                                -e HOME=/tmp \
-                                -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-                                -e CI=true \
-                                -e E2E_SKIP_BUILD=1 \
-                                -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
-                                -w /workspace/apps/client-ui \
-                                "$PW_IMAGE" \
-                                npm run e2e
-                        '''
-                    }
-                }
-                stage('Reporting UI E2E') {
-                    steps {
-                        // The suite starts the real Reporting Service, the Auth
-                        // Service stand-in and the built app inside this one
-                        // container, on loopback ports of its own. The service's
-                        // requirements go into a venv first, as in the Reporting
-                        // Service Tests stage; Kafka and the database are not
-                        // needed, the service reads seeded files.
-                        sh '''
-                            set -eu
-                            NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
-                            docker run --rm --name "${E2E_TEST_CONTAINER}-reporting" \
-                                --user "$(id -u):$(id -g)" \
-                                --ipc=host \
-                                -v "$WORKSPACE:/workspace" \
-                                -v "$NODE_HOME:/opt/node:ro" \
-                                -e HOME=/tmp \
-                                -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-                                -e CI=true \
-                                -e E2E_SKIP_BUILD=1 \
-                                -e PYTHONDONTWRITEBYTECODE=1 \
-                                -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
-                                -e E2E_PYTHON=/tmp/reporting-venv/bin/python \
-                                -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
-                                -w /workspace/apps/reporting-ui \
-                                "$PW_IMAGE" \
-                                sh -c "python3 -m venv /tmp/reporting-venv && /tmp/reporting-venv/bin/pip install -q -r /workspace/apps/reporting-service/requirements.txt && npm run e2e"
-                        '''
+                        stage('Reporting UI E2E') {
+                            steps {
+                                // The suite starts the real Reporting Service, the Auth
+                                // Service stand-in and the built app inside this one
+                                // container, on loopback ports of its own. The service's
+                                // requirements go into a venv first, as in the Reporting
+                                // Service Tests stage; Kafka and the database are not
+                                // needed, the service reads seeded files.
+                                sh '''
+                                    set -eu
+                                    NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
+                                    docker run --rm --name "${E2E_TEST_CONTAINER}-reporting" \
+                                        --user "$(id -u):$(id -g)" \
+                                        --ipc=host \
+                                        -v "$WORKSPACE:/workspace" \
+                                        -v "$NODE_HOME:/opt/node:ro" \
+                                        -e HOME=/tmp \
+                                        -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+                                        -e CI=true \
+                                        -e PYTHONDONTWRITEBYTECODE=1 \
+                                        -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
+                                        -e E2E_PYTHON=/tmp/reporting-venv/bin/python \
+                                        -e PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
+                                        -w /workspace/apps/reporting-ui \
+                                        "$PW_IMAGE" \
+                                        sh -c "python3 -m venv /tmp/reporting-venv && /tmp/reporting-venv/bin/pip install -q -r /workspace/apps/reporting-service/requirements.txt && npm run e2e"
+                                '''
+                            }
+                        }
                     }
                 }
             }
@@ -691,10 +600,42 @@ pipeline {
             }
         }
 
-        // Nothing depends on this stack, so it starts last, once every test has
-        // passed. Its images were built beside the test suites (Build Local Stack
-        // Images), so this only starts and checks them.
-        stage('Start Local Docker Stack') {
+        // The deployable form of both UIs is the static folder an S3 bucket
+        // serves (see "Static UIs on S3" in infrastructure/README.md), not a
+        // container image. This stage builds that folder on the agent and
+        // archives it; nothing is uploaded and no AWS credentials are used.
+        stage('Build UI Bundles') {
+            when {
+                expression { currentBuild.currentResult == 'SUCCESS' }
+            }
+            steps {
+                sh '''
+                    set -eu
+                    rm -rf ui-bundles
+                    mkdir -p ui-bundles
+                    for app in client-ui reporting-ui; do
+                        npm --prefix "apps/$app" run build
+                        test -s "apps/$app/dist/$app/browser/index.html"
+                        if [ "$app" = client-ui ]; then
+                            test -s "apps/$app/dist/$app/browser/assets/assistant/shark-launcher-light-512.png" || {
+                                echo "Client UI bundle is missing the nonempty Dua launcher image." >&2
+                                exit 1
+                            }
+                        fi
+                        tar -czf "ui-bundles/$app-${BUILD_NUMBER}.tar.gz" -C "apps/$app/dist/$app/browser" .
+                    done
+                '''
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'ui-bundles/*.tar.gz', fingerprint: true
+                }
+            }
+        }
+
+        // Nothing depends on this stack, and building its images is the
+        // heaviest step, so it runs last once every test has passed.
+        stage('Build Local Docker Stack') {
             when {
                 expression { currentBuild.currentResult == 'SUCCESS' }
             }
@@ -713,16 +654,15 @@ pipeline {
                     }
 
                     # The stack requires JWT keys and the .env that holds them is
-                    # gitignored, so mint a keypair for this build only. The image
-                    # build wrote a throwaway one; the images do not contain it.
+                    # gitignored, so mint a keypair for this build only.
                     node apps/auth-service/scripts/generate-dev-keys.mjs > "$COMPOSE_ENV_FILE"
 
                     # Disposable stack: always start from an empty database.
                     compose down -v --remove-orphans
 
                     # The UIs are not part of this stack: they deploy as static files (see
-                    # Build UI Bundles), so no UI image is started here.
-                    if ! compose up -d auth-service db db-init holdings-and-trade-service kafka order-and-sell-service reporting-service; then
+                    # Build UI Bundles), so no UI image is built or started here.
+                    if ! compose up -d --build auth-service db db-init holdings-and-trade-service kafka order-and-sell-service reporting-service; then
                         compose logs --no-color db-init >&2 || true
                         exit 1
                     fi
@@ -1054,7 +994,6 @@ pipeline {
                         if [ -n "$PW_TAG" ]; then
                             docker image rm "trading-season-playwright:$PW_TAG" >/dev/null 2>&1
                         fi
-                        rm -rf "${NODE_MODULES_CACHE:-${HOME:-/tmp}/.cache/trading-season/node_modules}"
                         docker builder prune -af 2>/dev/null
                         exit 0
                     ''', returnStatus: true)

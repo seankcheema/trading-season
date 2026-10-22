@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { get } from 'node:http';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
@@ -124,17 +123,8 @@ export default async function setup() {
     }
     return;
   }
-  const serverModule = resolve(appDir, 'dist/client-ui/server/server.mjs');
-  // E2E_SKIP_BUILD serves the dist of an earlier build, as the Reporting UI suite does;
-  // Jenkins builds it once for the bundle archive and the suite.
-  if (process.env['E2E_SKIP_BUILD']) {
-    if (!existsSync(serverModule)) {
-      throw new Error(`E2E_SKIP_BUILD is set but ${serverModule} does not exist; build the app first`);
-    }
-  } else {
-    await runNode([resolve(appDir, 'node_modules/@angular/cli/bin/ng.js'), 'build']);
-  }
-  const server = await startServer(pathToFileURL(serverModule).href);
+  await runNode([resolve(appDir, 'node_modules/@angular/cli/bin/ng.js'), 'build']);
+  const server = await startServer(pathToFileURL(resolve(appDir, 'dist/client-ui/server/server.mjs')).href);
   try {
     for (let attempt = 0; attempt < 30; attempt++) {
       if (await available(url)) {
