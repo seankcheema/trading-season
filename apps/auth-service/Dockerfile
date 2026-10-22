@@ -11,7 +11,7 @@ WORKDIR /app
 # Dockerfile gets by copying pom.xml first. The BuildKit cache mount keeps the
 # npm download cache between builds without storing it in the image, so a
 # lockfile change fetches only new packages.
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 
 # Source and TypeScript config. This layer re-runs only when they change.
@@ -36,7 +36,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 # must be allowed to run here — npm 11 blocks lifecycle scripts by default.
 # The shared cache mount reuses the build stage's downloads and never becomes
 # part of this layer, so no `npm cache clean` is needed.
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --foreground-scripts
 
 # Copy only the compiled output from the build stage. Nothing else.
