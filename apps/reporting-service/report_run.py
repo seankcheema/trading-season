@@ -171,7 +171,11 @@ def build_segment_insights(events, segments):
 
 
 def load_account_names(session, account_ids):
-    """account_id -> {'accountName', 'userName', 'segment'} for the ids that exist; others are absent."""
+    """account_id -> {'accountName', 'segment'} for the ids that exist; others are absent.
+
+    Report runs are served to analysts as well as admins, so they name accounts, never the traders
+    who own them (BR-17, section 9.3).
+    """
     ids = [account_id for account_id in account_ids if isinstance(account_id, int)]
     if not ids:
         return {}
@@ -182,7 +186,6 @@ def load_account_names(session, account_ids):
     return {
         account.account_id: {
             'accountName': account.name,
-            'userName': f'{user.first_name} {user.last_name}'.strip(),
             'segment': user.trader_level,
         }
         for account, user in rows
@@ -346,8 +349,7 @@ def collect_insights(events, session, zone=timezone.utc):
     for row in insights['tradesPerAccount']:
         info = names.get(row['accountId'], {})
         row['accountName'] = info.get('accountName')
-        row['userName'] = info.get('userName')
-        row['label'] = f"{row['accountName']} ({row['userName']})" if info else str(row['accountId'])
+        row['label'] = row['accountName'] if info else str(row['accountId'])
     insights['activityBySegment'] = build_segment_insights(
         events, {account_id: info['segment'] for account_id, info in names.items()})
     return insights

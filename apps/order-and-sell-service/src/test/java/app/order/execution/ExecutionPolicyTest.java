@@ -38,6 +38,18 @@ class ExecutionPolicyTest {
         assertEquals(open, ExecutionPolicy.isDuringSession(java.time.OffsetDateTime.parse(at)));
     }
     @Test
+    void aStopBuyReservesAgainstTheHigherOfItsStopAndTheSubmissionQuote() {
+        var order = new app.order.Order();
+        order.setReferencePrice(new BigDecimal("100"));
+        order.setBufferPercent(new BigDecimal("1"));
+        order.setStopPrice(new BigDecimal("110"));
+        assertEquals(0, new BigDecimal("111.1").compareTo(ExecutionPolicy.reservationPrice(order)));
+        order.setStopPrice(new BigDecimal("90"));
+        assertEquals(0, new BigDecimal("101").compareTo(ExecutionPolicy.reservationPrice(order)));
+        order.setLimitPrice(new BigDecimal("95"));
+        assertEquals(0, new BigDecimal("95").compareTo(ExecutionPolicy.reservationPrice(order)));
+    }
+    @Test
     void roundingNeverRelaxesProtection() {
         assertEquals(new BigDecimal("1.000001"), ExecutionPolicy.boundary("BUY", new BigDecimal("1.000001"), new BigDecimal("0.00001")));
         assertEquals(new BigDecimal("1.000001"), ExecutionPolicy.boundary("SELL", new BigDecimal("1.000001"), new BigDecimal("0.00001")));

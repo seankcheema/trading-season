@@ -50,9 +50,9 @@ Configuration lives in [application.properties](src/main/resources/application.p
 
 ## HTTP Endpoints
 
-All endpoints require an RS256 access token issued by the auth service, except `POST /api/registration/account-exists` and the public market GET endpoints.
+All endpoints require an RS256 access token issued by the auth service, except the public market GET endpoints. State-changing requests are refused to ADMIN and ANALYST tokens, and another user's account answers 404 like a missing one.
 
-- `POST /api/registration/account-exists` - Whether an email is registered (public)
+- `POST /api/registration/account-exists` - Whether an email is registered (authenticated)
 - `POST /api/registration` - Create the caller's profile and default account
 - `GET /api/users/me` - The caller's profile, without the SSN
 - `GET/PUT/DELETE /api/me/watchlist` - The caller's saved stocks (PUT/DELETE take `/{symbol}`)

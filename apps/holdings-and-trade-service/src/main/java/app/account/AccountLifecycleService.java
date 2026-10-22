@@ -1,6 +1,5 @@
 package app.account;
 
-import app.auth.ForbiddenException;
 import app.record.TradingAccountRecord;
 import app.user.UserRepository;
 import org.springframework.context.ApplicationEventPublisher;
@@ -50,8 +49,7 @@ public class AccountLifecycleService {
      * @param id account id
      * @param userId verified owner
      * @return blockers for each operation
-     * @throws AccountNotFoundException if missing
-     * @throws ForbiddenException if unowned
+     * @throws AccountNotFoundException if the account does not exist or belongs to another user, which answers the same
      */
     @Transactional(readOnly = true)
     public Eligibility eligibility(Integer id, UUID userId) { return checks(owned(id, userId, false)); }
@@ -62,8 +60,7 @@ public class AccountLifecycleService {
      * @param userId verified owner
      * @return read-only archived account
      * @throws AccountStateException if any requirement fails or already archived
-     * @throws AccountNotFoundException if missing
-     * @throws ForbiddenException if unowned
+     * @throws AccountNotFoundException if the account does not exist or belongs to another user, which answers the same
      */
     @Transactional
     public Account archive(Integer id, UUID userId) {
@@ -87,8 +84,7 @@ public class AccountLifecycleService {
      * @param confirmed explicit user confirmation
      * @throws IllegalArgumentException if confirmation is absent
      * @throws AccountStateException if assets or open orders remain, or already archived
-     * @throws AccountNotFoundException if missing
-     * @throws ForbiddenException if unowned
+     * @throws AccountNotFoundException if the account does not exist or belongs to another user, which answers the same
      */
     @Transactional
     public void delete(Integer id, UUID userId, boolean confirmed) {
@@ -102,7 +98,7 @@ public class AccountLifecycleService {
         if (lock) users.findByIdForUpdate(userId);
         Account account = (lock ? accounts.findByIdForUpdate(id) : accounts.findById(id))
                 .orElseThrow(() -> new AccountNotFoundException(id));
-        if (!account.getUserId().equals(userId)) throw new ForbiddenException("You do not have access to this account");
+        if (!account.getUserId().equals(userId)) throw new AccountNotFoundException(id);
         return account;
     }
 

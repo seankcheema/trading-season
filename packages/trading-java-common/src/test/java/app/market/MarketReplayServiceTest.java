@@ -74,7 +74,8 @@ class MarketReplayServiceTest {
 
         assertEquals("America/Chicago", calendar.timezone());
         assertEquals(Instant.parse("2026-01-05T14:30:00Z"), calendar.firstTimestamp());
-        assertEquals(Instant.parse("2026-01-06T20:59:59Z"), calendar.lastTimestamp());
+        // The clock runs past the close to 23:59:59 America/Chicago on the last seeded day.
+        assertEquals(Instant.parse("2026-01-07T05:59:59Z"), calendar.lastTimestamp());
         assertEquals(List.of(LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 6)),
                 calendar.tradingDates());
     }
@@ -392,7 +393,36 @@ class MarketReplayServiceTest {
     }
 
     @Test
-    void advancingPastTheLastFrameRollsToTheNextDayAndWraps() {
+    void advancingPastTheLastFrameKeepsTheClockRunningWithClosePrices() {
+        service.snapshot(null);
+        service.advance();
+
+        var lastFrame = service.snapshot(null);
+        service.advance();
+        service.advance();
+        var afterClose = service.snapshot(null);
+
+        assertEquals("OPEN", lastFrame.status());
+        assertEquals("CLOSED", afterClose.status());
+        assertEquals(open.plusSeconds(3), afterClose.marketTimestamp());
+        assertEquals(new BigDecimal("101.000000"), afterClose.stocks().getFirst().price());
+        // Each quote carries the simulated time, so a quote read after the close still matches it.
+        assertEquals(afterClose.marketTimestamp(), afterClose.stocks().getFirst().timestamp());
+    }
+
+    @Test
+    void settingClockAfterTheCloseHoldsClosePricesAndCapsAtTheEndOfTheDay() {
+        var evening = service.setClock(null, Instant.parse("2026-01-05T23:30:00Z"));
+        var pastMidnight = service.setClock(null, Instant.parse("2026-01-06T05:59:59Z"));
+
+        assertEquals("CLOSED", evening.status());
+        assertEquals(Instant.parse("2026-01-05T23:30:00Z"), evening.marketTimestamp());
+        assertEquals(new BigDecimal("101.000000"), evening.stocks().getFirst().price());
+        assertEquals(Instant.parse("2026-01-06T05:59:59Z"), pastMidnight.marketTimestamp());
+    }
+
+    @Test
+    void advancingPastTheEndOfTheDayRollsToTheNextDayAndWraps() {
         Instant nextOpen = Instant.parse("2026-01-06T14:30:00Z");
         when(repository.tradingDays(session.id())).thenReturn(List.of(
                 LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 6)));
@@ -400,15 +430,17 @@ class MarketReplayServiceTest {
                 new MarketModels.Frame(nextOpen, List.of(
                         new MarketModels.Tick("AAPL", nextOpen, new BigDecimal("150.000000"), 3)))));
         service = new MarketReplayService(repository, Clock.fixed(open, ZoneOffset.UTC), "", 3, 200);
-        service.snapshot(null);
+        // 23:59:59 America/Chicago on 5 January.
+        service.setClock(null, Instant.parse("2026-01-06T05:59:59Z"));
 
         service.advance();
-        service.advance();
         var rolled = service.snapshot(null);
+        service.setClock(null, Instant.parse("2026-01-07T05:59:59Z"));
         service.advance();
         var wrapped = service.snapshot(null);
 
         assertEquals(nextOpen, rolled.marketTimestamp());
+        assertEquals("OPEN", rolled.status());
         assertEquals(BigDecimal.ZERO.setScale(6), rolled.stocks().getFirst().change());
         assertEquals(open, wrapped.marketTimestamp());
     }

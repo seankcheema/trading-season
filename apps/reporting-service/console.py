@@ -31,8 +31,8 @@ RANGES = (*RANGE_DAYS, ALL_TIME)
 # The most points all time is charted in; a longer history gets buckets of more days.
 ALL_TIME_POINTS = 366
 ORDER_STATUSES = ('FILLED', 'PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED')
-# The product has no limit or stop orders: every order executes at the market quote.
-ORDER_KIND = 'MARKET'
+# Orders published before limit and stop orders existed carry no execution type; all were market orders.
+DEFAULT_ORDER_KIND = 'MARKET'
 FEED_LIMIT = 20
 MOST_TRADED_LIMIT = 8
 SPARKLINE_POINTS = 30
@@ -138,7 +138,7 @@ def _order_row(order, account, user, instrument, fill):
         'symbol': instrument.ticker,
         'instrumentName': instrument.name,
         'side': order.order_type,
-        'type': ORDER_KIND,
+        'type': order.execution_type or DEFAULT_ORDER_KIND,
         'quantity': _number(order.quantity, 4),
         'price': _number(fill.quote_price, 6) if fill is not None else None,
         'indicativePrice': _number(order.indicative_price, 6),
@@ -419,24 +419,34 @@ def _ledger(session, order, account, user, fill):
 # What the price beside an audit entry is: the price the order asked for, or the price it filled at.
 INDICATIVE_PRICE = 'INDICATIVE'
 FILL_PRICE = 'FILL'
+REFERENCE_PRICE = 'REFERENCE'
+TRIGGER_PRICE = 'TRIGGER'
 
 
 def _audit_entry(event, order, fill):
     """
-    One audit entry with the price the order stood at when it was recorded:
-    the fill's price on the entry that records the fill, and the price the
-    order asked for on every other. The trading service takes one price with
-    the order and fills at one quote, so those are the prices there are; an
-    audit row itself holds none.
+    One audit entry with the quote its stage was priced against, the same rule as
+    the trader's own audit endpoint in the Order and Sell Service (BR-15): the
+    fill's price on the entry that records the fill, the activation quote on a
+    TRIGGERED entry, and the authoritative submission quote on every other. An
+    order placed before server quotes existed falls back to the price it asked
+    for. An audit row itself holds no price.
     """
     filled = event.event_type == 'FILLED' and fill is not None
-    price = fill.quote_price if filled else order.indicative_price
+    if filled:
+        price, kind = fill.quote_price, FILL_PRICE
+    elif event.event_type == 'TRIGGERED' and order.trigger_price is not None:
+        price, kind = order.trigger_price, TRIGGER_PRICE
+    elif order.reference_price is not None:
+        price, kind = order.reference_price, REFERENCE_PRICE
+    else:
+        price, kind = order.indicative_price, INDICATIVE_PRICE
     return {
         'eventType': event.event_type,
         'detail': event.detail,
         'recordedAt': _iso(event.recorded_at),
         'price': _number(price, 6),
-        'priceKind': None if price is None else FILL_PRICE if filled else INDICATIVE_PRICE,
+        'priceKind': None if price is None else kind,
     }
 
 

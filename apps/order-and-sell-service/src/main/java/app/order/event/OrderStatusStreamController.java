@@ -53,6 +53,6 @@ public class OrderStatusStreamController {
                     + "browser's native EventSource cannot send.")
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@AuthenticationPrincipal Jwt jwt) {
-        return registry.subscribe(AuthenticatedUser.from(jwt).userId());
+        return registry.subscribe(AuthenticatedUser.from(jwt).userId(), jwt.getExpiresAt());
     }
 }

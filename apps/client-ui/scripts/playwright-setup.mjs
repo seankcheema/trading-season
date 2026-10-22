@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { get } from 'node:http';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
@@ -123,8 +124,17 @@ export default async function setup() {
     }
     return;
   }
-  await runNode([resolve(appDir, 'node_modules/@angular/cli/bin/ng.js'), 'build']);
-  const server = await startServer(pathToFileURL(resolve(appDir, 'dist/client-ui/server/server.mjs')).href);
+  const serverEntry = resolve(appDir, 'dist/client-ui/server/server.mjs');
+  if (process.env['E2E_SKIP_BUILD']) {
+    // Serve the dist of an earlier build (Jenkins builds it once, in Build UI Bundles). Building
+    // here instead would silently test something other than the build that was asked for.
+    if (!existsSync(serverEntry)) {
+      throw new Error(`E2E_SKIP_BUILD is set but ${serverEntry} does not exist; build the Client UI first`);
+    }
+  } else {
+    await runNode([resolve(appDir, 'node_modules/@angular/cli/bin/ng.js'), 'build']);
+  }
+  const server = await startServer(pathToFileURL(serverEntry).href);
   try {
     for (let attempt = 0; attempt < 30; attempt++) {
       if (await available(url)) {
