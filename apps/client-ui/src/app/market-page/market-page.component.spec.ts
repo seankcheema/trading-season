@@ -1,3 +1,7 @@
+import { signal } from '@angular/core';
+import { DuaSession } from '../dua/dua-session.service';
+import { PlatformSignalsService } from './risk-outlook/platform-signals.service';
+import { PlatformTrendService } from './trend-read/platform-trend.service';
 import { SELECTED_ACCOUNT_STORAGE_KEY } from '../dashboard/accounts/account-store.service';
 import { ExecutionSettingsService } from '../dashboard/settings-dialog/execution-settings.service';
 import { of as savedExecutionPreference } from 'rxjs';
@@ -113,6 +117,24 @@ describe('MarketPageComponent', () => {
           },
         },
         { provide: MarketDataService, useValue: marketData },
+        // Dua's own suites exercise persistence and forecasts; keep trading request assertions scoped to trading.
+        {
+          provide: DuaSession,
+          useValue: {
+            minimized: signal(true),
+            unread: () => false,
+            query: () => {},
+            viewedSummary: () => {},
+          },
+        },
+        {
+          provide: PlatformSignalsService,
+          useValue: { signals: signal(null), status: signal('ready'), load: () => of(null) },
+        },
+        {
+          provide: PlatformTrendService,
+          useValue: { trend: signal(null), status: signal('ready'), load: () => of(null) },
+        },
       ],
     }).compileComponents();
     navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
@@ -142,6 +164,10 @@ describe('MarketPageComponent', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
+    http
+      .match((r) => r.url.startsWith('/forecast/'))
+      .forEach((r) => r.flush({}, { status: 503, statusText: 'Unavailable' }));
+    http.match((r) => r.url === '/api/me/dua/read-state/query').forEach((r) => r.flush([]));
     return fixture;
   }
 
@@ -587,8 +613,9 @@ describe('MarketPageComponent', () => {
 
   it('opens the Outlook tool when the link asks for it', async () => {
     const fixture = await setup('aapl', '', '', [], {}, 'outlook');
-    expect(fixture.componentInstance['insightTab']()).toBe('outlook');
-    expect(fixture.nativeElement.querySelector('[data-testid="market-outlook"]')).not.toBeNull();
+    expect(fixture.componentInstance['insightTab']()).toBe('trading');
+    expect(fixture.componentInstance['duaOutlook']()).toBe(true);
+    expect(fixture.nativeElement.querySelector('[data-testid="market-outlook"]')).toBeNull();
   });
 
   it('toggles live tailing for both comparison charts from the navigation bar', async () => {
@@ -611,16 +638,12 @@ describe('MarketPageComponent', () => {
     expect(charts.every((chart) => chart.componentInstance.liveTailing())).toBe(true);
   });
 
-  it('offers Trading, Outlook and Recent Orders in the market tools', async () => {
+  it('offers Trading and Recent Orders in the market tools', async () => {
     const fixture = await setup();
     const tabs = Array.from(
       fixture.nativeElement.querySelectorAll('[role="tab"]'),
     ) as HTMLButtonElement[];
-    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual([
-      'Trading',
-      'Outlook',
-      'Recent Orders',
-    ]);
+    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual(['Trading', 'Recent Orders']);
     expect(tabs[0].getAttribute('aria-selected')).toBe('true');
     tabs[1].click();
     fixture.detectChanges();

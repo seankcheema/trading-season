@@ -244,3 +244,7 @@ Tests use H2 with [application-test.properties](src/test/resources/application-t
 Keep HTTP validation in controllers, business logic in services, and persistence in repositories. After changing Java code, regenerate the Javadocs; see [AGENTS.md](../../AGENTS.md). The pinned Maven Javadoc plugin fails generation on warnings as well as errors.
 
 Trading preferences, reservation-aware buying power and available shares are documented in [the API contract](api.md#trading-preferences). Holdings and Trade owns preference writes; Order and Sell reads that saved profile value and owns order reservations.
+
+## Dua viewed insights
+
+The authenticated [Dua read-state API](api.md#dua-read-state) stores exact viewed summary versions for cross-device notification state. It checks account ownership and keeps independent versions for each simulation, insight category and stock. These UI preferences do not enter reporting. Apply the new database migration before deploying the UI and service together.

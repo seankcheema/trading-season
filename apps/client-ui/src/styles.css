@@ -276,3 +276,6 @@
     }
   }
 }
+
+:root { --dua-notification-blue: #2563eb; }
+:root.dark { --dua-notification-blue: #60a5fa; }

@@ -19,8 +19,8 @@ import { TermsDialogComponent } from '../dashboard/terms/terms-dialog.component'
 import { AccountControlComponent } from '../dashboard/shared/account-control.component';
 import { MarketClockControlComponent } from '../dashboard/shared/market-clock-control.component';
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
-import { RiskOutlookComponent } from './risk-outlook/risk-outlook.component';
-import { TrendReadComponent } from './trend-read/trend-read.component';
+
+
 import { DuaComponent } from '../dua/dua.component';
 import { PlatformSignalsService } from './risk-outlook/platform-signals.service';
 import { riskPointsFor } from './risk-outlook/platform-signals';
@@ -112,7 +112,7 @@ import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
 
-type InsightTab = 'trading' | 'outlook' | 'recent-orders';
+type InsightTab = 'trading' | 'recent-orders';
 
 type ToolbarMenu = 'indicators' | 'chart-mode' | 'comparison';
 
@@ -130,8 +130,8 @@ interface MarketStats {
   selector: 'app-market-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    RiskOutlookComponent,
-    TrendReadComponent,
+
+
     ThemeToggleComponent,
     DuaComponent,
     TitleCasePipe,
@@ -569,6 +569,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     () => this.chartModes.find((option) => option.value === this.chartMode()) ?? this.chartModes[0],
   );
   protected readonly liveTailing = signal(true);
+  protected readonly duaOutlook = signal(false);
   protected readonly insightTab = signal<InsightTab>('trading');
   protected readonly toolsCollapsed = signal(false);
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
@@ -780,8 +781,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       this.route.queryParamMap.subscribe((params) => {
         // A tab name in the query opens that tool, so a link can land on the Outlook card.
         if (params.get('tab') === 'outlook') {
-          this.insightTab.set('outlook');
-          this.toolsCollapsed.set(false);
+          this.duaOutlook.set(true);
         }
         const rawSymbol = params.get('compare') ?? '';
         const symbol = normalizeMarketSymbol(rawSymbol);

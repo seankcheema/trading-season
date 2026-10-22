@@ -62,76 +62,56 @@
   <div class="dua-body">
     @if (!choice()) {
       <p class="greeting">What would you like to review?</p>
+      @if (historyLoading()) {
+        <span class="visually-hidden" role="status">Fetching insight history</span>
+      }
       <div class="choices">
-        @if (outlookSymbol()) {
-          <button
-            type="button"
-            class="choice-outlook"
-            aria-label="Volatility outlook"
-            data-testid="dua-outlook-choice"
-            (click)="select('outlook')"
-          >
-            <span class="choice-icon choice-icon-outlook">
-              <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" width="16" height="16">
-                <path
-                  d="M12 3v18M7 8l5-5 5 5M7 16l5 5 5-5"
-                  stroke="currentColor"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </svg>
-            </span>
-            <span class="choice-copy"
-              ><span class="choice-title"
-                >Volatility outlook <span class="choice-badge">LIVE</span></span
-              ><small>{{ outlookTeaser() }}</small></span
+        @for (item of ['stock', 'daily', 'holdings']; track item) {
+          @if (item !== 'stock' || symbol()) {
+            <button
+              type="button"
+              [class.unread]="isUnread(item)"
+              [attr.aria-label]="
+                item === 'stock' ? 'This Stock' : item === 'daily' ? 'Daily Review' : 'My Holdings'
+              "
+              [disabled]="historyLoading()"
+              (click)="select($any(item))"
             >
-            <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
-          </button>
-        }
-        @if (outlookSymbol()) {
-          <button
-            type="button"
-            class="choice-trending"
-            aria-label="What's trending"
-            data-testid="dua-trending-choice"
-            (click)="select('trending')"
-          >
-            <span class="choice-icon choice-icon-trending">
-              <ng-icon name="lucideZap" aria-hidden="true" />
-            </span>
-            <span class="choice-copy"
-              ><span class="choice-title"
-                >What's trending <span class="choice-badge">LIVE</span></span
-              ><small>{{ trendingTeaser() }}</small></span
-            >
-            <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
-          </button>
-        }
-        <button type="button" aria-label="Daily Review" (click)="select('daily')">
-          <span class="choice-icon"><ng-icon name="lucideNewspaper" aria-hidden="true" /></span>
-          <span class="choice-copy"
-            ><span class="choice-title">Daily Review</span><small>Market highlights</small></span
-          >
-          <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
-        </button>
-        <button type="button" aria-label="My Holdings" (click)="select('holdings')">
-          <span class="choice-icon"><ng-icon name="lucideChartPie" aria-hidden="true" /></span>
-          <span class="choice-copy"
-            ><span class="choice-title">My Holdings</span><small>Portfolio highlights</small></span
-          >
-          <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
-        </button>
-        @if (symbol()) {
-          <button type="button" aria-label="This Stock" (click)="select('stock')">
-            <span class="choice-icon"><ng-icon name="lucideScanSearch" aria-hidden="true" /></span>
-            <span class="choice-copy"
-              ><span class="choice-title">This Stock</span
-              ><small>Growth and risk (demo)</small></span
-            >
-            <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
-          </button>
+              <span class="choice-icon"
+                ><ng-icon
+                  [name]="
+                    item === 'stock'
+                      ? 'lucideScanSearch'
+                      : item === 'daily'
+                        ? 'lucideNewspaper'
+                        : 'lucideChartPie'
+                  "
+                  aria-hidden="true"
+              /></span>
+              <span class="choice-copy"
+                ><span class="choice-title"
+                  >{{
+                    item === 'stock'
+                      ? 'This Stock'
+                      : item === 'daily'
+                        ? 'Daily Review'
+                        : 'My Holdings'
+                  }}
+                  @if (isUnread(item)) {
+                    <span class="new-label">New</span>
+                  }
+                </span>
+                <small>{{
+                  item === 'stock'
+                    ? 'What to consider next'
+                    : item === 'daily'
+                      ? 'Your day at a glance'
+                      : 'Your performance and next steps'
+                }}</small></span
+              >
+              <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
+            </button>
+          }
         }
       </div>
     } @else if (explaining()) {
@@ -154,9 +134,12 @@
               <h4>Why it matters</h4>
               <p class="explanation-reason">{{ card.purpose }}</p>
             }
-            @if (explanations()[0]; as explanation) {
-              <h4>About these figures</h4>
-              <p class="example-context">{{ explanation.description }}</p>
+            <p>{{ card.detail }}</p>
+            @if (choice() === 'stock' && activeCard() === 2) {
+              <app-risk-outlook [symbol]="symbol()" [marketTimestamp]="snapshotAt()" />
+            }
+            @if (choice() === 'stock' && activeCard() === 0) {
+              <app-trend-read [symbol]="symbol()" [marketTimestamp]="snapshotAt()" />
             }
           </div>
         </article>
@@ -167,18 +150,28 @@
         <div class="skeleton insight-skeleton" aria-hidden="true"></div>
         <div class="skeleton insight-skeleton short" aria-hidden="true"></div>
       }
-      @if ((choice() === 'outlook' || choice() === 'trending') && cards().length) {
-        <a
-          class="outlook-cta"
-          data-testid="dua-outlook-open"
-          [routerLink]="['/dashboard/markets', outlookSymbol().toLowerCase()]"
-          [queryParams]="{ tab: 'outlook', accountId: account.selectedAccountId() }"
-          (click)="minimize()"
-        >
-          Open the full {{ choice() === 'trending' ? 'trade signal' : 'outlook' }} for
-          {{ outlookSymbol() }}
-          <ng-icon name="lucideChevronRight" aria-hidden="true" />
-        </a>
+      @if (choice() === 'holdings') {
+        <nav class="period-switch" aria-label="Performance period">
+          <button
+            type="button"
+            [attr.aria-pressed]="period() === 'week'"
+            (click)="setPeriod('week')"
+          >
+            Week
+          </button>
+          <button
+            type="button"
+            [attr.aria-pressed]="period() === 'month'"
+            (click)="setPeriod('month')"
+          >
+            Month
+          </button>
+        </nav>
+      }
+      @if (displayedContext() && !snapshotStillCurrent()) {
+        <button type="button" class="update-action" (click)="select(choice()!)">
+          Update available
+        </button>
       }
       <div class="insights" aria-live="polite">
         @for (card of cards(); track $index) {
@@ -201,21 +194,24 @@
               <button
                 class="explain-action"
                 type="button"
-                aria-label="Explain these numbers"
-                title="Explain these numbers"
-                (click)="explaining.set(true)"
+                aria-label="View Details"
+                title="View Details"
+                (click)="showDetails()"
               >
-                <ng-icon name="lucideCircleHelp" aria-hidden="true" />
+                <ng-icon name="lucideCircleHelp" aria-hidden="true" /><span>View Details</span>
               </button>
             </div>
+            <small class="card-meta">
+              {{ card.period ?? snapshotDate() }}
+              <span
+                >{{ ($index + 1).toString().padStart(2, '0') }} /
+                {{ cards().length.toString().padStart(2, '0') }}</span
+              >
+            </small>
             <div class="card-content">
-              <small class="card-meta">
-                {{ card.period ?? snapshotDate() }}
-                <span
-                  >{{ ($index + 1).toString().padStart(2, '0') }} /
-                  {{ cards().length.toString().padStart(2, '0') }}</span
-                >
-              </small>
+              <p class="guidance-headline">{{ card.takeaway }}</p>
+              <p class="guidance-description">{{ card.text }}</p>
+
               @if (card.metrics?.length) {
                 <dl
                   class="overview-metrics"
@@ -225,14 +221,11 @@
                 >
                   @for (metric of card.metrics; track $index) {
                     <div
-                      [class.primary-metric]="
-                        $first &&
-                        (choice() !== 'daily' || card.illustrative) &&
-                        card.title !== 'Performance drivers'
-                      "
+                      [class.wide-metric]="metric.value.length > 9"
+                      [class.primary-metric]="card.metrics?.length === 1"
                     >
                       <dt>
-                        @if (metric.symbol && metric.symbol !== symbol() && choice() !== 'daily') {
+                        @if (metric.symbol && metric.symbol !== symbol()) {
                           <a
                             class="ticker-link"
                             [routerLink]="['/dashboard/markets', metric.symbol.toLowerCase()]"
@@ -335,17 +328,6 @@
                   }
                 </div>
               }
-              @if (card.takeaway) {
-                <p class="takeaway">
-                  @for (part of takeawayParts(card.takeaway); track $index) {
-                    @if (part.emphasis) {
-                      <strong>{{ part.text }}</strong>
-                    } @else {
-                      {{ part.text }}
-                    }
-                  }
-                </p>
-              }
               @if (card.note) {
                 <small class="overview-note">{{ card.note }}</small>
               }
@@ -392,6 +374,9 @@
         <small class="timestamp">Live feed was disconnected when this snapshot was taken.</small>
       }
     }
+    @if (choice()) {
+      <small class="simulation-notice">Simulation guidance, not financial advice.</small>
+    }
   </div>
 </section>
 <button
@@ -401,7 +386,7 @@
   type="button"
   aria-label="Dua insights"
   [attr.aria-expanded]="!session.minimized()"
-  [attr.aria-description]="hasUpdates() ? '1 new insight update. Click to open chat.' : null"
+  [attr.aria-description]="hasUpdates() ? unreadCount() + ' new insight updates' : null"
   (pointerenter)="hovered.set($event.pointerType === 'mouse')"
   (pointerleave)="hovered.set(false)"
   (focus)="focused.set(launcher.matches(':focus-visible'))"
@@ -431,6 +416,8 @@
     }
   </span>
   @if (hasUpdates() && session.minimized()) {
-    <span class="notification-count" aria-label="1 new insight update">1</span>
+    <span class="notification-count" [attr.aria-label]="unreadCount() + ' new insight updates'">{{
+      unreadCount()
+    }}</span>
   }
 </button>

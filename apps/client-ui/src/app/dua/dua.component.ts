@@ -1,3 +1,18 @@
+import { forkJoin, of, catchError, switchMap, Subscription } from 'rxjs';
+import { MarketDataService, CandleSeries } from '../dashboard/market-data.service';
+import { OrderService } from '../dashboard/orders/order.service';
+import { RiskOutlookComponent } from '../market-page/risk-outlook/risk-outlook.component';
+import { TrendReadComponent } from '../market-page/trend-read/trend-read.component';
+import {
+  activity,
+  performance,
+  performanceCards,
+  periodDate,
+  insightVersion,
+  signedDollars,
+  InsightChoice,
+} from './dua-guidance';
+import { ReadContext } from './dua-session.service';
 import {
   afterRenderEffect,
   ChangeDetectionStrategy,
@@ -36,19 +51,11 @@ import { DuaSession } from './dua-session.service';
 import { PlatformSignalsService } from '../market-page/risk-outlook/platform-signals.service';
 import { readingFor } from '../market-page/risk-outlook/platform-signals';
 import { PlatformTrendService } from '../market-page/trend-read/platform-trend.service';
-import { trendOverview, trendReadingFor } from '../market-page/trend-read/platform-trend';
+import { trendReadingFor } from '../market-page/trend-read/platform-trend';
 import {
   DuaCard,
   DuaChoice,
-  dailyCard,
   dailyReview,
-  holdingCards,
-  stockPreviewCards,
-  holdingsPreviewCards,
-  dailyPreviewCards,
-  DUA_EXPLANATIONS,
-  outlookCard,
-  trendingCards,
   insightTextParts,
   sparklinePoints,
   takeawayParts,
@@ -57,7 +64,7 @@ import {
 const CHOICE_TITLES: Record<DuaChoice, string> = {
   daily: 'Daily Review',
   holdings: 'My Holdings',
-  stock: 'Stock Insights',
+  stock: 'This Stock',
   outlook: 'Volatility outlook',
   trending: "What's trending",
 };
@@ -68,7 +75,7 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
     '[hidden]': 'account.needsTermsAcceptance()',
     '(document:click)': 'closeOnOutsideClick($event)',
   },
-  imports: [NgIcon, RouterLink],
+  imports: [NgIcon, RouterLink, RiskOutlookComponent, TrendReadComponent],
   providers: [
     provideIcons({
       lucideArrowUpRight,
@@ -113,22 +120,6 @@ export class DuaComponent {
       ? readingFor(signals, symbol, at)
       : null;
   });
-  protected readonly outlookTeaser = computed(() => {
-    const symbol = this.outlookSymbol();
-    const reading = this.outlook();
-    if (!symbol) {
-      return '';
-    }
-    if (reading?.kind !== 'ready') {
-      return `${symbol} · the week-ahead read`;
-    }
-    const hits = reading.source === 'model' ? reading.modelHits : reading.ruleHits;
-    const days = reading.source === 'model' ? reading.modelDays : reading.ruleDays;
-    const swings = reading.call === 'stormier' ? 'bigger' : 'smaller';
-    return days
-      ? `${symbol} · ${swings} swings likely · right ${Math.round((hits / days) * 100)}% of the last ${days} weeks`
-      : `${symbol} · ${swings} swings likely`;
-  });
   private readonly loadOutlook = effect(() => {
     if (!this.session.minimized() && this.signals.status() === 'idle') {
       this.signals.load().subscribe({ error: () => undefined });
@@ -143,22 +134,6 @@ export class DuaComponent {
       ? trendReadingFor(trend, symbol, at)
       : null;
   });
-  protected readonly trendingTeaser = computed(() => {
-    const symbol = this.outlookSymbol();
-    const reading = this.trending();
-    if (!symbol) {
-      return '';
-    }
-    if (reading?.kind !== 'ready') {
-      return `${symbol} · the week-ahead trend read`;
-    }
-    const hits = reading.source === 'model' ? reading.modelHits : reading.ruleHits;
-    const days = reading.source === 'model' ? reading.modelDays : reading.ruleDays;
-    const verb = reading.call === 'up' ? 'consider buying' : 'consider selling';
-    return days
-      ? `${symbol} · ${verb} · right ${Math.round((hits / days) * 100)}% of the last ${days} weeks`
-      : `${symbol} · ${verb}`;
-  });
   private readonly loadTrend = effect(() => {
     if (!this.session.minimized() && this.trend.status() === 'idle') {
       this.trend.load().subscribe({ error: () => undefined });
@@ -166,18 +141,14 @@ export class DuaComponent {
   });
   protected readonly hovered = signal(false);
   protected readonly focused = signal(false);
-  protected readonly hasUpdates = signal(false);
+  protected readonly hasUpdates = computed(() => this.unreadCount() > 0);
   protected readonly explaining = signal(false);
-  protected readonly explanations = computed(() => {
-    const choice = this.choice();
-    return choice ? DUA_EXPLANATIONS[choice] : [];
-  });
   protected readonly faceVisible = computed(
     () => !this.session.minimized() || this.hasUpdates() || this.hovered() || this.focused(),
   );
   protected readonly title = computed(() => {
     if (this.explaining()) {
-      return 'Explain these numbers';
+      return 'View Details';
     }
     const choice = this.choice();
     return choice ? CHOICE_TITLES[choice] : 'Dua';
@@ -200,6 +171,291 @@ export class DuaComponent {
   private resizeAnimation?: Animation;
   private panelSize?: { height: number; width: number };
 
+  readonly openOutlook = input(false);
+  protected readonly period = signal<'week' | 'month'>('week');
+  protected readonly snapshotAt = signal('');
+  protected readonly displayedContext = signal<ReadContext | null>(null);
+  private readonly market = inject(MarketDataService);
+  private readonly orders = inject(OrderService);
+  private historyRequest?: Subscription;
+  private readonly history = signal<CandleSeries[]>([]);
+  protected readonly historyLoading = signal(false);
+  private readonly marketDay = computed(() => {
+    const at = this.clock.currentMarketTimestamp();
+    return Number.isFinite(Date.parse(at))
+      ? new Intl.DateTimeFormat('en-CA', { timeZone: this.clock.marketCalendar().timezone }).format(
+          new Date(at),
+        )
+      : '';
+  });
+  private readonly fillSignature = computed(() =>
+    JSON.stringify(
+      this.orders
+        .orders()
+        .filter(
+          (o) =>
+            o.accountId === this.account.selectedAccountId() &&
+            o.status === 'FILLED' &&
+            Date.parse(o.evaluatedAt ?? o.simulatedAt ?? o.resolvedAt ?? '') <=
+              Date.parse(this.clock.currentMarketTimestamp()),
+        )
+        .map((o) => [o.orderId, o.executionPrice, o.quantity]),
+    ),
+  );
+  protected readonly contexts = computed<ReadContext[]>(
+    () => {
+      const accountId = this.account.selectedAccountId();
+      const sessionId = this.clock.marketSessionId();
+      if (
+        accountId === null ||
+        sessionId === null ||
+        !this.marketDay() ||
+        this.account.status() !== 'ready' ||
+        this.account.needsTermsAcceptance() ||
+        this.clock.clockUpdating()
+      )
+        return [];
+      const trend = this.trending();
+      const risk = this.outlook();
+      const summary = this.suggestion('week');
+      return (this.symbol() ? ['stock', 'daily', 'holdings'] : ['daily', 'holdings']).map(
+        (insight) => ({
+          accountId,
+          sessionId,
+          insight,
+          symbol: insight === 'stock' ? this.symbol() : '',
+          version: insightVersion([
+            2,
+            this.marketDay(),
+            this.fillSignature(),
+            insight !== 'daily'
+              ? [
+                  summary.takeaway,
+                  this.suggestion('month').takeaway,
+                  this.trend.trend() &&
+                    this.quotes().map((q) => {
+                      const r = trendReadingFor(
+                        this.trend.trend()!,
+                        q.symbol,
+                        this.clock.currentMarketTimestamp(),
+                      );
+                      return r.kind === 'ready'
+                        ? [q.symbol, r.asOf, r.call, r.source]
+                        : [q.symbol, r.kind];
+                    }),
+                ]
+              : '',
+            insight === 'stock'
+              ? [
+                  trend?.kind === 'ready' ? [trend.asOf, trend.call, trend.source] : null,
+                  risk?.kind === 'ready' ? [risk.asOf, risk.call, risk.source] : null,
+                  activity(
+                    this.history().find((s) => s.symbol === this.symbol()),
+                    this.clock.currentMarketTimestamp(),
+                  ).label,
+                ]
+              : null,
+          ]),
+        }),
+      );
+    },
+    { equal: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+  );
+  protected readonly unreadCount = computed(
+    () => this.contexts().filter((c) => this.session.unread(c)).length,
+  );
+  protected isUnread(insight: string): boolean {
+    const c = this.contexts().find((c) => c.insight === insight);
+    return !!c && this.session.unread(c);
+  }
+  protected readonly snapshotStillCurrent = computed(() => {
+    const shown = this.displayedContext();
+    return (
+      !!shown &&
+      this.contexts().some(
+        (c) =>
+          c.insight === shown.insight &&
+          c.version === shown.version &&
+          c.accountId === shown.accountId &&
+          c.sessionId === shown.sessionId &&
+          c.symbol === shown.symbol,
+      )
+    );
+  });
+  protected setPeriod(period: 'week' | 'month'): void {
+    this.period.set(period);
+    this.select('holdings');
+  }
+  protected showDetails(): void {
+    this.savedScroll =
+      this.panel()?.nativeElement.querySelector('.insight-card:not(.inactive) .card-content')
+        ?.scrollTop ?? 0;
+    this.explaining.set(true);
+  }
+  private savedScroll = 0;
+  private legacyOpened = false;
+  private rows(period: 'daily' | 'week' | 'month') {
+    return performance(
+      this.account.selectedHoldings(),
+      this.orders.orders(),
+      this.orders.catalogue(),
+      this.account.selectedAccountId()!,
+      this.clock.currentMarketTimestamp(),
+      periodDate(this.clock.currentMarketTimestamp(), period),
+      this.history(),
+      this.quotes(),
+      period === 'daily',
+    );
+  }
+  private suggestion(period: 'week' | 'month' = this.period()): DuaCard {
+    const at = this.clock.currentMarketTimestamp();
+    const trend = this.trend.trend();
+    const rows = this.rows(period);
+    const held = new Set(this.holdings().map((h) => h.symbol));
+    const candidates = this.quotes().map((q) => ({
+      symbol: q.symbol,
+      reading: trend ? trendReadingFor(trend, q.symbol, at) : null,
+    }));
+    const worst = rows
+      .filter((r) => r.gain !== null && r.gain < 0 && held.has(r.symbol))
+      .sort((a, b) => a.gain! - b.gain!)[0];
+    const review =
+      worst &&
+      candidates.find(
+        (c) =>
+          c.symbol === worst.symbol && c.reading?.kind === 'ready' && c.reading.call === 'down',
+      );
+    const buy = candidates
+      .filter((c) => c.reading?.kind === 'ready' && c.reading.call === 'up')
+      .sort(
+        (a, b) =>
+          (b.reading?.kind === 'ready' ? b.reading.momentum : 0) -
+          (a.reading?.kind === 'ready' ? a.reading.momentum : 0),
+      )[0];
+    const risk =
+      buy && this.signals.signals() ? readingFor(this.signals.signals()!, buy.symbol, at) : null;
+    return {
+      title: 'What to consider',
+      takeaway: review
+        ? `Review your ${review.symbol} position.`
+        : buy
+          ? `Consider buying ${buy.symbol}.`
+          : 'No clear opportunity right now.',
+      text: review
+        ? 'Your weakest contributor also has a downward forecast.'
+        : buy
+          ? `Momentum supports an upward forecast.${risk?.kind === 'ready' && risk.call === 'stormier' ? ' Larger price swings are likely.' : ''}`
+          : 'Wait for a clearer forecast.',
+      detail:
+        review && buy
+          ? `Also consider ${buy.symbol}: its forecast points upward. Review the stock details before trading.`
+          : 'Suggestions use existing direction readings and recent momentum, not purchase losses alone.',
+    };
+  }
+  private buildCards(choice: InsightChoice): DuaCard[] {
+    if (choice !== 'stock') {
+      const period = choice === 'daily' ? 'daily' : this.period();
+      const cards = performanceCards(
+        this.rows(period),
+        period === 'daily' ? 'Today' : period === 'week' ? 'This week' : 'This month',
+      );
+      if (choice === 'holdings') return [...cards, this.suggestion()];
+      const market = dailyReview(this.holdings(), this.quotes())[0];
+      const up = Number(market.metrics?.[0]?.value ?? 0);
+      const down = Number(market.metrics?.[1]?.value ?? 0);
+      return [
+        ...cards,
+        {
+          ...market,
+          takeaway: !market.metrics?.length
+            ? 'Market direction is unavailable.'
+            : up > down
+              ? 'Tracked stocks are mostly rising.'
+              : down > up
+                ? 'Tracked stocks are mostly falling.'
+                : 'Tracked stocks are mixed.',
+          metrics: market.metrics?.slice(0, 2),
+          text: 'Direction of tracked stocks since session open.',
+        },
+      ];
+    }
+    const symbol = this.symbol();
+    const trend = this.trending();
+    const risk = this.outlook();
+    const owned = this.holdings().some((h) => h.symbol === symbol && h.quantity > 0);
+    const volume = activity(
+      this.history().find((s) => s.symbol === symbol),
+      this.clock.currentMarketTimestamp(),
+    );
+    const action =
+      trend?.kind !== 'ready'
+        ? 'Not enough forecast history yet.'
+        : trend.call === 'up'
+          ? `Consider buying ${symbol}.`
+          : owned
+            ? `Review your ${symbol} position.`
+            : `Consider waiting on ${symbol}.`;
+    const swing =
+      risk?.kind === 'ready'
+        ? `Expect ${risk.call === 'stormier' ? 'bigger' : 'smaller'} price swings.`
+        : 'Volatility forecast unavailable.';
+    const position = this.holdings().find((h) => h.symbol === symbol && h.quantity > 0);
+    const price = this.quotes().find((q) => q.symbol === symbol)?.price;
+    const unrealized =
+      position && price && price > 0 && position.averageCost > 0
+        ? (price - position.averageCost) * position.quantity
+        : null;
+    const positionMetrics: NonNullable<DuaCard['metrics']> = position
+      ? [{ label: 'Your shares', value: String(position.quantity) }]
+      : [];
+    if (unrealized !== null)
+      positionMetrics.push({
+        label: 'Unrealized since purchase',
+        value: signedDollars(unrealized),
+        tone: unrealized < 0 ? 'loss' : 'gain',
+      });
+    const horizon = this.trend.trend()?.horizonDays ?? 5;
+    return [
+      {
+        title: 'Buying context',
+        metrics: positionMetrics,
+        takeaway: action,
+        text:
+          trend?.kind === 'ready'
+            ? `The next ${horizon} trading days lean ${trend.call === 'up' ? 'upward' : 'downward'}.`
+            : 'Wait for more forecast history.',
+        note: `${volume.label}. ${swing}`,
+        detail:
+          trend?.kind === 'ready'
+            ? `Selected source: ${trend.source}. Reading: ${trend.asOf}. Model probability: ${Math.round(trend.probability * 100)}%. Model record: ${trend.modelHits}/${trend.modelDays}; pattern: ${trend.ruleHits}/${trend.ruleDays}.`
+            : 'No eligible direction reading at this simulation time.',
+      },
+      {
+        title: 'Trending activity',
+        takeaway:
+          trend?.kind === 'ready'
+            ? `${symbol} is ${trend.momentum > 0 ? 'gaining' : 'losing'} momentum.`
+            : 'Not enough trend history yet.',
+        text: `${volume.label}.`,
+        metrics:
+          volume.ratio === undefined
+            ? []
+            : [{ label: 'Volume versus usual', value: `${volume.ratio.toFixed(1)}×` }],
+        detail:
+          'Latest completed session volume compared with the preceding 20 completed sessions. This describes market activity, not social popularity.',
+      },
+      {
+        title: 'Volatility outlook',
+        takeaway: swing,
+        text: 'Swing size can increase in either direction.',
+        detail:
+          risk?.kind === 'ready'
+            ? `Selected source: ${risk.source}. Reading: ${risk.asOf}. Model probability of bigger swings: ${Math.round(risk.probability * 100)}%.`
+            : 'Not enough forecast history yet.',
+      },
+    ];
+  }
+
   constructor() {
     effect(() => {
       // Track context changes, but not normal live ticks: displayed results are snapshots.
@@ -219,39 +475,101 @@ export class DuaComponent {
       this.lastTime = time;
     });
     effect(() => {
+      if (
+        this.openOutlook() &&
+        !this.legacyOpened &&
+        !this.historyLoading() &&
+        this.orders.historyStatus() === 'ready' &&
+        this.contexts().length
+      )
+        untracked(() => {
+          this.legacyOpened = true;
+          this.select('stock');
+          this.activeCard.set(2);
+          this.showDetails();
+          this.session.minimized.set(false);
+        });
+    });
+    effect(() => {
+      const symbol = this.symbol();
+      if (symbol)
+        untracked(() => {
+          this.legacyOpened = false;
+          this.session.minimized.set(false);
+        });
+    });
+    effect(() => {
+      const ready =
+        this.account.status() === 'ready' &&
+        !this.account.needsTermsAcceptance() &&
+        !this.clock.clockUpdating();
       const accountId = this.account.selectedAccountId();
       const sessionId = this.clock.marketSessionId();
-      const at = this.clock.currentMarketTimestamp();
+      const day = this.marketDay();
+      // Refresh completed-session volume once at the close, not on each price tick.
+      this.clock.marketOpen();
+      const fills = this.fillSignature();
       const symbol = this.symbol();
-      const minimized = this.session.minimized();
-      const quotes = this.quotes();
-      const holdings = this.holdings();
-      const accountUnavailable =
-        this.account.needsTermsAcceptance() ||
-        this.clock.clockUpdating() ||
-        this.account.status() !== 'ready';
-      const contextMissing =
-        accountId === null ||
-        sessionId === null ||
-        !Number.isFinite(Date.parse(at)) ||
-        !quotes.length;
-      if (accountUnavailable || contextMissing) {
-        this.hasUpdates.set(false);
-        return;
+      const open = symbol ? true : !this.session.minimized();
+      untracked(() => {
+        if (!open && !symbol) return;
+        this.historyRequest?.unsubscribe();
+        this.history.set([]);
+        this.historyLoading.set(false);
+        if (!ready || accountId === null || sessionId === null || !day) return;
+        this.historyLoading.set(true);
+        this.historyRequest = forkJoin([this.orders.loadOrders(false), this.orders.instruments()])
+          .pipe(
+            switchMap(([orders, catalogue]) => {
+              const symbols = new Set(
+                [...this.account.selectedHoldings().map((h) => h.symbol), symbol].filter(Boolean),
+              );
+              orders
+                .filter((o) => o.accountId === accountId && o.status === 'FILLED')
+                .forEach((o) => {
+                  const i = catalogue.find((i) => i.instrumentId === o.instrumentId);
+                  const symbol = i?.simulatedStockSymbol ?? i?.ticker;
+                  if (symbol) symbols.add(symbol);
+                });
+              return symbols.size
+                ? forkJoin(
+                    [...symbols].map((symbol) =>
+                      this.market.candles(sessionId, symbol, '1Y').pipe(catchError(() => of(null))),
+                    ),
+                  )
+                : of([]);
+            }),
+          )
+          .subscribe({
+            next: (series) => {
+              this.history.set(series.filter((s): s is CandleSeries => !!s));
+              this.historyLoading.set(false);
+            },
+            error: () => this.historyLoading.set(false),
+          });
+      });
+    });
+    effect(() => {
+      const contexts = this.contexts();
+      untracked(() => this.session.query(contexts));
+    });
+    afterRenderEffect(() => {
+      const snapshot = this.displayedContext();
+      const open = !this.session.minimized();
+      if (
+        snapshot &&
+        open &&
+        !this.loading() &&
+        this.cards().length &&
+        !this.explaining() &&
+        this.snapshotStillCurrent() &&
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'visible'
+      ) {
+        untracked(() => {
+          if (this.session.unread(snapshot)) this.session.viewedSummary(snapshot);
+        });
       }
-      // Compare rounded insight text, not raw ticks. This adds no requests or polling.
-      const selected = quotes.find((q) => q.symbol === symbol);
-      const date = new Intl.DateTimeFormat('en-CA', {
-        timeZone: this.clock.marketCalendar().timezone,
-      }).format(new Date(at));
-      const fingerprint = JSON.stringify([
-        date,
-        dailyReview(holdings, quotes),
-        holdingCards(holdings, quotes),
-        selected ? dailyCard(selected) : null,
-      ]);
-      const context = `${accountId}:${sessionId}:${symbol}`;
-      this.hasUpdates.set(this.session.hasNewInformation(context, fingerprint, !minimized));
     });
     afterRenderEffect(() => {
       // Measure after Angular renders the destination view, then animate from the prior size.
@@ -301,6 +619,7 @@ export class DuaComponent {
     });
     inject(DestroyRef).onDestroy(() => {
       this.resizeAnimation?.cancel();
+      this.historyRequest?.unsubscribe();
       this.clearTimers();
     });
   }
@@ -316,10 +635,6 @@ export class DuaComponent {
 
   protected toggle(): void {
     this.clearTimers();
-    if (this.session.minimized() && this.hasUpdates()) {
-      this.session.acknowledgeNotification();
-      this.hasUpdates.set(false);
-    }
     this.session.minimized.update((value) => !value);
     if (!this.session.minimized()) {
       this.timers.push(setTimeout(() => this.panel()?.nativeElement.focus()));
@@ -360,95 +675,49 @@ export class DuaComponent {
     this.loading.set(false);
     this.explaining.set(false);
     this.snapshotContext.set('');
+    this.displayedContext.set(null);
   }
 
   protected backToPrevious(): void {
     if (this.explaining()) {
       this.explaining.set(false);
+      setTimeout(() => {
+        const content = this.panel()?.nativeElement.querySelector(
+          '.insight-card:not(.inactive) .card-content',
+        );
+        if (content) content.scrollTop = this.savedScroll;
+      });
     } else {
       this.back();
     }
   }
 
   protected select(choice: DuaChoice): void {
+    const selected: InsightChoice =
+      choice === 'outlook' || choice === 'trending' ? 'stock' : choice;
     this.clearTimers();
     this.back();
-    this.choice.set(choice);
+    this.choice.set(selected);
     if (
-      this.clock.clockUpdating() ||
-      !Number.isFinite(Date.parse(this.clock.currentMarketTimestamp())) ||
-      this.account.status() !== 'ready'
+      !this.contexts().length ||
+      this.historyLoading() ||
+      this.orders.historyStatus() !== 'ready'
     ) {
       this.message.set('Account or market data is unavailable. Please try again.');
       return;
     }
-    const at = this.clock.currentMarketTimestamp();
-    this.snapshotContext.set(this.account.selectedAccount()?.name ?? 'No account selected');
-    this.snapshotDisconnected.set(!this.connected());
-    this.snapshotDate.set(
-      new Intl.DateTimeFormat('en-US', {
-        timeZone: this.clock.marketCalendar().timezone,
-        month: '2-digit',
-        day: '2-digit',
-        year: 'numeric',
-      }).format(new Date(at)),
-    );
+    this.snapshotAt.set(this.clock.currentMarketTimestamp());
+    this.snapshotContext.set(this.account.selectedAccount()?.name ?? '');
     this.asOf.set(
       new Intl.DateTimeFormat('en-US', {
         timeZone: this.clock.marketCalendar().timezone,
         hour: 'numeric',
         minute: '2-digit',
-      }).format(new Date(at)),
+      }).format(new Date(this.snapshotAt())),
     );
-    if (choice === 'outlook') {
-      const reading = this.outlook();
-      if (reading?.kind !== 'ready') {
-        this.cards.set([]);
-        this.message.set(
-          reading?.kind === 'too-early'
-            ? `No outlook for ${this.outlookSymbol()} yet: the model's readings start ${reading.firstDay}.`
-            : `No outlook for ${this.outlookSymbol()} at this time.`,
-        );
-        return;
-      }
-      this.cards.set([outlookCard(this.outlookSymbol(), reading)]);
-      this.asOf.set('');
-      this.snapshotDisconnected.set(false);
-      return;
-    }
-    if (choice === 'trending') {
-      const reading = this.trending();
-      const trend = this.trend.trend();
-      if (!trend || reading?.kind !== 'ready') {
-        this.cards.set([]);
-        this.message.set(
-          reading?.kind === 'too-early'
-            ? `No trend read for ${this.outlookSymbol()} yet: readings start ${reading.firstDay}.`
-            : `No trend read for ${this.outlookSymbol()} at this time.`,
-        );
-        return;
-      }
-      this.cards.set(
-        trendingCards(
-          this.outlookSymbol(),
-          reading,
-          trendOverview(trend, at),
-          trend.horizonDays,
-          trend.momentumDays,
-        ),
-      );
-      this.asOf.set('');
-      this.snapshotDisconnected.set(false);
-      return;
-    }
-    this.cards.set(
-      choice === 'daily'
-        ? dailyPreviewCards()
-        : choice === 'holdings'
-          ? holdingsPreviewCards()
-          : stockPreviewCards(),
-    );
-    this.asOf.set('');
-    this.snapshotDisconnected.set(false);
+    this.snapshotDate.set(this.marketDay());
+    this.snapshotDisconnected.set(!this.connected());
+    this.cards.set(this.buildCards(selected));
+    this.displayedContext.set(this.contexts().find((c) => c.insight === selected) ?? null);
   }
 }

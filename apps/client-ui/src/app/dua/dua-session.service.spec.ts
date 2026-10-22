@@ -1,69 +1,74 @@
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
+import { DuaSession, ReadContext } from './dua-session.service';
 import { TokenStorageService } from '../core/auth/token-storage.service';
-import { DuaSession } from './dua-session.service';
-import { NavigationEnd, NavigationStart, Router, provideRouter } from '@angular/router';
-import { Subject } from 'rxjs';
 
-describe('Dua session', () => {
-  it('resets information baselines and closes the chat on identity changes', () => {
-    let reset = () => {};
+describe('Dua viewed versions', () => {
+  let session: DuaSession;
+  let http: HttpTestingController;
+  let changeIdentity: () => void;
+  const context: ReadContext = {
+    accountId: 1,
+    sessionId: 1,
+    insight: 'stock',
+    symbol: 'JPM',
+    version: 'old',
+  };
+  beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
         {
           provide: TokenStorageService,
-          useValue: {
-            onIdentityChange: (listener: () => void) => {
-              reset = listener;
-            },
-          },
+          useValue: { onIdentityChange: (fn: () => void) => (changeIdentity = fn) },
         },
       ],
     });
-    const session = TestBed.inject(DuaSession);
-    expect(session.minimized()).toBe(true);
-    expect(session.hasNewInformation('account', 'first', false)).toBe(false);
-    expect(session.hasNewInformation('account', 'second', false)).toBe(true);
-    expect(session.hasNewInformation('account', 'second', true)).toBe(false);
-    expect(session.hasNewInformation('account', 'second', false)).toBe(false);
-    session.minimized.set(false);
-    reset();
-    expect(session.minimized()).toBe(true);
-    expect(session.hasNewInformation('account', 'new identity', false)).toBe(false);
-    session.acknowledgeNotification();
-    expect(session.hasNewInformation('account', 'another change', false)).toBe(false);
-    expect(session.hasNewInformation('different stock', 'first', false)).toBe(false);
-    expect(session.hasNewInformation('different stock', 'second', false)).toBe(false);
-    // A new page gets a fresh root injector, with notifications available again.
-    TestBed.resetTestingModule();
-    TestBed.configureTestingModule({
-      providers: [
-        provideRouter([]),
-        { provide: TokenStorageService, useValue: { onIdentityChange: () => {} } },
-      ],
-    });
-    const refreshed = TestBed.inject(DuaSession);
-    expect(refreshed.hasNewInformation('account', 'first', false)).toBe(false);
-    expect(refreshed.hasNewInformation('account', 'second', false)).toBe(true);
+    session = TestBed.inject(DuaSession);
+    http = TestBed.inject(HttpTestingController);
   });
-  it('closes on navigation without resetting the notification acknowledgement', () => {
-    const events = new Subject<NavigationStart>();
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: Router, useValue: { events } },
-        { provide: TokenStorageService, useValue: { onIdentityChange: () => {} } },
-      ],
-    });
-    const session = TestBed.inject(DuaSession);
+  afterEach(() => http.verify());
+  it('opening the menu leaves content unread', () => {
     session.minimized.set(false);
-    events.next(new NavigationEnd(0, '/dashboard', '/dashboard') as unknown as NavigationStart);
-    expect(session.minimized()).toBe(false);
-    session.acknowledgeNotification();
-    events.next(new NavigationStart(1, '/dashboard/markets/aapl'));
+    expect(session.unread(context)).toBe(true);
+  });
+  it('acknowledges exact versions and leaves newer versions unread', () => {
+    session.viewedSummary(context);
+    http.expectOne((r) => r.method === 'PUT').flush(null);
+    expect(session.unread(context)).toBe(false);
+    expect(session.unread({ ...context, version: 'new' })).toBe(true);
+    expect(session.unread({ ...context, accountId: 2 })).toBe(true);
+  });
+  it('synchronizes acknowledgments from another device', () => {
+    session.query([context]);
+    http.expectOne((r) => r.method === 'POST').flush([context]);
+    expect(session.unread(context)).toBe(false);
+  });
+  it('keeps failed writes viewed locally until identity changes', () => {
+    session.viewedSummary(context);
+    http.expectOne((r) => r.method === 'PUT').flush({}, { status: 503, statusText: 'Unavailable' });
+    expect(session.unread(context)).toBe(false);
+    changeIdentity();
+    expect(session.unread(context)).toBe(true);
     expect(session.minimized()).toBe(true);
-    expect(session.hasNewInformation('stock', 'changed', false)).toBe(false);
-    session.minimized.set(false);
-    events.next(new NavigationStart(2, '/dashboard'));
-    expect(session.minimized()).toBe(true);
+  });
+  it('never unreads a local acknowledgment when an older query finishes', () => {
+    session.query([context]);
+    const query = http.expectOne((r) => r.method === 'POST');
+    session.viewedSummary(context);
+    http.expectOne((r) => r.method === 'PUT').flush(null);
+    query.flush([]);
+    expect(session.unread(context)).toBe(false);
+  });
+  it('ignores a query response after identity changes', () => {
+    session.query([context]);
+    const request = http.expectOne((r) => r.method === 'POST');
+    changeIdentity();
+    request.flush([context]);
+    expect(session.unread(context)).toBe(true);
   });
 });

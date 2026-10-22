@@ -12,7 +12,7 @@
     "changeOrigin": true
   },
   {
-    "context": ["/api/me/watchlist", "/api/accounts", "/api"],
+    "context": ["/api/me/watchlist", "/api/me/dua", "/api/accounts", "/api"],
     "target": "http://localhost:8082",
     "secure": false,
     "changeOrigin": true
