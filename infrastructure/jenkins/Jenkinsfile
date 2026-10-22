@@ -130,7 +130,8 @@ pipeline {
                             sh '''
                                 set -eu
                                 # A disposable PostgreSQL enables PostgresOrderConcurrencyTest, which H2 cannot run.
-                                sh "$WORKSPACE/infrastructure/jenkins/with-disposable-postgres.sh" \n                                    sh "$WORKSPACE/infrastructure/jenkins/maven-retry.sh" -B -Dmaven.repo.local="$WORKSPACE/.m2/order-and-sell-service" clean test
+                                sh "$WORKSPACE/infrastructure/jenkins/with-disposable-postgres.sh" \
+                                    sh "$WORKSPACE/infrastructure/jenkins/maven-retry.sh" -B -Dmaven.repo.local="$WORKSPACE/.m2/order-and-sell-service" clean test
                                 test -s target/site/jacoco/jacoco.xml
                             '''
                         }
