@@ -32,6 +32,20 @@ class VixTests(unittest.TestCase):
         self.assertEqual(config.VIX_FEATURES[-2:], ["vix", "vix_change"])
 
 
+class LabelChoiceTests(unittest.TestCase):
+    def test_labels_come_from_the_threshold_or_from_the_rows_own_column(self):
+        from stock_forecast.pooled import _labels
+
+        part = add_indicators(make_dataset(0)).iloc[:30].copy()
+        part["big"] = np.arange(len(part)) % 2 == 0
+        threshold = float(part["target"].abs().median())
+        np.testing.assert_array_equal(_labels(part, 10, None, threshold, None),
+                                      (part["target"].abs().to_numpy()[9:] > threshold).astype(float))
+        np.testing.assert_array_equal(_labels(part, 10, None, threshold, "big"), part["big"].to_numpy()[9:].astype(float))
+        # With history every row gets a window, so every row's label is used.
+        np.testing.assert_array_equal(_labels(part, 10, part, threshold, "big"), part["big"].to_numpy().astype(float))
+
+
 @unittest.skipUnless(HAS_TENSORFLOW, "TensorFlow is not installed")
 class PooledModelTests(unittest.TestCase):
     def test_one_model_scores_every_stock_on_its_own_days(self):

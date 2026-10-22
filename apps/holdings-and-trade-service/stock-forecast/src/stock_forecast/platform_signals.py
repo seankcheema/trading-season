@@ -1,8 +1,14 @@
 """The platform risk signal the client UI reads: "will the next week be more volatile than usual?"
 
-One LSTM trained on the platform's own market (platform_horizon.platform_horizon_lstm,
+A seed ensemble of LSTMs trained on the platform's own market
+(platform_horizon.ensemble_platform_lstm, PLATFORM_SIGNAL_SEEDS members,
 PLATFORM_SIGNAL_HORIZON days) scores every symbol's days after its training
-span. For each day the file carries the probability, the call it implies,
+span. The ensemble ranks days well but its scores sit above 0.5 more often
+than the event happens, so the call line is refit each month on the days
+already scored and closed (monthly_call_lines) and the probabilities are
+shifted so that line is 0.5 (move_call_line): the ranking is untouched, and
+every number in the file is still known on its day. For each day the file
+carries the probability, the call it implies,
 the "usual" level it is measured against, and a running track record for
 the model and for the rule "the next days will be like the last ones",
 counted only over windows that had already closed by that day. A card can
@@ -20,14 +26,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+import numpy as np
 import pandas as pd
 
 from . import config
-from .platform_calibration import _progress
+from .platform_calibration import _logit, _progress
 from .platform_demo import load_platform_prices, platform_dataset
-from .platform_horizon import horizon_daily, platform_horizon_lstm
+from .platform_horizon import ensemble_platform_lstm, horizon_daily, platform_horizon_lstm
 
 STORMIER, CALMER = "stormier", "calmer"
+CALL_LINE_GRID = np.round(np.linspace(0.3, 0.8, 101), 3)
 DAY_FIELDS = ("date", "probability", "call", "usualVolatility", "recentVolatility",
               "modelHits", "modelDays", "ruleHits", "ruleDays", "outcome")
 
@@ -141,6 +149,50 @@ def summarise_signals(document: dict) -> pd.DataFrame:
     return table
 
 
+def best_call_line(prob: np.ndarray, actual: np.ndarray, grid: np.ndarray = CALL_LINE_GRID) -> float:
+    """The line above which a score should call stormier: the most accurate on these days, middle of a tie."""
+    scores = np.array([np.mean((prob > line) == actual) for line in grid])
+    best = np.flatnonzero(scores == scores.max())
+    return float(grid[best[len(best) // 2]])
+
+
+def monthly_call_lines(
+    dailies: dict[str, pd.DataFrame], probabilities: dict[str, pd.Series], horizon: int,
+    min_days: int = config.PLATFORM_CALIBRATION_MIN_DAYS,
+) -> dict[str, float]:
+    """The call line for every scored month, fit on the days before it whose windows had closed.
+
+    Pooled over symbols; the last `horizon` days before the month are left
+    out because their windows reach into it. Until every symbol has
+    `min_days` such days the line stays at 0.5.
+    """
+    scored = {}
+    for symbol, prob in probabilities.items():
+        daily = dailies[symbol]
+        days = daily.index.intersection(prob.index)
+        scored[symbol] = pd.DataFrame({"prob": prob.loc[days], "big": daily.loc[days, "big"],
+                                       "known": daily.loc[days, "target"].notna()})
+    months = sorted({str(m) for frame in scored.values() for m in frame.index.to_period("M").unique()})
+    lines = {}
+    for month in months:
+        start = pd.Period(month).to_timestamp()
+        earlier = [frame[(frame.index < start) & frame["known"]].iloc[:-horizon] for frame in scored.values()]
+        if min(len(frame) for frame in earlier) < min_days:
+            lines[month] = 0.5
+            continue
+        pooled = pd.concat(earlier)
+        lines[month] = best_call_line(pooled["prob"].to_numpy(), pooled["big"].to_numpy())
+    return lines
+
+
+def move_call_line(prob: pd.Series, lines: dict[str, float]) -> pd.Series:
+    """Shift each day's score so its month's call line sits at 0.5; the order of the days is unchanged."""
+    line = prob.index.to_period("M").astype(str).map(lambda m: lines.get(m, 0.5)).to_numpy(dtype=float)
+    clipped = prob.clip(1e-6, 1 - 1e-6).to_numpy()
+    shifted = 1.0 / (1.0 + np.exp(-(_logit(clipped).ravel() - _logit(line).ravel())))
+    return pd.Series(shifted, index=prob.index)
+
+
 Trainer = Callable[..., dict[str, pd.Series]]
 
 
@@ -177,24 +229,46 @@ def export_signals(
     load: Callable[[], dict[str, pd.DataFrame]] = load_platform_prices,
     verbose: int = 2,
     retrain: str = "once",
+    seeds: int = config.PLATFORM_SIGNAL_SEEDS,
+    refit_call_line: bool = True,
 ) -> tuple[dict, Path]:
     """Train the platform model, build the document and write it; returns both.
 
-    retrain "once" trains a single model on the days to PLATFORM_LSTM_TRAIN_END;
-    "monthly" refreshes it every month (monthly_platform_probabilities).
+    retrain "once" trains on the days to PLATFORM_LSTM_TRAIN_END, as one model
+    (seeds=1) or a seed ensemble; "monthly" refreshes one model every month
+    (monthly_platform_probabilities). With refit_call_line each month's call
+    line is fit on the closed days before it and the scores are shifted so
+    it reads 0.5; without it the raw scores are written.
     """
     if retrain not in ("once", "monthly"):
         raise ValueError(f"retrain must be once or monthly, got {retrain}")
+    if seeds < 1:
+        raise ValueError(f"seeds must be at least 1, got {seeds}")
     prices = load()
     datasets = {symbol: platform_dataset(prices, symbol) for symbol in sorted(prices)}
     if retrain == "monthly":
         probabilities = monthly_platform_probabilities(datasets, horizon, verbose=verbose)
-    else:
+        trained = (f"LSTM trained on the platform's market, every symbol pooled, refreshed every month from "
+                   f"{config.PLATFORM_SIGNAL_FIRST_MONTH}: each month is scored by a model fit on the days before "
+                   f"the previous month and early-stopped on it")
+    elif seeds == 1:
         probabilities = platform_horizon_lstm(datasets, horizon, verbose=verbose)
+        trained = (f"LSTM trained on the platform's market, every symbol pooled, days to "
+                   f"{config.PLATFORM_LSTM_TRAIN_END}, early-stopped on days to {config.PLATFORM_LSTM_VAL_END}; "
+                   f"scored on later days only")
+    else:
+        probabilities = ensemble_platform_lstm(datasets, horizon, seeds=seeds, verbose=verbose)
+        trained = (f"{seeds} LSTMs trained on the platform's market with different seeds, every symbol pooled, "
+                   f"days to {config.PLATFORM_LSTM_TRAIN_END}, early-stopped on days to "
+                   f"{config.PLATFORM_LSTM_VAL_END}, scores averaged; scored on later days only")
+    lines = {}
+    if refit_call_line:
+        dailies = {symbol: horizon_daily(datasets[symbol], horizon) for symbol in datasets}
+        lines = monthly_call_lines(dailies, probabilities, horizon)
+        probabilities = {symbol: move_call_line(prob, lines) for symbol, prob in probabilities.items()}
+        trained += ("; each month's call line is refit on the closed days before it, pooled over symbols, "
+                    "and the scores are shifted so it reads 0.5")
     document = build_signals(datasets, probabilities, horizon)
-    if retrain == "monthly":
-        document["model"] = (
-            f"LSTM trained on the platform's market, every symbol pooled, refreshed every month from "
-            f"{config.PLATFORM_SIGNAL_FIRST_MONTH}: each month is scored by a model fit on the days before the "
-            f"previous month and early-stopped on it")
+    document["model"] = trained
+    document["callLines"] = lines
     return document, write_signals(document)

@@ -33,11 +33,14 @@ import pandas as pd
 from . import config
 from .horizons import future_volatility
 from .platform_calibration import ONE_ANSWER, PERSISTENCE, PLATFORM_LSTM, _fit_or_constant, _logit, _progress
+from .data import add_range_features
 from .platform_demo import load_platform_prices, platform_dataset
 
 SAME_AS_LAST = "Same as the last H days"
 RULES = (ONE_ANSWER, SAME_AS_LAST)
 CALIBRATED = " (calibrated)"
+OWN_MEDIAN = " (own median)"
+STACKED = " + pattern (stacked)"
 
 
 def past_volatility(returns: pd.Series, horizon: int) -> pd.Series:
@@ -100,6 +103,13 @@ def horizon_rows(
                 calibrated = _fit_or_constant(_logit(series.loc[seen].to_numpy()), trailing.loc[seen, "big"].to_numpy(),
                                               _logit(raw), base)
                 probs[name + CALIBRATED] = calibrated
+            # The model against its own recent level, and a stacker over the model and the pattern.
+            level = relative_level(series)
+            if part.index.isin(level.index).all():
+                probs[name + OWN_MEDIAN] = level.loc[part.index].to_numpy()
+            stacked = stacked_probabilities(trailing, part, series)
+            if stacked is not None:
+                probs[name + STACKED] = stacked
         for name, prob in probs.items():
             rows += [{"symbol": symbol, "month": str(month), "variant": name, "day": day, "prob": float(p),
                       "actual": bool(a), "base_rate": base, "threshold": float(u)}
@@ -117,12 +127,18 @@ def platform_horizon_lstm(
     lookback: int = config.PLATFORM_LSTM_LOOKBACK,
     units: int = config.PLATFORM_LSTM_UNITS,
     verbose: int = 2,
+    seed: int = config.SEED,
+    feature_cols: tuple[str, ...] = tuple(config.VOLATILITY_FEATURES),
+    relative_label: bool = False,
 ) -> dict[str, pd.Series]:
     """One LSTM for every symbol on the H-day label, purged of the last H labels before each boundary.
 
-    Each symbol's training cut-off is the median H-day volatility of its
-    training rows, the convention of pooled.pooled_volatility_predictions,
-    which does the training. Returns P(more volatile than usual) for each
+    By default each symbol's training cut-off is the median H-day volatility
+    of its training rows, the convention of pooled.pooled_volatility_predictions,
+    which does the training. With relative_label the model is fit on the
+    question it is scored on: the next H days against the rolling usual
+    level of horizon_daily, so a calm or stormy stretch does not move its
+    calls off the 0.5 line. Returns P(more volatile than usual) for each
     symbol's days after val_end, indexed by the day the forecast is made.
     """
     from .pooled import pooled_volatility_predictions
@@ -130,11 +146,14 @@ def platform_horizon_lstm(
     periods = {}
     for symbol, data in datasets.items():
         labelled = data.assign(target=future_volatility(data["ret"], horizon)).dropna(subset=["target"])
+        if relative_label:
+            daily = horizon_daily(data, horizon)
+            labelled = labelled.loc[labelled.index.intersection(daily.index)].assign(big=daily["big"])
         train, val = labelled.loc[:train_end], labelled.loc[train_end:val_end].iloc[1:]
         part = labelled.loc[val_end:].iloc[1:]
         periods[symbol] = (train, val, part, pd.concat([train, val]))
-    probs = pooled_volatility_predictions(periods, tuple(config.VOLATILITY_FEATURES), lookback, units,
-                                          verbose=verbose, purge=horizon)
+    probs = pooled_volatility_predictions(periods, tuple(feature_cols), lookback, units, seed=seed,
+                                          verbose=verbose, purge=horizon, label="big" if relative_label else None)
     return {symbol: pd.Series(probs[symbol], index=periods[symbol][2].index) for symbol in periods}
 
 
@@ -158,3 +177,58 @@ def horizon_calibration_rows(
     tables = [horizon_rows(horizon_daily(datasets[symbol], horizon), symbol, horizon, extra=extra.get(symbol))
               for symbol in symbols]
     return pd.concat(tables, ignore_index=True)
+
+
+def ensemble_platform_lstm(
+    datasets: dict[str, pd.DataFrame], horizon: int, seeds: int = config.EXPERIMENT_SEEDS,
+    feature_cols: tuple[str, ...] = tuple(config.VOLATILITY_FEATURES), verbose: int = 0, **kwargs,
+) -> dict[str, pd.Series]:
+    """The platform LSTM trained `seeds` times with different seeds, probabilities averaged per symbol.
+
+    Averaging over seeds removes the initialisation noise a small model on a
+    short platform year carries; each member is trained exactly as the single
+    model is.
+    """
+    members = []
+    for i in range(seeds):
+        _progress(f"[all symbols] ensemble member {i + 1} of {seeds}, {horizon}-day window, seed {config.SEED + i}")
+        members.append(platform_horizon_lstm(datasets, horizon, seed=config.SEED + i, feature_cols=feature_cols,
+                                             verbose=verbose, **kwargs))
+    return {symbol: pd.concat([m[symbol] for m in members], axis=1).mean(axis=1) for symbol in members[0]}
+
+
+def relative_level(series: pd.Series, window: int = config.PLATFORM_CALIBRATION_MIN_DAYS) -> pd.Series:
+    """Each reading's percentile among the previous `window` readings of the same model: 0.5 is its usual level.
+
+    A model that runs hot still ranks its days; this reads the ranking as a
+    call against the model's own recent past instead of the fixed 0.5 line.
+    Days without a full window of earlier readings are left out.
+    """
+    values = series.to_numpy(dtype=float)
+    out = np.full(len(values), np.nan)
+    for i in range(window, len(values)):
+        earlier = values[i - window:i]
+        out[i] = float(np.mean(earlier < values[i]) + 0.5 * np.mean(earlier == values[i]))
+    return pd.Series(out, index=series.index).dropna()
+
+
+def stacked_probabilities(trailing: pd.DataFrame, part: pd.DataFrame, series: pd.Series) -> np.ndarray | None:
+    """A logistic layer over the model's probability and the persistence inputs, fit on trailing days only.
+
+    Returns None when the model has not scored enough trailing days to fit on.
+    """
+    seen = trailing.index.intersection(series.index)
+    if len(seen) < config.PLATFORM_CALIBRATION_MIN_DAYS or not part.index.isin(series.index).all():
+        return None
+    def features(frame: pd.DataFrame, prob: np.ndarray) -> np.ndarray:
+        p = np.clip(prob, 1e-6, 1 - 1e-6)
+        return np.column_stack([np.log(p / (1 - p)), np.log(frame["past"].to_numpy() / frame["usual"].to_numpy()),
+                                frame[list(config.PLATFORM_PERSISTENCE_FEATURES)].to_numpy()])
+    fit = trailing.loc[seen]
+    return _fit_or_constant(features(fit, series.loc[seen].to_numpy()), fit["big"].to_numpy(),
+                            features(part, series.loc[part.index].to_numpy()), float(fit["big"].mean()))
+
+
+def platform_dataset_extended(prices: dict[str, pd.DataFrame], symbol: str) -> pd.DataFrame:
+    """The platform dataset with the intraday range and longer volatility inputs (EXTENDED_VOLATILITY_FEATURES)."""
+    return add_range_features(platform_dataset(prices, symbol), prices[symbol]).dropna()

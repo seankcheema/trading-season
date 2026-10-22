@@ -9,8 +9,9 @@ import numpy as np
 import pandas as pd
 
 from stock_forecast.platform_horizon import horizon_daily
-from stock_forecast.platform_signals import (DAY_FIELDS, build_signals, monthly_platform_probabilities,
-                                             summarise_signals, symbol_days, validate_signals, write_signals)
+from stock_forecast.platform_signals import (DAY_FIELDS, best_call_line, build_signals, monthly_call_lines,
+                                             monthly_platform_probabilities, move_call_line, summarise_signals,
+                                             symbol_days, validate_signals, write_signals)
 from tests.test_platform_horizon import platform_like
 
 H = 5
@@ -113,6 +114,75 @@ class MonthlyRetrainingTests(unittest.TestCase):
         self.assertEqual(series.index.min().strftime("%Y-%m"), "2026-07")
         self.assertEqual(series.index.max().strftime("%Y-%m"), "2026-12")
         self.assertTrue(series.index.is_monotonic_increasing and series.index.is_unique)
+
+
+class CallLineTests(unittest.TestCase):
+    def setUp(self):
+        self.daily = horizon_daily(platform_like(), H)
+        self.prob = fake_probabilities(self.daily)
+
+    def test_best_line_is_the_most_accurate_and_the_middle_of_a_tie(self):
+        prob = np.array([0.2, 0.4, 0.6, 0.8])
+        self.assertAlmostEqual(best_call_line(prob, np.array([False, False, True, True])), 0.5)
+        self.assertAlmostEqual(best_call_line(prob, np.array([False, False, False, True])), 0.7)
+
+    def test_lines_stay_at_half_until_every_symbol_has_enough_closed_days(self):
+        lines = monthly_call_lines({"AAPL": self.daily}, {"AAPL": self.prob}, H, min_days=40)
+        self.assertEqual(sorted(lines)[0], "2026-07")
+        self.assertEqual(lines["2026-07"], 0.5)
+        self.assertEqual(lines["2026-08"], 0.5)  # July alone has fewer than 40 closed days
+        self.assertNotEqual(lines["2026-10"], 0.5)
+        short = self.prob.loc["2026-09-01":]  # a symbol scored from September only holds every month at 0.5
+        lines = monthly_call_lines({"AAPL": self.daily, "MSFT": self.daily}, {"AAPL": self.prob, "MSFT": short}, H)
+        self.assertTrue(all(line == 0.5 for month, line in lines.items() if month <= "2026-10"))
+
+    def test_a_months_line_depends_only_on_the_closed_days_before_it(self):
+        before = monthly_call_lines({"AAPL": self.daily}, {"AAPL": self.prob}, H)
+        changed = self.prob.copy()
+        changed.loc["2026-10-01":] = 1 - changed.loc["2026-10-01":]
+        after = monthly_call_lines({"AAPL": self.daily}, {"AAPL": changed}, H)
+        for month in ("2026-07", "2026-08", "2026-09", "2026-10"):
+            self.assertEqual(before[month], after[month])
+        # The last H days of September reach into October, so flipping them cannot move October's line either.
+        changed = self.prob.copy()
+        tail = changed.loc[:"2026-09-30"].index[-H:]
+        changed.loc[tail] = 1 - changed.loc[tail]
+        self.assertEqual(monthly_call_lines({"AAPL": self.daily}, {"AAPL": changed}, H)["2026-10"], before["2026-10"])
+
+    def test_moving_the_line_keeps_the_order_and_puts_the_line_at_half(self):
+        lines = {"2026-07": 0.7, "2026-08": 0.4}
+        prob = pd.Series([0.7, 0.71, 0.69, 0.4, 0.5], index=pd.to_datetime(
+            ["2026-07-01", "2026-07-02", "2026-07-03", "2026-08-03", "2026-08-04"]))
+        moved = move_call_line(prob, lines)
+        self.assertAlmostEqual(moved.iloc[0], 0.5)
+        self.assertGreater(moved.iloc[1], 0.5)
+        self.assertLess(moved.iloc[2], 0.5)
+        self.assertAlmostEqual(moved.iloc[3], 0.5)
+        self.assertGreater(moved.iloc[4], 0.5)
+        self.assertTrue(((moved > 0) & (moved < 1)).all())
+        self.assertEqual(move_call_line(prob, {}).round(6).tolist(), prob.round(6).tolist())  # no lines: unchanged
+
+    def test_export_trains_the_ensemble_and_records_the_lines(self):
+        from unittest import mock
+        import stock_forecast.platform_signals as module
+        data = platform_like()
+        daily = horizon_daily(data, H)
+        seen = {}
+
+        def fake_ensemble(datasets, horizon, seeds, verbose):
+            seen["seeds"] = seeds
+            return {symbol: fake_probabilities(daily, i) for i, symbol in enumerate(datasets)}
+
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch.object(module, "ensemble_platform_lstm", side_effect=fake_ensemble), \
+                mock.patch.object(module, "platform_dataset", side_effect=lambda prices, symbol: data), \
+                mock.patch.object(module.config, "PLATFORM_SIGNALS_JSON", Path(folder) / "signals.json"):
+            document, path = module.export_signals(H, load=lambda: {"AAPL": None, "MSFT": None}, seeds=3)
+        self.assertEqual(seen["seeds"], 3)
+        self.assertIn("3 LSTMs", document["model"])
+        self.assertEqual(sorted(document["callLines"])[0], "2026-07")
+        self.assertTrue(path.exists())
+        validate_signals(json.loads(path.read_text()))
 
 
 if __name__ == "__main__":

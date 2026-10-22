@@ -16,7 +16,7 @@ from .lstm_model import build_direction_lstm, predict_up_probability, train_lstm
 from .pipeline import big_move_days, big_move_threshold, volatility_baselines, volatility_lstm_predictions
 from .symbols import _rows, inputs_for, load_symbol_dataset
 from .walk_forward import walk_forward_folds
-from .windows import event_labels, fit_scalers, make_windows
+from .windows import aligned_rows, event_labels, fit_scalers, make_windows
 
 Period = tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]  # train, val, part, history
 
@@ -29,13 +29,16 @@ def pooled_volatility_predictions(
     seed: int = config.SEED,
     verbose: int = 0,
     purge: int = 1,
+    label: str | None = None,
 ) -> dict[str, np.ndarray]:
     """Train one LSTM on every stock's training windows; return P(big move) for each stock's part.
 
     As in pipeline.event_lstm_predictions, the last `purge` training and
     validation labels, which reach into the next split (1 for a next-day
     label, H for a label over the next H days), are never fitted or used to
-    stop.
+    stop. The event is a target beyond the stock's big-move threshold, or,
+    with `label`, that boolean column of the rows, so a model can be fit on
+    exactly the question it will be scored on.
     """
     if purge < 1:
         raise ValueError(f"purge must be at least 1, got {purge}")
@@ -47,9 +50,9 @@ def pooled_volatility_predictions(
         X, _ = make_windows(fit_train, scalers, lookback)
         Xv, _ = make_windows(stop_val, scalers, lookback, history=train)
         X_train.append(X)
-        y_train.append(event_labels(fit_train, lookback, big_move=threshold))
+        y_train.append(_labels(fit_train, lookback, None, threshold, label))
         X_val.append(Xv)
-        y_val.append(event_labels(stop_val, lookback, history=train, big_move=threshold))
+        y_val.append(_labels(stop_val, lookback, train, threshold, label))
         prepared[symbol] = (scalers, part, history)
     X_train, y_train = np.concatenate(X_train), np.concatenate(y_train)
     X_val, y_val = np.concatenate(X_val), np.concatenate(y_val)
@@ -61,6 +64,13 @@ def pooled_volatility_predictions(
         assert len(X_part) == len(part)
         probs[symbol] = predict_up_probability(model, X_part)
     return probs
+
+
+def _labels(part, lookback, history, threshold, label) -> np.ndarray:
+    """The window-aligned 0/1 labels: the big-move event, or the rows' own `label` column."""
+    if label is None:
+        return event_labels(part, lookback, history=history, big_move=threshold)
+    return aligned_rows(part, lookback, history)[label].to_numpy().astype(float)
 
 
 def vix_dataset(symbol: str) -> pd.DataFrame:

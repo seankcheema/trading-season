@@ -6,8 +6,9 @@ import pandas as pd
 
 from stock_forecast import config
 from stock_forecast.platform_calibration import ONE_ANSWER, PERSISTENCE, PLATFORM_LSTM, summarise
-from stock_forecast.platform_horizon import (CALIBRATED, SAME_AS_LAST, horizon_daily, horizon_probabilities, horizon_rows,
-                                             past_volatility)
+from stock_forecast.platform_horizon import (CALIBRATED, OWN_MEDIAN, SAME_AS_LAST, STACKED, ensemble_platform_lstm,
+                                             horizon_daily, horizon_probabilities, horizon_rows, past_volatility,
+                                             relative_level, stacked_probabilities)
 from tests.helpers import make_prices
 
 
@@ -92,6 +93,79 @@ class ScoringTests(unittest.TestCase):
         # The first month the model covers has no earlier scored days to calibrate on, so only the raw score appears.
         first = rows[rows["variant"] == PLATFORM_LSTM]["month"].iloc[0]
         self.assertNotIn(PLATFORM_LSTM + CALIBRATED, set(rows[rows["month"] == first]["variant"]))
+
+
+
+
+class SecondLayerTests(unittest.TestCase):
+    def test_relative_level_is_the_percentile_among_the_previous_window(self):
+        series = pd.Series(np.arange(50, dtype=float), index=pd.bdate_range("2026-01-01", periods=50))
+        level = relative_level(series, window=40)
+        # A rising series is always above every earlier value: percentile 1.0, from the 41st reading on.
+        self.assertEqual(len(level), 10)
+        self.assertTrue((level == 1.0).all())
+        flat = relative_level(pd.Series(np.ones(45), index=pd.bdate_range("2026-01-01", periods=45)), window=40)
+        self.assertTrue((flat == 0.5).all())  # ties sit at the median
+
+    def test_stacker_needs_enough_scored_trailing_days(self):
+        from tests.test_platform_horizon import platform_like
+        daily = horizon_daily(platform_like(), 5).dropna(subset=["target"])
+        trailing, part = daily.iloc[:80], daily.iloc[80:100]
+        series = pd.Series(0.6, index=daily.index[70:100])  # ten trailing days only
+        self.assertIsNone(stacked_probabilities(trailing, part, series))
+        series = pd.Series(np.linspace(0.2, 0.8, 100), index=daily.index[:100])
+        out = stacked_probabilities(trailing, part, series)
+        self.assertEqual(len(out), 20)
+        self.assertTrue(((out >= 0) & (out <= 1)).all())
+
+    def test_monthly_rows_add_own_median_and_stacked_variants_for_a_model(self):
+        daily = horizon_daily(platform_like(), 5)
+        rng = np.random.default_rng(3)
+        series = pd.Series(rng.uniform(0.2, 0.8, len(daily)), index=daily.index)
+        rows = horizon_rows(daily, "AAPL", 5, min_days=40, extra={"M": series})
+        variants = set(rows["variant"])
+        self.assertIn("M" + OWN_MEDIAN, variants)
+        self.assertIn("M" + STACKED, variants)
+        own = rows[rows["variant"] == "M" + OWN_MEDIAN]["prob"]
+        self.assertTrue(((own >= 0) & (own <= 1)).all())
+
+    def test_ensemble_averages_the_members(self):
+        from unittest import mock
+        import stock_forecast.platform_horizon as module
+        index = pd.bdate_range("2026-07-01", periods=5)
+        calls = []
+
+        def fake(datasets, horizon, seed, feature_cols, verbose, **kwargs):
+            calls.append(seed)
+            return {"AAPL": pd.Series(np.full(5, 0.2 + 0.1 * (seed - 42)), index=index)}
+
+        with mock.patch.object(module, "platform_horizon_lstm", side_effect=fake):
+            out = ensemble_platform_lstm({"AAPL": pd.DataFrame(index=index)}, 5, seeds=3)
+        self.assertEqual(calls, [42, 43, 44])
+        np.testing.assert_allclose(out["AAPL"].to_numpy(), 0.3)
+
+    def test_relative_label_fits_the_model_on_the_rolling_usual_level(self):
+        from unittest import mock
+        import stock_forecast.pooled as pooled
+        from stock_forecast.platform_horizon import platform_horizon_lstm
+        data = platform_like()
+        seen = {}
+
+        def fake(periods, feature_cols, lookback, units, seed, verbose, purge, label=None):
+            seen["label"], seen["periods"] = label, periods
+            return {symbol: np.full(len(part), 0.5) for symbol, (_, _, part, _) in periods.items()}
+
+        with mock.patch.object(pooled, "pooled_volatility_predictions", side_effect=fake):
+            platform_horizon_lstm({"AAPL": data}, 5, verbose=0)
+            self.assertIsNone(seen["label"])
+            self.assertNotIn("big", seen["periods"]["AAPL"][0].columns)
+            out = platform_horizon_lstm({"AAPL": data}, 5, verbose=0, relative_label=True)
+        self.assertEqual(seen["label"], "big")
+        train = seen["periods"]["AAPL"][0]
+        daily = horizon_daily(data, 5)
+        self.assertTrue(train.index.isin(daily.index).all())
+        pd.testing.assert_series_equal(train["big"], daily.loc[train.index, "big"], check_names=False)
+        self.assertEqual(out["AAPL"].index[0], seen["periods"]["AAPL"][2].index[0])
 
 
 if __name__ == "__main__":

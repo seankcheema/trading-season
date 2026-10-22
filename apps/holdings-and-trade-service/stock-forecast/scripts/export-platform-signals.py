@@ -1,15 +1,18 @@
 """Train the platform's week-ahead risk model and write the signal file the client UI reads.
 
-Trains one LSTM on the platform's own market for the PLATFORM_SIGNAL_HORIZON
-day question (will the next days be more volatile than usual for this
-stock?), scores every symbol's days after the training span, and writes
+Trains a PLATFORM_SIGNAL_SEEDS-member seed ensemble of LSTMs on the platform's
+own market for the PLATFORM_SIGNAL_HORIZON day question (will the next days
+be more volatile than usual for this stock?), scores every symbol's days
+after the training span with each month's call line refit on the closed
+days before it (--fixed-line keeps the raw 0.5 line), and writes
 apps/client-ui/public/forecast/platform-signals.json: per symbol and day the
 probability, the call, the usual level, and the running track record of the
 model and of the rule "like the last days", counted only over closed
 windows. Also writes reports/platform_signals_summary.csv. --retrain monthly
-refreshes the model every scored month instead of training once, the way a
-production model would be kept current. Prints one line per epoch; --quiet
-does not. Simulated prices: a demo, never evidence.
+refreshes one model every scored month instead of training once, the way a
+production model would be kept current; --seeds sets the ensemble size (1
+trains one model). Prints one line per epoch; --quiet does not. Simulated
+prices: a demo, never evidence.
 """
 import argparse
 
@@ -23,10 +26,16 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--horizon", type=int, default=config.PLATFORM_SIGNAL_HORIZON)
 parser.add_argument("--retrain", choices=["once", "monthly"], default="once",
                     help="once: one model fit to PLATFORM_LSTM_TRAIN_END; monthly: refreshed every scored month")
+parser.add_argument("--seeds", type=int, default=config.PLATFORM_SIGNAL_SEEDS,
+                    help="members of the seed ensemble; 1 trains a single model")
+parser.add_argument("--fixed-line", action="store_true", help="keep the raw 0.5 call line instead of refitting it monthly")
 parser.add_argument("--quiet", action="store_true")
 args = parser.parse_args()
 
-document, path = export_signals(args.horizon, verbose=0 if args.quiet else 2, retrain=args.retrain)
+document, path = export_signals(args.horizon, verbose=0 if args.quiet else 2, retrain=args.retrain,
+                                seeds=args.seeds, refit_call_line=not args.fixed_line)
+if document["callLines"]:
+    print("call lines by month:", ", ".join(f"{m} {v:.3f}" for m, v in document["callLines"].items()))
 summary = summarise_signals(document)
 config.REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 summary.to_csv(config.PLATFORM_SIGNALS_SUMMARY_CSV, index=False)
