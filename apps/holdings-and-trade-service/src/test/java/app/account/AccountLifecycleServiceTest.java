@@ -1,6 +1,5 @@
 package app.account;
 
-import app.auth.ForbiddenException;
 import app.user.UserRepository;
 import app.record.TradingAccountRecord;
 import org.junit.jupiter.api.BeforeEach;
@@ -80,9 +79,9 @@ class AccountLifecycleServiceTest {
     }
     @Test void isolatesOwnersAndMissingAccounts() {
         UUID stranger = UUID.randomUUID();
-        assertThrows(ForbiddenException.class, () -> service.eligibility(1, stranger));
-        assertThrows(ForbiddenException.class, () -> service.archive(1, stranger));
-        assertThrows(ForbiddenException.class, () -> service.delete(1, stranger, true));
+        assertThrows(AccountNotFoundException.class, () -> service.eligibility(1, stranger));
+        assertThrows(AccountNotFoundException.class, () -> service.archive(1, stranger));
+        assertThrows(AccountNotFoundException.class, () -> service.delete(1, stranger, true));
         assertThrows(AccountNotFoundException.class, () -> service.eligibility(99, owner));
         assertThrows(AccountNotFoundException.class, () -> service.archive(99, owner));
         assertTrue(service.archived(stranger).isEmpty());

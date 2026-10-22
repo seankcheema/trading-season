@@ -198,9 +198,8 @@ class TestRunReport:
 
         by_account = {row['accountId']: row for row in on_disk['tradesPerAccount']}
         assert by_account[1]['accountName'] == 'Growth Portfolio'
-        assert by_account[1]['userName'] == 'Joanna Trader'
+        assert 'userName' not in by_account[1], 'runs reach analysts, so they name no trader'
         assert by_account[99]['accountName'] is None, 'an account no record names gets no name'
-        assert by_account[99]['userName'] is None
         assert not (events_on_disk / 'runs' / '20261006T120000Z.tmp').exists()
 
     def test_a_new_run_replaces_the_previous_one(self, events_on_disk, db_session):
@@ -286,7 +285,7 @@ class TestRangedReport:
         assert cut['dailyCounts'] == [{'date': '2026-10-06', 'filled': 2, 'rejected': 0}]
         assert cut['timezone'] == 'UTC'
         by_account = {row['accountId']: row for row in cut['tradesPerAccount']}
-        assert by_account[1]['label'] == 'Growth Portfolio (Joanna Trader)'
+        assert by_account[1]['label'] == 'Growth Portfolio'
         assert by_account[2]['label'] == '2'
         by_segment = {row['segment']: row for row in cut['activityBySegment']}
         assert by_segment['INTERMEDIATE']['notional'] == '2200.00'

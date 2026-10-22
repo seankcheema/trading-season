@@ -218,7 +218,7 @@ class TestRunsOverARange:
         assert report['statusCounts'] == {'FILLED': 1, 'REJECTED': 1}
         assert [(row['symbol'], row['notional']) for row in report['volumeBySymbol']] == [('NVDA', '100.00')]
         assert report['tradesPerAccount'] == [{'accountId': 1, 'total': 2, 'filled': 1, 'rejected': 1,
-                                               'accountName': None, 'userName': None, 'label': '1'}]
+                                               'accountName': None, 'label': '1'}]
         assert report['dailyCounts'] == [{'date': '2026-10-05', 'filled': 1, 'rejected': 0},
                                          {'date': '2026-10-06', 'filled': 0, 'rejected': 1}]
         assert report['timezone'] == 'UTC'

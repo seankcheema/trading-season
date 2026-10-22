@@ -116,6 +116,7 @@ class RegistrationControllerIntegrationTest {
 
     private ResultActions accountExists(Object body) throws Exception {
         return mockMvc.perform(post("/api/registration/account-exists")
+            .with(tokenFor(UUID.randomUUID(), "asker@example.com"))
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(body)));
     }
@@ -290,6 +291,14 @@ class RegistrationControllerIntegrationTest {
     // Soft account existence check
 
     @Test
+    void accountExistsRequiresAToken() throws Exception {
+        mockMvc.perform(post("/api/registration/account-exists")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"gina@example.com\"}"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void accountExistsIsFalseForUnregisteredEmail() throws Exception {
         accountExists(Map.of("email", "nobody@example.com"))
             .andExpect(status().isOk())
@@ -297,7 +306,7 @@ class RegistrationControllerIntegrationTest {
     }
 
     @Test
-    void accountExistsIsTrueAfterRegistrationWithoutAccessToken() throws Exception {
+    void accountExistsIsTrueAfterRegistration() throws Exception {
         // True from the moment credentials exist, which is what signedUp
         // creates. The profile call below is incidental to the answer now.
         register(signedUp(UUID.randomUUID(), "gina@example.com"), registration("gina@example.com"))

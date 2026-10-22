@@ -61,6 +61,22 @@ export class MarketClockService {
       day: 'numeric',
     })}`;
   });
+  // Regular hours are 08:30 to 15:00 CT; after the close the simulated clock keeps running with
+  // prices held until midnight. No timestamp yet reads as open, so nothing is flagged early.
+  readonly marketOpen = computed(() => {
+    const timestamp = this.currentMarketTimestamp();
+    if (!timestamp) {
+      return true;
+    }
+    const time = this.isoToMarketLocal(timestamp).slice(11);
+    return time >= '08:30' && time < '15:00';
+  });
+  // True while the entered time differs from the running clock, so Settings knows there is
+  // something to save.
+  readonly marketDateTimeEdited = computed(() => {
+    const timestamp = this.currentMarketTimestamp();
+    return !!timestamp && this.marketDateTime() !== this.isoToMarketLocal(timestamp);
+  });
   readonly marketDateTimeMin = computed(() => {
     const calendar = this.marketCalendar();
     return this.isoToMarketLocal(calendar.firstTimestamp);
@@ -80,15 +96,18 @@ export class MarketClockService {
     value = this.marketDateTime(),
     onSnapshot: (snapshot: MarketSnapshot) => void = () => {},
     onApplied: () => void = () => {},
+    onFailed: () => void = () => {},
   ): void {
     const sessionId = this.marketSessionId();
     this.marketDateTime.set(value);
     if (sessionId === null || !value) {
+      onFailed();
       return;
     }
     const resolved = this.resolveMarketDateTime(value);
     if (resolved.error) {
       this.clockError.set(resolved.error);
+      onFailed();
       return;
     }
     this.marketDateTime.set(resolved.value);
@@ -106,6 +125,7 @@ export class MarketClockService {
         error: (error: HttpErrorResponse) => {
           this.clockError.set(this.clockErrorMessage(error));
           this.clockUpdating.set(false);
+          onFailed();
         },
       });
   }

@@ -344,6 +344,29 @@ class TestOrders:
         assert [(event['eventType'], event['price'], event['priceKind']) for event in trail] == [
             ('PENDING', 109.0, 'INDICATIVE'), ('ACCEPTED', 109.0, 'INDICATIVE'), ('FILLED', 110.0, 'FILL')]
 
+    def test_audit_prices_follow_the_quotes_the_trading_service_recorded(self, platform):
+        # A stop order submitted at a 101.00 quote, triggered at 104.00 and filled at 104.50.
+        platform.add_all([
+            Order(order_id=20, account_id=1, instrument_id=1, order_type='BUY', status='FILLED', quantity=1,
+                  indicative_price=Decimal('100.00'), reference_price=Decimal('101.00'),
+                  trigger_price=Decimal('104.00'), execution_price=Decimal('104.50'), execution_type='STOP',
+                  stop_price=Decimal('103.00'), submitted_at=hours_ago(2), accepted_at=hours_ago(2),
+                  resolved_at=hours_ago(1)),
+            Fill(fill_id=20, order_id=20, quote_price=Decimal('104.50'), quantity=1, filled_at=hours_ago(1)),
+            AuditTrail(audit_id=20, order_id=20, event_type='PENDING', recorded_at=hours_ago(2)),
+            AuditTrail(audit_id=21, order_id=20, event_type='ACCEPTED', recorded_at=hours_ago(2)),
+            AuditTrail(audit_id=22, order_id=20, event_type='TRIGGERED', recorded_at=hours_ago(1)),
+            AuditTrail(audit_id=23, order_id=20, event_type='FILLED', recorded_at=hours_ago(1)),
+        ])
+        platform.commit()
+
+        detail = console.order_detail(platform, 20)
+
+        assert detail['type'] == 'STOP'
+        assert [(event['eventType'], event['price'], event['priceKind']) for event in detail['audit']] == [
+            ('PENDING', 101.0, 'REFERENCE'), ('ACCEPTED', 101.0, 'REFERENCE'),
+            ('TRIGGERED', 104.0, 'TRIGGER'), ('FILLED', 104.5, 'FILL')]
+
     def test_an_order_that_never_filled_keeps_the_price_it_asked_for_at_every_stage(self, platform):
         platform.add_all([
             AuditTrail(audit_id=10, order_id=3, event_type='PENDING', recorded_at=hours_ago(2)),

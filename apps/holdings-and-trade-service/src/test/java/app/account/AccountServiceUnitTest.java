@@ -1,6 +1,5 @@
 package app.account;
 
-import app.auth.ForbiddenException;
 import app.holding.Holding;
 import app.holding.HoldingMovementRepository;
 import app.holding.HoldingRepository;
@@ -155,13 +154,11 @@ class AccountServiceUnitTest {
     }
 
     @Test
-    void getAccountForUserThrowsForbiddenWhenNotOwned() {
+    void getAccountForUserThrowsNotFoundWhenNotOwned() {
         when(accountRepository.findByIdAndUserId(1, USER_ID))
                 .thenReturn(Optional.empty());
-        when(accountRepository.existsById(1))
-                .thenReturn(true);
 
-        assertThrows(ForbiddenException.class, 
+        assertThrows(AccountNotFoundException.class,
                 () -> accountService.getAccountForUser(1, USER_ID));
     }
 
@@ -169,10 +166,8 @@ class AccountServiceUnitTest {
     void getAccountForUserThrowsNotFoundWhenAccountDoesNotExist() {
         when(accountRepository.findByIdAndUserId(99, USER_ID))
                 .thenReturn(Optional.empty());
-        when(accountRepository.existsById(99))
-                .thenReturn(false);
 
-        assertThrows(AccountNotFoundException.class, 
+        assertThrows(AccountNotFoundException.class,
                 () -> accountService.getAccountForUser(99, USER_ID));
     }
 
@@ -254,11 +249,11 @@ class AccountServiceUnitTest {
     }
 
     @Test
-    void updateAccountNameThrowsForbiddenWhenNotOwned() {
+    void updateAccountNameThrowsNotFoundWhenNotOwned() {
         when(accountRepository.findByIdForUpdate(1))
                 .thenReturn(Optional.of(createAccount(1, OTHER_USER_ID, "Other")));
 
-        assertThrows(ForbiddenException.class, 
+        assertThrows(AccountNotFoundException.class,
                 () -> accountService.updateAccountName(1, USER_ID, "New Name"));
     }
 
@@ -290,13 +285,11 @@ class AccountServiceUnitTest {
     }
 
     @Test
-    void getHoldingsForAccountThrowsForbiddenWhenNotOwned() {
+    void getHoldingsForAccountThrowsNotFoundWhenNotOwned() {
         when(accountRepository.findByIdAndUserId(1, USER_ID))
                 .thenReturn(Optional.empty());
-        when(accountRepository.existsById(1))
-                .thenReturn(true);
 
-        assertThrows(ForbiddenException.class, 
+        assertThrows(AccountNotFoundException.class,
                 () -> accountService.getHoldingsForAccount(1, USER_ID));
         
         verify(holdingRepository, never()).findByAccountId(any());
@@ -441,10 +434,8 @@ class AccountServiceUnitTest {
     void getAccountForUserThrowsNotFoundWhenAccountDoesNotExistAtAll() {
         when(accountRepository.findByIdAndUserId(999, USER_ID))
                 .thenReturn(Optional.empty());
-        when(accountRepository.existsById(999))
-                .thenReturn(false);
 
-        AccountNotFoundException exception = assertThrows(AccountNotFoundException.class, 
+        AccountNotFoundException exception = assertThrows(AccountNotFoundException.class,
                 () -> accountService.getAccountForUser(999, USER_ID));
         
         assertTrue(exception.getMessage().contains("999"));
@@ -454,10 +445,8 @@ class AccountServiceUnitTest {
     void getHoldingsForAccountThrowsNotFoundWhenAccountDoesNotExist() {
         when(accountRepository.findByIdAndUserId(999, USER_ID))
                 .thenReturn(Optional.empty());
-        when(accountRepository.existsById(999))
-                .thenReturn(false);
 
-        assertThrows(AccountNotFoundException.class, 
+        assertThrows(AccountNotFoundException.class,
                 () -> accountService.getHoldingsForAccount(999, USER_ID));
         
         verify(holdingRepository, never()).findByAccountId(any());
@@ -468,7 +457,7 @@ class AccountServiceUnitTest {
         when(accountRepository.findByIdForUpdate(999))
                 .thenReturn(Optional.empty());
 
-        assertThrows(AccountNotFoundException.class, 
+        assertThrows(AccountNotFoundException.class,
                 () -> accountService.updateAccountName(999, USER_ID, "New Name"));
     }
 

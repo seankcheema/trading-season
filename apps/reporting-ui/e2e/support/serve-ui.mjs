@@ -25,6 +25,12 @@ const root = join(
   'browser',
 );
 
+// E2E_SKIP_BUILD serves the dist of an earlier build, so a missing one is a mistake to name here.
+if (!existsSync(join(root, 'index.html'))) {
+  console.error(`No Reporting UI build at ${root}; run npm run build first.`);
+  process.exit(1);
+}
+
 const types = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',

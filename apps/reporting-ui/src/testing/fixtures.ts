@@ -30,8 +30,7 @@ export function report(overrides: Partial<Report> = {}): Report {
         filled: 4,
         rejected: 1,
         accountName: 'Growth',
-        userName: 'Sean Cheema',
-        label: 'Growth (Sean Cheema)',
+        label: 'Growth',
       },
       {
         accountId: 12,
@@ -39,7 +38,6 @@ export function report(overrides: Partial<Report> = {}): Report {
         filled: 2,
         rejected: 1,
         accountName: null,
-        userName: null,
         label: '12',
       },
     ],

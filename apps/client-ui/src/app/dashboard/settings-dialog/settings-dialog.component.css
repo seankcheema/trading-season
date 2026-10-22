@@ -10,35 +10,35 @@
   animation: settings-pop-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.buffer-save-content {
+.save-all-content {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
 }
 
-.buffer-save-spinner {
+.save-all-spinner {
   width: 1rem;
   height: 1rem;
   border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 50%;
-  animation: buffer-save-spin 700ms linear infinite;
+  animation: save-all-spin 700ms linear infinite;
 }
 
-.buffer-save-success {
+.save-all-success {
   animation: settings-pop-in 200ms ease-out both;
 }
 
-@keyframes buffer-save-spin {
+@keyframes save-all-spin {
   to { transform: rotate(360deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .settings-backdrop,
   .settings-dialog,
-  .buffer-save-spinner,
-  .buffer-save-success {
+  .save-all-spinner,
+  .save-all-success {
     animation: none;
   }
 }

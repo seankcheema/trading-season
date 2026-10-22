@@ -79,7 +79,7 @@ import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
 import { DashboardTourComponent, TourExit } from './tour/dashboard-tour.component';
 import { TourProgressService } from './tour/tour-progress.service';
 
-type HeaderDropdown = 'account' | 'market-clock' | 'profile';
+type HeaderDropdown = 'account' | 'profile';
 
 // The account or cash dialog currently open over the dashboard, if any. An account dialog
 // with an account renames it; without one it creates a new, empty account.
@@ -569,7 +569,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const target = event.target;
     if (
       target instanceof Element &&
-      target.closest('app-dashboard-header-dropdown, app-market-clock-control, app-account-control')
+      target.closest('app-dashboard-header-dropdown, app-account-control')
     ) {
       return;
     }

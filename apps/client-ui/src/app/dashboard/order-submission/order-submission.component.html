@@ -51,13 +51,14 @@
           @if (!editOrder()) {
           <a
             [routerLink]="fullScreenUrl()"
-            class="text-muted-foreground hover:bg-muted hover:text-primary flex h-8 items-center gap-2 rounded-lg px-2 transition-colors shrink-0"
+            [queryParams]="{ accountId: accountId() }"
+            class="border-primary/30 bg-primary/8 text-primary hover:border-primary/55 hover:bg-primary/16 focus-visible:outline-ring inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border py-1.5 pr-3 pl-3.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
             data-tour="full-screen"
             aria-label="Open full screen market chart"
             title="Open full screen market chart"
           >
-            <ng-icon name="lucideExpand" class="text-[16px]" />
-            <span class="text-xs font-medium">Full screen</span>
+            Full screen
+            <ng-icon name="lucideExpand" class="text-[16px]" aria-hidden="true" />
           </a>
           }
         </div>

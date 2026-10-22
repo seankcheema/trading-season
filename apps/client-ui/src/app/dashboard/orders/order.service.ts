@@ -303,7 +303,7 @@ export class OrderService {
       this.reconnectDelay = STREAM_RECONNECT_MS.initial;
       if (this.catchUp) {
         this.catchUp = false;
-        this.loadOrders().subscribe({ error: () => undefined });
+        this.reloadAndAnnounce();
       }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -371,7 +371,7 @@ export class OrderService {
     }
     const current = this._orders().find((order) => order.orderId === frame.orderId);
     if (!current) {
-      this.loadOrders().subscribe({ error: () => undefined });
+      this.reloadAndAnnounce(frame.orderId);
       return;
     }
     if (STATUS_RANK[frame.status] <= STATUS_RANK[current.status]) {
@@ -397,6 +397,28 @@ export class OrderService {
       this.pendingFilled.next(updated);
       this.announceFill(updated);
     }
+  }
+
+  // Re-reads the history and announces orders it shows resolved that the page last saw open, or
+  // the unknown order a frame named, so views refresh the cash and holdings they moved (BR-10).
+  private reloadAndAnnounce(unknownOrderId?: number): void {
+    const before = new Map(this._orders().map((order) => [order.orderId, order.status]));
+    this.loadOrders().subscribe({
+      next: (orders) => {
+        for (const order of orders) {
+          const previous = before.get(order.orderId);
+          const watched = previous === undefined ? order.orderId === unknownOrderId : STATUS_RANK[previous] < 2;
+          if (watched && STATUS_RANK[order.status] === 2) {
+            this.pendingResolved.next(order);
+            if (order.status === 'FILLED') {
+              this.pendingFilled.next(order);
+              this.announceFill(order);
+            }
+          }
+        }
+      },
+      error: () => undefined,
+    });
   }
 
   // A fill that lands after the submission response, such as a limit order's, is announced
