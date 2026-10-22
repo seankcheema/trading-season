@@ -113,16 +113,17 @@
         />
       </svg>
 
-      <!-- Dua rides the latest point, drawn in HTML so it stays upright while the SVG stretches -->
+      <!-- Latest point, drawn in HTML so it stays round while the SVG stretches -->
       <span
-        class="landing-dua absolute"
-        data-testid="landing-dua"
+        class="landing-dot absolute size-3 -translate-x-1/2 -translate-y-1/2"
         [style.left.%]="primary().end.x"
         [style.top.%]="primary().end.y"
       >
-        <span class="landing-ripple border-primary absolute rounded-full border-2"></span>
-        <app-dua-figure class="landing-dua-figure absolute" [framed]="false" />
+        <span class="landing-pulse bg-primary absolute inset-0 rounded-full"></span>
+        <span class="bg-primary ring-background absolute inset-0 rounded-full ring-4"></span>
       </span>
     </div>
   </main>
+
+  <app-dua-side-peek />
 </div>

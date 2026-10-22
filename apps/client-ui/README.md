@@ -43,7 +43,7 @@ Dua is drawn as an SVG ([dua-figure.component.ts](src/app/dua/dua-figure.compone
 - [DuaMilestones](src/app/dua/dua-milestones.service.ts) celebrates a user's firsts once each, with rising bubbles: the first deposit after the opening funds, the first order not rejected, the first account beyond the default and the first watch list star. The service that owns each action decides from its data that it was a first; which firsts were celebrated is kept per user in this browser (`ts.dua.milestones.<user id>`). Profits, losses and streaks are deliberately not celebrated.
 - Empty holdings, watch list, portfolio chart and recent orders show Dua above their message ([dua-empty.component.ts](src/app/dua/dua-empty.component.ts)).
 - On sign-in and registration Dua peeks over the form ([dua-peek.component.ts](src/app/dua/dua-peek.component.ts)), covers its eyes while a password or the SSN is typed, peeks once it is shown, and looks worried at a failed or locked sign-in, whose lockout message it delivers.
-- On the landing page Dua rides the live point of the hero graph.
+- On the landing page, every so often Dua leans in from the left or right edge of the window at a random height and ducks back out ([dua-side-peek.component.ts](src/app/dua/dua-side-peek.component.ts)): first 2 to 5 seconds after the page loads, then every 20 to 40 seconds, for under 4 seconds each time. It takes no clicks, and it skips its turn while the tab is in the background.
 - Five quick clicks on the launcher make Dua do a barrel roll.
 
 All of this motion is off under `prefers-reduced-motion`.
