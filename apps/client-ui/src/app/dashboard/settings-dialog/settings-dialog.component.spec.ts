@@ -1,5 +1,5 @@
 import { ExecutionSettingsService } from './execution-settings.service';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { SessionTimeoutService } from '../../core/auth/session-timeout.service';
@@ -24,6 +24,10 @@ describe('SettingsDialogComponent', () => {
     }).compileComponents();
   });
 
+  function saveAllButton(root: HTMLElement) {
+    return root.querySelector('footer button') as HTMLButtonElement;
+  }
+
   function render() {
     const fixture = TestBed.createComponent(SettingsDialogComponent);
     const closed = vi.fn();
@@ -31,7 +35,7 @@ describe('SettingsDialogComponent', () => {
     fixture.detectChanges();
     const element = fixture.nativeElement as HTMLElement;
     const select = element.querySelector('#idleTimeout') as HTMLSelectElement;
-    return { element, select, closed };
+    return { element, select, closed, fixture };
   }
 
   it('moves the simulated market clock and reports the new snapshot', () => {
@@ -60,7 +64,10 @@ describe('SettingsDialogComponent', () => {
     expect(input.max).toBe('2026-01-05T23:59');
 
     input.value = '2026-01-05T16:00';
-    (Array.from(section.querySelectorAll('button')).find((b) => b.textContent?.includes('Apply time')) as HTMLButtonElement).click();
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(section.querySelector('button')).toBeNull();
+    saveAllButton(fixture.nativeElement).click();
     const request = TestBed.inject(HttpTestingController).expectOne('/api/market/clock?sessionId=7');
     expect(request.request.body).toEqual({ timestamp: '2026-01-05T22:00:00.000Z' });
     request.flush(snapshot);
@@ -106,13 +113,57 @@ describe('SettingsDialogComponent', () => {
     expect(select.value).toBe('15');
   });
 
-  it('saves a newly chosen limit in minutes', () => {
-    const { select } = render();
+  it('keeps a newly chosen limit pending until Save all', () => {
+    const { element, select, fixture } = render();
+    const save = saveAllButton(element);
+    expect(save.disabled).toBe(true);
 
     select.value = '30';
     select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(setTimeoutMinutes).not.toHaveBeenCalled();
 
+    save.click();
     expect(setTimeoutMinutes).toHaveBeenCalledWith(30);
+  });
+
+  it('saves the buffer and the limit together and reports one success', () => {
+    const fixture = TestBed.createComponent(SettingsDialogComponent);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const buffer = root.querySelector('#executionBuffer') as HTMLInputElement;
+    buffer.value = '3';
+    buffer.dispatchEvent(new Event('input'));
+    const timeout = root.querySelector('#idleTimeout') as HTMLSelectElement;
+    timeout.value = '60';
+    timeout.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    saveAllButton(root).click();
+    fixture.detectChanges();
+
+    expect(setTimeoutMinutes).toHaveBeenCalledWith(60);
+    expect(root.querySelector('footer')?.textContent).toContain('Saved successfully');
+  });
+
+  it('keeps the buffer edit and explains when it cannot be saved', () => {
+    TestBed.overrideProvider(ExecutionSettingsService, {
+      useValue: { load: () => of({ executionBufferPercent: 0 }), save: () => throwError(() => new Error('down')) },
+    });
+    const fixture = TestBed.createComponent(SettingsDialogComponent);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const buffer = root.querySelector('#executionBuffer') as HTMLInputElement;
+    buffer.value = '3';
+    buffer.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    saveAllButton(root).click();
+    fixture.detectChanges();
+
+    expect(root.querySelector('footer')?.textContent).toContain('Unable to save your execution buffer');
+    expect(saveAllButton(root).disabled).toBe(false);
+    expect(buffer.value).toBe('3');
   });
 
   it('closes from the close button', () => {
@@ -146,7 +197,7 @@ describe('SettingsDialogComponent', () => {
     const component = fixture.componentInstance;
     component['saved'].set(true);
 
-    component['saveBuffer']();
+    component['saveAll']();
 
     expect(component['saving']()).toBe(false);
   });

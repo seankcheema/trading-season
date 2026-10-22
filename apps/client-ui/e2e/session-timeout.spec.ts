@@ -86,6 +86,8 @@ test.describe('the inactivity timeout', () => {
     const limit = dialog.getByLabel('Sign out after inactivity');
     await expect(limit).toHaveValue('10');
     await limit.selectOption('5');
+    await dialog.getByRole('button', { name: 'Save all' }).click();
+    await expect(dialog.getByText('Saved successfully')).toBeVisible();
     await dialog.getByRole('button', { name: 'Close settings' }).click();
     await expect(dialog).toBeHidden();
     await expect(page).toHaveURL(/\/dashboard$/);

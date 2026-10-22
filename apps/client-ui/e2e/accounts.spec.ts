@@ -402,7 +402,8 @@ test.describe('rewinding executed trades', () => {
       await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
       const settings = page.getByRole('dialog', { name: 'Settings' });
       await settings.getByLabel('Simulated time', { exact: true }).fill(time);
-      await settings.getByRole('button', { name: 'Apply time', exact: true }).click();
+      await settings.getByRole('button', { name: 'Save all', exact: true }).click();
+      await expect(settings.getByText('Saved successfully')).toBeVisible();
       await page.keyboard.press('Escape');
       await expect(activity.locator('[data-kind="trade"]')).toHaveCount(count);
       await expect(dashboardPage.portfolioValue).toHaveText(portfolio);

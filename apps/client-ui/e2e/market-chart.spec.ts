@@ -216,7 +216,8 @@ test('keeps account selection and rewinds executions with the shared clock', asy
     await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
     const settings = page.getByRole('dialog', { name: 'Settings' });
     await settings.getByLabel('Simulated time', { exact: true }).fill(time);
-    await settings.getByRole('button', { name: 'Apply time' }).click();
+    await settings.getByRole('button', { name: 'Save all' }).click();
+    await expect(settings.getByText('Saved successfully')).toBeVisible();
     await page.keyboard.press('Escape');
   };
   await setClock('2026-01-05T08:30');

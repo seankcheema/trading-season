@@ -721,7 +721,7 @@ describe('DashboardComponent', () => {
     expect(marketClock.querySelector('[data-testid="market-closed"]')).toBeNull();
     expect(accountDropdown.className).toContain('w-60');
     expect(accountDetails.className).toContain('w-full');
-    expect(marketClock.className).toContain('w-60');
+    expect(marketClock.className).toContain('w-fit');
     expect(accountPanel.className).toContain('w-full');
     expect(accountLabel.className).toContain('min-w-0');
     expect(accountLabel.className).toContain('flex-1');
@@ -984,7 +984,9 @@ describe('DashboardComponent', () => {
     const settings = fixture.nativeElement.querySelector('[data-testid="market-clock-settings"]') as HTMLElement;
     const input = settings.querySelector('#market-date-time') as HTMLInputElement;
     input.value = '2026-01-05T09:00';
-    (Array.from(settings.querySelectorAll('button')).find((b) => b.textContent?.includes('Apply time')) as HTMLButtonElement).click();
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    (Array.from(fixture.nativeElement.querySelectorAll('app-settings-dialog button')).find((b: any) => b.textContent?.includes('Save all')) as HTMLButtonElement).click();
 
     http.expectOne('/api/market/clock?sessionId=2026001').flush({
       sessionId: 2026001,
@@ -1032,7 +1034,7 @@ describe('DashboardComponent', () => {
     ) as HTMLElement;
     expect(dropdown.textContent).toContain('Range: Jan 5 - Jan 6');
     expect(dropdown.textContent).not.toContain('Loaded range');
-    expect(dropdown.textContent).toContain('Apply time');
+    expect(dropdown.textContent).not.toContain('Apply time');
   });
 
   it('should set datetime bounds from the simulation calendar', () => {

@@ -11,8 +11,8 @@ test('saves trading protection across reloads and keeps conditional controls com
   const settings = page.getByRole('dialog', { name: 'Settings' });
   const buffer = settings.getByLabel('Execution buffer (%)');
   await expect(buffer).toHaveValue('1'); await buffer.fill('10.01');
-  await expect(settings.getByRole('button', { name: 'Save execution buffer' })).toBeDisabled();
-  await buffer.fill('2.25'); await settings.getByRole('button', { name: 'Save execution buffer' }).click();
+  await expect(settings.getByRole('button', { name: 'Save all' })).toBeDisabled();
+  await buffer.fill('2.25'); await settings.getByRole('button', { name: 'Save all' }).click();
   await expect(settings.getByText('Saved successfully')).toBeVisible();
   await page.reload();
   await page.getByLabel('Open profile menu').click();

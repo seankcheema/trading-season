@@ -1,9 +1,11 @@
-import { ChangeDetectionStrategy, Component, inject, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, inject, output, viewChild } from '@angular/core';
+import { Observable } from 'rxjs';
 import { MarketClockService } from './market-clock.service';
 import { MarketSnapshot } from '../market-data.service';
 
-// Settings > Market clock: moves the shared simulated market time. The page that opened
-// Settings re-reads prices and history from the snapshot this emits.
+// Settings > Market clock: edits the shared simulated market time. Settings calls apply() from
+// its Save all button; the page that opened Settings re-reads prices and history from the
+// snapshot this emits.
 @Component({
   selector: 'app-market-clock-form',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -30,14 +32,6 @@ import { MarketSnapshot } from '../market-data.service';
     @if (clock.clockError()) {
       <p class="text-loss text-sm">{{ clock.clockError() }}</p>
     }
-    <button
-      type="button"
-      class="bg-primary text-primary-foreground h-9 w-full cursor-pointer rounded-lg text-sm font-medium disabled:opacity-50"
-      [disabled]="clock.clockUpdating() || !clock.marketDateTime() || clock.marketSessionId() === null"
-      (click)="apply(marketDateTimeInput.value)"
-    >
-      {{ clock.clockUpdating() ? 'Updating…' : 'Apply time' }}
-    </button>
   `,
   host: { class: 'flex flex-col gap-2' },
 })
@@ -45,7 +39,22 @@ export class MarketClockFormComponent {
   readonly clock = inject(MarketClockService);
   readonly applied = output<MarketSnapshot>();
 
-  protected apply(value: string): void {
-    this.clock.applyMarketDateTime(value, (snapshot) => this.applied.emit(snapshot));
+  private readonly input = viewChild.required<ElementRef<HTMLInputElement>>('marketDateTimeInput');
+
+  // Applies the entered time. Emits true once the clock moved, false when it was rejected
+  // (the reason is shown in this form), then completes.
+  apply(): Observable<boolean> {
+    return new Observable<boolean>((subscriber) => {
+      const done = (ok: boolean) => {
+        subscriber.next(ok);
+        subscriber.complete();
+      };
+      this.clock.applyMarketDateTime(
+        this.input().nativeElement.value,
+        (snapshot) => this.applied.emit(snapshot),
+        () => done(true),
+        () => done(false),
+      );
+    });
   }
 }

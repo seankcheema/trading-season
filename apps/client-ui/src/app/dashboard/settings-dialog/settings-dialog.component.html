@@ -43,7 +43,7 @@
           step="0.01"
           class="border-border rounded border px-3 py-2"
           [formControl]="buffer"
-          aria-describedby="buffer-help buffer-feedback"
+          aria-describedby="buffer-help"
         />
         }
         <p id="buffer-help" class="text-muted-foreground text-sm">
@@ -55,32 +55,11 @@
             Enter a percentage from 0 to 10 with up to two decimal places.
           </p>
         }
-        <button
-          hlmBtn
-          type="button"
-          class="w-full cursor-pointer hover:bg-primary/80"
-          [disabled]="buffer.invalid || loading() || loadFailed() || saving() || saved()"
-          [attr.aria-busy]="saving()"
-          aria-label="Save execution buffer"
-          (click)="saveBuffer()"
-        >
-          <span class="buffer-save-content" aria-live="polite" aria-atomic="true">
-            @if (saving()) {
-              <span class="buffer-save-spinner" aria-hidden="true"></span>
-              <span>Saving…</span>
-            } @else if (saved()) {
-              <span class="buffer-save-success">Saved successfully</span>
-            } @else {
-              <span>Save execution buffer</span>
-            }
-          </span>
-        </button>
         @if (loadFailed()) {
           <button type="button" class="text-sm underline" (click)="loadBuffer()">
             Retry loading settings
           </button>
         }
-        <p id="buffer-feedback" role="status" class="text-sm">{{ settingsMessage() }}</p>
       </div>
       <div hlmSeparator></div>
       <div>
@@ -106,9 +85,31 @@
         </hlm-native-select>
         <p class="text-muted-foreground text-sm">
           You will be signed out automatically when there is no mouse, keyboard or touch input for
-          this long. Changes apply immediately.
+          this long. Applied when you save.
         </p>
       </div>
     </div>
+    <footer class="border-border flex flex-col gap-2 border-t px-5 py-3">
+      <button
+        hlmBtn
+        type="button"
+        class="w-full cursor-pointer hover:bg-primary/80"
+        [disabled]="cannotSave()"
+        [attr.aria-busy]="saving()"
+        (click)="saveAll()"
+      >
+        <span class="save-all-content" aria-live="polite" aria-atomic="true">
+          @if (saving()) {
+            <span class="save-all-spinner" aria-hidden="true"></span>
+            <span>Saving…</span>
+          } @else if (saved()) {
+            <span class="save-all-success">Saved successfully</span>
+          } @else {
+            <span>Save all</span>
+          }
+        </span>
+      </button>
+      <p id="settings-feedback" role="status" class="text-sm">{{ settingsMessage() }}</p>
+    </footer>
   </section>
 </div>
