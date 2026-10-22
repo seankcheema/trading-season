@@ -235,6 +235,28 @@ class RegistrationControllerIntegrationTest {
     }
 
     @Test
+    void registerRejectsSomeoneUnder21AndAcceptsSomeoneTurning21Today() throws Exception {
+        String email = "gina@example.com";
+        RegistrationRequest nearlyTwentyOne = withDateOfBirth(email, LocalDate.now().minusYears(21).plusDays(1));
+
+        String error = register(tokenFor(UUID.randomUUID(), email), nearlyTwentyOne)
+            .andExpect(status().isBadRequest())
+            .andReturn().getResponse().getContentAsString();
+
+        assertTrue(error.contains("dateOfBirth"), () -> "expected a dateOfBirth error in " + error);
+        assertEquals(0, userRepository.count());
+
+        register(tokenFor(UUID.randomUUID(), email), withDateOfBirth(email, LocalDate.now().minusYears(21)))
+            .andExpect(status().isCreated());
+    }
+
+    private static RegistrationRequest withDateOfBirth(String email, LocalDate dateOfBirth) {
+        RegistrationRequest base = registration(email);
+        return new RegistrationRequest(base.email(), base.firstName(), base.middleName(), base.lastName(),
+            base.ssn(), base.address(), dateOfBirth, base.traderLevel(), base.availableFunds());
+    }
+
+    @Test
     void registerFailsWhenRequiredFieldsAreMissing() throws Exception {
         String email = "erin@example.com";
 

@@ -2084,7 +2084,8 @@ describe('DashboardComponent', () => {
       fixture.detectChanges();
 
       expect(termsDialog(fixture)).toBeNull();
-      expect(content(fixture).hasAttribute('inert')).toBe(false);
+      // The first-run tour follows, and the dashboard stays inert behind it.
+      expect(element(fixture).querySelector('app-dashboard-tour')).not.toBeNull();
     });
 
     it('signs the user out when they decline', () => {
@@ -2159,6 +2160,33 @@ describe('DashboardComponent', () => {
       flushAccounts(fixture, ACCOUNTS, { profile: NOT_ACCEPTED });
 
       expect(tour(fixture)).toBeNull();
+    });
+
+    it('starts as soon as the terms are accepted, even in a browser that finished it before', () => {
+      localStorage.setItem('ts.tour.done', '1');
+      localStorage.setItem('ts.tour.step', '4');
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      const http = flushAccounts(fixture, ACCOUNTS, { profile: NOT_ACCEPTED });
+      expect(tour(fixture)).toBeNull();
+
+      const signature = (fixture.nativeElement as HTMLElement).querySelector(
+        '#termsSignature',
+      ) as HTMLInputElement;
+      signature.value = 'Ada Lovelace';
+      signature.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      (
+        (fixture.nativeElement as HTMLElement).querySelector(
+          'app-terms-dialog button[type="submit"]',
+        ) as HTMLButtonElement
+      ).click();
+      http
+        .expectOne('/api/users/me/terms-acceptance')
+        .flush({ ...PROFILE, availableFunds: CASH, termsAccepted: true });
+      fixture.detectChanges();
+
+      expect(tour(fixture)?.textContent).toContain('Welcome to TradingSeason');
     });
 
     it('does not open by itself once finished or skipped', () => {
