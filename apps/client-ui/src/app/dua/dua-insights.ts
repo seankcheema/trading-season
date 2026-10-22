@@ -635,7 +635,7 @@ export function outlookCard(
     period: 'Next 5 trading days',
     text: `${symbol}: ${bigger ? 'bigger' : 'smaller'} price swings likely over the next 5 trading days, up or down.`,
     takeaway: `${symbol}: ${bigger ? 'bigger' : 'smaller'} price swings likely. Up or down: how far the price may move, not which way.`,
-    purpose: `${reading.source === 'model' ? 'The Trading Season model' : 'The recent pattern'} leads on ${symbol} because its record there is the better one: right ${days ? Math.round((hits / days) * 100) : 0}% of the time over ${days} closed weeks.`,
+    purpose: `${reading.source === 'model' ? 'The Trading Season model' : 'The recent pattern'} leads on ${symbol} because its recent record there is the better one: right ${days ? Math.round((hits / days) * 100) : 0}% of the last ${days} closed weeks.`,
     metrics: [
       {
         label: 'Model estimate',
@@ -643,7 +643,12 @@ export function outlookCard(
         tone: bigger ? 'loss' : 'gain',
         primary: true,
       },
-      { label: 'Accuracy so far', value: days ? `${Math.round((hits / days) * 100)}% (${hits} of ${days} weeks)` : 'No closed weeks yet' },
+      {
+        label: days ? `Last ${days} weeks` : 'Record',
+        value: days
+          ? `${Math.round((hits / days) * 100)}% (${hits} of ${days})`
+          : 'No closed weeks yet',
+      },
       { label: 'Usual daily move', value: pct(reading.usualVolatility) },
       { label: 'Last 5 days', value: pct(reading.recentVolatility) },
     ],

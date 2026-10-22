@@ -42,6 +42,19 @@ export interface PlatformSignals {
 
 /** Closed windows the model needs before its record can outrank the rule's. */
 export const MIN_RECORD_DAYS = 20;
+/**
+ * Closed reads the record compares: the most recent ones, not every read since the
+ * file began, so the source that has read this stock's recent regime better leads.
+ */
+export const RECORD_WINDOW = 20;
+
+/** The model's and the rule's hits over the last RECORD_WINDOW closed reads. */
+export interface TrackRecord {
+  modelHits: number;
+  modelDays: number;
+  ruleHits: number;
+  ruleDays: number;
+}
 /** How many past reads the card lists as evidence. */
 export const RECENT_READS = 6;
 
@@ -69,6 +82,7 @@ export type Reading =
       probability: number;
       usualVolatility: number;
       recentVolatility: number;
+      /** Each source's hits over the last RECORD_WINDOW reads closed by the simulated date. */
       modelHits: number;
       modelDays: number;
       ruleHits: number;
@@ -97,17 +111,19 @@ export function readingFor(
     return { kind: 'unknown-symbol' };
   }
   const today = tradingDate(marketTimestamp);
-  let latest: SignalDay | undefined;
-  for (const day of entry.days) {
+  let latestIndex = -1;
+  for (const [index, day] of entry.days.entries()) {
     if (day.date >= today) {
       break;
     }
-    latest = day;
+    latestIndex = index;
   }
-  if (!latest) {
+  if (latestIndex < 0) {
     return { kind: 'too-early', firstDay: entry.firstDay };
   }
-  const shown = cardCall(latest);
+  const latest = entry.days[latestIndex];
+  const record = recordAt(entry.days, latestIndex, signals.horizonDays);
+  const shown = cardCall(entry.days, latestIndex, signals.horizonDays);
   return {
     kind: 'ready',
     asOf: latest.date,
@@ -115,14 +131,11 @@ export function readingFor(
     source: shown.source,
     modelCall: latest.call,
     ruleCall: shown.ruleCall,
-    recent: recentReads(entry.days, entry.days.indexOf(latest), signals.horizonDays),
+    recent: recentReads(entry.days, latestIndex, signals.horizonDays),
     probability: latest.probability,
     usualVolatility: latest.usualVolatility,
     recentVolatility: latest.recentVolatility,
-    modelHits: latest.modelHits,
-    modelDays: latest.modelDays,
-    ruleHits: latest.ruleHits,
-    ruleDays: latest.ruleDays,
+    ...record,
   };
 }
 
@@ -131,11 +144,48 @@ export function recordLabel(hits: number, days: number): string | null {
   return days ? `${hits} of ${days}` : null;
 }
 
-/** The call the card shows for a day's record: the model's where its record has earned it, else the rule's. */
-function cardCall(day: SignalDay): { call: Call; source: 'model' | 'rule'; ruleCall: Call } {
-  const ruleCall: Call = day.recentVolatility > day.usualVolatility ? 'stormier' : 'calmer';
+/** The rule's call on a day: the next days like the last ones. */
+function ruleCallFor(day: SignalDay): Call {
+  return day.recentVolatility > day.usualVolatility ? 'stormier' : 'calmer';
+}
+
+/**
+ * Each source's record over the last RECORD_WINDOW reads whose window had closed by
+ * the day at `index`: a read made at j is closed once j + horizon <= index, the same
+ * rule the file's running counts use, so nothing after that day is counted. The
+ * file's own counts run from its first day; this window follows the recent regime.
+ */
+export function recordAt(days: SignalDay[], index: number, horizon: number): TrackRecord {
+  const record: TrackRecord = { modelHits: 0, modelDays: 0, ruleHits: 0, ruleDays: 0 };
+  for (let j = index - horizon; j >= 0 && record.modelDays < RECORD_WINDOW; j--) {
+    const day = days[j];
+    if (!day.outcome) {
+      continue;
+    }
+    record.modelDays++;
+    record.ruleDays++;
+    if (day.call === day.outcome) {
+      record.modelHits++;
+    }
+    if (ruleCallFor(day) === day.outcome) {
+      record.ruleHits++;
+    }
+  }
+  return record;
+}
+
+/** The call the card shows for a day: the model's where its recent record has earned it, else the rule's. */
+function cardCall(
+  days: SignalDay[],
+  index: number,
+  horizon: number,
+): { call: Call; source: 'model' | 'rule'; ruleCall: Call } {
+  const day = days[index];
+  const ruleCall = ruleCallFor(day);
+  const record = recordAt(days, index, horizon);
   const modelAhead =
-    day.modelDays >= MIN_RECORD_DAYS && day.modelHits / day.modelDays > day.ruleHits / day.ruleDays;
+    record.modelDays >= MIN_RECORD_DAYS &&
+    record.modelHits / record.modelDays > record.ruleHits / record.ruleDays;
   return {
     call: modelAhead ? day.call : ruleCall,
     source: modelAhead ? 'model' : 'rule',
@@ -155,7 +205,7 @@ export function recentReads(days: SignalDay[], latestIndex: number, horizon: num
     if (!day.outcome) {
       continue;
     }
-    const shown = cardCall(day);
+    const shown = cardCall(days, j, horizon);
     reads.push({
       date: day.date,
       call: shown.call,

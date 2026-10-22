@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { DatePipe, PercentPipe } from '@angular/common';
 import { PlatformSignalsService } from './platform-signals.service';
-import { Call, MIN_RECORD_DAYS, Reading, readingFor } from './platform-signals';
+import { Call, MIN_RECORD_DAYS, RECORD_WINDOW, Reading, readingFor } from './platform-signals';
 
 /**
  * The week-ahead volatility card for one instrument, built to be read in one
@@ -82,8 +82,8 @@ import { Call, MIN_RECORD_DAYS, Reading, readingFor } from './platform-signals';
                   }
                   <span class="glance-accuracy" data-testid="outlook-basis">
                     @if (leadDays(r)) {
-                      Right {{ leadAccuracy(r) | percent: '1.0-0' }} of the time on {{ symbol() }}
-                      so far
+                      Right {{ leadAccuracy(r) | percent: '1.0-0' }} of the last
+                      {{ leadDays(r) }} weeks on {{ symbol() }}
                     } @else {
                       First reads on {{ symbol() }}; no record yet
                     }
@@ -156,11 +156,11 @@ import { Call, MIN_RECORD_DAYS, Reading, readingFor } from './platform-signals';
                       </dd>
                       <dd class="tile-note">
                         @if (r.modelDays >= minRecord) {
-                          Accuracy so far
+                          Last {{ r.modelDays }} weeks
                           {{ accuracy(r.modelHits, r.modelDays) | percent: '1.0-0' }} ({{
                             r.modelHits
                           }}
-                          of {{ r.modelDays }} weeks)
+                          of {{ r.modelDays }})
                         } @else {
                           Still learning: {{ r.modelDays }} of {{ minRecord }} weeks of record
                         }
@@ -185,17 +185,17 @@ import { Call, MIN_RECORD_DAYS, Reading, readingFor } from './platform-signals';
                         {{ label(r.ruleCall) }}
                       </dd>
                       <dd class="tile-note">
-                        Accuracy so far
+                        Last {{ r.ruleDays }} weeks
                         {{ accuracy(r.ruleHits, r.ruleDays) | percent: '1.0-0' }} ({{
                           r.ruleHits
                         }}
-                        of {{ r.ruleDays }} weeks)
+                        of {{ r.ruleDays }})
                       </dd>
                     </div>
                   </dl>
                   <p class="text-muted-foreground mt-2 text-xs">
-                    Whichever has the better record on {{ symbol() }} leads. As of the
-                    {{ r.asOf }} close.
+                    Whichever has the better record on {{ symbol() }} over the last
+                    {{ recordWindow }} closed weeks leads. As of the {{ r.asOf }} close.
                   </p>
 
                   <section class="mt-3" aria-label="Recent reads" data-testid="outlook-recent">
@@ -442,6 +442,7 @@ export class RiskOutlookComponent {
   readonly marketTimestamp = input.required<string>();
   protected readonly store = inject(PlatformSignalsService);
   protected readonly minRecord = MIN_RECORD_DAYS;
+  protected readonly recordWindow = RECORD_WINDOW;
   protected readonly detailsOpen = signal(false);
   protected readonly horizon = computed(() => this.store.signals()?.horizonDays ?? 5);
   protected readonly reading = computed<Reading | null>(() => {

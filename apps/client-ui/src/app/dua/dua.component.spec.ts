@@ -26,17 +26,18 @@ describe('Dua panel', () => {
     marketCalendar: signal({ timezone: 'America/Chicago' }),
   };
   const market = { candles: vi.fn() };
-  // Readings for AAPL on the trading days before the clock, as the signal file carries them.
-  const outlookDays = Array.from({ length: 12 }, (_, i) => ({
-    date: `2025-12-${String(i + 10).padStart(2, '0')}`,
+  // Thirty readings for AAPL before the clock, as the signal file carries them: over any twenty
+  // in a row the model is right 15 times and the rule 12 (outcomes all stormier).
+  const outlookDays = Array.from({ length: 30 }, (_, i) => ({
+    date: `2025-12-${String(i + 1).padStart(2, '0')}`,
     probability: 0.62,
-    call: 'stormier',
+    call: i % 20 < 15 ? 'stormier' : 'calmer',
     usualVolatility: 0.011,
-    recentVolatility: 0.009,
-    modelHits: 15,
-    modelDays: 20,
-    ruleHits: 12,
-    ruleDays: 20,
+    recentVolatility: i % 20 < 12 ? 0.02 : 0.009,
+    modelHits: 0,
+    modelDays: 0,
+    ruleHits: 0,
+    ruleDays: 0,
     outcome: 'stormier',
   }));
   const signals = {
@@ -47,7 +48,7 @@ describe('Dua panel', () => {
       usualWindowDays: 40,
       model: 'm',
       rule: 'r',
-      symbols: { AAPL: { firstDay: '2025-12-10', lastDay: '2025-12-21', days: outlookDays } },
+      symbols: { AAPL: { firstDay: '2025-12-01', lastDay: '2025-12-30', days: outlookDays } },
     }),
     status: signal('ready'),
     load: vi.fn(() => of(null)),
@@ -117,9 +118,9 @@ describe('Dua panel', () => {
   it('calculates selected insights and clears results on account changes', () => {
     const { fixture, click, text } = setup();
     click('Daily review');
-    expect((fixture.nativeElement.querySelector('.takeaway').textContent).replace(/\s+/g, ' ')).toContain(
-      'market closed on a high note',
-    );
+    expect(
+      fixture.nativeElement.querySelector('.takeaway').textContent.replace(/\s+/g, ' '),
+    ).toContain('market closed on a high note');
     expect(fixture.nativeElement.querySelector('.insight-card strong')).not.toBeNull();
     expect(fixture.nativeElement.querySelectorAll('.insight-card:not(.inactive)').length).toBe(1);
     expect(fixture.nativeElement.querySelector('.distribution')).toBeNull();
@@ -331,11 +332,15 @@ describe('Dua panel', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.launcher-art.face-visible')).toBeNull();
     click('Dua insights');
-    expect(fixture.nativeElement.querySelector('h2').textContent.trim().replace(/\s+/g, ' ')).toBe('Dua - Free Plan');
+    expect(fixture.nativeElement.querySelector('h2').textContent.trim().replace(/\s+/g, ' ')).toBe(
+      'Dua - Free Plan',
+    );
     click('Daily review');
     expect(fixture.nativeElement.querySelector('h2').textContent.trim()).toBe('Daily review');
     click('Back to choices');
-    expect(fixture.nativeElement.querySelector('h2').textContent.trim().replace(/\s+/g, ' ')).toBe('Dua - Free Plan');
+    expect(fixture.nativeElement.querySelector('h2').textContent.trim().replace(/\s+/g, ' ')).toBe(
+      'Dua - Free Plan',
+    );
     fixture.destroy();
   });
 
@@ -344,11 +349,13 @@ describe('Dua panel', () => {
     click('Dua insights');
     const choice = fixture.nativeElement.querySelector('[data-testid=dua-outlook-choice]');
     expect(choice.textContent.replace(/\s+/g, ' ')).toContain('Volatility outlook LIVE');
-    expect(choice.textContent).toContain('AAPL · bigger swings likely · right 75% so far');
+    expect(choice.textContent).toContain(
+      'AAPL · bigger swings likely · right 75% of the last 20 weeks',
+    );
     click('Volatility outlook');
     expect(fixture.nativeElement.textContent).toContain('bigger price swings likely');
     expect(fixture.nativeElement.textContent).toContain('62% chance of bigger swings');
-    expect(fixture.nativeElement.textContent).toContain('75% (15 of 20 weeks)');
+    expect(fixture.nativeElement.textContent).toContain('75% (15 of 20)');
     const open = fixture.nativeElement.querySelector('[data-testid=dua-outlook-open]');
     expect(open.getAttribute('href')).toBe('/dashboard/markets/aapl?tab=outlook');
   });

@@ -110,7 +110,7 @@ export class DuaComponent {
     const days = reading.source === 'model' ? reading.modelDays : reading.ruleDays;
     const swings = reading.call === 'stormier' ? 'bigger' : 'smaller';
     return days
-      ? `${symbol} · ${swings} swings likely · right ${Math.round((hits / days) * 100)}% so far`
+      ? `${symbol} · ${swings} swings likely · right ${Math.round((hits / days) * 100)}% of the last ${days} weeks`
       : `${symbol} · ${swings} swings likely`;
   });
   private readonly loadOutlook = effect(() => {
