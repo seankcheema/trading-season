@@ -2176,7 +2176,7 @@ describe('DashboardComponent', () => {
 
       flushAccounts(fixture);
 
-      expect(tour(fixture)?.textContent).toContain('Welcome to TradingSeason');
+      expect(tour(fixture)?.textContent).toContain("Hi, I'm Dua");
       expect(content(fixture).hasAttribute('inert')).toBe(true);
     });
 
@@ -2212,7 +2212,7 @@ describe('DashboardComponent', () => {
         .flush({ ...PROFILE, availableFunds: CASH, termsAccepted: true });
       fixture.detectChanges();
 
-      expect(tour(fixture)?.textContent).toContain('Welcome to TradingSeason');
+      expect(tour(fixture)?.textContent).toContain("Hi, I'm Dua");
     });
 
     it('does not open by itself once finished or skipped', () => {
@@ -2256,7 +2256,7 @@ describe('DashboardComponent', () => {
       fixture.detectChanges();
       await fixture.whenStable();
 
-      expect(tour(fixture)?.textContent).toContain('Meet Dua');
+      expect(tour(fixture)?.textContent).toContain("You'll find me here");
       expect(page.querySelector('app-order-submission')).toBeNull();
     });
 
@@ -2326,7 +2326,7 @@ describe('DashboardComponent', () => {
       await fixture.whenStable();
 
       expect(dropdownDetails(fixture, 'profile-dropdown').open).toBe(false);
-      expect(tour(fixture)?.textContent).toContain('Welcome to TradingSeason');
+      expect(tour(fixture)?.textContent).toContain("Hi, I'm Dua");
 
       tourButton(fixture, 'Skip').click();
       fixture.detectChanges();

@@ -104,6 +104,7 @@ describe('Dua performance', () => {
     ).toBeNull();
   });
   it('ignores future fills and another account', () => {
+    // The only JPM bought by this account fills tomorrow, so there is nothing to report yet.
     const future = fill('BUY', 130, 2, '2026-10-23T15:00:00Z');
     const other = { ...fill('BUY', 110, 2), accountId: 2 };
     expect(
@@ -115,8 +116,25 @@ describe('Dua performance', () => {
         at,
         '2026-10-22',
         candles,
+      ),
+    ).toEqual([]);
+  });
+  it('counts an evening fill on its market day, not its UTC day', () => {
+    // 8 pm in Chicago on the 21st, already the 22nd in UTC: yesterday's trade, not today's.
+    const evening = fill('BUY', 100, 2, '2026-10-22T01:00:00Z');
+    expect(
+      performance(
+        [{ symbol: 'JPM', quantity: 2, averageCost: 110 }],
+        [evening],
+        catalogue,
+        1,
+        at,
+        '2026-10-22',
+        candles,
+        [],
+        true,
       )[0].gain,
-    ).toBe(0);
+    ).toBe(20);
   });
   it('shows partial results explicitly', () => {
     const card = dailyPerformanceCard([{ symbol: 'JPM', gain: null }]);

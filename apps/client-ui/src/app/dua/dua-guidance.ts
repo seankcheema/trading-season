@@ -14,8 +14,13 @@ export const dollars = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
 export const signedDollars = (n: number) => `${n > 0 ? '+' : ''}${dollars(n)}`;
 
+// The simulated market's calendar, so an evening fill or clock lands on that day's session.
+const MARKET_TIMEZONE = 'America/Chicago';
+const marketDay = (at: string | number) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: MARKET_TIMEZONE }).format(new Date(at));
+
 export function periodDate(at: string, period: 'daily' | 'week' | 'month'): string {
-  const day = tradingDate(at);
+  const day = marketDay(at);
   if (period === 'daily') return day;
   if (period === 'month') return `${day.slice(0, 7)}-01`;
   const date = new Date(`${day}T12:00:00Z`);
@@ -47,9 +52,7 @@ export function performance(
     const ref = catalogue.find((i) => i.instrumentId === o.instrumentId);
     return ref?.simulatedStockSymbol ?? ref?.ticker;
   };
-  const periodTrades = trades.filter(
-    (o) => tradingDate(new Date(executionTime(o)).toISOString()) >= startDate,
-  );
+  const periodTrades = trades.filter((o) => marketDay(executionTime(o)) >= startDate);
   const ending = holdingsAt(current, orders, catalogue, accountId, end);
   const starting = new Map(ending.map((h) => [h.symbol, h.quantity]));
   for (const order of periodTrades) {
@@ -104,7 +107,7 @@ export function activity(
 ): { label: string; ratio?: number } {
   const volumes = new Map<string, number>();
   const marketTime = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'America/Chicago',
+    timeZone: MARKET_TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
     hourCycle: 'h23',
