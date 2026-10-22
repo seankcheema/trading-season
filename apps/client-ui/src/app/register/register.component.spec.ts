@@ -4,7 +4,7 @@ import { Router, provideRouter } from '@angular/router';
 import { Subject, of, throwError } from 'rxjs';
 import { AUTH_ERROR_MESSAGES, RegistrationStepError } from '../core/auth/auth-error';
 import { AuthService } from '../core/auth/auth.service';
-import { RegisterComponent } from './register.component';
+import { RegisterComponent, minimumAgeValidator } from './register.component';
 
 const VALID_FORM = {
   firstName: 'Jane',
@@ -68,6 +68,52 @@ describe('RegisterComponent', () => {
     const { confirmPassword: _confirmPassword, ...expected } = VALID_FORM;
     expect(authService.register).toHaveBeenCalledWith(expected);
     expect(navigate).toHaveBeenCalledWith('/dashboard');
+  });
+
+  describe('age requirement', () => {
+    function yearsAgo(years: number, extraDays = 0): string {
+      const date = new Date();
+      date.setFullYear(date.getFullYear() - years);
+      date.setDate(date.getDate() + extraDays);
+      return [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, '0'),
+        String(date.getDate()).padStart(2, '0'),
+      ].join('-');
+    }
+
+    it('should block and explain a sign-up from someone under 21', () => {
+      const fixture = TestBed.createComponent(RegisterComponent);
+      fixture.componentInstance['form'].setValue({
+        ...VALID_FORM,
+        dateOfBirth: yearsAgo(21, 1),
+      });
+      fixture.componentInstance['onSubmit']();
+      fixture.detectChanges();
+
+      expect(authService.register).not.toHaveBeenCalled();
+      expect(fixture.nativeElement.textContent).toContain('You must be at least 21 to sign up.');
+    });
+
+    it('should allow someone who turns 21 today', () => {
+      authService.register.mockReturnValue(of(undefined));
+      vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+      const fixture = TestBed.createComponent(RegisterComponent);
+      fixture.componentInstance['form'].setValue({ ...VALID_FORM, dateOfBirth: yearsAgo(21) });
+      fixture.componentInstance['onSubmit']();
+
+      expect(authService.register).toHaveBeenCalledTimes(1);
+    });
+
+    it('should leave an empty date to the required check', () => {
+      expect(minimumAgeValidator(21)({ value: '' } as never)).toBeNull();
+    });
+
+    it('should compare against the given day', () => {
+      const validator = minimumAgeValidator(21, new Date(2026, 5, 15));
+      expect(validator({ value: '2005-06-15' } as never)).toBeNull();
+      expect(validator({ value: '2005-06-16' } as never)).toEqual({ underage: true });
+    });
   });
 
   it('should mask the SSN until the user asks to see it', () => {

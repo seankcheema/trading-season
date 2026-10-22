@@ -126,7 +126,7 @@ sequenceDiagram
     Auth-->>UI: New access token and rotated refresh token
 ```
 
-Registration is two calls: the UI creates credentials with `POST /auth/register` on the Auth Service, then posts the profile with the returned token to `POST /api/registration` on the Holdings and Trade Service, which also opens the default account. Order and Sell exposes no registration endpoint.
+Registration is two calls: the UI creates credentials with `POST /auth/register` on the Auth Service, then posts the profile with the returned token to `POST /api/registration` on the Holdings and Trade Service, which also opens the default account. Registrants must be at least 21: the form refuses a younger date of birth before it creates any credentials, and Holdings and Trade rejects it again with a `400`. Order and Sell exposes no registration endpoint.
 
 ## Order flow
 

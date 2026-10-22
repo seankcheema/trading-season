@@ -40,6 +40,7 @@ const SPECIAL_CHARACTER_PATTERN = /[^A-Za-z0-9]/;
 const NUMBER_PATTERN = /\d/;
 const SSN_PATTERN = /^\d{3}-\d{2}-\d{4}$/;
 const MINIMUM_AVAILABLE_FUNDS = 5000;
+const MINIMUM_AGE = 21;
 
 // Cross-field validator applied to the whole form since confirmPassword can't validate against a sibling control on its own.
 function passwordsMatchValidator(): ValidatorFn {
@@ -47,6 +48,24 @@ function passwordsMatchValidator(): ValidatorFn {
     const password = control.get('password')?.value;
     const confirmPassword = control.get('confirmPassword')?.value;
     return password === confirmPassword ? null : { passwordMismatch: true };
+  };
+}
+
+// Rejects a date of birth (yyyy-mm-dd, as a date input gives it) that is less than MINIMUM_AGE years
+// ago. Compared as text so the birthday counts from the first moment of that day in any time zone.
+// An empty value is left to Validators.required.
+export function minimumAgeValidator(minimumAge: number, today = new Date()): ValidatorFn {
+  return (control: AbstractControl): ValidationErrors | null => {
+    const value = control.value;
+    if (!value) {
+      return null;
+    }
+    const cutoff = [
+      today.getFullYear() - minimumAge,
+      String(today.getMonth() + 1).padStart(2, '0'),
+      String(today.getDate()).padStart(2, '0'),
+    ].join('-');
+    return value <= cutoff ? null : { underage: true };
   };
 }
 
@@ -97,6 +116,7 @@ export class RegisterComponent {
 
   protected readonly traderLevels = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED'] as const;
   protected readonly minimumAvailableFunds = MINIMUM_AVAILABLE_FUNDS;
+  protected readonly minimumAge = MINIMUM_AGE;
 
   private readonly _fb = new FormBuilder();
 
@@ -106,7 +126,7 @@ export class RegisterComponent {
       middleName: [''],
       lastName: ['', [Validators.required]],
       email: ['', [Validators.required, Validators.email]],
-      dateOfBirth: ['', [Validators.required]],
+      dateOfBirth: ['', [Validators.required, minimumAgeValidator(MINIMUM_AGE)]],
       ssn: ['', [Validators.required, Validators.pattern(SSN_PATTERN)]],
       address: ['', [Validators.required]],
       traderLevel: ['BEGINNER', [Validators.required]],
