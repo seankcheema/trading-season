@@ -583,6 +583,7 @@
     [attr.inert]="tourOpen() ? '' : null"
     (closed)="closeOrder()"
     (submitted)="onOrderSubmitted($event)"
+    (symbolChange)="duaSymbol.set($event)"
   />
 }
 
@@ -636,4 +637,10 @@
 }
 
 <app-order-editor [instruments]="instruments()" [sessionId]="marketSessionId()" [marketTimestamp]="currentMarketTimestamp()" />
-<app-dua [holdings]="simulationHoldings().get(selectedAccountId() ?? -1) ?? []" [quotes]="instruments()" [connected]="duaConnected()" />
+<app-dua
+  [holdings]="simulationHoldings().get(selectedAccountId() ?? -1) ?? []"
+  [quotes]="instruments()"
+  [symbol]="duaSymbol()"
+  [raised]="!!orderInstrument()"
+  [connected]="duaConnected()"
+/>

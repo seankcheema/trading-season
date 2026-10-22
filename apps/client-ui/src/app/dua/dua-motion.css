@@ -1,0 +1,334 @@
+/* Motion. Entrances key off the open panel and the active page, so they replay whenever Dua is
+   reopened or a page is shown. They scale down or come from the left, never down or to the
+   right, so a moving element cannot briefly make a scroll container scrollable. */
+@keyframes dua-reveal {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+    transform: scale(0.96);
+  }
+}
+@keyframes dua-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+}
+@keyframes dua-bubble {
+  from {
+    opacity: 0;
+    scale: 0.85;
+  }
+}
+@keyframes dua-pop {
+  0% {
+    opacity: 0;
+    scale: 0.5;
+  }
+  60% {
+    opacity: 1;
+    scale: 1.08;
+  }
+  100% {
+    scale: 1;
+  }
+}
+@keyframes dua-nudge-up {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  40% {
+    translate: 2px -3px;
+  }
+}
+@keyframes dua-nudge-down {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  40% {
+    translate: 2px 3px;
+  }
+}
+@keyframes dua-grow {
+  from {
+    scale: 0 1;
+  }
+}
+@keyframes dua-draw {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+@keyframes dua-marker-slide {
+  from {
+    left: 0%;
+  }
+}
+@keyframes dua-ping {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--dua-heading) 45%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+@keyframes dua-wiggle {
+  0%,
+  100% {
+    rotate: 0deg;
+  }
+  25% {
+    rotate: -12deg;
+  }
+  50% {
+    rotate: 9deg;
+  }
+  75% {
+    rotate: -4deg;
+  }
+}
+@keyframes dua-badge {
+  0%,
+  12%,
+  100% {
+    scale: 1;
+  }
+  6% {
+    scale: 1.3;
+  }
+}
+
+/* Dua springs out of the launcher, overshooting slightly before it settles. */
+.dua-panel {
+  transform: none;
+  transition:
+    opacity 200ms ease-out,
+    transform 380ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    visibility 200ms;
+}
+.dua-panel.minimized {
+  transform: translateY(12px) scale(0.9);
+  transition-duration: 140ms;
+  transition-timing-function: ease-in;
+}
+
+/* The active page's bar fills from the left like a progress bar. */
+.card-indicator::after,
+.card-indicator.active::after {
+  opacity: 1;
+  background:
+    linear-gradient(var(--foreground), var(--foreground)) left / 0% 100% no-repeat,
+    color-mix(in srgb, var(--muted-foreground) 30%, transparent);
+  transition:
+    background-size 420ms cubic-bezier(0.4, 0, 0.2, 1),
+    scale 150ms ease-out;
+}
+.card-indicator.active::after {
+  background-size: 100% 100%;
+}
+.card-indicator:not(.active):hover::after {
+  scale: 1 1.7;
+}
+
+/* Pages slide in from the side being navigated toward: later pages wait to the right, earlier
+   ones to the left. Clipping keeps the parked pages from widening the scrollable body. */
+.insights {
+  overflow: clip;
+}
+.insights .insight-card {
+  transform: none;
+  transition:
+    opacity 320ms ease-out,
+    transform 520ms cubic-bezier(0.34, 1.3, 0.64, 1),
+    visibility 0s;
+}
+.insights .insight-card.inactive {
+  transform: translateX(48px) scale(0.94);
+  transition:
+    opacity 240ms ease-in,
+    transform 300ms cubic-bezier(0.4, 0, 1, 1),
+    visibility 0s 300ms;
+}
+.insights .insight-card.inactive.before {
+  transform: translateX(-48px) scale(0.94);
+}
+
+/* Menu: the greeting bubble pops, then the choices slide in one after another. */
+.dua-panel:not(.minimized) .greeting {
+  transform-origin: left bottom;
+  animation: dua-bubble 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.dua-panel:not(.minimized) .choices button {
+  animation: dua-slide-in 380ms cubic-bezier(0.2, 0.8, 0.2, 1) 80ms both;
+}
+.dua-panel:not(.minimized) .choices button.unread {
+  animation:
+    dua-slide-in 380ms cubic-bezier(0.2, 0.8, 0.2, 1) 80ms both,
+    dua-unread 3s linear infinite;
+}
+.dua-panel:not(.minimized) .choices button:nth-child(2) {
+  animation-delay: 150ms;
+}
+.dua-panel:not(.minimized) .choices button:nth-child(3) {
+  animation-delay: 220ms;
+}
+.choices button {
+  transition:
+    border-color 150ms,
+    background-color 150ms,
+    scale 120ms ease-out;
+}
+.choices button:active {
+  scale: 0.98;
+}
+.choices button:hover .choice-icon {
+  animation: dua-wiggle 500ms ease-in-out;
+}
+.choice-chevron {
+  transition: translate 200ms ease-out;
+}
+.choices button:hover .choice-chevron {
+  translate: 3px 0;
+}
+.notification-count {
+  animation: dua-badge 3s ease-in-out 1s infinite;
+}
+
+/* Pages: content focuses in top to bottom, the headline amount pops, and charts draw in. */
+.insight-card .card-content {
+  overflow-x: hidden;
+}
+.dua-panel:not(.minimized)
+  :is(.insight-card:not(.inactive), .insight-explanation)
+  .card-content
+  > *,
+.dua-panel:not(.minimized) .insight-card:not(.inactive) .movers-group li {
+  transform-origin: left top;
+  animation: dua-reveal 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.dua-panel:not(.minimized)
+  :is(.insight-card:not(.inactive), .insight-explanation)
+  .card-content
+  > :nth-child(2),
+.dua-panel:not(.minimized) .insight-card:not(.inactive) .movers-group li:nth-child(2) {
+  animation-delay: 80ms;
+}
+.dua-panel:not(.minimized)
+  :is(.insight-card:not(.inactive), .insight-explanation)
+  .card-content
+  > :nth-child(3),
+.dua-panel:not(.minimized) .insight-card:not(.inactive) .movers-group li:nth-child(3) {
+  animation-delay: 160ms;
+}
+.dua-panel:not(.minimized)
+  :is(.insight-card:not(.inactive), .insight-explanation)
+  .card-content
+  > :nth-child(4) {
+  animation-delay: 240ms;
+}
+.dua-panel:not(.minimized)
+  :is(.insight-card:not(.inactive), .insight-explanation)
+  .card-content
+  > :nth-child(n + 5) {
+  animation-delay: 320ms;
+}
+.dua-panel:not(.minimized) .insight-card:not(.inactive) .primary-metric dd > * {
+  transform-origin: left center;
+  animation: dua-pop 600ms cubic-bezier(0.3, 0.7, 0.4, 1) 120ms both;
+}
+/* Direction arrows give a little hop the way the amount moved. */
+.dua-panel:not(.minimized) .insight-card:not(.inactive) :is(dd, .movers-value) ng-icon.gain {
+  animation: dua-nudge-up 700ms ease-in-out 700ms 2;
+}
+.dua-panel:not(.minimized) .insight-card:not(.inactive) :is(dd, .movers-value) ng-icon.loss {
+  animation: dua-nudge-down 700ms ease-in-out 700ms 2;
+}
+.dua-panel:not(.minimized) .insight-card:not(.inactive) .primary-metric dd > ng-icon.gain {
+  animation:
+    dua-pop 600ms cubic-bezier(0.3, 0.7, 0.4, 1) 120ms both,
+    dua-nudge-up 700ms ease-in-out 700ms 2;
+}
+.dua-panel:not(.minimized) .insight-card:not(.inactive) .primary-metric dd > ng-icon.loss {
+  animation:
+    dua-pop 600ms cubic-bezier(0.3, 0.7, 0.4, 1) 120ms both,
+    dua-nudge-down 700ms ease-in-out 700ms 2;
+}
+.dua-panel:not(.minimized) .insight-card:not(.inactive) .distribution span {
+  transform-origin: left;
+  animation: dua-grow 600ms cubic-bezier(0.2, 0.8, 0.2, 1) 200ms both;
+}
+.dua-panel:not(.minimized) .insight-card:not(.inactive) .distribution span:nth-child(2) {
+  animation-delay: 300ms;
+}
+.dua-panel:not(.minimized) .insight-card:not(.inactive) .distribution span:nth-child(n + 3) {
+  animation-delay: 400ms;
+}
+.dua-panel:not(.minimized) .insight-card:not(.inactive) .insight-sparkline polyline {
+  animation: dua-draw 900ms ease-out 200ms both;
+}
+/* Room for the 8px ping ring inside the clipped card content: the track's own 7px inset plus this
+   padding covers half the marker and the ring on every side. The slide eases out without
+   overshooting, so the marker never passes either end of the track. */
+.swing-meter {
+  padding: 0 8px 8px;
+}
+.dua-panel:not(.minimized) .insight-card:not(.inactive) .swing-meter-marker {
+  animation:
+    dua-marker-slide 900ms cubic-bezier(0.22, 1, 0.36, 1) 250ms both,
+    dua-ping 900ms ease-out 1100ms 2;
+}
+
+/* A counting amount keeps its real text, invisibly, for layout and assistive technology, and
+   draws the running figure over it with empty alternative text. */
+.overview-metrics strong.counting {
+  position: relative;
+  -webkit-text-fill-color: transparent;
+}
+.overview-metrics strong.counting::after {
+  content: attr(data-count);
+  content: attr(data-count) / '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  white-space: nowrap;
+  -webkit-text-fill-color: currentColor;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dua-panel
+    :is(
+      .greeting,
+      .choices button,
+      .choice-icon,
+      .card-content > *,
+      .movers-group li,
+      dd > *,
+      ng-icon,
+      .distribution span,
+      .insight-sparkline polyline,
+      .swing-meter-marker
+    ),
+  .notification-count {
+    animation: none !important;
+  }
+  .dua-panel .choices button.unread {
+    border-color: var(--dua-notification-blue);
+  }
+  .dua-panel,
+  .choice-chevron,
+  .choices button,
+  .card-indicator::after {
+    transition: none;
+  }
+  .insights .insight-card,
+  .insights .insight-card.inactive,
+  .insights .insight-card.inactive.before {
+    transition: none;
+    transform: none;
+  }
+}

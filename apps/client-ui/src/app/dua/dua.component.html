@@ -7,7 +7,7 @@
   role="region"
   aria-label="Dua insights"
   tabindex="-1"
-  (keydown.escape)="minimize()"
+  (keydown.escape)="$event.stopPropagation(); minimize()"
 >
   <header class="dua-header">
     @if (choice()) {
@@ -131,11 +131,12 @@
         </button>
       }
       <div class="insights" aria-live="polite">
-        @for (card of cards(); track $index) {
+        @for (card of cards(); track $index; let cardIndex = $index) {
           <article
             class="insight-card"
             [class.illustrative-card]="card.illustrative"
             [class.inactive]="activeCard() !== $index"
+            [class.before]="$index < activeCard()"
             [attr.aria-hidden]="activeCard() !== $index ? 'true' : null"
             [attr.inert]="activeCard() !== $index ? '' : null"
           >
@@ -211,6 +212,8 @@
                         <strong
                           [class.gain]="metric.tone === 'gain'"
                           [class.loss]="metric.tone === 'loss'"
+                          [duaCountUp]="metric.value"
+                          [duaCountUpActive]="activeCard() === cardIndex && !session.minimized()"
                           >{{ metric.value }}</strong
                         >
                         @if (metric.tone) {

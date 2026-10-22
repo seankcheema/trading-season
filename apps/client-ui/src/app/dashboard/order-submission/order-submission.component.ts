@@ -80,9 +80,15 @@ export class OrderSubmissionComponent {
   // A trade that reached a final status. Emitted for a rejection too: the dashboard's funds
   // and holdings are only stale after a fill, but either way the attempt is over.
   readonly submitted = output<OrderResult>();
+  // The symbol the in-dialog search switched to, so Dua can follow the open stock.
+  readonly symbolChange = output<string>();
 
   // Starts as the instrument picked on the dashboard; the in-dialog search can swap symbols.
   protected readonly activeSymbol = linkedSignal(() => this.instrument().symbol);
+  protected selectSymbol(symbol: string): void {
+    this.activeSymbol.set(symbol);
+    this.symbolChange.emit(symbol);
+  }
   protected readonly activeInstrument = computed(
     () => findInstrument(this.activeSymbol(), this.instruments()) ?? this.instrument(),
   );

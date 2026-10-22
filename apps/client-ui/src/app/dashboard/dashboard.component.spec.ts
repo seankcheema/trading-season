@@ -470,6 +470,30 @@ describe('DashboardComponent', () => {
     expect(fixture.nativeElement.querySelector('[role="dialog"]')).not.toBeNull();
   });
 
+  it('gives Dua the order dialog stock and lifts it over the dialog', async () => {
+    const fixture = createDashboard();
+    const component = fixture.componentInstance;
+    const dua = () => fixture.nativeElement.querySelector('app-dua') as HTMLElement;
+    fixture.detectChanges();
+    expect(component['duaSymbol']()).toBe('');
+    expect(dua().style.zIndex).toBe('');
+
+    component['openOrder'](MOCK_INSTRUMENTS[0]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['duaSymbol']()).toBe(MOCK_INSTRUMENTS[0].symbol);
+    expect(dua().style.zIndex).toBe('60');
+
+    const ticket = fixture.debugElement.query((el) => el.name === 'app-order-submission');
+    ticket.triggerEventHandler('symbolChange', MOCK_INSTRUMENTS[1].symbol);
+    expect(component['duaSymbol']()).toBe(MOCK_INSTRUMENTS[1].symbol);
+
+    component['closeOrder']();
+    fixture.detectChanges();
+    expect(component['duaSymbol']()).toBe('');
+    expect(dua().style.zIndex).toBe('');
+  });
+
   it('should keep the dialog open after an order so its outcome stays visible', () => {
     const fixture = createDashboard();
     fixture.detectChanges();

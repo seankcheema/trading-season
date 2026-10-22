@@ -28,6 +28,7 @@ import {
   computed,
   effect,
   inject,
+  linkedSignal,
   signal,
   untracked,
 } from '@angular/core';
@@ -333,6 +334,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const symbol = this.orderSymbol();
     return symbol ? (findInstrument(symbol, this.instruments()) ?? null) : null;
   });
+  // The stock Dua's This Stock choice reviews: the order dialog's, following its search.
+  protected readonly duaSymbol = linkedSignal(() => this.orderSymbol() ?? '');
 
   // The selected account's portfolio.
   protected readonly holdings = computed(() =>

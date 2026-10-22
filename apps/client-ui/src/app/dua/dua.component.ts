@@ -60,6 +60,7 @@ import {
   sparklinePoints,
   watchlistPulse,
 } from './dua-insights';
+import { DuaCountUpDirective } from './dua-count-up.directive';
 
 const CHOICE_TITLES: Record<DuaChoice, string> = {
   daily: 'Daily Review',
@@ -74,8 +75,10 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
   host: {
     '[hidden]': 'account.needsTermsAcceptance()',
     '(document:click)': 'closeOnOutsideClick($event)',
+    // Above dialog backdrops (z-50) while a dialog Dua belongs to is open, below the tour.
+    '[style.z-index]': 'raised() ? 60 : null',
   },
-  imports: [NgIcon, NgTemplateOutlet, RouterLink],
+  imports: [DuaCountUpDirective, NgIcon, NgTemplateOutlet, RouterLink],
   providers: [
     provideIcons({
       lucideArrowUpRight,
@@ -93,7 +96,7 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './dua.component.html',
-  styleUrl: './dua.component.css',
+  styleUrls: ['./dua.component.css', './dua-motion.css'],
 })
 export class DuaComponent {
   protected readonly responseParts = insightTextParts;
@@ -102,6 +105,8 @@ export class DuaComponent {
   readonly quotes = input<readonly Instrument[]>([]);
   readonly symbol = input('');
   readonly connected = input(false);
+  /** Lifts Dua over an open dialog it accompanies, such as the dashboard order ticket. */
+  readonly raised = input(false);
   protected readonly session = inject(DuaSession);
   protected readonly account = inject(AccountStore);
   protected readonly clock = inject(MarketClockService);
@@ -623,13 +628,12 @@ export class DuaComponent {
       if (!panel) {
         return;
       }
-      const interruptedHeight = this.resizeAnimation
-        ? panel.getBoundingClientRect().height
-        : undefined;
+      // Layout sizes, not bounding boxes, so the panel's scale-in on opening does not skew them.
+      const interruptedHeight = this.resizeAnimation ? panel.offsetHeight : undefined;
       this.resizeAnimation?.cancel();
       this.resizeAnimation = undefined;
       panel.classList.remove('resizing');
-      const bounds = panel.getBoundingClientRect();
+      const bounds = { height: panel.offsetHeight, width: panel.offsetWidth };
       const previous = this.panelSize;
       this.panelSize = minimized ? undefined : { height: bounds.height, width: bounds.width };
       const reducedMotion =

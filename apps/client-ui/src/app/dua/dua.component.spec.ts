@@ -191,6 +191,22 @@ describe('Dua panel', () => {
     );
     expect(fixture.nativeElement.querySelectorAll('.choices button.unread')).toHaveLength(3);
   });
+  it('rises over a dialog it accompanies and keeps Escape from also closing that dialog', () => {
+    const { fixture } = setup();
+    fixture.componentRef.setInput('symbol', 'AAPL');
+    fixture.componentRef.setInput('raised', true);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.style.zIndex).toBe('60');
+    const documentEscape = vi.fn();
+    document.addEventListener('keydown', documentEscape);
+    fixture.nativeElement
+      .querySelector('.dua-panel')
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.removeEventListener('keydown', documentEscape);
+    fixture.detectChanges();
+    expect(session.minimized()).toBe(true);
+    expect(documentEscape).not.toHaveBeenCalled();
+  });
   it('uses forecasts and provides inline details instead of demo figures', () => {
     const { fixture, click, text } = setup();
     fixture.componentRef.setInput('symbol', 'AAPL');
