@@ -16,7 +16,9 @@ export class DuaSession {
 
   // Initial hydration establishes a baseline; only changed insights are new information.
   hasNewInformation(context: string, fingerprint: string, open: boolean): boolean {
-    if (this.notificationAcknowledged()) return false;
+    if (this.notificationAcknowledged()) {
+      return false;
+    }
     if (open || !this.seenInsights.has(context)) {
       this.seenInsights.set(context, fingerprint);
       return false;
@@ -28,7 +30,9 @@ export class DuaSession {
     inject(Router)
       .events.pipe(takeUntilDestroyed())
       .subscribe((event) => {
-        if (event instanceof NavigationStart) this.minimized.set(true);
+        if (event instanceof NavigationStart) {
+          this.minimized.set(true);
+        }
       });
     inject(TokenStorageService).onIdentityChange(() => {
       this.seenInsights.clear();

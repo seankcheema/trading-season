@@ -10,6 +10,8 @@ import { OrderService } from '../orders/order.service';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
+import { By } from '@angular/platform-browser';
+import { PriceChartComponent } from '../shared/price-chart.component';
 
 const INSTRUMENT: Instrument = {
   symbol: 'AAPL',
@@ -145,6 +147,17 @@ describe('OrderSubmissionComponent', () => {
     expect(component['submitting']()).toBe(false);
     expect(component['filled']()).toBe(true);
     expect(emitted).toEqual([filledOrder()]);
+    http.verify();
+  });
+
+  it('tells the trader the price the order filled at, not the price they saw', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const component = setup().componentInstance;
+    component['shares'].set(2);
+    component['submit']();
+    http.expectOne({ method: 'GET', url: '/api/instruments' }).flush(CATALOGUE);
+    http.expectOne({ method: 'POST', url: '/api/orders' }).flush(filledOrder({ executionPrice: 320.1 }));
+    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 2 AAPL at $320.10.');
     http.verify();
   });
 
@@ -293,11 +306,11 @@ describe('OrderSubmissionComponent', () => {
     http.expectOne({ method: 'POST', url: '/api/orders' }).flush(
       filledOrder({
         status: 'REJECTED',
-        rejectionReason: 'BR-09: insufficient funds for this order',
+        rejectionReason: 'BR-05: insufficient funds for this order',
       }),
     );
 
-    expect(component['rejectionReason']()).toBe('BR-09: insufficient funds for this order');
+    expect(component['rejectionReason']()).toBe('BR-05: insufficient funds for this order');
     expect(component['errorMessage']()).toBe('');
     expect(component['filled']()).toBe(false);
     // A rejection leaves the ticket usable, so the trader can change it and retry.
@@ -711,6 +724,10 @@ describe('OrderSubmissionComponent', () => {
     expect(component['chartPoints']()).toEqual(previous);
     expect(component['chartTimeframe']()).toBe('1D');
     expect(fixture.nativeElement.querySelector('app-price-chart')).not.toBeNull();
+    // Hover details sit at the top of the plot, above the hovered point.
+    expect(
+      fixture.debugElement.query(By.directive(PriceChartComponent)).componentInstance.tooltipPlacement(),
+    ).toBe('top');
     refresh.flush({}, { status: 503, statusText: 'Unavailable' }); fixture.detectChanges();
     expect(component['chartPoints']()).toEqual(previous);
     expect(component['chartError']()).toContain('could not refresh');

@@ -48,6 +48,7 @@ import { Subscription } from 'rxjs';
 import { Router } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { AuthService } from '../core/auth/auth.service';
+import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 import { Instrument, PricePoint, Timeframe, findInstrument } from './mock-data';
 import { MarketDataService, MarketSnapshot, MarketTickEvent } from './market-data.service';
 import { AccountStore } from './accounts/account-store.service';
@@ -77,7 +78,6 @@ import { TickAnimations } from './shared/tick-animations';
 import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
 import { DashboardTourComponent, TourExit } from './tour/dashboard-tour.component';
 import { TourProgressService } from './tour/tour-progress.service';
-import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 
 type HeaderDropdown = 'account' | 'market-clock' | 'profile';
 
@@ -216,7 +216,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     })),
   );
   protected readonly portfolioTabs = computed<SegmentedTab<'assets' | 'watchlist'>[]>(() => [
-    { id: 'assets', label: 'Assets', count: this.accountsLoading() ? null : this.visibleAssets().length },
+    {
+      id: 'assets',
+      label: 'Assets',
+      count: this.accountsLoading() ? null : this.visibleAssets().length,
+    },
     {
       id: 'watchlist',
       label: 'Watch List',
@@ -265,17 +269,30 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // The first-run tour. It opens by itself once per visit, when the accounts and profile have
   // loaded and no terms are waiting, until the user has finished or skipped it; the profile
-  // menu starts it again. The dashboard is inert behind it.
+  // menu starts it again. Terms that had to be accepted first always lead into the tour, even
+  // in a browser that finished it for someone else, since the tour is remembered per browser.
+  // The dashboard is inert behind it.
   protected readonly tourOpen = signal(false);
   private tourOffered = false;
+  private termsWereShown = false;
   private tourFromMenu = false;
+  private tourOpenedOrder = false;
   private readonly offerTour = effect(() => {
-    if (this.accountStore.status() !== 'ready' || this.termsRequired() || this.tourOffered) {
+    if (this.accountStore.status() !== 'ready' || this.tourOffered) {
+      return;
+    }
+    if (this.termsRequired()) {
+      this.termsWereShown = true;
       return;
     }
     this.tourOffered = true;
-    if (!this._tourProgress.isDone()) {
-      untracked(() => this.tourOpen.set(true));
+    if (this.termsWereShown || !this._tourProgress.isDone()) {
+      untracked(() => {
+        if (this.termsWereShown) {
+          this._tourProgress.saveStep(0);
+        }
+        this.tourOpen.set(true);
+      });
     }
   });
   private readonly recentInstruments = inject(RecentInstrumentsService);
@@ -376,7 +393,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly tradingCashBalance = this.accountStore.spendableFunds;
   protected readonly tradingPositions = computed(() =>
     Object.fromEntries(
-      this.accountStore.selectedHoldings().map((holding) => [holding.symbol, holding.availableQuantity ?? holding.quantity]),
+      this.accountStore
+        .selectedHoldings()
+        .map((holding) => [holding.symbol, holding.availableQuantity ?? holding.quantity]),
     ),
   );
 
@@ -820,6 +839,27 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this._tourProgress.saveStep(0);
     this.tourFromMenu = true;
     this.tourOpen.set(true);
+  }
+
+  // The tour's full screen step points at a button inside the order ticket, so the tour has a
+  // ticket open for that step: Apple when the market has it, otherwise the first instrument.
+  // Nothing opens when no instruments have loaded, and the step is then shown without a
+  // spotlight. The ticket is closed again as the tour leaves the step, but never one the
+  // user opened themselves.
+  protected onTourTicket(needed: boolean): void {
+    if (!needed) {
+      if (this.tourOpenedOrder) {
+        this.tourOpenedOrder = false;
+        this.orderSymbol.set(null);
+      }
+      return;
+    }
+    const instruments = this.instruments();
+    const sample = findInstrument('AAPL', instruments) ?? instruments[0];
+    if (sample && this.orderSymbol() === null) {
+      this.orderSymbol.set(sample.symbol);
+      this.tourOpenedOrder = true;
+    }
   }
 
   // Focus waits for the dashboard to stop being inert. Finishing hands over to the search;

@@ -119,4 +119,48 @@ test.describe('Theme', () => {
     await expectTheme(other, 'light');
     await expect(toggle(other)).toHaveAccessibleName('Switch to dark theme');
   });
+
+  test('Dua choices, insight cards and explanations follow theme changes while open', async ({
+    page,
+    loginPage,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await loginPage.goto();
+    await loginPage.signIn(USER.email, USER.password);
+    await page.getByRole('button', { name: 'Switch to light theme' }).click();
+    await page.getByRole('button', { name: 'Dua insights', exact: true }).click();
+    const panel = page.getByRole('region', { name: 'Dua insights' });
+    await expect(panel).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+    await expect(panel).toHaveCSS('color', 'rgb(14, 14, 14)');
+
+    for (const choice of ['Daily Review', 'My Holdings']) {
+      await panel.getByRole('button', { name: choice, exact: true }).click();
+      const card = panel.locator('.insight-card:not(.inactive)');
+      await expect(card.locator('.primary-metric strong')).toHaveCSS('color', 'rgb(14, 14, 14)');
+      await expect(panel.locator('.dua-header')).toHaveCSS(
+        'background-color',
+        'rgb(255, 255, 255)',
+      );
+      await page.screenshot({
+        path: `reports/playwright/theme-dua-${choice === 'Daily Review' ? 'daily' : 'holdings'}-light.png`,
+      });
+      await card.getByRole('button', { name: 'Explain these numbers' }).click();
+      await expect(panel.locator('.insight-explanation')).toHaveCSS('color', 'rgb(14, 14, 14)');
+      await page.screenshot({ path: 'reports/playwright/theme-dua-explanation-light.png' });
+      await panel.getByRole('button', { name: 'Back to results' }).click();
+      await panel.getByRole('button', { name: 'Back to choices' }).click();
+    }
+
+    await panel.getByRole('button', { name: 'Daily Review', exact: true }).click();
+    await page.getByRole('button', { name: 'Switch to dark theme' }).click();
+    // The theme toggle is outside Dua, so it closes the panel without resetting its choice.
+    await expect(panel).toBeHidden();
+    await page.getByRole('button', { name: 'Dua insights', exact: true }).click();
+    await expect(panel.locator('.dua-header')).toHaveCSS('background-color', 'rgb(12, 14, 16)');
+    await expect(panel.locator('.insight-card:not(.inactive) .primary-metric strong')).toHaveCSS(
+      'color',
+      'rgb(255, 255, 255)',
+    );
+    await page.screenshot({ path: 'reports/playwright/theme-dua-daily-dark.png' });
+  });
 });

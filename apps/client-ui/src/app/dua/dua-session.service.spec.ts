@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { TokenStorageService } from '../core/auth/token-storage.service';
 import { DuaSession } from './dua-session.service';
-import { NavigationStart, Router, provideRouter } from '@angular/router';
+import { NavigationEnd, NavigationStart, Router, provideRouter } from '@angular/router';
 import { Subject } from 'rxjs';
 
 describe('Dua session', () => {
@@ -56,6 +56,8 @@ describe('Dua session', () => {
     });
     const session = TestBed.inject(DuaSession);
     session.minimized.set(false);
+    events.next(new NavigationEnd(0, '/dashboard', '/dashboard') as unknown as NavigationStart);
+    expect(session.minimized()).toBe(false);
     session.acknowledgeNotification();
     events.next(new NavigationStart(1, '/dashboard/markets/aapl'));
     expect(session.minimized()).toBe(true);

@@ -10,9 +10,9 @@ async def run(url: str) -> None:
     connection = await asyncpg.connect(url)
     try:
         async with connection.transaction():
-            for name in ('V001__Initialize_database.sql', 'V002__Add_watchlist.sql',
-                         'V003__Order_status_accepted.sql'):
-                sql = (Path(__file__).parents[5] / 'db' / 'migrations' / name).read_text(encoding='utf-8-sig')
+            # Every migration, in file order, so a new one is never left out here.
+            for migration in sorted((Path(__file__).parents[5] / 'db' / 'migrations').glob('V*.sql')):
+                sql = migration.read_text(encoding='utf-8-sig')
                 sql = re.sub(r'^\s*(?:BEGIN|COMMIT);\s*$', '', sql, flags=re.MULTILINE)
                 await connection.execute(sql)
         print('Database setup completed: schema committed.')

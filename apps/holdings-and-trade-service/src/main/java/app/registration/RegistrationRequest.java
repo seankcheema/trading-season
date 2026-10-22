@@ -26,7 +26,7 @@ import java.time.LocalDate;
  * @param lastName       the registrant's last name
  * @param ssn            social security number in {@code NNN-NN-NNNN} form
  * @param address        the registrant's mailing address
- * @param dateOfBirth    date of birth, must be in the past
+ * @param dateOfBirth    date of birth, must be in the past and at least {@value #MINIMUM_AGE} years ago
  * @param traderLevel    self-assessed experience: BEGINNER, INTERMEDIATE or ADVANCED
  * @param availableFunds opening funds, at least 5000.00 with at most two decimal places
  */
@@ -37,11 +37,14 @@ public record RegistrationRequest(
         @NotBlank String lastName,
         @NotBlank @Pattern(regexp = "^\\d{3}-\\d{2}-\\d{4}$", message = "must be in NNN-NN-NNNN format") String ssn,
         @NotBlank String address,
-        @NotNull @Past LocalDate dateOfBirth,
+        @NotNull @Past @MinimumAge(RegistrationRequest.MINIMUM_AGE) LocalDate dateOfBirth,
         @NotNull @Pattern(regexp = "^(BEGINNER|INTERMEDIATE|ADVANCED)$",
                 message = "must be BEGINNER, INTERMEDIATE or ADVANCED") String traderLevel,
         @NotNull @DecimalMin("5000.00") @Digits(integer = 12, fraction = 2) BigDecimal availableFunds
 ) {
+
+    /** The youngest age, in years, at which a profile can be registered. */
+    public static final int MINIMUM_AGE = 21;
 }
 
 

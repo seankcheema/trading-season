@@ -50,7 +50,13 @@ test.describe('a newly registered user', () => {
     await expect(termsDialog.accept).toBeDisabled();
     await termsDialog.signAndAccept('grace hopper');
 
+    // The dashboard tour starts straight away, even in a browser that finished it before.
     await expect(termsDialog.dialog).toBeHidden();
+    const tour = page.getByRole('dialog', { name: 'Welcome to TradingSeason' });
+    await expect(tour).toBeVisible();
+    await expect(page.getByTestId('dashboard-content')).toHaveAttribute('inert');
+    await tour.getByRole('button', { name: 'Skip' }).click();
+    await expect(tour).toBeHidden();
     await expect(page.getByTestId('dashboard-content')).not.toHaveAttribute('inert');
     expect(api.termsAcceptedBy(account.email)).toBe(true);
 
@@ -72,6 +78,7 @@ test.describe('a newly registered user', () => {
     await registerPage.register(account);
     await termsDialog.signAndAccept('Grace Hopper');
     await expect(termsDialog.dialog).toBeHidden();
+    await page.getByRole('dialog', { name: 'Welcome to TradingSeason' }).getByRole('button', { name: 'Skip' }).click();
 
     await page.reload();
 

@@ -133,8 +133,11 @@ describe('Dua panel', () => {
   it('starts fin-focused with chat closed, reveals the face while open, and minimizes again', () => {
     const { fixture, click } = setup();
     expect(session.minimized()).toBe(true);
-    expect(fixture.nativeElement.querySelector('.launcher-art').src).toContain(
-      'shark-launcher-light-512.png',
+    expect(fixture.nativeElement.querySelector('.launcher-body').src).toContain(
+      'shark-launcher-body-512.png',
+    );
+    expect(fixture.nativeElement.querySelector('.launcher-fin').src).toContain(
+      'shark-launcher-fin-512.png',
     );
     expect(fixture.nativeElement.querySelector('.launcher-art.face-visible')).toBeNull();
     expect(fixture.nativeElement.querySelector('input,textarea')).toBeNull();
@@ -145,9 +148,40 @@ describe('Dua panel', () => {
     expect(session.minimized()).toBe(true);
     fixture.destroy();
   });
+  it('keeps launcher and panel clicks open, but closes outside without stealing focus', () => {
+    vi.useFakeTimers();
+    const { fixture, click } = setup();
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    try {
+      click('Dua insights');
+      expect(session.minimized()).toBe(false);
+      click('Daily Review');
+      expect(session.minimized()).toBe(false);
+      fixture.nativeElement.querySelector('.takeaway').click();
+      fixture.detectChanges();
+      expect(session.minimized()).toBe(false);
+
+      outside.focus();
+      outside.click();
+      fixture.detectChanges();
+      vi.runOnlyPendingTimers();
+      expect(session.minimized()).toBe(true);
+      expect(document.activeElement).toBe(outside);
+
+      click('Dua insights');
+      expect(session.minimized()).toBe(false);
+      click('Dua insights');
+      expect(session.minimized()).toBe(true);
+    } finally {
+      outside.remove();
+      fixture.destroy();
+    }
+  });
+
   it('calculates selected insights and clears results on account changes', () => {
     const { fixture, click, text } = setup();
-    click('Daily review');
+    click('Daily Review');
     expect(
       fixture.nativeElement.querySelector('.takeaway').textContent.replace(/\s+/g, ' '),
     ).toContain('market closed on a high note');
@@ -166,12 +200,12 @@ describe('Dua panel', () => {
     const { fixture, click, text } = setup();
     fixture.componentRef.setInput('quotes', []);
     fixture.detectChanges();
-    click('My holdings');
+    click('My Holdings');
     expect(text()).toContain('+12.4%');
     click('Back to choices');
     fixture.componentRef.setInput('holdings', []);
     fixture.detectChanges();
-    click('Daily review');
+    click('Daily Review');
     expect(text()).toContain('Market overview');
     account.needsTermsAcceptance.set(true);
     fixture.detectChanges();
@@ -181,7 +215,7 @@ describe('Dua panel', () => {
     const { fixture, click, text } = setup();
     fixture.componentRef.setInput('symbol', 'AAPL');
     fixture.detectChanges();
-    click('This stock');
+    click('This Stock');
     expect(text()).toContain('Stock Insights');
     expect(text()).toContain('+24.8%');
     expect(fixture.nativeElement.querySelector('.card-meta').textContent).toContain('01/05/2026');
@@ -198,7 +232,7 @@ describe('Dua panel', () => {
   });
   it('shows holdings placeholders with periods and restores them after explanations', () => {
     const { fixture, click, text } = setup();
-    click('My holdings');
+    click('My Holdings');
     expect(text()).toContain('This Month');
     expect(text()).toContain('+12.4%');
     click('Next insight');
@@ -222,7 +256,7 @@ describe('Dua panel', () => {
     const { fixture, click, text } = setup();
     fixture.componentRef.setInput('holdings', []);
     fixture.detectChanges();
-    click('Daily review');
+    click('Daily Review');
     expect(text()).toContain('Market overview');
     expect(
       fixture.nativeElement.querySelector('.insight-card').querySelectorAll('.overview-metrics dt')
@@ -239,7 +273,7 @@ describe('Dua panel', () => {
   });
   it('keeps only the current card accessible while inactive cards share layout sizing', () => {
     const { fixture, click } = setup();
-    click('Daily review');
+    click('Daily Review');
     expect(fixture.nativeElement.querySelectorAll('.insight-card').length).toBe(3);
     expect(
       fixture.nativeElement.querySelectorAll('.insight-card.inactive[inert][aria-hidden="true"]')
@@ -252,7 +286,7 @@ describe('Dua panel', () => {
   });
   it('shows all three daily examples with periods and explanatory limitations', () => {
     const { fixture, click, text } = setup();
-    click('Daily review');
+    click('Daily Review');
     expect(text()).toContain('+1.8%');
     expect(text()).toContain('Today');
     click('Next insight');
@@ -272,7 +306,7 @@ describe('Dua panel', () => {
     const { fixture, click, text } = setup();
     fixture.componentRef.setInput('symbol', 'AAPL');
     fixture.detectChanges();
-    click('This stock');
+    click('This Stock');
     const original = text();
     const requests = market.candles.mock.calls.length;
     click('Explain these numbers');
@@ -290,19 +324,19 @@ describe('Dua panel', () => {
     expect(text()).toContain('What would you like to review');
     expect(text()).not.toContain('not figures for the selected stock');
   });
-  it('uses one launcher image and handles missing artwork with an accessible fallback', () => {
+  it('layers the launcher fin over the body and handles missing artwork with an accessible fallback', () => {
     const { fixture } = setup();
     const imgs = fixture.nativeElement.querySelectorAll(
       '.dua-launcher img',
     ) as NodeListOf<HTMLImageElement>;
-    expect(imgs.length).toBe(1);
+    expect(imgs.length).toBe(2);
     imgs[0].dispatchEvent(new Event('error'));
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.fallback').textContent).toBe('Dua');
   });
   it('opens chat and clears the numbered notification in one click', () => {
     const { fixture, click } = setup();
-    const art = fixture.nativeElement.querySelector('.launcher-art') as HTMLImageElement;
+    const art = fixture.nativeElement.querySelector('.launcher-art') as HTMLElement;
     expect(art.classList.contains('face-visible')).toBe(false);
     fixture.componentRef.setInput('quotes', [
       { symbol: 'AAPL', name: 'Apple', price: 120, change: 20, changePercent: 20 },
@@ -362,16 +396,122 @@ describe('Dua panel', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.launcher-art.face-visible')).toBeNull();
     click('Dua insights');
-    expect(fixture.nativeElement.querySelector('h2').textContent.trim().replace(/\s+/g, ' ')).toBe(
-      'Dua - Free Plan',
+    expect(fixture.nativeElement.querySelector('h2').textContent.replace(/\s+/g, ' ').trim()).toBe(
+      'Dua Free Plan',
     );
-    click('Daily review');
-    expect(fixture.nativeElement.querySelector('h2').textContent.trim()).toBe('Daily review');
+    click('Daily Review');
+    expect(fixture.nativeElement.querySelector('h2').textContent.replace(/\s+/g, ' ').trim()).toBe(
+      'Daily Review',
+    );
     click('Back to choices');
-    expect(fixture.nativeElement.querySelector('h2').textContent.trim().replace(/\s+/g, ' ')).toBe(
-      'Dua - Free Plan',
+    expect(fixture.nativeElement.querySelector('h2').textContent.replace(/\s+/g, ' ').trim()).toBe(
+      'Dua Free Plan',
     );
     fixture.destroy();
+  });
+  it('focuses the panel after it opens', () => {
+    vi.useFakeTimers();
+    const { fixture, click } = setup();
+    click('Dua insights');
+    const panel = fixture.nativeElement.querySelector('[role="dialog"], .dua-panel') as HTMLElement;
+    const focus = vi.spyOn(panel, 'focus');
+    vi.runOnlyPendingTimers();
+    expect(focus).toHaveBeenCalled();
+    fixture.destroy();
+  });
+  it('reports unavailable data instead of a snapshot when the market clock is updating', () => {
+    const { fixture, click, text } = setup();
+    clock.clockUpdating.set(true);
+    fixture.detectChanges();
+    click('Daily Review');
+    expect(text()).toContain('Account or market data is unavailable. Please try again.');
+    expect(fixture.nativeElement.querySelector('.insight-card')).toBeNull();
+    fixture.destroy();
+  });
+  describe('panel resize animation', () => {
+    const animation = {
+      cancel: vi.fn(),
+      onfinish: null as null | (() => void),
+      oncancel: null as null | (() => void),
+    };
+    const animate = vi.fn((_keyframes: unknown, _options: unknown) => animation);
+    let height = 300;
+    let width = 400;
+    beforeEach(() => {
+      height = 300;
+      width = 400;
+      animation.cancel.mockClear();
+      animation.onfinish = null;
+      animation.oncancel = null;
+      animate.mockClear();
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+        () => ({ height, width }) as DOMRect,
+      );
+      Object.defineProperty(HTMLElement.prototype, 'animate', {
+        configurable: true,
+        writable: true,
+        value: animate,
+      });
+    });
+    afterEach(() => {
+      vi.restoreAllMocks();
+      delete (HTMLElement.prototype as { animate?: unknown }).animate;
+    });
+    it('animates from the previous height, restarts from the current height when interrupted', () => {
+      const { fixture, click } = setup();
+      click('Dua insights');
+      expect(animate).not.toHaveBeenCalled();
+      height = 420;
+      click('Daily Review');
+      expect(animate).toHaveBeenCalledTimes(1);
+      expect(animate.mock.calls[0]).toEqual([
+        [{ height: '300px' }, { height: '420px' }],
+        expect.objectContaining({ duration: 380 }),
+      ]);
+      height = 520;
+      // The first measurement is taken mid-animation, before the running animation is cancelled.
+      vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValueOnce({
+        height: 350,
+        width,
+      } as DOMRect);
+      click('Next insight');
+      expect(animation.cancel).toHaveBeenCalled();
+      expect(animate).toHaveBeenCalledTimes(2);
+      expect(animate.mock.calls[1][0]).toEqual([{ height: '350px' }, { height: '520px' }]);
+      animation.onfinish?.();
+      height = 540;
+      click('Next insight');
+      expect(animation.cancel).toHaveBeenCalledTimes(1);
+      expect(animate).toHaveBeenCalledTimes(3);
+      fixture.destroy();
+    });
+    it('hides scrollbars only while the panel is resizing', () => {
+      const { fixture, click } = setup();
+      const panel = fixture.nativeElement.querySelector('.dua-panel') as HTMLElement;
+      click('Dua insights');
+      expect(panel.classList).not.toContain('resizing');
+      height = 420;
+      click('Daily Review');
+      expect(panel.classList).toContain('resizing');
+      animation.onfinish?.();
+      expect(panel.classList).not.toContain('resizing');
+      fixture.destroy();
+    });
+    it('does not animate unchanged heights, width changes or reduced motion', () => {
+      const { fixture, click } = setup();
+      click('Dua insights');
+      click('Daily Review');
+      expect(animate).not.toHaveBeenCalled();
+      width = 500;
+      height = 450;
+      click('Next insight');
+      expect(animate).not.toHaveBeenCalled();
+      vi.stubGlobal('matchMedia', () => ({ matches: true }));
+      height = 600;
+      click('Next insight');
+      expect(animate).not.toHaveBeenCalled();
+      fixture.destroy();
+    });
   });
 
   it('offers a live volatility outlook first, shows its card and links to the full outlook', () => {
@@ -387,7 +527,7 @@ describe('Dua panel', () => {
     expect(fixture.nativeElement.textContent).toContain('62% chance of bigger swings');
     expect(fixture.nativeElement.textContent).toContain('75% (15 of 20)');
     const open = fixture.nativeElement.querySelector('[data-testid=dua-outlook-open]');
-    expect(open.getAttribute('href')).toBe('/dashboard/markets/aapl?tab=outlook');
+    expect(open.getAttribute('href')).toBe('/dashboard/markets/aapl?tab=outlook&accountId=1');
   });
 
   it("offers What's trending with a bolt, a trade signal with its notice, and the platform list", () => {
@@ -406,7 +546,7 @@ describe('Dua panel', () => {
     expect(text).toContain('It can be wrong: do not take it as true or as advice to buy or sell.');
     const open = fixture.nativeElement.querySelector('[data-testid=dua-outlook-open]');
     expect(open.textContent).toContain('Open the full trade signal for AAPL');
-    expect(open.getAttribute('href')).toBe('/dashboard/markets/aapl?tab=outlook');
+    expect(open.getAttribute('href')).toBe('/dashboard/markets/aapl?tab=outlook&accountId=1');
     click('Next insight');
     expect(fixture.nativeElement.textContent.replace(/\s+/g, ' ')).toContain(
       '1 of 1 stocks read higher',

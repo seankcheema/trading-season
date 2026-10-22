@@ -28,6 +28,16 @@
             "styles": [
               "src/styles.css"
             ],
+            "allowedCommonJsDependencies": [
+              "jspdf",
+              "canvg",
+              "core-js",
+              "dompurify",
+              "fflate",
+              "html2canvas",
+              "raf",
+              "rgbcolor"
+            ],
             "server": "src/main.server.ts",
             "outputMode": "server",
             "security": {

@@ -49,15 +49,24 @@ describe('placeTourCard', () => {
     <div data-tour="net-worth"></div>
     <div data-tour="account"></div>
     <div data-tour="portfolio"></div>
+    <div data-tour="dua"></div>
     @if (withAssets()) {
       <div data-tour="assets"></div>
     }
-    <app-dashboard-tour (finished)="exits.push($event)" />
+    @if (ticketOpen()) {
+      <a data-tour="full-screen">Full screen</a>
+    }
+    <app-dashboard-tour
+      (finished)="exits.push($event)"
+      (ticketNeeded)="tickets.push($event); ticketOpen.set($event)"
+    />
   `,
 })
 class TourHostComponent {
   readonly withAssets = signal(true);
   readonly exits: TourExit[] = [];
+  readonly tickets: boolean[] = [];
+  readonly ticketOpen = signal(false);
 }
 
 describe('DashboardTourComponent', () => {
@@ -168,6 +177,35 @@ describe('DashboardTourComponent', () => {
     expect(fixture.componentInstance.exits).toEqual(['dismissed', 'dismissed', 'dismissed']);
     expect(localStorage.getItem('ts.tour.done')).toBe('1');
     expect(localStorage.getItem('ts.tour.step')).toBeNull();
+  });
+
+  it('opens an order ticket behind the full screen step and spotlights its button', async () => {
+    localStorage.setItem('ts.tour.step', '5');
+    await render();
+    expect(fixture.componentInstance.tickets).toEqual([]);
+
+    await click('Next');
+    expect(title()).toBe('Full screen market data');
+    expect(fixture.componentInstance.tickets).toEqual([true]);
+    expect(spotlight()).not.toBeNull();
+
+    await click('Next');
+    expect(title()).toBe('Meet Dua');
+    expect(fixture.componentInstance.tickets).toEqual([true, false]);
+    expect(TOUR_STEPS[7].target).toBe('dua');
+
+    await click('Back');
+    await click('Back');
+    expect(fixture.componentInstance.tickets).toEqual([true, false, true, false]);
+  });
+
+  it('asks for the ticket when it resumes on the full screen step, and closes it on exit', async () => {
+    localStorage.setItem('ts.tour.step', '6');
+    await render();
+    expect(fixture.componentInstance.tickets).toEqual([true]);
+
+    await press('Escape');
+    expect(fixture.componentInstance.tickets).toEqual([true, false]);
   });
 
   it('hands over to the stock search from its last step', async () => {

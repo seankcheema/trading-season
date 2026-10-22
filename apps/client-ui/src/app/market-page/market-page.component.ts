@@ -12,6 +12,7 @@ import { OrderResult } from '../dashboard/orders/order.models';
 import { toOrderErrorMessage } from '../dashboard/orders/order-error';
 import { ToastService } from '../notifications/toast.service';
 import { AuthService } from '../core/auth/auth.service';
+import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 import { DashboardHeaderDropdownComponent } from '../dashboard/shared/dashboard-header-dropdown.component';
 import { SettingsDialogComponent } from '../dashboard/settings-dialog/settings-dialog.component';
 import { TermsDialogComponent } from '../dashboard/terms/terms-dialog.component';
@@ -107,12 +108,11 @@ import { SignedPercentPipe } from '../dashboard/shared/signed-percent.pipe';
 import { TickAnimations } from '../dashboard/shared/tick-animations';
 import { TimeframeToggleComponent } from '../dashboard/shared/timeframe-toggle.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
-import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
 
-type InsightTab = 'trading' | 'overview' | 'news' | 'ai' | 'outlook' | 'recent-orders';
+type InsightTab = 'trading' | 'outlook' | 'recent-orders';
 
 type ToolbarMenu = 'indicators' | 'chart-mode' | 'comparison';
 
@@ -124,18 +124,6 @@ interface MarketStats {
   low: number;
   high: number;
   trend: 'Uptrend' | 'Downtrend';
-}
-
-interface AiMessage {
-  role: 'user' | 'assistant';
-  text: string;
-}
-
-interface DemoNewsStory {
-  age: string;
-  category: string;
-  title: string;
-  includeSymbol?: boolean;
 }
 
 @Component({
@@ -226,9 +214,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   private readonly toasts = inject(ToastService);
   private readonly destroyRef = inject(DestroyRef);
 
-  protected readonly openHeaderDropdown = signal<
-    'account' | 'market-clock' | 'profile' | 'notifications' | null
-  >(null);
+  protected readonly openHeaderDropdown = signal<'account' | 'market-clock' | 'profile' | null>(
+    null,
+  );
   protected readonly profileInitials = this.accountStore.initials;
   protected readonly settingsOpen = signal(false);
 
@@ -580,38 +568,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly selectedChartMode = computed(
     () => this.chartModes.find((option) => option.value === this.chartMode()) ?? this.chartModes[0],
   );
+  protected readonly liveTailing = signal(true);
   protected readonly insightTab = signal<InsightTab>('trading');
   protected readonly toolsCollapsed = signal(false);
-  protected readonly demoNews: readonly DemoNewsStory[] = [
-    {
-      age: '12 min ago',
-      category: 'Market update',
-      title: 'holds near its session high as trading activity increases.',
-      includeSymbol: true,
-    },
-    {
-      age: '48 min ago',
-      category: 'Sector watch',
-      title: 'Large-cap peers trade higher as investors favor established companies.',
-    },
-    {
-      age: '2 hr ago',
-      category: 'Company outlook',
-      title: 'Analysts continue to focus on demand, margins, and the next earnings update.',
-    },
-    {
-      age: '4 hr ago',
-      category: 'Macroeconomy',
-      title: 'Treasury yields ease as markets assess latest economic data.',
-    },
-    {
-      age: '5 hr ago',
-      category: 'Earnings',
-      title: 'Tech stocks extend gains ahead of key earnings reports this week.',
-    },
-  ];
-  protected readonly aiDraft = signal('');
-  protected readonly aiMessages = signal<AiMessage[]>([]);
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
   protected readonly enabledIndicators = signal<readonly TechnicalIndicator[]>([]);
   private readonly platformSignals = inject(PlatformSignalsService);
@@ -856,8 +815,8 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     void this.router.navigate(['/dashboard/markets', marketSymbolSlug(instrument.symbol)], {
       queryParams: {
         compare: compare && compare !== instrument.symbol ? marketSymbolSlug(compare) : null,
+        accountId: this.accountStore.selectedAccountId(),
       },
-
       queryParamsHandling: 'merge',
     });
   }
@@ -913,23 +872,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected toggleToolbarMenu(menu: ToolbarMenu): void {
     this.openToolbarMenu.update((open) => (open === menu ? null : menu));
     this.positionToolbarMenu();
-  }
-
-  protected submitAiPrompt(event: Event, symbol: string): void {
-    event.preventDefault();
-    const prompt = this.aiDraft().trim();
-    if (!prompt) {
-      return;
-    }
-    this.aiMessages.update((messages) => [
-      ...messages,
-      { role: 'user', text: prompt },
-      {
-        role: 'assistant',
-        text: `${symbol} is in a simulated session. I can help explain its price, range, volume, and chart in plain language.`,
-      },
-    ]);
-    this.aiDraft.set('');
   }
 
   protected toggleIndicator(indicator: TechnicalIndicator): void {

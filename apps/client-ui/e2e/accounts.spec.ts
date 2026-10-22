@@ -334,10 +334,13 @@ test.describe('portfolios and net worth', () => {
     const posts = api.requests.filter(
       (request) => request.method === 'POST' && request.url.endsWith('/api/me/cash-transactions'),
     );
-    expect(posts.map((request) => JSON.parse(request.body ?? '{}'))).toEqual([
+    const bodies = posts.map((request) => JSON.parse(request.body ?? '{}'));
+    expect(bodies).toMatchObject([
       { amount: 50.25, reason: 'DEPOSIT' },
       { amount: 25, reason: 'WITHDRAWAL' },
     ]);
+    // Each post carries its own idempotency key.
+    expect(new Set(bodies.map((body) => body.clientReference)).size).toBe(2);
     expect(api.fundsOf(EXISTING_USER.email)).toBe(2025.25);
   });
 });

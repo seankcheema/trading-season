@@ -103,13 +103,10 @@ test('executes a trade and shows recent orders within the full-screen layout', a
     expect(pickerBounds!.y + pickerBounds!.height / 2).toBe(
       searchBounds!.y + searchBounds!.height / 2,
     );
-    for (const id of ['notifications-dropdown', 'profile-dropdown']) {
-      const iconBounds = await page.getByTestId(id).locator('summary').boundingBox();
-      expect(iconBounds!.height).toBe(36);
-      expect(iconBounds!.y + iconBounds!.height / 2).toBe(
-        searchBounds!.y + searchBounds!.height / 2,
-      );
-    }
+    await expect(page.getByTestId('notifications-dropdown')).toHaveCount(0);
+    const iconBounds = await page.getByTestId('profile-dropdown').locator('summary').boundingBox();
+    expect(iconBounds!.height).toBe(36);
+    expect(iconBounds!.y + iconBounds!.height / 2).toBe(searchBounds!.y + searchBounds!.height / 2);
     for (const id of ['market-clock-dropdown', 'account-dropdown']) {
       const trigger = await page.getByTestId(id).locator('summary').boundingBox();
       expect(trigger!.height).toBe(36);
@@ -117,7 +114,7 @@ test('executes a trade and shows recent orders within the full-screen layout', a
     }
     expect(ticketBounds!.y).toBeGreaterThanOrEqual(accountBounds!.y + accountBounds!.height);
     await page.locator('#future-trade-quantity').fill('2');
-    for (const name of ['Overview', 'News', 'AI', 'Outlook', 'Recent Orders']) {
+    for (const name of ['Outlook', 'Recent Orders']) {
       await page.getByRole('tab', { name, exact: true }).click();
       await expect(page.locator('app-trade-ticket')).toBeHidden();
     }
@@ -208,7 +205,7 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   await page.getByRole('combobox', { name: 'Search instruments' }).fill('AAPL');
   await page.getByRole('option', { name: /AAPL/ }).first().click();
   await page.getByRole('link', { name: 'Open full screen market chart' }).click();
-  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl$/);
+  await expect(page).toHaveURL(/\/dashboard\/markets\/aapl\?accountId=2$/);
   await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');
   await page.reload();
   await expect(page.getByTestId('account-dropdown').locator('summary')).toContainText('Retirement');
@@ -227,6 +224,7 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   await clock.locator('input').fill('2026-01-05T08:30');
   await clock.getByRole('button', { name: 'Apply time' }).click();
   await expect(history).toContainText('No orders at this simulated time.');
+  await page.getByRole('tab', { name: 'Trading', exact: true }).click();
   // Rewinding changes history and portfolio views, while trading limits use persisted balances.
   await expect(page.locator('app-trade-ticket')).toContainText('$4,548.40');
   await expect(page.getByTestId('account-portfolio-value')).toContainText('$0.00');
@@ -234,6 +232,7 @@ test('keeps account selection and rewinds executions with the shared clock', asy
   await clock.locator('summary').click();
   await clock.locator('input').fill('2026-01-05T09:00');
   await clock.getByRole('button', { name: 'Apply time' }).click();
+  await page.getByRole('tab', { name: 'Recent Orders', exact: true }).click();
   await expect(history).toContainText('2 @ $225.80 · MARKET · Filled');
   expect(
     api.requests.filter((r) => r.method === 'POST' && r.url.endsWith('/api/orders')),
@@ -259,10 +258,7 @@ test('opens an old link that named an account without the account in the URL', a
   await expect(page.getByRole('heading', { name: 'AAPL', exact: true })).toBeVisible();
 });
 
-test('covers the header with a dialog backdrop on the market page', async ({
-  page,
-  loginPage,
-}) => {
+test('covers the header with a dialog backdrop on the market page', async ({ page, loginPage }) => {
   await openMarketPage(page, loginPage);
   await page.getByTestId('profile-dropdown').locator('summary').click();
   await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();

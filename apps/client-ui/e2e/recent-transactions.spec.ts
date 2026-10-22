@@ -1,3 +1,4 @@
+import type { Download } from '@playwright/test';
 import { newAccount } from './fixtures/accounts';
 import type { SeedAccount } from './fixtures/api-stub';
 import { expect, test } from './fixtures/test';
@@ -55,8 +56,9 @@ const SEED: SeedAccount = {
 const GAIN = 'rgb(37, 235, 105)';
 const LOSS = 'rgb(255, 61, 90)';
 
-// A pending order is picked up by the next poll, which runs every five seconds.
-const POLL_TIMEOUT = 15_000;
+// A settled order reaches the page on its next open of the order status stream. The stub
+// cannot hold a stream open, so that is the page's reconnect, which backs off to ten seconds.
+const STREAM_TIMEOUT = 20_000;
 
 test.use({ stubOptions: { accounts: [SEED] } });
 
@@ -150,6 +152,66 @@ test('view all opens every transaction, including cash, and filters by type', as
   await expect(dialog).toBeHidden();
 });
 
+test('export downloads the filtered statement as CSV and as a PDF', async ({ page }, testInfo) => {
+  const launcher = page.getByRole('button', { name: 'Dua insights', exact: true });
+  const dua = page.getByRole('region', { name: 'Dua insights' });
+  await launcher.click();
+  await dua.getByRole('button', { name: 'Daily Review', exact: true }).click();
+  await expect(dua).toContainText('Market overview');
+  await page.getByTestId('open-transactions').click();
+  await expect(dua).toBeHidden();
+  const dialog = page.getByRole('dialog', { name: 'Recent Transactions' });
+  await expect(dialog.getByTestId('transactions-row')).toHaveCount(3);
+
+  await dialog.getByTestId('transactions-filters').click();
+  await dialog.getByTestId('transactions-filter-buy').click();
+  await page.keyboard.press('Escape');
+
+  await dialog.getByTestId('transactions-export').click();
+  const [csv] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByTestId('transactions-export-csv').click(),
+  ]);
+  expect(csv.suggestedFilename()).toMatch(/^account-statement-\d{4}-\d{2}-\d{2}\.csv$/);
+  const csvContent = await readDownload(csv);
+  const lines = csvContent.replace('﻿', '').split('\r\n').filter(Boolean);
+  // A header and the two buy orders; the rejected sell is filtered out.
+  expect(lines).toHaveLength(3);
+  expect(lines.slice(1).every((line) => line.includes(',Buy,'))).toBe(true);
+
+  await dialog.getByTestId('transactions-export').click();
+  const [pdf] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByTestId('transactions-export-pdf').click(),
+  ]);
+  expect(pdf.suggestedFilename()).toMatch(/\.pdf$/);
+  const pdfContent = await readDownload(pdf);
+  expect(pdfContent.startsWith('%PDF-')).toBe(true);
+  // Preserve synthetic statement evidence in the reports Jenkins already archives.
+  for (const [download, content, contentType] of [
+    [csv, csvContent, 'text/csv'],
+    [pdf, pdfContent, 'application/pdf'],
+  ] as const) {
+    await testInfo.attach(download.suggestedFilename(), {
+      body: Buffer.from(content, 'latin1'),
+      contentType,
+    });
+  }
+  await dialog.getByRole('button', { name: 'Close recent transactions' }).click();
+  await expect(dialog).toBeHidden();
+  await launcher.click();
+  await expect(dua.getByRole('heading', { name: 'Daily Review', exact: true })).toBeVisible();
+  await expect(dua).toContainText('Market overview');
+});
+
+async function readDownload(download: Download): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of await download.createReadStream()) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString('latin1');
+}
+
 test('an order row expands into its audit timeline from pending to its final status', async ({
   page,
 }) => {
@@ -187,24 +249,22 @@ test('a pending order updates to filled by itself, with the balances it moved', 
   await expect(pendingRow).toContainText('MSFT');
   await expect(dashboardPage.cash).toHaveText('Cash $5,000.00');
 
-  // The backend settles the order; the page is never told.
+  // The backend settles the order and pushes the status; the page asks for nothing.
   api.resolveOrder(USER.email, 2, { status: 'FILLED' });
 
   await expect(dashboardPage.recentTransactions.locator('li[data-status="PENDING"]')).toHaveCount(
     0,
-    { timeout: POLL_TIMEOUT },
+    { timeout: STREAM_TIMEOUT },
   );
   await expect(dashboardPage.recentTransactions.locator('li[data-status="FILLED"]')).toHaveCount(2);
   // The fill moved cash and added the position without a reload.
   await expect(dashboardPage.cash).toHaveText('Cash $4,600.00');
   await expect(dashboardPage.assets.getByTestId('asset-row-MSFT')).toBeVisible();
 
-  // With nothing pending left, the page stops reading the history.
-  const reads = () =>
-    api.requests.filter((r) => r.method === 'GET' && r.url.endsWith('/api/orders')).length;
-  const before = reads();
-  await page.waitForTimeout(6_000);
-  expect(reads()).toBe(before);
+  // The status arrived on the order stream, with the bearer token the stream requires.
+  const streams = api.requests.filter((r) => r.url.endsWith('/api/orders/stream'));
+  expect(streams.length).toBeGreaterThan(0);
+  expect(streams[0].headers['authorization']).toMatch(/^Bearer /);
 });
 
 test('a pending order that is rejected shows its reason without a reload', async ({
@@ -216,7 +276,7 @@ test('a pending order that is rejected shows its reason without a reload', async
   api.resolveOrder(USER.email, 2, { status: 'REJECTED', rejectionReason: 'Insufficient funds' });
 
   const rejected = dashboardPage.recentTransactions.locator('li[data-status="REJECTED"]');
-  await expect(rejected).toHaveCount(2, { timeout: POLL_TIMEOUT });
+  await expect(rejected).toHaveCount(2, { timeout: STREAM_TIMEOUT });
   await expect(dashboardPage.recentTransactions).toContainText('Insufficient funds');
   await expect(dashboardPage.cash).toHaveText('Cash $5,000.00');
   await expect(page.getByTestId('open-order-history')).toHaveCount(0);

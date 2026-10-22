@@ -41,10 +41,10 @@ button {
   background: #eefaff;
 }
 .launcher-art {
+  position: relative;
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
   transform: translateY(4px) scale(2.2);
   transform-origin: 50% 44%;
   transition: transform 450ms cubic-bezier(0.45, 0, 0.55, 1);
@@ -52,6 +52,40 @@ button {
 }
 .launcher-art.face-visible {
   transform: translateY(-10px) scale(1.35);
+}
+.launcher-body,
+.launcher-fin {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* The fin is its own layer so it can wiggle about its base, where it meets the head. */
+.launcher-fin {
+  transform-origin: 52.7% 50.4%;
+}
+.dua-launcher:hover .launcher-fin {
+  animation: fin-wiggle 600ms ease-in-out;
+}
+@keyframes fin-wiggle {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  20% {
+    transform: rotate(5deg);
+  }
+  45% {
+    transform: rotate(-4deg);
+  }
+  70% {
+    transform: rotate(3deg);
+  }
+  85% {
+    transform: rotate(-1.5deg);
+  }
 }
 .notification-count {
   position: absolute;
@@ -140,6 +174,9 @@ h2 {
   font-weight: 600;
 }
 .dua-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 18px;
 }
 .plan-label {
@@ -176,7 +213,7 @@ p {
   padding: 10px 12px;
   border-radius: 12px 12px 12px 4px;
   background: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.45;
 }
 .choices {
@@ -188,7 +225,7 @@ p {
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 10px;
+  padding: 12px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: transparent;
@@ -337,8 +374,15 @@ p {
 }
 .choice-title {
   display: block;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
+}
+.choice-copy small {
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 small {
   display: block;
@@ -414,11 +458,11 @@ article h3 {
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: 12px;
-  color: #f4f7fa;
+  color: var(--dua-ink);
   background:
-    radial-gradient(ellipse at 25% 0%, #16767a80, transparent 65%),
-    radial-gradient(ellipse at 0% 45%, #6043a35c, transparent 68%), #111416;
-  border-color: #ffffff1a;
+    radial-gradient(ellipse at 25% 0%, var(--dua-cyan), transparent 65%),
+    radial-gradient(ellipse at 0% 45%, var(--dua-purple), transparent 68%), var(--dua-base);
+  border-color: var(--border);
 }
 
 .insights > .feedback {
@@ -431,7 +475,7 @@ article h3 {
   line-height: 1.4;
 }
 .insight-card h3 {
-  color: #b8c2cb;
+  color: var(--dua-copy);
   font-size: 10px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -473,7 +517,7 @@ article h3 {
 .overview-metrics dt {
   font-size: 10px;
   line-height: 1.4;
-  color: #b8c2cb;
+  color: var(--dua-copy);
 }
 .overview-metrics dd {
   order: 0;
@@ -483,7 +527,7 @@ article h3 {
   overflow-wrap: anywhere;
 }
 .overview-metrics strong {
-  color: #f4f7fa;
+  color: var(--dua-ink);
   font-weight: 400;
   letter-spacing: -0.04em;
 }
@@ -567,18 +611,21 @@ article h3 {
   .choices button {
     transition: none;
   }
+  .dua-launcher:hover .launcher-fin {
+    animation: none;
+  }
 }
 
 .insight-card .takeaway,
 .insight-card .fact-line,
 .insight-card .overview-note {
-  color: #b8c2cb;
+  color: var(--dua-copy);
 }
 .insight-card .ticker-link {
-  color: #8edce5;
+  color: var(--dua-link);
 }
 .insight-card .fact-line strong {
-  color: #f4f7fa;
+  color: var(--dua-ink);
 }
 
 .overview-metrics {
@@ -594,7 +641,7 @@ article h3 {
 }
 .insight-card strong.gain,
 .insight-card strong.loss {
-  color: #fff;
+  color: var(--dua-heading);
 }
 .overview-metrics ng-icon.gain {
   color: var(--color-gain, #25eb69);
@@ -610,7 +657,7 @@ article h3 {
 .insight-card .overview-note,
 .overview-metrics dt,
 .insight-card .ticker-link {
-  color: #fff;
+  color: var(--dua-heading);
 }
 .card-navigation {
   display: flex;
@@ -662,7 +709,7 @@ article h3 {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #fff;
+  color: var(--dua-heading);
   font-size: 11px;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -681,7 +728,7 @@ article h3 {
 }
 .metric-subtext {
   margin-top: 4px;
-  color: #fff;
+  color: var(--dua-heading);
   font-size: 12px;
 }
 .daily-metrics > div {
@@ -725,7 +772,7 @@ article h3 {
 }
 .insight-card .takeaway strong {
   font-weight: 700;
-  color: #fff;
+  color: var(--dua-heading);
 }
 
 .card-content {
@@ -761,9 +808,9 @@ article h3 {
 .dua-panel:has(.insight-card, .insight-explanation) {
   overflow: hidden;
   background:
-    linear-gradient(to bottom, transparent 48%, #0c0e10 100%),
-    radial-gradient(ellipse at 25% 0%, #16767a80, transparent 70%),
-    radial-gradient(ellipse at 0% 45%, #6043a35c, transparent 75%), #111416;
+    linear-gradient(to bottom, transparent 48%, var(--dua-edge) 100%),
+    radial-gradient(ellipse at 25% 0%, var(--dua-cyan), transparent 70%),
+    radial-gradient(ellipse at 0% 45%, var(--dua-purple), transparent 75%), var(--dua-base);
 }
 .dua-body:has(.insight-card, .insight-explanation) {
   padding: 0;
@@ -782,7 +829,7 @@ article h3 {
 }
 
 .dua-panel:has(.insight-card, .insight-explanation) .dua-header {
-  background: #0c0e10;
+  background: var(--dua-edge);
 }
 
 .card-heading {
@@ -810,17 +857,17 @@ article h3 {
   font-size: 18px;
   line-height: 1.4;
   margin-top: 16px;
-  color: #fff;
+  color: var(--dua-heading);
 }
 .insight-purpose {
   margin-top: 10px;
-  color: #c3c9cf;
+  color: var(--dua-context);
   font-size: 12px;
   line-height: 1.5;
 }
 .overview-metrics ng-icon.gain,
 .overview-metrics ng-icon.loss {
-  color: #fff;
+  color: var(--dua-heading);
   font-size: 24px;
 }
 .primary-metric dd ng-icon,
@@ -852,7 +899,7 @@ article h3 {
 }
 
 .card-meta {
-  color: #c3c9cf;
+  color: var(--dua-context);
   font-size: 10px;
 }
 
@@ -861,10 +908,10 @@ article h3 {
 }
 
 .overview-metrics ng-icon.gain {
-  color: #a8efb5;
+  color: var(--dua-gain);
 }
 .overview-metrics ng-icon.loss {
-  color: #ffadb5;
+  color: var(--dua-loss);
 }
 .card-heading .explain-action {
   display: grid;
@@ -878,7 +925,7 @@ article h3 {
   font-size: 20px;
 }
 .card-heading .explain-action:hover {
-  background: #ffffff12;
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
 }
 .card-meta {
   display: flex;
@@ -893,7 +940,7 @@ article h3 {
   font-size: 17px;
   line-height: 1.3;
   font-weight: 500;
-  color: #fff;
+  color: var(--dua-heading);
   margin-bottom: 6px;
 }
 .insight-card .overview-metrics dd {
@@ -942,7 +989,7 @@ article h3 {
   margin: 0;
   padding: 12px 18px 36px;
   border: 0;
-  color: #fff;
+  color: var(--dua-heading);
   font-size: 14px;
   line-height: 1.55;
 }
@@ -978,7 +1025,7 @@ article h3 {
   line-height: inherit;
 }
 .example-context {
-  color: #c3c9cf;
+  color: var(--dua-context);
 }
 
 /* Share one intrinsic grid row so every slide fits the tallest card in its section. */
@@ -1068,4 +1115,10 @@ article h3 {
   .card-indicator::after {
     transition: none;
   }
+}
+
+/* While the panel animates between sizes its content is briefly taller than the panel, so
+   scrolling is off until the new size is reached rather than flashing a scrollbar. */
+.dua-panel.resizing :is(.dua-body, .card-content, .stock-list) {
+  overflow: hidden;
 }

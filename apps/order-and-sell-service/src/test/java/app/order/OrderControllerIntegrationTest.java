@@ -46,6 +46,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
@@ -311,6 +312,30 @@ class OrderControllerIntegrationTest {
     }
 
     @Test
+    void listingOrdersIsPagedNewestFirstWithTheTotalInAHeader() throws Exception {
+        submit("BUY", "10", "20.00").andExpect(status().isCreated());
+        submit("BUY", "5", "20.00").andExpect(status().isCreated());
+        submit("BUY", "1", "20.00").andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/orders").param("page", "0").param("size", "2").with(tokenFor(user.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(header().string(OrderController.TOTAL_COUNT_HEADER, "3"))
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].quantity").value(1))
+                .andExpect(jsonPath("$[1].quantity").value(5));
+        mockMvc.perform(get("/api/orders").param("page", "1").param("size", "2").with(tokenFor(user.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(header().string(OrderController.TOTAL_COUNT_HEADER, "3"))
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].quantity").value(10));
+        // A page below zero and a size below one are clamped rather than refused.
+        mockMvc.perform(get("/api/orders").param("page", "-1").param("size", "0").with(tokenFor(user.getUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].quantity").value(1));
+    }
+
+    @Test
     void listingOrdersNeverReturnsAnotherUsersOrders() throws Exception {
         submit("BUY", "10", "20.00").andExpect(status().isCreated());
         UUID strangerId = givenAnOrderBelongingToAnotherUser();
@@ -338,6 +363,7 @@ class OrderControllerIntegrationTest {
                 .andExpect(jsonPath("$[1].eventType").value("ACCEPTED"))
                 .andExpect(jsonPath("$[2].eventType").value("FILLED"))
                 .andExpect(jsonPath("$[0].price").value(20.00))
+                .andExpect(jsonPath("$[2].price").value(20.00))
                 .andExpect(jsonPath("$[0].occurredAt").value(notNullValue()))
                 .andExpect(jsonPath("$[2].occurredAt").value(notNullValue()));
     }

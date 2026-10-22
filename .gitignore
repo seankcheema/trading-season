@@ -83,3 +83,7 @@ dist/
 *.ipr
 
 
+
+# Database backups (scripts/backup-database.sh)
+/backups/
+*.dump

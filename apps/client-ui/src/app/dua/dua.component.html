@@ -36,7 +36,7 @@
       <h2 [class.dua-title]="!choice()">
         {{ title() }}
         @if (!choice()) {
-          <span class="plan-label"> - Free Plan</span>
+          <span class="plan-label">Free Plan</span>
         }
       </h2>
       @if (choice() && asOf()) {
@@ -109,28 +109,26 @@
             <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
           </button>
         }
-        <button type="button" aria-label="Daily review" (click)="select('daily')">
+        <button type="button" aria-label="Daily Review" (click)="select('daily')">
           <span class="choice-icon"><ng-icon name="lucideNewspaper" aria-hidden="true" /></span>
           <span class="choice-copy"
-            ><span class="choice-title">Daily review</span
-            ><small>Market overview, portfolio impact and what is next</small></span
+            ><span class="choice-title">Daily Review</span><small>Market highlights</small></span
           >
           <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
         </button>
-        <button type="button" aria-label="My holdings" (click)="select('holdings')">
+        <button type="button" aria-label="My Holdings" (click)="select('holdings')">
           <span class="choice-icon"><ng-icon name="lucideChartPie" aria-hidden="true" /></span>
           <span class="choice-copy"
-            ><span class="choice-title">My holdings</span
-            ><small>Growth, sector concentration and top performer</small></span
+            ><span class="choice-title">My Holdings</span><small>Portfolio highlights</small></span
           >
           <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
         </button>
         @if (symbol()) {
-          <button type="button" aria-label="This stock" (click)="select('stock')">
+          <button type="button" aria-label="This Stock" (click)="select('stock')">
             <span class="choice-icon"><ng-icon name="lucideScanSearch" aria-hidden="true" /></span>
             <span class="choice-copy"
-              ><span class="choice-title">This stock</span
-              ><small>Growth, valuation and risk - illustrative preview</small></span
+              ><span class="choice-title">This Stock</span
+              ><small>Growth and risk (demo)</small></span
             >
             <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
           </button>
@@ -174,7 +172,7 @@
           class="outlook-cta"
           data-testid="dua-outlook-open"
           [routerLink]="['/dashboard/markets', outlookSymbol().toLowerCase()]"
-          [queryParams]="{ tab: 'outlook' }"
+          [queryParams]="{ tab: 'outlook', accountId: account.selectedAccountId() }"
           (click)="minimize()"
         >
           Open the full {{ choice() === 'trending' ? 'trade signal' : 'outlook' }} for
@@ -399,6 +397,7 @@
 <button
   #launcher
   class="dua-launcher"
+  data-tour="dua"
   type="button"
   aria-label="Dua insights"
   [attr.aria-expanded]="!session.minimized()"
@@ -413,14 +412,22 @@
     @if (imagesFailed()) {
       <span class="fallback">Dua</span>
     } @else {
-      <img
-        class="launcher-art"
-        [class.face-visible]="faceVisible()"
-        src="/assets/assistant/shark-launcher-light-512.png"
-        alt=""
-        draggable="false"
-        (error)="imageFailed()"
-      />
+      <span class="launcher-art" [class.face-visible]="faceVisible()">
+        <img
+          class="launcher-body"
+          src="/assets/assistant/shark-launcher-body-512.png"
+          alt=""
+          draggable="false"
+          (error)="imageFailed()"
+        />
+        <img
+          class="launcher-fin"
+          src="/assets/assistant/shark-launcher-fin-512.png"
+          alt=""
+          draggable="false"
+          (error)="imageFailed()"
+        />
+      </span>
     }
   </span>
   @if (hasUpdates() && session.minimized()) {

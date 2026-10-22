@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -36,11 +37,13 @@ class CashTransactionDtoTest {
     }
 
     @Test
-    void requestCarriesTheAmountAndReason() {
-        CashTransactionRequest request = new CashTransactionRequest(new BigDecimal("10.00"), "DEPOSIT");
+    void requestCarriesTheAmountReasonAndClientReference() {
+        UUID reference = UUID.fromString("c0ffee00-0000-4000-8000-000000000001");
+        CashTransactionRequest request = new CashTransactionRequest(new BigDecimal("10.00"), "DEPOSIT", reference);
 
         assertEquals(new BigDecimal("10.00"), request.amount());
         assertEquals("DEPOSIT", request.reason());
+        assertEquals(reference, request.clientReference());
     }
 
     @Test
@@ -53,6 +56,8 @@ class CashTransactionDtoTest {
         transaction.setReason("ORDER_FILL");
         OffsetDateTime created = OffsetDateTime.parse("2026-04-01T09:30:00Z");
         transaction.setCreatedAt(created);
+        UUID reference = UUID.fromString("c0ffee00-0000-4000-8000-000000000002");
+        transaction.setClientReference(reference);
 
         assertEquals(5, transaction.getCashTransactionId());
         assertEquals(12, transaction.getAccountId());
@@ -60,6 +65,7 @@ class CashTransactionDtoTest {
         assertEquals(new BigDecimal("-3.25"), transaction.getAmount());
         assertEquals("ORDER_FILL", transaction.getReason());
         assertEquals(created, transaction.getCreatedAt());
+        assertEquals(reference, transaction.getClientReference());
     }
 
     @Test
