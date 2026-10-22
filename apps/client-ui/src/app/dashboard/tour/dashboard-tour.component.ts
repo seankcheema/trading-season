@@ -15,6 +15,7 @@ import {
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideArrowRight, lucideSearch, lucideX } from '@ng-icons/lucide';
 import { HlmButtonImports } from '@shared/ui-components/button';
+import { DuaFigureComponent } from '../../dua/dua-figure.component';
 import { TourProgressService } from './tour-progress.service';
 
 export type TourPlacement = 'top' | 'bottom' | 'left' | 'right';
@@ -160,7 +161,7 @@ let nextTourId = 0;
 @Component({
   selector: 'app-dashboard-tour',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButtonImports, NgIcon, NgTemplateOutlet],
+  imports: [DuaFigureComponent, HlmButtonImports, NgIcon, NgTemplateOutlet],
   providers: [provideIcons({ lucideArrowRight, lucideSearch, lucideX })],
   host: {
     '(document:keydown)': 'onKeydown($event)',
@@ -204,7 +205,9 @@ let nextTourId = 0;
           <div class="flex items-center justify-between gap-3">
             <div class="flex min-w-0 items-center gap-2">
               @if (current > 0) {
-                <ng-container *ngTemplateOutlet="avatar; context: { $implicit: 'size-6' }" />
+                <ng-container
+                  *ngTemplateOutlet="avatar; context: { $implicit: 'size-6 shrink-0' }"
+                />
                 <span class="text-foreground text-sm font-semibold" data-testid="tour-guide"
                   >Dua</span
                 >
@@ -287,26 +290,8 @@ let nextTourId = 0;
       }
     </div>
 
-    <!-- Dua's face, with an initial in its place should the image fail to load. -->
     <ng-template #avatar let-size>
-      <span
-        aria-hidden="true"
-        class="bg-muted text-foreground grid shrink-0 place-items-center overflow-hidden rounded-full text-xs font-semibold"
-        data-testid="tour-avatar"
-        [class]="size"
-      >
-        @if (avatarFailed()) {
-          D
-        } @else {
-          <img
-            src="/assets/assistant/shark-launcher-light-512.png"
-            alt=""
-            class="size-full"
-            draggable="false"
-            (error)="avatarFailed.set(true)"
-          />
-        }
-      </span>
+      <app-dua-figure [class]="size" data-testid="tour-avatar" />
     </ng-template>
   `,
   styles: [
@@ -396,7 +381,6 @@ export class DashboardTourComponent implements OnDestroy {
   protected readonly step = signal(this._progress.savedStep(TOUR_STEPS.length));
   protected readonly isLast = computed(() => this.step() === TOUR_STEPS.length - 1);
   protected readonly rect = signal<TourRect | null>(null);
-  protected readonly avatarFailed = signal(false);
   private readonly _cardHeight = signal(190);
   private readonly _viewport = signal({ width: CARD_WIDTH + EDGE * 2, height: 0 });
   protected readonly cardWidth = computed(() =>

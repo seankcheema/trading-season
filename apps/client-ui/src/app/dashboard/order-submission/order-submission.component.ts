@@ -1,7 +1,7 @@
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { ExecutionControlsComponent } from '../shared/execution-controls.component';
 import { WatchlistStarComponent } from '../watchlist/watchlist-star.component';
-import { ToastService } from '../../notifications/toast.service';
+import { DuaSpeech } from '../../dua/dua-speech.service';
 import { affordableShares, boundedShares, wholeShares } from '../shared/share-limits';
 import { CurrencyPipe } from '@angular/common';
 import {
@@ -58,7 +58,8 @@ export class OrderSubmissionComponent {
   readonly execution = viewChild(ExecutionControlsComponent);
   private readonly marketData = inject(MarketDataService);
   private readonly orders = inject(OrderService);
-  private readonly toasts = inject(ToastService);
+  // Dua says each order's outcome in its speech bubble.
+  private readonly speech = inject(DuaSpeech);
   private readonly destroyRef = inject(DestroyRef);
   private cooldownTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -274,7 +275,7 @@ export class OrderSubmissionComponent {
     if (!Number.isInteger(accountId) || accountId <= 0) {
       // No account selected yet, so there is nothing to place the order against.
       this.errorMessage.set(ORDER_NEEDS_ACCOUNT);
-      this.toasts.show(ORDER_NEEDS_ACCOUNT, 'error');
+      this.speech.say(ORDER_NEEDS_ACCOUNT, 'error');
       return;
     }
 
@@ -309,13 +310,13 @@ export class OrderSubmissionComponent {
               style: 'currency',
               currency: 'USD',
             }).format(result.executionPrice ?? result.indicativePrice);
-            this.toasts.show(`Filled ${result.quantity} ${symbol} at ${price}.`, 'success');
+            this.speech.say(`Filled ${result.quantity} ${symbol} at ${price}.`);
           }
           if (result.status === 'ACCEPTED') {
-            this.toasts.show(`${executionLabel} ${result.orderType.toLowerCase()} order ${this.editOrder() ? 'updated' : 'placed'} for ${result.quantity} ${symbol}.`, 'success');
+            this.speech.say(`${executionLabel} ${result.orderType.toLowerCase()} order ${this.editOrder() ? 'updated' : 'placed'} for ${result.quantity} ${symbol}.`);
           }
           if (result.status === 'REJECTED') {
-            this.toasts.show(`Rejected: ${result.rejectionReason ?? ORDER_REJECTED}`, 'error');
+            this.speech.say(`Rejected: ${result.rejectionReason ?? ORDER_REJECTED}`, 'error');
           }
           this.submitted.emit(result);
         },
@@ -323,7 +324,7 @@ export class OrderSubmissionComponent {
           this.submitting.set(false);
           const message = toOrderErrorMessage(error);
           this.errorMessage.set(message);
-          this.toasts.show(message, 'error');
+          this.speech.say(message, 'error');
         },
       });
   }

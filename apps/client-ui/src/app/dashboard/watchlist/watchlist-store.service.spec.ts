@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { TokenStorageService } from '../../core/auth/token-storage.service';
 import { WatchlistStore } from './watchlist-store.service';
+import { DuaMilestones } from '../../dua/dua-milestones.service';
 
 describe('WatchlistStore', () => {
   let store: WatchlistStore;
@@ -56,6 +57,19 @@ describe('WatchlistStore', () => {
     old.flush([]);
     http.expectOne('/api/me/watchlist').flush([entry]);
     expect(store.entries()).toEqual([entry]);
+  });
+
+  it('has Dua celebrate the first stock starred onto an empty watch list', () => {
+    const reached = vi.spyOn(TestBed.inject(DuaMilestones), 'reached');
+    store.load().subscribe();
+    http.expectOne('/api/me/watchlist').flush([]);
+
+    store.toggle('AAPL').subscribe();
+    http.expectOne('/api/me/watchlist/AAPL').flush(entry);
+    store.toggle('MSFT').subscribe();
+    http.expectOne('/api/me/watchlist/MSFT').flush({ ...entry, symbol: 'MSFT' });
+
+    expect(reached).toHaveBeenCalledExactlyOnceWith('star');
   });
 
   it('cancels pending work and clears entries synchronously on logout', () => {

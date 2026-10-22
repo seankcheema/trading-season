@@ -48,6 +48,12 @@ describe('SessionTimeoutService', () => {
     TestBed.tick();
   }
 
+  // Leaves no signed-in service behind whose document listeners would see later tests' input.
+  function signOut(): void {
+    isAuthenticated.set(false);
+    TestBed.tick();
+  }
+
   function act(type = 'mousemove'): void {
     document.dispatchEvent(new Event(type));
   }
@@ -92,6 +98,48 @@ describe('SessionTimeoutService', () => {
       expect(logout).toHaveBeenCalledTimes(1);
     },
   );
+
+  it('warns for the last minute and drops the warning on any activity', () => {
+    const service = createService();
+    signIn();
+
+    vi.advanceTimersByTime(9 * MINUTE - 1);
+    expect(service.warning()).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(service.warning()).toBe(true);
+
+    act('keydown');
+    expect(service.warning()).toBe(false);
+    // The warning's activity is shared at once, so another tab sees the user is back.
+    expect(Number(localStorage.getItem(ACTIVITY_KEY))).toBe(Date.now());
+    vi.advanceTimersByTime(9 * MINUTE);
+    expect(service.warning()).toBe(true);
+    expect(logout).not.toHaveBeenCalled();
+    signOut();
+  });
+
+  it('drops the warning when another tab records activity', () => {
+    const service = createService();
+    signIn();
+    vi.advanceTimersByTime(9 * MINUTE + 10_000);
+    expect(service.warning()).toBe(true);
+
+    localStorage.setItem(ACTIVITY_KEY, String(Date.now()));
+    vi.advanceTimersByTime(5_000);
+
+    expect(service.warning()).toBe(false);
+    expect(logout).not.toHaveBeenCalled();
+    signOut();
+  });
+
+  it('clears the warning once signed out', () => {
+    const service = createService();
+    signIn();
+    vi.advanceTimersByTime(10 * MINUTE);
+
+    expect(logout).toHaveBeenCalledTimes(1);
+    expect(service.warning()).toBe(false);
+  });
 
   it('stops counting when the user signs out manually', () => {
     createService();

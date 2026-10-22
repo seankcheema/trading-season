@@ -61,6 +61,19 @@ import {
   watchlistPulse,
 } from './dua-insights';
 import { DuaCountUpDirective } from './dua-count-up.directive';
+import { DuaFigureComponent, DuaMood } from './dua-figure.component';
+import { duaGreeting, duaMarketNote } from './dua-greeting';
+import { DuaSpeech } from './dua-speech.service';
+import { DuaSpeechBubbleComponent } from './dua-speech-bubble.component';
+import { SessionTimeoutService } from '../core/auth/session-timeout.service';
+
+// Clicks on the launcher within this long that set off Dua's barrel roll.
+const ROLL_CLICKS = 5;
+const ROLL_WINDOW_MS = 1500;
+const ROLL_MS = 900;
+const WAKE_MS = 900;
+export const IDLE_WARNING_LINE =
+  "Still there? I'll sign you out in a minute to keep your account safe.";
 
 const CHOICE_TITLES: Record<DuaChoice, string> = {
   daily: 'Daily Review',
@@ -78,7 +91,14 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
     // Above dialog backdrops (z-50) while a dialog Dua belongs to is open, below the tour.
     '[style.z-index]': 'raised() ? 60 : null',
   },
-  imports: [DuaCountUpDirective, NgIcon, NgTemplateOutlet, RouterLink],
+  imports: [
+    DuaCountUpDirective,
+    DuaFigureComponent,
+    DuaSpeechBubbleComponent,
+    NgIcon,
+    NgTemplateOutlet,
+    RouterLink,
+  ],
   providers: [
     provideIcons({
       lucideArrowUpRight,
@@ -146,8 +166,43 @@ export class DuaComponent {
   protected readonly focused = signal(false);
   protected readonly hasUpdates = computed(() => this.unreadCount() > 0);
   protected readonly explaining = signal(false);
+  // What Dua is saying beside the launcher, such as an order's outcome, and how it looks.
+  protected readonly speech = inject(DuaSpeech);
+  private readonly idle = inject(SessionTimeoutService);
+  // Dua dozes while the simulated market is outside regular hours, unless it has something to
+  // say, and wakes with a stretch when the market opens.
+  protected readonly sleeping = computed(() => !this.clock.marketOpen() && !this.speech.line());
+  protected readonly waking = signal(false);
+  protected readonly rolling = signal(false);
+  protected readonly mood = computed<DuaMood>(
+    () => this.speech.line()?.mood ?? (this.sleeping() ? 'sleepy' : 'happy'),
+  );
+  protected readonly wiggling = computed(() => {
+    const line = this.speech.line();
+    return this.hovered() || (!!line && line.tone !== 'error');
+  });
   protected readonly faceVisible = computed(
-    () => !this.session.minimized() || this.hasUpdates() || this.hovered() || this.focused(),
+    () =>
+      !this.session.minimized() ||
+      this.hasUpdates() ||
+      this.hovered() ||
+      this.focused() ||
+      !!this.speech.line() ||
+      this.waking(),
+  );
+  protected readonly greeting = computed(() =>
+    duaGreeting(
+      this.clock.currentMarketTimestamp(),
+      this.clock.marketCalendar().timezone,
+      this.account.profile()?.firstName ?? '',
+    ),
+  );
+  protected readonly marketNote = computed(() =>
+    duaMarketNote(
+      this.clock.currentMarketTimestamp(),
+      this.clock.marketCalendar().timezone,
+      this.clock.marketCalendar().tradingDates ?? [],
+    ),
   );
   protected readonly title = computed(() => {
     if (this.explaining()) {
@@ -156,7 +211,6 @@ export class DuaComponent {
     const choice = this.choice();
     return choice ? CHOICE_TITLES[choice] : 'Dua';
   });
-  protected readonly imagesFailed = signal(false);
   protected readonly activeCard = signal(0);
   protected readonly cards = signal<DuaCard[]>([]);
   protected readonly explainedCard = computed(() => this.cards()[this.activeCard()]);
@@ -170,6 +224,10 @@ export class DuaComponent {
   private readonly launcher = viewChild<ElementRef<HTMLButtonElement>>('launcher');
   private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
   private timers: ReturnType<typeof setTimeout>[] = [];
+  // Kept apart from the panel's timers, which opening and closing the panel clear.
+  private moveTimers: ReturnType<typeof setTimeout>[] = [];
+  private rollClicks: number[] = [];
+  private idleLine: number | null = null;
   private lastTime = '';
   private resizeAnimation?: Animation;
   private panelSize?: { height: number; width: number };
@@ -662,23 +720,65 @@ export class DuaComponent {
       animation.onfinish = finish;
       animation.oncancel = finish;
     });
+    let wasOpen: boolean | null = null;
+    effect(() => {
+      const open = this.clock.marketOpen();
+      untracked(() => {
+        if (wasOpen === false && open) {
+          this.playMove(this.waking, WAKE_MS);
+        }
+        wasOpen = open;
+      });
+    });
+    effect(() => {
+      const warning = this.idle.warning();
+      untracked(() => {
+        if (warning && this.idleLine === null) {
+          this.idleLine = this.speech.say(IDLE_WARNING_LINE, 'info', {
+            duration: null,
+            mood: 'sleepy',
+          });
+        } else if (!warning && this.idleLine !== null) {
+          this.speech.dismiss(this.idleLine);
+          this.idleLine = null;
+        }
+      });
+    });
     inject(DestroyRef).onDestroy(() => {
       this.resizeAnimation?.cancel();
       this.historyRequest?.unsubscribe();
       this.clearTimers();
+      this.moveTimers.forEach(clearTimeout);
+      if (this.idleLine !== null) {
+        this.speech.dismiss(this.idleLine);
+      }
     });
   }
 
-  protected imageFailed(): void {
-    this.clearTimers();
-    this.imagesFailed.set(true);
+  // Sets a move's class for as long as its animation runs.
+  private playMove(move: ReturnType<typeof signal<boolean>>, duration: number): void {
+    move.set(true);
+    this.moveTimers.push(setTimeout(() => move.set(false), duration));
   }
+
+  // Five quick clicks on the launcher, and Dua does a barrel roll.
+  private countRollClick(): void {
+    const now = Date.now();
+    this.rollClicks = [...this.rollClicks.filter((at) => now - at < ROLL_WINDOW_MS), now];
+    if (this.rollClicks.length >= ROLL_CLICKS && !this.rolling()) {
+      this.rollClicks = [];
+      this.playMove(this.rolling, ROLL_MS);
+      this.speech.say('Wheee!', 'info', { duration: 1500, mood: 'excited' });
+    }
+  }
+
   private clearTimers(): void {
     this.timers.forEach(clearTimeout);
     this.timers = [];
   }
 
   protected toggle(): void {
+    this.countRollClick();
     this.clearTimers();
     this.session.minimized.update((value) => !value);
     if (!this.session.minimized()) {

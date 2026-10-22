@@ -18,6 +18,7 @@ import {
 } from 'rxjs';
 import { BACKEND_API_URL } from '../../core/api.config';
 import { newClientReference } from '../../core/client-reference';
+import { DuaMilestones } from '../../dua/dua-milestones.service';
 import { NotOwnedError } from './account-error';
 import {
   Account,
@@ -48,6 +49,7 @@ export class AccountStore {
   private readonly _http = inject(HttpClient);
   private readonly _apiUrl = inject(BACKEND_API_URL);
   private readonly _isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
+  private readonly _milestones = inject(DuaMilestones);
 
   private readonly _accounts = signal<Account[]>([]);
   private readonly _holdings = signal(new Map<number, AccountHolding[]>());
@@ -262,7 +264,13 @@ export class AccountStore {
           created,
         ),
       ),
-      tap((created) => this.selectAccount(created.accountId, false)),
+      tap((created) => {
+        this.selectAccount(created.accountId, false);
+        // Going from one account to two is the first one opened beyond the default.
+        if (this._accounts().length === 2) {
+          this._milestones.reached('account');
+        }
+      }),
     );
   }
 
@@ -336,7 +344,21 @@ export class AccountStore {
   }
 
   deposit(amount: number): Observable<void> {
-    return this.postCashTransaction(amount, 'DEPOSIT');
+    return this.postCashTransaction(amount, 'DEPOSIT').pipe(
+      tap(() => {
+        // Registration books the opening funds as the first deposit, so one or two deposits in
+        // a history short enough to be complete means this was the user's first of their own.
+        const history = this._cashTransactions();
+        const deposits = history.filter((transaction) => transaction.reason === 'DEPOSIT');
+        if (
+          history.length < CASH_TRANSACTION_LIMIT &&
+          deposits.length > 0 &&
+          deposits.length <= 2
+        ) {
+          this._milestones.reached('deposit');
+        }
+      }),
+    );
   }
 
   withdraw(amount: number): Observable<void> {

@@ -25,7 +25,7 @@ import { PriceChartComponent } from '../dashboard/shared/price-chart.component';
 import { MarketPageComponent } from './market-page.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
 import { AuthService } from '../core/auth/auth.service';
-import { ToastService } from '../notifications/toast.service';
+import { DuaSpeech } from '../dua/dua-speech.service';
 import { OrderService } from '../dashboard/orders/order.service';
 
 const SNAPSHOT: MarketSnapshot = {
@@ -542,16 +542,16 @@ describe('MarketPageComponent', () => {
 
     resolved.next(order({ accountId: 1, status: 'FILLED' }));
     expect(refresh).toHaveBeenLastCalledWith(1);
-    expect(TestBed.inject(ToastService).messages()).toHaveLength(0);
+    expect(TestBed.inject(DuaSpeech).line()).toBeNull();
 
     resolved.next(
       order({ accountId: undefined, status: 'REJECTED', rejectionReason: 'Out of funds' }),
     );
     expect(refresh).toHaveBeenLastCalledWith(2);
-    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Out of funds');
+    expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Out of funds');
 
     resolved.next(order({ accountId: undefined, status: 'REJECTED', rejectionReason: null }));
-    expect(TestBed.inject(ToastService).messages().at(-1)?.message).toBe('Order rejected.');
+    expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Order rejected.');
   });
 
   it('skips the balance refresh when a resolved order has no account to refresh', async () => {
@@ -1070,7 +1070,7 @@ describe('MarketPageComponent', () => {
     expect(fixture.componentInstance['recentOrders']()[0].status).toBe('FILLED');
     expect(fixture.componentInstance['orderMessage']()).toBe('');
     expect(fixture.nativeElement.querySelector('app-trade-ticket [role="status"]')).toBeNull();
-    expect(TestBed.inject(ToastService).messages()[0].message).toBe('Filled 2 AAPL at $226.10.');
+    expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Filled 2 AAPL at $226.10.');
     http.verify();
   });
   it('reports an accepted order that is still open', async () => {
@@ -1082,9 +1082,7 @@ describe('MarketPageComponent', () => {
     http.expectOne('/api/accounts/2/holdings').flush([]);
     http.expectOne('/api/users/me').flush({ availableFunds: 9000 });
     fixture.detectChanges();
-    expect(TestBed.inject(ToastService).messages()[0].message).toBe(
-      'Market buy order placed for 2 AAPL.',
-    );
+    expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Market buy order placed for 2 AAPL.');
     http.verify();
   });
   it('sells all owned shares and displays the execution immediately', async () => {

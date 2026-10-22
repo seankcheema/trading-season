@@ -10,7 +10,7 @@ import { cashAt, holdingsAt, executionTime } from '../dashboard/accounts/simulat
 import { OrderService } from '../dashboard/orders/order.service';
 import { OrderResult } from '../dashboard/orders/order.models';
 import { toOrderErrorMessage } from '../dashboard/orders/order-error';
-import { ToastService } from '../notifications/toast.service';
+import { DuaSpeech } from '../dua/dua-speech.service';
 import { AuthService } from '../core/auth/auth.service';
 import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 import { DashboardHeaderDropdownComponent } from '../dashboard/shared/dashboard-header-dropdown.component';
@@ -106,6 +106,7 @@ import { SignedPercentPipe } from '../dashboard/shared/signed-percent.pipe';
 import { TickAnimations } from '../dashboard/shared/tick-animations';
 import { TimeframeToggleComponent } from '../dashboard/shared/timeframe-toggle.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
+import { DuaEmptyComponent } from '../dua/dua-empty.component';
 
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
@@ -128,8 +129,7 @@ interface MarketStats {
   selector: 'app-market-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-
-
+    DuaEmptyComponent,
     ThemeToggleComponent,
     DuaComponent,
     TitleCasePipe,
@@ -209,7 +209,8 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly orders = inject(OrderService);
   protected readonly clock = inject(MarketClockService);
 
-  private readonly toasts = inject(ToastService);
+  // Dua says each order's outcome in its speech bubble.
+  private readonly speech = inject(DuaSpeech);
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly openHeaderDropdown = signal<'account' | 'profile' | null>(
@@ -483,18 +484,17 @@ export class MarketPageComponent implements OnInit, OnDestroy {
           if (result.status === 'FILLED') {
             const message = `Filled ${result.quantity} ${draft.symbol} at ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(result.executionPrice ?? result.indicativePrice)}.`;
 
-            this.toasts.show(message, 'success');
+            this.speech.say(message);
             this.refreshBalances(accountId);
           } else if (result.status === 'REJECTED') {
             const message = `Rejected: ${result.rejectionReason ?? 'The order was rejected.'}`;
             this.orderError.set(message);
-            this.toasts.show(message, 'error');
+            this.speech.say(message, 'error');
           } else {
             this.refreshBalances(accountId);
             const type = (draft.executionType ?? 'MARKET').replaceAll('_', '-').toLowerCase();
-            this.toasts.show(
+            this.speech.say(
               `${type.charAt(0).toUpperCase() + type.slice(1)} ${draft.side} order placed for ${result.quantity} ${draft.symbol}.`,
-              'success',
             );
           }
         },
@@ -502,7 +502,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
           this.submitting.set(false);
           const message = toOrderErrorMessage(error);
           this.orderError.set(message);
-          this.toasts.show(message, 'error');
+          this.speech.say(message, 'error');
         },
       });
   }
@@ -724,7 +724,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
         this.refreshBalances(accountId);
       }
       if (order.status === 'REJECTED') {
-        this.toasts.show(order.rejectionReason ?? 'Order rejected.', 'error');
+        this.speech.say(order.rejectionReason ?? 'Order rejected.', 'error');
       }
     });
     if (!isPlatformBrowser(this.platformId)) {

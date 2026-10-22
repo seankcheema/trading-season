@@ -1,0 +1,154 @@
+:host {
+  display: contents;
+}
+/* Both regions cover the launcher's box, so a bubble inside either sits beside it. */
+.dua-says {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+/* What Dua says, in a bubble beside the launcher that points at it. */
+.dua-bubble {
+  --bubble-accent: var(--muted-foreground);
+  position: absolute;
+  right: 62px;
+  bottom: 4px;
+  width: max-content;
+  max-width: min(20rem, calc(100vw - 32px - 62px));
+  padding: 10px 14px 12px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--bubble-accent) 35%, var(--border));
+  border-radius: 16px 16px 4px 16px;
+  background: color-mix(in srgb, var(--bubble-accent) 10%, var(--card));
+  box-shadow: 0 12px 32px -12px #000b;
+  color: var(--card-foreground);
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  transform-origin: bottom right;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  animation: dua-bubble-pop 340ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.dua-bubble p {
+  margin: 0;
+}
+.dua-bubble.tone-success {
+  --bubble-accent: var(--color-gain);
+}
+.dua-bubble.tone-error {
+  --bubble-accent: var(--destructive);
+}
+.dua-bubble.tone-celebrate {
+  --bubble-accent: var(--primary);
+}
+.bubble-bar {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: var(--bubble-accent);
+  opacity: 0.4;
+  transform-origin: left center;
+  animation: dua-bubble-countdown linear forwards;
+}
+@keyframes dua-bubble-pop {
+  from {
+    opacity: 0;
+    transform: translateX(10px) scale(0.85);
+  }
+}
+@keyframes dua-bubble-countdown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* A first is celebrated with bubbles rising off Dua. */
+.dua-burst {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.dua-burst span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px;
+  border: 2px solid var(--primary);
+  border-radius: 50%;
+  opacity: 0;
+  animation: dua-burst 1100ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.dua-burst span:nth-child(1) {
+  --x: -34px;
+  --y: -46px;
+}
+.dua-burst span:nth-child(2) {
+  --x: -8px;
+  --y: -62px;
+  width: 14px;
+  height: 14px;
+  animation-delay: 60ms;
+}
+.dua-burst span:nth-child(3) {
+  --x: 22px;
+  --y: -52px;
+  animation-delay: 120ms;
+}
+.dua-burst span:nth-child(4) {
+  --x: -44px;
+  --y: -16px;
+  width: 7px;
+  height: 7px;
+  animation-delay: 180ms;
+}
+.dua-burst span:nth-child(5) {
+  --x: 10px;
+  --y: -80px;
+  width: 7px;
+  height: 7px;
+  animation-delay: 240ms;
+}
+.dua-burst span:nth-child(6) {
+  --x: -24px;
+  --y: -76px;
+  animation-delay: 300ms;
+}
+.dua-burst span:nth-child(7) {
+  --x: 30px;
+  --y: -24px;
+  width: 8px;
+  height: 8px;
+  animation-delay: 360ms;
+}
+@keyframes dua-burst {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.4);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--x), var(--y)) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dua-bubble,
+  .bubble-bar {
+    animation: none;
+  }
+  .dua-burst {
+    display: none;
+  }
+}

@@ -19,8 +19,13 @@ const ACTIVITY_WRITE_INTERVAL_MS = 5_000;
 
 const ACTIVITY_EVENTS = ['mousedown', 'mousemove', 'keydown', 'wheel', 'scroll', 'touchstart'];
 
-// Signs the user out after a period without input. The countdown only runs while a session
-// exists. The last activity time is shared through localStorage, so input in another tab keeps
+// How long before signing out the user is warned, and how often the warning rechecks for input
+// in another tab, which this tab only sees through storage.
+export const IDLE_WARNING_MS = 60_000;
+const WARNING_RECHECK_MS = 5_000;
+
+// Signs the user out after a period without input, raising a warning in the last minute so Dua
+// can ask whether the user is still there. The countdown only runs while a session exists. The last activity time is shared through localStorage, so input in another tab keeps
 // this one alive and a reload after the limit has passed still signs the user out.
 @Injectable({ providedIn: 'root' })
 export class SessionTimeoutService {
@@ -31,6 +36,9 @@ export class SessionTimeoutService {
 
   private readonly _timeoutMinutes = signal(this.readTimeoutMinutes());
   readonly timeoutMinutes = this._timeoutMinutes.asReadonly();
+  // True in the last minute before an idle sign-out; any input clears it.
+  private readonly _warning = signal(false);
+  readonly warning = this._warning.asReadonly();
 
   private _lastActivity: number | null = null;
   private _lastWrite = 0;
@@ -87,6 +95,7 @@ export class SessionTimeoutService {
       return;
     }
     this._lastActivity = null;
+    this._warning.set(false);
     this.clearTimer();
     for (const type of ACTIVITY_EVENTS) {
       this._document.removeEventListener(type, this._onActivity, { capture: true });
@@ -105,13 +114,17 @@ export class SessionTimeoutService {
     }
     const now = Date.now();
     this._lastActivity = now;
-    if (now - this._lastWrite >= ACTIVITY_WRITE_INTERVAL_MS) {
+    if (now - this._lastWrite >= ACTIVITY_WRITE_INTERVAL_MS || this._warning()) {
       this.writeActivity(now);
+    }
+    if (this._warning()) {
+      this.check();
     }
   }
 
-  // Signs out if the limit has passed, otherwise sleeps until it next could have. Activity only
-  // moves the deadline, so the timer is rescheduled here rather than on every input event.
+  // Signs out if the limit has passed, otherwise sleeps until it next could have, or until the
+  // warning is due. Activity only moves the deadline, so the timer is rescheduled here rather
+  // than on every input event, except to end a warning.
   private check(): void {
     if (this._lastActivity === null) {
       return;
@@ -124,7 +137,12 @@ export class SessionTimeoutService {
       this.signOut();
       return;
     }
-    this._timer = setTimeout(() => this.check(), remaining);
+    const warning = remaining <= IDLE_WARNING_MS;
+    this._warning.set(warning);
+    this._timer = setTimeout(
+      () => this.check(),
+      warning ? Math.min(remaining, WARNING_RECHECK_MS) : remaining - IDLE_WARNING_MS,
+    );
   }
 
   private signOut(): void {

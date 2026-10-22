@@ -13,7 +13,7 @@ Both page headers show the simulated market time read-only, with a Closed badge 
 
 Hover details on the market page charts, the order ticket chart and the dashboard portfolio chart sit at the top of the plot, centered above the hovered point, so they do not move vertically. When the hovered point is high enough that the label would cover it, the label moves beside the point, still along the top.
 
-Live prices, candles, and the tick stream come from the Java market API. Supplementary metrics on the market page are demo data. Users are signed out after a period of inactivity, 10 minutes by default and configurable in settings (applied with Save all).
+Live prices, candles, and the tick stream come from the Java market API. Supplementary metrics on the market page are demo data. Users are signed out after a period of inactivity, 10 minutes by default and configurable in settings (applied with Save all); for the last minute Dua asks whether they are still there, and any input, in any tab, clears the question.
 
 A user who has not accepted the platform terms in force sees them on the dashboard and on the market page in a dialog that cannot be dismissed, with everything behind it inert. They sign by typing their name and accept, or sign out. The wording and its version are in [terms-content.ts](src/app/dashboard/terms/terms-content.ts); the version must match the one [Holdings and Trade Service](../holdings-and-trade-service/README.md) and [Order and Sell Service](../order-and-sell-service/README.md) have in force, which a test in each of them checks. After changing the wording, run `npm --prefix apps/client-ui run terms:pdf` to regenerate [the PDF](../../docs/pdf/terms-and-conditions.pdf) from it. The terms' version is the date of their wording (`TERMS_VERSION` in `dashboard/terms/terms-content.ts`, which must equal `UserService.CURRENT_TERMS_VERSION` in Holdings and Trade); version 2026-10-21 added the section on model reads and trade signals, so every user accepts again.
 
@@ -32,6 +32,21 @@ Dua is animated, all of it switched off under `prefers-reduced-motion`: the pane
 Blue animated borders and New labels identify unread choices, with static blue borders for reduced motion. Opening the menu does not acknowledge content. Rendering a foreground summary acknowledges its exact version through the [read-state API](../holdings-and-trade-service/api.md#dua-read-state). Versions are independent by account, simulation, category and stock. Date changes, fills, forecast changes and suggestion/activity classification changes create updates; ordinary numeric ticks do not. Existing results remain snapshots until Update available appears and is used; there is no manual refresh, and a failed load offers Try again. State synchronizes on context activation, window focus and every minute while open; failed writes retry without re-highlighting locally viewed content. The launcher badge counts unread choices.
 
 See [Dua](src/app/dua/dua.component.ts), [performance calculations](src/app/dua/dua-guidance.ts) and [viewed state](src/app/dua/dua-session.service.ts).
+
+### Dua as a companion
+
+Dua is drawn as an SVG ([dua-figure.component.ts](src/app/dua/dua-figure.component.ts)) traced from the launcher artwork in `public/assets/assistant`, with six expressions: happy, sleepy, shy (flippers over its eyes), peek (one flipper lowered), worried and excited. Its face keeps the `--dua-face` colors in both themes. Beyond the insights panel, Dua appears across the app:
+
+- Order outcomes (fills, placed and updated orders, rejections and submission errors) and later fills are said by Dua in a speech bubble beside the launcher instead of a toast, through [DuaSpeech](src/app/dua/dua-speech.service.ts). A line stays 6 seconds (7 for a celebration, 8 for an error), a newer line replaces it, and Dua's face matches its tone. The bubble sits inside a polite live region, or an alert for errors, so screen readers announce it once. The toaster remains for other notices.
+- The panel greets the user by first name and by the simulated market's time of day, and the header says when the market opens or closes ([dua-greeting.ts](src/app/dua/dua-greeting.ts)).
+- Outside regular hours (08:30 to 15:00 CT on a trading date) Dua dozes on the launcher with drifting z's, and stretches awake at the open.
+- [DuaMilestones](src/app/dua/dua-milestones.service.ts) celebrates a user's firsts once each, with rising bubbles: the first deposit after the opening funds, the first order not rejected, the first account beyond the default and the first watch list star. The service that owns each action decides from its data that it was a first; which firsts were celebrated is kept per user in this browser (`ts.dua.milestones.<user id>`). Profits, losses and streaks are deliberately not celebrated.
+- Empty holdings, watch list, portfolio chart and recent orders show Dua above their message ([dua-empty.component.ts](src/app/dua/dua-empty.component.ts)).
+- On sign-in and registration Dua peeks over the form ([dua-peek.component.ts](src/app/dua/dua-peek.component.ts)), covers its eyes while a password or the SSN is typed, peeks once it is shown, and looks worried at a failed or locked sign-in, whose lockout message it delivers.
+- On the landing page Dua rides the live point of the hero graph.
+- Five quick clicks on the launcher make Dua do a barrel roll.
+
+All of this motion is off under `prefers-reduced-motion`.
 
 ## First-run tour
 
@@ -135,7 +150,7 @@ The order history behind the dashboard and the market page is read from `GET /ap
 
 A buy ticket's cash after deducts what the server reserves, the limit price or the price plus the execution buffer, while the estimated cost stays at the shown price (BR-13). When a pushed status names an order the page has not loaded, or a reconnect re-reads the history, the orders that resolved in between are announced the same way as a pushed fill, so cash and holdings refresh (BR-10).
 
-A fill that lands after the submission response, such as a limit or stop order's, is announced by the service with the `executionPrice` the Order and Sell Service settled at (BR-08); the submission toasts use the same field and fall back to the indicative price when a response has none.
+A fill that lands after the submission response, such as a limit or stop order's, is announced by the service with the `executionPrice` the Order and Sell Service settled at (BR-08); the submission's own announcement uses the same field and falls back to the indicative price when a response has none. Dua says both, in its speech bubble (see [Dua as a companion](#dua-as-a-companion)).
 
 ## Loading states
 

@@ -20,12 +20,16 @@ import { AuthService } from '../core/auth/auth.service';
 import { LOGIN_LOCKOUT_MINUTES, LoginLockoutService } from '../core/auth/login-lockout.service';
 import { INACTIVE_SIGN_OUT_REASON } from '../core/auth/session-timeout.service';
 import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
+import { DuaFigureComponent, DuaMood } from '../dua/dua-figure.component';
+import { DuaPeekComponent, secretFieldOf } from '../dua/dua-peek.component';
 
 @Component({
   selector: 'app-login',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    DuaFigureComponent,
+    DuaPeekComponent,
     ThemeToggleComponent,
     ReactiveFormsModule,
     RouterLink,
@@ -58,6 +62,9 @@ export class LoginComponent {
   protected readonly loading = signal(false);
   // Message from the last failed sign-in, cleared as soon as the user edits the form.
   protected readonly errorMessage = signal<string | null>(null);
+  // The masked field focus is in, if any, so Dua peeking over the form can look away.
+  protected readonly secretField = signal<string | null>(null);
+  protected readonly secretFieldOf = secretFieldOf;
   // True while too many rejected sign-ins have locked the form.
   protected readonly locked = this._lockout.isLocked;
   protected readonly lockoutMinutes = LOGIN_LOCKOUT_MINUTES;
@@ -65,6 +72,17 @@ export class LoginComponent {
   protected readonly lockoutCountdown = computed(() => {
     const seconds = Math.ceil(this._lockout.remainingMs() / 1000);
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  });
+  // Dua covers its eyes while the password is typed, peeks once it is shown, and looks
+  // worried at a failed or locked sign-in.
+  protected readonly duaMood = computed<DuaMood>(() => {
+    if (this.locked()) {
+      return 'worried';
+    }
+    if (this.secretField() === 'password') {
+      return this.showPassword() ? 'peek' : 'shy';
+    }
+    return this.errorMessage() ? 'worried' : 'happy';
   });
 
   private readonly _fb = new FormBuilder();

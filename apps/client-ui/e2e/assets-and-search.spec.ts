@@ -157,7 +157,7 @@ test.describe('assets dialog', () => {
     const order = page.getByRole('dialog', { name: 'New Order' });
     await order.locator('#order-shares').fill('1');
     await order.getByRole('button', { name: 'Buy 1 AAPL', exact: true }).click();
-    await expect(page.locator('hlm-toaster .toast')).toContainText('Filled 1 AAPL');
+    await expect(page.getByTestId('dua-bubble')).toContainText('Filled 1 AAPL');
     await order.getByRole('button', { name: 'Close order submission' }).click();
 
     await page.getByTestId('open-assets').click();

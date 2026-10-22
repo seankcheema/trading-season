@@ -79,6 +79,7 @@ import { TickAnimations } from './shared/tick-animations';
 import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
 import { DashboardTourComponent, TourExit } from './tour/dashboard-tour.component';
 import { TourProgressService } from './tour/tour-progress.service';
+import { DuaEmptyComponent } from '../dua/dua-empty.component';
 
 type HeaderDropdown = 'account' | 'profile';
 
@@ -94,6 +95,7 @@ type AccountDialog =
   imports: [
     ThemeToggleComponent,
     DuaComponent,
+    DuaEmptyComponent,
     OrderEditorComponent,
     ActivityRowComponent,
     ActivityRowSkeletonComponent,

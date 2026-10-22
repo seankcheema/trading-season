@@ -14,6 +14,8 @@ import { TokenStorageService } from '../core/auth/token-storage.service';
 import { PlatformSignalsService } from '../market-page/risk-outlook/platform-signals.service';
 import { PlatformTrendService } from '../market-page/trend-read/platform-trend.service';
 import { WatchlistStore } from '../dashboard/watchlist/watchlist-store.service';
+import { SessionTimeoutService } from '../core/auth/session-timeout.service';
+import { DuaSpeech } from './dua-speech.service';
 
 describe('Dua panel', () => {
   let session: DuaSession;
@@ -23,14 +25,16 @@ describe('Dua panel', () => {
     needsTermsAcceptance: signal(false),
     status: signal('ready'),
     selectedHoldings: signal([{ symbol: 'AAPL', quantity: 2, averageCost: 100 }]),
+    profile: signal({ firstName: 'Sean' }),
   };
   const clock = {
     marketSessionId: signal(1),
     marketOpen: signal(true),
     clockUpdating: signal(false),
     currentMarketTimestamp: signal('2026-01-05T15:05:00Z'),
-    marketCalendar: signal({ timezone: 'America/Chicago' }),
+    marketCalendar: signal({ timezone: 'America/Chicago', tradingDates: ['2026-01-05'] }),
   };
+  const idle = { warning: signal(false) };
   const market = { candles: vi.fn() };
   // Thirty readings for AAPL before the clock, as the signal file carries them: over any twenty
   // in a row the model is right 15 times and the rule 12 (outcomes all stormier).
@@ -88,6 +92,8 @@ describe('Dua panel', () => {
     load: vi.fn(() => of(null)),
   };
   beforeEach(() => {
+    idle.warning.set(false);
+    clock.marketOpen.set(true);
     account.needsTermsAcceptance.set(false);
     account.selectedAccountId.set(1);
     account.status.set('ready');
@@ -113,6 +119,7 @@ describe('Dua panel', () => {
         },
         { provide: AccountStore, useValue: account },
         { provide: TokenStorageService, useValue: { onIdentityChange: () => {} } },
+        { provide: SessionTimeoutService, useValue: idle },
         { provide: MarketClockService, useValue: clock },
         { provide: MarketDataService, useValue: market },
         { provide: PlatformSignalsService, useValue: signals },
@@ -324,5 +331,110 @@ describe('Dua panel', () => {
     fixture.detectChanges();
     click('Daily Review');
     expect(text()).toContain('Account or market data is unavailable');
+  });
+  it('greets the user by name and says where the market is in its day', () => {
+    const { fixture, click } = setup();
+    click('Dua insights');
+    // 15:05 UTC is 9:05 in Chicago.
+    expect(fixture.nativeElement.querySelector('.greeting').textContent.trim()).toBe(
+      'Morning, Sean! What should we review?',
+    );
+    expect(fixture.nativeElement.querySelector('.market-note').textContent.trim()).toBe(
+      'Market closes in 5h 55m',
+    );
+  });
+  it('says lines in a bubble and announces them in the matching live region', () => {
+    vi.useFakeTimers();
+    const { fixture } = setup();
+    const speech = TestBed.inject(DuaSpeech);
+    const element = fixture.nativeElement as HTMLElement;
+    const bubble = () => element.querySelector('[data-testid="dua-bubble"]');
+    const polite = () => element.querySelector('[data-testid="dua-says"]')!.textContent!.trim();
+    const alert = () => element.querySelector('[data-testid="dua-warns"]')!.textContent!.trim();
+
+    speech.say('Filled 1 AAPL at $110.00.');
+    fixture.detectChanges();
+    expect(bubble()?.textContent?.trim()).toBe('Filled 1 AAPL at $110.00.');
+    expect(bubble()?.closest('[role="status"]')).not.toBeNull();
+    expect(bubble()?.classList).toContain('tone-success');
+    expect(polite()).toBe('Filled 1 AAPL at $110.00.');
+    expect(element.querySelector('app-dua-figure[data-mood="happy"].wiggle')).not.toBeNull();
+    expect(element.querySelector('.launcher-art.face-visible')).not.toBeNull();
+
+    speech.say('Rejected: Not enough cash.', 'error');
+    fixture.detectChanges();
+    expect(alert()).toBe('Rejected: Not enough cash.');
+    expect(polite()).toBe('');
+    expect(element.querySelector('.launcher-art app-dua-figure')!.getAttribute('data-mood')).toBe(
+      'worried',
+    );
+
+    vi.advanceTimersByTime(8000);
+    fixture.detectChanges();
+    expect(bubble()).toBeNull();
+    expect(alert()).toBe('');
+  });
+  it('celebrates with rising bubbles', () => {
+    const { fixture } = setup();
+    TestBed.inject(DuaSpeech).say('Your first order is in.', 'celebrate');
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelectorAll('.dua-burst span')).toHaveLength(7);
+    expect(element.querySelector('.launcher-art app-dua-figure')!.getAttribute('data-mood')).toBe(
+      'excited',
+    );
+  });
+  it('dozes outside market hours and wakes with a stretch at the open', () => {
+    vi.useFakeTimers();
+    clock.marketOpen.set(false);
+    const { fixture } = setup();
+    const element = fixture.nativeElement as HTMLElement;
+    const launcher = element.querySelector('.dua-launcher') as HTMLElement;
+    expect(element.querySelector('.dua-zzz')).not.toBeNull();
+    expect(element.querySelector('.launcher-art app-dua-figure')!.getAttribute('data-mood')).toBe(
+      'sleepy',
+    );
+    expect(launcher.classList).not.toContain('waking');
+
+    clock.marketOpen.set(true);
+    fixture.detectChanges();
+    expect(element.querySelector('.dua-zzz')).toBeNull();
+    expect(launcher.classList).toContain('waking');
+    vi.advanceTimersByTime(900);
+    fixture.detectChanges();
+    expect(launcher.classList).not.toContain('waking');
+  });
+  it('asks whether the user is still there before an idle sign-out', () => {
+    const { fixture } = setup();
+    const speech = TestBed.inject(DuaSpeech);
+    idle.warning.set(true);
+    fixture.detectChanges();
+    expect(speech.line()?.text).toBe(
+      "Still there? I'll sign you out in a minute to keep your account safe.",
+    );
+    expect(speech.line()?.duration).toBeNull();
+
+    idle.warning.set(false);
+    fixture.detectChanges();
+    expect(speech.line()).toBeNull();
+  });
+  it('does a barrel roll after five quick clicks', () => {
+    vi.useFakeTimers();
+    const { fixture } = setup();
+    const launcher = fixture.nativeElement.querySelector('.dua-launcher') as HTMLButtonElement;
+    for (let i = 0; i < 4; i++) {
+      launcher.click();
+      vi.advanceTimersByTime(200);
+    }
+    fixture.detectChanges();
+    expect(launcher.classList).not.toContain('rolling');
+
+    launcher.click();
+    fixture.detectChanges();
+    expect(launcher.classList).toContain('rolling');
+    expect(TestBed.inject(DuaSpeech).line()?.text).toBe('Wheee!');
+    vi.advanceTimersByTime(900);
+    fixture.detectChanges();
+    expect(launcher.classList).not.toContain('rolling');
   });
 });

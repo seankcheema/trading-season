@@ -16,6 +16,7 @@ import { DailySparklineComponent } from '../shared/daily-sparkline.component';
 import { DashboardDialogComponent } from '../shared/dashboard-dialog.component';
 import { SignedPercentPipe } from '../shared/signed-percent.pipe';
 import { SortHeaderComponent } from '../shared/sort-header.component';
+import { DuaEmptyComponent } from '../../dua/dua-empty.component';
 
 const FILTERS: readonly { id: AssetFilter; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -30,6 +31,7 @@ const FILTERS: readonly { id: AssetFilter; label: string }[] = [
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CurrencyPipe,
+    DuaEmptyComponent,
     DailySparklineComponent,
     DashboardDialogComponent,
     SignedPercentPipe,
@@ -164,12 +166,14 @@ const FILTERS: readonly { id: AssetFilter; label: string }[] = [
                 </button>
               </li>
             } @empty {
-              <li class="text-muted-foreground px-2 py-8 text-center text-sm">
-                {{
-                  holdings().length
-                    ? 'No assets match these filters.'
-                    : 'This account has no holdings yet.'
-                }}
+              <li class="text-muted-foreground px-2 py-8 text-sm">
+                <app-dua-empty>
+                  {{
+                    holdings().length
+                      ? 'No assets match these filters.'
+                      : 'This account has no holdings yet.'
+                  }}
+                </app-dua-empty>
               </li>
             }
           </ul>

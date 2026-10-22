@@ -332,3 +332,92 @@
     transform: none;
   }
 }
+
+/* Outside regular hours Dua dozes, with z's drifting up from its head. */
+.dua-zzz {
+  position: absolute;
+  top: -6px;
+  left: -2px;
+  width: 24px;
+  height: 24px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+}
+.dua-zzz span {
+  position: absolute;
+  bottom: 0;
+  left: 8px;
+  opacity: 0;
+  animation: dua-zzz 2400ms ease-out infinite;
+}
+.dua-zzz span:nth-child(2) {
+  font-size: 13px;
+  animation-delay: 800ms;
+}
+.dua-zzz span:nth-child(3) {
+  font-size: 15px;
+  animation-delay: 1600ms;
+}
+@keyframes dua-zzz {
+  0% {
+    opacity: 0;
+    transform: translate(0, 4px) scale(0.7);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-10px, -16px) scale(1.1);
+  }
+}
+
+/* Waking at the open, and the barrel roll after five quick clicks. */
+.dua-launcher.waking {
+  animation: dua-wake 900ms ease-in-out;
+}
+.dua-launcher.rolling {
+  animation: dua-roll 900ms cubic-bezier(0.45, 0, 0.55, 1);
+}
+@keyframes dua-wake {
+  30% {
+    transform: translateY(2px) scale(1.08, 0.92);
+  }
+  55% {
+    transform: translateY(-6px) scale(0.96, 1.1);
+  }
+  80% {
+    transform: scale(1.02, 0.98);
+  }
+}
+@keyframes dua-roll {
+  25% {
+    transform: translateY(-18px) rotate(90deg);
+  }
+  75% {
+    transform: translateY(-18px) rotate(270deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dua-launcher.waking,
+  .dua-launcher.rolling {
+    animation: none;
+  }
+  .dua-zzz span {
+    opacity: 1;
+    animation: none;
+  }
+  .dua-zzz span:nth-child(2) {
+    transform: translate(-5px, -8px);
+  }
+  .dua-zzz span:nth-child(3) {
+    transform: translate(-10px, -16px);
+  }
+}

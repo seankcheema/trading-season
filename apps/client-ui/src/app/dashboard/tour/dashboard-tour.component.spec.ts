@@ -160,17 +160,6 @@ describe('DashboardTourComponent', () => {
     expect(avatars()[0].getAttribute('aria-hidden')).toBe('true');
   });
 
-  it("shows Dua's initial when the avatar image fails to load", async () => {
-    await render();
-
-    element().querySelector('[data-testid="tour-avatar"] img')!.dispatchEvent(new Event('error'));
-    fixture.detectChanges();
-
-    const avatar = element().querySelector('[data-testid="tour-avatar"]');
-    expect(avatar?.querySelector('img')).toBeNull();
-    expect(avatar?.textContent?.trim()).toBe('D');
-  });
-
   it('moves with the arrow keys and ignores them with a modifier', async () => {
     await render();
 
