@@ -95,8 +95,12 @@
               class="rounded-[5px]"
               formControlName="dateOfBirth"
             />
-            @if (form.controls.dateOfBirth.invalid && form.controls.dateOfBirth.touched) {
-              <p class="text-destructive text-sm">Date of birth is required.</p>
+            @if (form.controls.dateOfBirth.touched) {
+              @if (form.controls.dateOfBirth.hasError('required')) {
+                <p class="text-destructive text-sm">Date of birth is required.</p>
+              } @else if (form.controls.dateOfBirth.hasError('underage')) {
+                <p class="text-destructive text-sm">You must be at least {{ minimumAge }} to sign up.</p>
+              }
             }
           </div>
 

@@ -28,6 +28,25 @@ test.describe('registering', () => {
     expect(api.requests.filter((request) => request.url.endsWith('/auth/login'))).toHaveLength(0);
   });
 
+  test('refuses someone under 21 before any account is created', async ({
+    page,
+    registerPage,
+    api,
+  }) => {
+    const underage = new Date();
+    underage.setFullYear(underage.getFullYear() - 21);
+    underage.setDate(underage.getDate() + 1);
+
+    await registerPage.goto();
+    await registerPage.register(
+      newAccount({ dateOfBirth: underage.toLocaleDateString('en-CA') }),
+    );
+
+    await expect(page.getByText('You must be at least 21 to sign up.')).toBeVisible();
+    await expect(page).toHaveURL(/\/register$/);
+    expect(api.requests.filter(isRegistrationRequest)).toHaveLength(0);
+  });
+
   test('creates credentials first, then the profile with the returned token', async ({
     page,
     registerPage,

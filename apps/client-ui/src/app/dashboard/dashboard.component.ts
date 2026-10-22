@@ -275,18 +275,30 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // The first-run tour. It opens by itself once per visit, when the accounts and profile have
   // loaded and no terms are waiting, until the user has finished or skipped it; the profile
-  // menu starts it again. The dashboard is inert behind it.
+  // menu starts it again. Terms that had to be accepted first always lead into the tour, even
+  // in a browser that finished it for someone else, since the tour is remembered per browser.
+  // The dashboard is inert behind it.
   protected readonly tourOpen = signal(false);
   private tourOffered = false;
+  private termsWereShown = false;
   private tourFromMenu = false;
   private tourOpenedOrder = false;
   private readonly offerTour = effect(() => {
-    if (this.accountStore.status() !== 'ready' || this.termsRequired() || this.tourOffered) {
+    if (this.accountStore.status() !== 'ready' || this.tourOffered) {
+      return;
+    }
+    if (this.termsRequired()) {
+      this.termsWereShown = true;
       return;
     }
     this.tourOffered = true;
-    if (!this._tourProgress.isDone()) {
-      untracked(() => this.tourOpen.set(true));
+    if (this.termsWereShown || !this._tourProgress.isDone()) {
+      untracked(() => {
+        if (this.termsWereShown) {
+          this._tourProgress.saveStep(0);
+        }
+        this.tourOpen.set(true);
+      });
     }
   });
   private readonly recentInstruments = inject(RecentInstrumentsService);
