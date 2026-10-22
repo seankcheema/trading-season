@@ -120,6 +120,19 @@
   --indicator-ema: #6b3fc4;
   --indicator-bollinger: #c2410c;
   --indicator-rsi: #0e7490;
+
+  /* Dua insight cards retain their cyan/purple glow in both themes. */
+  --dua-ink: #0e0e0e;
+  --dua-heading: #0e0e0e;
+  --dua-copy: #465460;
+  --dua-context: #465460;
+  --dua-link: #0072ab;
+  --dua-edge: #ffffff;
+  --dua-base: #f4f7f9;
+  --dua-cyan: #bce9eb80;
+  --dua-purple: #d9cef25c;
+  --dua-gain: #08783e;
+  --dua-loss: #d1153a;
 }
 
 :root.dark {
@@ -171,6 +184,18 @@
   --indicator-ema: #b784ff;
   --indicator-bollinger: #ff8f66;
   --indicator-rsi: #42d3ff;
+
+  --dua-ink: #f4f7fa;
+  --dua-heading: #ffffff;
+  --dua-copy: #b8c2cb;
+  --dua-context: #c3c9cf;
+  --dua-link: #8edce5;
+  --dua-edge: #0c0e10;
+  --dua-base: #111416;
+  --dua-cyan: #16767a80;
+  --dua-purple: #6043a35c;
+  --dua-gain: #a8efb5;
+  --dua-loss: #ffadb5;
 }
 
 @layer base {

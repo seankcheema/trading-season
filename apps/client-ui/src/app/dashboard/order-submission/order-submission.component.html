@@ -51,7 +51,9 @@
           @if (!editOrder()) {
           <a
             [routerLink]="fullScreenUrl()"
+            [queryParams]="{ accountId: accountId() }"
             class="text-muted-foreground hover:bg-muted hover:text-primary flex h-8 items-center gap-2 rounded-lg px-2 transition-colors shrink-0"
+            data-tour="full-screen"
             aria-label="Open full screen market chart"
             title="Open full screen market chart"
           >
@@ -93,6 +95,7 @@
         @if (chartPoints().length) {
           <app-price-chart
             class="min-h-0 flex-1"
+            tooltipPlacement="top"
             [points]="chartPoints()"
             [timeframe]="chartTimeframe()"
             timezone="America/Chicago"

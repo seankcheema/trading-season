@@ -1,3 +1,4 @@
+import { DuaComponent } from '../dua/dua.component';
 import { OrderEditorComponent } from '../dashboard/shared/order-editor.component';
 import { WatchlistStore } from '../dashboard/watchlist/watchlist-store.service';
 import { WatchlistStarComponent } from '../dashboard/watchlist/watchlist-star.component';
@@ -12,6 +13,7 @@ import { OrderResult } from '../dashboard/orders/order.models';
 import { toOrderErrorMessage } from '../dashboard/orders/order-error';
 import { ToastService } from '../notifications/toast.service';
 import { AuthService } from '../core/auth/auth.service';
+import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 import { DashboardHeaderDropdownComponent } from '../dashboard/shared/dashboard-header-dropdown.component';
 import { SettingsDialogComponent } from '../dashboard/settings-dialog/settings-dialog.component';
 import { TermsDialogComponent } from '../dashboard/terms/terms-dialog.component';
@@ -29,6 +31,7 @@ import {
   NgTemplateOutlet,
   CurrencyPipe,
   DecimalPipe,
+  TitleCasePipe,
   isPlatformBrowser,
 } from '@angular/common';
 import {
@@ -62,12 +65,18 @@ import {
   lucideChartLine,
   lucideChartNoAxesColumn,
   lucideCrosshair,
+  lucideBotMessageSquare,
+  lucideMessageSquareText,
   lucidePanelRightClose,
   lucidePanelRightOpen,
   lucideGitCompare,
   lucidePercent,
+  lucideSendHorizontal,
+  lucideShieldCheck,
   lucideSlidersHorizontal,
+  lucideTrendingUp,
   lucideUserRound,
+  lucideUsersRound,
   lucideX,
 } from '@ng-icons/lucide';
 import { Subscription } from 'rxjs';
@@ -94,7 +103,6 @@ import { SignedPercentPipe } from '../dashboard/shared/signed-percent.pipe';
 import { TickAnimations } from '../dashboard/shared/tick-animations';
 import { TimeframeToggleComponent } from '../dashboard/shared/timeframe-toggle.component';
 import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component';
-import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
@@ -118,6 +126,7 @@ interface MarketStats {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ThemeToggleComponent,
+    DuaComponent,
     NgTemplateOutlet,
     OrderEditorComponent,
     WatchlistStarComponent,
@@ -139,6 +148,7 @@ interface MarketStats {
     PriceChartComponent,
     RouterLink,
     SignedPercentPipe,
+    TitleCasePipe,
     TimeframeToggleComponent,
     TradeTicketComponent,
     TermsDialogComponent,
@@ -147,7 +157,7 @@ interface MarketStats {
     MarketClockService,
 
     provideIcons({
-      lucideActivity,
+          lucideActivity,
       lucideSettings,
       lucideLogOut,
       lucideChevronDown,
@@ -159,12 +169,18 @@ interface MarketStats {
       lucideChartLine,
       lucideChartNoAxesColumn,
       lucideCrosshair,
+      lucideBotMessageSquare,
+      lucideMessageSquareText,
       lucidePanelRightClose,
       lucidePanelRightOpen,
       lucideGitCompare,
       lucidePercent,
+      lucideSendHorizontal,
+      lucideShieldCheck,
       lucideSlidersHorizontal,
+      lucideTrendingUp,
       lucideUserRound,
+      lucideUsersRound,
       lucideX,
     }),
   ],
@@ -191,7 +207,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly openHeaderDropdown = signal<
-    'account' | 'profile' | 'notifications' | null
+    'account' | 'profile' | null
   >(null);
   protected readonly profileInitials = this.accountStore.initials;
   protected readonly settingsOpen = signal(false);
@@ -222,6 +238,17 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       this.settingsOpen.set(false);
       this.accountDialog.set(null);
     });
+  });
+
+  private readonly requestedAccountId = signal<number | null>(null);
+  private appliedAccountId: number | null = null;
+  private readonly selectRequestedAccount = effect(() => {
+    const id = this.requestedAccountId();
+
+    if (this.accountStore.status() === 'ready' && id !== null && id !== this.appliedAccountId) {
+      this.appliedAccountId = id;
+      this.accountStore.selectAccount(id);
+    }
   });
 
   protected readonly submitting = signal(false);
@@ -268,7 +295,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     return Number.isFinite(at) ? at : null;
   });
 
-  private readonly simulationHoldings = computed(
+  protected readonly simulationHoldings = computed(
     () =>
       new Map(
         [...this.accountStore.holdingsByAccount()].map(([id, current]) => [
@@ -373,11 +400,21 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       });
   }
 
-  // The store keeps the choice for the dashboard and this tab; the URL never carries it.
   protected selectAccount(id: number): void {
-    if (this.accountStore.selectAccount(id)) {
-      this.openHeaderDropdown.set(null);
+    if (!this.accountStore.selectAccount(id)) {
+      return;
     }
+
+    this.requestedAccountId.set(id);
+
+    this.openHeaderDropdown.set(null);
+
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { accountId: id },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
   }
 
   protected openCreateAccount(): void {
@@ -544,6 +581,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly selectedChartMode = computed(
     () => this.chartModes.find((option) => option.value === this.chartMode()) ?? this.chartModes[0],
   );
+  protected readonly liveTailing = signal(true);
   protected readonly insightTab = signal<InsightTab>('trading');
   protected readonly toolsCollapsed = signal(false);
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
@@ -732,6 +770,12 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     );
     this.routeSubscription.add(
       this.route.queryParamMap.subscribe((params) => {
+        const accountId = Number(params.get('accountId'));
+
+        this.requestedAccountId.set(
+          Number.isInteger(accountId) && accountId > 0 ? accountId : null,
+        );
+
         const rawSymbol = params.get('compare') ?? '';
         const symbol = normalizeMarketSymbol(rawSymbol);
         this.comparisonSymbol.set(symbol);
@@ -764,6 +808,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     void this.router.navigate(['/dashboard/markets', marketSymbolSlug(instrument.symbol)], {
       queryParams: {
         compare: compare && compare !== instrument.symbol ? marketSymbolSlug(compare) : null,
+        accountId: this.accountStore.selectedAccountId(),
       },
 
       queryParamsHandling: 'merge',

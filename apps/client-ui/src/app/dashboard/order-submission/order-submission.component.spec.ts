@@ -10,6 +10,8 @@ import { OrderService } from '../orders/order.service';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
+import { By } from '@angular/platform-browser';
+import { PriceChartComponent } from '../shared/price-chart.component';
 
 const INSTRUMENT: Instrument = {
   symbol: 'AAPL',
@@ -732,6 +734,10 @@ describe('OrderSubmissionComponent', () => {
     expect(component['chartPoints']()).toEqual(previous);
     expect(component['chartTimeframe']()).toBe('1D');
     expect(fixture.nativeElement.querySelector('app-price-chart')).not.toBeNull();
+    // Hover details sit at the top of the plot, above the hovered point.
+    expect(
+      fixture.debugElement.query(By.directive(PriceChartComponent)).componentInstance.tooltipPlacement(),
+    ).toBe('top');
     refresh.flush({}, { status: 503, statusText: 'Unavailable' }); fixture.detectChanges();
     expect(component['chartPoints']()).toEqual(previous);
     expect(component['chartError']()).toContain('could not refresh');

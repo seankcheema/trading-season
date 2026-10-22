@@ -152,8 +152,14 @@ test('view all opens every transaction, including cash, and filters by type', as
   await expect(dialog).toBeHidden();
 });
 
-test('export downloads the filtered statement as CSV and as a PDF', async ({ page }) => {
+test('export downloads the filtered statement as CSV and as a PDF', async ({ page }, testInfo) => {
+  const launcher = page.getByRole('button', { name: 'Dua insights', exact: true });
+  const dua = page.getByRole('region', { name: 'Dua insights' });
+  await launcher.click();
+  await dua.getByRole('button', { name: 'Daily Review', exact: true }).click();
+  await expect(dua).toContainText('Market overview');
   await page.getByTestId('open-transactions').click();
+  await expect(dua).toBeHidden();
   const dialog = page.getByRole('dialog', { name: 'Recent Transactions' });
   await expect(dialog.getByTestId('transactions-row')).toHaveCount(3);
 
@@ -167,7 +173,8 @@ test('export downloads the filtered statement as CSV and as a PDF', async ({ pag
     dialog.getByTestId('transactions-export-csv').click(),
   ]);
   expect(csv.suggestedFilename()).toMatch(/^account-statement-\d{4}-\d{2}-\d{2}\.csv$/);
-  const lines = (await readDownload(csv)).replace('﻿', '').split('\r\n').filter(Boolean);
+  const csvContent = await readDownload(csv);
+  const lines = csvContent.replace('﻿', '').split('\r\n').filter(Boolean);
   // A header and the two buy orders; the rejected sell is filtered out.
   expect(lines).toHaveLength(3);
   expect(lines.slice(1).every((line) => line.includes(',Buy,'))).toBe(true);
@@ -178,7 +185,23 @@ test('export downloads the filtered statement as CSV and as a PDF', async ({ pag
     dialog.getByTestId('transactions-export-pdf').click(),
   ]);
   expect(pdf.suggestedFilename()).toMatch(/\.pdf$/);
-  expect((await readDownload(pdf)).startsWith('%PDF-')).toBe(true);
+  const pdfContent = await readDownload(pdf);
+  expect(pdfContent.startsWith('%PDF-')).toBe(true);
+  // Preserve synthetic statement evidence in the reports Jenkins already archives.
+  for (const [download, content, contentType] of [
+    [csv, csvContent, 'text/csv'],
+    [pdf, pdfContent, 'application/pdf'],
+  ] as const) {
+    await testInfo.attach(download.suggestedFilename(), {
+      body: Buffer.from(content, 'latin1'),
+      contentType,
+    });
+  }
+  await dialog.getByRole('button', { name: 'Close recent transactions' }).click();
+  await expect(dialog).toBeHidden();
+  await launcher.click();
+  await expect(dua.getByRole('heading', { name: 'Daily Review', exact: true })).toBeVisible();
+  await expect(dua).toContainText('Market overview');
 });
 
 async function readDownload(download: Download): Promise<string> {

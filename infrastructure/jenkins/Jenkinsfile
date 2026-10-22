@@ -588,6 +588,8 @@ pipeline {
             }
             post {
                 always {
+                    // Includes synthetic CSV/PDF account statements and the Dua request
+                    // transcript attached by the Client UI integration tests.
                     archiveArtifacts artifacts: 'apps/client-ui/reports/playwright/**/*, apps/reporting-ui/reports/playwright/**/*',
                                       allowEmptyArchive: true
                     // One report per suite. A suite that could not start leaves none,
@@ -615,6 +617,12 @@ pipeline {
                     for app in client-ui reporting-ui; do
                         npm --prefix "apps/$app" run build
                         test -s "apps/$app/dist/$app/browser/index.html"
+                        if [ "$app" = client-ui ]; then
+                            test -s "apps/$app/dist/$app/browser/assets/assistant/shark-launcher-light-512.png" || {
+                                echo "Client UI bundle is missing the nonempty Dua launcher image." >&2
+                                exit 1
+                            }
+                        fi
                         tar -czf "ui-bundles/$app-${BUILD_NUMBER}.tar.gz" -C "apps/$app/dist/$app/browser" .
                     done
                 '''
@@ -937,10 +945,12 @@ pipeline {
                     if (resourceCleanupStatus != 0) {
                         echo "Test resource cleanup failed with status ${resourceCleanupStatus}."
                     }
-                    // A successful stack is left running; only tear down a failed one.
-                    if (currentBuild.currentResult != 'SUCCESS' && env.LOCAL_STACK_STARTED == 'true') {
+                    // Stop and remove the local stack whatever the result. --rmi local
+                    // removes only the images the stack built; the pulled postgres and
+                    // kafka images stay, since the agent's Docker daemon is shared.
+                    if (env.LOCAL_STACK_STARTED == 'true') {
                         def composeCleanupStatus = sh(
-                            script: 'sh infrastructure/docker/run-compose.sh --project-name trading-season-local --env-file infrastructure/docker-compose/.env -f infrastructure/docker-compose/docker-compose.local.yml down -v --remove-orphans',
+                            script: 'sh infrastructure/docker/run-compose.sh --project-name trading-season-local --env-file infrastructure/docker-compose/.env -f infrastructure/docker-compose/docker-compose.local.yml down -v --remove-orphans --rmi local',
                             returnStatus: true
                         )
                         if (composeCleanupStatus != 0) {

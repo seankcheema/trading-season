@@ -192,18 +192,18 @@ def load_account_names(session, account_ids):
     }
 
 
-# A chart is a download, and downloads are light whatever theme the Reporting UI
-# is in, so the charts wear its light TradingSeason tokens
-# (apps/reporting-ui/src/styles.css): the white card surface, ink text, the deep
-# cyan accent, filled in the gain color and rejected in the loss color.
-CHART_SURFACE = '#ffffff'
-CHART_TEXT = '#0e0e0e'
-CHART_MUTED = (14 / 255, 14 / 255, 14 / 255, 0.62)
-CHART_BORDER = (14 / 255, 14 / 255, 14 / 255, 0.12)
-CHART_GRID = (14 / 255, 14 / 255, 14 / 255, 0.08)
-CHART_ACCENT = '#0072ab'
-CHART_GAIN = '#08783e'
-CHART_LOSS = '#d1153a'
+# The product is dark-only, so the charts wear the same TradingSeason tokens as
+# the Reporting UI that shows them (apps/reporting-ui/src/styles.css): the card
+# surface, frost text, the cyan accent, filled in the gain color and rejected in
+# the loss color.
+CHART_SURFACE = '#141414'
+CHART_TEXT = '#eefaff'
+CHART_MUTED = (238 / 255, 250 / 255, 1.0, 0.5)
+CHART_BORDER = (238 / 255, 250 / 255, 1.0, 0.15)
+CHART_GRID = (238 / 255, 250 / 255, 1.0, 0.09)
+CHART_ACCENT = '#00bbff'
+CHART_GAIN = '#25eb69'
+CHART_LOSS = '#ff3d5a'
 BAR_WIDTH = 0.6
 # The plot is at least this many bars wide, so a run with one or two bars
 # draws them as bars and not as blocks that fill the chart.
