@@ -96,7 +96,7 @@ class CashTransactionControllerIntegrationTest {
         mockMvc.perform(post("/api/me/cash-transactions")
                         .with(tokenFor(aliceId, ALICE_EMAIL))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":250.50,\"reason\":\"DEPOSIT\"}"))
+                        .content(body("250.50", "DEPOSIT")))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.cashTransactionId").isNumber())
                 .andExpect(jsonPath("$.amount").value(250.50))
@@ -111,7 +111,7 @@ class CashTransactionControllerIntegrationTest {
         mockMvc.perform(post("/api/me/cash-transactions")
                         .with(tokenFor(aliceId, ALICE_EMAIL))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":100.00,\"reason\":\"WITHDRAWAL\"}"))
+                        .content(body("100.00", "WITHDRAWAL")))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.amount").value(100.00))
                 .andExpect(jsonPath("$.reason").value("WITHDRAWAL"));
@@ -124,7 +124,7 @@ class CashTransactionControllerIntegrationTest {
         mockMvc.perform(post("/api/me/cash-transactions")
                         .with(tokenFor(bobId, BOB_EMAIL))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":500.01,\"reason\":\"WITHDRAWAL\"}"))
+                        .content(body("500.01", "WITHDRAWAL")))
                 .andExpect(status().is(422))
                 .andExpect(jsonPath("$.error").value("Insufficient funds"));
 
@@ -137,7 +137,7 @@ class CashTransactionControllerIntegrationTest {
         mockMvc.perform(post("/api/me/cash-transactions")
                         .with(tokenFor(aliceId, ALICE_EMAIL))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":0,\"reason\":\"DEPOSIT\"}"))
+                        .content(body("0", "DEPOSIT")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("amount: must be greater than 0"));
 
@@ -149,7 +149,7 @@ class CashTransactionControllerIntegrationTest {
         mockMvc.perform(post("/api/me/cash-transactions")
                         .with(tokenFor(aliceId, ALICE_EMAIL))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":10,\"reason\":\"ORDER_FILL\"}"))
+                        .content(body("10", "ORDER_FILL")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("reason: must be DEPOSIT or WITHDRAWAL"));
     }
@@ -159,7 +159,7 @@ class CashTransactionControllerIntegrationTest {
         mockMvc.perform(post("/api/me/cash-transactions")
                         .with(tokenFor(aliceId, ALICE_EMAIL))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":1.234,\"reason\":\"DEPOSIT\"}"))
+                        .content(body("1.234", "DEPOSIT")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("amount: must be in whole cents"));
     }
@@ -229,7 +229,7 @@ class CashTransactionControllerIntegrationTest {
 
         mockMvc.perform(post("/api/me/cash-transactions")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":10,\"reason\":\"DEPOSIT\"}"))
+                        .content(body("10", "DEPOSIT")))
                 .andExpect(status().isUnauthorized());
 
         assertEquals(new BigDecimal("1000.00"), fundsOf(aliceId));
@@ -242,8 +242,8 @@ class CashTransactionControllerIntegrationTest {
         mockMvc.perform(post("/api/me/cash-transactions")
                         .with(tokenFor(bobId, BOB_EMAIL))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":10,\"reason\":\"WITHDRAWAL\",\"accountId\":"
-                                + aliceAccountId + "}"))
+                        .content("{\"amount\":10,\"reason\":\"WITHDRAWAL\",\"clientReference\":\""
+                                + UUID.randomUUID() + "\",\"accountId\":" + aliceAccountId + "}"))
                 .andExpect(status().isCreated());
 
         assertEquals(new BigDecimal("1000.00"), fundsOf(aliceId));
@@ -260,12 +260,56 @@ class CashTransactionControllerIntegrationTest {
         mockMvc.perform(post("/api/me/cash-transactions")
                         .with(tokenFor(strangerId, "stranger@example.com"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":10,\"reason\":\"DEPOSIT\"}"))
+                        .content(body("10", "DEPOSIT")))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void repeatingAClientReferencePostsOnceAndReturnsTheOriginalTransaction() throws Exception {
+        // Section 9.1: a client that retries after a lost response must not move cash twice.
+        String request = body("40.00", "DEPOSIT");
+
+        String first = mockMvc.perform(post("/api/me/cash-transactions")
+                        .with(tokenFor(aliceId, ALICE_EMAIL))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        int firstId = Integer.parseInt(first.replaceAll(".*\"cashTransactionId\":(\\d+).*", "$1"));
+
+        // The repeat is answered with the same transaction, not a new one.
+        mockMvc.perform(post("/api/me/cash-transactions")
+                        .with(tokenFor(aliceId, ALICE_EMAIL))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.cashTransactionId").value(firstId))
+                .andExpect(jsonPath("$.amount").value(40.00));
+
+        assertEquals(1, cashTransactionRepository.count());
+        assertEquals(new BigDecimal("1040.00"), fundsOf(aliceId));
+    }
+
+    @Test
+    void aMissingClientReferenceIsRejected() throws Exception {
+        mockMvc.perform(post("/api/me/cash-transactions")
+                        .with(tokenFor(aliceId, ALICE_EMAIL))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":10,\"reason\":\"DEPOSIT\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("clientReference: must be a UUID"));
+
+        assertEquals(0, cashTransactionRepository.count());
     }
 
     private BigDecimal fundsOf(UUID userId) {
         return userRepository.findById(userId).orElseThrow().getAvailableFunds();
+    }
+
+    /** A deposit or withdrawal request with a fresh idempotency key. */
+    private static String body(String amount, String reason) {
+        return "{\"amount\":" + amount + ",\"reason\":\"" + reason + "\",\"clientReference\":\""
+                + UUID.randomUUID() + "\"}";
     }
 
     private void registerUser(UUID userId, String firstName, String lastName, BigDecimal funds) {

@@ -62,9 +62,11 @@ public class CashTransactionController {
     }
 
     /**
-     * Deposits or withdraws funds for the caller.
+     * Deposits or withdraws funds for the caller. A repeat of an earlier
+     * request's {@code clientReference} returns that request's transaction
+     * without moving cash again.
      *
-     * @param request the amount and direction
+     * @param request the amount, direction and client reference
      * @param jwt     the verified access token
      * @return the recorded transaction
      * @throws InsufficientFundsException     if a withdrawal exceeds the caller's funds
@@ -72,13 +74,15 @@ public class CashTransactionController {
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Deposit or withdraw cash", description = "Records a cash deposit or withdrawal for the authenticated user")
+    @Operation(summary = "Deposit or withdraw cash",
+            description = "Records a cash deposit or withdrawal for the authenticated user. "
+                    + "clientReference is an idempotency key: resending it returns the original transaction")
     public CashTransactionResponse postFunding(
             @Valid @RequestBody CashTransactionRequest request,
             @AuthenticationPrincipal Jwt jwt
     ) {
         AuthenticatedUser caller = AuthenticatedUser.from(jwt);
-        return CashTransactionResponse.from(
-                cashTransactionService.move(caller.userId(), request.amount(), request.reason()));
+        return CashTransactionResponse.from(cashTransactionService.move(
+                caller.userId(), request.amount(), request.reason(), request.clientReference()));
     }
 }

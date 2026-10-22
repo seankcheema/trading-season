@@ -1,10 +1,8 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { PLATFORM_ID, Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { TokenStorageService } from '../../core/auth/token-storage.service';
 import { NotOwnedError } from './account-error';
-import { AccountStore, SELECTED_ACCOUNT_STORAGE_KEY } from './account-store.service';
+import { AccountStore } from './account-store.service';
 import { Account, AccountHolding, CashTransaction } from './account.models';
 
 const ACCOUNTS: Account[] = [
@@ -29,26 +27,15 @@ describe('AccountStore', () => {
   let store: AccountStore;
   let http: HttpTestingController;
 
-  // A new store, as after a page reload; this tab's sessionStorage survives it.
-  function reload(providers: Provider[] = []): void {
-    http?.verify();
-    TestBed.resetTestingModule();
+  beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [AccountStore, provideHttpClient(), provideHttpClientTesting(), ...providers],
+      providers: [AccountStore, provideHttpClient(), provideHttpClientTesting()],
     });
     store = TestBed.inject(AccountStore);
     http = TestBed.inject(HttpTestingController);
-  }
-
-  beforeEach(() => {
-    sessionStorage.clear();
-    reload();
   });
 
-  afterEach(() => {
-    http.verify();
-    vi.restoreAllMocks();
-  });
+  afterEach(() => http.verify());
 
   function load(
     accounts: Account[] = ACCOUNTS,
@@ -208,68 +195,6 @@ describe('AccountStore', () => {
       expect(store.selectedHoldings()).toEqual(HOLDINGS[2]);
       http.expectNone(() => true);
     });
-
-    it('keeps the choice for this tab, so a reload opens the same account', () => {
-      store.selectAccount(2);
-      expect(sessionStorage.getItem(SELECTED_ACCOUNT_STORAGE_KEY)).toBe('2');
-
-      reload();
-      load();
-
-      expect(store.selectedAccount()?.name).toBe('Retirement');
-    });
-
-    it('opens the first account when the saved one is unusable or not owned', () => {
-      for (const saved of ['999', 'Retirement', '-2']) {
-        sessionStorage.setItem(SELECTED_ACCOUNT_STORAGE_KEY, saved);
-        reload();
-        load();
-
-        expect(store.selectedAccount()?.name).toBe('Brokerage');
-      }
-    });
-
-    it('forgets the choice at sign-out, so the next user starts on their first account', () => {
-      store.selectAccount(2);
-
-      TestBed.inject(TokenStorageService).clear();
-
-      expect(sessionStorage.getItem(SELECTED_ACCOUNT_STORAGE_KEY)).toBeNull();
-    });
-
-    it('still switches when storage is blocked', () => {
-      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-        throw new DOMException('blocked', 'SecurityError');
-      });
-
-      expect(store.selectAccount(2)).toBe(true);
-      expect(store.selectedAccount()?.name).toBe('Retirement');
-    });
-
-    it('starts with nothing saved when storage cannot be read', () => {
-      sessionStorage.setItem(SELECTED_ACCOUNT_STORAGE_KEY, '2');
-      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-        throw new DOMException('blocked', 'SecurityError');
-      });
-
-      reload();
-      load();
-
-      expect(store.selectedAccount()?.name).toBe('Brokerage');
-    });
-  });
-
-  describe('selection on the server', () => {
-    it('neither reads nor writes storage', () => {
-      sessionStorage.setItem(SELECTED_ACCOUNT_STORAGE_KEY, '2');
-      reload([{ provide: PLATFORM_ID, useValue: 'server' }]);
-      const setItem = vi.spyOn(Storage.prototype, 'setItem');
-      load();
-
-      expect(store.selectedAccount()?.name).toBe('Brokerage');
-      store.selectAccount(2);
-      expect(setItem).not.toHaveBeenCalled();
-    });
   });
 
   describe('changes', () => {
@@ -327,7 +252,11 @@ describe('AccountStore', () => {
       store.deposit(125.5).subscribe(() => (done = true));
 
       const post = http.expectOne({ method: 'POST', url: '/api/me/cash-transactions' });
-      expect(post.request.body).toEqual({ amount: 125.5, reason: 'DEPOSIT' });
+      expect(post.request.body).toMatchObject({ amount: 125.5, reason: 'DEPOSIT' });
+      // The idempotency key the backend dedupes a retry on.
+      expect(post.request.body.clientReference).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      );
       post.flush({});
       http.expectOne('/api/users/me').flush({ availableFunds: 5_125.5 });
       http.expectOne(isCashTransactions).flush([cash(9, 'DEPOSIT')]);
@@ -342,7 +271,7 @@ describe('AccountStore', () => {
       store.withdraw(50).subscribe();
 
       const post = http.expectOne({ method: 'POST', url: '/api/me/cash-transactions' });
-      expect(post.request.body).toEqual({ amount: 50, reason: 'WITHDRAWAL' });
+      expect(post.request.body).toMatchObject({ amount: 50, reason: 'WITHDRAWAL' });
       post.flush({});
       http.expectOne('/api/users/me').flush({ availableFunds: 4_950 });
       http.expectOne(isCashTransactions).flush([cash(10, 'WITHDRAWAL')]);

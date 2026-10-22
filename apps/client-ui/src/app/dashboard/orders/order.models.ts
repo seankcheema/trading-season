@@ -7,8 +7,25 @@ export type ExecutionType = 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT';
 
 export type OrderType = 'BUY' | 'SELL';
 
-// ACCEPTED orders remain open until conditions are met or the owner cancels them.
+// PENDING is never the status of a submission's response: an order is ACCEPTED or REJECTED
+// before the request returns. ACCEPTED orders remain open until their conditions are met,
+// the owner cancels them, or their trading day closes (CANCELLED). PENDING can still appear
+// in order history.
 export type OrderStatus = 'PENDING' | 'ACCEPTED' | 'FILLED' | 'REJECTED' | 'CANCELLED';
+
+// One `order-status` frame on GET /api/orders/stream: the body of a trade event, pushed the
+// moment the Order and Sell Service commits a status change (BR-07). Only the fields the client
+// applies are typed; see apps/order-and-sell-service/README.md for the full shape.
+export interface OrderStatusFrame {
+  orderId: number;
+  status: OrderStatus;
+  rejectionReason: string | null;
+  // The fill's quote price when the status is FILLED, otherwise the indicative price.
+  price?: number;
+  order?: {
+    resolvedAt?: string | null;
+  };
+}
 
 export interface InstrumentRef {
   instrumentId: number;
@@ -75,6 +92,8 @@ export interface OrderResult {
 /** One immutable lifecycle event from GET /api/orders/{orderId}/audit. */
 export interface OrderAuditEntry {
   eventType: string;
+  // The quote this stage was priced against (BR-15): the execution quote for FILLED, the
+  // activation quote for TRIGGERED, otherwise the quote the order was submitted at.
   price: number;
   occurredAt: string;
   detail: string | null;

@@ -30,6 +30,13 @@ class ExecutionPolicyTest {
     void stopActivatesInclusivelyInTheCorrectDirection(String side, String price, String stop, boolean triggered) {
         assertEquals(triggered, ExecutionPolicy.triggers(side, new BigDecimal(price), new BigDecimal(stop)));
     }
+    @ParameterizedTest
+    @CsvSource({"2026-01-05T14:30:00Z,true", "2026-01-05T14:29:59Z,false", "2026-01-05T20:59:59Z,true",
+        "2026-01-05T21:00:00Z,false", "2026-07-06T13:30:00Z,true", "2026-07-06T13:29:59Z,false",
+        "2026-01-10T16:00:00Z,false", "2026-01-11T16:00:00Z,false"})
+    void sessionRunsWeekdaysFromTheOpenUpToTheCloseInChicagoTime(String at, boolean open) {
+        assertEquals(open, ExecutionPolicy.isDuringSession(java.time.OffsetDateTime.parse(at)));
+    }
     @Test
     void roundingNeverRelaxesProtection() {
         assertEquals(new BigDecimal("1.000001"), ExecutionPolicy.boundary("BUY", new BigDecimal("1.000001"), new BigDecimal("0.00001")));

@@ -11,9 +11,11 @@ import java.time.OffsetDateTime;
 
 /**
  * One row per order-lifecycle event. Permanent record (BR-14/15, section
- * 9.4) — the application's database role should have INSERT/SELECT only on
- * this table, never UPDATE/DELETE, so nothing in this codebase should ever
- * modify an {@code AuditTrail} row after creating it.
+ * 9.4): migration V016 rejects any UPDATE, DELETE or TRUNCATE on this table,
+ * so nothing in this codebase may modify an {@code AuditTrail} row after
+ * creating it. Each row's detail is written to stand on its own as the
+ * record of that event, without needing any other row to interpret it
+ * (BR-14).
  */
 @Entity
 @Table(name = "audit_trail")
@@ -34,7 +36,13 @@ public class AuditTrail {
     @Column(name = "event_type", nullable = false, updatable = false)
     private String eventType;
 
-    @Column(updatable = false)
+    /**
+     * Self-contained description of the event (BR-14). The PostgreSQL column is
+     * unbounded text; the length only sizes the column the H2 test schema
+     * creates, which must hold a submission detail with two UUIDs and two
+     * timestamps.
+     */
+    @Column(updatable = false, length = 1000)
     private String detail;
 
     @Column(name = "recorded_at", nullable = false, updatable = false)

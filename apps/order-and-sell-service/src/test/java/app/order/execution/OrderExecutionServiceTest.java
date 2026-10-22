@@ -23,6 +23,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -122,7 +123,13 @@ class OrderExecutionServiceTest {
         assertEquals(INSTRUMENT_ID, holding.getInstrumentId());
         assertEquals(new BigDecimal("10"), holding.getQuantity());
 
-        verify(auditTrailService).record(order.getOrderId(), Order.STATUS_FILLED, "Filled 10 @ 25.00");
+        org.mockito.ArgumentCaptor<String> detail = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(auditTrailService).record(org.mockito.ArgumentMatchers.eq(order.getOrderId()),
+                org.mockito.ArgumentMatchers.eq(Order.STATUS_FILLED), detail.capture());
+        // BR-14: the entry names the price, its quote, and both ledger changes on its own.
+        assertTrue(detail.getValue().startsWith("Filled 10 @ 25.00 (market quote in session "), detail.getValue());
+        assertTrue(detail.getValue().endsWith("); cash -250.00 for user " + USER_ID + "; holding +10 on account " + ACCOUNT_ID),
+                detail.getValue());
     }
 
     @Test
@@ -195,7 +202,7 @@ class OrderExecutionServiceTest {
     void buyFailsWhenFundsNoLongerCoverTheTrade() {
         Order result = service.execute(order(Order.TYPE_BUY, "41", "25.00"), new Instrument());
 
-        assertFailed(result, "BR-09: insufficient funds at execution time");
+        assertFailed(result, "BR-05: insufficient funds at execution time");
         assertEquals(new BigDecimal("1000.00"), user.getAvailableFunds());
     }
 

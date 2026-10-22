@@ -66,14 +66,14 @@ class AccountLifecycleConcurrencyTest {
     @Test void aTransferCommitsBeforeArchiveAndFutureTransfersUseTheRemainingAccount() throws Exception {
         CountDownLatch written = new CountDownLatch(1), release = new CountDownLatch(1);
         var transfer = workers.submit(() -> new TransactionTemplate(manager).executeWithoutResult(tx -> {
-            cash.move(owner, BigDecimal.TEN, "DEPOSIT"); written.countDown(); await(release);
+            cash.move(owner, BigDecimal.TEN, "DEPOSIT", UUID.randomUUID()); written.countDown(); await(release);
         }));
         await(written);
         var archive = workers.submit(() -> lifecycle.delete(first.getId(), owner, true));
         try { assertThrows(TimeoutException.class, () -> archive.get(200, TimeUnit.MILLISECONDS)); }
         finally { release.countDown(); }
         transfer.get(10, TimeUnit.SECONDS); archive.get(10, TimeUnit.SECONDS);
-        cash.move(owner, BigDecimal.ONE, "WITHDRAWAL");
+        cash.move(owner, BigDecimal.ONE, "WITHDRAWAL", UUID.randomUUID());
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM cash_transactions WHERE account_id=?", Integer.class, first.getId()));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM cash_transactions WHERE account_id=?", Integer.class, second.getId()));
         assertEquals("ARCHIVED", accounts.findById(first.getId()).orElseThrow().getStatus());

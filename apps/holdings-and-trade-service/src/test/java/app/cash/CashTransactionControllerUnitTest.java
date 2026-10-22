@@ -65,16 +65,17 @@ class CashTransactionControllerUnitTest {
     @Test
     void postFundingMovesCashForTheTokenSubject() {
         when(jwt.getSubject()).thenReturn(USER_ID.toString());
-        when(cashTransactionService.move(USER_ID, new BigDecimal("50.25"), "DEPOSIT"))
+        UUID reference = UUID.randomUUID();
+        when(cashTransactionService.move(USER_ID, new BigDecimal("50.25"), "DEPOSIT", reference))
                 .thenReturn(transaction(9, new BigDecimal("50.25"), "DEPOSIT"));
 
         CashTransactionResponse response = controller.postFunding(
-                new CashTransactionRequest(new BigDecimal("50.25"), "DEPOSIT"), jwt);
+                new CashTransactionRequest(new BigDecimal("50.25"), "DEPOSIT", reference), jwt);
 
         assertEquals(9, response.cashTransactionId());
         assertEquals(new BigDecimal("50.25"), response.amount());
         assertEquals("DEPOSIT", response.reason());
-        verify(cashTransactionService).move(USER_ID, new BigDecimal("50.25"), "DEPOSIT");
+        verify(cashTransactionService).move(USER_ID, new BigDecimal("50.25"), "DEPOSIT", reference);
     }
 
     private static CashTransaction transaction(int id, BigDecimal amount, String reason) {

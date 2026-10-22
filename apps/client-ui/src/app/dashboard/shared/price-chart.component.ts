@@ -13,11 +13,13 @@ import {
   ElementRef,
   LOCALE_ID,
   afterNextRender,
+  afterRenderEffect,
   booleanAttribute,
   computed,
   effect,
   inject,
   input,
+  model,
   signal,
   untracked,
   viewChild,
@@ -133,7 +135,19 @@ interface TooltipPosition {
   top: number;
   flipLeft: boolean;
   flipTop: boolean;
+  // Centered on the point's x position, instead of beside it.
+  centered?: boolean;
 }
+
+// 'point' puts the label beside the hovered point; 'top' pins it to the top of the plot, directly
+// above the point, so it never changes vertical position.
+export type TooltipPlacement = 'point' | 'top';
+
+// The label's widest size (max-width 12rem) and a typical height, used until it is measured, and
+// the space kept between a top-placed label and the point it describes.
+const TOOLTIP_MAX_WIDTH_PX = 192;
+const TOOLTIP_FALLBACK_HEIGHT_PX = 72;
+const TOOLTIP_GAP_PX = 10;
 
 @Component({
   selector: 'app-price-chart',
@@ -199,6 +213,23 @@ interface TooltipPosition {
             >
           }
         </div>
+        @if (showLiveTailing()) {
+          <button
+            type="button"
+            class="chart-control live-tailing-control flex shrink-0 items-center gap-1 rounded-lg border px-2 backdrop-blur-sm"
+            [class.text-primary]="liveTailing()"
+            [class.bg-primary/15]="liveTailing()"
+            [attr.aria-pressed]="liveTailing()"
+            aria-label="Live tailing"
+            [title]="liveTailing() ? 'Stop following latest bars' : 'Follow latest bars'"
+            (click)="liveTailing.set(!liveTailing())"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m13 2-3 8H4l7 12 3-8h6L13 2Z" />
+            </svg>
+            Live tailing
+          </button>
+        }
       }
       <div class="chart-top-right">
         @if (showIndicatorLabels() && priceIndicatorsEnabled().length) {
@@ -255,12 +286,14 @@ interface TooltipPosition {
         @if (tooltipPoint(); as point) {
           @if (tooltipPosition(); as pos) {
             <div
+              #hoverLabel
               class="price-hover-label pointer-events-none absolute whitespace-nowrap tabular-nums overflow-hidden rounded px-2 py-1"
               [class]="hovered() ? '' : 'invisible'"
               [style.left.%]="pos.left"
               [style.top.%]="pos.top"
-              [class.translate-x-0]="!pos.flipLeft"
-              [class.-translate-x-full]="pos.flipLeft"
+              [class.translate-x-0]="!pos.flipLeft && !pos.centered"
+              [class.-translate-x-full]="pos.flipLeft && !pos.centered"
+              [class.-translate-x-1/2]="pos.centered"
               [class.translate-y-0]="!pos.flipTop"
               [class.-translate-y-full]="pos.flipTop"
             >
@@ -271,12 +304,12 @@ interface TooltipPosition {
               >
                 {{ point.changePercent | signedPercent }}
               </span>
-              <span class="text-muted-foreground text-[13px]/5">· {{ point.timeLabel }}</span>
+              <span class="text-muted-foreground text-[13px]/5">{{ point.timeLabel }}</span>
               @if (point.volumeLabel) {
-                <span class="text-primary text-[13px]/5">· Vol {{ point.volumeLabel }}</span>
+                <span class="text-primary text-[13px]/5">Vol {{ point.volumeLabel }}</span>
               }
               @if (point.ohlcLabel) {
-                <span class="text-muted-foreground text-[13px]/5">· {{ point.ohlcLabel }}</span>
+                <span class="text-muted-foreground text-[13px]/5">{{ point.ohlcLabel }}</span>
               }
             </div>
           }
@@ -538,9 +571,22 @@ interface TooltipPosition {
     }
   `,
   styles: `
-    .chart-control-bar {
-      border-color: color-mix(in srgb, var(--foreground) 28%, transparent);
+    .chart-control-bar,
+    .chart-control.live-tailing-control {
+      border: 1px solid color-mix(in srgb, var(--foreground) 28%, transparent);
+      border-radius: 0.5rem;
       background: var(--raised);
+    }
+    .chart-control.live-tailing-control {
+      height: 1.875rem;
+    }
+    .chart-control.live-tailing-control[aria-pressed='true'] {
+      border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+      background: #57d7ff;
+      color: #08131a;
+    }
+    .chart-control.live-tailing-control[aria-pressed='true']:hover {
+      background: #8ae5ff;
     }
     .chart-control {
       min-width: 1.5rem;
@@ -775,6 +821,9 @@ export class PriceChartComponent {
   readonly timezone = input('UTC');
   readonly interactive = input(false, { transform: booleanAttribute });
   readonly interactionKey = input('');
+  readonly tooltipPlacement = input<TooltipPlacement>('point');
+  readonly liveTailing = model(false);
+  readonly showLiveTailing = input(false);
   readonly showCurrentPrice = input(false, { transform: booleanAttribute });
   readonly showIndicatorLabels = input(true);
   readonly enabledIndicators = input<readonly TechnicalIndicator[]>([]);
@@ -841,6 +890,10 @@ export class PriceChartComponent {
 
   private readonly _plot = viewChild.required<ElementRef<HTMLElement>>('plot');
   private readonly _plotWidth = signal(0);
+  private readonly _plotHeight = signal(0);
+  private readonly _hoverLabel = viewChild<ElementRef<HTMLElement>>('hoverLabel');
+  // The hover label's rendered size, so a top-placed label can tell when it would cover its point.
+  private readonly _labelSize = signal({ width: 0, height: 0 });
 
   constructor() {
     const destroyRef = inject(DestroyRef);
@@ -850,14 +903,37 @@ export class PriceChartComponent {
       untracked(() => this.resetView());
     });
 
+    effect(() => {
+      const following = this.liveTailing();
+      const interactive = this.interactive();
+      this.activePoints();
+      if (following && interactive) {
+        untracked(() => this.goLatest());
+      }
+    });
+
+    afterRenderEffect(() => {
+      const label = this._hoverLabel()?.nativeElement;
+      this.tooltipPoint();
+      if (!label) {
+        return;
+      }
+      const { offsetWidth: width, offsetHeight: height } = label;
+      const known = untracked(this._labelSize);
+      if (Math.abs(known.width - width) > 0.5 || Math.abs(known.height - height) > 0.5) {
+        this._labelSize.set({ width, height });
+      }
+    });
+
     afterNextRender(() => {
       // Absent in the unit-test DOM; the axis then falls back to its unmeasured spacing.
       if (typeof ResizeObserver === 'undefined') {
         return;
       }
-      const observer = new ResizeObserver(([entry]) =>
-        this._plotWidth.set(entry.contentRect.width),
-      );
+      const observer = new ResizeObserver(([entry]) => {
+        this._plotWidth.set(entry.contentRect.width);
+        this._plotHeight.set(entry.contentRect.height);
+      });
       observer.observe(this._plot().nativeElement);
       destroyRef.onDestroy(() => observer.disconnect());
     });
@@ -1138,6 +1214,30 @@ export class PriceChartComponent {
       return null;
     }
 
+    if (this.tooltipPlacement() === 'top') {
+      const plotWidth = this._plotWidth() || 600;
+      const plotHeight = this._plotHeight() || 300;
+      const { width: measuredWidth, height: measuredHeight } = this._labelSize();
+      const width = measuredWidth || TOOLTIP_MAX_WIDTH_PX;
+      const height = measuredHeight || TOOLTIP_FALLBACK_HEIGHT_PX;
+      // Centered over the point, held inside the plot near its left and right edges, unless
+      // the point is high enough that the label would sit on it.
+      if ((point.y / 100) * plotHeight >= height + TOOLTIP_GAP_PX) {
+        const half = Math.min(50, (width / 2 / plotWidth) * 100);
+        const left = Math.max(half, Math.min(100 - half, point.x));
+        return { left, top: 0, flipLeft: false, flipTop: false, centered: true };
+      }
+      // Still along the top, but beside the point: to its right, or its left near the right edge.
+      const gap = (TOOLTIP_GAP_PX / plotWidth) * 100;
+      const fitsRight = (point.x / 100) * plotWidth + TOOLTIP_GAP_PX + width <= plotWidth;
+      return {
+        left: fitsRight ? point.x + gap : point.x - gap,
+        top: 0,
+        flipLeft: !fitsRight,
+        flipTop: false,
+      };
+    }
+
     // Cursor offset in percentage of plot dimensions
     const OFFSET_X = 1.5;
     const OFFSET_Y = 1.2;
@@ -1352,7 +1452,7 @@ export class PriceChartComponent {
     const rect = plot.getBoundingClientRect();
     if (this.dragStart) {
       const delta = ((event.clientX - this.dragStart.x) / rect.width) * count;
-      this.setView(this.dragStart.start - delta, count);
+      this.panView(this.dragStart.start - delta, count);
       return;
     }
     const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
@@ -1405,7 +1505,7 @@ export class PriceChartComponent {
     const rect = plot.getBoundingClientRect();
     const anchor = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
     if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
-      this.setView(
+      this.panView(
         this.viewStart() + (event.deltaX / rect.width) * this.viewCount(),
         this.viewCount(),
       );
@@ -1425,7 +1525,15 @@ export class PriceChartComponent {
   }
 
   protected pan(amount: number): void {
-    this.setView(this.viewStart() + this.viewCount() * amount, this.viewCount());
+    this.panView(this.viewStart() + this.viewCount() * amount, this.viewCount());
+  }
+
+  private panView(start: number, count: number): void {
+    const previousStart = this.viewStart();
+    this.setView(start, count);
+    if (this.viewStart() !== previousStart && !this.atLatest()) {
+      this.liveTailing.set(false);
+    }
   }
 
   protected goLatest(): void {

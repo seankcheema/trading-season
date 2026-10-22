@@ -28,7 +28,7 @@ Order and Sell owns these endpoints. Every request requires the Auth Service's R
 | `STOP` | `stopPrice` only | BUY triggers at or above the stop; SELL triggers at or below it, then executes as a protected Market order |
 | `STOP_LIMIT` | Both | Latches its stop trigger, then waits for its limit condition; the trigger tick can also fill it |
 
-Quantity must be positive whole shares. Prices must be positive, with at most six decimal places and twelve integer digits. Required prices must be supplied and irrelevant price fields omitted. `indicativePrice` is retained for client display auditing; it never authorizes an execution price. `sessionId` is optional; omission selects the authoritative market's default session. `simulatedAt` is accepted for compatibility, but the server captures the authoritative submission position.
+Quantity must be positive whole shares. Prices must be positive, with at most six decimal places and twelve integer digits. Required prices must be supplied and irrelevant price fields omitted. `indicativePrice` is retained for client display auditing; it never authorizes an execution price. `sessionId` is optional; omission selects the authoritative market's default session. `simulatedAt` is accepted for compatibility, but the server captures the authoritative submission position. That position must fall within the simulated session, Monday to Friday 08:30 to 15:00 America/Chicago, or the order is rejected with a `BR-05` reason (the market is closed).
 
 `bufferPercent` overrides are rejected. Configure the user-wide setting through [trading preferences](../holdings-and-trade-service/api.md#trading-preferences).
 
@@ -82,10 +82,10 @@ A repeated account ID and `clientReference` returns the original order without r
 
 | Method | Path | Result |
 | --- | --- | --- |
-| GET | `/api/orders` | All owned orders, newest first, with the response fields above |
+| GET | `/api/orders` | One page of owned orders, newest first, with the response fields above; `page` (zero-based, default 0) and `size` (default 50, at most 200) select it and `X-Total-Count` carries the total (BR-11) |
 | GET | `/api/orders/{orderId}` | One owned order |
 | POST | `/api/orders/{orderId}/cancel` | Cancel an open order and release reservations |
-| GET | `/api/orders/{orderId}/audit` | Existing chronological lifecycle audit entries |
+| GET | `/api/orders/{orderId}/audit` | Chronological lifecycle audit entries, each with the quote its stage was priced against: `executionPrice` for `FILLED`, `triggerPrice` for `TRIGGERED`, otherwise `referencePrice` (BR-15) |
 | GET | `/api/orders/stream` | Existing bearer-authenticated SSE order updates |
 
 Missing and foreign order IDs return 404. Repeated cancellation returns the cancelled order. Cancelling a filled or rejected order returns 409. A cancellation and a fill racing each other have one terminal outcome and at most one fill.

@@ -152,6 +152,12 @@ public class OrderService {
      * request that did not come through the dashboard. A resubmission of an
      * order that is already on record still returns that order.
      *
+     * <p>Each step is written to the audit trail so that every row reads on its
+     * own as the record of that event (BR-14): {@code PENDING} with the caller's
+     * id, the account and the submitted terms, {@code ACCEPTED} with the
+     * authoritative quote and buffer once the rules pass, then the final
+     * status. A resubmission of an order already on record writes nothing.
+     *
      * @param request the validated submission
      * @param callerId the caller's user id, from the token's {@code sub} claim
      * @return the persisted order in its current status
@@ -219,11 +225,13 @@ public class OrderService {
         requireEditableAt(original, quotes.current(stock, original.getSessionId()).timestamp());
         cancelForReplacement(original);
         Acceptance accepted = accept(request, callerId);
+        // A clock that moved while editing is a conflict whatever the rules made of the
+        // replacement at the new position (the market may have closed in between, BR-05).
+        requireSimulationUnchanged(original, accepted.order());
         if (!Order.STATUS_ACCEPTED.equals(accepted.order().getStatus())) {
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.BAD_REQUEST, accepted.order().getRejectionReason());
         }
-        requireSimulationUnchanged(original, accepted.order());
         original.setRejectionCode("ORDER_REPLACED");
         original.setRejectionReason("Replaced by order #" + accepted.order().getOrderId());
         orderRepository.save(original);
@@ -311,12 +319,13 @@ public class OrderService {
         var quote = quotes.current(instrument, request.sessionId());
 
         Order order = orderRepository.save(pendingOrder(request, account, instrument, user.getExecutionBufferPercent(), quote));
-        auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, null);
+        auditTrailService.record(order.getOrderId(), Order.STATUS_PENDING, submissionDetail(order, instrument, callerId));
 
-        // Existing rules see authoritative cost rather than an untrusted client estimate.
+        // The rules see the authoritative cost and submission position rather than the
+        // client's price estimate and display time (BR-05 checks the market hours).
         var checkedRequest = new OrderRequest(request.accountId(), request.instrumentId(), request.orderType(),
                 request.quantity(), app.order.execution.ExecutionPolicy.reservationPrice(order), null,
-                request.clientReference(), order.getSimulatedAt());
+                request.clientReference(), order.getReferenceAt());
         ValidationResult result = validationPipeline.run(checkedRequest, user, account, instrument);
         var reservations = orderRepository.findReservations(callerId);
         if (result.passed()) {
@@ -332,9 +341,34 @@ public class OrderService {
         order.setStatus(Order.STATUS_ACCEPTED);
         order.setAcceptedAt(OffsetDateTime.now());
         order = orderRepository.save(order);
-        auditTrailService.record(order.getOrderId(), Order.STATUS_ACCEPTED, null);
+        auditTrailService.record(order.getOrderId(), Order.STATUS_ACCEPTED,
+                "Passed trading rules at market quote " + order.getReferencePrice().toPlainString()
+                        + " with buffer " + order.getBufferPercent().toPlainString() + "%");
         events.publishEvent(OrderStatusEvent.from(order, instrument));
         return new Acceptance(order, instrument, true);
+    }
+
+    /**
+     * Describes a new order so its audit row identifies the client and the
+     * terms they submitted without relying on any other row (BR-14).
+     */
+    private static String submissionDetail(Order order, Instrument instrument, UUID callerId) {
+        StringBuilder detail = new StringBuilder("Submitted by user ").append(callerId)
+                .append(" on account ").append(order.getAccountId()).append(": ")
+                .append(order.getOrderType()).append(' ').append(order.getQuantity().toPlainString()).append(' ')
+                .append(instrument.getTicker()).append(' ').append(order.getExecutionType())
+                .append(" at indicative price ").append(order.getIndicativePrice().toPlainString());
+        if (order.getLimitPrice() != null) {
+            detail.append(", limit ").append(order.getLimitPrice().toPlainString());
+        }
+        if (order.getStopPrice() != null) {
+            detail.append(", stop ").append(order.getStopPrice().toPlainString());
+        }
+        detail.append(", market quote ").append(order.getReferencePrice().toPlainString())
+                .append(" in session ").append(order.getSessionId()).append(" at ").append(order.getReferenceAt())
+                .append(", buffer ").append(order.getBufferPercent().toPlainString()).append('%')
+                .append(", client reference ").append(order.getClientReference());
+        return detail.toString();
     }
 
     /** Locks the caller's profile and the account, proving the caller owns it. */
@@ -458,17 +492,21 @@ public class OrderService {
     }
 
     /**
-     * Lists the caller's own orders, newest submission first. Callers pass
-     * the id from the verified token, never an id supplied in the request,
-     * so a client can only read orders placed on accounts it owns. A user
-     * with no orders gets an empty list rather than an error.
+     * Lists one page of the caller's own orders, newest submission first
+     * (BR-11). Callers pass the id from the verified token, never an id
+     * supplied in the request, so a client can only read orders placed on
+     * accounts it owns. A user with no orders gets an empty page rather than
+     * an error.
      *
      * @param userId the caller's user id from the token's sub claim
-     * @return the caller's orders across all of their accounts, newest first
+     * @param page   zero-based page number
+     * @param size   orders per page, at least one
+     * @return that page of the caller's orders across all of their accounts,
+     *         newest first, with the total count
      */
     @Transactional(readOnly = true)
-    public List<Order> getOwnOrders(UUID userId) {
-        return orderRepository.findAllByOwningUserId(userId);
+    public org.springframework.data.domain.Page<Order> getOwnOrders(UUID userId, int page, int size) {
+        return orderRepository.findAllByOwningUserId(userId, org.springframework.data.domain.PageRequest.of(page, size));
     }
 
     /**

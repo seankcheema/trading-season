@@ -82,6 +82,7 @@ describe('activity helpers', () => {
       positive: true,
     });
     expect(orderActivity(order({ status: 'PENDING' }), CATALOGUE).status).toBe('PENDING');
+    expect(orderActivity(order({ status: 'ACCEPTED', resolvedAt: null }), CATALOGUE).status).toBe('ACCEPTED');
     expect(orderActivity(order({ status: 'REJECTED' }), CATALOGUE).status).toBe('REJECTED');
     expect(orderActivity(order({ instrumentId: 99 }), []).label).toBe('Order #1');
   });

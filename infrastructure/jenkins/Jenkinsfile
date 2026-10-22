@@ -47,34 +47,43 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                // The reporting and database tool tests run as root in Docker; make
-                // their output deletable before the checkout cleans the workspace.
+                // Containers that run as root (the reporting and database tool
+                // tests, and anything a Compose service writes into a mount) can
+                // leave files and directories the jenkins user cannot delete or
+                // chmod. The checkout wipes the workspace first and fails with
+                // "Operation not permitted" on one, so hand the whole workspace
+                // back to this user before it runs.
                 sh '''
-                    for directory in apps/reporting-service db/tools; do
-                        if [ -d "$directory" ]; then
-                            docker run --rm -v "$(pwd)":/ws -w /ws alpine:latest chmod -R a+rwX "/ws/$directory" || true
-                        fi
-                    done
+                    docker run --rm -v "$(pwd)":/ws alpine:latest chown -R "$(id -u):$(id -g)" /ws || true
                 '''
                 script {
-                    // Keep the multibranch job's SCM settings and add a depth-1 clone.
-                    def shallowExtensions = scm.extensions + [[
-                        $class: 'CloneOption',
-                        depth: 1,
-                        honorRefspec: true,
-                        noTags: true,
-                        reference: '',
-                        shallow: true,
-                        timeout: 10
-                    ]]
-                    checkout([
-                        $class: 'GitSCM',
-                        branches: scm.branches,
-                        doGenerateSubmoduleConfigurations: false,
-                        extensions: shallowExtensions,
-                        submoduleCfg: [],
-                        userRemoteConfigs: scm.userRemoteConfigs
-                    ])
+                    if (hasCloneOption(scm)) {
+                        // The job already sets a clone option (the local macOS job
+                        // does: depth 1, one branch). Reuse its SCM as is. Copying
+                        // its extension objects into a variable would fail the
+                        // build, because CloneOption cannot be serialized into the
+                        // pipeline state.
+                        checkout scm
+                    } else {
+                        // Keep the multibranch job's SCM settings and add a depth-1 clone.
+                        def shallowExtensions = scm.extensions + [[
+                            $class: 'CloneOption',
+                            depth: 1,
+                            honorRefspec: true,
+                            noTags: true,
+                            reference: '',
+                            shallow: true,
+                            timeout: 10
+                        ]]
+                        checkout([
+                            $class: 'GitSCM',
+                            branches: scm.branches,
+                            doGenerateSubmoduleConfigurations: false,
+                            extensions: shallowExtensions,
+                            submoduleCfg: [],
+                            userRemoteConfigs: scm.userRemoteConfigs
+                        ])
+                    }
                 }
             }
         }
@@ -578,6 +587,8 @@ pipeline {
             }
             post {
                 always {
+                    // Includes synthetic CSV/PDF account statements and the Dua request
+                    // transcript attached by the Client UI integration tests.
                     archiveArtifacts artifacts: 'apps/client-ui/reports/playwright/**/*, apps/reporting-ui/reports/playwright/**/*',
                                       allowEmptyArchive: true
                     // One report per suite. A suite that could not start leaves none,
@@ -605,6 +616,12 @@ pipeline {
                     for app in client-ui reporting-ui; do
                         npm --prefix "apps/$app" run build
                         test -s "apps/$app/dist/$app/browser/index.html"
+                        if [ "$app" = client-ui ]; then
+                            test -s "apps/$app/dist/$app/browser/assets/assistant/shark-launcher-light-512.png" || {
+                                echo "Client UI bundle is missing the nonempty Dua launcher image." >&2
+                                exit 1
+                            }
+                        fi
                         tar -czf "ui-bundles/$app-${BUILD_NUMBER}.tar.gz" -C "apps/$app/dist/$app/browser" .
                     done
                 '''
@@ -927,10 +944,12 @@ pipeline {
                     if (resourceCleanupStatus != 0) {
                         echo "Test resource cleanup failed with status ${resourceCleanupStatus}."
                     }
-                    // A successful stack is left running; only tear down a failed one.
-                    if (currentBuild.currentResult != 'SUCCESS' && env.LOCAL_STACK_STARTED == 'true') {
+                    // Stop and remove the local stack whatever the result. --rmi local
+                    // removes only the images the stack built; the pulled postgres and
+                    // kafka images stay, since the agent's Docker daemon is shared.
+                    if (env.LOCAL_STACK_STARTED == 'true') {
                         def composeCleanupStatus = sh(
-                            script: 'sh infrastructure/docker/run-compose.sh --project-name trading-season-local --env-file infrastructure/docker-compose/.env -f infrastructure/docker-compose/docker-compose.local.yml down -v --remove-orphans',
+                            script: 'sh infrastructure/docker/run-compose.sh --project-name trading-season-local --env-file infrastructure/docker-compose/.env -f infrastructure/docker-compose/docker-compose.local.yml down -v --remove-orphans --rmi local',
                             returnStatus: true
                         )
                         if (composeCleanupStatus != 0) {
@@ -987,7 +1006,10 @@ pipeline {
             }
             script {
                 try {
-                    // Reports were archived by the stage post blocks.
+                    // Reports were archived by the stage post blocks. Take
+                    // ownership first so root-owned files from test containers
+                    // do not leave a workspace the next build cannot clean.
+                    sh(script: 'docker run --rm -v "$(pwd)":/ws alpine:latest chown -R "$(id -u):$(id -g)" /ws || true', returnStatus: true)
                     deleteDir()
                 } catch (err) {
                     echo "Workspace cleanup failed: ${err}; preserving the original build result."
@@ -995,4 +1017,11 @@ pipeline {
             }
         }
     }
+}
+
+// True when the job's SCM already carries a clone option. Kept out of CPS so the
+// extension objects, which are not serializable, never enter the pipeline state.
+@NonCPS
+boolean hasCloneOption(def scmConfig) {
+    return scmConfig.extensions.any { it instanceof hudson.plugins.git.extensions.impl.CloneOption }
 }

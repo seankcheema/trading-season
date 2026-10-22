@@ -75,8 +75,7 @@ function Assert-DependenciesInstalled {
 function Assert-PortAvailable {
     param([Parameter(Mandatory)][int]$Port)
 
-    $listener = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
-    if ($listener) {
+    if (Test-PortListening -Port $Port) {
         throw "Port $Port is already in use. Stop the existing service before starting the local stack."
     }
 }
@@ -101,7 +100,15 @@ function Test-PortOpen {
 function Test-PortListening {
     param([Parameter(Mandatory)][int]$Port)
 
-    return [bool](Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)
+    # Avoid the Windows CIM provider, which can hang in Get-NetTCPConnection.
+    # The OS listener table includes IPv4, IPv6 and wildcard bindings.
+    $listeners = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
+    foreach ($listener in $listeners) {
+        if ($listener.Port -eq $Port) {
+            return $true
+        }
+    }
+    return $false
 }
 
 if (-not (Test-Path -LiteralPath $envFile -PathType Leaf)) {

@@ -1,5 +1,8 @@
 package app.registration;
 
+import app.account.AccountRepository;
+import app.cash.CashTransaction;
+import app.cash.CashTransactionRepository;
 import app.support.UserAccountFixture;
 import app.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +30,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -51,11 +55,19 @@ class RegistrationControllerIntegrationTest {
     private UserRepository userRepository;
 
     @Autowired
+    private AccountRepository accountRepository;
+
+    @Autowired
+    private CashTransactionRepository cashTransactionRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void cleanDatabase() {
         mockMvc = webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
+        cashTransactionRepository.deleteAll();
+        accountRepository.deleteAll();
         userRepository.deleteAll();
         UserAccountFixture.deleteAll(jdbcTemplate);
     }
@@ -123,6 +135,22 @@ class RegistrationControllerIntegrationTest {
         assertEquals("Alice", saved.getFirstName());
         assertEquals("BEGINNER", saved.getTraderLevel());
         assertEquals(0, new BigDecimal("5000.00").compareTo(saved.getAvailableFunds()));
+
+        // BR-10: the opening funds are the first ledger row, on the default account, so the
+        // ledger sums to the balance from the start and the deposit shows in funding history.
+        var ledger = cashTransactionRepository.findAll();
+        assertEquals(1, ledger.size());
+        CashTransaction opening = ledger.get(0);
+        assertEquals(CashTransaction.REASON_DEPOSIT, opening.getReason());
+        assertEquals(0, new BigDecimal("5000.00").compareTo(opening.getAmount()));
+        assertEquals(accountRepository.findFirstByUserIdOrderByOpenedDateAscIdAsc(userId).orElseThrow().getId(),
+            opening.getAccountId());
+        assertTrue(opening.getClientReference() != null);
+        mockMvc.perform(get("/api/me/cash-transactions").with(tokenFor(userId, "alice@example.com")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.length()").value(1))
+            .andExpect(jsonPath("$[0].reason").value("DEPOSIT"))
+            .andExpect(jsonPath("$[0].amount").value(5000.00));
     }
 
     @Test
@@ -203,6 +231,28 @@ class RegistrationControllerIntegrationTest {
             assertTrue(error.contains(field), () -> "expected a validation error for " + field + " in " + error);
         }
         assertEquals(0, userRepository.count());
+    }
+
+    @Test
+    void registerRejectsSomeoneUnder21AndAcceptsSomeoneTurning21Today() throws Exception {
+        String email = "gina@example.com";
+        RegistrationRequest nearlyTwentyOne = withDateOfBirth(email, LocalDate.now().minusYears(21).plusDays(1));
+
+        String error = register(tokenFor(UUID.randomUUID(), email), nearlyTwentyOne)
+            .andExpect(status().isBadRequest())
+            .andReturn().getResponse().getContentAsString();
+
+        assertTrue(error.contains("dateOfBirth"), () -> "expected a dateOfBirth error in " + error);
+        assertEquals(0, userRepository.count());
+
+        register(tokenFor(UUID.randomUUID(), email), withDateOfBirth(email, LocalDate.now().minusYears(21)))
+            .andExpect(status().isCreated());
+    }
+
+    private static RegistrationRequest withDateOfBirth(String email, LocalDate dateOfBirth) {
+        RegistrationRequest base = registration(email);
+        return new RegistrationRequest(base.email(), base.firstName(), base.middleName(), base.lastName(),
+            base.ssn(), base.address(), dateOfBirth, base.traderLevel(), base.availableFunds());
     }
 
     @Test

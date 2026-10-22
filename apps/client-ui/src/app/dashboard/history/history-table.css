@@ -10,6 +10,38 @@
   text-transform: uppercase;
 }
 
+/* Stretches the browser's calendar button over the whole field, so a click anywhere in it opens the
+   calendar. The icon beside the date is decoration. */
+.date-field input::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* The transactions list keeps its scrollbar, so the user can see there is more to scroll to. The
+   thumb is stronger than the page default, which is faint on a card. The header and footer reserve
+   the same gutter, so their columns stay lined up with the rows. They clip their own overflow,
+   hence the padding that leaves room for a focus ring. */
+.txn-scroll {
+  --scrollbar-thumb: var(--muted-foreground);
+  --scrollbar-thumb-hover: var(--foreground);
+  --scrollbar-track: transparent;
+  scrollbar-gutter: stable;
+}
+
+.txn-gutter {
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
+}
+
+.dash-table-head.txn-gutter {
+  margin-top: -3px;
+  padding-top: 3px;
+}
+
 .dash-scroll {
   scrollbar-width: none;
 }

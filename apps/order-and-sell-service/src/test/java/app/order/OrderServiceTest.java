@@ -161,6 +161,14 @@ class OrderServiceTest {
         return userRepository.findById(user.getUserId()).orElseThrow().getAvailableFunds();
     }
 
+    private List<String> auditDetailsFor(Order order) {
+        return auditTrailRepository.findAll().stream()
+                .filter(event -> event.getOrderId().equals(order.getOrderId()))
+                .sorted(Comparator.comparing(AuditTrail::getAuditId))
+                .map(AuditTrail::getDetail)
+                .toList();
+    }
+
     private List<String> auditEventsFor(Order order) {
         return auditTrailRepository.findAll().stream()
                 .filter(event -> event.getOrderId().equals(order.getOrderId()))
@@ -178,6 +186,16 @@ class OrderServiceTest {
         assertNotNull(order.getAcceptedAt());
         assertNotNull(order.getResolvedAt());
         assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_ACCEPTED, Order.STATUS_FILLED), auditEventsFor(order));
+        // BR-14: each entry reads on its own, naming the client, the terms and the pricing decision.
+        List<String> details = auditDetailsFor(order);
+        assertTrue(details.get(0).startsWith("Submitted by user " + user.getUserId() + " on account "
+                + account.getAccountId() + ": BUY 100 TEST MARKET at indicative price 50.00, market quote 50.00 in session 1 at "),
+                details.get(0));
+        assertTrue(details.get(0).contains(", client reference " + order.getClientReference()), details.get(0));
+        assertTrue(details.get(1).startsWith("Passed trading rules at market quote 50.00 with buffer 5"), details.get(1));
+        assertTrue(details.get(2).startsWith("Filled 100"), details.get(2));
+        assertTrue(details.get(2).contains("@ 50.00 (market quote in session 1 at "), details.get(2));
+        assertTrue(details.get(2).contains("; cash -5000.00 for user " + user.getUserId() + "; holding +100"), details.get(2));
     }
 
     @Test
@@ -210,7 +228,7 @@ class OrderServiceTest {
         Order order = submit(order("BUY", "100", "50.00"), user.getUserId());
 
         assertEquals(Order.STATUS_REJECTED, order.getStatus());
-        assertTrue(order.getRejectionReason().contains("BR-09"));
+        assertTrue(order.getRejectionReason().contains("BR-05"));
         assertNotNull(order.getResolvedAt());
         assertEquals(0, new BigDecimal("1000.00").compareTo(availableFunds()));
         assertEquals(0, fillRepository.count());
@@ -242,6 +260,22 @@ class OrderServiceTest {
                 .orElseThrow();
         assertEquals(0, BigDecimal.ZERO.compareTo(holding.getQuantity()));
         assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_ACCEPTED, Order.STATUS_FILLED), auditEventsFor(order));
+    }
+
+    @Test
+    void orderPlacedWhileTheMarketIsClosedIsRejected() {
+        // 16:00 America/Chicago on a Monday: the replay position is after the close.
+        org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(quoteAt(OffsetDateTime.parse("2026-01-05T22:00:00Z")));
+
+        Order order = orderService.submitOrder(order("BUY", "1", "100.00"), user.getUserId());
+
+        assertEquals(Order.STATUS_REJECTED, order.getStatus());
+        assertEquals("BR-05: the market is closed at Monday 16:00 America/Chicago; "
+                + "orders are accepted Monday to Friday 08:30 to 15:00", order.getRejectionReason());
+        assertEquals(0, STARTING_FUNDS.compareTo(availableFunds()));
+        assertEquals(0, fillRepository.count());
+        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_REJECTED), auditEventsFor(order));
     }
 
     @Test

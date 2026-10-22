@@ -265,7 +265,7 @@ def main():
     say('consumer order-status-pusher', f'the stream delivered ACCEPTED then FILLED for order {order_id}')
 
     from app import app
-    from models import PortfolioValuation, db
+    from models import Account, PortfolioValuation, User, db
     from read_model import read_model
     import report_run
 
@@ -309,6 +309,21 @@ def main():
                                                 f'after {WAIT_SECONDS} seconds')
         say('valuation reached reporting', f'the read model holds a portfolio value of {value} for account '
                                            f'{account_id}, from the platform-records topic')
+
+        # The account and profile records travel on other partitions of platform-records
+        # than the valuation, so they can land after it. A report run before they are
+        # applied cannot name the account, so wait for both rows like the valuation.
+        def account_in_read_model():
+            with read_model.lock:
+                try:
+                    read_model.sync(db.session, files_dir)
+                    account = db.session.get(Account, account_id)
+                    return account is not None and db.session.get(User, account.user_id) is not None
+                finally:
+                    db.session.rollback()
+        wait_for('account reached reporting', account_in_read_model)
+        say('account reached reporting', f'the read model holds account {account_id} and its customer profile, '
+                                         'from the platform-records topic')
 
         with read_model.lock:
             read_model.sync(db.session, files_dir)

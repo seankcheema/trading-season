@@ -1,3 +1,4 @@
+import { DuaComponent } from '../dua/dua.component';
 import { OrderEditorComponent } from './shared/order-editor.component';
 import { SegmentedTab, SegmentedTabsComponent } from './shared/segmented-tabs.component';
 import { WatchlistStore } from './watchlist/watchlist-store.service';
@@ -47,6 +48,7 @@ import { Subscription } from 'rxjs';
 import { Router } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { AuthService } from '../core/auth/auth.service';
+import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 import { Instrument, PricePoint, Timeframe, findInstrument } from './mock-data';
 import { MarketDataService, MarketSnapshot, MarketTickEvent } from './market-data.service';
 import { AccountStore } from './accounts/account-store.service';
@@ -76,7 +78,6 @@ import { TickAnimations } from './shared/tick-animations';
 import { TimeframeToggleComponent } from './shared/timeframe-toggle.component';
 import { DashboardTourComponent, TourExit } from './tour/dashboard-tour.component';
 import { TourProgressService } from './tour/tour-progress.service';
-import { ThemeToggleComponent } from '../core/theme/theme-toggle.component';
 
 type HeaderDropdown = 'account' | 'market-clock' | 'profile';
 
@@ -91,6 +92,7 @@ type AccountDialog =
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ThemeToggleComponent,
+    DuaComponent,
     OrderEditorComponent,
     ActivityRowComponent,
     ActivityRowSkeletonComponent,
@@ -133,6 +135,7 @@ type AccountDialog =
   styleUrl: './dashboard.component.css',
 })
 export class DashboardComponent implements OnInit, OnDestroy {
+  protected readonly duaConnected = signal(false);
   protected readonly clock = inject(MarketClockService);
   private readonly marketData = inject(MarketDataService);
   private readonly platformId = inject(PLATFORM_ID);
@@ -156,6 +159,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly accounts = this.accountStore.accounts;
   protected readonly selectedAccount = this.accountStore.selectedAccount;
   protected readonly selectedAccountId = this.accountStore.selectedAccountId;
+  private initialAccountRestored = false;
+  private readonly restoreAccount = effect(() => {
+    const id = Number(this._router.routerState.snapshot.root.firstChild?.queryParams['accountId']);
+    if (this.accountStore.status() === 'ready' && !this.initialAccountRestored) {
+      this.initialAccountRestored = true;
+      if (id > 0) {
+        this.accountStore.selectAccount(id);
+      }
+    }
+  });
   protected readonly hasAccounts = computed(() => this.accounts().length > 0);
   // Until the accounts arrive there is no balance, holding or cash transfer to show, so the
   // cards that depend on them show placeholders instead of zeros and empty states.
@@ -186,7 +199,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       ? this.accountStore.cashBalance()
       : cashAt(this.accountStore.cashBalance(), this.orderService.orders(), at);
   });
-  private readonly simulationHoldings = computed(() => {
+  protected readonly simulationHoldings = computed(() => {
     const at = this.marketTimeMillis();
     return new Map(
       [...this.accountStore.holdingsByAccount()].map(([accountId, current]) => [
@@ -262,17 +275,30 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // The first-run tour. It opens by itself once per visit, when the accounts and profile have
   // loaded and no terms are waiting, until the user has finished or skipped it; the profile
-  // menu starts it again. The dashboard is inert behind it.
+  // menu starts it again. Terms that had to be accepted first always lead into the tour, even
+  // in a browser that finished it for someone else, since the tour is remembered per browser.
+  // The dashboard is inert behind it.
   protected readonly tourOpen = signal(false);
   private tourOffered = false;
+  private termsWereShown = false;
   private tourFromMenu = false;
+  private tourOpenedOrder = false;
   private readonly offerTour = effect(() => {
-    if (this.accountStore.status() !== 'ready' || this.termsRequired() || this.tourOffered) {
+    if (this.accountStore.status() !== 'ready' || this.tourOffered) {
+      return;
+    }
+    if (this.termsRequired()) {
+      this.termsWereShown = true;
       return;
     }
     this.tourOffered = true;
-    if (!this._tourProgress.isDone()) {
-      untracked(() => this.tourOpen.set(true));
+    if (this.termsWereShown || !this._tourProgress.isDone()) {
+      untracked(() => {
+        if (this.termsWereShown) {
+          this._tourProgress.saveStep(0);
+        }
+        this.tourOpen.set(true);
+      });
     }
   });
   private readonly recentInstruments = inject(RecentInstrumentsService);
@@ -725,7 +751,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.loadAssetCharts(snapshot.sessionId, this.marketGeneration);
     this.disconnectMarket = this.marketData.connect(snapshot.sessionId, {
       tick: (event) => this.queueTickBatch(event),
-      status: () => undefined,
+      status: (connected) => this.zone.run(() => this.duaConnected.set(connected)),
       resync: () => this.loadMarketSnapshot(),
     });
   }
@@ -817,6 +843,27 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this._tourProgress.saveStep(0);
     this.tourFromMenu = true;
     this.tourOpen.set(true);
+  }
+
+  // The tour's full screen step points at a button inside the order ticket, so the tour has a
+  // ticket open for that step: Apple when the market has it, otherwise the first instrument.
+  // Nothing opens when no instruments have loaded, and the step is then shown without a
+  // spotlight. The ticket is closed again as the tour leaves the step, but never one the
+  // user opened themselves.
+  protected onTourTicket(needed: boolean): void {
+    if (!needed) {
+      if (this.tourOpenedOrder) {
+        this.tourOpenedOrder = false;
+        this.orderSymbol.set(null);
+      }
+      return;
+    }
+    const instruments = this.instruments();
+    const sample = findInstrument('AAPL', instruments) ?? instruments[0];
+    if (sample && this.orderSymbol() === null) {
+      this.orderSymbol.set(sample.symbol);
+      this.tourOpenedOrder = true;
+    }
   }
 
   // Focus waits for the dashboard to stop being inert. Finishing hands over to the search;

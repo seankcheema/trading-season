@@ -66,7 +66,7 @@
 
     <div
       class="border-sidebar-border flex min-w-0 items-center gap-2.5 md:border-t md:pt-3"
-      [class]="collapsed() ? 'md:flex-col md:justify-center md:gap-1' : 'md:px-2'"
+      [class]="collapsed() ? 'md:justify-center' : 'md:px-2'"
     >
       <span
         class="bg-primary/15 text-primary flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
@@ -84,7 +84,6 @@
           <span class="text-muted-foreground block truncate text-xs">{{ userDetail() }}</span>
         }
       </span>
-      <app-theme-toggle />
       <button
         type="button"
         class="text-muted-foreground hover:bg-loss/10 hover:text-loss flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors"
