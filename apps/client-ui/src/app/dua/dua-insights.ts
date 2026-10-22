@@ -25,6 +25,10 @@ export interface DuaCard {
   note?: string;
   text: string;
   detail?: string;
+  /** Leads with the metrics, so the takeaway reads as a statement about them. */
+  metricsFirst?: boolean;
+  /** Gives the description the same weight as the takeaway. */
+  emphasizeText?: boolean;
 }
 
 export function sparklinePoints(values: readonly number[]): string {
@@ -337,6 +341,69 @@ export function dailyReview(
       note: coverage,
     },
   ];
+}
+
+/**
+ * Watchlist movement since the session open. `symbols` is null while the watchlist is not
+ * loaded. The watchlist belongs to the user, so it is the same for every trading account.
+ */
+export function watchlistPulse(
+  symbols: readonly string[] | null,
+  quotes: readonly Instrument[],
+): DuaCard {
+  const title = 'Your watchlist since the open';
+  const detail =
+    "Percent change from each watchlist stock's session open to its latest price. Your watchlist is shared by all of your trading accounts.";
+  if (symbols === null)
+    return {
+      title,
+      takeaway: 'Your watchlist is unavailable.',
+      text: 'Try again shortly.',
+      detail,
+    };
+  if (!symbols.length)
+    return {
+      title,
+      takeaway: 'Your watchlist is empty.',
+      text: 'Star a stock to follow it here.',
+      detail,
+    };
+  const moves = symbols.flatMap((symbol) => {
+    const quote = quotes.find((q) => q.symbol === symbol);
+    const change = quote ? percentChange(quote.price, quote.price - quote.change) : null;
+    return change === null ? [] : [{ symbol, change }];
+  });
+  const rising = moves
+    .filter((m) => m.change > 0)
+    .sort((a, b) => b.change - a.change || a.symbol.localeCompare(b.symbol));
+  const falling = moves
+    .filter((m) => m.change < 0)
+    .sort((a, b) => a.change - b.change || a.symbol.localeCompare(b.symbol));
+  const list = (rows: typeof moves) =>
+    rows.map((r) => ({ symbol: r.symbol, change: signedPercent(r.change) }));
+  return {
+    title,
+    metrics: moves.length
+      ? [
+          { label: 'Rising', value: String(rising.length), tone: 'gain', stocks: list(rising) },
+          { label: 'Falling', value: String(falling.length), tone: 'loss', stocks: list(falling) },
+        ]
+      : [],
+    takeaway: !moves.length
+      ? 'Watchlist prices are unavailable.'
+      : rising.length > falling.length
+        ? `Most of your watchlist is rising; ${rising[0].symbol} leads at ${signedPercent(rising[0].change)}.`
+        : falling.length > rising.length
+          ? `Most of your watchlist is falling; ${falling[0].symbol} is down most at ${signedPercent(falling[0].change)}.`
+          : rising.length
+            ? 'Your watchlist is evenly split between rising and falling stocks.'
+            : 'Your watchlist is unchanged since the open.',
+    text:
+      moves.length < symbols.length
+        ? `${moves.length} of ${symbols.length} watchlist stocks have prices.`
+        : '',
+    detail,
+  };
 }
 
 export function stockCards(

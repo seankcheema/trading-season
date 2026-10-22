@@ -32,29 +32,17 @@
         }
       </span>
     }
-    <div class="header-title">
+    <div class="header-title" [class.with-account]="choice() && snapshotContext()">
       <h2 [class.dua-title]="!choice()">
         {{ title() }}
         @if (!choice()) {
           <span class="plan-label">Free Plan</span>
         }
       </h2>
-      @if (choice() && asOf()) {
-        <small class="header-timestamp">{{ asOf() }}</small>
+      @if (choice() && snapshotContext()) {
+        <small class="header-account">Account: {{ snapshotContext() }}</small>
       }
     </div>
-    @if (choice() && !explaining()) {
-      <button
-        class="icon-button"
-        type="button"
-        [attr.aria-label]="message() ? 'Retry' : 'Refresh'"
-        [title]="message() ? 'Retry' : 'Refresh'"
-        [disabled]="loading()"
-        (click)="select(choice()!)"
-      >
-        <ng-icon name="lucideRefreshCw" aria-hidden="true" />
-      </button>
-    }
     <button class="icon-button" type="button" aria-label="Minimize Dua" (click)="minimize()">
       <ng-icon name="lucideX" aria-hidden="true" />
     </button>
@@ -72,7 +60,11 @@
               type="button"
               [class.unread]="isUnread(item)"
               [attr.aria-label]="
-                item === 'stock' ? 'This Stock' : item === 'daily' ? 'Daily Review' : 'My Holdings'
+                item === 'stock'
+                  ? 'This Stock'
+                  : item === 'daily'
+                    ? 'Daily Review'
+                    : 'Portfolio Analysis'
               "
               [disabled]="historyLoading()"
               (click)="select($any(item))"
@@ -95,7 +87,7 @@
                       ? 'This Stock'
                       : item === 'daily'
                         ? 'Daily Review'
-                        : 'My Holdings'
+                        : 'Portfolio Analysis'
                   }}
                   @if (isUnread(item)) {
                     <span class="new-label">New</span>
@@ -150,24 +142,6 @@
         <div class="skeleton insight-skeleton" aria-hidden="true"></div>
         <div class="skeleton insight-skeleton short" aria-hidden="true"></div>
       }
-      @if (choice() === 'holdings') {
-        <nav class="period-switch" aria-label="Performance period">
-          <button
-            type="button"
-            [attr.aria-pressed]="period() === 'week'"
-            (click)="setPeriod('week')"
-          >
-            Week
-          </button>
-          <button
-            type="button"
-            [attr.aria-pressed]="period() === 'month'"
-            (click)="setPeriod('month')"
-          >
-            Month
-          </button>
-        </nav>
-      }
       @if (displayedContext() && !snapshotStillCurrent()) {
         <button type="button" class="update-action" (click)="select(choice()!)">
           Update available
@@ -184,12 +158,7 @@
           >
             <div class="card-heading">
               @if (card.title) {
-                <h3>
-                  {{ card.title }}
-                  @if (card.title === 'Today' && snapshotDate()) {
-                    {{ snapshotDate() }}
-                  }
-                </h3>
+                <h3>{{ card.title }}</h3>
               }
               <button
                 class="explain-action"
@@ -198,19 +167,32 @@
                 title="View Details"
                 (click)="showDetails()"
               >
-                <ng-icon name="lucideCircleHelp" aria-hidden="true" /><span>View Details</span>
+                <ng-icon name="lucideInfo" aria-hidden="true" />
               </button>
             </div>
             <small class="card-meta">
-              {{ card.period ?? snapshotDate() }}
-              <span
-                >{{ ($index + 1).toString().padStart(2, '0') }} /
-                {{ cards().length.toString().padStart(2, '0') }}</span
-              >
+              <span>{{ asOfLabel() }}</span>
+              <span>Page {{ $index + 1 }} of {{ cards().length }}</span>
             </small>
             <div class="card-content">
-              <p class="guidance-headline">{{ card.takeaway }}</p>
-              <p class="guidance-description">{{ card.text }}</p>
+              @if (!card.metricsFirst) {
+                <ng-container [ngTemplateOutlet]="guidance" />
+              }
+              <ng-template #guidance>
+                @if (card.takeaway) {
+                  <p
+                    [class.guidance-headline]="!card.metricsFirst"
+                    [class.guidance-statement]="card.metricsFirst"
+                  >
+                    {{ card.takeaway }}
+                  </p>
+                }
+                @if (card.text) {
+                  <p class="guidance-description" [class.prominent]="card.emphasizeText">
+                    {{ card.text }}
+                  </p>
+                }
+              </ng-template>
 
               @if (card.metrics?.length) {
                 <dl
@@ -222,22 +204,30 @@
                   @for (metric of card.metrics; track $index) {
                     <div
                       [class.wide-metric]="metric.value.length > 9"
-                      [class.primary-metric]="card.metrics?.length === 1"
+                      [class.primary-metric]="metric.primary || card.metrics?.length === 1"
                     >
-                      <dt>
-                        @if (metric.symbol && metric.symbol !== symbol()) {
-                          <a
-                            class="ticker-link"
-                            [routerLink]="['/dashboard/markets', metric.symbol.toLowerCase()]"
-                            [attr.aria-label]="'Open ' + metric.symbol + ' stock analysis'"
-                          >
-                            {{ metric.label
-                            }}<ng-icon name="lucideExternalLink" aria-hidden="true" />
-                          </a>
-                        } @else {
-                          {{ metric.label }}
-                        }
-                      </dt>
+                      @if (metric.label || metric.symbol) {
+                        <dt [class.with-symbol]="metric.symbol !== undefined">
+                          @if (metric.symbol !== undefined) {
+                            <span class="metric-label">{{ metric.label }}</span>
+                            <!-- A blank symbol is an empty mover slot; its value reads None. -->
+                            @if (metric.symbol && metric.symbol !== symbol()) {
+                              <a
+                                class="ticker-link"
+                                [routerLink]="['/dashboard/markets', metric.symbol.toLowerCase()]"
+                                [attr.aria-label]="'Open ' + metric.symbol + ' stock analysis'"
+                              >
+                                {{ metric.symbol
+                                }}<ng-icon name="lucideExternalLink" aria-hidden="true" />
+                              </a>
+                            } @else if (metric.symbol) {
+                              <span>{{ metric.symbol }}</span>
+                            }
+                          } @else {
+                            {{ metric.label }}
+                          }
+                        </dt>
+                      }
                       <dd [class.compact-value]="metric.value.length > 13">
                         <strong
                           [class.gain]="metric.tone === 'gain'"
@@ -287,6 +277,11 @@
                     </div>
                   }
                 </dl>
+                @if (card.metricsFirst) {
+                  <ng-container [ngTemplateOutlet]="guidance" />
+                }
+              } @else if (card.metricsFirst) {
+                <ng-container [ngTemplateOutlet]="guidance" />
               } @else if (!card.takeaway) {
                 <p class="fact-line">
                   @for (part of responseParts(card.text); track $index) {
@@ -336,6 +331,9 @@
         }
         @if (message()) {
           <p class="feedback" role="status">{{ message() }}</p>
+          <button type="button" class="update-action retry-action" (click)="select(choice()!)">
+            Try again
+          </button>
         }
       </div>
       @if (cards().length > 1) {

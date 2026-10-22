@@ -125,57 +125,98 @@ export function activity(
   };
 }
 
-export function performanceCards(
-  rows: { symbol: string; gain: number | null }[],
-  period: string,
-): DuaCard[] {
-  const complete = rows.every((r) => r.gain !== null);
-  const total = rows.reduce((sum, r) => sum + (r.gain ?? 0), 0);
+type PerformanceRow = { symbol: string; gain: number | null };
+type Metric = NonNullable<DuaCard['metrics']>[number];
+const tone = (n: number): 'gain' | 'loss' => (n < 0 ? 'loss' : 'gain');
+
+function summarize(rows: readonly PerformanceRow[]) {
   const ranked = rows
     .filter((r) => r.gain !== null)
     .sort((a, b) => b.gain! - a.gain! || a.symbol.localeCompare(b.symbol));
-  const best = ranked.find((r) => r.gain! > 0);
-  const worst = [...ranked].reverse().find((r) => r.gain! < 0);
-  return [
-    {
-      title: 'Your performance',
-      period,
-      takeaway: !rows.length
-        ? 'No holdings to review yet.'
-        : !complete
-          ? 'Some performance data is unavailable.'
-          : `Your holdings ${total < 0 ? 'lost' : 'gained'} ${dollars(Math.abs(total))}.`,
-      text: 'Your investment gains and losses for this period.',
-      detail:
-        'Ending holdings value minus starting value minus purchases plus sale proceeds. Shared cash and deposits are excluded.',
-      metrics:
-        complete && rows.length
-          ? [{ label: period, value: signedDollars(total), tone: total < 0 ? 'loss' : 'gain' }]
-          : [],
-    },
-    {
-      title: 'Your biggest movers',
-      period,
-      takeaway: best
-        ? `${best.symbol} contributed the most.`
-        : worst
-          ? `${worst.symbol} weighed on your holdings.`
-          : 'No gains or losses to rank.',
-      text: complete
-        ? 'Your largest gains and losses this period.'
-        : 'Only positions with complete history are compared.',
-      metrics: [best, worst]
-        .filter((r): r is NonNullable<typeof r> => !!r)
-        .map((r) => ({
-          symbol: r.symbol,
-          label: r.symbol,
-          value: signedDollars(r.gain!),
-          tone: r.gain! > 0 ? 'gain' : 'loss',
-        })),
-      detail:
-        'Dollar contributions include positions sold during this period; they are not since-purchase returns.',
-    },
-  ];
+  return {
+    complete: rows.every((r) => r.gain !== null),
+    total: rows.reduce((sum, r) => sum + (r.gain ?? 0), 0),
+    ranked,
+    best: ranked.find((r) => r.gain! > 0),
+    worst: [...ranked].reverse().find((r) => r.gain! < 0),
+  };
+}
+
+/** The total for a period as a metric, or nothing when any position lacks history. */
+function totalMetric(rows: readonly PerformanceRow[], label: string): Metric[] {
+  const { complete, total } = summarize(rows);
+  return complete && rows.length ? [{ label, value: signedDollars(total), tone: tone(total) }] : [];
+}
+
+/** Explains a period's result by naming the position that drove it; the amount is the metric. */
+export function periodStatement(rows: readonly PerformanceRow[], when: string): string {
+  const { complete, total, best, worst } = summarize(rows);
+  if (!rows.length) return 'No holdings to review yet.';
+  if (!complete) return `Some performance data ${when} is unavailable.`;
+  if (total === 0) return `Your holdings were unchanged ${when}.`;
+  const driver = total > 0 ? best : worst;
+  return `Your holdings ${total > 0 ? 'gained' : 'lost'} value ${when}${driver ? `, led by ${driver.symbol} (${signedDollars(driver.gain!)})` : ''}.`;
+}
+
+const PERFORMANCE_DETAIL =
+  'Ending holdings value minus starting value minus purchases plus sale proceeds. Shared cash and deposits are excluded.';
+
+export function dailyPerformanceCard(rows: readonly PerformanceRow[]): DuaCard {
+  return {
+    title: 'Your performance',
+    metricsFirst: true,
+    metrics: totalMetric(rows, ''),
+    takeaway: periodStatement(rows, 'since the open'),
+    text: '',
+    detail: PERFORMANCE_DETAIL,
+  };
+}
+
+/** Week-to-date (from Monday) and month-to-date results side by side. */
+export function periodPerformanceCard(
+  week: readonly PerformanceRow[],
+  month: readonly PerformanceRow[],
+): DuaCard {
+  const weekly = periodStatement(week, 'this week');
+  const monthly = periodStatement(month, 'this month');
+  return {
+    title: 'Your performance',
+    metricsFirst: true,
+    emphasizeText: true,
+    metrics: [...totalMetric(week, 'This week'), ...totalMetric(month, 'This month')],
+    takeaway: weekly,
+    text: monthly === weekly ? '' : monthly,
+    detail: `${PERFORMANCE_DETAIL} The week starts on Monday and the month on the 1st.`,
+  };
+}
+
+/**
+ * Biggest gainer and loser for each period. A period with any ranked position shows both slots,
+ * so periods stay aligned; an empty slot has a blank symbol and reads None.
+ */
+export function moversCard(
+  periods: readonly { rows: readonly PerformanceRow[]; when?: string }[],
+): DuaCard {
+  const metrics = periods.flatMap(({ rows, when }): Metric[] => {
+    const { ranked, best, worst } = summarize(rows);
+    if (!ranked.length) return [];
+    const slot = (label: string, row: PerformanceRow | undefined): Metric =>
+      row
+        ? { label, symbol: row.symbol, value: signedDollars(row.gain!), tone: tone(row.gain!) }
+        : { label, symbol: '', value: 'None' };
+    const suffix = when ? ` ${when}` : '';
+    return [slot(`Biggest gainer${suffix}`, best), slot(`Biggest loser${suffix}`, worst)];
+  });
+  const complete = periods.every(({ rows }) => rows.every((r) => r.gain !== null));
+  return {
+    title: 'Your biggest movers',
+    metricsFirst: true,
+    takeaway: metrics.length ? '' : 'No gains or losses to rank.',
+    text: complete ? '' : 'Only positions with complete history are compared.',
+    metrics,
+    detail:
+      'Dollar contributions include positions sold during the period; they are not since-purchase returns.',
+  };
 }
 
 /** Compact, deterministic content version; raw trade histories never cross the state API. */

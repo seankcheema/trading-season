@@ -1,8 +1,10 @@
 import {
   activity,
+  dailyPerformanceCard,
+  moversCard,
   performance,
-  performanceCards,
   periodDate,
+  periodPerformanceCard,
   insightVersion,
 } from './dua-guidance';
 import { CandleSeries } from '../dashboard/market-data.service';
@@ -102,9 +104,48 @@ describe('Dua performance', () => {
     ).toBe(0);
   });
   it('shows partial results explicitly', () => {
-    expect(performanceCards([{ symbol: 'JPM', gain: null }], 'Today')[0].takeaway).toContain(
-      'unavailable',
+    const card = dailyPerformanceCard([{ symbol: 'JPM', gain: null }]);
+    expect(card.takeaway).toContain('unavailable');
+    expect(card.metrics).toEqual([]);
+  });
+  it('leads with the amount and names the position that drove it', () => {
+    const card = dailyPerformanceCard([
+      { symbol: 'JPM', gain: 30 },
+      { symbol: 'MSFT', gain: -10 },
+    ]);
+    expect(card.metricsFirst).toBe(true);
+    expect(card.metrics).toEqual([{ label: '', value: '+$20.00', tone: 'gain' }]);
+    expect(card.takeaway).toBe('Your holdings gained value since the open, led by JPM (+$30.00).');
+    expect(card.text).toBe('');
+  });
+  it('explains week and month results together', () => {
+    const card = periodPerformanceCard(
+      [{ symbol: 'JPM', gain: -5 }],
+      [{ symbol: 'JPM', gain: 12 }],
     );
+    expect(card.metrics?.map((m) => [m.label, m.value])).toEqual([
+      ['This week', '-$5.00'],
+      ['This month', '+$12.00'],
+    ]);
+    expect(card.takeaway).toContain('lost value this week');
+    expect(card.text).toContain('gained value this month');
+  });
+  it('splits movers into biggest gainer and loser per period', () => {
+    const daily = moversCard([{ rows: [{ symbol: 'JPM', gain: 30 }] }]);
+    expect(daily.metrics?.map((m) => [m.label, m.symbol, m.value])).toEqual([
+      ['Biggest gainer', 'JPM', '+$30.00'],
+      ['Biggest loser', '', 'None'],
+    ]);
+    expect(daily.takeaway).toBe('');
+    const holdings = moversCard([
+      { rows: [{ symbol: 'JPM', gain: -3 }], when: 'this week' },
+      { rows: [], when: 'this month' },
+    ]);
+    expect(holdings.metrics?.map((m) => m.label)).toEqual([
+      'Biggest gainer this week',
+      'Biggest loser this week',
+    ]);
+    expect(moversCard([{ rows: [] }]).takeaway).toBe('No gains or losses to rank.');
   });
   it('uses simulation-local calendar boundaries', () => {
     expect(periodDate(at, 'week')).toBe('2026-10-19');

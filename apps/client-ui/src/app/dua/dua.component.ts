@@ -5,9 +5,12 @@ import { RiskOutlookComponent } from '../market-page/risk-outlook/risk-outlook.c
 import { TrendReadComponent } from '../market-page/trend-read/trend-read.component';
 import {
   activity,
+  dailyPerformanceCard,
+  dollars,
+  moversCard,
   performance,
-  performanceCards,
   periodDate,
+  periodPerformanceCard,
   insightVersion,
   signedDollars,
   InsightChoice,
@@ -27,6 +30,7 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
@@ -35,10 +39,9 @@ import {
   lucideChartPie,
   lucideChevronLeft,
   lucideChevronRight,
-  lucideCircleHelp,
   lucideExternalLink,
+  lucideInfo,
   lucideNewspaper,
-  lucideRefreshCw,
   lucideScanSearch,
   lucideX,
   lucideZap,
@@ -48,6 +51,7 @@ import { AccountStore } from '../dashboard/accounts/account-store.service';
 import { Instrument } from '../dashboard/mock-data';
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
 import { DuaSession } from './dua-session.service';
+import { WatchlistStore } from '../dashboard/watchlist/watchlist-store.service';
 import { PlatformSignalsService } from '../market-page/risk-outlook/platform-signals.service';
 import { readingFor } from '../market-page/risk-outlook/platform-signals';
 import { PlatformTrendService } from '../market-page/trend-read/platform-trend.service';
@@ -55,15 +59,15 @@ import { trendReadingFor } from '../market-page/trend-read/platform-trend';
 import {
   DuaCard,
   DuaChoice,
-  dailyReview,
   insightTextParts,
   sparklinePoints,
   takeawayParts,
+  watchlistPulse,
 } from './dua-insights';
 
 const CHOICE_TITLES: Record<DuaChoice, string> = {
   daily: 'Daily Review',
-  holdings: 'My Holdings',
+  holdings: 'Portfolio Analysis',
   stock: 'This Stock',
   outlook: 'Volatility outlook',
   trending: "What's trending",
@@ -75,7 +79,7 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
     '[hidden]': 'account.needsTermsAcceptance()',
     '(document:click)': 'closeOnOutsideClick($event)',
   },
-  imports: [NgIcon, RouterLink, RiskOutlookComponent, TrendReadComponent],
+  imports: [NgIcon, NgTemplateOutlet, RouterLink, RiskOutlookComponent, TrendReadComponent],
   providers: [
     provideIcons({
       lucideArrowUpRight,
@@ -83,10 +87,9 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
       lucideChartPie,
       lucideChevronLeft,
       lucideChevronRight,
-      lucideCircleHelp,
       lucideExternalLink,
+      lucideInfo,
       lucideNewspaper,
-      lucideRefreshCw,
       lucideScanSearch,
       lucideX,
       lucideZap,
@@ -172,11 +175,11 @@ export class DuaComponent {
   private panelSize?: { height: number; width: number };
 
   readonly openOutlook = input(false);
-  protected readonly period = signal<'week' | 'month'>('week');
   protected readonly snapshotAt = signal('');
   protected readonly displayedContext = signal<ReadContext | null>(null);
   private readonly market = inject(MarketDataService);
   private readonly orders = inject(OrderService);
+  private readonly watchlist = inject(WatchlistStore);
   private historyRequest?: Subscription;
   private readonly history = signal<CandleSeries[]>([]);
   protected readonly historyLoading = signal(false);
@@ -261,6 +264,26 @@ export class DuaComponent {
     },
     { equal: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
   );
+  // Relative to the simulation day, since that is the day the snapshot describes.
+  protected readonly asOfLabel = computed(() => {
+    const day = this.snapshotDate();
+    if (!day || !this.asOf()) return '';
+    const today = this.marketDay();
+    const yesterday = today ? new Date(`${today}T12:00:00Z`) : null;
+    yesterday?.setUTCDate(yesterday.getUTCDate() - 1);
+    const date =
+      day === today
+        ? 'today'
+        : day === yesterday?.toISOString().slice(0, 10)
+          ? 'yesterday'
+          : new Intl.DateTimeFormat('en-US', {
+              timeZone: 'UTC',
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            }).format(new Date(`${day}T12:00:00Z`));
+    return `As of ${date}, ${this.asOf()}`;
+  });
   protected readonly unreadCount = computed(
     () => this.contexts().filter((c) => this.session.unread(c)).length,
   );
@@ -282,10 +305,6 @@ export class DuaComponent {
       )
     );
   });
-  protected setPeriod(period: 'week' | 'month'): void {
-    this.period.set(period);
-    this.select('holdings');
-  }
   protected showDetails(): void {
     this.savedScroll =
       this.panel()?.nativeElement.querySelector('.insight-card:not(.inactive) .card-content')
@@ -307,7 +326,7 @@ export class DuaComponent {
       period === 'daily',
     );
   }
-  private suggestion(period: 'week' | 'month' = this.period()): DuaCard {
+  private suggestion(period: 'week' | 'month' = 'week'): DuaCard {
     const at = this.clock.currentMarketTimestamp();
     const trend = this.trend.trend();
     const rows = this.rows(period);
@@ -353,30 +372,29 @@ export class DuaComponent {
     };
   }
   private buildCards(choice: InsightChoice): DuaCard[] {
-    if (choice !== 'stock') {
-      const period = choice === 'daily' ? 'daily' : this.period();
-      const cards = performanceCards(
-        this.rows(period),
-        period === 'daily' ? 'Today' : period === 'week' ? 'This week' : 'This month',
-      );
-      if (choice === 'holdings') return [...cards, this.suggestion()];
-      const market = dailyReview(this.holdings(), this.quotes())[0];
-      const up = Number(market.metrics?.[0]?.value ?? 0);
-      const down = Number(market.metrics?.[1]?.value ?? 0);
+    if (choice === 'daily') {
+      const rows = this.rows('daily');
       return [
-        ...cards,
-        {
-          ...market,
-          takeaway: !market.metrics?.length
-            ? 'Market direction is unavailable.'
-            : up > down
-              ? 'Tracked stocks are mostly rising.'
-              : down > up
-                ? 'Tracked stocks are mostly falling.'
-                : 'Tracked stocks are mixed.',
-          metrics: market.metrics?.slice(0, 2),
-          text: 'Direction of tracked stocks since session open.',
-        },
+        dailyPerformanceCard(rows),
+        moversCard([{ rows }]),
+        watchlistPulse(
+          this.watchlist.status() === 'ready'
+            ? this.watchlist.entries().map((e) => e.symbol)
+            : null,
+          this.quotes(),
+        ),
+      ];
+    }
+    if (choice === 'holdings') {
+      const week = this.rows('week');
+      const month = this.rows('month');
+      return [
+        periodPerformanceCard(week, month),
+        moversCard([
+          { rows: week, when: 'this week' },
+          { rows: month, when: 'this month' },
+        ]),
+        this.suggestion(),
       ];
     }
     const symbol = this.symbol();
@@ -405,26 +423,34 @@ export class DuaComponent {
       position && price && price > 0 && position.averageCost > 0
         ? (price - position.averageCost) * position.quantity
         : null;
-    const positionMetrics: NonNullable<DuaCard['metrics']> = position
-      ? [{ label: 'Your shares', value: String(position.quantity) }]
-      : [];
+    const positionMetrics: NonNullable<DuaCard['metrics']> = [];
     if (unrealized !== null)
       positionMetrics.push({
         label: 'Unrealized since purchase',
         value: signedDollars(unrealized),
         tone: unrealized < 0 ? 'loss' : 'gain',
+        primary: true,
       });
+    if (position) {
+      positionMetrics.push({ label: 'Your shares', value: String(position.quantity) });
+      if (price && price > 0)
+        positionMetrics.push({
+          label: 'Position value',
+          value: dollars(price * position.quantity),
+        });
+    }
     const horizon = this.trend.trend()?.horizonDays ?? 5;
     return [
       {
-        title: 'Buying context',
+        title: `${symbol} Analysis`,
+        metricsFirst: true,
+        emphasizeText: true,
         metrics: positionMetrics,
         takeaway: action,
         text:
           trend?.kind === 'ready'
             ? `The next ${horizon} trading days lean ${trend.call === 'up' ? 'upward' : 'downward'}.`
             : 'Wait for more forecast history.',
-        note: `${volume.label}. ${swing}`,
         detail:
           trend?.kind === 'ready'
             ? `Selected source: ${trend.source}. Reading: ${trend.asOf}. Model probability: ${Math.round(trend.probability * 100)}%. Model record: ${trend.modelHits}/${trend.modelDays}; pattern: ${trend.ruleHits}/${trend.ruleDays}.`
@@ -436,7 +462,7 @@ export class DuaComponent {
           trend?.kind === 'ready'
             ? `${symbol} is ${trend.momentum > 0 ? 'gaining' : 'losing'} momentum.`
             : 'Not enough trend history yet.',
-        text: `${volume.label}.`,
+        text: '',
         metrics:
           volume.ratio === undefined
             ? []

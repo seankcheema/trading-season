@@ -13,6 +13,7 @@ import { DuaSession } from './dua-session.service';
 import { TokenStorageService } from '../core/auth/token-storage.service';
 import { PlatformSignalsService } from '../market-page/risk-outlook/platform-signals.service';
 import { PlatformTrendService } from '../market-page/trend-read/platform-trend.service';
+import { WatchlistStore } from '../dashboard/watchlist/watchlist-store.service';
 
 describe('Dua panel', () => {
   let session: DuaSession;
@@ -116,6 +117,13 @@ describe('Dua panel', () => {
         { provide: MarketDataService, useValue: market },
         { provide: PlatformSignalsService, useValue: signals },
         { provide: PlatformTrendService, useValue: trend },
+        {
+          provide: WatchlistStore,
+          useValue: {
+            entries: signal([{ symbol: 'AAPL', createdAt: '2026-01-02T00:00:00Z' }]),
+            status: signal('ready'),
+          },
+        },
       ],
     });
     session = TestBed.inject(DuaSession);
@@ -171,7 +179,7 @@ describe('Dua panel', () => {
     const choices = [...fixture.nativeElement.querySelectorAll('.choices button')].map((b: any) =>
       b.getAttribute('aria-label'),
     );
-    expect(choices).toEqual(['Daily Review', 'My Holdings']);
+    expect(choices).toEqual(['Daily Review', 'Portfolio Analysis']);
   });
   it('opens on a market symbol, with This Stock first, without clearing unread choices', () => {
     const { fixture } = setup();
@@ -190,6 +198,18 @@ describe('Dua panel', () => {
     click('This Stock');
     expect(text()).toContain('Consider buying AAPL');
     expect(text()).not.toContain('+24.8%');
+    const card = fixture.nativeElement.querySelector('.insight-card:not(.inactive)');
+    expect(card.querySelector('h3').textContent.trim()).toBe('AAPL Analysis');
+    // The unrealized result leads, followed by shares and the money held in the position.
+    const metrics = [...card.querySelectorAll('.overview-metrics > div')].map((m: any) =>
+      m.textContent.replace(/\s+/g, ' ').trim(),
+    );
+    expect(metrics[0]).toContain('Unrealized since purchase +$20.00');
+    expect(metrics.slice(1)).toEqual(['Your shares 2', 'Position value $220.00']);
+    expect(card.querySelector('.overview-metrics').nextElementSibling.textContent).toContain(
+      'Consider buying AAPL',
+    );
+    expect(card.textContent).not.toMatch(/activity/i);
     expect(text()).not.toContain('Open the full');
     click('View Details');
     expect(fixture.nativeElement.querySelector('app-trend-read')).not.toBeNull();
@@ -206,10 +226,31 @@ describe('Dua panel', () => {
     expect(session.minimized()).toBe(true);
   });
   it('uses unavailable performance instead of purchase-cost prices', () => {
-    const { click, text } = setup();
-    click('My Holdings');
-    expect(text()).toContain('Some performance data is unavailable');
+    const { fixture, click, text } = setup();
+    click('Portfolio Analysis');
+    expect(text()).toContain('Some performance data this week is unavailable');
+    expect(text()).toContain('Some performance data this month is unavailable');
     expect(text()).not.toContain('+12.4%');
+    expect(fixture.nativeElement.querySelector('.period-switch')).toBeNull();
+  });
+  it('labels the account, snapshot day and page, with an icon-only details action', () => {
+    const { fixture, click, text } = setup();
+    click('Daily Review');
+    const panel = fixture.nativeElement as HTMLElement;
+    expect(panel.querySelector('.header-account')?.textContent).toContain('Account: Investing');
+    const meta = panel.querySelector('.insight-card:not(.inactive) .card-meta')!.textContent!;
+    expect(meta).toMatch(/As of today, 9:05\sAM/);
+    expect(meta).toContain('Page 1 of 3');
+    const details = panel.querySelector('.insight-card:not(.inactive) .explain-action')!;
+    expect(details.getAttribute('aria-label')).toBe('View Details');
+    expect(details.textContent!.trim()).toBe('');
+    expect(panel.querySelector('[aria-label="Refresh"]')).toBeNull();
+    clock.currentMarketTimestamp.set('2026-01-06T15:05:00Z');
+    fixture.detectChanges();
+    expect(panel.querySelector('.insight-card:not(.inactive) .card-meta')!.textContent).toMatch(
+      /As of yesterday/,
+    );
+    expect(text()).toContain('Your watchlist since the open');
   });
   it('hides for terms and blocks unavailable account data', () => {
     const { fixture, click, text } = setup();
