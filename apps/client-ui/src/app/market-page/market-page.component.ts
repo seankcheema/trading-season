@@ -19,6 +19,7 @@ import { AccountControlComponent } from '../dashboard/shared/account-control.com
 import { MarketClockControlComponent } from '../dashboard/shared/market-clock-control.component';
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
 import { RiskOutlookComponent } from './risk-outlook/risk-outlook.component';
+import { TrendReadComponent } from './trend-read/trend-read.component';
 import { DuaComponent } from '../dua/dua.component';
 import { PlatformSignalsService } from './risk-outlook/platform-signals.service';
 import { riskPointsFor } from './risk-outlook/platform-signals';
@@ -142,6 +143,7 @@ interface DemoNewsStory {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RiskOutlookComponent,
+    TrendReadComponent,
     ThemeToggleComponent,
     DuaComponent,
     TitleCasePipe,
@@ -637,7 +639,12 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       detail: ' · 2σ',
     },
     { value: 'rsi', label: 'RSI', period: TECHNICAL_INDICATOR_PERIODS.rsi, detail: '' },
-    { value: 'risk', label: 'Volatility outlook', period: TECHNICAL_INDICATOR_PERIODS.risk, detail: '-day' },
+    {
+      value: 'risk',
+      label: 'Volatility outlook',
+      period: TECHNICAL_INDICATOR_PERIODS.risk,
+      detail: '-day',
+    },
   ] as const satisfies readonly {
     value: TechnicalIndicator;
     label: string;

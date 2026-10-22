@@ -10,6 +10,7 @@ import { DuaComponent } from './dua.component';
 import { DuaSession } from './dua-session.service';
 import { TokenStorageService } from '../core/auth/token-storage.service';
 import { PlatformSignalsService } from '../market-page/risk-outlook/platform-signals.service';
+import { PlatformTrendService } from '../market-page/trend-read/platform-trend.service';
 
 describe('Dua panel', () => {
   let session: DuaSession;
@@ -40,6 +41,34 @@ describe('Dua panel', () => {
     ruleDays: 0,
     outcome: 'stormier',
   }));
+  // Thirty trend readings for AAPL before the clock: over any twenty in a row the model is right
+  // 15 times and the momentum pattern 12 (outcomes all up).
+  const trendDays = Array.from({ length: 30 }, (_, i) => ({
+    date: `2025-12-${String(i + 1).padStart(2, '0')}`,
+    probability: 0.64,
+    call: i % 20 < 15 ? 'up' : 'down',
+    momentum: i % 20 < 12 ? 0.05 : -0.03,
+    modelHits: 0,
+    modelDays: 0,
+    ruleHits: 0,
+    ruleDays: 0,
+    outcome: 'up',
+    move: 0.021,
+  }));
+  const trend = {
+    trend: signal({
+      generatedAt: '2025-12-31T00:00:00Z',
+      question: 'q',
+      horizonDays: 5,
+      momentumDays: 10,
+      model: 'm',
+      rule: 'r',
+      notice: 'n',
+      symbols: { AAPL: { firstDay: '2025-12-01', lastDay: '2025-12-30', days: trendDays } },
+    }),
+    status: signal('ready'),
+    load: vi.fn(() => of(null)),
+  };
   const signals = {
     signals: signal({
       generatedAt: '2025-12-31T00:00:00Z',
@@ -71,6 +100,7 @@ describe('Dua panel', () => {
         { provide: MarketClockService, useValue: clock },
         { provide: MarketDataService, useValue: market },
         { provide: PlatformSignalsService, useValue: signals },
+        { provide: PlatformTrendService, useValue: trend },
       ],
     });
     session = TestBed.inject(DuaSession);
@@ -358,5 +388,28 @@ describe('Dua panel', () => {
     expect(fixture.nativeElement.textContent).toContain('75% (15 of 20)');
     const open = fixture.nativeElement.querySelector('[data-testid=dua-outlook-open]');
     expect(open.getAttribute('href')).toBe('/dashboard/markets/aapl?tab=outlook');
+  });
+
+  it("offers What's trending with a bolt, a trade signal with its notice, and the platform list", () => {
+    const { fixture, click } = setup();
+    click('Dua insights');
+    const choice = fixture.nativeElement.querySelector('[data-testid=dua-trending-choice]');
+    expect(choice.textContent.replace(/\s+/g, ' ')).toContain("What's trending LIVE");
+    expect(choice.querySelector('ng-icon[name=lucideZap]')).not.toBeNull();
+    expect(choice.textContent).toContain('AAPL · consider buying · right 75% of the last 20 weeks');
+    click("What's trending");
+    expect(fixture.nativeElement.querySelector('h2').textContent.trim()).toBe("What's trending");
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('AAPL: consider buying');
+    expect(text).toContain('64% chance the price is higher');
+    expect(text).toContain('75% (15 of 20)');
+    expect(text).toContain('It can be wrong: do not take it as true or as advice to buy or sell.');
+    const open = fixture.nativeElement.querySelector('[data-testid=dua-outlook-open]');
+    expect(open.textContent).toContain('Open the full trade signal for AAPL');
+    expect(open.getAttribute('href')).toBe('/dashboard/markets/aapl?tab=outlook');
+    click('Next insight');
+    expect(fixture.nativeElement.textContent.replace(/\s+/g, ' ')).toContain(
+      '1 of 1 stocks read higher',
+    );
   });
 });

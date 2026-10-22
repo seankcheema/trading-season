@@ -127,10 +127,10 @@ def validate_signals(document: dict) -> None:
                 raise ValueError(f"{symbol} {d['date']}: hits exceed days")
 
 
-def write_signals(document: dict, path: Path = config.PLATFORM_SIGNALS_JSON) -> Path:
+def write_signals(document: dict, path: Path | None = None) -> Path:
     """Validate and write the document as compact JSON."""
     validate_signals(document)
-    path = Path(path)
+    path = Path(path or config.PLATFORM_SIGNALS_JSON)  # resolved at call time, so tests can point config elsewhere
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(document, separators=(",", ":")) + "\n", encoding="utf-8")
     return path

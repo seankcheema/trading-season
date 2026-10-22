@@ -142,6 +142,14 @@ PLATFORM_SIGNAL_FIRST_MONTH = "2026-07"  # monthly retraining scores from here; 
 PLATFORM_SIGNAL_SEEDS = 10  # members of the seed ensemble the signal file is scored by; 1 trains one model
 PLATFORM_SIGNALS_JSON = REPO_ROOT / "apps" / "client-ui" / "public" / "forecast" / "platform-signals.json"
 PLATFORM_SIGNALS_SUMMARY_CSV = REPORTS_DIR / "platform_signals_summary.csv"
+# The platform trend signal the client UI reads (export-platform-trend.py): is the price higher
+# in PLATFORM_SIGNAL_HORIZON days? The pattern it is measured against is the last
+# PLATFORM_TREND_MOMENTUM_DAYS days' direction; the model is a gradient-boosted classifier on
+# these momentum inputs, refit every month on the closed days before it.
+PLATFORM_TREND_MOMENTUM_DAYS = 10
+PLATFORM_TREND_FEATURES = ["momentum", "momentum_5", "momentum_20", "up_share"]
+PLATFORM_TREND_JSON = REPO_ROOT / "apps" / "client-ui" / "public" / "forecast" / "platform-trend.json"
+PLATFORM_TREND_SUMMARY_CSV = REPORTS_DIR / "platform_trend_summary.csv"
 SYMBOL_COMPARISON_CSV = REPORTS_DIR / "symbol_comparison.csv"
 RESULTS_CSV = REPORTS_DIR / "results.csv"
 TEST_RESULTS_CSV = REPORTS_DIR / "test_results.csv"

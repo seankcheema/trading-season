@@ -2,7 +2,7 @@ import { AccountHolding } from '../dashboard/accounts/account.models';
 import { CandlePointDto } from '../dashboard/market-data.service';
 import { Instrument } from '../dashboard/mock-data';
 
-export type DuaChoice = 'daily' | 'holdings' | 'stock' | 'outlook';
+export type DuaChoice = 'daily' | 'holdings' | 'stock' | 'outlook' | 'trending';
 export interface DuaCard {
   symbol?: string;
   symbols?: string[];
@@ -499,6 +499,18 @@ export function stockPreviewCards(): DuaCard[] {
 
 export const DUA_EXPLANATIONS: Record<DuaChoice, readonly { term: string; description: string }[]> =
   {
+    trending: [
+      {
+        term: 'Where this read comes from',
+        description:
+          'A machine-learning model scores every stock daily on whether its price is likely to be higher in five trading days, and is refit every month on the weeks that have closed. It is shown beside the momentum pattern "the next days continue the last ten"; whichever has the better record on the stock over the last twenty closed weeks leads. Accuracy counts only weeks that have already closed.',
+      },
+      {
+        term: 'What it is not',
+        description:
+          'A read on a simulated market, not a prediction of any real market. It can be wrong, must not be taken as true, and is not investment advice or a recommendation to trade in any real account.',
+      },
+    ],
     outlook: [
       {
         term: 'Where this read comes from',
@@ -611,6 +623,103 @@ export function directionCard(
 }
 
 /** The week-ahead volatility card from a ready Outlook reading, in the same words as the market page's card. */
+/** The trend signal for one stock and the reads across the platform, for the What's trending choice. */
+export function trendingCards(
+  symbol: string,
+  reading: {
+    call: 'up' | 'down';
+    source: 'model' | 'rule';
+    probability: number;
+    momentum: number;
+    modelHits: number;
+    modelDays: number;
+    ruleHits: number;
+    ruleDays: number;
+  },
+  overview: readonly {
+    symbol: string;
+    call: 'up' | 'down';
+    momentum: number;
+    hits: number;
+    days: number;
+  }[],
+  horizon = 5,
+  momentumDays = 10,
+): DuaCard[] {
+  const up = reading.call === 'up';
+  const hits = reading.source === 'model' ? reading.modelHits : reading.ruleHits;
+  const days = reading.source === 'model' ? reading.modelDays : reading.ruleDays;
+  const pct = (value: number) => `${(Math.expm1(value) * 100).toFixed(1)}%`;
+  const size = (value: number) => `${(Math.abs(Math.expm1(value)) * 100).toFixed(1)}%`;
+  const signed = (value: number) => `${value > 0 ? '+' : ''}${pct(value)}`;
+  const record = (h: number, d: number) =>
+    d ? `right ${Math.round((h / d) * 100)}% of the last ${d} weeks` : 'no record yet';
+  const notice =
+    'Machine-learning read on a simulated market. It can be wrong: do not take it as true or as advice to buy or sell.';
+  const rising = overview.filter((row) => row.call === 'up');
+  const falling = overview.filter((row) => row.call === 'down').reverse();
+  return [
+    {
+      symbol,
+      title: 'Trade signal',
+      period: `Next ${horizon} trading days`,
+      text: `${symbol}: consider ${up ? 'buying' : 'selling'} over the next ${horizon} trading days.`,
+      takeaway: `${symbol}: consider ${up ? 'buying' : 'selling'}. The price has been trending ${reading.momentum > 0 ? 'up' : 'down'} ${size(reading.momentum)} over the last ${momentumDays} days.`,
+      purpose: `${reading.source === 'model' ? 'The Trading Season model' : 'The momentum pattern'} leads on ${symbol} because its recent record there is the better one: ${record(hits, days)}.`,
+      metrics: [
+        {
+          label: 'Model estimate',
+          value: `${Math.round(reading.probability * 100)}% chance the price is higher`,
+          tone: up ? 'gain' : 'loss',
+          primary: true,
+        },
+        {
+          label: days ? `Last ${days} weeks` : 'Record',
+          value: days
+            ? `${Math.round((hits / days) * 100)}% (${hits} of ${days})`
+            : 'No closed weeks yet',
+        },
+        {
+          label: `Last ${momentumDays} days`,
+          value: signed(reading.momentum),
+          tone: reading.momentum > 0 ? 'gain' : 'loss',
+        },
+      ],
+      note: notice,
+    },
+    {
+      symbols: overview.map((row) => row.symbol),
+      title: "What's trending",
+      period: `Next ${horizon} trading days`,
+      text: `${rising.length} of ${overview.length} stocks read higher over the next ${horizon} trading days, ${falling.length} lower.`,
+      takeaway: `${rising.length} of ${overview.length} stocks read higher, ${falling.length} lower. Strongest moves over the last ${momentumDays} days first.`,
+      purpose:
+        "Each line is that stock's leading read, the model's or the momentum pattern's, with how often that reader was right on the stock over its last closed weeks.",
+      metrics: [
+        {
+          label: 'Reading higher',
+          value: rising.length ? `${rising.length} stocks` : 'None',
+          tone: 'gain',
+          stocks: rising.map((row) => ({
+            symbol: row.symbol,
+            change: `${signed(row.momentum)} · ${record(row.hits, row.days)}`,
+          })),
+        },
+        {
+          label: 'Reading lower',
+          value: falling.length ? `${falling.length} stocks` : 'None',
+          tone: 'loss',
+          stocks: falling.map((row) => ({
+            symbol: row.symbol,
+            change: `${signed(row.momentum)} · ${record(row.hits, row.days)}`,
+          })),
+        },
+      ],
+      note: notice,
+    },
+  ];
+}
+
 export function outlookCard(
   symbol: string,
   reading: {

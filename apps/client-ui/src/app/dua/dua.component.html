@@ -90,6 +90,25 @@
             <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
           </button>
         }
+        @if (outlookSymbol()) {
+          <button
+            type="button"
+            class="choice-trending"
+            aria-label="What's trending"
+            data-testid="dua-trending-choice"
+            (click)="select('trending')"
+          >
+            <span class="choice-icon choice-icon-trending">
+              <ng-icon name="lucideZap" aria-hidden="true" />
+            </span>
+            <span class="choice-copy"
+              ><span class="choice-title"
+                >What's trending <span class="choice-badge">LIVE</span></span
+              ><small>{{ trendingTeaser() }}</small></span
+            >
+            <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
+          </button>
+        }
         <button type="button" aria-label="Daily review" (click)="select('daily')">
           <span class="choice-icon"><ng-icon name="lucideNewspaper" aria-hidden="true" /></span>
           <span class="choice-copy"
@@ -150,7 +169,7 @@
         <div class="skeleton insight-skeleton" aria-hidden="true"></div>
         <div class="skeleton insight-skeleton short" aria-hidden="true"></div>
       }
-      @if (choice() === 'outlook' && cards().length) {
+      @if ((choice() === 'outlook' || choice() === 'trending') && cards().length) {
         <a
           class="outlook-cta"
           data-testid="dua-outlook-open"
@@ -158,7 +177,8 @@
           [queryParams]="{ tab: 'outlook' }"
           (click)="minimize()"
         >
-          Open the full outlook for {{ outlookSymbol() }}
+          Open the full {{ choice() === 'trending' ? 'trade signal' : 'outlook' }} for
+          {{ outlookSymbol() }}
           <ng-icon name="lucideChevronRight" aria-hidden="true" />
         </a>
       }

@@ -26,6 +26,7 @@ import {
   lucideRefreshCw,
   lucideScanSearch,
   lucideX,
+  lucideZap,
 } from '@ng-icons/lucide';
 import { AccountHolding } from '../dashboard/accounts/account.models';
 import { AccountStore } from '../dashboard/accounts/account-store.service';
@@ -34,6 +35,8 @@ import { MarketClockService } from '../dashboard/shared/market-clock.service';
 import { DuaSession } from './dua-session.service';
 import { PlatformSignalsService } from '../market-page/risk-outlook/platform-signals.service';
 import { readingFor } from '../market-page/risk-outlook/platform-signals';
+import { PlatformTrendService } from '../market-page/trend-read/platform-trend.service';
+import { trendOverview, trendReadingFor } from '../market-page/trend-read/platform-trend';
 import {
   DuaCard,
   DuaChoice,
@@ -45,6 +48,7 @@ import {
   dailyPreviewCards,
   DUA_EXPLANATIONS,
   outlookCard,
+  trendingCards,
   insightTextParts,
   sparklinePoints,
   takeawayParts,
@@ -67,6 +71,7 @@ import {
       lucideRefreshCw,
       lucideScanSearch,
       lucideX,
+      lucideZap,
     }),
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -118,6 +123,36 @@ export class DuaComponent {
       this.signals.load().subscribe({ error: () => undefined });
     }
   });
+  protected readonly trend = inject(PlatformTrendService);
+  protected readonly trending = computed(() => {
+    const trend = this.trend.trend();
+    const at = this.clock.currentMarketTimestamp();
+    const symbol = this.outlookSymbol();
+    return trend && symbol && Number.isFinite(Date.parse(at))
+      ? trendReadingFor(trend, symbol, at)
+      : null;
+  });
+  protected readonly trendingTeaser = computed(() => {
+    const symbol = this.outlookSymbol();
+    const reading = this.trending();
+    if (!symbol) {
+      return '';
+    }
+    if (reading?.kind !== 'ready') {
+      return `${symbol} · the week-ahead trend read`;
+    }
+    const hits = reading.source === 'model' ? reading.modelHits : reading.ruleHits;
+    const days = reading.source === 'model' ? reading.modelDays : reading.ruleDays;
+    const verb = reading.call === 'up' ? 'consider buying' : 'consider selling';
+    return days
+      ? `${symbol} · ${verb} · right ${Math.round((hits / days) * 100)}% of the last ${days} weeks`
+      : `${symbol} · ${verb}`;
+  });
+  private readonly loadTrend = effect(() => {
+    if (!this.session.minimized() && this.trend.status() === 'idle') {
+      this.trend.load().subscribe({ error: () => undefined });
+    }
+  });
   protected readonly hovered = signal(false);
   protected readonly focused = signal(false);
   protected readonly hasUpdates = signal(false);
@@ -140,7 +175,9 @@ export class DuaComponent {
             ? 'Stock Insights'
             : this.choice() === 'outlook'
               ? 'Volatility outlook'
-              : 'Dua',
+              : this.choice() === 'trending'
+                ? "What's trending"
+                : 'Dua',
   );
   protected readonly imagesFailed = signal(false);
   protected readonly activeCard = signal(0);
@@ -343,6 +380,31 @@ export class DuaComponent {
         return;
       }
       this.cards.set([outlookCard(this.outlookSymbol(), reading)]);
+      this.asOf.set('');
+      this.snapshotDisconnected.set(false);
+      return;
+    }
+    if (choice === 'trending') {
+      const reading = this.trending();
+      const trend = this.trend.trend();
+      if (!trend || reading?.kind !== 'ready') {
+        this.cards.set([]);
+        this.message.set(
+          reading?.kind === 'too-early'
+            ? `No trend read for ${this.outlookSymbol()} yet: readings start ${reading.firstDay}.`
+            : `No trend read for ${this.outlookSymbol()} at this time.`,
+        );
+        return;
+      }
+      this.cards.set(
+        trendingCards(
+          this.outlookSymbol(),
+          reading,
+          trendOverview(trend, at),
+          trend.horizonDays,
+          trend.momentumDays,
+        ),
+      );
       this.asOf.set('');
       this.snapshotDisconnected.set(false);
       return;

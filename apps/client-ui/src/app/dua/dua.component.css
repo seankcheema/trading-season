@@ -233,6 +233,53 @@ p {
   background: linear-gradient(135deg, var(--primary), var(--color-loss));
   color: var(--primary-foreground);
 }
+/* The What's trending choice: the same live treatment with the gain colour and a bolt. */
+.choices button.choice-trending {
+  position: relative;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--card), var(--card)) padding-box,
+    linear-gradient(120deg, var(--color-gain), var(--primary), var(--color-gain)) border-box;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-gain) 45%, transparent);
+  animation: trending-pulse 2.4s ease-in-out infinite;
+  animation-delay: 1.2s;
+}
+.choices button.choice-trending:hover {
+  background:
+    linear-gradient(
+        color-mix(in srgb, var(--color-gain) 8%, var(--card)),
+        color-mix(in srgb, var(--color-gain) 8%, var(--card))
+      )
+      padding-box,
+    linear-gradient(120deg, var(--color-gain), var(--primary), var(--color-gain)) border-box;
+}
+@keyframes trending-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-gain) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-gain) 0%, transparent);
+  }
+}
+.choice-icon-trending {
+  background: linear-gradient(135deg, var(--color-gain), var(--primary));
+  color: var(--primary-foreground);
+}
+.choice-icon-trending ng-icon {
+  animation: bolt-flicker 2.4s ease-in-out infinite;
+}
+@keyframes bolt-flicker {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1.12);
+  }
+}
 .choice-badge {
   margin-left: 6px;
   border-radius: 999px;
@@ -251,7 +298,11 @@ p {
   gap: 6px;
   margin-bottom: 10px;
   border-radius: 12px;
-  background: linear-gradient(120deg, var(--primary), color-mix(in srgb, var(--primary) 70%, var(--color-loss)));
+  background: linear-gradient(
+    120deg,
+    var(--primary),
+    color-mix(in srgb, var(--primary) 70%, var(--color-loss))
+  );
   padding: 11px 12px;
   color: var(--primary-foreground);
   font-size: 13px;
@@ -264,7 +315,9 @@ p {
   text-decoration: none;
 }
 @media (prefers-reduced-motion: reduce) {
-  .choices button.choice-outlook {
+  .choices button.choice-outlook,
+  .choices button.choice-trending,
+  .choice-icon-trending ng-icon {
     animation: none;
   }
 }

@@ -178,11 +178,11 @@ class CallLineTests(unittest.TestCase):
                 mock.patch.object(module, "platform_dataset", side_effect=lambda prices, symbol: data), \
                 mock.patch.object(module.config, "PLATFORM_SIGNALS_JSON", Path(folder) / "signals.json"):
             document, path = module.export_signals(H, load=lambda: {"AAPL": None, "MSFT": None}, seeds=3)
+            self.assertEqual(path, Path(folder) / "signals.json")  # the real file is never touched
+            validate_signals(json.loads(path.read_text()))
         self.assertEqual(seen["seeds"], 3)
         self.assertIn("3 LSTMs", document["model"])
         self.assertEqual(sorted(document["callLines"])[0], "2026-07")
-        self.assertTrue(path.exists())
-        validate_signals(json.loads(path.read_text()))
 
 
 if __name__ == "__main__":
