@@ -1,8 +1,6 @@
 import { forkJoin, of, catchError, switchMap, Subscription } from 'rxjs';
 import { MarketDataService, CandleSeries } from '../dashboard/market-data.service';
 import { OrderService } from '../dashboard/orders/order.service';
-import { RiskOutlookComponent } from '../market-page/risk-outlook/risk-outlook.component';
-import { TrendReadComponent } from '../market-page/trend-read/trend-read.component';
 import {
   activity,
   dailyPerformanceCard,
@@ -12,7 +10,6 @@ import {
   periodDate,
   periodPerformanceCard,
   insightVersion,
-  signedDollars,
   InsightChoice,
 } from './dua-guidance';
 import { ReadContext } from './dua-session.service';
@@ -61,7 +58,6 @@ import {
   DuaChoice,
   insightTextParts,
   sparklinePoints,
-  takeawayParts,
   watchlistPulse,
 } from './dua-insights';
 
@@ -79,7 +75,7 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
     '[hidden]': 'account.needsTermsAcceptance()',
     '(document:click)': 'closeOnOutsideClick($event)',
   },
-  imports: [NgIcon, NgTemplateOutlet, RouterLink, RiskOutlookComponent, TrendReadComponent],
+  imports: [NgIcon, NgTemplateOutlet, RouterLink],
   providers: [
     provideIcons({
       lucideArrowUpRight,
@@ -100,7 +96,6 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
   styleUrl: './dua.component.css',
 })
 export class DuaComponent {
-  protected readonly takeawayParts = takeawayParts;
   protected readonly responseParts = insightTextParts;
   protected readonly chartPoints = sparklinePoints;
   readonly holdings = input<readonly AccountHolding[]>([]);
@@ -326,49 +321,56 @@ export class DuaComponent {
       period === 'daily',
     );
   }
+  /** Momentum is a log return; this phrases it as a plain percentage move. */
+  private momentumPhrase(momentum: number): string {
+    const days = this.trend.trend()?.momentumDays ?? 10;
+    return `${momentum > 0 ? 'up' : 'down'} ${Math.abs(Math.expm1(momentum) * 100).toFixed(1)}% over the last ${days} trading days`;
+  }
   private suggestion(period: 'week' | 'month' = 'week'): DuaCard {
     const at = this.clock.currentMarketTimestamp();
     const trend = this.trend.trend();
+    const horizon = trend?.horizonDays ?? 5;
+    const when = period === 'week' ? 'this week' : 'this month';
     const rows = this.rows(period);
     const held = new Set(this.holdings().map((h) => h.symbol));
-    const candidates = this.quotes().map((q) => ({
-      symbol: q.symbol,
-      reading: trend ? trendReadingFor(trend, q.symbol, at) : null,
-    }));
+    const candidates = this.quotes().flatMap((q) => {
+      const reading = trend ? trendReadingFor(trend, q.symbol, at) : null;
+      return reading?.kind === 'ready' ? [{ symbol: q.symbol, reading }] : [];
+    });
     const worst = rows
       .filter((r) => r.gain !== null && r.gain < 0 && held.has(r.symbol))
       .sort((a, b) => a.gain! - b.gain!)[0];
     const review =
-      worst &&
-      candidates.find(
-        (c) =>
-          c.symbol === worst.symbol && c.reading?.kind === 'ready' && c.reading.call === 'down',
-      );
+      worst && candidates.find((c) => c.symbol === worst.symbol && c.reading.call === 'down');
     const buy = candidates
-      .filter((c) => c.reading?.kind === 'ready' && c.reading.call === 'up')
-      .sort(
-        (a, b) =>
-          (b.reading?.kind === 'ready' ? b.reading.momentum : 0) -
-          (a.reading?.kind === 'ready' ? a.reading.momentum : 0),
-      )[0];
+      .filter((c) => c.reading.call === 'up')
+      .sort((a, b) => b.reading.momentum - a.reading.momentum)[0];
     const risk =
       buy && this.signals.signals() ? readingFor(this.signals.signals()!, buy.symbol, at) : null;
+    const stormier = risk?.kind === 'ready' && risk.call === 'stormier';
+    // One reason and one action per suggestion; the evidence is in the details.
+    if (review && worst)
+      return {
+        title: 'What to consider',
+        takeaway: `Consider selling ${review.symbol}.`,
+        text: `Your largest loss ${when} (${dollars(-worst.gain!)}), and its forecast points down.`,
+        advice: 'Selling some shares limits further losses; avoid buying more until it turns up.',
+        detail: `Selling is suggested only when a holding is both your largest loss for the period and its direction forecast points down for the next ${horizon} trading days; a loss alone is not a reason to sell.`,
+      };
+    if (buy)
+      return {
+        title: 'What to consider',
+        takeaway: `Consider buying ${buy.symbol}.`,
+        text: `Its forecast points up, with the strongest momentum of the stocks forecast to rise.`,
+        advice: `Start small and check its stock page first.${stormier ? ' Expect bigger price swings.' : ''}`,
+        detail: `${buy.symbol}'s direction forecast points up for the next ${horizon} trading days, and it is ${this.momentumPhrase(buy.reading.momentum)}. Upward opportunities are ranked by recent momentum.`,
+      };
     return {
       title: 'What to consider',
-      takeaway: review
-        ? `Review your ${review.symbol} position.`
-        : buy
-          ? `Consider buying ${buy.symbol}.`
-          : 'No clear opportunity right now.',
-      text: review
-        ? 'Your weakest contributor also has a downward forecast.'
-        : buy
-          ? `Momentum supports an upward forecast.${risk?.kind === 'ready' && risk.call === 'stormier' ? ' Larger price swings are likely.' : ''}`
-          : 'Wait for a clearer forecast.',
-      detail:
-        review && buy
-          ? `Also consider ${buy.symbol}: its forecast points upward. Review the stock details before trading.`
-          : 'Suggestions use existing direction readings and recent momentum, not purchase losses alone.',
+      takeaway: 'Hold your current positions.',
+      text: 'No forecast is clear enough to buy or sell on.',
+      advice: 'Check back after the next session.',
+      detail: 'Suggestions use direction forecasts and recent momentum, not purchase losses alone.',
     };
   }
   private buildCards(choice: InsightChoice): DuaCard[] {
@@ -376,7 +378,7 @@ export class DuaComponent {
       const rows = this.rows('daily');
       return [
         dailyPerformanceCard(rows),
-        moversCard([{ rows }]),
+        moversCard([{ rows }], 3),
         watchlistPulse(
           this.watchlist.status() === 'ready'
             ? this.watchlist.entries().map((e) => e.symbol)
@@ -390,10 +392,13 @@ export class DuaComponent {
       const month = this.rows('month');
       return [
         periodPerformanceCard(week, month),
-        moversCard([
-          { rows: week, when: 'this week' },
-          { rows: month, when: 'this month' },
-        ]),
+        moversCard(
+          [
+            { rows: week, heading: 'This week' },
+            { rows: month, heading: 'This month' },
+          ],
+          1,
+        ),
         this.suggestion(),
       ];
     }
@@ -411,41 +416,34 @@ export class DuaComponent {
         : trend.call === 'up'
           ? `Consider buying ${symbol}.`
           : owned
-            ? `Review your ${symbol} position.`
-            : `Consider waiting on ${symbol}.`;
+            ? `Consider selling ${symbol}.`
+            : `Hold off on buying ${symbol}.`;
     const swing =
       risk?.kind === 'ready'
         ? `Expect ${risk.call === 'stormier' ? 'bigger' : 'smaller'} price swings.`
         : 'Volatility forecast unavailable.';
-    const position = this.holdings().find((h) => h.symbol === symbol && h.quantity > 0);
-    const price = this.quotes().find((q) => q.symbol === symbol)?.price;
-    const unrealized =
-      position && price && price > 0 && position.averageCost > 0
-        ? (price - position.averageCost) * position.quantity
-        : null;
-    const positionMetrics: NonNullable<DuaCard['metrics']> = [];
-    if (unrealized !== null)
-      positionMetrics.push({
-        label: 'Unrealized since purchase',
-        value: signedDollars(unrealized),
-        tone: unrealized < 0 ? 'loss' : 'gain',
-        primary: true,
-      });
-    if (position) {
-      positionMetrics.push({ label: 'Your shares', value: String(position.quantity) });
-      if (price && price > 0)
-        positionMetrics.push({
-          label: 'Position value',
-          value: dollars(price * position.quantity),
-        });
-    }
+    const ratio = volume.ratio;
     const horizon = this.trend.trend()?.horizonDays ?? 5;
+    const swingHorizon = this.signals.signals()?.horizonDays ?? 5;
+    const percent = (p: number) => `${Math.round(p * 100)}%`;
+    // The shown call can come from the recent pattern rather than the model, so a model
+    // chance is quoted only when it agrees with the call.
+    const trendChance =
+      trend?.kind === 'ready'
+        ? trend.call === 'up'
+          ? trend.probability
+          : 1 - trend.probability
+        : 0;
+    const swingChance =
+      risk?.kind === 'ready'
+        ? risk.call === 'stormier'
+          ? risk.probability
+          : 1 - risk.probability
+        : 0;
     return [
       {
         title: `${symbol} Analysis`,
-        metricsFirst: true,
         emphasizeText: true,
-        metrics: positionMetrics,
         takeaway: action,
         text:
           trend?.kind === 'ready'
@@ -453,31 +451,48 @@ export class DuaComponent {
             : 'Wait for more forecast history.',
         detail:
           trend?.kind === 'ready'
-            ? `Selected source: ${trend.source}. Reading: ${trend.asOf}. Model probability: ${Math.round(trend.probability * 100)}%. Model record: ${trend.modelHits}/${trend.modelDays}; pattern: ${trend.ruleHits}/${trend.ruleDays}.`
-            : 'No eligible direction reading at this simulation time.',
+            ? `This forecast estimates whether ${symbol}'s price will be higher or lower ${horizon} trading days from now, based on how it has been moving.${
+                trendChance >= 0.5
+                  ? ` It gives about a ${percent(trendChance)} chance the price will be ${trend.call === 'up' ? 'higher' : 'lower'}.`
+                  : ''
+              }`
+            : `There is not enough price history for ${symbol} to make a forecast yet.`,
       },
       {
         title: 'Trending activity',
+        emphasizeText: true,
         takeaway:
           trend?.kind === 'ready'
-            ? `${symbol} is ${trend.momentum > 0 ? 'gaining' : 'losing'} momentum.`
+            ? `${symbol} is ${trend.momentum > 0 ? 'gaining' : 'losing'} momentum, ${this.momentumPhrase(trend.momentum)}.`
             : 'Not enough trend history yet.',
-        text: '',
-        metrics:
-          volume.ratio === undefined
-            ? []
-            : [{ label: 'Volume versus usual', value: `${volume.ratio.toFixed(1)}×` }],
-        detail:
-          'Latest completed session volume compared with the preceding 20 completed sessions. This describes market activity, not social popularity.',
+        text:
+          ratio === undefined
+            ? `${volume.label}.`
+            : Math.abs(ratio - 1) < 0.1
+              ? 'Trading volume is about the same as usual.'
+              : `Trading volume is ${Math.round(Math.abs(ratio - 1) * 100)}% ${ratio > 1 ? 'higher' : 'lower'} than usual.`,
+        detail: `Momentum is how much ${symbol}'s price has changed over the last ${this.trend.trend()?.momentumDays ?? 10} trading days. Volume compares the most recent full trading day with the average of the 20 days before it.`,
       },
       {
         title: 'Volatility outlook',
         takeaway: swing,
-        text: 'Swing size can increase in either direction.',
+        text:
+          swingChance >= 0.5
+            ? `About a ${percent(swingChance)} chance ${symbol}'s price moves ${risk?.kind === 'ready' && risk.call === 'stormier' ? 'more' : 'less'} than usual over the next ${swingHorizon} trading days, up or down.`
+            : 'Swing size can change in either direction.',
+        meter:
+          risk?.kind === 'ready'
+            ? {
+                value: risk.probability,
+                left: 'Smaller swings',
+                right: 'Bigger swings',
+                label: `Model estimate: ${percent(risk.probability)} chance of bigger swings`,
+              }
+            : undefined,
         detail:
           risk?.kind === 'ready'
-            ? `Selected source: ${risk.source}. Reading: ${risk.asOf}. Model probability of bigger swings: ${Math.round(risk.probability * 100)}%.`
-            : 'Not enough forecast history yet.',
+            ? `This estimates whether ${symbol}'s price will move around more or less than usual over the next ${swingHorizon} trading days. It does not say whether the price will go up or down.`
+            : 'There is not enough price history to estimate price swings yet.',
       },
     ];
   }

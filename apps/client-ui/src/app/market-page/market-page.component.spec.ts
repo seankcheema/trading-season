@@ -452,7 +452,6 @@ describe('MarketPageComponent', () => {
       'EMA 20',
       'Bollinger Bands 20 · 2σ',
       'RSI 14',
-      'Volatility outlook 5-day',
     ]);
 
     options[0].click();

@@ -55,6 +55,21 @@ describe('Dua performance', () => {
       )[0].gain,
     ).toBe(20);
   });
+  it('prices a fill without an execution price at its indicative price', () => {
+    // Seeded demo fills carry their price on the fill row, not the order.
+    const seeded = { ...fill('BUY', 110, 2), executionPrice: null };
+    expect(
+      performance(
+        [{ symbol: 'JPM', quantity: 2, averageCost: 110 }],
+        [seeded],
+        catalogue,
+        1,
+        at,
+        '2026-10-22',
+        candles,
+      )[0].gain,
+    ).toBe(20);
+  });
   it('includes fully sold positions and sale proceeds', () => {
     expect(
       performance([], [fill('SELL', 115, 2)], catalogue, 1, at, '2026-10-22', candles)[0].gain,
@@ -127,25 +142,97 @@ describe('Dua performance', () => {
       ['This week', '-$5.00'],
       ['This month', '+$12.00'],
     ]);
-    expect(card.takeaway).toContain('lost value this week');
-    expect(card.text).toContain('gained value this month');
+    expect(card.takeaway).toBe('JPM moved your holdings the most this week and this month.');
+    expect(card.text).toBe('');
+    expect(
+      periodPerformanceCard(
+        [{ symbol: 'JPM', gain: 5 }],
+        [
+          { symbol: 'JPM', gain: 5 },
+          { symbol: 'MSFT', gain: 20 },
+        ],
+      ).takeaway,
+    ).toBe('JPM moved your holdings the most this week, and MSFT this month.');
   });
-  it('splits movers into biggest gainer and loser per period', () => {
-    const daily = moversCard([{ rows: [{ symbol: 'JPM', gain: 30 }] }]);
-    expect(daily.metrics?.map((m) => [m.label, m.symbol, m.value])).toEqual([
-      ['Biggest gainer', 'JPM', '+$30.00'],
-      ['Biggest loser', '', 'None'],
-    ]);
+  it('ranks up to the requested number of gainers and losers', () => {
+    const rows = [
+      { symbol: 'A', gain: 5 },
+      { symbol: 'B', gain: 40 },
+      { symbol: 'C', gain: 12 },
+      { symbol: 'D', gain: 1 },
+      { symbol: 'E', gain: -8 },
+      { symbol: 'F', gain: null },
+    ];
+    const daily = moversCard([{ rows }], 3);
     expect(daily.takeaway).toBe('');
-    const holdings = moversCard([
-      { rows: [{ symbol: 'JPM', gain: -3 }], when: 'this week' },
-      { rows: [], when: 'this month' },
+    expect(daily.movers).toEqual([
+      {
+        heading: undefined,
+        groups: [
+          {
+            label: 'Biggest gainers',
+            tone: 'gain',
+            rows: [
+              { symbol: 'B', value: '+$40.00' },
+              { symbol: 'C', value: '+$12.00' },
+              { symbol: 'A', value: '+$5.00' },
+            ],
+            empty: 'No gains',
+          },
+          {
+            label: 'Biggest losers',
+            tone: 'loss',
+            rows: [{ symbol: 'E', value: '-$8.00' }],
+            empty: 'No losses',
+          },
+        ],
+      },
     ]);
-    expect(holdings.metrics?.map((m) => m.label)).toEqual([
-      'Biggest gainer this week',
-      'Biggest loser this week',
+    const holdings = moversCard(
+      [
+        { rows: [{ symbol: 'JPM', gain: -3 }], heading: 'This week' },
+        { rows: [], heading: 'This month' },
+      ],
+      1,
+    );
+    expect(holdings.movers?.map((s) => [s.heading, s.groups.map((g) => g.label)])).toEqual([
+      ['This week', ['Biggest gainer', 'Biggest loser']],
     ]);
-    expect(moversCard([{ rows: [] }]).takeaway).toBe('No gains or losses to rank.');
+    expect(moversCard([{ rows: [] }], 3).takeaway).toBe('No gains or losses to rank.');
+  });
+  it('totals the positions that have data and names the ones left out', () => {
+    const card = periodPerformanceCard(
+      [
+        { symbol: 'JPM', gain: 10 },
+        { symbol: 'MSFT', gain: null },
+      ],
+      [],
+    );
+    expect(card.metrics).toEqual([{ label: 'This week', value: '+$10.00', tone: 'gain' }]);
+    expect(card.takeaway).toBe('JPM moved your holdings the most this week.');
+    expect(card.text).toBe('Excludes MSFT (no price history).');
+    expect(
+      dailyPerformanceCard([
+        { symbol: 'JPM', gain: 10 },
+        { symbol: 'MSFT', gain: null },
+      ]).takeaway,
+    ).toBe(
+      'Your holdings gained value since the open, led by JPM (+$10.00). Excludes MSFT, which has no price history.',
+    );
+  });
+  it('starts from the earliest price in the period when older history is missing', () => {
+    expect(
+      performance(
+        [{ symbol: 'JPM', quantity: 2, averageCost: 80 }],
+        [],
+        catalogue,
+        1,
+        at,
+        '2026-10-20',
+        [{ ...candles[0], points: candles[0].points.slice(1) }],
+        [{ symbol: 'JPM', price: 125 }],
+      )[0].gain,
+    ).toBe(30);
   });
   it('uses simulation-local calendar boundaries', () => {
     expect(periodDate(at, 'week')).toBe('2026-10-19');

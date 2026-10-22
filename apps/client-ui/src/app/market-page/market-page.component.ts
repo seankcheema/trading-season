@@ -22,8 +22,6 @@ import { MarketClockService } from '../dashboard/shared/market-clock.service';
 
 
 import { DuaComponent } from '../dua/dua.component';
-import { PlatformSignalsService } from './risk-outlook/platform-signals.service';
-import { riskPointsFor } from './risk-outlook/platform-signals';
 import {
   ActivityItem,
   ActivityRowComponent,
@@ -574,21 +572,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly toolsCollapsed = signal(false);
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
   protected readonly enabledIndicators = signal<readonly TechnicalIndicator[]>([]);
-  private readonly platformSignals = inject(PlatformSignalsService);
-  // The platform model's readings for the open instrument up to the simulated clock,
-  // for the chart's risk pane. The file loads the first time the indicator is enabled.
-  protected readonly riskSeries = computed(() => {
-    const signals = this.platformSignals.signals();
-    const at = this.marketTimestamp();
-    return signals && at && this.enabledIndicators().includes('risk')
-      ? riskPointsFor(signals, this.symbol(), at)
-      : [];
-  });
-  private readonly loadRiskSignals = effect(() => {
-    if (this.enabledIndicators().includes('risk') && this.platformSignals.status() === 'idle') {
-      this.platformSignals.load().subscribe({ error: () => undefined });
-    }
-  });
   protected readonly indicatorOptions = [
     { value: 'sma', label: 'SMA', period: TECHNICAL_INDICATOR_PERIODS.sma, detail: '' },
     { value: 'ema', label: 'EMA', period: TECHNICAL_INDICATOR_PERIODS.ema, detail: '' },
@@ -599,12 +582,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       detail: ' · 2σ',
     },
     { value: 'rsi', label: 'RSI', period: TECHNICAL_INDICATOR_PERIODS.rsi, detail: '' },
-    {
-      value: 'risk',
-      label: 'Volatility outlook',
-      period: TECHNICAL_INDICATOR_PERIODS.risk,
-      detail: '-day',
-    },
   ] as const satisfies readonly {
     value: TechnicalIndicator;
     label: string;

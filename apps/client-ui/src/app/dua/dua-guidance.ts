@@ -23,7 +23,11 @@ export function periodDate(at: string, period: 'daily' | 'week' | 'month'): stri
   return date.toISOString().slice(0, 10);
 }
 
-/** Removes trade cash flows from holdings-value changes, including fully sold positions. */
+/**
+ * Removes trade cash flows from holdings-value changes, including fully sold positions. The
+ * baseline is the last close before the period, else the earliest open within it, so a period
+ * that starts before the available history uses the most recent data there is.
+ */
 export function performance(
   current: readonly AccountHolding[],
   orders: readonly OrderResult[],
@@ -69,19 +73,19 @@ export function performance(
         ?.points.filter((p) => Date.parse(p.timestamp) <= end) ?? [];
     const previous = candles.filter((p) => tradingDate(p.timestamp) < startDate).at(-1);
     const first = candles.find((p) => tradingDate(p.timestamp) >= startDate);
-    const startPrice =
-      (openingBaseline ? undefined : previous?.close) ??
-      (first && tradingDate(first.timestamp) === startDate ? first.open : undefined);
+    const startPrice = (openingBaseline ? undefined : previous?.close) ?? first?.open;
     const endPrice = quotes.find((q) => q.symbol === symbol)?.price ?? candles.at(-1)?.close;
     const quantity = startPositions.find((h) => h.symbol === symbol)?.quantity ?? 0;
     const endQuantity = ending.find((h) => h.symbol === symbol)?.quantity ?? 0;
     const fills = periodTrades.filter((o) => symbolFor(o) === symbol);
+    // As elsewhere in the app, a fill without a recorded execution price uses its indicative price.
+    const fillPrice = (o: OrderResult) => o.executionPrice ?? o.indicativePrice;
     const missing =
       (quantity !== 0 && !(startPrice! > 0)) ||
       (endQuantity !== 0 && !(endPrice! > 0)) ||
-      fills.some((o) => !(o.executionPrice! > 0));
+      fills.some((o) => !(fillPrice(o) > 0));
     const flow = fills.reduce(
-      (sum, o) => sum + (o.orderType === 'BUY' ? -1 : 1) * o.quantity * o.executionPrice!,
+      (sum, o) => sum + (o.orderType === 'BUY' ? -1 : 1) * o.quantity * fillPrice(o),
       0,
     );
     return {
@@ -129,37 +133,38 @@ type PerformanceRow = { symbol: string; gain: number | null };
 type Metric = NonNullable<DuaCard['metrics']>[number];
 const tone = (n: number): 'gain' | 'loss' => (n < 0 ? 'loss' : 'gain');
 
+/** Ranks the positions that have a result; positions without price history are left out. */
 function summarize(rows: readonly PerformanceRow[]) {
   const ranked = rows
     .filter((r) => r.gain !== null)
     .sort((a, b) => b.gain! - a.gain! || a.symbol.localeCompare(b.symbol));
   return {
-    complete: rows.every((r) => r.gain !== null),
-    total: rows.reduce((sum, r) => sum + (r.gain ?? 0), 0),
     ranked,
-    best: ranked.find((r) => r.gain! > 0),
-    worst: [...ranked].reverse().find((r) => r.gain! < 0),
+    missing: rows.filter((r) => r.gain === null).map((r) => r.symbol),
+    total: ranked.reduce((sum, r) => sum + r.gain!, 0),
   };
 }
 
-/** The total for a period as a metric, or nothing when any position lacks history. */
 function totalMetric(rows: readonly PerformanceRow[], label: string): Metric[] {
-  const { complete, total } = summarize(rows);
-  return complete && rows.length ? [{ label, value: signedDollars(total), tone: tone(total) }] : [];
+  const { ranked, total } = summarize(rows);
+  return ranked.length ? [{ label, value: signedDollars(total), tone: tone(total) }] : [];
 }
 
 /** Explains a period's result by naming the position that drove it; the amount is the metric. */
 export function periodStatement(rows: readonly PerformanceRow[], when: string): string {
-  const { complete, total, best, worst } = summarize(rows);
+  const { ranked, missing, total } = summarize(rows);
   if (!rows.length) return 'No holdings to review yet.';
-  if (!complete) return `Some performance data ${when} is unavailable.`;
-  if (total === 0) return `Your holdings were unchanged ${when}.`;
-  const driver = total > 0 ? best : worst;
-  return `Your holdings ${total > 0 ? 'gained' : 'lost'} value ${when}${driver ? `, led by ${driver.symbol} (${signedDollars(driver.gain!)})` : ''}.`;
+  if (!ranked.length) return `Performance ${when} is unavailable.`;
+  const excluded = missing.length
+    ? ` Excludes ${missing.join(', ')}, which ${missing.length === 1 ? 'has' : 'have'} no price history.`
+    : '';
+  if (total === 0) return `Your holdings were unchanged ${when}.${excluded}`;
+  const driver = total > 0 ? ranked[0] : ranked.at(-1)!;
+  return `Your holdings ${total > 0 ? 'gained' : 'lost'} value ${when}, led by ${driver.symbol} (${signedDollars(driver.gain!)}).${excluded}`;
 }
 
 const PERFORMANCE_DETAIL =
-  'Ending holdings value minus starting value minus purchases plus sale proceeds. Shared cash and deposits are excluded.';
+  'Ending holdings value minus starting value minus purchases plus sale proceeds. Shared cash and deposits are excluded. The starting value uses the last close before the period, or the earliest price within it when older history is not available.';
 
 export function dailyPerformanceCard(rows: readonly PerformanceRow[]): DuaCard {
   return {
@@ -172,50 +177,95 @@ export function dailyPerformanceCard(rows: readonly PerformanceRow[]): DuaCard {
   };
 }
 
-/** Week-to-date (from Monday) and month-to-date results side by side. */
+/** The position behind a period's result, or nothing when the period is flat or unavailable. */
+function driverOf(rows: readonly PerformanceRow[]): string | undefined {
+  const { ranked, total } = summarize(rows);
+  if (!ranked.length || total === 0) return undefined;
+  return (total > 0 ? ranked[0] : ranked.at(-1)!).symbol;
+}
+
+/**
+ * Week-to-date (from Monday) and month-to-date amounts side by side, with one short line naming
+ * what drove them; the amounts carry the result, so the line does not repeat them.
+ */
 export function periodPerformanceCard(
   week: readonly PerformanceRow[],
   month: readonly PerformanceRow[],
 ): DuaCard {
-  const weekly = periodStatement(week, 'this week');
-  const monthly = periodStatement(month, 'this month');
+  const metrics = [...totalMetric(week, 'This week'), ...totalMetric(month, 'This month')];
+  const weekly = driverOf(week);
+  const monthly = driverOf(month);
+  const missing = [...new Set([...summarize(week).missing, ...summarize(month).missing])];
   return {
     title: 'Your performance',
     metricsFirst: true,
-    emphasizeText: true,
-    metrics: [...totalMetric(week, 'This week'), ...totalMetric(month, 'This month')],
-    takeaway: weekly,
-    text: monthly === weekly ? '' : monthly,
+    metrics,
+    takeaway:
+      !week.length && !month.length
+        ? 'No holdings to review yet.'
+        : weekly && monthly
+          ? weekly === monthly
+            ? `${weekly} moved your holdings the most this week and this month.`
+            : `${weekly} moved your holdings the most this week, and ${monthly} this month.`
+          : weekly || monthly
+            ? `${weekly ?? monthly} moved your holdings the most ${weekly ? 'this week' : 'this month'}.`
+            : metrics.length
+              ? 'No change this week or this month.'
+              : 'Performance is unavailable.',
+    text: missing.length ? `Excludes ${missing.join(', ')} (no price history).` : '',
     detail: `${PERFORMANCE_DETAIL} The week starts on Monday and the month on the 1st.`,
   };
 }
 
 /**
- * Biggest gainer and loser for each period. A period with any ranked position shows both slots,
- * so periods stay aligned; an empty slot has a blank symbol and reads None.
+ * The largest gains and losses in dollars, up to `count` of each, for one or more periods.
+ * A period with no ranked position is left out.
  */
 export function moversCard(
-  periods: readonly { rows: readonly PerformanceRow[]; when?: string }[],
+  periods: readonly { rows: readonly PerformanceRow[]; heading?: string }[],
+  count: number,
 ): DuaCard {
-  const metrics = periods.flatMap(({ rows, when }): Metric[] => {
-    const { ranked, best, worst } = summarize(rows);
-    if (!ranked.length) return [];
-    const slot = (label: string, row: PerformanceRow | undefined): Metric =>
-      row
-        ? { label, symbol: row.symbol, value: signedDollars(row.gain!), tone: tone(row.gain!) }
-        : { label, symbol: '', value: 'None' };
-    const suffix = when ? ` ${when}` : '';
-    return [slot(`Biggest gainer${suffix}`, best), slot(`Biggest loser${suffix}`, worst)];
+  const plural = count > 1 ? 's' : '';
+  const movers = periods.flatMap(({ rows, heading }) => {
+    const { ranked } = summarize(rows);
+    const row = (r: PerformanceRow) => ({ symbol: r.symbol, value: signedDollars(r.gain!) });
+    return ranked.length
+      ? [
+          {
+            heading,
+            groups: [
+              {
+                label: `Biggest gainer${plural}`,
+                tone: 'gain' as const,
+                rows: ranked
+                  .filter((r) => r.gain! > 0)
+                  .slice(0, count)
+                  .map(row),
+                empty: 'No gains',
+              },
+              {
+                label: `Biggest loser${plural}`,
+                tone: 'loss' as const,
+                rows: [...ranked]
+                  .reverse()
+                  .filter((r) => r.gain! < 0)
+                  .slice(0, count)
+                  .map(row),
+                empty: 'No losses',
+              },
+            ],
+          },
+        ]
+      : [];
   });
-  const complete = periods.every(({ rows }) => rows.every((r) => r.gain !== null));
   return {
     title: 'Your biggest movers',
     metricsFirst: true,
-    takeaway: metrics.length ? '' : 'No gains or losses to rank.',
-    text: complete ? '' : 'Only positions with complete history are compared.',
-    metrics,
+    takeaway: movers.length ? '' : 'No gains or losses to rank.',
+    text: '',
+    movers,
     detail:
-      'Dollar contributions include positions sold during the period; they are not since-purchase returns.',
+      'Dollar contributions include positions sold during the period; they are not since-purchase returns. Positions without price history are left out.',
   };
 }
 

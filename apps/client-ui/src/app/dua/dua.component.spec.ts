@@ -198,23 +198,37 @@ describe('Dua panel', () => {
     click('This Stock');
     expect(text()).toContain('Consider buying AAPL');
     expect(text()).not.toContain('+24.8%');
-    const card = fixture.nativeElement.querySelector('.insight-card:not(.inactive)');
-    expect(card.querySelector('h3').textContent.trim()).toBe('AAPL Analysis');
-    // The unrealized result leads, followed by shares and the money held in the position.
-    const metrics = [...card.querySelectorAll('.overview-metrics > div')].map((m: any) =>
-      m.textContent.replace(/\s+/g, ' ').trim(),
-    );
-    expect(metrics[0]).toContain('Unrealized since purchase +$20.00');
-    expect(metrics.slice(1)).toEqual(['Your shares 2', 'Position value $220.00']);
-    expect(card.querySelector('.overview-metrics').nextElementSibling.textContent).toContain(
-      'Consider buying AAPL',
-    );
-    expect(card.textContent).not.toMatch(/activity/i);
+    const active = () => fixture.nativeElement.querySelector('.insight-card:not(.inactive)');
+    expect(active().querySelector('h3').textContent.trim()).toBe('AAPL Analysis');
+    // A buy or sell suggestion and the trend, without the user's own position.
+    expect(active().textContent).toContain('The next 5 trading days lean upward.');
+    expect(active().querySelector('.overview-metrics')).toBeNull();
+    expect(active().textContent).not.toMatch(/shares|unrealized|\$/i);
     expect(text()).not.toContain('Open the full');
     click('View Details');
-    expect(fixture.nativeElement.querySelector('app-trend-read')).not.toBeNull();
+    const details = fixture.nativeElement.querySelector('.insight-explanation').textContent;
+    expect(details).toContain('higher or lower 5 trading days from now');
+    expect(details).toContain('about a 64% chance the price will be higher');
+    expect(details).not.toMatch(/source|probability|been right/i);
+    expect(fixture.nativeElement.querySelector('app-trend-read')).toBeNull();
     click('Back to results');
     expect(text()).toContain('Consider buying AAPL');
+    click('Next insight');
+    expect(active().textContent).toContain(
+      'AAPL is gaining momentum, up 5.1% over the last 10 trading days.',
+    );
+    click('Next insight');
+    expect(active().textContent).toContain(
+      "About a 62% chance AAPL's price moves more than usual over the next 5 trading days",
+    );
+    expect(active().querySelector('.swing-meter-track').getAttribute('aria-label')).toBe(
+      'Model estimate: 62% chance of bigger swings',
+    );
+    click('View Details');
+    expect(fixture.nativeElement.querySelector('app-risk-outlook')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.insight-explanation').textContent).toContain(
+      'It does not say whether the price will go up or down.',
+    );
   });
   it('does not reopen a dismissed menu when quotes change', () => {
     const { fixture, click } = setup();
@@ -228,10 +242,42 @@ describe('Dua panel', () => {
   it('uses unavailable performance instead of purchase-cost prices', () => {
     const { fixture, click, text } = setup();
     click('Portfolio Analysis');
-    expect(text()).toContain('Some performance data this week is unavailable');
-    expect(text()).toContain('Some performance data this month is unavailable');
+    expect(text()).toContain('Performance is unavailable.');
     expect(text()).not.toContain('+12.4%');
     expect(fixture.nativeElement.querySelector('.period-switch')).toBeNull();
+  });
+  it('keeps the suggestion to one reason and one action', () => {
+    const { fixture, click } = setup();
+    click('Portfolio Analysis');
+    click('Next insight');
+    click('Next insight');
+    const card = fixture.nativeElement.querySelector('.insight-card:not(.inactive)');
+    expect(card.querySelector('h3').textContent.trim()).toBe('What to consider');
+    expect(card.querySelector('.guidance-headline').textContent.trim()).toBe(
+      'Consider buying AAPL.',
+    );
+    expect(card.querySelector('.guidance-description').textContent.trim()).toBe(
+      'Its forecast points up, with the strongest momentum of the stocks forecast to rise.',
+    );
+    expect(card.querySelector('.guidance-advice').textContent.trim()).toBe(
+      'Start small and check its stock page first. Expect bigger price swings.',
+    );
+  });
+  it('suggests holding when no forecast is available', () => {
+    const forecasts = trend.trend();
+    trend.trend.set(null as never);
+    try {
+      const { fixture, click } = setup();
+      click('Portfolio Analysis');
+      click('Next insight');
+      click('Next insight');
+      const card = fixture.nativeElement.querySelector('.insight-card:not(.inactive)');
+      expect(card.querySelector('.guidance-headline').textContent.trim()).toBe(
+        'Hold your current positions.',
+      );
+    } finally {
+      trend.trend.set(forecasts);
+    }
   });
   it('labels the account, snapshot day and page, with an icon-only details action', () => {
     const { fixture, click, text } = setup();

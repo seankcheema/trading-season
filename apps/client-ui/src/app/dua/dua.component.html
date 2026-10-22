@@ -111,28 +111,11 @@
         <article class="insight-explanation">
           <h3>{{ card.title }}</h3>
           <div class="card-content">
-            @if (card.takeaway) {
-              <p class="takeaway">
-                @for (part of takeawayParts(card.takeaway); track $index) {
-                  @if (part.emphasis) {
-                    <strong>{{ part.text }}</strong>
-                  } @else {
-                    {{ part.text }}
-                  }
-                }
-              </p>
-            }
             @if (card.purpose) {
               <h4>Why it matters</h4>
               <p class="explanation-reason">{{ card.purpose }}</p>
             }
             <p>{{ card.detail }}</p>
-            @if (choice() === 'stock' && activeCard() === 2) {
-              <app-risk-outlook [symbol]="symbol()" [marketTimestamp]="snapshotAt()" />
-            }
-            @if (choice() === 'stock' && activeCard() === 0) {
-              <app-trend-read [symbol]="symbol()" [marketTimestamp]="snapshotAt()" />
-            }
           </div>
         </article>
       }
@@ -192,13 +175,15 @@
                     {{ card.text }}
                   </p>
                 }
+                @if (card.advice) {
+                  <p class="guidance-advice">{{ card.advice }}</p>
+                }
               </ng-template>
 
               @if (card.metrics?.length) {
                 <dl
                   class="overview-metrics"
                   [class.daily-metrics]="choice() === 'daily' && !card.illustrative"
-                  [class.today-metrics]="choice() === 'stock' && card.title === 'Today'"
                   [class.count-metrics]="card.distribution && card.metrics?.length === 3"
                 >
                   @for (metric of card.metrics; track $index) {
@@ -206,23 +191,17 @@
                       [class.wide-metric]="metric.value.length > 9"
                       [class.primary-metric]="metric.primary || card.metrics?.length === 1"
                     >
-                      @if (metric.label || metric.symbol) {
-                        <dt [class.with-symbol]="metric.symbol !== undefined">
-                          @if (metric.symbol !== undefined) {
-                            <span class="metric-label">{{ metric.label }}</span>
-                            <!-- A blank symbol is an empty mover slot; its value reads None. -->
-                            @if (metric.symbol && metric.symbol !== symbol()) {
-                              <a
-                                class="ticker-link"
-                                [routerLink]="['/dashboard/markets', metric.symbol.toLowerCase()]"
-                                [attr.aria-label]="'Open ' + metric.symbol + ' stock analysis'"
-                              >
-                                {{ metric.symbol
-                                }}<ng-icon name="lucideExternalLink" aria-hidden="true" />
-                              </a>
-                            } @else if (metric.symbol) {
-                              <span>{{ metric.symbol }}</span>
-                            }
+                      @if (metric.label) {
+                        <dt>
+                          @if (metric.symbol && metric.symbol !== symbol()) {
+                            <a
+                              class="ticker-link"
+                              [routerLink]="['/dashboard/markets', metric.symbol.toLowerCase()]"
+                              [attr.aria-label]="'Open ' + metric.symbol + ' stock analysis'"
+                            >
+                              {{ metric.label
+                              }}<ng-icon name="lucideExternalLink" aria-hidden="true" />
+                            </a>
                           } @else {
                             {{ metric.label }}
                           }
@@ -246,29 +225,6 @@
                           />
                         }
                       </dd>
-                      @if (metric.stocks?.length) {
-                        <ul
-                          class="stock-list"
-                          tabindex="0"
-                          [attr.aria-label]="metric.label + ' stocks'"
-                        >
-                          @for (stock of metric.stocks; track stock.symbol) {
-                            <li>
-                              <a
-                                class="ticker-link"
-                                [routerLink]="['/dashboard/markets', stock.symbol.toLowerCase()]"
-                                [attr.aria-label]="'Open ' + stock.symbol + ' stock analysis'"
-                                >{{ stock.symbol }}</a
-                              >
-                              <span
-                                [class.gain]="stock.change.startsWith('+')"
-                                [class.loss]="stock.change.startsWith('-')"
-                                >{{ stock.change }}</span
-                              >
-                            </li>
-                          }
-                        </ul>
-                      }
                       @if (metric.subtext) {
                         <small class="metric-subtext">
                           {{ metric.subtext }}
@@ -296,6 +252,66 @@
                     }
                   }
                 </p>
+              }
+              @for (section of card.movers; track $index) {
+                <section class="movers" [attr.aria-label]="section.heading ?? card.title">
+                  @if (section.heading) {
+                    <h4 class="movers-heading">{{ section.heading }}</h4>
+                  }
+                  <div class="movers-groups">
+                    @for (group of section.groups; track group.label) {
+                      <div class="movers-group">
+                        <p class="movers-label">{{ group.label }}</p>
+                        @if (group.rows.length) {
+                          <ul>
+                            @for (row of group.rows; track row.symbol) {
+                              <li>
+                                <a
+                                  class="ticker-link"
+                                  [routerLink]="['/dashboard/markets', row.symbol.toLowerCase()]"
+                                  [attr.aria-label]="'Open ' + row.symbol + ' stock analysis'"
+                                  >{{ row.symbol
+                                  }}<ng-icon name="lucideExternalLink" aria-hidden="true"
+                                /></a>
+                                <span class="movers-value"
+                                  >{{ row.value
+                                  }}<ng-icon
+                                    [name]="
+                                      group.tone === 'gain'
+                                        ? 'lucideArrowUpRight'
+                                        : 'lucideArrowDownRight'
+                                    "
+                                    [class.gain]="group.tone === 'gain'"
+                                    [class.loss]="group.tone === 'loss'"
+                                    role="img"
+                                    [attr.aria-label]="group.tone === 'gain' ? 'Up' : 'Down'"
+                                /></span>
+                              </li>
+                            }
+                          </ul>
+                        } @else {
+                          <p class="movers-empty">{{ group.empty }}</p>
+                        }
+                      </div>
+                    }
+                  </div>
+                </section>
+              }
+              @if (card.meter; as meter) {
+                <div class="swing-meter">
+                  <div class="swing-meter-labels" aria-hidden="true">
+                    <span>{{ meter.left }}</span
+                    ><span>{{ meter.right }}</span>
+                  </div>
+                  <div class="swing-meter-track" role="img" [attr.aria-label]="meter.label">
+                    <span class="swing-meter-mid" aria-hidden="true"></span>
+                    <span
+                      class="swing-meter-marker"
+                      aria-hidden="true"
+                      [style.left.%]="meter.value * 100"
+                    ></span>
+                  </div>
+                </div>
               }
               @if (card.sparkline?.length) {
                 <svg

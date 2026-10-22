@@ -75,6 +75,8 @@ test('market auto-opens three choices, preserves dismissal and removes Outlook t
 }) => {
   await loginPage.goto();
   await loginPage.signIn(USER.email, USER.password);
+  // Wait for sign-in to land before navigating, or the visit can race the redirect.
+  await expect(page.getByRole('button', { name: 'Dua insights', exact: true })).toBeVisible();
   await page.goto('/dashboard/markets/aapl');
   const panel = page.getByRole('region', { name: 'Dua insights' });
   await expect(panel).toBeVisible();
@@ -109,9 +111,11 @@ test('legacy outlook links show inline details and respect reduced motion', asyn
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await loginPage.goto();
   await loginPage.signIn(USER.email, USER.password);
+  // Wait for sign-in to land before navigating, or the visit can race the redirect.
+  await expect(page.getByRole('button', { name: 'Dua insights', exact: true })).toBeVisible();
   await page.goto('/dashboard/markets/aapl?tab=outlook');
   const panel = page.getByRole('region', { name: 'Dua insights' });
-  await expect(panel.locator('.insight-explanation app-risk-outlook')).toBeVisible();
+  await expect(panel.locator('.insight-explanation')).toContainText('Volatility outlook');
   await expect(page.getByRole('tab', { name: 'Trading', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',

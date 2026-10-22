@@ -289,12 +289,15 @@ def write_order(cursor, action, account_ids, sequence):
     filled = action.status == 'FILLED'
     accepted_at = action.at + timedelta(milliseconds=40) if filled else None
     resolved_at = action.at + timedelta(milliseconds=120 if filled else 30)
+    # A filled order records its execution price, as live execution does; the client reads it
+    # from the order, not the fill.
     cursor.execute('''INSERT INTO orders (account_id, instrument_id, client_reference, order_type, status, quantity,
                                           indicative_price, buffer_percent, rejection_reason, submitted_at,
-                                          accepted_at, resolved_at)
-                      VALUES (%s, %s, %s, %s, %s, %s, %s, 0.50, %s, %s, %s, %s) RETURNING order_id''',
+                                          accepted_at, resolved_at, execution_price)
+                      VALUES (%s, %s, %s, %s, %s, %s, %s, 0.50, %s, %s, %s, %s, %s) RETURNING order_id''',
                    (account_id, action.instrument_id, reference, action.side, action.status, action.quantity,
-                    action.price, action.reason, action.at, accepted_at, resolved_at))
+                    action.price, action.reason, action.at, accepted_at, resolved_at,
+                    action.price if filled else None))
     order_id = cursor.fetchone()[0]
 
     trail = [('PENDING', None, action.at)]

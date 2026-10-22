@@ -216,33 +216,3 @@ export function recentReads(days: SignalDay[], latestIndex: number, horizon: num
   }
   return reads;
 }
-
-/** A reading made at a day's close applies from that close on; the file's dates are trading days. */
-const CLOSE_UTC = 'T21:00:00Z';
-
-/**
- * The readings for the chart's risk pane at a simulated moment: every reading made
- * at a close strictly before that moment's trading date, as the chance (0 to 100)
- * that the following days are stormier, and whether they were, once that window
- * had closed by the same date. Later outcomes stay null, so the pane never shades
- * a week the viewer could not yet know about.
- */
-export function riskPointsFor(
-  signals: PlatformSignals,
-  symbol: string,
-  marketTimestamp: string,
-): { time: Date; value: number; stormier: boolean | null }[] {
-  const entry = signals.symbols[symbol.toUpperCase()];
-  if (!entry) {
-    return [];
-  }
-  const today = tradingDate(marketTimestamp);
-  const known = entry.days.filter((day) => day.date < today);
-  const latestIndex = known.length - 1;
-  return known.map((day, index) => ({
-    time: new Date(day.date + CLOSE_UTC),
-    value: Math.round(day.probability * 1000) / 10,
-    stormier:
-      index + signals.horizonDays <= latestIndex && day.outcome ? day.outcome === 'stormier' : null,
-  }));
-}

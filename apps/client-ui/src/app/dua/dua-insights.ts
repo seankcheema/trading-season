@@ -29,6 +29,20 @@ export interface DuaCard {
   metricsFirst?: boolean;
   /** Gives the description the same weight as the takeaway. */
   emphasizeText?: boolean;
+  /** What the user could do about the takeaway, shown after the description. */
+  advice?: string;
+  /** A position on a two-ended scale, `value` from 0 (left) to 1 (right). */
+  meter?: { value: number; left: string; right: string; label: string };
+  /** Ranked gainers and losers, optionally one section per period. */
+  movers?: {
+    heading?: string;
+    groups: {
+      label: string;
+      tone: 'gain' | 'loss';
+      rows: { symbol: string; value: string }[];
+      empty: string;
+    }[];
+  }[];
 }
 
 export function sparklinePoints(values: readonly number[]): string {
@@ -379,29 +393,29 @@ export function watchlistPulse(
   const falling = moves
     .filter((m) => m.change < 0)
     .sort((a, b) => a.change - b.change || a.symbol.localeCompare(b.symbol));
-  const list = (rows: typeof moves) =>
-    rows.map((r) => ({ symbol: r.symbol, change: signedPercent(r.change) }));
+  const average = moves.reduce((sum, m) => sum + m.change, 0) / (moves.length || 1);
   return {
     title,
     metrics: moves.length
       ? [
-          { label: 'Rising', value: String(rising.length), tone: 'gain', stocks: list(rising) },
-          { label: 'Falling', value: String(falling.length), tone: 'loss', stocks: list(falling) },
+          { label: 'Rising', value: String(rising.length), tone: 'gain' },
+          { label: 'Falling', value: String(falling.length), tone: 'loss' },
         ]
       : [],
     takeaway: !moves.length
       ? 'Watchlist prices are unavailable.'
       : rising.length > falling.length
-        ? `Most of your watchlist is rising; ${rising[0].symbol} leads at ${signedPercent(rising[0].change)}.`
+        ? 'Most of your watchlist is rising.'
         : falling.length > rising.length
-          ? `Most of your watchlist is falling; ${falling[0].symbol} is down most at ${signedPercent(falling[0].change)}.`
+          ? 'Most of your watchlist is falling.'
           : rising.length
             ? 'Your watchlist is evenly split between rising and falling stocks.'
             : 'Your watchlist is unchanged since the open.',
-    text:
-      moves.length < symbols.length
-        ? `${moves.length} of ${symbols.length} watchlist stocks have prices.`
-        : '',
+    text: !moves.length
+      ? ''
+      : `On average, your watchlist stocks moved ${signedPercent(average)} since the open.${
+          moves.length < symbols.length ? ` ${moves.length} of ${symbols.length} have prices.` : ''
+        }`,
     detail,
   };
 }
