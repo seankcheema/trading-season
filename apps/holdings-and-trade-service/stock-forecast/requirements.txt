@@ -1,0 +1,13 @@
+# Local development (Windows or Linux), Python 3.10+. Install into apps/holdings-and-trade-service/stock-forecast/.venv.
+numpy>=2.1
+pandas>=2.2
+scikit-learn>=1.5
+matplotlib>=3.9
+joblib>=1.4
+pytest>=8.3
+yfinance            # 0001-download-data.py only; needs the multi_level_index option
+tensorflow>=2.22.0rc0; python_version >= "3.14"  # Python 3.14 wheels; 2.22 is currently a release candidate
+tensorflow>=2.16; python_version < "3.14"  # stable LSTM package on supported Python versions
+statsmodels>=0.14   # optional: extra-check-var-with-statsmodels.py
+jupyter>=1.1        # optional: exploring in notebooks/
+ipykernel>=6.29
