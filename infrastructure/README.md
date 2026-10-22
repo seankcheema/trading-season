@@ -154,7 +154,7 @@ Account history and statement export use the same Client UI stages: unit tests c
 
 Maven runs through [maven-retry.sh](jenkins/maven-retry.sh), which repeats a run up to three times when it failed only because Maven Central refused or dropped a download (for example a 502); any other failure, such as a failing test, stops at once. Without it, one bad download in a parallel test branch aborted every other branch.
 
-Cleanup always removes the build-scoped test containers, volumes, and images, tears down the local stack only if this build started it and failed, trims Docker caches, and deletes the workspace. Playwright images and Maven and npm caches are kept only when at least 6 GiB will remain free.
+Cleanup always removes the build-scoped test containers, volumes, and images, stops and removes the local stack, its volumes, and the images it built whenever this build started it (pass or fail; the pulled PostgreSQL and Kafka images stay), trims Docker caches, and deletes the workspace. Playwright images and Maven and npm caches are kept only when at least 6 GiB will remain free.
 
 ### SonarQube
 

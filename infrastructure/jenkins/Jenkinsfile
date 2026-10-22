@@ -944,10 +944,12 @@ pipeline {
                     if (resourceCleanupStatus != 0) {
                         echo "Test resource cleanup failed with status ${resourceCleanupStatus}."
                     }
-                    // A successful stack is left running; only tear down a failed one.
-                    if (currentBuild.currentResult != 'SUCCESS' && env.LOCAL_STACK_STARTED == 'true') {
+                    // Stop and remove the local stack whatever the result. --rmi local
+                    // removes only the images the stack built; the pulled postgres and
+                    // kafka images stay, since the agent's Docker daemon is shared.
+                    if (env.LOCAL_STACK_STARTED == 'true') {
                         def composeCleanupStatus = sh(
-                            script: 'sh infrastructure/docker/run-compose.sh --project-name trading-season-local --env-file infrastructure/docker-compose/.env -f infrastructure/docker-compose/docker-compose.local.yml down -v --remove-orphans',
+                            script: 'sh infrastructure/docker/run-compose.sh --project-name trading-season-local --env-file infrastructure/docker-compose/.env -f infrastructure/docker-compose/docker-compose.local.yml down -v --remove-orphans --rmi local',
                             returnStatus: true
                         )
                         if (composeCleanupStatus != 0) {
