@@ -3,7 +3,6 @@ package app.order;
 import app.account.Account;
 import app.account.AccountNotFoundException;
 import app.account.AccountRepository;
-import app.auth.ForbiddenException;
 import app.holding.Holding;
 import app.holding.HoldingRepository;
 import app.instrument.Instrument;
@@ -434,17 +433,34 @@ class OrderServiceTest {
         Order placed = submit(original, user.getUserId());
         account.setStatus("ARCHIVED"); account.setArchivedAt(java.time.Instant.now());
         accountRepository.saveAndFlush(account);
-        assertThrows(ForbiddenException.class,
+        assertThrows(app.auth.ForbiddenException.class,
                 () -> submit(order("BUY", "1", "10.00"), user.getUserId()));
         assertEquals(placed.getOrderId(), submit(original, user.getUserId()).getOrderId());
         assertEquals(1, orderRepository.count());
     }
 
     @Test
+    void anOrderSubmittedWhileNoQuoteIsAvailableIsRecordedAsRejected() {
+        org.mockito.Mockito.when(quoteSource.current(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new app.order.execution.ExecutionQuoteSource.QuoteUnavailableException());
+
+        Order order = orderService.submitOrder(order("BUY", "1", "100.00"), user.getUserId());
+
+        // BR-06: the intent is on record even though nothing could price it.
+        assertEquals(Order.STATUS_REJECTED, order.getStatus());
+        assertEquals("QUOTE_UNAVAILABLE", order.getRejectionCode());
+        assertEquals("Market price unavailable. Please try again.", order.getRejectionReason());
+        assertNull(order.getReferencePrice());
+        assertEquals(List.of(Order.STATUS_PENDING, Order.STATUS_REJECTED), auditEventsFor(order));
+        assertTrue(auditDetailsFor(order).get(0).contains(", no market quote available, buffer "));
+        assertEquals(0, STARTING_FUNDS.compareTo(availableFunds()));
+    }
+
+    @Test
     void submitOrderRefusesAnAccountTheCallerDoesNotOwn() {
         OrderRequest request = order("BUY", "1", "10.00");
 
-        assertThrows(ForbiddenException.class,
+        assertThrows(app.account.AccountNotFoundException.class,
                 () -> submit(request, UUID.randomUUID()));
         // Refused before anything is written: no order row, so no PENDING to explain later.
         assertTrue(orderRepository.findAll().isEmpty());
@@ -464,7 +480,7 @@ class OrderServiceTest {
                 placed.getClientReference()
         );
 
-        assertThrows(ForbiddenException.class,
+        assertThrows(app.account.AccountNotFoundException.class,
                 () -> submit(replay, UUID.randomUUID()));
     }
 

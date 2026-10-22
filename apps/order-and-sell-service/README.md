@@ -20,7 +20,7 @@ All require a bearer token except the public market reads.
 | POST | `/api/orders` | Submit a buy or sell order. Returns 201 with the outcome (`FILLED`, `REJECTED`, or `ACCEPTED` while open) |
 | GET | `/api/orders` | One page of the caller's orders across all their accounts, newest first (BR-11): `page` (zero-based, default 0) and `size` (default 50, at most 200); the total travels in the `X-Total-Count` header |
 | GET | `/api/orders/{orderId}/audit` | One of the caller's orders as its audit trail, oldest first: `eventType`, `price` (the quote that stage was priced against, BR-15: the execution quote for `FILLED`, the activation quote for `TRIGGERED`, otherwise the authoritative submission quote), `occurredAt`, `detail`. Another caller's order is 404, the same as a missing one |
-| GET | `/api/orders/stream` | Server-Sent Events: an `order-status` event with each committed status change's JSON body, and a `heartbeat` every 15 seconds |
+| GET | `/api/orders/stream` | Server-Sent Events: an `order-status` event with each committed status change's JSON body, and a `heartbeat` every 15 seconds. The stream ends when the token that opened it expires; the Client UI reopens it with a renewed token |
 | GET | `/api/instruments` | Every instrument (US equities only, as seeded by the [market data import](../market-data/README.md#universe)) with `assetClass`, `market`, `currency`, `tradable` and `simulatedStockSymbol` |
 | GET | `/api/users/me` | The caller's profile, without the SSN |
 | GET | `/api/market/snapshot`, `/candles`, `/stream` | Public market data (snapshot, OHLCV candles, SSE ticks) |
@@ -29,6 +29,8 @@ All require a bearer token except the public market reads.
 The canonical [Order API](api.md) documents the request/response fields, Market/Limit/Stop/Stop-Limit execution, immutable buffer preferences, shared-cash and share reservations, cancellation, authoritative replay quotes, retries, and optional disposable-PostgreSQL concurrency tests.
 
 Orders fill at server market quotes. `indicativePrice` is display/audit context. `orderType` remains BUY/SELL; `executionType` selects execution behavior. ACCEPTED orders can remain open until their conditions are met, the owner cancels them, or their simulation trading day closes. Execution failures retain reservations and retry with bounded backoff. Apply the [V011 migration](../../db/migrations/V011__Execution_preferences_and_order_types.sql) before starting the updated services. Also apply [V012](../../db/migrations/V012__Stop_trigger_reference.sql) for Stop activation quotes, and [V013](../../db/migrations/V013__Order_audit_lifecycle.sql) for conditional-order and cancellation audit events.
+
+State-changing requests (`POST`, `PUT`, `PATCH`, `DELETE` under `/api`) are refused with 403 to ADMIN and ANALYST tokens: operations roles read reporting and never trade (BR-02).
 
 ## Design
 
@@ -101,7 +103,8 @@ sequenceDiagram
 
     C->>S: submitOrder(request, callerId)
     Note over S,DB: Transaction 1: acceptance
-    S->>DB: Load account, check owner (403 or 404)
+    S->>DB: Read the instrument's quote (an outage records a rejection)
+    S->>DB: Load account, check owner (404 for a missing or foreign account)
     S->>DB: Look up accountId + clientReference
     alt Already processed
         S-->>C: Original order

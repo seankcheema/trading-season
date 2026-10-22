@@ -1,5 +1,6 @@
 services:
   client-ui:
+    restart: unless-stopped
     build:
       context: ../../apps/client-ui
       dockerfile: Dockerfile
@@ -18,6 +19,7 @@ services:
         condition: service_started
 
   reporting-ui:
+    restart: unless-stopped
     build:
       context: ../../apps/reporting-ui
       dockerfile: Dockerfile
@@ -83,6 +85,7 @@ services:
 
   # Holdings and Trade Service: manages accounts, holdings, and market data
   holdings-and-trade-service:
+    restart: unless-stopped
     build:
       # Repository root: the service also needs packages/trading-java-common.
       context: ../..
@@ -112,6 +115,7 @@ services:
 
   # Order and Sell Service: manages order execution, validation, and holdings movement
   order-and-sell-service:
+    restart: unless-stopped
     build:
       # Repository root: the service also needs packages/trading-java-common.
       context: ../..
@@ -141,6 +145,7 @@ services:
       - market_data_archive:/workspace/apps/market-data/db/seeds:ro
 
   db:
+    restart: unless-stopped
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: trading_season
@@ -286,6 +291,7 @@ services:
     command: ["python apps/market-data/db/scripts/python/0002-generate-synthetic-market-data.py && python apps/market-data/db/scripts/python/0003-validate-synthetic-market-data.py && python apps/market-data/db/scripts/python/0004-import-synthetic-market-data.py --tick-storage parquet --database-url postgresql://trading_season:${DB_PASSWORD:-changeme}@db:5432/trading_season"]
 
   auth-service:
+    restart: unless-stopped
     # Authentication and authorization service (KAN-79). Owns credentials and
     # token issuance; the business backend never sees a password.
     build:

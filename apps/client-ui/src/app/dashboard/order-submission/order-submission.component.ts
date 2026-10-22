@@ -175,11 +175,14 @@ export class OrderSubmissionComponent {
 
   protected readonly orderValue = computed(() => this.shares() * this.activeInstrument().price);
 
-  protected readonly cashAfter = computed(() =>
-    this.side() === 'buy'
-      ? this.cashBalance() - this.orderValue()
-      : this.cashBalance() + this.orderValue(),
-  );
+  // A buy holds back what the server reserves (the limit, or the price plus the execution
+  // buffer), so cash after shows that rather than the estimate at the shown price (BR-13).
+  protected readonly cashAfter = computed(() => {
+    const price = this.activeInstrument().price;
+    return this.side() === 'buy'
+      ? this.cashBalance() - this.shares() * (this.execution()?.reservationPriceFor(price) ?? price)
+      : this.cashBalance() + this.orderValue();
+  });
 
   protected readonly submitting = signal(false);
   private readonly coolingDown = signal(false);

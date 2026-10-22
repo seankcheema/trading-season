@@ -15,6 +15,18 @@ describe('Market preview quantities', () => {
     return fixture;
   }
 
+  it('deducts what a limit buy reserves from cash after, not the shown price', () => {
+    const fixture = setup();
+    const ticket = fixture.componentInstance;
+    ticket.execution()!.executionType.set('LIMIT');
+    ticket.execution()!.limitPrice.set(110);
+    ticket['quantity'].set(2);
+    fixture.detectChanges();
+
+    expect(ticket['cashAfter']()).toBe(780);
+    expect(ticket.draft().estimatedValue).toBe(200);
+  });
+
   it('corrects the visible value on every edit and synchronizes the slider', () => {
     const fixture = setup();
     const input = fixture.nativeElement.querySelector('input[type="number"]') as HTMLInputElement;

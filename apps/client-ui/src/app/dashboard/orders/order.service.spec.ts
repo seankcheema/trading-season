@@ -526,12 +526,51 @@ describe('OrderService', () => {
       expect(service.orders()[0].status).toBe('FILLED');
     });
 
-    it('re-reads the history for an order it has not seen', async () => {
+    it('re-reads the history for an order it has not seen and announces its fill', async () => {
+      const filled: OrderResult[] = [];
+      const resolved: OrderResult[] = [];
+      service.pendingFilled.subscribe((value) => filled.push(value));
+      service.pendingResolved.subscribe((value) => resolved.push(value));
       await signIn();
       stream.send('order-status', frame({ orderId: 77 }));
       await settle();
-      http.expectOne('/api/orders').flush([order({ orderId: 77 })]);
-      expect(service.orders().map((value) => value.orderId)).toEqual([77]);
+      // Only the order the frame named is announced, not older history the page never showed.
+      http.expectOne('/api/orders').flush([order({ orderId: 77 }), order({ orderId: 5 })]);
+      expect(service.orders().map((value) => value.orderId)).toEqual([77, 5]);
+      expect(filled.map((value) => value.orderId)).toEqual([77]);
+      expect(resolved.map((value) => value.orderId)).toEqual([77]);
+    });
+
+    it('announces orders a catch-up read finds resolved after they were open', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        const filled: OrderResult[] = [];
+        const resolved: OrderResult[] = [];
+        service.pendingFilled.subscribe((value) => filled.push(value));
+        service.pendingResolved.subscribe((value) => resolved.push(value));
+        await signIn();
+        service.loadOrders().subscribe();
+        http.expectOne('/api/orders').flush([
+          order({ orderId: 1, status: 'ACCEPTED', resolvedAt: null }),
+          order({ orderId: 2, status: 'ACCEPTED', resolvedAt: null }),
+          order({ orderId: 3 }),
+        ]);
+        stream.drop();
+        await settle();
+        const reopened = stream.opening();
+        vi.advanceTimersByTime(STREAM_RECONNECT_MS.initial);
+        await reopened;
+        await settle();
+        http.expectOne('/api/orders').flush([
+          order({ orderId: 1 }),
+          order({ orderId: 2, status: 'CANCELLED' }),
+          order({ orderId: 3 }),
+        ]);
+        expect(filled.map((value) => value.orderId)).toEqual([1]);
+        expect(resolved.map((value) => value.orderId)).toEqual([1, 2]);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('reopens a dropped stream after a growing delay and catches up once', async () => {

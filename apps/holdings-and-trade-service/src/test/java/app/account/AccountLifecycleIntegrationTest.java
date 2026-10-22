@@ -65,10 +65,10 @@ class AccountLifecycleIntegrationTest {
             var request = suffix.isEmpty() ? delete(path()).param("confirmed", "true") : post(path() + suffix);
             mvc.perform(request).andExpect(status().isUnauthorized());
             mvc.perform(request.with(jwt().jwt(t -> t.subject(UUID.randomUUID().toString()))))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isNotFound());
         }
         mvc.perform(get(path() + "/eligibility").with(jwt().jwt(t -> t.subject(UUID.randomUUID().toString()))))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isNotFound());
         mvc.perform(get("/api/me/accounts/archived").with(jwt().jwt(t -> t.subject(UUID.randomUUID().toString()))))
             .andExpect(jsonPath("$.length()").value(0));
     }

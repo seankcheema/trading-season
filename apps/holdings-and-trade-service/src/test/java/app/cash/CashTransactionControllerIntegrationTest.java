@@ -84,7 +84,19 @@ class CashTransactionControllerIntegrationTest {
         bobAccountId = openAccount(bobId, "Main Account", LocalDate.of(2026, 1, 1));
     }
 
-    private static RequestPostProcessor tokenFor(UUID userId, String email) {
+    @Test
+    void operationsRolesCannotMoveCash() throws Exception {
+        for (String role : new String[] {"ROLE_ADMIN", "ROLE_ANALYST"}) {
+            mockMvc.perform(post("/api/me/cash-transactions")
+                            .with(tokenFor(aliceId, ALICE_EMAIL).authorities(
+                                    new org.springframework.security.core.authority.SimpleGrantedAuthority(role)))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body("10.00", "DEPOSIT")))
+                    .andExpect(status().isForbidden());
+        }
+    }
+
+    private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor tokenFor(UUID userId, String email) {
         return jwt().jwt(token -> token
                 .subject(userId.toString())
                 .claim("email", email)

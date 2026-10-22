@@ -26,10 +26,16 @@ class OrderStatusStreamRegistryTest {
 
     @Test
     void subscribeOpensAConnectionForTheUser() {
-        assertNotNull(registry.subscribe(joanna));
+        var emitter = registry.subscribe(joanna, java.time.Instant.now().plusSeconds(900));
+        assertNotNull(emitter);
+        // The stream ends with the token that opened it; an expired token gets the shortest timeout.
+        assertTrue(emitter.getTimeout() > 890_000L && emitter.getTimeout() <= 900_000L);
+        assertEquals(1L, registry.subscribe(joanna, java.time.Instant.now().minusSeconds(5)).getTimeout());
 
-        assertEquals(1, registry.openConnections(joanna));
-        assertEquals(0, registry.openConnections(david));
+        assertEquals(0L, registry.subscribe(david, null).getTimeout());
+
+        assertEquals(2, registry.openConnections(joanna));
+        assertEquals(1, registry.openConnections(david));
     }
 
     @Test

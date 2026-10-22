@@ -138,7 +138,9 @@ export interface AuditEvent {
   // the entry that records the fill, the price it asked for on every other.
   // Null when the order carried no price.
   price: number | null;
-  priceKind: 'INDICATIVE' | 'FILL' | null;
+  // The quote the stage was priced against: the submission quote (REFERENCE), the stop's
+  // activation quote (TRIGGER), the fill (FILL), or for older orders the price asked for.
+  priceKind: 'INDICATIVE' | 'REFERENCE' | 'TRIGGER' | 'FILL' | null;
 }
 
 export interface OrderDetail extends OrderRow {

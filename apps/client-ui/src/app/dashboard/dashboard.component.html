@@ -23,12 +23,7 @@
         class="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:w-auto md:gap-3"
         data-testid="dashboard-header-controls"
       >
-        <app-market-clock-control
-          data-testid="market-clock-dropdown"
-          [open]="openHeaderDropdown() === 'market-clock'"
-          (openChange)="onHeaderDropdownOpenChange('market-clock', $event)"
-          (snapshotApplied)="onClockSnapshot($event)"
-        />
+        <app-market-clock-control data-testid="market-clock" />
         <app-account-control
           data-testid="account-dropdown"
           data-tour="account"
@@ -592,7 +587,7 @@
 }
 
 @if (settingsOpen()) {
-  <app-settings-dialog (closed)="closeSettings()" />
+  <app-settings-dialog (closed)="closeSettings()" (clockApplied)="onClockSnapshot($event)" />
 }
 
 @switch (historyDialog()) {

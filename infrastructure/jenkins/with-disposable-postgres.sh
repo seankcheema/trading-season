@@ -22,7 +22,15 @@ until docker exec "$name" pg_isready -U ci_test -d ci_test >/dev/null 2>&1; do
     sleep 1
 done
 port=$(docker port "$name" 5432/tcp | awk -F: '{print $NF}')
-export ORDER_TEST_DISPOSABLE_POSTGRES_URL="jdbc:postgresql://127.0.0.1:$port/ci_test"
+# The port is published on the Docker host's loopback. A process inside the Jenkins container
+# (which reaches Docker through the mounted socket) has its own loopback, so it must go through
+# the host alias instead. Containers started with --network host share the host's loopback and
+# keep using 127.0.0.1 (the migration URL below).
+host=127.0.0.1
+if [ -f /.dockerenv ] && getent hosts host.docker.internal >/dev/null 2>&1; then
+    host=host.docker.internal
+fi
+export ORDER_TEST_DISPOSABLE_POSTGRES_URL="jdbc:postgresql://$host:$port/ci_test"
 export ORDER_TEST_POSTGRES_USER=ci_test ORDER_TEST_POSTGRES_PASSWORD=ci_test
 export EXECUTION_MIGRATION_DISPOSABLE_DATABASE_URL="postgresql://ci_test:ci_test@127.0.0.1:$port/ci_test"
 "$@"
