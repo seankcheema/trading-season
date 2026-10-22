@@ -149,13 +149,11 @@ export class SettingsDialogComponent {
   }
 
   protected cannotSave(): boolean {
-    return (
-      this.loading() ||
-      this.buffer.invalid ||
-      !this.hasChanges() ||
-      this.saving() ||
-      this.saved()
-    );
+    return this.isBusy() || this.buffer.invalid || !this.hasChanges();
+  }
+
+  private isBusy(): boolean {
+    return this.loading() || this.saving() || this.saved();
   }
 
   protected loadBuffer(): void {
