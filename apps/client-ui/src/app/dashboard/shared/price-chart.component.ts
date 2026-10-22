@@ -29,6 +29,7 @@ import {
   ChartMode,
   MarketCandlePoint,
   TECHNICAL_INDICATOR_PERIODS,
+  RiskPoint,
   TechnicalIndicator,
   bollingerBands,
   closePricePoints,
@@ -224,7 +225,17 @@ const TOOLTIP_GAP_PX = 10;
             [title]="liveTailing() ? 'Stop following latest bars' : 'Follow latest bars'"
             (click)="liveTailing.set(!liveTailing())"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
               <path d="m13 2-3 8H4l7 12 3-8h6L13 2Z" />
             </svg>
             Live tailing
@@ -569,6 +580,73 @@ const TOOLTIP_GAP_PX = 10;
         </div>
       </section>
     }
+    @if (riskEnabled()) {
+      <section
+        class="rsi-pane risk-pane"
+        aria-label="Volatility outlook: the model's chance of bigger price swings over the next 5 trading days"
+        data-testid="risk-pane"
+      >
+        <div class="rsi-header">
+          <span>How likely are bigger swings next week? The model's call, day by day</span>
+          @if (latestRisk() !== undefined) {
+            <strong class="risk-value">now {{ latestRisk() | number: '1.0-0' }}%</strong>
+          }
+        </div>
+        <p class="risk-legend" data-testid="risk-legend">
+          <span><i class="risk-legend-line"></i> model's chance of bigger swings (up or down)</span>
+          <span><i class="risk-legend-band"></i> weeks that did have bigger swings</span>
+          @if (riskDots().length) {
+            <span><i class="risk-legend-dot risk-dot-hit"></i> call came true</span>
+            <span><i class="risk-legend-dot risk-dot-miss"></i> missed</span>
+          }
+        </p>
+        <div class="rsi-grid">
+          <div class="rsi-plot">
+            @if (riskReadingsVisible() >= 3) {
+              <svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
+                @for (band of riskBands(); track band.x) {
+                  <rect
+                    class="risk-band"
+                    [attr.x]="band.x"
+                    y="0"
+                    [attr.width]="band.width"
+                    height="40"
+                  />
+                }
+                <line x1="0" y1="20" x2="100" y2="20" class="rsi-guide" />
+                <path class="rsi-line risk-line" [attr.d]="riskPath()" fill="none" />
+                @for (dot of riskDots(); track dot.x) {
+                  <circle
+                    class="risk-dot"
+                    [class.risk-dot-hit]="dot.hit"
+                    [class.risk-dot-miss]="!dot.hit"
+                    [attr.cx]="dot.x"
+                    [attr.cy]="dot.y"
+                    r="0.9"
+                  />
+                }
+                @if (riskCoords().at(-1); as last) {
+                  <circle class="risk-now" [attr.cx]="last.x" [attr.cy]="last.y" r="1.2" />
+                }
+              </svg>
+            } @else {
+              <p class="risk-empty">
+                @if (riskSeries().length) {
+                  Daily readings: switch to 1M or 1Y to see them.
+                } @else {
+                  No model readings for this range yet.
+                }
+              </p>
+            }
+          </div>
+          <div class="rsi-axis risk-axis" aria-hidden="true">
+            <span class="rsi-axis-70">More likely</span>
+            <span class="risk-axis-50">50%</span>
+            <span class="rsi-axis-30">Less likely</span>
+          </div>
+        </div>
+      </section>
+    }
   `,
   styles: `
     .chart-control-bar,
@@ -773,6 +851,89 @@ const TOOLTIP_GAP_PX = 10;
       stroke-dasharray: 3 3;
       vector-effect: non-scaling-stroke;
     }
+    .rsi-line.risk-line {
+      stroke: var(--indicator-risk);
+    }
+    .risk-value {
+      color: var(--indicator-risk);
+    }
+    .risk-key {
+      background: color-mix(in srgb, var(--indicator-risk) 12%, transparent);
+      color: var(--indicator-risk);
+    }
+    .risk-band {
+      fill: color-mix(in srgb, var(--indicator-risk) 14%, transparent);
+    }
+    .risk-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.2rem 0.75rem;
+      margin: 0.15rem 0 0.25rem;
+      color: var(--muted-foreground);
+      font-size: 0.625rem;
+    }
+    .risk-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .risk-legend i {
+      display: inline-block;
+    }
+    .risk-legend-line {
+      width: 0.9rem;
+      height: 2px;
+      background: var(--indicator-risk);
+    }
+    .risk-legend-band {
+      width: 0.7rem;
+      height: 0.55rem;
+      background: color-mix(in srgb, var(--indicator-risk) 24%, transparent);
+    }
+    .risk-legend-dot {
+      width: 0.45rem;
+      height: 0.45rem;
+      border-radius: 999px;
+    }
+    .risk-dot-hit {
+      fill: var(--color-gain);
+      background: var(--color-gain);
+    }
+    .risk-dot-miss {
+      fill: var(--color-loss);
+      background: var(--color-loss);
+    }
+    .risk-dot {
+      stroke: var(--background);
+      stroke-width: 0.3;
+      vector-effect: non-scaling-stroke;
+    }
+    .risk-now {
+      fill: var(--indicator-risk);
+      stroke: var(--background);
+      stroke-width: 0.4;
+      vector-effect: non-scaling-stroke;
+    }
+    .risk-axis {
+      font-size: 0.5625rem;
+    }
+    .risk-axis-50 {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    }
+    .risk-empty {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 0.5rem;
+      color: var(--muted-foreground);
+      font-size: 0.625rem;
+      text-align: center;
+    }
     .rsi-line {
       stroke: var(--indicator-rsi);
       stroke-width: 1.5;
@@ -827,6 +988,8 @@ export class PriceChartComponent {
   readonly showCurrentPrice = input(false, { transform: booleanAttribute });
   readonly showIndicatorLabels = input(true);
   readonly enabledIndicators = input<readonly TechnicalIndicator[]>([]);
+  // The platform model's readings for the instrument, drawn in the risk pane when enabled.
+  readonly riskSeries = input<readonly RiskPoint[]>([]);
   // Fills the space under the line with a gradient in the trend color.
   readonly area = input(false, { transform: booleanAttribute });
   // Recorded observations use elapsed time and leave missing intervals disconnected.
@@ -953,11 +1116,78 @@ export class PriceChartComponent {
     () => this.mode() !== 'volume' && this.mode() !== 'percent',
   );
   protected readonly rsiEnabled = computed(() => this.enabledIndicators().includes('rsi'));
+  protected readonly riskEnabled = computed(() => this.enabledIndicators().includes('risk'));
   protected readonly priceIndicatorsEnabled = computed(() =>
     this.enabledIndicators().filter(
-      (indicator): indicator is Exclude<TechnicalIndicator, 'rsi'> => indicator !== 'rsi',
+      (indicator): indicator is Exclude<TechnicalIndicator, 'rsi' | 'risk'> =>
+        indicator !== 'rsi' && indicator !== 'risk',
     ),
   );
+  // Each visible candle takes the reading in force at its time: the latest one made at
+  // or before it. The pane therefore follows the visible range whatever the candle size.
+  private readonly riskCoords = computed(() => {
+    const readings = [...this.riskSeries()].sort((a, b) => a.time.getTime() - b.time.getTime());
+    if (!this.riskEnabled() || !readings.length) {
+      return [];
+    }
+    const candles = this.visibleCandles();
+    const last = Math.max(candles.length - 1, 1);
+    const scale = { min: 0, max: 100, range: 100 };
+    let cursor = -1;
+    return candles.flatMap((candle, index) => {
+      while (cursor + 1 < readings.length && readings[cursor + 1].time <= candle.time) {
+        cursor++;
+      }
+      if (cursor < 0) {
+        return [];
+      }
+      const reading = readings[cursor];
+      return [
+        {
+          x: (index / last) * WIDTH,
+          y: (this.valueToY(reading.value, scale) / 100) * HEIGHT,
+          value: reading.value,
+          stormier: reading.stormier,
+          made: reading.time.getTime(),
+        },
+      ];
+    });
+  });
+  protected readonly riskPath = computed(() => this.smoothPath(this.riskCoords()));
+  protected readonly riskDots = computed(() => {
+    const seen = new Set<number>();
+    const dots: { x: number; y: number; hit: boolean }[] = [];
+    for (const coord of this.riskCoords()) {
+      if (coord.stormier === null || seen.has(coord.made)) {
+        continue;
+      }
+      seen.add(coord.made);
+      dots.push({ x: coord.x, y: coord.y, hit: coord.value > 50 === coord.stormier });
+    }
+    return dots.length <= 40 ? dots : [];
+  });
+  protected readonly riskReadingsVisible = computed(
+    () => new Set(this.riskCoords().map((coord) => coord.made)).size,
+  );
+  protected readonly latestRisk = computed(() => this.riskCoords().at(-1)?.value);
+  // Shaded spans over candles whose reading's window turned out stormier than usual.
+  protected readonly riskBands = computed(() => {
+    const coords = this.riskCoords();
+    const bands: { x: number; width: number }[] = [];
+    const step = coords.length > 1 ? coords[1].x - coords[0].x : WIDTH;
+    for (const coord of coords) {
+      if (!coord.stormier) {
+        continue;
+      }
+      const previous = bands.at(-1);
+      if (previous && Math.abs(previous.x + previous.width - coord.x) < 1e-6) {
+        previous.width += step;
+      } else {
+        bands.push({ x: coord.x, width: step });
+      }
+    }
+    return bands;
+  });
   private readonly smaSeries = computed(() =>
     this.enabledIndicators().includes('sma')
       ? simpleMovingAverage(this.candles(), TECHNICAL_INDICATOR_PERIODS.sma)

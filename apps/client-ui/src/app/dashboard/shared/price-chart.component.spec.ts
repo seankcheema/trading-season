@@ -854,7 +854,14 @@ describe('PriceChartComponent', () => {
       const component = fixture.componentInstance;
       const plot = plotStub() as unknown as HTMLElement;
       const wheel = (init: Partial<WheelEvent>) => {
-        const event = { preventDefault: vi.fn(), clientX: 100, deltaX: 0, deltaY: 0, ctrlKey: false, ...init };
+        const event = {
+          preventDefault: vi.fn(),
+          clientX: 100,
+          deltaX: 0,
+          deltaY: 0,
+          ctrlKey: false,
+          ...init,
+        };
         component['onWheel'](event as unknown as WheelEvent, plot);
         return event;
       };
@@ -940,7 +947,13 @@ describe('PriceChartComponent', () => {
 
       const plot = root.querySelector('[tabindex="0"]') as HTMLElement;
       plot.getBoundingClientRect = () => ({ left: 0, width: 200 }) as DOMRect;
-      for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'pointerleave']) {
+      for (const type of [
+        'pointerdown',
+        'pointermove',
+        'pointerup',
+        'pointercancel',
+        'pointerleave',
+      ]) {
         plot.dispatchEvent(new MouseEvent(type, { clientX: 80, bubbles: true }));
       }
       plot.dispatchEvent(new WheelEvent('wheel', { deltaY: -50, clientX: 50, cancelable: true }));
@@ -965,5 +978,58 @@ describe('TimeframeToggleComponent', () => {
     );
     expect(labels).toEqual(['1D', '5D', '1M', '1Y']);
     expect(fixture.nativeElement.textContent).not.toContain('1W');
+  });
+
+  describe('model risk pane', () => {
+    function setupRisk(readings: { time: string; value: number; stormier: boolean | null }[]) {
+      const candles: MarketCandlePoint[] = ['15:30', '15:35', '15:40'].map((minute, i) => ({
+        time: new Date(`2026-01-01T${minute}:00Z`),
+        open: 100 + i,
+        high: 105 + i,
+        low: 98 + i,
+        close: 103 + i,
+        volume: 100,
+      }));
+      const fixture = TestBed.createComponent(PriceChartComponent);
+      fixture.componentRef.setInput('candles', candles);
+      fixture.componentRef.setInput('timeframe', '1D');
+      fixture.componentRef.setInput('mode', 'candles');
+      fixture.componentRef.setInput('enabledIndicators', ['risk']);
+      fixture.componentRef.setInput(
+        'riskSeries',
+        readings.map((r) => ({ ...r, time: new Date(r.time) })),
+      );
+      fixture.detectChanges();
+      return fixture;
+    }
+
+    it('draws the reading in force at each candle and shades the windows that turned out stormier', () => {
+      const fixture = setupRisk([
+        { time: '2026-01-01T15:29:00Z', value: 30, stormier: true },
+        { time: '2026-01-01T15:34:00Z', value: 55, stormier: true },
+        { time: '2026-01-01T15:39:00Z', value: 70, stormier: null },
+      ]);
+      const pane = fixture.nativeElement.querySelector('[data-testid=risk-pane]');
+      expect(pane).not.toBeNull();
+      expect(pane.querySelector('path.risk-line').getAttribute('d')).toMatch(/^M /);
+      // Two adjacent stormier candles merge into one band.
+      expect(pane.querySelectorAll('rect.risk-band')).toHaveLength(1);
+      expect(pane.textContent).toContain('70%');
+      // Two readings had closed windows: the 30% call missed a stormier week, the 55% call got it.
+      expect(pane.querySelectorAll('circle.risk-dot')).toHaveLength(2);
+      expect(pane.querySelectorAll('circle.risk-dot.risk-dot-hit')).toHaveLength(1);
+      expect(pane.querySelector('[data-testid=risk-legend]').textContent).toContain(
+        'call came true',
+      );
+      // The risk indicator is a pane, not a price overlay.
+      expect(fixture.nativeElement.querySelector('.chart-indicator-key')).toBeNull();
+    });
+
+    it('asks for a longer range when fewer than three readings fall in view', () => {
+      const fixture = setupRisk([{ time: '2026-01-01T15:29:00Z', value: 40, stormier: null }]);
+      const pane = fixture.nativeElement.querySelector('[data-testid=risk-pane]');
+      expect(pane.querySelector('path.risk-line')).toBeNull();
+      expect(pane.textContent).toContain('switch to 1M or 1Y');
+    });
   });
 });

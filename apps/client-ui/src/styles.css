@@ -120,6 +120,7 @@
   --indicator-ema: #6b3fc4;
   --indicator-bollinger: #c2410c;
   --indicator-rsi: #0e7490;
+  --indicator-risk: #be185d;
 
   /* Dua insight cards retain their cyan/purple glow in both themes. */
   --dua-ink: #0e0e0e;
@@ -184,6 +185,7 @@
   --indicator-ema: #b784ff;
   --indicator-bollinger: #ff8f66;
   --indicator-rsi: #42d3ff;
+  --indicator-risk: #f472b6;
 
   --dua-ink: #f4f7fa;
   --dua-heading: #ffffff;

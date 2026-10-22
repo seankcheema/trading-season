@@ -1,3 +1,4 @@
+import { SELECTED_ACCOUNT_STORAGE_KEY } from '../dashboard/accounts/account-store.service';
 import { ExecutionSettingsService } from '../dashboard/settings-dialog/execution-settings.service';
 import { of as savedExecutionPreference } from 'rxjs';
 import { provideHttpClient } from '@angular/common/http';
@@ -87,7 +88,12 @@ describe('MarketPageComponent', () => {
     accountId = '',
     orders: OrderResult[] = [],
     profile: { termsAccepted?: boolean } = {},
+    tab = '',
   ): Promise<ComponentFixture<MarketPageComponent>> {
+    // The account this tab chose earlier, as AccountStore keeps it; never a URL parameter.
+    if (accountId) {
+      sessionStorage.setItem(SELECTED_ACCOUNT_STORAGE_KEY, accountId);
+    }
     await TestBed.configureTestingModule({
       imports: [MarketPageComponent],
       providers: [
@@ -103,7 +109,7 @@ describe('MarketPageComponent', () => {
           provide: ActivatedRoute,
           useValue: {
             paramMap: of(convertToParamMap({ symbol })),
-            queryParamMap: of(convertToParamMap({ compare, accountId })),
+            queryParamMap: of(convertToParamMap(tab ? { compare, tab } : { compare })),
           },
         },
         { provide: MarketDataService, useValue: marketData },
@@ -140,6 +146,7 @@ describe('MarketPageComponent', () => {
   }
 
   beforeEach(() => {
+    sessionStorage.clear();
     vi.clearAllMocks();
     marketData.candles.mockImplementation(
       (_sessionId: number, symbol: string, timeframe: Timeframe) =>
@@ -419,6 +426,7 @@ describe('MarketPageComponent', () => {
       'EMA 20',
       'Bollinger Bands 20 · 2σ',
       'RSI 14',
+      'Volatility outlook 5-day',
     ]);
 
     options[0].click();
@@ -490,7 +498,9 @@ describe('MarketPageComponent', () => {
   it('positions the comparison menu under its trigger', async () => {
     const fixture = await setup();
     (
-      fixture.nativeElement.querySelector('[aria-controls="comparison-picker"]') as HTMLButtonElement
+      fixture.nativeElement.querySelector(
+        '[aria-controls="comparison-picker"]',
+      ) as HTMLButtonElement
     ).click();
     fixture.detectChanges();
 
@@ -566,15 +576,26 @@ describe('MarketPageComponent', () => {
     ) as HTMLButtonElement;
 
     expect(getComputedStyle(header).position).toBe('relative');
-    expect(Number(getComputedStyle(header).zIndex)).toBeGreaterThan(30);
+    // Above the chart menus (40) so its own dropdowns open over the page, but below the
+    // dialog backdrops (50) so a dialog covers the header too.
+    expect(Number(getComputedStyle(header).zIndex)).toBeGreaterThan(40);
+    expect(Number(getComputedStyle(header).zIndex)).toBeLessThan(50);
     expect(header.classList).not.toContain('border-b');
     expect(profile.classList).toContain('border-border');
     expect(profile.className).not.toContain('border-primary');
   });
 
+  it('opens the Outlook tool when the link asks for it', async () => {
+    const fixture = await setup('aapl', '', '', [], {}, 'outlook');
+    expect(fixture.componentInstance['insightTab']()).toBe('outlook');
+    expect(fixture.nativeElement.querySelector('[data-testid="market-outlook"]')).not.toBeNull();
+  });
+
   it('toggles live tailing for both comparison charts from the navigation bar', async () => {
     const fixture = await setup('aapl', 'msft');
-    const button = fixture.nativeElement.querySelector('[aria-label="Live tailing"]') as HTMLButtonElement;
+    const button = fixture.nativeElement.querySelector(
+      '[aria-label="Live tailing"]',
+    ) as HTMLButtonElement;
     expect(button.closest('.chart-control-bar')).toBeNull();
     expect(button.previousElementSibling?.classList).toContain('chart-control-bar');
     expect(button.textContent).toContain('Live tailing');
@@ -590,12 +611,16 @@ describe('MarketPageComponent', () => {
     expect(charts.every((chart) => chart.componentInstance.liveTailing())).toBe(true);
   });
 
-  it('offers only Trading and Recent Orders in the market tools', async () => {
+  it('offers Trading, Outlook and Recent Orders in the market tools', async () => {
     const fixture = await setup();
     const tabs = Array.from(
       fixture.nativeElement.querySelectorAll('[role="tab"]'),
     ) as HTMLButtonElement[];
-    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual(['Trading', 'Recent Orders']);
+    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual([
+      'Trading',
+      'Outlook',
+      'Recent Orders',
+    ]);
     expect(tabs[0].getAttribute('aria-selected')).toBe('true');
     tabs[1].click();
     fixture.detectChanges();
@@ -1131,7 +1156,7 @@ describe('MarketPageComponent', () => {
     expect(c['recentOrders']()[0].key).toBe('order-41');
     TestBed.inject(HttpTestingController).expectNone((r) => r.method === 'POST');
   });
-  it('falls back to the first owned account for invalid account links', async () => {
+  it('falls back to the first owned account when the saved one is not owned', async () => {
     const fixture = await setup('aapl', '', '999');
     expect(fixture.componentInstance['accountStore'].selectedAccountId()).toBe(1);
   });
@@ -1356,7 +1381,9 @@ describe('MarketPageComponent', () => {
       const instrument = component['instruments']().find((item) => item.symbol === 'MSFT')!;
       component['selectInstrument'](instrument);
       expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: null, accountId: 1 });
-      component['selectInstrument'](component['instruments']().find((item) => item.symbol === 'AAPL')!);
+      component['selectInstrument'](
+        component['instruments']().find((item) => item.symbol === 'AAPL')!,
+      );
       expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: 'msft', accountId: 1 });
     });
 
@@ -1406,8 +1433,15 @@ describe('MarketPageComponent', () => {
 
     it('marks the chart empty when the market has no candles', async () => {
       const fixture = await setup();
-      marketData.candles.mockImplementationOnce((_s: number, symbol: string, timeframe: Timeframe) =>
-        of({ sessionId: 7, symbol, timeframe, marketTimestamp: SNAPSHOT.marketTimestamp, points: [] }),
+      marketData.candles.mockImplementationOnce(
+        (_s: number, symbol: string, timeframe: Timeframe) =>
+          of({
+            sessionId: 7,
+            symbol,
+            timeframe,
+            marketTimestamp: SNAPSHOT.marketTimestamp,
+            points: [],
+          }),
       );
       fixture.componentInstance['candleRevision'].update((revision) => revision + 1);
       fixture.detectChanges();
@@ -1446,11 +1480,13 @@ describe('MarketPageComponent', () => {
       const http = TestBed.inject(HttpTestingController);
       http.expectOne('/api/instruments').flush({}, { status: 500, statusText: 'Error' });
       http.expectOne('/api/orders').flush({}, { status: 500, statusText: 'Error' });
-      http.match(() => true).forEach((request) => {
-        if (!request.cancelled) {
-          request.flush({}, { status: 500, statusText: 'Error' });
-        }
-      });
+      http
+        .match(() => true)
+        .forEach((request) => {
+          if (!request.cancelled) {
+            request.flush({}, { status: 500, statusText: 'Error' });
+          }
+        });
       expect(fixture.componentInstance['catalogueStatus']()).toBe('error');
     });
   });

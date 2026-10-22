@@ -159,16 +159,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly accounts = this.accountStore.accounts;
   protected readonly selectedAccount = this.accountStore.selectedAccount;
   protected readonly selectedAccountId = this.accountStore.selectedAccountId;
-  private initialAccountRestored = false;
-  private readonly restoreAccount = effect(() => {
-    const id = Number(this._router.routerState.snapshot.root.firstChild?.queryParams['accountId']);
-    if (this.accountStore.status() === 'ready' && !this.initialAccountRestored) {
-      this.initialAccountRestored = true;
-      if (id > 0) {
-        this.accountStore.selectAccount(id);
-      }
-    }
-  });
   protected readonly hasAccounts = computed(() => this.accounts().length > 0);
   // Until the accounts arrive there is no balance, holding or cash transfer to show, so the
   // cards that depend on them show placeholders instead of zeros and empty states.
@@ -226,7 +216,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     })),
   );
   protected readonly portfolioTabs = computed<SegmentedTab<'assets' | 'watchlist'>[]>(() => [
-    { id: 'assets', label: 'Assets', count: this.accountsLoading() ? null : this.visibleAssets().length },
+    {
+      id: 'assets',
+      label: 'Assets',
+      count: this.accountsLoading() ? null : this.visibleAssets().length,
+    },
     {
       id: 'watchlist',
       label: 'Watch List',
@@ -399,7 +393,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly tradingCashBalance = this.accountStore.spendableFunds;
   protected readonly tradingPositions = computed(() =>
     Object.fromEntries(
-      this.accountStore.selectedHoldings().map((holding) => [holding.symbol, holding.availableQuantity ?? holding.quantity]),
+      this.accountStore
+        .selectedHoldings()
+        .map((holding) => [holding.symbol, holding.availableQuantity ?? holding.quantity]),
     ),
   );
 

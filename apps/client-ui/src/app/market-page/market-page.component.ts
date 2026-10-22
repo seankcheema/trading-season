@@ -1,4 +1,3 @@
-import { DuaComponent } from '../dua/dua.component';
 import { OrderEditorComponent } from '../dashboard/shared/order-editor.component';
 import { WatchlistStore } from '../dashboard/watchlist/watchlist-store.service';
 import { WatchlistStarComponent } from '../dashboard/watchlist/watchlist-star.component';
@@ -20,6 +19,11 @@ import { TermsDialogComponent } from '../dashboard/terms/terms-dialog.component'
 import { AccountControlComponent } from '../dashboard/shared/account-control.component';
 import { MarketClockControlComponent } from '../dashboard/shared/market-clock-control.component';
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
+import { RiskOutlookComponent } from './risk-outlook/risk-outlook.component';
+import { TrendReadComponent } from './trend-read/trend-read.component';
+import { DuaComponent } from '../dua/dua.component';
+import { PlatformSignalsService } from './risk-outlook/platform-signals.service';
+import { riskPointsFor } from './risk-outlook/platform-signals';
 import {
   ActivityItem,
   ActivityRowComponent,
@@ -31,8 +35,8 @@ import {
   NgTemplateOutlet,
   CurrencyPipe,
   DecimalPipe,
-  TitleCasePipe,
   isPlatformBrowser,
+  TitleCasePipe,
 } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -65,19 +69,20 @@ import {
   lucideChartLine,
   lucideChartNoAxesColumn,
   lucideCrosshair,
-  lucideBotMessageSquare,
-  lucideMessageSquareText,
   lucidePanelRightClose,
   lucidePanelRightOpen,
   lucideGitCompare,
   lucidePercent,
+  lucideSlidersHorizontal,
+  lucideUserRound,
+  lucideX,
+  lucideBell,
+  lucideBotMessageSquare,
+  lucideMessageSquareText,
   lucideSendHorizontal,
   lucideShieldCheck,
-  lucideSlidersHorizontal,
   lucideTrendingUp,
-  lucideUserRound,
   lucideUsersRound,
-  lucideX,
 } from '@ng-icons/lucide';
 import { Subscription } from 'rxjs';
 import { Instrument, Timeframe, findInstrument } from '../dashboard/mock-data';
@@ -107,7 +112,7 @@ import { TradeTicketComponent } from '../dashboard/shared/trade-ticket.component
 type PageStatus = 'loading' | 'ready' | 'not-found' | 'error';
 type ChartStatus = 'loading' | 'ready' | 'empty' | 'error';
 
-type InsightTab = 'trading' | 'recent-orders';
+type InsightTab = 'trading' | 'outlook' | 'recent-orders';
 
 type ToolbarMenu = 'indicators' | 'chart-mode' | 'comparison';
 
@@ -125,8 +130,11 @@ interface MarketStats {
   selector: 'app-market-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    RiskOutlookComponent,
+    TrendReadComponent,
     ThemeToggleComponent,
     DuaComponent,
+    TitleCasePipe,
     NgTemplateOutlet,
     OrderEditorComponent,
     WatchlistStarComponent,
@@ -148,7 +156,6 @@ interface MarketStats {
     PriceChartComponent,
     RouterLink,
     SignedPercentPipe,
-    TitleCasePipe,
     TimeframeToggleComponent,
     TradeTicketComponent,
     TermsDialogComponent,
@@ -157,7 +164,7 @@ interface MarketStats {
     MarketClockService,
 
     provideIcons({
-          lucideActivity,
+      lucideActivity,
       lucideSettings,
       lucideLogOut,
       lucideChevronDown,
@@ -169,19 +176,20 @@ interface MarketStats {
       lucideChartLine,
       lucideChartNoAxesColumn,
       lucideCrosshair,
-      lucideBotMessageSquare,
-      lucideMessageSquareText,
       lucidePanelRightClose,
       lucidePanelRightOpen,
       lucideGitCompare,
       lucidePercent,
+      lucideSlidersHorizontal,
+      lucideUserRound,
+      lucideX,
+      lucideBell,
+      lucideBotMessageSquare,
+      lucideMessageSquareText,
       lucideSendHorizontal,
       lucideShieldCheck,
-      lucideSlidersHorizontal,
       lucideTrendingUp,
-      lucideUserRound,
       lucideUsersRound,
-      lucideX,
     }),
   ],
   templateUrl: './market-page.component.html',
@@ -206,9 +214,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   private readonly toasts = inject(ToastService);
   private readonly destroyRef = inject(DestroyRef);
 
-  protected readonly openHeaderDropdown = signal<
-    'account' | 'market-clock' | 'profile' | null
-  >(null);
+  protected readonly openHeaderDropdown = signal<'account' | 'market-clock' | 'profile' | null>(
+    null,
+  );
   protected readonly profileInitials = this.accountStore.initials;
   protected readonly settingsOpen = signal(false);
 
@@ -238,17 +246,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       this.settingsOpen.set(false);
       this.accountDialog.set(null);
     });
-  });
-
-  private readonly requestedAccountId = signal<number | null>(null);
-  private appliedAccountId: number | null = null;
-  private readonly selectRequestedAccount = effect(() => {
-    const id = this.requestedAccountId();
-
-    if (this.accountStore.status() === 'ready' && id !== null && id !== this.appliedAccountId) {
-      this.appliedAccountId = id;
-      this.accountStore.selectAccount(id);
-    }
   });
 
   protected readonly submitting = signal(false);
@@ -400,21 +397,11 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       });
   }
 
+  // The store keeps the choice for the dashboard and this tab; the URL never carries it.
   protected selectAccount(id: number): void {
-    if (!this.accountStore.selectAccount(id)) {
-      return;
+    if (this.accountStore.selectAccount(id)) {
+      this.openHeaderDropdown.set(null);
     }
-
-    this.requestedAccountId.set(id);
-
-    this.openHeaderDropdown.set(null);
-
-    void this.router.navigate([], {
-      relativeTo: this.route,
-      queryParams: { accountId: id },
-      queryParamsHandling: 'merge',
-      replaceUrl: true,
-    });
   }
 
   protected openCreateAccount(): void {
@@ -586,6 +573,21 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly toolsCollapsed = signal(false);
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
   protected readonly enabledIndicators = signal<readonly TechnicalIndicator[]>([]);
+  private readonly platformSignals = inject(PlatformSignalsService);
+  // The platform model's readings for the open instrument up to the simulated clock,
+  // for the chart's risk pane. The file loads the first time the indicator is enabled.
+  protected readonly riskSeries = computed(() => {
+    const signals = this.platformSignals.signals();
+    const at = this.marketTimestamp();
+    return signals && at && this.enabledIndicators().includes('risk')
+      ? riskPointsFor(signals, this.symbol(), at)
+      : [];
+  });
+  private readonly loadRiskSignals = effect(() => {
+    if (this.enabledIndicators().includes('risk') && this.platformSignals.status() === 'idle') {
+      this.platformSignals.load().subscribe({ error: () => undefined });
+    }
+  });
   protected readonly indicatorOptions = [
     { value: 'sma', label: 'SMA', period: TECHNICAL_INDICATOR_PERIODS.sma, detail: '' },
     { value: 'ema', label: 'EMA', period: TECHNICAL_INDICATOR_PERIODS.ema, detail: '' },
@@ -596,6 +598,12 @@ export class MarketPageComponent implements OnInit, OnDestroy {
       detail: ' · 2σ',
     },
     { value: 'rsi', label: 'RSI', period: TECHNICAL_INDICATOR_PERIODS.rsi, detail: '' },
+    {
+      value: 'risk',
+      label: 'Volatility outlook',
+      period: TECHNICAL_INDICATOR_PERIODS.risk,
+      detail: '-day',
+    },
   ] as const satisfies readonly {
     value: TechnicalIndicator;
     label: string;
@@ -770,12 +778,11 @@ export class MarketPageComponent implements OnInit, OnDestroy {
     );
     this.routeSubscription.add(
       this.route.queryParamMap.subscribe((params) => {
-        const accountId = Number(params.get('accountId'));
-
-        this.requestedAccountId.set(
-          Number.isInteger(accountId) && accountId > 0 ? accountId : null,
-        );
-
+        // A tab name in the query opens that tool, so a link can land on the Outlook card.
+        if (params.get('tab') === 'outlook') {
+          this.insightTab.set('outlook');
+          this.toolsCollapsed.set(false);
+        }
         const rawSymbol = params.get('compare') ?? '';
         const symbol = normalizeMarketSymbol(rawSymbol);
         this.comparisonSymbol.set(symbol);
@@ -810,7 +817,6 @@ export class MarketPageComponent implements OnInit, OnDestroy {
         compare: compare && compare !== instrument.symbol ? marketSymbolSlug(compare) : null,
         accountId: this.accountStore.selectedAccountId(),
       },
-
       queryParamsHandling: 'merge',
     });
   }

@@ -255,7 +255,7 @@ function feedRow(item: FeedItem): FeedRow {
                       <span class="text-muted-foreground text-xs">{{ percent(row.share) }}</span>
                     </span>
                   </div>
-                  <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-foreground/10">
                     <div class="h-full rounded-full" [class]="row.bar" [style.width.%]="row.share"></div>
                   </div>
                 </div>
@@ -276,7 +276,7 @@ function feedRow(item: FeedItem): FeedRow {
                     </span>
                   </div>
                   <p class="text-muted-foreground text-xs">{{ row.detail }}</p>
-                  <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-foreground/10">
                     <div class="bg-primary h-full rounded-full" [style.width.%]="row.share"></div>
                   </div>
                 </div>

@@ -4,7 +4,7 @@
 // must equal UserService.CURRENT_TERMS_VERSION in Holdings and Trade Service, which refuses any
 // other version. Change both together whenever a section below changes, so that every user is
 // asked to accept the new wording.
-export const TERMS_VERSION = '2026-10-12';
+export const TERMS_VERSION = '2026-10-21';
 
 export interface TermsSection {
   title: string;
@@ -48,7 +48,14 @@ export const TERMS_SECTIONS: readonly TermsSection[] = [
     ],
   },
   {
-    title: '6. Availability and risk notice',
+    title: '6. Model reads and trade signals',
+    paragraphs: [
+      'The platform shows reads produced by machine-learning models and simple patterns, including a volatility outlook and a trend signal that may suggest buying or selling over the next trading days. These reads are generated from simulated market data. They can be wrong, must not be taken as true, and are not predictions of any real market.',
+      'A read is not investment advice and not a recommendation to trade in any real account. Any decision you take on a read, inside or outside the platform, is yours alone, and the operator accepts no responsibility for it.',
+    ],
+  },
+  {
+    title: '7. Availability and risk notice',
     paragraphs: [
       'Availability, replay completeness, and simulation accuracy are not guaranteed, and simulated results may differ materially from live-market outcomes.',
       'You should independently verify any concept, workflow, or output before using it in a live investing, brokerage, finance, or compliance setting.',

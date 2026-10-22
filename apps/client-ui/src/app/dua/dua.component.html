@@ -63,19 +63,63 @@
     @if (!choice()) {
       <p class="greeting">What would you like to review?</p>
       <div class="choices">
+        @if (outlookSymbol()) {
+          <button
+            type="button"
+            class="choice-outlook"
+            aria-label="Volatility outlook"
+            data-testid="dua-outlook-choice"
+            (click)="select('outlook')"
+          >
+            <span class="choice-icon choice-icon-outlook">
+              <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" width="16" height="16">
+                <path
+                  d="M12 3v18M7 8l5-5 5 5M7 16l5 5 5-5"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </span>
+            <span class="choice-copy"
+              ><span class="choice-title"
+                >Volatility outlook <span class="choice-badge">LIVE</span></span
+              ><small>{{ outlookTeaser() }}</small></span
+            >
+            <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
+          </button>
+        }
+        @if (outlookSymbol()) {
+          <button
+            type="button"
+            class="choice-trending"
+            aria-label="What's trending"
+            data-testid="dua-trending-choice"
+            (click)="select('trending')"
+          >
+            <span class="choice-icon choice-icon-trending">
+              <ng-icon name="lucideZap" aria-hidden="true" />
+            </span>
+            <span class="choice-copy"
+              ><span class="choice-title"
+                >What's trending <span class="choice-badge">LIVE</span></span
+              ><small>{{ trendingTeaser() }}</small></span
+            >
+            <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
+          </button>
+        }
         <button type="button" aria-label="Daily Review" (click)="select('daily')">
           <span class="choice-icon"><ng-icon name="lucideNewspaper" aria-hidden="true" /></span>
           <span class="choice-copy"
-            ><span class="choice-title">Daily Review</span
-            ><small>Market highlights</small></span
+            ><span class="choice-title">Daily Review</span><small>Market highlights</small></span
           >
           <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
         </button>
         <button type="button" aria-label="My Holdings" (click)="select('holdings')">
           <span class="choice-icon"><ng-icon name="lucideChartPie" aria-hidden="true" /></span>
           <span class="choice-copy"
-            ><span class="choice-title">My Holdings</span
-            ><small>Portfolio highlights</small></span
+            ><span class="choice-title">My Holdings</span><small>Portfolio highlights</small></span
           >
           <ng-icon class="choice-chevron" name="lucideChevronRight" aria-hidden="true" />
         </button>
@@ -122,6 +166,19 @@
         <span class="visually-hidden" role="status">Fetching stock insights</span>
         <div class="skeleton insight-skeleton" aria-hidden="true"></div>
         <div class="skeleton insight-skeleton short" aria-hidden="true"></div>
+      }
+      @if ((choice() === 'outlook' || choice() === 'trending') && cards().length) {
+        <a
+          class="outlook-cta"
+          data-testid="dua-outlook-open"
+          [routerLink]="['/dashboard/markets', outlookSymbol().toLowerCase()]"
+          [queryParams]="{ tab: 'outlook', accountId: account.selectedAccountId() }"
+          (click)="minimize()"
+        >
+          Open the full {{ choice() === 'trending' ? 'trade signal' : 'outlook' }} for
+          {{ outlookSymbol() }}
+          <ng-icon name="lucideChevronRight" aria-hidden="true" />
+        </a>
       }
       <div class="insights" aria-live="polite">
         @for (card of cards(); track $index) {
@@ -179,7 +236,6 @@
                           <a
                             class="ticker-link"
                             [routerLink]="['/dashboard/markets', metric.symbol.toLowerCase()]"
-                            [queryParams]="{ accountId: account.selectedAccountId() }"
                             [attr.aria-label]="'Open ' + metric.symbol + ' stock analysis'"
                           >
                             {{ metric.label
@@ -218,7 +274,6 @@
                               <a
                                 class="ticker-link"
                                 [routerLink]="['/dashboard/markets', stock.symbol.toLowerCase()]"
-                                [queryParams]="{ accountId: account.selectedAccountId() }"
                                 [attr.aria-label]="'Open ' + stock.symbol + ' stock analysis'"
                                 >{{ stock.symbol }}</a
                               >

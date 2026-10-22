@@ -26,12 +26,17 @@ import {
   lucideRefreshCw,
   lucideScanSearch,
   lucideX,
+  lucideZap,
 } from '@ng-icons/lucide';
 import { AccountHolding } from '../dashboard/accounts/account.models';
 import { AccountStore } from '../dashboard/accounts/account-store.service';
 import { Instrument } from '../dashboard/mock-data';
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
 import { DuaSession } from './dua-session.service';
+import { PlatformSignalsService } from '../market-page/risk-outlook/platform-signals.service';
+import { readingFor } from '../market-page/risk-outlook/platform-signals';
+import { PlatformTrendService } from '../market-page/trend-read/platform-trend.service';
+import { trendOverview, trendReadingFor } from '../market-page/trend-read/platform-trend';
 import {
   DuaCard,
   DuaChoice,
@@ -42,6 +47,8 @@ import {
   holdingsPreviewCards,
   dailyPreviewCards,
   DUA_EXPLANATIONS,
+  outlookCard,
+  trendingCards,
   insightTextParts,
   sparklinePoints,
   takeawayParts,
@@ -51,6 +58,8 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
   daily: 'Daily Review',
   holdings: 'My Holdings',
   stock: 'Stock Insights',
+  outlook: 'Volatility outlook',
+  trending: "What's trending",
 };
 
 @Component({
@@ -73,6 +82,7 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
       lucideRefreshCw,
       lucideScanSearch,
       lucideX,
+      lucideZap,
     }),
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -90,6 +100,70 @@ export class DuaComponent {
   protected readonly session = inject(DuaSession);
   protected readonly account = inject(AccountStore);
   protected readonly clock = inject(MarketClockService);
+  protected readonly signals = inject(PlatformSignalsService);
+  // The stock the outlook choice is about: the open instrument, else the first holding.
+  protected readonly outlookSymbol = computed(
+    () => this.symbol() || this.holdings()[0]?.symbol || '',
+  );
+  protected readonly outlook = computed(() => {
+    const signals = this.signals.signals();
+    const at = this.clock.currentMarketTimestamp();
+    const symbol = this.outlookSymbol();
+    return signals && symbol && Number.isFinite(Date.parse(at))
+      ? readingFor(signals, symbol, at)
+      : null;
+  });
+  protected readonly outlookTeaser = computed(() => {
+    const symbol = this.outlookSymbol();
+    const reading = this.outlook();
+    if (!symbol) {
+      return '';
+    }
+    if (reading?.kind !== 'ready') {
+      return `${symbol} · the week-ahead read`;
+    }
+    const hits = reading.source === 'model' ? reading.modelHits : reading.ruleHits;
+    const days = reading.source === 'model' ? reading.modelDays : reading.ruleDays;
+    const swings = reading.call === 'stormier' ? 'bigger' : 'smaller';
+    return days
+      ? `${symbol} · ${swings} swings likely · right ${Math.round((hits / days) * 100)}% of the last ${days} weeks`
+      : `${symbol} · ${swings} swings likely`;
+  });
+  private readonly loadOutlook = effect(() => {
+    if (!this.session.minimized() && this.signals.status() === 'idle') {
+      this.signals.load().subscribe({ error: () => undefined });
+    }
+  });
+  protected readonly trend = inject(PlatformTrendService);
+  protected readonly trending = computed(() => {
+    const trend = this.trend.trend();
+    const at = this.clock.currentMarketTimestamp();
+    const symbol = this.outlookSymbol();
+    return trend && symbol && Number.isFinite(Date.parse(at))
+      ? trendReadingFor(trend, symbol, at)
+      : null;
+  });
+  protected readonly trendingTeaser = computed(() => {
+    const symbol = this.outlookSymbol();
+    const reading = this.trending();
+    if (!symbol) {
+      return '';
+    }
+    if (reading?.kind !== 'ready') {
+      return `${symbol} · the week-ahead trend read`;
+    }
+    const hits = reading.source === 'model' ? reading.modelHits : reading.ruleHits;
+    const days = reading.source === 'model' ? reading.modelDays : reading.ruleDays;
+    const verb = reading.call === 'up' ? 'consider buying' : 'consider selling';
+    return days
+      ? `${symbol} · ${verb} · right ${Math.round((hits / days) * 100)}% of the last ${days} weeks`
+      : `${symbol} · ${verb}`;
+  });
+  private readonly loadTrend = effect(() => {
+    if (!this.session.minimized() && this.trend.status() === 'idle') {
+      this.trend.load().subscribe({ error: () => undefined });
+    }
+  });
   protected readonly hovered = signal(false);
   protected readonly focused = signal(false);
   protected readonly hasUpdates = signal(false);
@@ -326,6 +400,47 @@ export class DuaComponent {
         minute: '2-digit',
       }).format(new Date(at)),
     );
+    if (choice === 'outlook') {
+      const reading = this.outlook();
+      if (reading?.kind !== 'ready') {
+        this.cards.set([]);
+        this.message.set(
+          reading?.kind === 'too-early'
+            ? `No outlook for ${this.outlookSymbol()} yet: the model's readings start ${reading.firstDay}.`
+            : `No outlook for ${this.outlookSymbol()} at this time.`,
+        );
+        return;
+      }
+      this.cards.set([outlookCard(this.outlookSymbol(), reading)]);
+      this.asOf.set('');
+      this.snapshotDisconnected.set(false);
+      return;
+    }
+    if (choice === 'trending') {
+      const reading = this.trending();
+      const trend = this.trend.trend();
+      if (!trend || reading?.kind !== 'ready') {
+        this.cards.set([]);
+        this.message.set(
+          reading?.kind === 'too-early'
+            ? `No trend read for ${this.outlookSymbol()} yet: readings start ${reading.firstDay}.`
+            : `No trend read for ${this.outlookSymbol()} at this time.`,
+        );
+        return;
+      }
+      this.cards.set(
+        trendingCards(
+          this.outlookSymbol(),
+          reading,
+          trendOverview(trend, at),
+          trend.horizonDays,
+          trend.momentumDays,
+        ),
+      );
+      this.asOf.set('');
+      this.snapshotDisconnected.set(false);
+      return;
+    }
     this.cards.set(
       choice === 'daily'
         ? dailyPreviewCards()
