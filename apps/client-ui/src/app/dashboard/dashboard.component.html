@@ -294,6 +294,7 @@
                 [minimumTransitionSpacingPx]="8"
                 changeBaseline="first-positive"
                 [area]="true"
+                tooltipPlacement="top"
                 [points]="portfolioChart()"
                 [timeframe]="portfolioHistory.displayedTimeframe()"
                 timezone="America/Chicago"
@@ -584,6 +585,7 @@
     [accountId]="selectedAccountId()?.toString() ?? ''"
     [cashBalance]="tradingCashBalance()"
     [positions]="tradingPositions()"
+    [attr.inert]="tourOpen() ? '' : null"
     (closed)="closeOrder()"
     (submitted)="onOrderSubmitted($event)"
   />
@@ -631,7 +633,7 @@
 }
 
 @if (tourOpen()) {
-  <app-dashboard-tour (finished)="onTourFinished($event)" />
+  <app-dashboard-tour (finished)="onTourFinished($event)" (ticketNeeded)="onTourTicket($event)" />
 }
 
 @if (termsRequired()) {
@@ -639,3 +641,5 @@
 }
 
 <app-order-editor [instruments]="instruments()" [sessionId]="marketSessionId()" [marketTimestamp]="currentMarketTimestamp()" />
+
+<app-dua [holdings]="simulationHoldings().get(selectedAccountId() ?? -1) ?? []" [quotes]="instruments()" [connected]="duaConnected()" />

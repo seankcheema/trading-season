@@ -35,9 +35,18 @@ test.describe('the first-run dashboard tour', () => {
     ).toBeVisible();
     await expect(page.getByTestId('tour-spotlight')).toBeVisible();
 
-    for (let step = 2; step <= 6; step++) {
+    for (let step = 2; step <= 5; step++) {
       await page.keyboard.press('ArrowRight');
     }
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('dialog', { name: 'Full screen market data' })).toBeVisible();
+    await expect(page.getByTestId('tour-spotlight')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Open full screen market chart' })).toBeVisible();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('dialog', { name: 'Meet Dua' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Open full screen market chart' })).toHaveCount(0);
+    await expect(page.getByTestId('tour-spotlight')).toBeVisible();
+    await page.keyboard.press('ArrowRight');
     await page.getByRole('button', { name: 'Find a stock' }).click();
 
     await expect(page.getByTestId('dashboard-tour')).toHaveCount(0);

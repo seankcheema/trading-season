@@ -55,6 +55,39 @@ describe('PriceChartComponent', () => {
     return fixture;
   }
 
+  it('tracks the plot size reported by a ResizeObserver and disconnects it on destroy', async () => {
+    let report: ResizeObserverCallback = () => undefined;
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          report = callback;
+        }
+        observe = observe;
+        disconnect = disconnect;
+      },
+    );
+    try {
+      const fixture = setup();
+      await fixture.whenStable();
+      expect(observe).toHaveBeenCalledTimes(1);
+
+      report(
+        [{ contentRect: { width: 480, height: 240 } } as ResizeObserverEntry],
+        {} as ResizeObserver,
+      );
+
+      expect(fixture.componentInstance['_plotWidth']()).toBe(480);
+      expect(fixture.componentInstance['_plotHeight']()).toBe(240);
+      fixture.destroy();
+      expect(disconnect).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('keeps the daily right edge at session close and places the current sample inside the domain', () => {
     const open = Date.parse('2026-01-05T14:30:00Z'),
       close = Date.parse('2026-01-05T21:00:00Z');
@@ -480,6 +513,74 @@ describe('PriceChartComponent', () => {
     }
   });
 
+  it('should pin a top-placed tooltip to the top of the plot, centered over the hovered point', () => {
+    const fixture = setup();
+    fixture.componentRef.setInput('tooltipPlacement', 'top');
+    const hovered = (index: number) => {
+      fixture.componentInstance['hoverIndex'].set(index);
+      fixture.detectChanges();
+      return {
+        pos: fixture.componentInstance['tooltipPosition'](),
+        point: fixture.componentInstance['hovered'](),
+        tooltip: fixture.nativeElement.querySelector('.price-hover-label') as HTMLElement,
+      };
+    };
+
+    const middle = hovered(13);
+    expect(middle.pos?.top).toBe(0);
+    expect(middle.pos?.left).toBe(middle.point?.x);
+    expect(middle.tooltip.classList).toContain('-translate-x-1/2');
+    expect(middle.tooltip.classList).toContain('translate-y-0');
+
+    // Vertical position does not follow the value, and edges keep the label inside the plot.
+    const first = hovered(0);
+    const last = hovered(fixture.componentInstance['visiblePoints']().length - 1);
+    expect(first.pos?.top).toBe(0);
+    expect(last.pos?.top).toBe(0);
+    expect(first.pos!.left).toBeGreaterThan(0);
+    expect(last.pos!.left).toBeLessThan(100);
+  });
+
+  it('should move a top-placed tooltip beside a point that it would otherwise cover', () => {
+    const points = [100, 140, 200, 140, 100, 120, 100].map((value, index) => ({
+      time: new Date(2026, 0, 1, 9, index * 10),
+      value,
+    }));
+    const fixture = setup('1D', points);
+    fixture.componentRef.setInput('tooltipPlacement', 'top');
+    fixture.componentInstance['_plotWidth'].set(600);
+    fixture.componentInstance['_plotHeight'].set(300);
+    fixture.componentInstance['_labelSize'].set({ width: 150, height: 72 });
+    const place = (index: number) => {
+      fixture.componentInstance['hoverIndex'].set(index);
+      fixture.detectChanges();
+      return {
+        pos: fixture.componentInstance['tooltipPosition'](),
+        point: fixture.componentInstance['hovered']()!,
+      };
+    };
+
+    // A point near the bottom has room above it: centered over it.
+    const low = place(4);
+    expect(low.point.y).toBeGreaterThan(50);
+    expect(low.pos).toMatchObject({ top: 0, centered: true });
+
+    // The peak is closer to the top than the label is tall: the label goes to its right, at
+    // the same height, instead of sitting on it.
+    const peak = place(2);
+    expect((peak.point.y / 100) * 300).toBeLessThan(82);
+    expect(peak.pos?.top).toBe(0);
+    expect(peak.pos?.centered).toBeFalsy();
+    expect(peak.pos?.flipLeft).toBe(false);
+    expect(peak.pos!.left).toBeGreaterThan(peak.point.x);
+
+    // Near the right edge it goes to the left of the point instead.
+    fixture.componentInstance['_plotWidth'].set(200);
+    const crowded = place(2);
+    expect(crowded.pos?.flipLeft).toBe(true);
+    expect(crowded.pos!.left).toBeLessThan(crowded.point.x);
+  });
+
   it('should render tooltip inside the plot as descendant', () => {
     const fixture = setup();
     fixture.componentInstance['hoverIndex'].set(13);
@@ -564,6 +665,66 @@ describe('PriceChartComponent', () => {
     expect(fixture.componentInstance['hoverIndex']()).toBe(25);
     plot.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home' }));
     expect(fixture.componentInstance['hoverIndex']()).toBe(0);
+  });
+
+  it('tails incoming bars at the current zoom only while enabled', () => {
+    const points = Array.from({ length: 120 }, (_, index) => ({
+      time: new Date(2026, 0, 1, 9, index),
+      value: 100 + index,
+    }));
+    const fixture = setup('1D', points, true);
+    const chart = fixture.componentInstance;
+    chart['zoom'](0.8);
+    chart['pan'](-0.5);
+    const count = chart['viewCount']();
+    fixture.componentRef.setInput('liveTailing', true);
+    fixture.detectChanges();
+    expect(chart['atLatest']()).toBe(true);
+    const next = { time: new Date(2026, 0, 1, 11, 1), value: 230 };
+    fixture.componentRef.setInput('points', [...points, next]);
+    fixture.detectChanges();
+    expect(chart['visiblePoints']().at(-1)).toEqual(next);
+    expect(chart['viewCount']()).toBe(count);
+    fixture.componentRef.setInput('liveTailing', false);
+    fixture.detectChanges();
+    const start = chart['viewStart']();
+    fixture.componentRef.setInput('points', [...points, next, { ...next, value: 231 }]);
+    fixture.detectChanges();
+    expect(chart['viewStart']()).toBe(start);
+    expect(chart['visiblePoints']().at(-1)).toEqual(next);
+    expect(chart['atLatest']()).toBe(false);
+  });
+
+  it.each(['buttons', 'drag', 'wheel'])('disables live tailing after panning back with %s', (method) => {
+    const points = Array.from({ length: 120 }, (_, index) => ({
+      time: new Date(2026, 0, 1, 9, index),
+      value: 100 + index,
+    }));
+    const fixture = setup('1D', points, true);
+    const chart = fixture.componentInstance;
+    fixture.componentRef.setInput('liveTailing', true);
+    fixture.detectChanges();
+    const plot = fixture.nativeElement.querySelector('[role="group"]') as HTMLElement;
+    vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue({
+      left: 0, width: 400, top: 0, height: 200,
+    } as DOMRect);
+    if (method === 'buttons') {
+      chart['pan'](-0.25);
+    } else if (method === 'drag') {
+      chart['onPointerDown']({ clientX: 100, pointerId: 1 } as PointerEvent, plot);
+      expect(chart.liveTailing()).toBe(true);
+      chart['onPointerMove']({ clientX: 200 } as PointerEvent, plot);
+      chart['onPointerUp']({ pointerId: 1 } as PointerEvent, plot);
+    } else {
+      chart['onWheel'](new WheelEvent('wheel', { deltaX: -100, deltaY: 0, clientX: 200 }), plot);
+    }
+    fixture.detectChanges();
+    expect(chart.liveTailing()).toBe(false);
+    expect(chart['atLatest']()).toBe(false);
+    const start = chart['viewStart']();
+    fixture.componentRef.setInput('points', [...points, { time: new Date(2026, 0, 1, 12), value: 240 }]);
+    fixture.detectChanges();
+    expect(chart['viewStart']()).toBe(start);
   });
 
   it('should zoom and return to the latest bars', () => {

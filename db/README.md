@@ -20,7 +20,18 @@ The Reporting Service does not connect to it. What reporting shows is published 
 | [V016__Protect_trade_records.sql](migrations/V016__Protect_trade_records.sql) | Triggers that make the [trade record](#trade-record) append-only (BR-14, section 9.4) |
 | [V017__Protect_client_identity.sql](migrations/V017__Protect_client_identity.sql) | Triggers that fix the identity of the client the trade record is attributed to, and make `terms_acceptances` append-only |
 
-In Docker, `db-init` runs [infrastructure/docker/init-db.sh](../infrastructure/docker/init-db.sh), which applies each file once and records it in `public.schema_migrations`. For a local PostgreSQL, apply the files in order with `psql -v ON_ERROR_STOP=1 -f`. Never edit an applied migration; add a new one.
+In Docker, `db-init` runs [infrastructure/docker/init-db.sh](../infrastructure/docker/init-db.sh), which applies each file once and records it in `public.schema_migrations`. For local PostgreSQL on Windows, use [migrate-local.ps1](../scripts/migrate-local.ps1), which uses the same filename ledger, applies pending migrations transactionally, and serializes concurrent runs. See [Windows migration setup](../docs/local-setup/windows.md#3-migrate-and-seed-the-database) for new databases and explicit baselining of existing databases without a ledger. Never edit an applied migration; add a new one.
+
+The Windows runner's integration checks use a new temporary PostgreSQL cluster,
+never the application database. With PostgreSQL binaries on `PATH`, run:
+
+```powershell
+.\scripts\tests\test-migrate-local.ps1
+```
+
+The checks cover fresh setup, repeated runs, both V009 filenames, explicit legacy
+baselining, failure rollback, resuming an upgrade, and preserving existing data.
+The test stops its cluster and prints the retained diagnostic directory.
 
 ## Reporting feed tools
 

@@ -2088,7 +2088,7 @@ describe('DashboardComponent', () => {
       flushAccounts(fixture);
       const page = fixture.nativeElement as HTMLElement;
 
-      for (const target of ['search', 'net-worth', 'account', 'portfolio', 'assets']) {
+      for (const target of ['search', 'net-worth', 'account', 'portfolio', 'assets', 'dua']) {
         expect(page.querySelector(`[data-tour="${target}"]`)).not.toBeNull();
       }
     });
@@ -2135,6 +2135,77 @@ describe('DashboardComponent', () => {
       expect(localStorage.getItem('ts.tour.done')).toBe('1');
     });
 
+    it('opens an inert order ticket for the full screen step and closes it afterwards', async () => {
+      localStorage.setItem('ts.tour.step', '6');
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture);
+      await fixture.whenStable();
+      const page = fixture.nativeElement as HTMLElement;
+
+      expect(tour(fixture)?.textContent).toContain('Full screen market data');
+      expect(page.querySelector('app-order-submission [data-tour="full-screen"]')).not.toBeNull();
+      expect(page.querySelector('app-order-submission')?.hasAttribute('inert')).toBe(true);
+      // The sample ticket is not recorded as a recent search.
+      expect(sessionStorage.getItem('ts.recent-instruments')).toBeNull();
+
+      tourButton(fixture, 'Next').click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(tour(fixture)?.textContent).toContain('Meet Dua');
+      expect(page.querySelector('app-order-submission')).toBeNull();
+    });
+
+    it('falls back to the first instrument when the market has no Apple', () => {
+      const fixture = createDashboard();
+      const component = fixture.componentInstance;
+      const others = MOCK_INSTRUMENTS.filter((instrument) => instrument.symbol !== 'AAPL');
+      component['instruments'].set(others);
+
+      component['onTourTicket'](true);
+
+      expect(component['orderSymbol']()).toBe(others[0].symbol);
+    });
+
+    it('opens no sample ticket before any instruments have loaded', () => {
+      const fixture = createDashboard();
+      const component = fixture.componentInstance;
+      component['instruments'].set([]);
+
+      component['onTourTicket'](true);
+
+      expect(component['orderSymbol']()).toBeNull();
+    });
+
+    it('leaves a ticket the user opened alone when the tour moves on', () => {
+      const fixture = createDashboard();
+      const component = fixture.componentInstance;
+      component['openOrder'](MOCK_INSTRUMENTS[1]);
+
+      component['onTourTicket'](true);
+      component['onTourTicket'](false);
+
+      expect(component['orderSymbol']()).toBe(MOCK_INSTRUMENTS[1].symbol);
+    });
+
+    it('closes the sample ticket when the tour is dismissed', async () => {
+      localStorage.setItem('ts.tour.step', '6');
+      const fixture = createDashboard();
+      fixture.detectChanges();
+      flushAccounts(fixture);
+      await fixture.whenStable();
+      const page = fixture.nativeElement as HTMLElement;
+      expect(page.querySelector('app-order-submission')).not.toBeNull();
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(tour(fixture)).toBeNull();
+      expect(page.querySelector('app-order-submission')).toBeNull();
+    });
+
     it('starts again from the first step from the profile menu, and returns focus there', async () => {
       localStorage.setItem('ts.tour.done', '1');
       localStorage.setItem('ts.tour.step', '4');
@@ -2172,7 +2243,7 @@ describe('DashboardComponent', () => {
       // Reopen at the last step.
       fixture.componentInstance['tourOpen'].set(false);
       fixture.detectChanges();
-      localStorage.setItem('ts.tour.step', '6');
+      localStorage.setItem('ts.tour.step', '8');
       fixture.componentInstance['tourOpen'].set(true);
       fixture.detectChanges();
       await fixture.whenStable();

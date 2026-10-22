@@ -12,6 +12,7 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
+  globalSetup: './scripts/playwright-setup.mjs',
   // Every spec creates its own accounts, so nothing is shared between workers.
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
@@ -26,6 +27,9 @@ export default defineConfig({
     ['html', { outputFolder: 'reports/playwright/html', open: 'never' }],
     ['junit', { outputFile: 'reports/playwright/junit.xml' }],
   ],
+  // The default 5s is tight for a full page load plus Angular bootstrap on a
+  // shared CI agent running two workers.
+  expect: { timeout: 10_000 },
   outputDir: 'reports/playwright/artifacts',
   use: {
     baseURL: 'http://localhost:4200',
@@ -34,23 +38,4 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-  webServer: {
-    // Deliberately the built SSR server rather than `ng serve`. The Vite dev
-    // server dies part way through a parallel run on Windows, taking the
-    // remaining tests down with a connection error, and a production build is
-    // the closer match to what these journeys run against anyway. /api needs no
-    // proxy here because every API call is answered by the stub.
-    command: 'npm run build && node dist/client-ui/server/server.mjs',
-    // NG_ALLOWED_HOSTS supplies the host allowlist at runtime. The build's
-    // security.allowedHosts is empty on purpose, and a deployment is expected
-    // to name its own hosts; this names the one the suite serves on rather
-    // than relaxing that setting.
-    env: { PORT: '4200', NG_ALLOWED_HOSTS: 'localhost' },
-    url: 'http://localhost:4200',
-    // Locally, reuse a server that is already up; CI always builds its own.
-    reuseExistingServer: !process.env['CI'],
-    timeout: 300_000,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  },
 });

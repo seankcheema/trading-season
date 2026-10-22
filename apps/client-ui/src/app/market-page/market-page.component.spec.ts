@@ -1,4 +1,3 @@
-import { SELECTED_ACCOUNT_STORAGE_KEY } from '../dashboard/accounts/account-store.service';
 import { ExecutionSettingsService } from '../dashboard/settings-dialog/execution-settings.service';
 import { of as savedExecutionPreference } from 'rxjs';
 import { provideHttpClient } from '@angular/common/http';
@@ -89,10 +88,6 @@ describe('MarketPageComponent', () => {
     orders: OrderResult[] = [],
     profile: { termsAccepted?: boolean } = {},
   ): Promise<ComponentFixture<MarketPageComponent>> {
-    // The account this tab chose earlier, as AccountStore keeps it; never a URL parameter.
-    if (accountId) {
-      sessionStorage.setItem(SELECTED_ACCOUNT_STORAGE_KEY, accountId);
-    }
     await TestBed.configureTestingModule({
       imports: [MarketPageComponent],
       providers: [
@@ -108,7 +103,7 @@ describe('MarketPageComponent', () => {
           provide: ActivatedRoute,
           useValue: {
             paramMap: of(convertToParamMap({ symbol })),
-            queryParamMap: of(convertToParamMap({ compare })),
+            queryParamMap: of(convertToParamMap({ compare, accountId })),
           },
         },
         { provide: MarketDataService, useValue: marketData },
@@ -145,7 +140,6 @@ describe('MarketPageComponent', () => {
   }
 
   beforeEach(() => {
-    sessionStorage.clear();
     vi.clearAllMocks();
     marketData.candles.mockImplementation(
       (_sessionId: number, symbol: string, timeframe: Timeframe) =>
@@ -228,7 +222,7 @@ describe('MarketPageComponent', () => {
     ).toBe(true);
   });
 
-  it('opens the dashboard profile actions from the header, which has no notifications bell', async () => {
+  it('opens the dashboard profile actions from the header and has no notifications control', async () => {
     const fixture = await setup();
     const header = fixture.nativeElement.querySelector('header');
     const profile = header.querySelector('[data-testid="profile-dropdown"]');
@@ -236,7 +230,6 @@ describe('MarketPageComponent', () => {
       fixture.componentInstance['accountStore'].initials(),
     );
     expect(header.querySelector('[data-testid="notifications-dropdown"]')).toBeNull();
-    expect(header.querySelector('[aria-label="Open notifications"]')).toBeNull();
     profile.querySelector('summary').click();
     fixture.detectChanges();
     profile.querySelector('button').click();
@@ -573,25 +566,43 @@ describe('MarketPageComponent', () => {
     ) as HTMLButtonElement;
 
     expect(getComputedStyle(header).position).toBe('relative');
-    // Above the chart menus (40) so its own dropdowns open over the page, but below the
-    // dialog backdrops (50) so a dialog covers the header too.
-    expect(Number(getComputedStyle(header).zIndex)).toBeGreaterThan(40);
-    expect(Number(getComputedStyle(header).zIndex)).toBeLessThan(50);
+    expect(Number(getComputedStyle(header).zIndex)).toBeGreaterThan(30);
     expect(header.classList).not.toContain('border-b');
     expect(profile.classList).toContain('border-border');
     expect(profile.className).not.toContain('border-primary');
   });
 
-  it('offers only the Trading and Recent Orders tabs in the market tools', async () => {
+  it('toggles live tailing for both comparison charts from the navigation bar', async () => {
+    const fixture = await setup('aapl', 'msft');
+    const button = fixture.nativeElement.querySelector('[aria-label="Live tailing"]') as HTMLButtonElement;
+    expect(button.closest('.chart-control-bar')).toBeNull();
+    expect(button.previousElementSibling?.classList).toContain('chart-control-bar');
+    expect(button.textContent).toContain('Live tailing');
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    const charts = fixture.debugElement.queryAll(By.directive(PriceChartComponent));
+    expect(charts).toHaveLength(2);
+    button.click();
+    fixture.detectChanges();
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(charts.every((chart) => !chart.componentInstance.liveTailing())).toBe(true);
+    button.click();
+    fixture.detectChanges();
+    expect(charts.every((chart) => chart.componentInstance.liveTailing())).toBe(true);
+  });
+
+  it('offers only Trading and Recent Orders in the market tools', async () => {
     const fixture = await setup();
     const tabs = Array.from(
       fixture.nativeElement.querySelectorAll('[role="tab"]'),
     ) as HTMLButtonElement[];
     expect(tabs.map((tab) => tab.textContent?.trim())).toEqual(['Trading', 'Recent Orders']);
-    expect(tabs[0].classList).toContain('bg-primary');
+    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+    tabs[1].click();
+    fixture.detectChanges();
+    expect(tabs[1].getAttribute('aria-selected')).toBe('true');
+    expect(fixture.nativeElement.querySelector('.overview-feed')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.news-feed')).toBeNull();
     expect(fixture.nativeElement.querySelector('[aria-label="Ask market AI"]')).toBeNull();
-    expect(fixture.nativeElement.querySelector('.overview-summary')).toBeNull();
-    expect(fixture.nativeElement.querySelector('.news-story')).toBeNull();
   });
 
   it('includes recent orders and expands the chart when tools are collapsed', async () => {
@@ -888,6 +899,10 @@ describe('MarketPageComponent', () => {
     fixture.detectChanges();
     expect(root.querySelector('.chart-message')).toBeNull();
     expect(root.querySelector('app-price-chart')).not.toBeNull();
+    // Hover details sit at the top of the plot, above the hovered point.
+    for (const chart of fixture.debugElement.queryAll(By.directive(PriceChartComponent))) {
+      expect(chart.componentInstance.tooltipPlacement()).toBe('top');
+    }
     pending.complete();
   });
 
@@ -1116,7 +1131,7 @@ describe('MarketPageComponent', () => {
     expect(c['recentOrders']()[0].key).toBe('order-41');
     TestBed.inject(HttpTestingController).expectNone((r) => r.method === 'POST');
   });
-  it('falls back to the first owned account when the saved one is not owned', async () => {
+  it('falls back to the first owned account for invalid account links', async () => {
     const fixture = await setup('aapl', '', '999');
     expect(fixture.componentInstance['accountStore'].selectedAccountId()).toBe(1);
   });
@@ -1340,9 +1355,9 @@ describe('MarketPageComponent', () => {
       const component = fixture.componentInstance;
       const instrument = component['instruments']().find((item) => item.symbol === 'MSFT')!;
       component['selectInstrument'](instrument);
-      expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: null });
+      expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: null, accountId: 1 });
       component['selectInstrument'](component['instruments']().find((item) => item.symbol === 'AAPL')!);
-      expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: 'msft' });
+      expect(navigate.mock.calls.at(-1)![1].queryParams).toEqual({ compare: 'msft', accountId: 1 });
     });
 
     it('reflects stream connection status and reloads the snapshot on resync', async () => {

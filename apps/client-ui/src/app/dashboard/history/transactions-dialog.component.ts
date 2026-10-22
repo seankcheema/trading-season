@@ -322,9 +322,9 @@ const EXECUTION_FILTERS: readonly { id: ExecutionFilter; label: string }[] = [
         </p>
       }
 
-      @if (loadError()) {
-        <p class="text-loss mb-3 text-xs" role="status" data-testid="transactions-error">
-          Unable to load your full cash history. Showing recent transfers only.
+      @if (cancelError()) {
+        <p class="text-loss mb-3 text-xs" role="status" data-testid="transactions-cancel-error">
+          Unable to cancel this order. Please try again.
         </p>
       }
 
@@ -545,7 +545,7 @@ export class TransactionsDialogComponent implements OnInit {
   protected readonly loading = signal(true);
   // How many placeholder rows stand in for the table while it loads.
   protected readonly skeletonRows = [1, 2, 3, 4, 5, 6] as const;
-  protected readonly loadError = signal(false);
+  protected readonly cancelError = signal(false);
   protected readonly exportOpen = signal(false);
   protected readonly exporting = signal(false);
   protected readonly exportError = signal(false);
@@ -554,10 +554,11 @@ export class TransactionsDialogComponent implements OnInit {
     if (row.orderId === null || this.cancelling().has(row.orderId)) {
       return;
     }
+    this.cancelError.set(false);
     this.cancelling.update((ids) => new Set(ids).add(row.orderId!));
     this.orderService.cancelOrder(row.orderId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => { this.cancelling.update((ids) => withoutId(ids, row.orderId!)); this.accountStore.load(true); },
-      error: () => { this.cancelling.update((ids) => withoutId(ids, row.orderId!)); this.loadError.set(true); },
+      error: () => { this.cancelling.update((ids) => withoutId(ids, row.orderId!)); this.cancelError.set(true); },
     });
   }
   protected readonly expandedOrderId = signal<number | null>(null);
@@ -648,7 +649,6 @@ export class TransactionsDialogComponent implements OnInit {
           this.loading.set(false);
         },
         error: () => {
-          this.loadError.set(true);
           this.loading.set(false);
         },
       });
