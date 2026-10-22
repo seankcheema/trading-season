@@ -1,0 +1,49 @@
+{
+  "family": "reporting-service",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "1024",
+  "executionRoleArn": "{{EXECUTION_ROLE_ARN}}",
+  "containerDefinitions": [
+    {
+      "name": "reporting-service",
+      "image": "{{REGISTRY}}/team2/reporting-service:{{IMAGE_TAG}}",
+      "essential": true,
+      "stopTimeout": 30,
+      "portMappings": [{ "containerPort": 8083, "protocol": "tcp" }],
+      "environment": [
+        { "name": "FLASK_ENV", "value": "production" },
+        { "name": "FLASK_DEBUG", "value": "false" },
+        { "name": "AUTH_SERVICE_URL", "value": "http://auth-service.{{CLOUD_MAP_SUFFIX}}:3001" },
+        { "name": "AUTH_JWT_ISSUER", "value": "{{JWT_ISSUER}}" },
+        { "name": "CORS_ORIGINS", "value": "{{CORS_ORIGINS}}" },
+        { "name": "REPORTING_SERVICE_PORT", "value": "8083" },
+        { "name": "REPORTING_SERVICE_HOST", "value": "0.0.0.0" },
+        { "name": "KAFKA_BOOTSTRAP_SERVERS", "value": "{{KAFKA_BOOTSTRAP_SERVERS}}" },
+        { "name": "KAFKA_TRADE_EVENTS_TOPIC", "value": "trade-events" },
+        { "name": "KAFKA_PLATFORM_RECORDS_TOPIC", "value": "platform-records" },
+        { "name": "REPORTING_CONSUMER_GROUP", "value": "reporting-ingester" },
+        { "name": "SCHEDULER_ENABLED", "value": "true" },
+        { "name": "SCHEDULER_INTERVAL_MINUTES", "value": "15" },
+        { "name": "REPORTING_FILES_DIR", "value": "/data/reporting" }
+      ],
+      "healthCheck": {
+        "command": ["CMD", "python", "-c", "import requests; requests.get('http://127.0.0.1:8083/health', timeout=3)"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 120
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/team2/reporting-service",
+          "awslogs-region": "{{REGION}}",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ],
+  "tags": [{ "key": "TEAM", "value": "2" }]
+}

@@ -1,0 +1,45 @@
+{
+  "family": "holdings-and-trade-service",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "{{EXECUTION_ROLE_ARN}}",
+  "containerDefinitions": [
+    {
+      "name": "holdings-and-trade-service",
+      "image": "{{REGISTRY}}/team2/holdings-and-trade-service:{{IMAGE_TAG}}",
+      "essential": true,
+      "portMappings": [{ "containerPort": 8082, "protocol": "tcp" }],
+      "environment": [
+        { "name": "SPRING_DATASOURCE_URL", "value": "jdbc:postgresql://{{RDS_ENDPOINT}}:5432/trading_season?sslmode=require" },
+        { "name": "SPRING_DATASOURCE_USERNAME", "value": "trading_season" },
+        { "name": "AUTH_JWK_SET_URI", "value": "http://auth-service.{{CLOUD_MAP_SUFFIX}}:3001/.well-known/jwks.json" },
+        { "name": "AUTH_JWT_ISSUER", "value": "{{JWT_ISSUER}}" },
+        { "name": "CORS_ORIGINS", "value": "{{CORS_ORIGINS}}" },
+        { "name": "KAFKA_BOOTSTRAP_SERVERS", "value": "{{KAFKA_BOOTSTRAP_SERVERS}}" },
+        { "name": "SERVER_FORWARD_HEADERS_STRATEGY", "value": "framework" },
+        { "name": "JAVA_TOOL_OPTIONS", "value": "-XX:MaxRAMPercentage=70" }
+      ],
+      "secrets": [
+        { "name": "SPRING_DATASOURCE_PASSWORD", "valueFrom": "{{DB_PASSWORD_SECRET_ARN}}" }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8082/v3/api-docs || exit 1"],
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 120
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/team2/holdings-and-trade-service",
+          "awslogs-region": "{{REGION}}",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ],
+  "tags": [{ "key": "TEAM", "value": "2" }]
+}
