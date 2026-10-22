@@ -195,6 +195,7 @@ export class DuaComponent {
         : undefined;
       this.resizeAnimation?.cancel();
       this.resizeAnimation = undefined;
+      panel.classList.remove('resizing');
       const bounds = panel.getBoundingClientRect();
       const previous = this.panelSize;
       this.panelSize = minimized ? undefined : { height: bounds.height, width: bounds.width };
@@ -214,11 +215,15 @@ export class DuaComponent {
         easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
       });
       this.resizeAnimation = animation;
-      animation.onfinish = () => {
+      panel.classList.add('resizing');
+      const finish = () => {
         if (this.resizeAnimation === animation) {
           this.resizeAnimation = undefined;
+          panel.classList.remove('resizing');
         }
       };
+      animation.onfinish = finish;
+      animation.oncancel = finish;
     });
     inject(DestroyRef).onDestroy(() => {
       this.resizeAnimation?.cancel();

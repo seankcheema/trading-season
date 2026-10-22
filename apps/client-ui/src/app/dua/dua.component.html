@@ -36,7 +36,7 @@
       <h2 [class.dua-title]="!choice()">
         {{ title() }}
         @if (!choice()) {
-          <span class="plan-label"> - Free Plan</span>
+          <span class="plan-label">Free Plan</span>
         }
       </h2>
       @if (choice() && asOf()) {
@@ -342,6 +342,7 @@
 <button
   #launcher
   class="dua-launcher"
+  data-tour="dua"
   type="button"
   aria-label="Dua insights"
   [attr.aria-expanded]="!session.minimized()"
@@ -356,14 +357,22 @@
     @if (imagesFailed()) {
       <span class="fallback">Dua</span>
     } @else {
-      <img
-        class="launcher-art"
-        [class.face-visible]="faceVisible()"
-        src="/assets/assistant/shark-launcher-light-512.png"
-        alt=""
-        draggable="false"
-        (error)="imageFailed()"
-      />
+      <span class="launcher-art" [class.face-visible]="faceVisible()">
+        <img
+          class="launcher-body"
+          src="/assets/assistant/shark-launcher-body-512.png"
+          alt=""
+          draggable="false"
+          (error)="imageFailed()"
+        />
+        <img
+          class="launcher-fin"
+          src="/assets/assistant/shark-launcher-fin-512.png"
+          alt=""
+          draggable="false"
+          (error)="imageFailed()"
+        />
+      </span>
     }
   </span>
   @if (hasUpdates() && session.minimized()) {

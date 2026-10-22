@@ -279,6 +279,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly tourOpen = signal(false);
   private tourOffered = false;
   private tourFromMenu = false;
+  private tourOpenedOrder = false;
   private readonly offerTour = effect(() => {
     if (this.accountStore.status() !== 'ready' || this.termsRequired() || this.tourOffered) {
       return;
@@ -830,6 +831,25 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this._tourProgress.saveStep(0);
     this.tourFromMenu = true;
     this.tourOpen.set(true);
+  }
+
+  // The tour's full screen step points at a button inside the order ticket, so the tour has a
+  // ticket open for that step: Apple when the market has it, otherwise the first instrument.
+  // Nothing opens when no instruments have loaded, and the step is then shown without a
+  // spotlight. The ticket is closed again as the tour leaves the step, but never one the
+  // user opened themselves.
+  protected onTourTicket(needed: boolean): void {
+    if (needed) {
+      const instruments = this.instruments();
+      const sample = findInstrument('AAPL', instruments) ?? instruments[0];
+      if (sample && this.orderSymbol() === null) {
+        this.orderSymbol.set(sample.symbol);
+        this.tourOpenedOrder = true;
+      }
+    } else if (this.tourOpenedOrder) {
+      this.tourOpenedOrder = false;
+      this.orderSymbol.set(null);
+    }
   }
 
   // Focus waits for the dashboard to stop being inert. Finishing hands over to the search;

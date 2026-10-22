@@ -103,13 +103,10 @@ test('executes a trade and shows recent orders within the full-screen layout', a
     expect(pickerBounds!.y + pickerBounds!.height / 2).toBe(
       searchBounds!.y + searchBounds!.height / 2,
     );
-    for (const id of ['notifications-dropdown', 'profile-dropdown']) {
-      const iconBounds = await page.getByTestId(id).locator('summary').boundingBox();
-      expect(iconBounds!.height).toBe(36);
-      expect(iconBounds!.y + iconBounds!.height / 2).toBe(
-        searchBounds!.y + searchBounds!.height / 2,
-      );
-    }
+    await expect(page.getByTestId('notifications-dropdown')).toHaveCount(0);
+    const iconBounds = await page.getByTestId('profile-dropdown').locator('summary').boundingBox();
+    expect(iconBounds!.height).toBe(36);
+    expect(iconBounds!.y + iconBounds!.height / 2).toBe(searchBounds!.y + searchBounds!.height / 2);
     for (const id of ['market-clock-dropdown', 'account-dropdown']) {
       const trigger = await page.getByTestId(id).locator('summary').boundingBox();
       expect(trigger!.height).toBe(36);

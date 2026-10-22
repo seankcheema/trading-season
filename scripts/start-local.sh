@@ -352,9 +352,14 @@ ensure_python_environment() {
 # seeded here: the Auth Service creates them itself when it starts, outside
 # production.
 seed_database() {
-    local candles trader
+    local candles trader imported
+    # The importer leaves its session RUNNING until every month is verified, so
+    # a COMPLETED session means the whole archive is in; candles alone could be
+    # a partial or test import, which the importer resumes or replaces.
+    imported="$(database_psql -c "SELECT count(*) FROM simulation_sessions WHERE id = 2026001 AND status = 'COMPLETED'")" || \
+        fail 'Could not read the simulation_sessions table.'
     candles="$(database_psql -c 'SELECT count(*) FROM candles')" || fail 'Could not read the candles table.'
-    if ((candles > 0)); then
+    if ((imported > 0)); then
         ready "Market data - $candles candles already imported; skipping."
     else
         ensure_python_environment "$market_data_dir/.venv" "$market_data_dir/scripts/python/requirements.txt" \

@@ -222,16 +222,14 @@ describe('MarketPageComponent', () => {
     ).toBe(true);
   });
 
-  it('opens notifications and the dashboard profile actions from the header', async () => {
+  it('opens the dashboard profile actions from the header and has no notifications control', async () => {
     const fixture = await setup();
     const header = fixture.nativeElement.querySelector('header');
     const profile = header.querySelector('[data-testid="profile-dropdown"]');
     expect(profile.querySelector('[data-testid="profile-initials"]').textContent.trim()).toBe(
       fixture.componentInstance['accountStore'].initials(),
     );
-    header.querySelector('[data-testid="notifications-dropdown"] summary').click();
-    fixture.detectChanges();
-    expect(header.textContent).toContain('No notifications yet.');
+    expect(header.querySelector('[data-testid="notifications-dropdown"]')).toBeNull();
     profile.querySelector('summary').click();
     fixture.detectChanges();
     profile.querySelector('button').click();
@@ -901,6 +899,10 @@ describe('MarketPageComponent', () => {
     fixture.detectChanges();
     expect(root.querySelector('.chart-message')).toBeNull();
     expect(root.querySelector('app-price-chart')).not.toBeNull();
+    // Hover details sit at the top of the plot, above the hovered point.
+    for (const chart of fixture.debugElement.queryAll(By.directive(PriceChartComponent))) {
+      expect(chart.componentInstance.tooltipPlacement()).toBe('top');
+    }
     pending.complete();
   });
 

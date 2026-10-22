@@ -480,6 +480,74 @@ describe('PriceChartComponent', () => {
     }
   });
 
+  it('should pin a top-placed tooltip to the top of the plot, centered over the hovered point', () => {
+    const fixture = setup();
+    fixture.componentRef.setInput('tooltipPlacement', 'top');
+    const hovered = (index: number) => {
+      fixture.componentInstance['hoverIndex'].set(index);
+      fixture.detectChanges();
+      return {
+        pos: fixture.componentInstance['tooltipPosition'](),
+        point: fixture.componentInstance['hovered'](),
+        tooltip: fixture.nativeElement.querySelector('.price-hover-label') as HTMLElement,
+      };
+    };
+
+    const middle = hovered(13);
+    expect(middle.pos?.top).toBe(0);
+    expect(middle.pos?.left).toBe(middle.point?.x);
+    expect(middle.tooltip.classList).toContain('-translate-x-1/2');
+    expect(middle.tooltip.classList).toContain('translate-y-0');
+
+    // Vertical position does not follow the value, and edges keep the label inside the plot.
+    const first = hovered(0);
+    const last = hovered(fixture.componentInstance['visiblePoints']().length - 1);
+    expect(first.pos?.top).toBe(0);
+    expect(last.pos?.top).toBe(0);
+    expect(first.pos!.left).toBeGreaterThan(0);
+    expect(last.pos!.left).toBeLessThan(100);
+  });
+
+  it('should move a top-placed tooltip beside a point that it would otherwise cover', () => {
+    const points = [100, 140, 200, 140, 100, 120, 100].map((value, index) => ({
+      time: new Date(2026, 0, 1, 9, index * 10),
+      value,
+    }));
+    const fixture = setup('1D', points);
+    fixture.componentRef.setInput('tooltipPlacement', 'top');
+    fixture.componentInstance['_plotWidth'].set(600);
+    fixture.componentInstance['_plotHeight'].set(300);
+    fixture.componentInstance['_labelSize'].set({ width: 150, height: 72 });
+    const place = (index: number) => {
+      fixture.componentInstance['hoverIndex'].set(index);
+      fixture.detectChanges();
+      return {
+        pos: fixture.componentInstance['tooltipPosition'](),
+        point: fixture.componentInstance['hovered']()!,
+      };
+    };
+
+    // A point near the bottom has room above it: centered over it.
+    const low = place(4);
+    expect(low.point.y).toBeGreaterThan(50);
+    expect(low.pos).toMatchObject({ top: 0, centered: true });
+
+    // The peak is closer to the top than the label is tall: the label goes to its right, at
+    // the same height, instead of sitting on it.
+    const peak = place(2);
+    expect((peak.point.y / 100) * 300).toBeLessThan(82);
+    expect(peak.pos?.top).toBe(0);
+    expect(peak.pos?.centered).toBeFalsy();
+    expect(peak.pos?.flipLeft).toBe(false);
+    expect(peak.pos!.left).toBeGreaterThan(peak.point.x);
+
+    // Near the right edge it goes to the left of the point instead.
+    fixture.componentInstance['_plotWidth'].set(200);
+    const crowded = place(2);
+    expect(crowded.pos?.flipLeft).toBe(true);
+    expect(crowded.pos!.left).toBeLessThan(crowded.point.x);
+  });
+
   it('should render tooltip inside the plot as descendant', () => {
     const fixture = setup();
     fixture.componentInstance['hoverIndex'].set(13);

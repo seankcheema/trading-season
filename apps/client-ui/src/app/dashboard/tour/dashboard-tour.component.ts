@@ -29,6 +29,9 @@ export interface TourStep {
   title: string;
   body: string;
   place?: TourPlacement;
+  // The step points into an order ticket, so the host opens one behind it for as long as the
+  // step is showing.
+  ticket?: boolean;
 }
 
 export interface TourRect {
@@ -74,6 +77,19 @@ export const TOUR_STEPS: readonly TourStep[] = [
     target: 'assets',
     title: 'Holdings and watch list',
     body: 'Click any row to trade it. Star a stock in its order ticket to keep it on your watch list.',
+    place: 'top',
+  },
+  {
+    target: 'full-screen',
+    title: 'Full screen market data',
+    body: 'Click any stock, in your holdings, your watch list or the search, to open its order ticket, then choose Full screen here. You get a larger live chart with news, your recent orders and the ticket beside it.',
+    place: 'bottom',
+    ticket: true,
+  },
+  {
+    target: 'dua',
+    title: 'Meet Dua',
+    body: 'Dua is your market guide, always one click away. Open it for a daily review, a look at your holdings, or insights on the stock you are viewing. The figures are examples for now.',
     place: 'top',
   },
   {
@@ -179,7 +195,7 @@ let nextTourId = 0;
           [style.top.px]="position().top"
           [style.width.px]="cardWidth()"
         >
-          @if (!rect()) {
+          @if (current === 0) {
             <img src="2b-waves.svg" alt="" class="mb-3 size-10" />
           }
           <div class="flex items-center justify-between gap-3">
@@ -322,6 +338,9 @@ export class DashboardTourComponent implements OnDestroy {
   private _closed = false;
 
   readonly finished = output<TourExit>();
+  // Whether the current step needs an order ticket open behind it.
+  readonly ticketNeeded = output<boolean>();
+  private _ticketOpen = false;
 
   protected readonly steps = TOUR_STEPS;
   protected readonly dots = TOUR_STEPS.slice(1).map((_, index) => index + 1);
@@ -420,14 +439,34 @@ export class DashboardTourComponent implements OnDestroy {
   private show(step: number): void {
     this.step.set(step);
     this._progress.saveStep(step);
+    // The host opens or closes the ticket in response, so the step is measured once that has
+    // rendered. This runs after render, not here, as a step restored in the constructor has no
+    // listener yet.
     afterNextRender(
       () => {
-        this.revealTarget();
-        this.measure();
-        this._primary()?.nativeElement.focus();
+        const settle = () => {
+          this.revealTarget();
+          this.measure();
+          this._primary()?.nativeElement.focus();
+        };
+        if (this.setTicket(!!TOUR_STEPS[step].ticket)) {
+          afterNextRender(settle, { injector: this._injector });
+        } else {
+          settle();
+        }
       },
       { injector: this._injector },
     );
+  }
+
+  // Tells the host whether an order ticket is needed; true when that changed it.
+  private setTicket(needed: boolean): boolean {
+    if (needed === this._ticketOpen) {
+      return false;
+    }
+    this._ticketOpen = needed;
+    this.ticketNeeded.emit(needed);
+    return true;
   }
 
   private target(): HTMLElement | null {
@@ -450,6 +489,7 @@ export class DashboardTourComponent implements OnDestroy {
   private close(exit: TourExit): void {
     this._progress.finish();
     this._closed = true;
+    this.setTicket(false);
     this.finished.emit(exit);
   }
 }

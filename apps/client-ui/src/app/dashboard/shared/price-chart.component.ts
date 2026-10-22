@@ -13,6 +13,7 @@ import {
   ElementRef,
   LOCALE_ID,
   afterNextRender,
+  afterRenderEffect,
   booleanAttribute,
   computed,
   effect,
@@ -134,7 +135,19 @@ interface TooltipPosition {
   top: number;
   flipLeft: boolean;
   flipTop: boolean;
+  // Centered on the point's x position, instead of beside it.
+  centered?: boolean;
 }
+
+// 'point' puts the label beside the hovered point; 'top' pins it to the top of the plot, directly
+// above the point, so it never changes vertical position.
+export type TooltipPlacement = 'point' | 'top';
+
+// The label's widest size (max-width 12rem) and a typical height, used until it is measured, and
+// the space kept between a top-placed label and the point it describes.
+const TOOLTIP_MAX_WIDTH_PX = 192;
+const TOOLTIP_FALLBACK_HEIGHT_PX = 72;
+const TOOLTIP_GAP_PX = 10;
 
 @Component({
   selector: 'app-price-chart',
@@ -273,12 +286,14 @@ interface TooltipPosition {
         @if (tooltipPoint(); as point) {
           @if (tooltipPosition(); as pos) {
             <div
+              #hoverLabel
               class="price-hover-label pointer-events-none absolute whitespace-nowrap tabular-nums overflow-hidden rounded px-2 py-1"
               [class]="hovered() ? '' : 'invisible'"
               [style.left.%]="pos.left"
               [style.top.%]="pos.top"
-              [class.translate-x-0]="!pos.flipLeft"
-              [class.-translate-x-full]="pos.flipLeft"
+              [class.translate-x-0]="!pos.flipLeft && !pos.centered"
+              [class.-translate-x-full]="pos.flipLeft && !pos.centered"
+              [class.-translate-x-1/2]="pos.centered"
               [class.translate-y-0]="!pos.flipTop"
               [class.-translate-y-full]="pos.flipTop"
             >
@@ -289,12 +304,12 @@ interface TooltipPosition {
               >
                 {{ point.changePercent | signedPercent }}
               </span>
-              <span class="text-muted-foreground text-[13px]/5">· {{ point.timeLabel }}</span>
+              <span class="text-muted-foreground text-[13px]/5">{{ point.timeLabel }}</span>
               @if (point.volumeLabel) {
-                <span class="text-primary text-[13px]/5">· Vol {{ point.volumeLabel }}</span>
+                <span class="text-primary text-[13px]/5">Vol {{ point.volumeLabel }}</span>
               }
               @if (point.ohlcLabel) {
-                <span class="text-muted-foreground text-[13px]/5">· {{ point.ohlcLabel }}</span>
+                <span class="text-muted-foreground text-[13px]/5">{{ point.ohlcLabel }}</span>
               }
             </div>
           }
@@ -806,6 +821,7 @@ export class PriceChartComponent {
   readonly timezone = input('UTC');
   readonly interactive = input(false, { transform: booleanAttribute });
   readonly interactionKey = input('');
+  readonly tooltipPlacement = input<TooltipPlacement>('point');
   readonly liveTailing = model(false);
   readonly showLiveTailing = input(false);
   readonly showCurrentPrice = input(false, { transform: booleanAttribute });
@@ -874,6 +890,10 @@ export class PriceChartComponent {
 
   private readonly _plot = viewChild.required<ElementRef<HTMLElement>>('plot');
   private readonly _plotWidth = signal(0);
+  private readonly _plotHeight = signal(0);
+  private readonly _hoverLabel = viewChild<ElementRef<HTMLElement>>('hoverLabel');
+  // The hover label's rendered size, so a top-placed label can tell when it would cover its point.
+  private readonly _labelSize = signal({ width: 0, height: 0 });
 
   constructor() {
     const destroyRef = inject(DestroyRef);
@@ -892,14 +912,28 @@ export class PriceChartComponent {
       }
     });
 
+    afterRenderEffect(() => {
+      const label = this._hoverLabel()?.nativeElement;
+      this.tooltipPoint();
+      if (!label) {
+        return;
+      }
+      const { offsetWidth: width, offsetHeight: height } = label;
+      const known = untracked(this._labelSize);
+      if (Math.abs(known.width - width) > 0.5 || Math.abs(known.height - height) > 0.5) {
+        this._labelSize.set({ width, height });
+      }
+    });
+
     afterNextRender(() => {
       // Absent in the unit-test DOM; the axis then falls back to its unmeasured spacing.
       if (typeof ResizeObserver === 'undefined') {
         return;
       }
-      const observer = new ResizeObserver(([entry]) =>
-        this._plotWidth.set(entry.contentRect.width),
-      );
+      const observer = new ResizeObserver(([entry]) => {
+        this._plotWidth.set(entry.contentRect.width);
+        this._plotHeight.set(entry.contentRect.height);
+      });
       observer.observe(this._plot().nativeElement);
       destroyRef.onDestroy(() => observer.disconnect());
     });
@@ -1178,6 +1212,30 @@ export class PriceChartComponent {
     const point = this.tooltipPoint();
     if (!point) {
       return null;
+    }
+
+    if (this.tooltipPlacement() === 'top') {
+      const plotWidth = this._plotWidth() || 600;
+      const plotHeight = this._plotHeight() || 300;
+      const { width: measuredWidth, height: measuredHeight } = this._labelSize();
+      const width = measuredWidth || TOOLTIP_MAX_WIDTH_PX;
+      const height = measuredHeight || TOOLTIP_FALLBACK_HEIGHT_PX;
+      // Centered over the point, held inside the plot near its left and right edges, unless
+      // the point is high enough that the label would sit on it.
+      if ((point.y / 100) * plotHeight >= height + TOOLTIP_GAP_PX) {
+        const half = Math.min(50, (width / 2 / plotWidth) * 100);
+        const left = Math.max(half, Math.min(100 - half, point.x));
+        return { left, top: 0, flipLeft: false, flipTop: false, centered: true };
+      }
+      // Still along the top, but beside the point: to its right, or its left near the right edge.
+      const gap = (TOOLTIP_GAP_PX / plotWidth) * 100;
+      const fitsRight = (point.x / 100) * plotWidth + TOOLTIP_GAP_PX + width <= plotWidth;
+      return {
+        left: fitsRight ? point.x + gap : point.x - gap,
+        top: 0,
+        flipLeft: !fitsRight,
+        flipTop: false,
+      };
     }
 
     // Cursor offset in percentage of plot dimensions

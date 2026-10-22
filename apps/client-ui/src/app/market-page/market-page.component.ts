@@ -54,7 +54,6 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideActivity,
-  lucideBell,
   lucideSettings,
   lucideLogOut,
   lucideChevronDown,
@@ -159,7 +158,6 @@ interface MarketStats {
 
     provideIcons({
           lucideActivity,
-      lucideBell,
       lucideSettings,
       lucideLogOut,
       lucideChevronDown,
@@ -209,7 +207,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly openHeaderDropdown = signal<
-    'account' | 'market-clock' | 'profile' | 'notifications' | null
+    'account' | 'market-clock' | 'profile' | null
   >(null);
   protected readonly profileInitials = this.accountStore.initials;
   protected readonly settingsOpen = signal(false);

@@ -74,8 +74,11 @@ describe('Dua panel', () => {
   it('starts fin-focused with chat closed, reveals the face while open, and minimizes again', () => {
     const { fixture, click } = setup();
     expect(session.minimized()).toBe(true);
-    expect(fixture.nativeElement.querySelector('.launcher-art').src).toContain(
-      'shark-launcher-light-512.png',
+    expect(fixture.nativeElement.querySelector('.launcher-body').src).toContain(
+      'shark-launcher-body-512.png',
+    );
+    expect(fixture.nativeElement.querySelector('.launcher-fin').src).toContain(
+      'shark-launcher-fin-512.png',
     );
     expect(fixture.nativeElement.querySelector('.launcher-art.face-visible')).toBeNull();
     expect(fixture.nativeElement.querySelector('input,textarea')).toBeNull();
@@ -262,19 +265,19 @@ describe('Dua panel', () => {
     expect(text()).toContain('What would you like to review');
     expect(text()).not.toContain('not figures for the selected stock');
   });
-  it('uses one launcher image and handles missing artwork with an accessible fallback', () => {
+  it('layers the launcher fin over the body and handles missing artwork with an accessible fallback', () => {
     const { fixture } = setup();
     const imgs = fixture.nativeElement.querySelectorAll(
       '.dua-launcher img',
     ) as NodeListOf<HTMLImageElement>;
-    expect(imgs.length).toBe(1);
+    expect(imgs.length).toBe(2);
     imgs[0].dispatchEvent(new Event('error'));
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.fallback').textContent).toBe('Dua');
   });
   it('opens chat and clears the numbered notification in one click', () => {
     const { fixture, click } = setup();
-    const art = fixture.nativeElement.querySelector('.launcher-art') as HTMLImageElement;
+    const art = fixture.nativeElement.querySelector('.launcher-art') as HTMLElement;
     expect(art.classList.contains('face-visible')).toBe(false);
     fixture.componentRef.setInput('quotes', [
       { symbol: 'AAPL', name: 'Apple', price: 120, change: 20, changePercent: 20 },
@@ -335,7 +338,7 @@ describe('Dua panel', () => {
     expect(fixture.nativeElement.querySelector('.launcher-art.face-visible')).toBeNull();
     click('Dua insights');
     expect(fixture.nativeElement.querySelector('h2').textContent.replace(/\s+/g, ' ').trim()).toBe(
-      'Dua - Free Plan',
+      'Dua Free Plan',
     );
     click('Daily Review');
     expect(fixture.nativeElement.querySelector('h2').textContent.replace(/\s+/g, ' ').trim()).toBe(
@@ -343,7 +346,7 @@ describe('Dua panel', () => {
     );
     click('Back to choices');
     expect(fixture.nativeElement.querySelector('h2').textContent.replace(/\s+/g, ' ').trim()).toBe(
-      'Dua - Free Plan',
+      'Dua Free Plan',
     );
     fixture.destroy();
   });
@@ -367,7 +370,11 @@ describe('Dua panel', () => {
     fixture.destroy();
   });
   describe('panel resize animation', () => {
-    const animation = { cancel: vi.fn(), onfinish: null as null | (() => void) };
+    const animation = {
+      cancel: vi.fn(),
+      onfinish: null as null | (() => void),
+      oncancel: null as null | (() => void),
+    };
     const animate = vi.fn((_keyframes: unknown, _options: unknown) => animation);
     let height = 300;
     let width = 400;
@@ -376,6 +383,7 @@ describe('Dua panel', () => {
       width = 400;
       animation.cancel.mockClear();
       animation.onfinish = null;
+      animation.oncancel = null;
       animate.mockClear();
       vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
         () => ({ height, width }) as DOMRect,
@@ -416,6 +424,18 @@ describe('Dua panel', () => {
       click('Next insight');
       expect(animation.cancel).toHaveBeenCalledTimes(1);
       expect(animate).toHaveBeenCalledTimes(3);
+      fixture.destroy();
+    });
+    it('hides scrollbars only while the panel is resizing', () => {
+      const { fixture, click } = setup();
+      const panel = fixture.nativeElement.querySelector('.dua-panel') as HTMLElement;
+      click('Dua insights');
+      expect(panel.classList).not.toContain('resizing');
+      height = 420;
+      click('Daily Review');
+      expect(panel.classList).toContain('resizing');
+      animation.onfinish?.();
+      expect(panel.classList).not.toContain('resizing');
       fixture.destroy();
     });
     it('does not animate unchanged heights, width changes or reduced motion', () => {

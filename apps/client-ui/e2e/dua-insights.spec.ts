@@ -226,9 +226,9 @@ test('Dua remains a compact overlay on mobile and supports reduced motion', asyn
   await loginPage.signIn(USER.email, USER.password);
   const panel = page.getByRole('region', { name: 'Dua insights' });
   await expect(panel).toBeHidden();
-  await expect(page.locator('app-dua .launcher-art')).toHaveAttribute(
+  await expect(page.locator('app-dua .launcher-body')).toHaveAttribute(
     'src',
-    /shark-launcher-light-512/,
+    /shark-launcher-body-512/,
   );
   await expect(page.locator('app-dua .launcher-art')).not.toHaveClass(/face-visible/);
   await page.getByRole('button', { name: 'Dua insights', exact: true }).click();

@@ -34,21 +34,6 @@
         />
         <app-theme-toggle />
         <app-dashboard-header-dropdown
-          data-testid="notifications-dropdown"
-          ariaLabel="Open notifications"
-          [open]="openHeaderDropdown() === 'notifications'"
-          (openChange)="openHeaderDropdown.set($event ? 'notifications' : null)"
-          containerClass="shrink-0"
-          triggerClass="text-muted-foreground hover:bg-muted hover:text-foreground size-9 justify-center rounded-full"
-          panelClass="w-64 p-3"
-        >
-          <ng-icon dropdownTrigger name="lucideBell" class="text-lg" />
-          <div aria-label="Notifications">
-            <strong class="text-sm">Notifications</strong>
-            <p class="text-muted-foreground mt-2 text-xs">No notifications yet.</p>
-          </div>
-        </app-dashboard-header-dropdown>
-        <app-dashboard-header-dropdown
           data-testid="profile-dropdown"
           ariaLabel="Open profile menu"
           [open]="openHeaderDropdown() === 'profile'"
@@ -456,6 +441,7 @@
                             <app-price-chart
                               class="h-full"
                               interactive
+                              tooltipPlacement="top"
                               [showCurrentPrice]="true"
                               [(liveTailing)]="liveTailing"
                               [showLiveTailing]="true"
@@ -537,6 +523,7 @@
                             <app-price-chart
                               class="h-full"
                               interactive
+                              tooltipPlacement="top"
                               [showCurrentPrice]="true"
                               [(liveTailing)]="liveTailing"
                               [showLiveTailing]="true"
@@ -583,6 +570,7 @@
                         <app-price-chart
                           class="h-full"
                           interactive
+                          tooltipPlacement="top"
                           [showCurrentPrice]="true"
                               [(liveTailing)]="liveTailing"
                               [showLiveTailing]="true"
