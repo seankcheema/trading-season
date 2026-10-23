@@ -276,7 +276,7 @@ In the [Jenkins pipeline](../../infrastructure/README.md#jenkins) the suite runs
 - An analyst's "Orders per account" card names each account only, never its trader; no card on a report run names a client. The admin console still shows names.
 - A transfer row opens nothing: the service has no endpoint for a single cash transaction.
 - The Activity ranges are fixed at today, 7, 30 and 90 days, and all time; there is no custom range. All time plots a point per day for a history of up to 366 days. Beyond that a point covers several days and is labelled with the day it starts.
-- The service keeps only the newest scheduled run file on disk. Report runs still shows a live latest snapshot over the chosen range; a run still on disk beside it is listed under Earlier runs with its PNG charts only, over all time.
+- The service keeps only the newest scheduled run file on disk. Report runs shows a live latest snapshot over the chosen range and does not list earlier runs.
 - Report runs counts an order in a range by when it resolved and Activity by when it was placed, so the two screens can differ by the newest orders. Today is a single column of Trades per day, where Activity plots it by the hour.
 - Trades per day plots the days that have a resolved order, side by side. A day without one is left out, not drawn as a gap.
 - Users are not signed out for inactivity, unlike the Client UI.
