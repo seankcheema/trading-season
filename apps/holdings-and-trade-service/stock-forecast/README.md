@@ -72,6 +72,12 @@ These experiments use the VIX family on top of VIX (`0001-download-data.py --vix
 
 Walk-forward results (Oct 19-20): on AAPL's next-day big moves, VIX, the family, the gap and earnings together reached 62.2% (Brier skill 0.094, against 60.2% and 0.050 for the frozen model). SPY's realized volatility over the next 3 to 5 days was predicted correctly about 80% of the time against a bar of 65-68%, beating it in 5 of 6 years; AAPL's longer windows reached about 71% but stayed about 4 points above their bar. Training on all history beat a sliding 3- or 5-year window, and the LSTM did not beat logistic regression at windows of 3 days or more. None of these replace the frozen model.
 
+## Week-ahead risk test
+
+`scripts/0006-test-week-ahead-risk.py` gives the horizon study's strongest result its own sealed test: will SPY's realized volatility over the next 5 days be above its training median? It scores the horizon study's logistic regression (`week_ahead.py`, settings `WEEK_AHEAD_*` in `config.py`) against two bars on the same days: one answer every day, and the rule "same as the last 5 days" (`past_volatility`). `--walk-forward` scores 2018 to 2023 only and writes `reports/week_ahead_walk_forward.csv`. Without it, the script runs the test once: it fits on 2010 to 2023 and scores 2024 to the last complete window. Results go to `reports/test_week_ahead_results.csv`, and accuracy by confidence goes to `reports/week_ahead_confidence_test.csv`. The script refuses to start until [PREREGISTRATION_WEEK_AHEAD.md](PREREGISTRATION_WEEK_AHEAD.md) is committed and unchanged, and it records that commit in every row. A second run needs `--force`.
+
+Walk-forward (Oct 25): the model averaged 80.6% and was ahead of both bars in 5 of 6 years. The rule averaged 74.3%. On its most confident 40% of days the model reached 94.2%. The pre-registration sets out what the test must show for the 80% goal to count as met.
+
 ## TradingSeason demo
 
 `scripts/extra-platform-demo.py` runs the saved direction and volatility models, untrained further, on the platform's simulated 2026 AAPL prices in `data/platform/`. It is a demo that the pipeline runs on platform data, never evidence: the simulation follows scripted monthly trends, so a "follow the 20-day trend" rule, scored alongside, does well there. `platform_demo.py` replaces SPY with the equal-weight average of the platform's 10 stocks and scores two variants on the same days: as trained, and recalibrated, where only the input scalers and the big-move cut-off are re-fit on the warm-up rows before the scored period. It writes `reports/platform_demo.csv` and `.png`; `--symbol MSFT` runs another platform stock through the same AAPL-trained models and writes `platform_demo_msft.csv` and `.png`.
@@ -159,6 +165,7 @@ Run from `apps/holdings-and-trade-service/stock-forecast` with the virtual envir
 | 10p | `python scripts/export-platform-trend.py` | `apps/client-ui/public/forecast/platform-trend.json`, `reports/platform_trend_summary.csv` | Before a UI build that should show the trade signal; seconds |
 | 11 | `python scripts/0005-export-scorecard.py --model lstm-direction` | `reports/test_results.csv`, `reports/test_direction_results.csv`, test confidence charts, real `scorecard.json` | Once, Oct 22, after the final review and after [PREREGISTRATION.md](PREREGISTRATION.md) is committed |
 | 12 | `python scripts/0005-export-scorecard.py --model lstm-volatility` | `reports/test_volatility_results.csv`, test volatility charts; no scorecard | Once, Oct 22, same conditions as step 11 |
+| 13 | `python scripts/0006-test-week-ahead-risk.py` | `reports/test_week_ahead_results.csv`, `reports/week_ahead_confidence_test.csv` | Once, after [PREREGISTRATION_WEEK_AHEAD.md](PREREGISTRATION_WEEK_AHEAD.md) is committed; seconds. `--walk-forward` any time |
 
 `0003-train-lstm.py --features ret spy_ret volume_change` trains the return LSTM on several columns. With `--task direction`, `--sweep` tries every `DIRECTION_SWEEP_LOOKBACKS` and `DIRECTION_SWEEP_UNITS` pair on validation and saves the lowest-log-loss run; without it, `--lookback`, `--units` and `--seed` train one model (use `--seed` to check that a result is not one lucky initialisation). Copy the chosen settings into `DIRECTION_LOOKBACK` and `DIRECTION_UNITS`, which walk-forward uses. `--task volatility` takes the same options, tries the same grid, and its settings go in `VOLATILITY_LOOKBACK` and `VOLATILITY_UNITS`. `0005` accepts `--model lstm-direction`, `lstm`, `var`, `linear` or `lstm-volatility`, and refuses to rerun a test unless given `--force`; the volatility test has its own guard and never writes the scorecard.
 
@@ -184,7 +191,7 @@ cd apps/holdings-and-trade-service/stock-forecast
 python -m pytest
 ```
 
-The Jenkins pipeline runs the same suite in a `python:3.14-slim` container from `requirements-ci.txt`, which leaves out TensorFlow and yfinance: the LSTM tests skip there and nothing touches the network. [PREREGISTRATION.md](PREREGISTRATION.md) fixes the frozen models, the expected test outcomes and the decision rules before the test years are scored.
+The Jenkins pipeline runs the same suite in a `python:3.14-slim` container from `requirements-ci.txt`, which leaves out TensorFlow and yfinance: the LSTM tests skip there and nothing touches the network. [PREREGISTRATION.md](PREREGISTRATION.md) fixes the frozen models, the expected test outcomes and the decision rules before the test years are scored. [PREREGISTRATION_WEEK_AHEAD.md](PREREGISTRATION_WEEK_AHEAD.md) does the same for the week-ahead risk test.
 
 Tests use synthetic random-walk prices, so they need no network. The LSTM tests skip where TensorFlow is missing. `test_no_model_beats_a_coin_flip_on_a_random_walk` is a leak alarm: random-walk data has nothing to learn, so a model scoring 60% or more on it means future data reached its inputs.
 

@@ -151,6 +151,8 @@ What it means: the pipeline runs end to end on platform data, but the platform's
 
 **Longer prediction windows** (`horizon_comparison.csv`): instead of "will tomorrow be a big-move day?", these ask "will the next 3 (or 5, 10, 21) days be more volatile than usual?". For SPY, the whole market, that is right about 80% of the time 3 to 5 days ahead, against about 65-68% for always giving the same answer, and it beat that bar in 5 of 6 years. For AAPL it reaches about 71%, but only about 4 points above its bar, because a single company also moves on its own news. Past two weeks the advantage fades. Training on only the last few years instead of all history did worse: the older crisis years teach the model what stress looks like.
 
+**The week-ahead test** (`week_ahead_walk_forward.csv`): the SPY 5-day question gets its own sealed test, because it was picked as the best of several windows on these same years. A second bar joins "one answer every day": "same as the last 5 days", which calls a stormy week ahead whenever the past week was stormy. Over 2018 to 2023 the model averaged 80.6% and the rule 74.3%. The model was ahead of both in every year but 2022. That year nearly every week was stormy, so "always stormy" was right 98.8% of the time.
+
 ## The earlier return model
 
 **`lstm_loss.png`**: the same learning chart for the LSTM that predicts the size of tomorrow's move.
@@ -166,6 +168,7 @@ These appear only once the sealed 2024 to 2026 test has been run:
 - **`direction_confidence_test.png`**: the confidence chart for the test years.
 - **`direction_probability_test.png`**: the probability chart for the test years.
 - **`volatility_confidence_test.png`** and **`volatility_probability_test.png`**: the same two charts for the big-move model.
+- **`test_week_ahead_results.csv`** and **`week_ahead_confidence_test.csv`**: the week-ahead test, which has its own rules in [PREREGISTRATION_WEEK_AHEAD.md](../PREREGISTRATION_WEEK_AHEAD.md). They are tables, not charts.
 
 ## The data files
 

@@ -110,6 +110,12 @@ HORIZONS = [1, 2, 3, 5, 10, 15, 21]
 HORIZON_FEATURES = VIX_GAP_FEATURES
 HORIZON_COMPARISON_CSV = REPORTS_DIR / "horizon_comparison.csv"
 VIX_FAMILY_SYMBOLS = [TICKER, MARKET_TICKER]
+# Week-ahead risk (0006-test-week-ahead-risk.py): the one horizon-study question
+# pre-registered for its own test run in PREREGISTRATION_WEEK_AHEAD.md. Frozen there;
+# change nothing here before that test has run.
+WEEK_AHEAD_SYMBOL = MARKET_TICKER
+WEEK_AHEAD_HORIZON = 5
+WEEK_AHEAD_CONFIDENT_BUCKETS = 2  # the "confident weeks" reading: the two most confident fifths of days
 VIX_FAMILY_COMPARISON_CSV = REPORTS_DIR / "vix_family_comparison.csv"
 POOLED_COMPARISON_CSV = REPORTS_DIR / "pooled_vix_comparison.csv"
 # TradingSeason demo: daily bars exported from the platform's simulated 2026
@@ -158,6 +164,10 @@ DIRECTION_RESULTS_CSV = REPORTS_DIR / "direction_results.csv"
 TEST_DIRECTION_CSV = REPORTS_DIR / "test_direction_results.csv"
 VOLATILITY_RESULTS_CSV = REPORTS_DIR / "volatility_results.csv"
 TEST_VOLATILITY_CSV = REPORTS_DIR / "test_volatility_results.csv"
+WEEK_AHEAD_PREREGISTRATION = ROOT / "PREREGISTRATION_WEEK_AHEAD.md"
+WEEK_AHEAD_WALK_FORWARD_CSV = REPORTS_DIR / "week_ahead_walk_forward.csv"
+TEST_WEEK_AHEAD_CSV = REPORTS_DIR / "test_week_ahead_results.csv"
+WEEK_AHEAD_CONFIDENCE_TEST_CSV = REPORTS_DIR / "week_ahead_confidence_test.csv"
 WALK_FORWARD_VOLATILITY_CSV = REPORTS_DIR / "walk_forward_volatility.csv"
 BUY_SIGNAL_CSV = REPORTS_DIR / "buy_signal.csv"
 BUY_SIGNAL_SUMMARY_CSV = REPORTS_DIR / "buy_signal_summary.csv"
