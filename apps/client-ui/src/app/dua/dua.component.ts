@@ -152,11 +152,14 @@ export class DuaComponent {
     if (reading?.kind !== 'ready') {
       return `${symbol} · the week-ahead trend read`;
     }
-    const hits = reading.source === 'model' ? reading.modelHits : reading.ruleHits;
-    const days = reading.source === 'model' ? reading.modelDays : reading.ruleDays;
-    const verb = reading.call === 'up' ? 'consider buying' : 'consider selling';
-    return days
-      ? `${symbol} · ${verb} · right ${Math.round((hits / days) * 100)}% of the last ${days} weeks`
+    const verb =
+      reading.call === null
+        ? 'no clear direction'
+        : reading.call === 'up'
+          ? 'consider buying'
+          : 'consider selling';
+    return reading.signalCalls
+      ? `${symbol} · ${verb} · right ${Math.round((reading.signalHits / reading.signalCalls) * 100)}% of its last ${reading.signalCalls} calls`
       : `${symbol} · ${verb}`;
   });
   private readonly loadTrend = effect(() => {
@@ -434,7 +437,7 @@ export class DuaComponent {
           reading,
           trendOverview(trend, at),
           trend.horizonDays,
-          trend.momentumDays,
+          trend.signalDays,
         ),
       );
       this.asOf.set('');

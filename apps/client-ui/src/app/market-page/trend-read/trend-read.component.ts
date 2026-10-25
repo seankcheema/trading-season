@@ -14,10 +14,13 @@ import { TrendCall, TrendReading, trendReadingFor } from './platform-trend';
 
 /**
  * The trade signal card for one instrument: whether the read suggests buying or
- * selling over the next trading days, from a machine-learning model and a momentum
- * pattern, whichever has the better record on this stock over the last closed
- * weeks. It carries its own notice on every render: the read comes from a model on
- * a simulated market, can be wrong, and must not be taken as true or as advice.
+ * selling over the next trading days. It leads with the strong-trend read, which
+ * calls the last days' direction only when that move is large against the stock's
+ * usual swings and otherwise says there is no clear direction; its record counts
+ * its closed calls, quoted with how often it called. The machine-learning model and
+ * the momentum pattern are shown beside it in Details. It carries its own notice on
+ * every render: the read comes from a model on a simulated market, can be wrong, and
+ * must not be taken as true or as advice.
  */
 @Component({
   selector: 'app-trend-read',
@@ -53,7 +56,14 @@ import { TrendCall, TrendReading, trendReadingFor } from './platform-trend';
                 data-testid="trend-headline"
               >
                 <svg class="glance-mark" viewBox="0 0 24 24" aria-hidden="true" fill="none">
-                  @if (r.call === 'up') {
+                  @if (r.call === null) {
+                    <path
+                      d="M4 12h16"
+                      stroke="currentColor"
+                      stroke-width="2.2"
+                      stroke-linecap="round"
+                    />
+                  } @else if (r.call === 'up') {
                     <path
                       d="M4 17l6-6 4 4 6-6M14 9h6v6"
                       stroke="currentColor"
@@ -73,10 +83,13 @@ import { TrendCall, TrendReading, trendReadingFor } from './platform-trend';
                 </svg>
                 <h3 class="glance-title">{{ title(r.call) }}</h3>
                 <p class="glance-sub" data-testid="trend-basis-line">
-                  Next {{ horizon() }} trading days · {{ symbol() }} has been trending
-                  {{ r.momentum > 0 ? 'up' : 'down' }}
-                  {{ magnitude(r.momentum) | percent: '1.1-1' }} over the last
-                  {{ momentumDays() }} days
+                  @if (r.call === null) {
+                    Next {{ horizon() }} trading days · {{ symbol() }}'s recent move is too small
+                    against its usual swings to call
+                  } @else {
+                    Next {{ horizon() }} trading days · {{ symbol() }} moved {{ r.call }} over the
+                    last {{ signalDays() }} days, by more than its usual swings
+                  }
                 </p>
                 <div class="glance-record">
                   @if (r.recent.length) {
@@ -91,9 +104,10 @@ import { TrendCall, TrendReading, trendReadingFor } from './platform-trend';
                     </span>
                   }
                   <span class="glance-accuracy" data-testid="trend-basis">
-                    @if (leadDays(r)) {
-                      Right {{ leadAccuracy(r) | percent: '1.0-0' }} of the last
-                      {{ leadDays(r) }} weeks on {{ symbol() }}
+                    @if (r.signalCalls) {
+                      Right {{ accuracy(r.signalHits, r.signalCalls) | percent: '1.0-0' }} of its
+                      last {{ r.signalCalls }} calls on {{ symbol() }}, made on
+                      {{ r.signalCalls }} of the last {{ r.signalWeeks }} weeks
                     } @else {
                       First reads on {{ symbol() }}; no record yet
                     }
@@ -149,16 +163,35 @@ import { TrendCall, TrendReading, trendReadingFor } from './platform-trend';
 
                   <dl class="outlook-grid mt-3">
                     <div
-                      class="outlook-card read-tile"
-                      [class.read-tile-shown]="r.source === 'model'"
-                      data-testid="trend-model"
+                      class="outlook-card read-tile read-tile-shown read-tile-wide"
+                      data-testid="trend-signal"
                     >
                       <dt class="tile-label">
-                        Trading Season model
-                        @if (r.source === 'model') {
-                          <span class="read-badge">leads</span>
-                        }
+                        Strong-trend read
+                        <span class="read-badge">leads</span>
                       </dt>
+                      <dd
+                        class="tile-call"
+                        [class.text-gain]="r.call === 'up'"
+                        [class.text-loss]="r.call === 'down'"
+                      >
+                        {{ r.call ? label(r.call) : 'No call' }}
+                      </dd>
+                      <dd class="tile-note">
+                        @if (r.signalCalls) {
+                          Last {{ r.signalCalls }} calls
+                          {{ accuracy(r.signalHits, r.signalCalls) | percent: '1.0-0' }} ({{
+                            r.signalHits
+                          }}
+                          of {{ r.signalCalls }}), made on {{ r.signalCalls }} of
+                          {{ r.signalWeeks }} weeks
+                        } @else {
+                          No closed calls yet
+                        }
+                      </dd>
+                    </div>
+                    <div class="outlook-card read-tile" data-testid="trend-model">
+                      <dt class="tile-label">Trading Season model</dt>
                       <dd
                         class="tile-call"
                         [class.text-gain]="r.modelCall === 'up'"
@@ -178,17 +211,8 @@ import { TrendCall, TrendReading, trendReadingFor } from './platform-trend';
                         }
                       </dd>
                     </div>
-                    <div
-                      class="outlook-card read-tile"
-                      [class.read-tile-shown]="r.source === 'rule'"
-                      data-testid="trend-pattern"
-                    >
-                      <dt class="tile-label">
-                        Momentum pattern
-                        @if (r.source === 'rule') {
-                          <span class="read-badge">leads</span>
-                        }
-                      </dt>
+                    <div class="outlook-card read-tile" data-testid="trend-pattern">
+                      <dt class="tile-label">Momentum pattern</dt>
                       <dd
                         class="tile-call"
                         [class.text-gain]="r.ruleCall === 'up'"
@@ -206,14 +230,18 @@ import { TrendCall, TrendReading, trendReadingFor } from './platform-trend';
                     </div>
                   </dl>
                   <p class="text-muted-foreground mt-2 text-xs">
+                    The strong-trend read calls the last {{ signalDays() }} days' direction only
+                    when that move is large against {{ symbol() }}'s usual swings, and makes no call
+                    otherwise: in a range-bound market a week's direction is close to a coin flip.
                     The pattern reads "the next {{ horizon() }} days continue the last
-                    {{ momentumDays() }}". Whichever has the better record on {{ symbol() }} over
-                    the last {{ recordWindow }} closed weeks leads. As of the {{ r.asOf }} close.
+                    {{ momentumDays() }}" every week, and the model calls every week too; both are
+                    scored over the last {{ recordWindow }} closed weeks. As of the
+                    {{ r.asOf }} close.
                   </p>
 
                   <section class="mt-3" aria-label="Recent reads" data-testid="trend-recent">
                     <h4 class="text-muted-foreground text-xs font-medium">
-                      Recent reads and what the price then did
+                      Recent calls and what the price then did
                     </h4>
                     @if (r.recent.length) {
                       <ul class="divide-border mt-1 divide-y text-xs">
@@ -227,9 +255,6 @@ import { TrendCall, TrendReading, trendReadingFor } from './platform-trend';
                             </span>
                             <span class="min-w-0 flex-1 truncate">
                               {{ label(read.call) }}
-                              <span class="text-muted-foreground">
-                                ({{ read.source === 'model' ? 'model' : 'pattern' }})
-                              </span>
                             </span>
                             <span
                               class="tabular-nums"
@@ -250,7 +275,7 @@ import { TrendCall, TrendReading, trendReadingFor } from './platform-trend';
                       </ul>
                     } @else {
                       <p class="text-muted-foreground mt-1 text-xs">
-                        No week has closed yet at this simulated date.
+                        No called week has closed yet at this simulated date.
                       </p>
                     }
                   </section>
@@ -286,6 +311,7 @@ export class TrendReadComponent {
   protected readonly detailsOpen = signal(false);
   protected readonly horizon = computed(() => this.store.trend()?.horizonDays ?? 5);
   protected readonly momentumDays = computed(() => this.store.trend()?.momentumDays ?? 10);
+  protected readonly signalDays = computed(() => this.store.trend()?.signalDays ?? 5);
   protected readonly reading = computed<TrendReading | null>(() => {
     const trend = this.store.trend();
     const at = this.marketTimestamp();
@@ -300,31 +326,20 @@ export class TrendReadComponent {
     });
   }
 
-  protected title(call: TrendCall): string {
-    return call === 'up' ? 'Consider buying' : 'Consider selling';
+  protected title(call: TrendCall | null): string {
+    return call === null
+      ? 'No clear direction'
+      : call === 'up'
+        ? 'Consider buying'
+        : 'Consider selling';
   }
 
   protected label(call: TrendCall): string {
     return call === 'up' ? 'Price higher' : 'Price lower';
   }
 
-  /** The size of the move the pattern read, as a plain percentage. */
-  protected magnitude(momentum: number): number {
-    return Math.abs(Math.expm1(momentum));
-  }
-
   protected accuracy(hits: number, days: number): number {
     return days ? hits / days : 0;
-  }
-
-  protected leadDays(r: TrendReading & { kind: 'ready' }): number {
-    return r.source === 'model' ? r.modelDays : r.ruleDays;
-  }
-
-  protected leadAccuracy(r: TrendReading & { kind: 'ready' }): number {
-    return r.source === 'model'
-      ? this.accuracy(r.modelHits, r.modelDays)
-      : this.accuracy(r.ruleHits, r.ruleDays);
   }
 
   protected recentOldestFirst(r: TrendReading & { kind: 'ready' }) {
@@ -333,7 +348,7 @@ export class TrendReadComponent {
 
   protected dotsLabel(r: TrendReading & { kind: 'ready' }): string {
     const hits = r.recent.filter((read) => read.hit).length;
-    return `${hits} of the last ${r.recent.length} reads were right`;
+    return `${hits} of the last ${r.recent.length} calls were right`;
   }
 
   protected meterLabel(probability: number): string {

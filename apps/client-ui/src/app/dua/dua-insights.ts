@@ -650,62 +650,70 @@ export function directionCard(
 export function trendingCards(
   symbol: string,
   reading: {
-    call: 'up' | 'down';
-    source: 'model' | 'rule';
+    call: 'up' | 'down' | null;
     probability: number;
-    momentum: number;
-    modelHits: number;
-    modelDays: number;
-    ruleHits: number;
-    ruleDays: number;
+    signalHits: number;
+    signalCalls: number;
+    signalWeeks: number;
   },
   overview: readonly {
     symbol: string;
-    call: 'up' | 'down';
+    call: 'up' | 'down' | null;
     momentum: number;
     hits: number;
-    days: number;
+    calls: number;
+    weeks: number;
   }[],
   horizon = 5,
-  momentumDays = 10,
+  signalDays = 5,
 ): DuaCard[] {
-  const up = reading.call === 'up';
-  const hits = reading.source === 'model' ? reading.modelHits : reading.ruleHits;
-  const days = reading.source === 'model' ? reading.modelDays : reading.ruleDays;
+  const call = reading.call;
   const pct = (value: number) => `${(Math.expm1(value) * 100).toFixed(1)}%`;
-  const size = (value: number) => `${(Math.abs(Math.expm1(value)) * 100).toFixed(1)}%`;
   const signed = (value: number) => `${value > 0 ? '+' : ''}${pct(value)}`;
-  const record = (h: number, d: number) =>
-    d ? `right ${Math.round((h / d) * 100)}% of the last ${d} weeks` : 'no record yet';
+  const record = (hits: number, calls: number, weeks: number) =>
+    calls
+      ? `right ${Math.round((hits / calls) * 100)}% of its last ${calls} calls, made on ${calls} of ${weeks} weeks`
+      : 'no record yet';
   const notice =
     'Machine-learning read on a simulated market. It can be wrong: do not take it as true or as advice to buy or sell.';
   const rising = overview.filter((row) => row.call === 'up');
   const falling = overview.filter((row) => row.call === 'down').reverse();
+  const unclear = overview.filter((row) => row.call === null);
+  const advice =
+    call === null ? 'no clear direction' : `consider ${call === 'up' ? 'buying' : 'selling'}`;
+  const line = (row: (typeof overview)[number]) => ({
+    symbol: row.symbol,
+    change: `${signed(row.momentum)} · ${record(row.hits, row.calls, row.weeks)}`,
+  });
   return [
     {
       symbol,
       title: 'Trade signal',
       period: `Next ${horizon} trading days`,
-      text: `${symbol}: consider ${up ? 'buying' : 'selling'} over the next ${horizon} trading days.`,
-      takeaway: `${symbol}: consider ${up ? 'buying' : 'selling'}. The price has been trending ${reading.momentum > 0 ? 'up' : 'down'} ${size(reading.momentum)} over the last ${momentumDays} days.`,
-      purpose: `${reading.source === 'model' ? 'The Trading Season model' : 'The momentum pattern'} leads on ${symbol} because its recent record there is the better one: ${record(hits, days)}.`,
+      text: `${symbol}: ${advice} over the next ${horizon} trading days.`,
+      takeaway:
+        call === null
+          ? `${symbol}: no clear direction. Its move over the last ${signalDays} days is too small against its usual swings to call.`
+          : `${symbol}: ${advice}. It moved ${call} over the last ${signalDays} days by more than its usual swings.`,
+      purpose: `The strong-trend read calls only when a stock's recent move stands out from its usual swings, and says so when it does not. On ${symbol} it has been ${record(reading.signalHits, reading.signalCalls, reading.signalWeeks)}.`,
       metrics: [
         {
           label: 'Model estimate',
           value: `${Math.round(reading.probability * 100)}% chance the price is higher`,
-          tone: up ? 'gain' : 'loss',
+          tone: reading.probability > 0.5 ? 'gain' : 'loss',
           primary: true,
         },
         {
-          label: days ? `Last ${days} weeks` : 'Record',
-          value: days
-            ? `${Math.round((hits / days) * 100)}% (${hits} of ${days})`
-            : 'No closed weeks yet',
+          label: reading.signalCalls ? `Last ${reading.signalCalls} calls` : 'Record',
+          value: reading.signalCalls
+            ? `${Math.round((reading.signalHits / reading.signalCalls) * 100)}% (${reading.signalHits} of ${reading.signalCalls})`
+            : 'No closed calls yet',
         },
         {
-          label: `Last ${momentumDays} days`,
-          value: signed(reading.momentum),
-          tone: reading.momentum > 0 ? 'gain' : 'loss',
+          label: 'Weeks called',
+          value: reading.signalWeeks
+            ? `${reading.signalCalls} of the last ${reading.signalWeeks}`
+            : 'None closed yet',
         },
       ],
       note: notice,
@@ -714,28 +722,27 @@ export function trendingCards(
       symbols: overview.map((row) => row.symbol),
       title: "What's trending",
       period: `Next ${horizon} trading days`,
-      text: `${rising.length} of ${overview.length} stocks read higher over the next ${horizon} trading days, ${falling.length} lower.`,
-      takeaway: `${rising.length} of ${overview.length} stocks read higher, ${falling.length} lower. Strongest moves over the last ${momentumDays} days first.`,
+      text: `${rising.length} of ${overview.length} stocks read higher over the next ${horizon} trading days, ${falling.length} lower, ${unclear.length} with no clear direction.`,
+      takeaway: `${rising.length} of ${overview.length} stocks read higher, ${falling.length} lower, ${unclear.length} with no clear direction. Strongest moves first.`,
       purpose:
-        "Each line is that stock's leading read, the model's or the momentum pattern's, with how often that reader was right on the stock over its last closed weeks.",
+        "Each line is that stock's strong-trend read, with how often its calls on the stock were right and how many weeks it called.",
       metrics: [
         {
           label: 'Reading higher',
           value: rising.length ? `${rising.length} stocks` : 'None',
           tone: 'gain',
-          stocks: rising.map((row) => ({
-            symbol: row.symbol,
-            change: `${signed(row.momentum)} · ${record(row.hits, row.days)}`,
-          })),
+          stocks: rising.map(line),
         },
         {
           label: 'Reading lower',
           value: falling.length ? `${falling.length} stocks` : 'None',
           tone: 'loss',
-          stocks: falling.map((row) => ({
-            symbol: row.symbol,
-            change: `${signed(row.momentum)} · ${record(row.hits, row.days)}`,
-          })),
+          stocks: falling.map(line),
+        },
+        {
+          label: 'No clear direction',
+          value: unclear.length ? `${unclear.length} stocks` : 'None',
+          stocks: unclear.map(line),
         },
       ],
       note: notice,

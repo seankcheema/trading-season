@@ -8,8 +8,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from stock_forecast.platform_trend import (TREND_FIELDS, build_trend, monthly_trend_probabilities, summarise_trend,
-                                           trend_daily, trend_days, validate_trend, write_trend)
+from stock_forecast.platform_trend import (TREND_FIELDS, build_trend, monthly_signal_cutoffs,
+                                           monthly_trend_probabilities, signal_cutoff, summarise_trend, trend_daily,
+                                           trend_days, validate_trend, write_trend)
 from tests.helpers import make_prices
 from tests.test_platform_horizon import platform_like
 
@@ -116,6 +117,62 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(before[:-H], self.days[: len(before) - H])
 
 
+class StrongTrendTests(unittest.TestCase):
+    def setUp(self):
+        self.daily = trend_daily(platform_like(), platform_close(), H)
+
+    def test_strength_is_the_last_days_move_against_its_noise(self):
+        from stock_forecast import config
+        data, close = platform_like(), platform_close()
+        day = self.daily.index[60]
+        pos = close.index.get_loc(day)
+        move = np.log(close.iloc[pos] / close.iloc[pos - config.PLATFORM_TREND_SIGNAL_DAYS])
+        noise = data.loc[day, "volatility_10"] * np.sqrt(config.PLATFORM_TREND_SIGNAL_DAYS)
+        self.assertAlmostEqual(self.daily.loc[day, "strength"], abs(move) / noise)
+
+    def test_cutoff_is_the_lowest_that_reaches_the_target(self):
+        # Strong days are always right, weak days always wrong: the cut-off must drop the weak ones only.
+        fit = pd.DataFrame({"strength": np.r_[np.linspace(0, 0.9, 40), np.linspace(1, 2, 60)],
+                            "signal_momentum": 1.0, "up": np.r_[np.zeros(40, bool), np.ones(60, bool)]})
+        exact = signal_cutoff(fit, target=1.0, min_share=0.3)
+        self.assertTrue(0.9 < exact <= 1.0)  # every weak day out, every strong day in
+        # A looser target lets a few weak days back in, so its cut-off is lower.
+        self.assertLess(signal_cutoff(fit, target=0.95, min_share=0.3), exact)
+
+    def test_no_cutoff_when_the_target_needs_too_few_calls(self):
+        fit = pd.DataFrame({"strength": np.linspace(0, 1, 100), "signal_momentum": 1.0,
+                            "up": np.r_[np.zeros(90, bool), np.ones(10, bool)]})
+        self.assertIsNone(signal_cutoff(fit, target=0.85, min_share=0.3))
+        self.assertIsNone(signal_cutoff(fit.iloc[:0]))
+
+    def test_each_month_cutoff_ignores_later_days(self):
+        cutoffs = monthly_signal_cutoffs({"AAPL": self.daily}, H, "2026-07")
+        changed = self.daily.copy()
+        later = changed.index >= "2026-09-01"
+        changed.loc[later, "up"] = ~changed.loc[later, "up"]
+        again = monthly_signal_cutoffs({"AAPL": changed}, H, "2026-07")
+        self.assertEqual(sorted(cutoffs), [f"2026-{m:02d}" for m in range(7, 13)])
+        for month in ("2026-07", "2026-08"):
+            self.assertEqual(cutoffs[month], again[month])
+
+    def test_calls_and_counts_follow_the_month_cutoff(self):
+        prob = fake_probabilities(self.daily)
+        months = sorted({str(m) for m in prob.index.to_period("M")})
+        days = trend_days(self.daily, prob, H, {m: 1.0 for m in months})
+        none = trend_days(self.daily, prob, H)
+        scored = self.daily.loc[prob.index]
+        for d, (_, row) in zip(days, scored.iterrows()):
+            self.assertEqual(d["signal"] is not None, row["strength"] >= 1.0)
+            if d["signal"] is not None:
+                self.assertEqual(d["signal"], "up" if row["signal_momentum"] > 0 else "down")
+        self.assertTrue(all(d["signal"] is None and d["signalDays"] == 0 for d in none))
+        last = days[-1]
+        closed = scored.iloc[: len(scored) - H]
+        called = closed[closed["strength"] >= 1.0]
+        self.assertEqual(last["signalDays"], len(called))
+        self.assertEqual(last["signalHits"], int(((called["signal_momentum"] > 0) == called["up"]).sum()))
+
+
 class DocumentTests(unittest.TestCase):
     def setUp(self):
         daily = trend_daily(platform_like(), platform_close(), H)
@@ -141,6 +198,14 @@ class DocumentTests(unittest.TestCase):
             validate_trend(broken)
         broken = json.loads(json.dumps(self.document))
         broken["symbols"]["AAPL"]["days"][0]["move"] = None
+        with self.assertRaises(ValueError):
+            validate_trend(broken)
+        broken = json.loads(json.dumps(self.document))
+        broken["symbols"]["AAPL"]["days"][0]["signal"] = "sideways"
+        with self.assertRaises(ValueError):
+            validate_trend(broken)
+        broken = json.loads(json.dumps(self.document))
+        broken["symbols"]["AAPL"]["days"][-1]["signalDays"] = broken["symbols"]["AAPL"]["days"][-1]["modelDays"] + 1
         with self.assertRaises(ValueError):
             validate_trend(broken)
         broken = json.loads(json.dumps(self.document))

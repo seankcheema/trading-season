@@ -9,12 +9,19 @@ readers. Two are scored on every symbol's days from PLATFORM_SIGNAL_FIRST_MONTH:
   PLATFORM_TREND_MOMENTUM_DAYS days;
 - the model: a gradient-boosted classifier on momentum inputs
   (PLATFORM_TREND_FEATURES), refit every month on the closed days before it,
-  pooled over symbols and purged of the last H days (monthly_trend_probabilities).
+  pooled over symbols and purged of the last H days (monthly_trend_probabilities);
+- the strong-trend read: the last PLATFORM_TREND_SIGNAL_DAYS days' direction,
+  called only when that move is large against its noise (`strength`), with each
+  month's cut-off fit on the closed days before it (monthly_signal_cutoffs). On
+  the other days it makes no call. In range-bound months a week's direction is
+  close to a coin flip for any reader, so declining to call is what lets the
+  calls it does make be right more often.
 
 For each day the file carries the model's probability, the call it implies,
-the momentum the pattern reads, the outcome and the realized move once the
-window has closed, and running hit counts for both readers counted only over
-windows closed by that day, so a card can quote a record on any simulated
+the momentum the pattern reads, the strength and the strong-trend call (or
+none), the outcome and the realized move once the window has closed, and
+running hit counts for all three readers counted only over windows closed by
+that day, so a card can quote a record on any simulated
 date without reading the future and let the better reader lead.
 
 The fields are a contract with the client UI (apps/client-ui/public/forecast).
@@ -37,7 +44,8 @@ from .platform_demo import load_platform_prices, platform_dataset
 
 UP, DOWN = "up", "down"
 TREND_FIELDS = ("date", "probability", "call", "momentum", "modelHits", "modelDays", "ruleHits", "ruleDays",
-                "outcome", "move")
+                "strength", "signal", "signalHits", "signalDays", "outcome", "move")
+CUTOFF_QUANTILES = np.linspace(0.0, 0.9, 91)
 MIN_TRAINING_ROWS = 100
 
 NOTICE = ("A machine-learning read on a simulated market. It can be wrong and must not be taken as true, "
@@ -48,9 +56,15 @@ def trend_daily(
     data: pd.DataFrame, close: pd.Series, horizon: int = config.PLATFORM_SIGNAL_HORIZON,
     momentum_days: int = config.PLATFORM_TREND_MOMENTUM_DAYS,
 ) -> pd.DataFrame:
-    """One row per forecast day: the next H days' log return (the label), and the momentum inputs known at the close."""
+    """One row per forecast day: the next H days' log return (the label), and the inputs known at the close.
+
+    `strength` is the size of the last PLATFORM_TREND_SIGNAL_DAYS days' log
+    return in units of its noise: 10-day volatility times the square root of
+    those days. `data` must carry `ret` and `volatility_10`.
+    """
     if horizon < 1 or momentum_days < 1:
         raise ValueError("horizon and momentum_days must be at least 1")
+    signal_days = config.PLATFORM_TREND_SIGNAL_DAYS
     log_close = np.log(close.reindex(data.index).astype(float))
     daily = pd.DataFrame({
         "target": log_close.shift(-horizon) - log_close,
@@ -58,8 +72,11 @@ def trend_daily(
         "momentum_5": log_close - log_close.shift(5),
         "momentum_20": log_close - log_close.shift(20),
         "up_share": (data["ret"] > 0).astype(float).rolling(momentum_days).mean(),
+        "signal_momentum": log_close - log_close.shift(signal_days),
     }, index=data.index)
-    daily = daily.dropna(subset=["momentum", "momentum_5", "momentum_20", "up_share"])
+    daily["strength"] = daily["signal_momentum"].abs() / (data[f"volatility_{config.VOLATILITY_WINDOW}"]
+                                                          * np.sqrt(signal_days))
+    daily = daily.dropna(subset=["momentum", "momentum_5", "momentum_20", "up_share", "signal_momentum", "strength"])
     daily["up"] = daily["target"] > 0
     return daily
 
@@ -102,15 +119,71 @@ def monthly_trend_probabilities(
     return {symbol: pd.concat(series) if series else pd.Series(dtype=float) for symbol, series in parts.items()}
 
 
-def trend_days(daily: pd.DataFrame, prob: pd.Series, horizon: int) -> list[dict]:
-    """The day records for one symbol, in date order; running counts cover only windows closed by each day."""
+def signal_cutoff(fit: pd.DataFrame, target: float = config.PLATFORM_TREND_SIGNAL_TARGET,
+                  min_share: float = config.PLATFORM_TREND_SIGNAL_MIN_SHARE) -> float | None:
+    """The lowest strength cut-off whose calls on `fit` were right at least `target` of the time.
+
+    Candidates are the strength quantiles from 0 to 0.9; a cut-off that leaves
+    fewer than `min_share` of the days called is not considered. Returns None
+    when no candidate qualifies, meaning no calls.
+    """
+    if fit.empty:
+        return None
+    right = (fit["signal_momentum"] > 0) == fit["up"]
+    for q in CUTOFF_QUANTILES:
+        cutoff = float(fit["strength"].quantile(q))
+        called = fit["strength"] >= cutoff
+        if called.mean() < min_share:
+            break
+        if right[called].mean() >= target:
+            return cutoff
+    return None
+
+
+def monthly_signal_cutoffs(
+    dailies: dict[str, pd.DataFrame],
+    horizon: int = config.PLATFORM_SIGNAL_HORIZON,
+    first_month: str = config.PLATFORM_SIGNAL_FIRST_MONTH,
+    target: float = config.PLATFORM_TREND_SIGNAL_TARGET,
+    min_share: float = config.PLATFORM_TREND_SIGNAL_MIN_SHARE,
+) -> dict[str, float | None]:
+    """Each month's strength cut-off from first_month, fit on every symbol's closed days before it.
+
+    The days used are the ones `monthly_trend_probabilities` fits on: windows
+    closed before the month, minus the last `horizon` days. A month with fewer
+    than MIN_TRAINING_ROWS such days gets None (no calls).
+    """
+    months = sorted({str(m) for d in dailies.values() for m in d.index.to_period("M").unique() if str(m) >= first_month})
+    cutoffs: dict[str, float | None] = {}
+    for month in months:
+        start = pd.Period(month).to_timestamp()
+        fit = pd.concat([d[(d.index < start) & d["target"].notna()].iloc[:-horizon] for d in dailies.values()])
+        cutoffs[month] = signal_cutoff(fit, target, min_share) if len(fit) >= MIN_TRAINING_ROWS else None
+        shown = "no calls" if cutoffs[month] is None else f"cut-off {cutoffs[month]:.2f}"
+        _progress(f"[all symbols] {month}: strong-trend {shown} from {len(fit)} closed days")
+    return cutoffs
+
+
+def trend_days(daily: pd.DataFrame, prob: pd.Series, horizon: int,
+               cutoffs: dict[str, float | None] | None = None) -> list[dict]:
+    """The day records for one symbol, in date order; running counts cover only windows closed by each day.
+
+    `cutoffs` maps each month to its strength cut-off; a month missing from
+    it, or mapped to None, makes no strong-trend call. `signalDays` counts
+    the closed windows on which a call was made, so it can be below `modelDays`.
+    """
+    cutoffs = cutoffs or {}
     scored = daily.loc[daily.index.intersection(prob.index)].copy()
     scored["prob"] = prob.loc[scored.index]
     scored["model_call"] = scored["prob"] > 0.5
     scored["rule_call"] = scored["momentum"] > 0
+    cut = scored.index.to_period("M").astype(str).map(lambda m: cutoffs.get(m)).to_numpy(dtype=object)
+    scored["signal_made"] = [c is not None and s >= c for c, s in zip(cut, scored["strength"])]
     known = scored["target"].notna()
     model_right = ((scored["model_call"] == scored["up"]) & known).to_numpy()
     rule_right = ((scored["rule_call"] == scored["up"]) & known).to_numpy()
+    signal_known = (scored["signal_made"] & known).to_numpy()
+    signal_right = (((scored["signal_momentum"] > 0) == scored["up"]) & scored["signal_made"] & known).to_numpy()
     known = known.to_numpy()
     records = []
     for i, (day, row) in enumerate(scored.iterrows()):
@@ -125,6 +198,10 @@ def trend_days(daily: pd.DataFrame, prob: pd.Series, horizon: int) -> list[dict]
             "modelDays": int(known[closed].sum()),
             "ruleHits": int(rule_right[closed].sum()),
             "ruleDays": int(known[closed].sum()),
+            "strength": round(float(row["strength"]), 4),
+            "signal": (UP if row["signal_momentum"] > 0 else DOWN) if row["signal_made"] else None,
+            "signalHits": int(signal_right[closed].sum()),
+            "signalDays": int(signal_known[closed].sum()),
             "outcome": None if unknown else (UP if row["up"] else DOWN),
             "move": None if unknown else round(float(row["target"]), 5),
         })
@@ -136,8 +213,10 @@ def build_trend(
     probabilities: dict[str, pd.Series],
     horizon: int = config.PLATFORM_SIGNAL_HORIZON,
     generated_at: datetime | None = None,
+    cutoffs: dict[str, float | None] | None = None,
 ) -> dict:
-    """Assemble the trend document from each symbol's days and the model's probabilities."""
+    """Assemble the trend document from each symbol's days, the model's probabilities and the monthly cut-offs."""
+    cutoffs = cutoffs or {}
     generated_at = generated_at or datetime.now(timezone.utc)
     document = {
         "generatedAt": generated_at.replace(microsecond=0).isoformat(),
@@ -147,13 +226,18 @@ def build_trend(
         "model": (f"Gradient-boosted classifier on momentum inputs, every symbol pooled, refit every month from "
                   f"{config.PLATFORM_SIGNAL_FIRST_MONTH} on the closed days before it"),
         "rule": f"The next {horizon} days continue the last {config.PLATFORM_TREND_MOMENTUM_DAYS} days' direction",
+        "signalRule": (f"The last {config.PLATFORM_TREND_SIGNAL_DAYS} days' direction, called only when that move is "
+                       f"large against its noise; each month's cut-off is the lowest that was right at least "
+                       f"{config.PLATFORM_TREND_SIGNAL_TARGET:.0%} of the time on the closed days before it"),
+        "signalDays": config.PLATFORM_TREND_SIGNAL_DAYS,
+        "signalCutoffs": {m: None if c is None else round(c, 4) for m, c in sorted(cutoffs.items())},
         "notice": NOTICE,
         "symbols": {},
     }
     for symbol in sorted(dailies):
         if symbol not in probabilities or probabilities[symbol].empty:
             raise ValueError(f"No probabilities for {symbol}")
-        days = trend_days(dailies[symbol], probabilities[symbol], horizon)
+        days = trend_days(dailies[symbol], probabilities[symbol], horizon, cutoffs)
         document["symbols"][symbol] = {"firstDay": days[0]["date"], "lastDay": days[-1]["date"], "days": days}
     validate_trend(document)
     return document
@@ -161,7 +245,8 @@ def build_trend(
 
 def validate_trend(document: dict) -> None:
     """Raise ValueError if the document breaks the contract with the UI."""
-    for key in ("generatedAt", "question", "horizonDays", "momentumDays", "model", "rule", "notice", "symbols"):
+    for key in ("generatedAt", "question", "horizonDays", "momentumDays", "model", "rule", "signalRule", "signalDays",
+                "signalCutoffs", "notice", "symbols"):
         if key not in document:
             raise ValueError(f"Missing {key}")
     if not document["symbols"]:
@@ -186,6 +271,10 @@ def validate_trend(document: dict) -> None:
                 raise ValueError(f"{symbol} {d['date']}: outcome and move are known together")
             if not (0 <= d["modelHits"] <= d["modelDays"] and 0 <= d["ruleHits"] <= d["ruleDays"]):
                 raise ValueError(f"{symbol} {d['date']}: hits exceed days")
+            if d["signal"] not in (UP, DOWN, None) or d["strength"] < 0:
+                raise ValueError(f"{symbol} {d['date']}: signal must be up, down or null, with a strength of 0 or more")
+            if not 0 <= d["signalHits"] <= d["signalDays"] <= d["modelDays"]:
+                raise ValueError(f"{symbol} {d['date']}: strong-trend hits exceed its days, or its days exceed the closed days")
 
 
 def write_trend(document: dict, path: Path | None = None) -> Path:
@@ -198,7 +287,8 @@ def write_trend(document: dict, path: Path | None = None) -> Path:
 
 
 def summarise_trend(document: dict) -> pd.DataFrame:
-    """One row per symbol: the final record of the model and the pattern, and the mean move after each model call."""
+    """One row per symbol: the final record of each reader, the share of closed days the strong-trend read called,
+    and the mean move after each model call."""
     rows = []
     for symbol, entry in document["symbols"].items():
         days = entry["days"]
@@ -209,6 +299,8 @@ def summarise_trend(document: dict) -> pd.DataFrame:
         rows.append({"symbol": symbol, "days_scored": last["modelDays"],
                      "model_accuracy": last["modelHits"] / last["modelDays"] if last["modelDays"] else float("nan"),
                      "rule_accuracy": last["ruleHits"] / last["ruleDays"] if last["ruleDays"] else float("nan"),
+                     "signal_accuracy": last["signalHits"] / last["signalDays"] if last["signalDays"] else float("nan"),
+                     "signal_share": last["signalDays"] / last["modelDays"] if last["modelDays"] else float("nan"),
                      "mean_move_after_up_call": float(np.mean(after_up)) if after_up else float("nan"),
                      "mean_move_after_down_call": float(np.mean(after_down)) if after_down else float("nan")})
     table = pd.DataFrame(rows)
@@ -226,5 +318,6 @@ def export_trend(
     dailies = {symbol: trend_daily(platform_dataset(prices, symbol), prices[symbol]["Close"], horizon)
                for symbol in sorted(prices)}
     probabilities = monthly_trend_probabilities(dailies, horizon, first_month)
-    document = build_trend(dailies, probabilities, horizon)
+    cutoffs = monthly_signal_cutoffs(dailies, horizon, first_month)
+    document = build_trend(dailies, probabilities, horizon, cutoffs=cutoffs)
     return document, write_trend(document)

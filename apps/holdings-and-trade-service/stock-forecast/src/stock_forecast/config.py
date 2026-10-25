@@ -154,6 +154,15 @@ PLATFORM_SIGNALS_SUMMARY_CSV = REPORTS_DIR / "platform_signals_summary.csv"
 # these momentum inputs, refit every month on the closed days before it.
 PLATFORM_TREND_MOMENTUM_DAYS = 10
 PLATFORM_TREND_FEATURES = ["momentum", "momentum_5", "momentum_20", "up_share"]
+# The strong-trend read the trade signal card leads with: the direction of the last
+# PLATFORM_TREND_SIGNAL_DAYS days, called only when that move is at least a cut-off in
+# units of its noise (10-day volatility times the square root of the days). Each month's
+# cut-off is the lowest whose calls were right at least PLATFORM_TREND_SIGNAL_TARGET of the
+# time on the closed days before it, while calling at least PLATFORM_TREND_SIGNAL_MIN_SHARE
+# of them; otherwise the month makes no call. Chosen on Oct 25 from January to June only.
+PLATFORM_TREND_SIGNAL_DAYS = 5
+PLATFORM_TREND_SIGNAL_TARGET = 0.85
+PLATFORM_TREND_SIGNAL_MIN_SHARE = 0.3
 PLATFORM_TREND_JSON = REPO_ROOT / "apps" / "client-ui" / "public" / "forecast" / "platform-trend.json"
 PLATFORM_TREND_SUMMARY_CSV = REPORTS_DIR / "platform_trend_summary.csv"
 SYMBOL_COMPARISON_CSV = REPORTS_DIR / "symbol_comparison.csv"

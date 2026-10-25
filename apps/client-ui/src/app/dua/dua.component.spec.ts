@@ -42,7 +42,8 @@ describe('Dua panel', () => {
     outcome: 'stormier',
   }));
   // Thirty trend readings for AAPL before the clock: over any twenty in a row the model is right
-  // 15 times and the momentum pattern 12 (outcomes all up).
+  // 15 times and the momentum pattern 12 (outcomes all up). The strong-trend read makes no call
+  // on every fourth day and a wrong "down" call on days 0, 10 and 20: 16 right of its last 19 calls.
   const trendDays = Array.from({ length: 30 }, (_, i) => ({
     date: `2025-12-${String(i + 1).padStart(2, '0')}`,
     probability: 0.64,
@@ -52,6 +53,10 @@ describe('Dua panel', () => {
     modelDays: 0,
     ruleHits: 0,
     ruleDays: 0,
+    strength: i % 4 === 3 ? 0.3 : 1.2,
+    signal: i % 4 === 3 ? null : i % 10 === 0 ? 'down' : 'up',
+    signalHits: 0,
+    signalDays: 0,
     outcome: 'up',
     move: 0.021,
   }));
@@ -63,6 +68,9 @@ describe('Dua panel', () => {
       momentumDays: 10,
       model: 'm',
       rule: 'r',
+      signalRule: 's',
+      signalDays: 5,
+      signalCutoffs: {},
       notice: 'n',
       symbols: { AAPL: { firstDay: '2025-12-01', lastDay: '2025-12-30', days: trendDays } },
     }),
@@ -536,13 +544,14 @@ describe('Dua panel', () => {
     const choice = fixture.nativeElement.querySelector('[data-testid=dua-trending-choice]');
     expect(choice.textContent.replace(/\s+/g, ' ')).toContain("What's trending LIVE");
     expect(choice.querySelector('ng-icon[name=lucideZap]')).not.toBeNull();
-    expect(choice.textContent).toContain('AAPL · consider buying · right 75% of the last 20 weeks');
+    expect(choice.textContent).toContain('AAPL · consider buying · right 84% of its last 19 calls');
     click("What's trending");
     expect(fixture.nativeElement.querySelector('h2').textContent.trim()).toBe("What's trending");
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('AAPL: consider buying');
     expect(text).toContain('64% chance the price is higher');
-    expect(text).toContain('75% (15 of 20)');
+    expect(text).toContain('84% (16 of 19)');
+    expect(text).toContain('19 of the last 25');
     expect(text).toContain('It can be wrong: do not take it as true or as advice to buy or sell.');
     const open = fixture.nativeElement.querySelector('[data-testid=dua-outlook-open]');
     expect(open.textContent).toContain('Open the full trade signal for AAPL');

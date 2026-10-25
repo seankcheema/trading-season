@@ -182,6 +182,9 @@
 .read-tile {
   gap: 0.1rem;
 }
+.read-tile-wide {
+  grid-column: 1 / -1;
+}
 .read-tile-shown {
   border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
   background: color-mix(in srgb, var(--primary) 5%, transparent);

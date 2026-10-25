@@ -5,17 +5,14 @@
  * export-platform-trend.py); its fields are a contract with that script. Each symbol has
  * one record per trading day scored, made at that day's close and about the next
  * `horizonDays`: the model's probability that the price is higher then, the momentum the
- * pattern reads, and, once the window has closed, the outcome and the realized move. As
- * with the volatility signal, the running counts cover only windows closed by that day,
- * and the card compares the model and the pattern over the last RECORD_WINDOW closed
- * reads. A read is a machine-learning output on a simulated market, never advice.
+ * pattern reads, the strong-trend read's call (or none, on a week too weak to call), and,
+ * once the window has closed, the outcome and the realized move. The card leads with the
+ * strong-trend read and quotes its record over its last RECORD_WINDOW closed calls with
+ * the share of weeks it called; the model and the pattern are scored over the last
+ * RECORD_WINDOW closed reads beside it. Only windows closed by the reading day count. A
+ * read is a machine-learning output on a simulated market, never advice.
  */
-import {
-  MIN_RECORD_DAYS,
-  RECORD_WINDOW,
-  TrackRecord,
-  tradingDate,
-} from '../risk-outlook/platform-signals';
+import { RECORD_WINDOW, TrackRecord, tradingDate } from '../risk-outlook/platform-signals';
 
 export type TrendCall = 'up' | 'down';
 
@@ -28,6 +25,12 @@ export interface TrendDay {
   modelDays: number;
   ruleHits: number;
   ruleDays: number;
+  /** The last signalDays days' move against its noise; the read calls when it reaches the month's cut-off. */
+  strength: number;
+  /** The strong-trend read's call, or null on a week too weak to call. */
+  signal: TrendCall | null;
+  signalHits: number;
+  signalDays: number;
   outcome: TrendCall | null;
   move: number | null;
 }
@@ -45,41 +48,52 @@ export interface PlatformTrend {
   momentumDays: number;
   model: string;
   rule: string;
+  signalRule: string;
+  signalDays: number;
+  /** Each month's strength cut-off, or null for a month that makes no call. */
+  signalCutoffs: Record<string, number | null>;
   notice: string;
   symbols: Record<string, TrendSymbol>;
 }
 
-/** One past read as the card showed it at the time, and what then happened. */
+/** One past call of the strong-trend read, and what then happened. */
 export interface TrendRead {
   date: string;
   call: TrendCall;
-  source: 'model' | 'rule';
   outcome: TrendCall;
   move: number;
   hit: boolean;
 }
 
+/** The strong-trend read's last RECORD_WINDOW closed calls, and how many closed weeks it took to make them. */
+export interface SignalRecord {
+  signalHits: number;
+  signalCalls: number;
+  /** Closed weeks looked back over to find those calls; calls / weeks is how often it speaks up. */
+  signalWeeks: number;
+}
+
 export type TrendReading =
   | { kind: 'unknown-symbol' }
   | { kind: 'too-early'; firstDay: string }
-  | {
+  | ({
       kind: 'ready';
       asOf: string;
-      call: TrendCall;
-      /** Whose call this is: the model's where its recent record beats the pattern's, else the pattern's. */
-      source: 'model' | 'rule';
+      /** The strong-trend read's call, which the card leads with; null when the trend is too weak to call. */
+      call: TrendCall | null;
       modelCall: TrendCall;
       ruleCall: TrendCall;
       /** The model's chance that the price is higher after the horizon. */
       probability: number;
       /** The pattern's input: the log return over the last momentumDays. */
       momentum: number;
+      strength: number;
       modelHits: number;
       modelDays: number;
       ruleHits: number;
       ruleDays: number;
       recent: TrendRead[];
-    };
+    } & SignalRecord);
 
 /** How many past reads the card lists as evidence. */
 export const TREND_RECENT_READS = 6;
@@ -109,22 +123,26 @@ export function trendRecordAt(days: TrendDay[], index: number, horizon: number):
   return record;
 }
 
-function cardCall(
-  days: TrendDay[],
-  index: number,
-  horizon: number,
-): { call: TrendCall; source: 'model' | 'rule'; ruleCall: TrendCall } {
-  const day = days[index];
-  const ruleCall = ruleCallFor(day);
-  const record = trendRecordAt(days, index, horizon);
-  const modelAhead =
-    record.modelDays >= MIN_RECORD_DAYS &&
-    record.modelHits / record.modelDays > record.ruleHits / record.ruleDays;
-  return {
-    call: modelAhead ? day.call : ruleCall,
-    source: modelAhead ? 'model' : 'rule',
-    ruleCall,
-  };
+/**
+ * The strong-trend read's last RECORD_WINDOW calls whose window had closed by the day at
+ * `index`, and how many closed weeks it looked back over to find them.
+ */
+export function signalRecordAt(days: TrendDay[], index: number, horizon: number): SignalRecord {
+  const record: SignalRecord = { signalHits: 0, signalCalls: 0, signalWeeks: 0 };
+  for (let j = index - horizon; j >= 0 && record.signalCalls < RECORD_WINDOW; j--) {
+    const day = days[j];
+    if (!day.outcome) {
+      continue;
+    }
+    record.signalWeeks++;
+    if (day.signal) {
+      record.signalCalls++;
+      if (day.signal === day.outcome) {
+        record.signalHits++;
+      }
+    }
+  }
+  return record;
 }
 
 /** The index of the latest record made at a close strictly before the simulated moment's trading date. */
@@ -155,22 +173,22 @@ export function trendReadingFor(
     return { kind: 'too-early', firstDay: entry.firstDay };
   }
   const latest = entry.days[index];
-  const shown = cardCall(entry.days, index, trend.horizonDays);
   return {
     kind: 'ready',
     asOf: latest.date,
-    call: shown.call,
-    source: shown.source,
+    call: latest.signal,
     modelCall: latest.call,
-    ruleCall: shown.ruleCall,
+    ruleCall: ruleCallFor(latest),
     probability: latest.probability,
     momentum: latest.momentum,
+    strength: latest.strength,
     recent: trendRecentReads(entry.days, index, trend.horizonDays),
     ...trendRecordAt(entry.days, index, trend.horizonDays),
+    ...signalRecordAt(entry.days, index, trend.horizonDays),
   };
 }
 
-/** The last reads whose window had closed by the day at `latestIndex`, most recent first. */
+/** The strong-trend read's last calls whose window had closed by the day at `latestIndex`, most recent first. */
 export function trendRecentReads(
   days: TrendDay[],
   latestIndex: number,
@@ -179,17 +197,15 @@ export function trendRecentReads(
   const reads: TrendRead[] = [];
   for (let j = latestIndex - horizon; j >= 0 && reads.length < TREND_RECENT_READS; j--) {
     const day = days[j];
-    if (!day.outcome || day.move === null) {
+    if (!day.outcome || day.move === null || !day.signal) {
       continue;
     }
-    const shown = cardCall(days, j, horizon);
     reads.push({
       date: day.date,
-      call: shown.call,
-      source: shown.source,
+      call: day.signal,
       outcome: day.outcome,
       move: day.move,
-      hit: shown.call === day.outcome,
+      hit: day.signal === day.outcome,
     });
   }
   return reads;
@@ -198,11 +214,13 @@ export function trendRecentReads(
 /** One symbol's current read, for a list across the platform. */
 export interface TrendOverviewRow {
   symbol: string;
-  call: TrendCall;
-  source: 'model' | 'rule';
+  /** The strong-trend read's call, or null when the stock's trend is too weak to call. */
+  call: TrendCall | null;
   momentum: number;
   hits: number;
-  days: number;
+  /** Closed calls behind `hits`, and the closed weeks it took to make them. */
+  calls: number;
+  weeks: number;
 }
 
 /** Every covered symbol's reading at a simulated moment, strongest momentum first. */
@@ -213,14 +231,13 @@ export function trendOverview(trend: PlatformTrend, marketTimestamp: string): Tr
     if (reading.kind !== 'ready') {
       continue;
     }
-    const model = reading.source === 'model';
     rows.push({
       symbol,
       call: reading.call,
-      source: reading.source,
       momentum: reading.momentum,
-      hits: model ? reading.modelHits : reading.ruleHits,
-      days: model ? reading.modelDays : reading.ruleDays,
+      hits: reading.signalHits,
+      calls: reading.signalCalls,
+      weeks: reading.signalWeeks,
     });
   }
   return rows.sort((a, b) => b.momentum - a.momentum);
