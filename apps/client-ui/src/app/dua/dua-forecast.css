@@ -109,3 +109,17 @@
     animation: none;
   }
 }
+
+/* The way from a card to the market page's forecast drawer, where the full record lives. */
+.forecast-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.forecast-link:hover {
+  text-decoration-thickness: 2px;
+}

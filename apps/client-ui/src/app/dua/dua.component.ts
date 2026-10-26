@@ -420,7 +420,7 @@ export class DuaComponent {
     if (review && worst)
       return {
         title: 'What to consider',
-        forecast: { record: trendForecastRecord(review.reading) },
+        forecast: { record: trendForecastRecord(review.reading), symbol: review.symbol },
         takeaway: `Consider selling ${review.symbol}.`,
         text: `Your largest loss ${when} (${dollars(-worst.gain!)}), and its forecast points down.`,
         advice: 'Selling some shares limits further losses; avoid buying more until it turns up.',
@@ -429,7 +429,7 @@ export class DuaComponent {
     if (buy)
       return {
         title: 'What to consider',
-        forecast: { record: trendForecastRecord(buy.reading) },
+        forecast: { record: trendForecastRecord(buy.reading), symbol: buy.symbol },
         takeaway: `Consider buying ${buy.symbol}.`,
         text: `Its forecast points up, with the strongest momentum of the stocks forecast to rise.`,
         advice: `Start small and check its stock page first.${stormier ? ' Expect bigger price swings.' : ''}`,
@@ -518,7 +518,8 @@ export class DuaComponent {
       {
         title: `${symbol} Analysis`,
         emphasizeText: true,
-        forecast: trend?.kind === 'ready' ? { record: trendForecastRecord(trend) } : undefined,
+        forecast:
+          trend?.kind === 'ready' ? { record: trendForecastRecord(trend), symbol } : undefined,
         takeaway: action,
         text:
           trend?.kind !== 'ready'
@@ -554,7 +555,8 @@ export class DuaComponent {
       },
       {
         title: 'Volatility outlook',
-        forecast: risk?.kind === 'ready' ? { record: outlookForecastRecord(risk) } : undefined,
+        forecast:
+          risk?.kind === 'ready' ? { record: outlookForecastRecord(risk), symbol } : undefined,
         takeaway: swing,
         text:
           swingChance >= 0.5

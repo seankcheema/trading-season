@@ -193,6 +193,14 @@
                     <span>{{ record.label }}</span>
                   </div>
                 }
+                @if (card.forecast?.symbol; as forecastSymbol) {
+                  <a
+                    class="forecast-link"
+                    [routerLink]="['/dashboard/markets', forecastSymbol.toLowerCase()]"
+                    [queryParams]="{ forecast: 'open' }"
+                    >See the forecast</a
+                  >
+                }
               </ng-template>
 
               @if (card.metrics?.length) {
