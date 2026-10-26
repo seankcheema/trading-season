@@ -255,6 +255,33 @@ describe('Dua panel', () => {
     click('Minimize Dua');
     expect(pill()).toBeNull();
   });
+  it('expands and shrinks its panel from the header, but stays compact beside the order dialog', () => {
+    const { fixture, click } = setup();
+    click('Dua insights');
+    const el = fixture.nativeElement as HTMLElement;
+    const panel = () => el.querySelector('.dua-panel') as HTMLElement;
+    const button = () => el.querySelector('.expand-button') as HTMLButtonElement | null;
+    expect(panel().classList).not.toContain('expanded');
+    expect(button()?.getAttribute('aria-label')).toBe('Expand Dua');
+
+    button()!.click();
+    fixture.detectChanges();
+    expect(panel().classList).toContain('expanded');
+    expect(button()?.getAttribute('aria-label')).toBe('Shrink Dua');
+    expect(button()?.getAttribute('aria-pressed')).toBe('true');
+    expect(session.expanded()).toBe(true);
+
+    fixture.componentRef.setInput('raised', true);
+    fixture.detectChanges();
+    expect(button()).toBeNull();
+    expect(panel().classList).not.toContain('expanded');
+
+    fixture.componentRef.setInput('raised', false);
+    fixture.detectChanges();
+    button()!.click();
+    fixture.detectChanges();
+    expect(panel().classList).not.toContain('expanded');
+  });
   it('rises over a dialog it accompanies and keeps Escape from also closing that dialog', () => {
     const { fixture } = setup();
     fixture.componentRef.setInput('symbol', 'AAPL');
