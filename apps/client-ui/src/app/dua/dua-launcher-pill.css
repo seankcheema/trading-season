@@ -1,0 +1,31 @@
+/* On wide screens, a label beside the closed launcher says what Dua is for. */
+.launcher-pill {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 10px);
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: 0 10px 28px -12px #000b;
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  transform: translateY(-50%);
+}
+.launcher-pill-count {
+  color: var(--primary);
+  font-size: 12px;
+}
+@media (min-width: 1024px) {
+  .launcher-pill {
+    display: inline-flex;
+  }
+  .dua-launcher.has-pill .notification-count {
+    display: none;
+  }
+}

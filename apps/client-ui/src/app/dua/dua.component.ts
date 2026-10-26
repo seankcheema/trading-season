@@ -118,7 +118,12 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './dua.component.html',
-  styleUrls: ['./dua.component.css', './dua-motion.css', './dua-forecast.css'],
+  styleUrls: [
+    './dua.component.css',
+    './dua-motion.css',
+    './dua-forecast.css',
+    './dua-launcher-pill.css',
+  ],
 })
 export class DuaComponent {
   protected readonly responseParts = insightTextParts;
@@ -167,6 +172,11 @@ export class DuaComponent {
   protected readonly hovered = signal(false);
   protected readonly focused = signal(false);
   protected readonly hasUpdates = computed(() => this.unreadCount() > 0);
+  // The Ask Dua label beside the closed launcher. Not on a stock's page, where it would sit on
+  // the order ticket, and not while Dua is speaking, whose bubble takes the same place.
+  protected readonly showPill = computed(
+    () => this.session.minimized() && !this.symbol() && !this.speech.line(),
+  );
   protected readonly explaining = signal(false);
   // What Dua is saying beside the launcher, such as an order's outcome, and how it looks.
   protected readonly speech = inject(DuaSpeech);

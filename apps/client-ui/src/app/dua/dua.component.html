@@ -427,6 +427,7 @@
   aria-label="Dua insights"
   [class.waking]="waking()"
   [class.rolling]="rolling()"
+  [class.has-pill]="showPill()"
   [attr.aria-expanded]="!session.minimized()"
   [attr.aria-description]="hasUpdates() ? unreadCount() + ' new insight updates' : null"
   (pointerenter)="hovered.set($event.pointerType === 'mouse')"
@@ -442,6 +443,14 @@
   </span>
   @if (sleeping()) {
     <span class="dua-zzz" aria-hidden="true"><span>z</span><span>z</span><span>z</span></span>
+  }
+  @if (showPill()) {
+    <span class="launcher-pill" aria-hidden="true"
+      >Ask Dua
+      @if (hasUpdates()) {
+        <span class="launcher-pill-count">{{ unreadCount() }} new</span>
+      }
+    </span>
   }
   @if (hasUpdates() && session.minimized()) {
     <span class="notification-count" [attr.aria-label]="unreadCount() + ' new insight updates'">{{
