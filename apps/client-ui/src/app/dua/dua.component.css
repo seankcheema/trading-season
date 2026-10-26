@@ -1258,14 +1258,19 @@ article h3 {
 .dua-body > :is(.card-navigation, .timestamp, .simulation-notice) {
   zoom: 1;
 }
-/* A taller panel gives its room to the card, so page controls and notes stay at the bottom. */
+/*
+ * A resized panel gives the card whatever room the page controls and notes leave, so those stay
+ * in view at the bottom; a card taller than its room, as scaled-up text can make it, scrolls.
+ */
 .dua-panel.resized .dua-body {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
 }
 .dua-panel.resized .insights {
-  flex: 1 1 auto;
+  flex: 1 1 0;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr) auto;
 }
 @media (max-width: 700px) {
   .resize-grip {
