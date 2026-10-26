@@ -78,6 +78,8 @@ Walk-forward results (Oct 19-20): on AAPL's next-day big moves, VIX, the family,
 
 Walk-forward (Oct 25): the model averaged 80.6% and was ahead of both bars in 5 of 6 years. The rule averaged 74.3%. On its most confident 40% of days the model reached 94.2%. The pre-registration sets out what the test must show for the 80% goal to count as met.
 
+Sealed test (run Oct 26, 683 days from 2024-01-02 to 2026-09-22, pre-registration commit 17ad6bcb): the model scored 70.0% against 54.9% for one answer every day and 61.9% for the rule, with AUC 0.773 and Brier skill +0.226. Under the pre-registration the skill claim stands and the 80% goal is not met. On its two most confident fifths of days it scored 83.5%. The pre-registration expected 70% to 85%: walk-forward years ran from 69.6% to 93.6%, and 70.0% sits at the low end of that range.
+
 ## TradingSeason demo
 
 `scripts/extra-platform-demo.py` runs the saved direction and volatility models, untrained further, on the platform's simulated 2026 AAPL prices in `data/platform/`. It is a demo that the pipeline runs on platform data, never evidence: the simulation follows scripted monthly trends, so a "follow the 20-day trend" rule, scored alongside, does well there. `platform_demo.py` replaces SPY with the equal-weight average of the platform's 10 stocks and scores two variants on the same days: as trained, and recalibrated, where only the input scalers and the big-move cut-off are re-fit on the warm-up rows before the scored period. It writes `reports/platform_demo.csv` and `.png`; `--symbol MSFT` runs another platform stock through the same AAPL-trained models and writes `platform_demo_msft.csv` and `.png`.

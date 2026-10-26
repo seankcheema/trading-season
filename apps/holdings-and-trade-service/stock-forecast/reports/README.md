@@ -153,6 +153,8 @@ What it means: the pipeline runs end to end on platform data, but the platform's
 
 **The week-ahead test** (`week_ahead_walk_forward.csv`): the SPY 5-day question gets its own sealed test, because it was picked as the best of several windows on these same years. A second bar joins "one answer every day": "same as the last 5 days", which calls a stormy week ahead whenever the past week was stormy. Over 2018 to 2023 the model averaged 80.6% and the rule 74.3%. The model was ahead of both in every year but 2022. That year nearly every week was stormy, so "always stormy" was right 98.8% of the time.
 
+**The sealed result** (`test_week_ahead_results.csv`, `week_ahead_confidence_test.csv`): on 2024 to September 2026, which the model never saw, it was right 70.0% of the time. Answering the same thing every day scored 54.9%, and "same as the last 5 days" scored 61.9%. So the model really does tell calmer weeks from stormier ones on new years, but it did not reach the 80% goal. On the days it was most sure of, the two most confident fifths, it was right 83.5% of the time.
+
 ## The earlier return model
 
 **`lstm_loss.png`**: the same learning chart for the LSTM that predicts the size of tomorrow's move.
