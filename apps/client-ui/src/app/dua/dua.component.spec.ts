@@ -307,10 +307,10 @@ describe('Dua panel', () => {
 
     expect(active().classList).toContain('forecast-card');
     expect(active().querySelector('.forecast-chip')?.textContent?.trim()).toBe('Model forecast');
-    expect(record()).toBe('Right 16 of last 19 calls');
-    const track = active().querySelector('app-forecast-track')!;
-    expect(track.getAttribute('aria-label')).toBe('Right on 16 of the last 19 calls');
-    expect(track.querySelectorAll('.cell')).toHaveLength(19);
+    expect(record()).toBe('84% confidence');
+    expect(
+      active().querySelector('app-forecast-confidence .fill')!.getAttribute('style'),
+    ).toContain('width: 84%');
 
     click('Next insight');
     // Momentum is measured, not forecast.
@@ -319,7 +319,7 @@ describe('Dua panel', () => {
 
     click('Next insight');
     expect(active().classList).toContain('forecast-card');
-    expect(record()).toMatch(/^Right \d+ of last \d+ weeks$/);
+    expect(record()).toMatch(/^\d+% confidence$/);
   });
   it('opens the forecast details in a small popover by its record, not another window', () => {
     const { fixture, click } = setup();
@@ -338,7 +338,7 @@ describe('Dua panel', () => {
     fixture.detectChanges();
     expect(toggle().getAttribute('aria-expanded')).toBe('true');
     const text = pop()!.textContent!.replace(/\s+/g, ' ');
-    expect(text).toContain('Right 16 of the last 19 calls');
+    expect(text).toContain('Based on its last 19 calls: right on 16.');
     expect(text).toContain('Called 19 of the last 25 weeks');
     expect(text).toContain(
       'Simple pattern, "Keeps going the same way": right 12 of the last 20 weeks.',
@@ -373,9 +373,7 @@ describe('Dua panel', () => {
       'Consider buying AAPL.',
     );
     expect(card.classList).toContain('forecast-card');
-    expect(card.querySelector('.forecast-record')?.textContent?.trim()).toBe(
-      'Right 16 of last 19 calls',
-    );
+    expect(card.querySelector('.forecast-record')?.textContent?.trim()).toBe('84% confidence');
   });
   it('says there is no clear direction when the trend read makes no call', () => {
     const forecasts = trend.trend();

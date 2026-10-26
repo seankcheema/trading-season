@@ -297,9 +297,10 @@ describe('Dua insights', () => {
     expect(watchlistPulse(null, quotes).takeaway).toBe('Your watchlist is unavailable.');
   });
 
-  it('keeps a forecast record as one frequency, how often it called, and its baseline', () => {
+  it('keeps a forecast record as a confidence score, how often it called, and its baseline', () => {
     expect(
       trendForecastRecord({
+        call: 'down',
         signalHits: 12,
         signalCalls: 16,
         signalWeeks: 24,
@@ -310,11 +311,14 @@ describe('Dua insights', () => {
       hits: 12,
       total: 16,
       unit: 'calls',
+      percent: 75,
+      called: true,
       coverage: 'Called 16 of the last 24 weeks; it makes no call on weeks too weak to read.',
       baseline: { label: 'Keeps going the same way', hits: 11, total: 20 },
     });
     expect(
       trendForecastRecord({
+        call: 'up',
         signalHits: 0,
         signalCalls: 0,
         signalWeeks: 3,
@@ -327,14 +331,28 @@ describe('Dua insights', () => {
       hits: 15,
       total: 20,
       unit: 'weeks',
+      percent: 75,
+      called: true,
       baseline: { label: 'Like last week', hits: 12, total: 20 },
     });
     expect(outlookForecastRecord({ ...outlook, source: 'rule' })).toEqual({
       hits: 12,
       total: 20,
       unit: 'weeks',
+      percent: 60,
+      called: true,
       baseline: { label: 'The model alone', hits: 15, total: 20 },
     });
     expect(outlookForecastRecord({ ...outlook, modelDays: 0, source: 'model' })).toBeUndefined();
+    expect(
+      trendForecastRecord({
+        call: null,
+        signalHits: 8,
+        signalCalls: 10,
+        signalWeeks: 14,
+        ruleHits: 9,
+        ruleDays: 14,
+      })?.called,
+    ).toBe(false);
   });
 });

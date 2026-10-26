@@ -106,10 +106,10 @@ describe('ForecastDrawerComponent', () => {
     expect(text('forecast-drawer')).toContain('next 5 trading days');
 
     expect(text('forecast-direction')).toContain('Price likely higher');
-    expect(text('forecast-direction')).toContain('Right 16 of last 19 calls');
+    expect(text('forecast-direction')).toContain('84% confidence');
 
     expect(text('forecast-volatility')).toContain('Bigger price swings likely');
-    expect(text('forecast-volatility')).toContain('Right 15 of last 20 weeks');
+    expect(text('forecast-volatility')).toContain('75% confidence');
     expect(el.querySelector('.drawer-meter-track')!.getAttribute('aria-label')).toBe(
       'Model estimate: 62% chance of bigger swings',
     );
@@ -131,12 +131,13 @@ describe('ForecastDrawerComponent', () => {
     const { fixture, el, text } = setup();
     const summary = el.querySelector('.drawer-summary')!.textContent!.replace(/\s+/g, ' ');
     expect(summary).toContain('Price likely higher');
-    expect(summary).toContain('Right 16 of last 19 calls');
+    expect(summary).toContain('84% confidence');
     expect(summary).toContain('Bigger price swings likely');
-    expect(summary).toContain('Right 15 of last 20 weeks');
+    expect(summary).toContain('75% confidence');
     expect(summary).not.toContain('Keeps going the same way');
     expect(summary).not.toContain('moved up');
-    expect(el.querySelectorAll('.drawer-summary app-forecast-track')).toHaveLength(2);
+    expect(el.querySelectorAll('.drawer-summary app-forecast-confidence')).toHaveLength(2);
+    expect(text('forecast-why')).toContain('Confidence is how often');
 
     const why = el.querySelector('[data-testid=forecast-why]') as HTMLDetailsElement;
     const scoring = el.querySelector('[data-testid=forecast-scoring]') as HTMLDetailsElement;
