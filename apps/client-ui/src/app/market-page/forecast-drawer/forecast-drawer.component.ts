@@ -19,10 +19,10 @@ import { PlatformTrendService } from '../trend-read/platform-trend.service';
 import { trendReadingFor } from '../trend-read/platform-trend';
 
 /**
- * The market page's forecast drawer: both model forecasts for the open stock in one place,
- * each with its record over closed weeks and the simple pattern it has to beat. It slides in
- * over the chart, never over the order ticket, and closes on its button or Escape. Dua's cards
- * keep one record line and link here for the details.
+ * The market page's forecast drawer: both model forecasts for the open stock in one place. It
+ * leads with each call and its record as one frequency with a track strip, and keeps the reasons
+ * and the scoring against simple patterns in two collapsed sections (progressive disclosure).
+ * It slides in over the chart, never over the order ticket, and closes on its button or Escape.
  */
 @Component({
   selector: 'app-forecast-drawer',
@@ -63,36 +63,58 @@ import { trendReadingFor } from '../trend-read/platform-trend';
     } @else if (!ready()) {
       <p class="drawer-message" role="status">Loading the forecast…</p>
     } @else {
-      <section class="drawer-section" data-testid="forecast-direction" aria-labelledby="fd-dir">
-        <h3 id="fd-dir">Direction</h3>
-        @switch (trend()?.kind) {
-          @case ('ready') {
-            <p
-              class="drawer-call"
-              [class.up]="direction() === 'up'"
-              [class.down]="direction() === 'down'"
-            >
-              {{ directionCall() }}
-            </p>
-            <p class="drawer-why">{{ directionWhy() }}</p>
-            <ng-container
-              *ngTemplateOutlet="recordRow; context: { $implicit: directionRecord() }"
-            />
+      <div class="drawer-summary">
+        <section class="summary-row" data-testid="forecast-direction" aria-labelledby="fd-dir">
+          <h3 id="fd-dir">Direction</h3>
+          @switch (trend()?.kind) {
+            @case ('ready') {
+              <p
+                class="drawer-call"
+                [class.up]="direction() === 'up'"
+                [class.down]="direction() === 'down'"
+              >
+                {{ directionCall() }}
+              </p>
+              <ng-container
+                *ngTemplateOutlet="recordRow; context: { $implicit: directionRecord() }"
+              />
+            }
+            @case ('too-early') {
+              <p class="drawer-why">Direction reads start {{ trendFirstDay() }}.</p>
+            }
+            @default {
+              <p class="drawer-why">No direction forecast covers {{ symbol() }}.</p>
+            }
           }
-          @case ('too-early') {
-            <p class="drawer-why">Direction reads start {{ trendFirstDay() }}.</p>
-          }
-          @default {
-            <p class="drawer-why">No direction forecast covers {{ symbol() }}.</p>
-          }
-        }
-      </section>
+        </section>
 
-      <section class="drawer-section" data-testid="forecast-volatility" aria-labelledby="fd-vol">
-        <h3 id="fd-vol">Price swings</h3>
-        @switch (risk()?.kind) {
-          @case ('ready') {
-            <p class="drawer-call">{{ swingCall() }}</p>
+        <section class="summary-row" data-testid="forecast-volatility" aria-labelledby="fd-vol">
+          <h3 id="fd-vol">Price swings</h3>
+          @switch (risk()?.kind) {
+            @case ('ready') {
+              <p class="drawer-call">{{ swingCall() }}</p>
+              <ng-container *ngTemplateOutlet="recordRow; context: { $implicit: swingRecord() }" />
+            }
+            @case ('too-early') {
+              <p class="drawer-why">Swing reads start {{ riskFirstDay() }}.</p>
+            }
+            @default {
+              <p class="drawer-why">No volatility forecast covers {{ symbol() }}.</p>
+            }
+          }
+        </section>
+      </div>
+
+      <details class="drawer-more" data-testid="forecast-why">
+        <summary>Why these calls</summary>
+        <div class="drawer-more-body">
+          @if (trend()?.kind === 'ready') {
+            <p class="drawer-why">{{ directionWhy() }}</p>
+            @if (directionRecord()?.coverage; as coverage) {
+              <p class="drawer-why">{{ coverage }}</p>
+            }
+          }
+          @if (risk()?.kind === 'ready') {
             <div class="drawer-meter">
               <div class="drawer-meter-labels" aria-hidden="true">
                 <span>Smaller swings</span><span>Bigger swings</span>
@@ -101,38 +123,34 @@ import { trendReadingFor } from '../trend-read/platform-trend';
                 <span class="drawer-meter-marker" [style.left.%]="swingProbability() * 100"></span>
               </div>
             </div>
-            <p class="drawer-why">How much the price may move, up or down, not which way.</p>
-            <ng-container *ngTemplateOutlet="recordRow; context: { $implicit: swingRecord() }" />
+            <p class="drawer-why">
+              The swings read says how much the price may move, up or down, not which way.
+            </p>
           }
-          @case ('too-early') {
-            <p class="drawer-why">Swing reads start {{ riskFirstDay() }}.</p>
-          }
-          @default {
-            <p class="drawer-why">No volatility forecast covers {{ symbol() }}.</p>
-          }
-        }
-      </section>
+        </div>
+      </details>
 
-      <section class="drawer-section" data-testid="forecast-scoring" aria-labelledby="fd-score">
-        <h3 id="fd-score">How it's scored</h3>
-        <ul class="drawer-scores">
-          @for (line of scoreLines(); track line.label) {
-            <li>
-              <span>{{ line.label }}</span>
-              <strong>{{ line.value }}</strong>
-            </li>
-          }
-        </ul>
-        <p class="drawer-why">
-          Each forecast is judged against a simple pattern anyone could follow, over weeks that had
-          already closed by this simulated date.
-        </p>
-      </section>
+      <details class="drawer-more" data-testid="forecast-scoring">
+        <summary>How it's scored</summary>
+        <div class="drawer-more-body">
+          <ul class="drawer-scores">
+            @for (line of scoreLines(); track line.label) {
+              <li>
+                <span>{{ line.label }}</span>
+                <strong>{{ line.value }}</strong>
+              </li>
+            }
+          </ul>
+          <p class="drawer-why">
+            Each forecast is judged against a simple pattern anyone could follow, over weeks that
+            had already closed by this simulated date.
+          </p>
+        </div>
+      </details>
     }
 
     <p class="drawer-notice" role="note">
-      A machine-learning read on a simulated market, not a prediction of any real market and not
-      investment advice. It can be wrong.
+      A model's read on a simulated market. Not investment advice; it can be wrong.
     </p>
 
     <ng-template #recordRow let-record>

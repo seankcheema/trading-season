@@ -89,13 +89,18 @@
   transform: rotate(45deg);
 }
 
-.drawer-section {
+/* The summary: each call and its record, nothing else, before anything is opened. */
+.drawer-summary {
   display: grid;
-  gap: 0.4rem;
+  gap: 0.75rem;
   border-top: 1px solid var(--border);
   padding-top: 0.8rem;
 }
-.drawer-section h3 {
+.summary-row {
+  display: grid;
+  gap: 0.25rem;
+}
+.summary-row h3 {
   margin: 0;
   color: var(--muted-foreground);
   font-size: 0.6875rem;
@@ -103,9 +108,51 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+
+/* The details, closed until asked for. */
+.drawer-more {
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+}
+.drawer-more summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 0.375rem;
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+.drawer-more summary::-webkit-details-marker {
+  display: none;
+}
+.drawer-more summary::after {
+  content: '';
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid var(--muted-foreground);
+  border-bottom: 2px solid var(--muted-foreground);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform 160ms ease;
+}
+.drawer-more[open] summary::after {
+  transform: rotate(-135deg) translate(-2px, -2px);
+}
+.drawer-more summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.drawer-more-body {
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.6rem;
+}
+
 .drawer-call {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: 1rem;
   font-weight: 700;
 }
 .drawer-call.up {
@@ -193,5 +240,8 @@
 @media (prefers-reduced-motion: reduce) {
   :host {
     animation: none;
+  }
+  .drawer-more summary::after {
+    transition: none;
   }
 }
