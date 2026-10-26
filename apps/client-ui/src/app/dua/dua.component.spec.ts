@@ -299,6 +299,45 @@ describe('Dua panel', () => {
     grip()!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     expect(session.size()).toBeNull();
   });
+  it('scales its text with a resized panel, within bounds, and not at its default size', () => {
+    let report: (width: number) => void = () => undefined;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: (entries: { contentRect: { width: number } }[]) => void) {
+          report = (width) => callback([{ contentRect: { width } }]);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const { fixture, click } = setup();
+    click('Dua insights');
+    const panel = () => fixture.nativeElement.querySelector('.dua-panel') as HTMLElement;
+    const scale = () => panel().style.getPropertyValue('--dua-text-scale');
+    const resize = (width: number) => {
+      session.size.set({ width, height: 600 });
+      report(width);
+      fixture.detectChanges();
+    };
+
+    report(630);
+    fixture.detectChanges();
+    expect(scale()).toBe('1');
+
+    resize(630);
+    expect(scale()).toBe('1.4');
+    resize(483);
+    expect(scale()).toBe('1.15');
+    resize(800);
+    expect(scale()).toBe('1.4');
+    resize(320);
+    expect(scale()).toBe('0.9');
+
+    session.size.set(null);
+    fixture.detectChanges();
+    expect(scale()).toBe('1');
+  });
   it('keeps its compact size and no grip beside the order dialog', () => {
     const { fixture, click } = setup();
     click('Dua insights');
