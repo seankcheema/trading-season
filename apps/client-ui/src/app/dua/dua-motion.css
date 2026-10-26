@@ -421,3 +421,30 @@
     transform: translate(-10px, -16px);
   }
 }
+
+/*
+ * Forecast cards: each time one comes into view, a band of light runs once round its border,
+ * then settles into the resting edge. One sweep, never a loop; none under reduced motion.
+ */
+.insights .insight-card.forecast-card:not(.inactive) {
+  animation: dua-forecast-sweep 1.4s cubic-bezier(0.45, 0, 0.25, 1) 180ms both;
+}
+@keyframes dua-forecast-sweep {
+  0% {
+    --dua-angle: 0deg;
+    --dua-forecast-light: var(--dua-forecast-edge);
+  }
+  18%,
+  78% {
+    --dua-forecast-light: var(--dua-forecast-glint);
+  }
+  100% {
+    --dua-angle: 360deg;
+    --dua-forecast-light: var(--dua-forecast-edge);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .insights .insight-card.forecast-card:not(.inactive) {
+    animation: none;
+  }
+}
