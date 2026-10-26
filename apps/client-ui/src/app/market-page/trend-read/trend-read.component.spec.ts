@@ -203,9 +203,7 @@ describe('TrendReadComponent', () => {
     expect(text(el, 'trend-basis-line')).toContain(
       "AAPL's recent move is too small against its usual swings to call",
     );
-    expect(text(el, 'trend-basis')).toContain(
-      'Right 75% of its last 16 calls on AAPL, made on 16 of the last 24 weeks',
-    );
+    expect(text(el, 'trend-basis')).toContain('Right 12 of last 16 calls · called 16 of 24 weeks');
     expect(el.querySelector('[data-testid=trend-notice]')?.textContent).toContain(
       'machine-learning read on a simulated market',
     );
@@ -240,9 +238,7 @@ describe('TrendReadComponent', () => {
     expect(text(el, 'trend-basis-line')).toContain(
       'XOM moved up over the last 5 days, by more than its usual swings',
     );
-    expect(text(el, 'trend-basis')).toContain(
-      'Right 100% of its last 18 calls on XOM, made on 18 of the last 24 weeks',
-    );
+    expect(text(el, 'trend-basis')).toContain('Right 18 of last 18 calls · called 18 of 24 weeks');
     (el.querySelector('[data-testid=trend-toggle]') as HTMLButtonElement).click();
     fixture.detectChanges();
     await fixture.whenStable();

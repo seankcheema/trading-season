@@ -105,9 +105,8 @@ import { TrendCall, TrendReading, trendReadingFor } from './platform-trend';
                   }
                   <span class="glance-accuracy" data-testid="trend-basis">
                     @if (r.signalCalls) {
-                      Right {{ accuracy(r.signalHits, r.signalCalls) | percent: '1.0-0' }} of its
-                      last {{ r.signalCalls }} calls on {{ symbol() }}, made on
-                      {{ r.signalCalls }} of the last {{ r.signalWeeks }} weeks
+                      Right {{ r.signalHits }} of last {{ r.signalCalls }} calls · called
+                      {{ r.signalCalls }} of {{ r.signalWeeks }} weeks
                     } @else {
                       First reads on {{ symbol() }}; no record yet
                     }
