@@ -11,10 +11,10 @@
 .dua-bubble {
   --bubble-accent: var(--muted-foreground);
   position: absolute;
-  right: 62px;
-  bottom: 4px;
+  right: 82px;
+  bottom: 14px;
   width: max-content;
-  max-width: min(20rem, calc(100vw - 32px - 62px));
+  max-width: min(20rem, calc(100vw - 32px - 82px));
   padding: 10px 14px 12px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--bubble-accent) 35%, var(--border));
