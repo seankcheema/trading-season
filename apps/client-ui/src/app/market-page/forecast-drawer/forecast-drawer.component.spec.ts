@@ -124,7 +124,30 @@ describe('ForecastDrawerComponent', () => {
       'Swings model: 15 of last 20 weeks (75%)',
       '"Like last week": 12 of last 20 weeks (60%)',
     ]);
-    expect(text('forecast-drawer')).toContain('not investment advice');
+    expect(text('forecast-drawer')).toMatch(/not investment advice/i);
+  });
+
+  it('leads with each call and its record, and keeps the reasons and scoring closed until asked', () => {
+    const { fixture, el, text } = setup();
+    const summary = el.querySelector('.drawer-summary')!.textContent!.replace(/\s+/g, ' ');
+    expect(summary).toContain('Price likely higher');
+    expect(summary).toContain('Right 16 of last 19 calls');
+    expect(summary).toContain('Bigger price swings likely');
+    expect(summary).toContain('Right 15 of last 20 weeks');
+    expect(summary).not.toContain('Keeps going the same way');
+    expect(summary).not.toContain('moved up');
+    expect(el.querySelectorAll('.drawer-summary app-forecast-track')).toHaveLength(2);
+
+    const why = el.querySelector('[data-testid=forecast-why]') as HTMLDetailsElement;
+    const scoring = el.querySelector('[data-testid=forecast-scoring]') as HTMLDetailsElement;
+    expect(why.open).toBe(false);
+    expect(scoring.open).toBe(false);
+    expect(text('forecast-why')).toContain('AAPL moved up over the last 5 days');
+    expect(text('forecast-why')).toContain('Called 19 of the last 25 weeks');
+
+    (scoring.querySelector('summary') as HTMLElement).click();
+    fixture.detectChanges();
+    expect(scoring.open).toBe(true);
   });
 
   it('closes on its button and on Escape', () => {
