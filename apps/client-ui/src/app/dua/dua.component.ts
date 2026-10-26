@@ -125,6 +125,7 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
     './dua-motion.css',
     './dua-forecast.css',
     './dua-launcher-pill.css',
+    './dua-details-pop.css',
   ],
 })
 export class DuaComponent {
@@ -179,7 +180,6 @@ export class DuaComponent {
   protected readonly showPill = computed(
     () => this.session.minimized() && !this.symbol() && !this.speech.line(),
   );
-  protected readonly explaining = signal(false);
   // What Dua is saying beside the launcher, such as an order's outcome, and how it looks.
   protected readonly speech = inject(DuaSpeech);
   private readonly idle = inject(SessionTimeoutService);
@@ -219,17 +219,15 @@ export class DuaComponent {
     ),
   );
   protected readonly title = computed(() => {
-    if (this.explaining()) {
-      return 'View Details';
-    }
     const choice = this.choice();
     return choice ? CHOICE_TITLES[choice] : 'Dua';
   });
   protected readonly activeCard = signal(0);
   // The forecast card whose record popover is open, by index, or null.
   protected readonly recordOpen = signal<number | null>(null);
+  // The card whose View Details popover is open, by index, or null.
+  protected readonly detailsOpen = signal<number | null>(null);
   protected readonly cards = signal<DuaCard[]>([]);
-  protected readonly explainedCard = computed(() => this.cards()[this.activeCard()]);
   protected readonly choice = signal<DuaChoice | null>(null);
   protected readonly loading = signal(false);
   protected readonly message = signal('');
@@ -377,13 +375,6 @@ export class DuaComponent {
       )
     );
   });
-  protected showDetails(): void {
-    this.savedScroll =
-      this.panel()?.nativeElement.querySelector('.insight-card:not(.inactive) .card-content')
-        ?.scrollTop ?? 0;
-    this.explaining.set(true);
-  }
-  private savedScroll = 0;
   private legacyOpened = false;
   private rows(period: 'daily' | 'week' | 'month') {
     return performance(
@@ -613,14 +604,18 @@ export class DuaComponent {
           this.legacyOpened = true;
           this.select('stock');
           this.activeCard.set(2);
-          this.showDetails();
+          this.detailsOpen.set(2);
           this.session.minimized.set(false);
         });
     });
     effect(() => {
-      this.activeCard();
+      const active = this.activeCard();
       this.cards();
-      untracked(() => this.recordOpen.set(null));
+      untracked(() => {
+        this.recordOpen.set(null);
+        // A details popover belongs to its card: moving to another card closes it.
+        if (this.detailsOpen() !== active) this.detailsOpen.set(null);
+      });
     });
     effect(() => {
       const symbol = this.symbol();
@@ -700,7 +695,6 @@ export class DuaComponent {
         open &&
         !this.loading() &&
         this.cards().length &&
-        !this.explaining() &&
         this.snapshotStillCurrent() &&
         typeof document !== 'undefined' &&
         document.visibilityState === 'visible'
@@ -714,7 +708,6 @@ export class DuaComponent {
       // Measure after Angular renders the destination view, then animate from the prior size.
       this.choice();
       this.activeCard();
-      this.explaining();
       this.cards();
       const minimized = this.session.minimized();
       const panel = this.panel()?.nativeElement;
@@ -841,6 +834,20 @@ export class DuaComponent {
     return `${symbol}'s swings are about usual: ${sizes}.`;
   }
 
+  protected toggleDetails(index: number): void {
+    this.detailsOpen.set(this.detailsOpen() === index ? null : index);
+  }
+
+  /** Escape on a card closes its open popover first, and leaves Dua open. */
+  protected closeCardPopover(event: Event): void {
+    if (this.detailsOpen() === null) {
+      return;
+    }
+    event.stopPropagation();
+    this.detailsOpen.set(null);
+    ((event.currentTarget as HTMLElement).querySelector('.explain-action') as HTMLElement)?.focus();
+  }
+
   protected toggleRecord(index: number): void {
     this.recordOpen.set(this.recordOpen() === index ? null : index);
   }
@@ -859,11 +866,13 @@ export class DuaComponent {
 
   protected closeOnOutsideClick(event: MouseEvent): void {
     const path = event.composedPath();
-    if (
-      this.recordOpen() !== null &&
-      !path.some((el) => el instanceof Element && el.classList.contains('forecast-record-wrap'))
-    ) {
+    const inside = (name: string) =>
+      path.some((el) => el instanceof Element && el.classList.contains(name));
+    if (this.recordOpen() !== null && !inside('forecast-record-wrap')) {
       this.recordOpen.set(null);
+    }
+    if (this.detailsOpen() !== null && !inside('details-pop') && !inside('explain-action')) {
+      this.detailsOpen.set(null);
     }
     if (this.session.minimized()) {
       return;
@@ -895,23 +904,13 @@ export class DuaComponent {
     this.snapshotDate.set('');
     this.snapshotDisconnected.set(false);
     this.loading.set(false);
-    this.explaining.set(false);
+    this.detailsOpen.set(null);
     this.snapshotContext.set('');
     this.displayedContext.set(null);
   }
 
   protected backToPrevious(): void {
-    if (this.explaining()) {
-      this.explaining.set(false);
-      setTimeout(() => {
-        const content = this.panel()?.nativeElement.querySelector(
-          '.insight-card:not(.inactive) .card-content',
-        );
-        if (content) content.scrollTop = this.savedScroll;
-      });
-    } else {
-      this.back();
-    }
+    this.back();
   }
 
   protected select(choice: DuaChoice): void {

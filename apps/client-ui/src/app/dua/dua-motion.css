@@ -203,38 +203,23 @@
 .insight-card .card-content {
   overflow-x: hidden;
 }
-.dua-panel:not(.minimized)
-  :is(.insight-card:not(.inactive), .insight-explanation)
-  .card-content
-  > *,
+.dua-panel:not(.minimized) .insight-card:not(.inactive) .card-content > *,
 .dua-panel:not(.minimized) .insight-card:not(.inactive) .movers-group li {
   transform-origin: left top;
   animation: dua-reveal 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
-.dua-panel:not(.minimized)
-  :is(.insight-card:not(.inactive), .insight-explanation)
-  .card-content
-  > :nth-child(2),
+.dua-panel:not(.minimized) .insight-card:not(.inactive) .card-content > :nth-child(2),
 .dua-panel:not(.minimized) .insight-card:not(.inactive) .movers-group li:nth-child(2) {
   animation-delay: 80ms;
 }
-.dua-panel:not(.minimized)
-  :is(.insight-card:not(.inactive), .insight-explanation)
-  .card-content
-  > :nth-child(3),
+.dua-panel:not(.minimized) .insight-card:not(.inactive) .card-content > :nth-child(3),
 .dua-panel:not(.minimized) .insight-card:not(.inactive) .movers-group li:nth-child(3) {
   animation-delay: 160ms;
 }
-.dua-panel:not(.minimized)
-  :is(.insight-card:not(.inactive), .insight-explanation)
-  .card-content
-  > :nth-child(4) {
+.dua-panel:not(.minimized) .insight-card:not(.inactive) .card-content > :nth-child(4) {
   animation-delay: 240ms;
 }
-.dua-panel:not(.minimized)
-  :is(.insight-card:not(.inactive), .insight-explanation)
-  .card-content
-  > :nth-child(n + 5) {
+.dua-panel:not(.minimized) .insight-card:not(.inactive) .card-content > :nth-child(n + 5) {
   animation-delay: 320ms;
 }
 .dua-panel:not(.minimized) .insight-card:not(.inactive) .primary-metric dd > * {

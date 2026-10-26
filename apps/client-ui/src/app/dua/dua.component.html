@@ -14,7 +14,7 @@
       <button
         class="icon-button"
         type="button"
-        [attr.aria-label]="explaining() ? 'Back to results' : 'Back to choices'"
+        aria-label="Back to choices"
         (click)="backToPrevious()"
       >
         <ng-icon name="lucideChevronLeft" aria-hidden="true" />
@@ -98,19 +98,6 @@
           }
         }
       </div>
-    } @else if (explaining()) {
-      @if (explainedCard(); as card) {
-        <article class="insight-explanation">
-          <h3>{{ card.title }}</h3>
-          <div class="card-content">
-            @if (card.purpose) {
-              <h4>Why it matters</h4>
-              <p class="explanation-reason">{{ card.purpose }}</p>
-            }
-            <p>{{ card.detail }}</p>
-          </div>
-        </article>
-      }
     } @else {
       @if (loading()) {
         <span class="visually-hidden" role="status">Fetching stock insights</span>
@@ -125,6 +112,7 @@
       <div class="insights" aria-live="polite">
         @for (card of cards(); track $index; let cardIndex = $index) {
           <article
+            (keydown.escape)="closeCardPopover($event)"
             class="insight-card"
             [class.forecast-card]="!!card.forecast"
             [class.illustrative-card]="card.illustrative"
@@ -147,11 +135,27 @@
                 type="button"
                 aria-label="View Details"
                 title="View Details"
-                (click)="showDetails()"
+                [attr.aria-expanded]="detailsOpen() === cardIndex"
+                [attr.aria-controls]="'card-details-' + cardIndex"
+                (click)="toggleDetails(cardIndex)"
               >
                 <ng-icon name="lucideInfo" aria-hidden="true" />
               </button>
             </div>
+            @if (detailsOpen() === cardIndex) {
+              <div
+                class="details-pop"
+                role="group"
+                [attr.aria-label]="(card.title ?? 'Insight') + ' details'"
+                [id]="'card-details-' + cardIndex"
+              >
+                @if (card.purpose) {
+                  <h4>Why it matters</h4>
+                  <p class="explanation-reason">{{ card.purpose }}</p>
+                }
+                <p>{{ card.detail }}</p>
+              </div>
+            }
             <small class="card-meta">
               <span>{{ asOfLabel() }}</span>
               <span>Page {{ $index + 1 }} of {{ cards().length }}</span>

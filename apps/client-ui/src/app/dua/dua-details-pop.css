@@ -1,0 +1,62 @@
+/*
+ * A card's View Details popover: it floats under the info button, over the card, rather than
+ * replacing the card with a separate page. The card positions it.
+ */
+.insights .insight-card {
+  position: relative;
+}
+.details-pop {
+  position: absolute;
+  top: 46px;
+  right: 12px;
+  z-index: 3;
+  display: grid;
+  gap: 6px;
+  box-sizing: border-box;
+  width: min(300px, calc(100% - 24px));
+  max-height: calc(100% - 56px);
+  overflow-y: auto;
+  border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 16px 36px -14px #000c;
+  padding: 12px 14px;
+  color: var(--dua-heading);
+  font-size: 13px;
+  line-height: 1.5;
+  animation: dua-details-pop 160ms ease-out;
+}
+.details-pop::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  right: 14px;
+  width: 10px;
+  height: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
+  border-left: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
+  background: var(--card);
+  transform: rotate(45deg);
+}
+.details-pop h4 {
+  margin: 0;
+  font-size: inherit;
+  font-weight: 600;
+}
+.details-pop p {
+  margin: 0;
+}
+.explain-action[aria-expanded='true'] {
+  color: var(--primary);
+}
+@keyframes dua-details-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .details-pop {
+    animation: none;
+  }
+}

@@ -627,30 +627,30 @@ article h3 {
   flex-shrink: 0;
 }
 
-.dua-panel:has(.insight-card, .insight-explanation) {
+.dua-panel:has(.insight-card) {
   overflow: hidden;
   background:
     linear-gradient(to bottom, transparent 48%, var(--dua-edge) 100%),
     radial-gradient(ellipse at 25% 0%, var(--dua-cyan), transparent 70%),
     radial-gradient(ellipse at 0% 45%, var(--dua-purple), transparent 75%), var(--dua-base);
 }
-.dua-body:has(.insight-card, .insight-explanation) {
+.dua-body:has(.insight-card) {
   padding: 0;
 }
-.dua-body:has(.insight-card, .insight-explanation) .insight-card {
+.dua-body:has(.insight-card) .insight-card {
   background: transparent;
   border: 0;
   border-radius: 0;
 }
-.dua-body:has(.insight-card, .insight-explanation) .card-navigation {
+.dua-body:has(.insight-card) .card-navigation {
   margin: 0 10px 10px;
 }
-.dua-body:has(.insight-card, .insight-explanation) > .timestamp,
-.dua-body:has(.insight-card, .insight-explanation) .feedback {
+.dua-body:has(.insight-card) > .timestamp,
+.dua-body:has(.insight-card) .feedback {
   margin: 8px 18px;
 }
 
-.dua-panel:has(.insight-card, .insight-explanation) .dua-header {
+.dua-panel:has(.insight-card) .dua-header {
   background: var(--dua-edge);
 }
 
@@ -750,7 +750,7 @@ article h3 {
 .insight-card .overview-metrics dd {
   order: 0;
 }
-.dua-body:has(.insight-card, .insight-explanation) .card-navigation {
+.dua-body:has(.insight-card) .card-navigation {
   margin-top: 0;
   margin-bottom: 6px;
 }
@@ -784,45 +784,6 @@ article h3 {
   margin-top: 14px;
 }
 
-.insight-explanation {
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  height: auto;
-  max-height: min(440px, calc(100dvh - 200px));
-  margin: 0;
-  padding: 12px 18px 36px;
-  border: 0;
-  color: var(--dua-heading);
-  font-size: 14px;
-  line-height: 1.55;
-}
-.insight-explanation:first-child {
-  padding-top: 12px;
-}
-.insight-explanation h3,
-.insight-explanation h4 {
-  font-size: inherit;
-  line-height: inherit;
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: normal;
-}
-.insight-explanation h3 {
-  margin: 0 0 12px;
-  flex-shrink: 0;
-}
-.insight-explanation h4 {
-  margin: 16px 0 6px;
-}
-.insight-explanation .takeaway {
-  font-size: inherit;
-  line-height: inherit;
-  margin: 0 0 12px;
-}
-.insight-explanation .takeaway strong {
-  font-weight: 600;
-}
 .explanation-reason,
 .example-context {
   font-size: inherit;
@@ -849,8 +810,7 @@ article h3 {
 .insights > .feedback {
   grid-area: 2 / 1;
 }
-.insight-card .card-content,
-.insight-explanation .card-content {
+.insight-card .card-content {
   flex: 0 1 auto;
 }
 .insight-card .takeaway {
@@ -877,8 +837,7 @@ article h3 {
     transform 380ms cubic-bezier(0.4, 0, 0.2, 1),
     visibility 0s 380ms;
 }
-.insights,
-.insight-explanation {
+.insights {
   animation: dua-content-enter 280ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 @keyframes dua-content-enter {
@@ -904,8 +863,7 @@ article h3 {
     transition: none;
     transform: none;
   }
-  .insights,
-  .insight-explanation {
+  .insights {
     animation: none;
   }
 }
