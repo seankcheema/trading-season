@@ -20,8 +20,8 @@ import { AccountControlComponent } from '../dashboard/shared/account-control.com
 import { MarketClockControlComponent } from '../dashboard/shared/market-clock-control.component';
 import { MarketClockService } from '../dashboard/shared/market-clock.service';
 
-
 import { DuaComponent } from '../dua/dua.component';
+import { ForecastDrawerComponent } from './forecast-drawer/forecast-drawer.component';
 import {
   ActivityItem,
   ActivityRowComponent,
@@ -132,6 +132,7 @@ interface MarketStats {
     DuaEmptyComponent,
     ThemeToggleComponent,
     DuaComponent,
+    ForecastDrawerComponent,
     TitleCasePipe,
     NgTemplateOutlet,
     OrderEditorComponent,
@@ -213,9 +214,7 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   private readonly speech = inject(DuaSpeech);
   private readonly destroyRef = inject(DestroyRef);
 
-  protected readonly openHeaderDropdown = signal<'account' | 'profile' | null>(
-    null,
-  );
+  protected readonly openHeaderDropdown = signal<'account' | 'profile' | null>(null);
   protected readonly profileInitials = this.accountStore.initials;
   protected readonly settingsOpen = signal(false);
 
@@ -321,7 +320,13 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   protected readonly availableCash = computed(() => {
     const draft = this.tradeTicket()?.draft();
     return draft?.side === 'buy'
-      ? Math.max(0, this.cashBalance() - (draft.reservationPrice ? draft.quantity * draft.reservationPrice : draft.estimatedValue))
+      ? Math.max(
+          0,
+          this.cashBalance() -
+            (draft.reservationPrice
+              ? draft.quantity * draft.reservationPrice
+              : draft.estimatedValue),
+        )
       : this.cashBalance();
   });
   protected readonly heldShares = computed(() =>
@@ -568,6 +573,9 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   );
   protected readonly liveTailing = signal(true);
   protected readonly duaOutlook = signal(false);
+  // The forecast drawer over the chart, opened by the chart's Forecast button or ?forecast=open.
+  protected readonly forecastOpen = signal(false);
+  private forecastFromLink = false;
   protected readonly insightTab = signal<InsightTab>('trading');
   protected readonly toolsCollapsed = signal(false);
   protected readonly openToolbarMenu = signal<ToolbarMenu | null>(null);
@@ -760,6 +768,10 @@ export class MarketPageComponent implements OnInit, OnDestroy {
         if (params.get('tab') === 'outlook') {
           this.duaOutlook.set(true);
         }
+        if (params.get('forecast') === 'open') {
+          this.forecastFromLink = true;
+          this.forecastOpen.set(true);
+        }
         const rawSymbol = params.get('compare') ?? '';
         const symbol = normalizeMarketSymbol(rawSymbol);
         this.comparisonSymbol.set(symbol);
@@ -820,6 +832,34 @@ export class MarketPageComponent implements OnInit, OnDestroy {
   }
 
   private readonly menuHost = inject(ElementRef<HTMLElement>);
+
+  protected toggleForecast(): void {
+    if (this.forecastOpen()) {
+      this.closeForecast();
+    } else {
+      this.forecastOpen.set(true);
+    }
+  }
+
+  protected closeForecast(): void {
+    this.forecastOpen.set(false);
+    // Drop ?forecast=open, so the same link can open the drawer again later.
+    if (this.forecastFromLink) {
+      this.forecastFromLink = false;
+      void this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { forecast: null },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      });
+    }
+    // Focus goes back to the button that opened the drawer.
+    setTimeout(() =>
+      (
+        this.menuHost.nativeElement.querySelector('.forecast-toggle') as HTMLElement | null
+      )?.focus(),
+    );
+  }
   protected readonly toolbarMenuPosition = signal({ left: 0, top: 0 });
 
   @HostListener('window:resize')

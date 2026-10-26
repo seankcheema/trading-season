@@ -435,6 +435,9 @@
                               [showCurrentPrice]="true"
                               [(liveTailing)]="liveTailing"
                               [showLiveTailing]="true"
+                              [showForecast]="true"
+                              [forecastOpen]="forecastOpen()"
+                              (forecastToggle)="toggleForecast()"
                               [interactionKey]="active.symbol"
                               [candles]="chartCandles()"
                               [points]="chartPoints()"
@@ -564,6 +567,9 @@
                           [showCurrentPrice]="true"
                           [(liveTailing)]="liveTailing"
                           [showLiveTailing]="true"
+                          [showForecast]="true"
+                          [forecastOpen]="forecastOpen()"
+                          (forecastToggle)="toggleForecast()"
                           [interactionKey]="active.symbol"
                           [candles]="chartCandles()"
                           [points]="chartPoints()"
@@ -589,6 +595,13 @@
                         <div class="chart-message text-loss">Live chart data is unavailable.</div>
                       }
                     }
+                  }
+                  @if (forecastOpen()) {
+                    <app-forecast-drawer
+                      [symbol]="active.symbol"
+                      [marketTimestamp]="marketTimestamp()"
+                      (closed)="closeForecast()"
+                    />
                   }
                 </div>
               </section>
