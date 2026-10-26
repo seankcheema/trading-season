@@ -24,6 +24,17 @@
   transform: rotate(45deg);
 }
 
+/*
+ * The card's content scrolls, so it clips whatever reaches past its edge. It reaches 10px into
+ * the card's padding, its text staying put, so the record button and popover that sit 6px left
+ * of the text, and the button's focus ring, are not cut off.
+ */
+.insight-card .card-content {
+  max-width: calc(100% + 20px);
+  margin-inline: -10px;
+  padding-inline: 10px;
+}
+
 /* The forecast's record: its track strip and the frequency, a button that opens the details. */
 .forecast-record-wrap {
   position: relative;
