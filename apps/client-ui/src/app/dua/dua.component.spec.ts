@@ -281,7 +281,7 @@ describe('Dua panel', () => {
     expect(text()).toContain('Consider buying AAPL');
     click('Next insight');
     expect(active().textContent).toContain(
-      'AAPL is gaining momentum, up 5.1% over the last 10 trading days.',
+      'AAPL is swinging more than usual: a typical daily move of 2.0% over the last 5 trading days, against a usual 1.1%.',
     );
     click('Next insight');
     expect(active().textContent).toContain(
@@ -404,6 +404,36 @@ describe('Dua panel', () => {
       expect(details).not.toContain('chance the price will be');
     } finally {
       trend.trend.set(forecasts);
+    }
+  });
+  it('describes recent swings, measured from the volatility file, instead of momentum', () => {
+    const files = signals.signals();
+    const days = files.symbols.AAPL.days;
+    signals.signals.set({
+      ...files,
+      symbols: {
+        AAPL: {
+          ...files.symbols.AAPL,
+          days: [...days.slice(0, -1), { ...days[days.length - 1], recentVolatility: 0.005 }],
+        },
+      },
+    } as never);
+    try {
+      const { fixture, click } = setup();
+      fixture.componentRef.setInput('symbol', 'AAPL');
+      fixture.detectChanges();
+      click('This Stock');
+      click('Next insight');
+      const card = fixture.nativeElement.querySelector(
+        '.insight-card:not(.inactive)',
+      ) as HTMLElement;
+      expect(card.querySelector('h3')!.textContent!.trim()).toBe('Recent activity');
+      expect(card.textContent).toContain(
+        'AAPL is calmer than usual: a typical daily move of 0.5% over the last 5 trading days, against a usual 1.1%.',
+      );
+      expect(card.textContent).not.toMatch(/momentum/i);
+    } finally {
+      signals.signals.set(files);
     }
   });
   it('does not reopen a dismissed menu when quotes change', () => {
