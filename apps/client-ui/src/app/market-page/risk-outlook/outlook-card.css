@@ -25,15 +25,16 @@
   padding: 1.1rem 0.9rem 0.9rem;
   text-align: center;
 }
+/* Volatility is not direction: red and green stay with buy and sell, so swings use the primary hue. */
 .glance-bigger {
-  border-color: color-mix(in srgb, var(--color-loss) 45%, var(--border));
-  background: color-mix(in srgb, var(--color-loss) 12%, transparent);
-  color: var(--color-loss);
+  border-color: color-mix(in srgb, var(--primary) 50%, var(--border));
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
 }
 .glance-smaller {
-  border-color: color-mix(in srgb, var(--color-gain) 45%, var(--border));
-  background: color-mix(in srgb, var(--color-gain) 12%, transparent);
-  color: var(--color-gain);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  color: var(--foreground);
 }
 .glance-up {
   border-color: color-mix(in srgb, var(--color-gain) 45%, var(--border));
