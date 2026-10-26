@@ -12,7 +12,7 @@
   --bubble-accent: var(--muted-foreground);
   position: absolute;
   right: 82px;
-  bottom: 14px;
+  bottom: 4px;
   width: max-content;
   max-width: min(20rem, calc(100vw - 32px - 82px));
   padding: 10px 14px 12px;
