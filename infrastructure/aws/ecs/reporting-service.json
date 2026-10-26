@@ -29,7 +29,7 @@
         { "name": "REPORTING_FILES_DIR", "value": "/data/reporting" }
       ],
       "healthCheck": {
-        "command": ["CMD", "python", "-c", "import requests; requests.get('http://127.0.0.1:8083/health', timeout=3)"],
+        "command": ["CMD", "python", "-c", "import requests, sys; sys.exit(0 if requests.get('http://127.0.0.1:8083/health', timeout=3).ok else 1)"],
         "interval": 30,
         "timeout": 5,
         "retries": 3,

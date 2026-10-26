@@ -2,12 +2,19 @@
 // Deploy only. It runs no tests, no SonarQube, no Docker Compose stack and asks for no approval.
 // The long CI pipeline stays in infrastructure/jenkins/Jenkinsfile.
 //
-// Jenkins job: Pipeline script from SCM, repository https://github.com/seankcheema/trading-season.git,
+// Jenkins job: Pipeline script from SCM, repository https://github.com/seankcheema/dualeapa-sprint1-project.git,
 // Script Path infrastructure/jenkins/Jenkinsfile.aws. Needs only the Pipeline and Git plugins.
+// Give the job no SCM polling or webhook trigger: every run deploys, so it is started by hand after a green CI build.
 // AWS access comes from the team2-jenkins-deploy instance profile; there are no keys or AWS plugin steps.
 // Agent needs: docker (with BuildKit), aws CLI v2, git, python3, curl. The jenkins user must be in the docker group.
 //
 // First run after this file lands: Jenkins registers the parameters below and runs with their defaults.
+// The deploy copies each service's currently registered task definition and changes only the image, so
+// environment, secrets, CPU and memory come from the registered revision, not from this file. To change
+// them, render the matching template in infrastructure/aws/ecs/ (replace every {{NAME}} with the value from
+// the deployment, for example with sed) and register it once with aws ecs register-task-definition; the
+// next run picks the new revision up. Do that at least once before the first deploy so CORS_ORIGINS holds
+// the real CloudFront domains.
 // Rollback: aws ecs update-service --cluster team2-trading --service <name> --task-definition <family>:<previous revision>
 pipeline {
   agent any
@@ -31,10 +38,10 @@ pipeline {
     // Used only when DEPLOY_UI is ticked. Fill the four blanks once the CloudFront distributions exist.
     CLIENT_UI_BUCKET = 'team2-client-ui-760144414473'
     REPORTING_UI_BUCKET = 'team2-reporting-ui-760144414473'
-    CLIENT_DISTRIBUTION_ID = ''
-    REPORTING_DISTRIBUTION_ID = ''
-    CLIENT_UI_URL = ''
-    REPORTING_UI_URL = ''
+    CLIENT_DISTRIBUTION_ID = 'E2V2MD57NAC093'
+    REPORTING_DISTRIBUTION_ID = 'ERCSMRRHUUB8C'
+    CLIENT_UI_URL = 'https://d378q9u5bg2d0o.cloudfront.net'
+    REPORTING_UI_URL = 'https://dgkg9h5p7e7bt.cloudfront.net'
   }
   stages {
     stage('Checkout') {
@@ -56,7 +63,7 @@ pipeline {
         '''
         script {
           if (params.DEPLOY_UI && !(env.CLIENT_DISTRIBUTION_ID && env.REPORTING_DISTRIBUTION_ID && env.CLIENT_UI_URL && env.REPORTING_UI_URL)) {
-            error('DEPLOY_UI is ticked but the distribution IDs and URLs at the top of this Jenkinsfile are still blank.')
+            error('DEPLOY_UI is ticked but a distribution ID or URL at the top of this Jenkinsfile is blank.')
           }
         }
       }
