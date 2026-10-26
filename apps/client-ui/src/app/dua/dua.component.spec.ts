@@ -166,7 +166,21 @@ describe('Dua panel', () => {
       button.click();
       fixture.detectChanges();
     };
-    return { fixture, click, text: () => fixture.nativeElement.textContent as string };
+    // The showing card's View Details popover: opens it, and returns its text.
+    const details = () => {
+      const card = fixture.nativeElement.querySelector(
+        '.insight-card:not(.inactive)',
+      ) as HTMLElement;
+      (card.querySelector('.explain-action') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      return card.querySelector('.details-pop')?.textContent ?? '';
+    };
+    return {
+      fixture,
+      click,
+      details,
+      text: () => fixture.nativeElement.textContent as string,
+    };
   }
   it('keeps menu refresh free of a standalone skeleton block', () => {
     const { fixture, click } = setup();
@@ -258,7 +272,7 @@ describe('Dua panel', () => {
     expect(documentEscape).not.toHaveBeenCalled();
   });
   it('uses forecasts and provides inline details instead of demo figures', () => {
-    const { fixture, click, text } = setup();
+    const { fixture, click, details, text } = setup();
     fixture.componentRef.setInput('symbol', 'AAPL');
     fixture.detectChanges();
     click('This Stock');
@@ -271,14 +285,24 @@ describe('Dua panel', () => {
     expect(active().querySelector('.overview-metrics')).toBeNull();
     expect(active().textContent).not.toMatch(/shares|unrealized|\$/i);
     expect(text()).not.toContain('Open the full');
-    click('View Details');
-    const details = fixture.nativeElement.querySelector('.insight-explanation').textContent;
-    expect(details).toContain('higher or lower 5 trading days from now');
-    expect(details).toContain('about a 64% chance the price will be higher');
-    expect(details).not.toMatch(/source|probability|been right/i);
+    const shown = details();
+    expect(shown).toContain('higher or lower 5 trading days from now');
+    expect(shown).toContain('about a 64% chance the price will be higher');
+    expect(shown).not.toMatch(/source|probability|been right/i);
     expect(fixture.nativeElement.querySelector('app-trend-read')).toBeNull();
-    click('Back to results');
+    // A popover over the card, not a page: the card stays, and the info button closes it.
     expect(text()).toContain('Consider buying AAPL');
+    const info = active().querySelector('.explain-action') as HTMLButtonElement;
+    expect(info.getAttribute('aria-expanded')).toBe('true');
+    info.click();
+    fixture.detectChanges();
+    expect(active().querySelector('.details-pop')).toBeNull();
+    // Escape closes the popover only; Dua stays open.
+    details();
+    active().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+    expect(active().querySelector('.details-pop')).toBeNull();
+    expect(session.minimized()).toBe(false);
     click('Next insight');
     expect(active().textContent).toContain(
       'AAPL is swinging more than usual: a typical daily move of 2.0% over the last 5 trading days, against a usual 1.1%.',
@@ -290,11 +314,8 @@ describe('Dua panel', () => {
     expect(active().querySelector('.swing-meter-track').getAttribute('aria-label')).toBe(
       'Model estimate: 62% chance of bigger swings',
     );
-    click('View Details');
+    expect(details()).toContain('It does not say whether the price will go up or down.');
     expect(fixture.nativeElement.querySelector('app-risk-outlook')).toBeNull();
-    expect(fixture.nativeElement.querySelector('.insight-explanation').textContent).toContain(
-      'It does not say whether the price will go up or down.',
-    );
   });
   it('marks forecast cards with a badge, a glowing edge and their record', () => {
     const { fixture, click } = setup();
@@ -388,7 +409,7 @@ describe('Dua panel', () => {
       },
     } as never);
     try {
-      const { fixture, click, text } = setup();
+      const { fixture, click, details, text } = setup();
       fixture.componentRef.setInput('symbol', 'AAPL');
       fixture.detectChanges();
       click('This Stock');
@@ -398,10 +419,9 @@ describe('Dua panel', () => {
       expect(active.textContent).toContain(
         "AAPL's recent move is too small against its usual swings to call.",
       );
-      click('View Details');
-      const details = fixture.nativeElement.querySelector('.insight-explanation').textContent;
-      expect(details).toContain('Right now it does not, so it makes no call.');
-      expect(details).not.toContain('chance the price will be');
+      const shown = details();
+      expect(shown).toContain('Right now it does not, so it makes no call.');
+      expect(shown).not.toContain('chance the price will be');
     } finally {
       trend.trend.set(forecasts);
     }
