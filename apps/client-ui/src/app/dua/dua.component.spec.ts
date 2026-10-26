@@ -255,32 +255,60 @@ describe('Dua panel', () => {
     click('Minimize Dua');
     expect(pill()).toBeNull();
   });
-  it('expands and shrinks its panel from the header, but stays compact beside the order dialog', () => {
+  it('resizes freely from its corner grip, by drag or keys, and resets on double-click or Home', () => {
     const { fixture, click } = setup();
     click('Dua insights');
     const el = fixture.nativeElement as HTMLElement;
     const panel = () => el.querySelector('.dua-panel') as HTMLElement;
-    const button = () => el.querySelector('.expand-button') as HTMLButtonElement | null;
-    expect(panel().classList).not.toContain('expanded');
-    expect(button()?.getAttribute('aria-label')).toBe('Expand Dua');
+    const grip = () => el.querySelector('.resize-grip') as HTMLButtonElement | null;
+    const pointer = (type: string, x: number, y: number) =>
+      grip()!.dispatchEvent(
+        new MouseEvent(type, { clientX: x, clientY: y, button: 0, bubbles: true }),
+      );
+    expect(grip()?.getAttribute('aria-label')).toBe('Resize Dua');
+    expect(session.size()).toBeNull();
 
-    button()!.click();
+    // Anchored bottom-right: dragging up and to the left grows the panel.
+    pointer('pointerdown', 900, 600);
+    pointer('pointermove', 400, 100);
+    pointer('pointerup', 400, 100);
     fixture.detectChanges();
-    expect(panel().classList).toContain('expanded');
-    expect(button()?.getAttribute('aria-label')).toBe('Shrink Dua');
-    expect(button()?.getAttribute('aria-pressed')).toBe('true');
-    expect(session.expanded()).toBe(true);
+    const dragged = session.size()!;
+    expect(dragged.width).toBeGreaterThanOrEqual(500);
+    expect(dragged.height).toBeGreaterThanOrEqual(500);
+    expect(panel().style.width).toBe(`${dragged.width}px`);
+    expect(panel().style.height).toBe(`${dragged.height}px`);
+    expect(panel().classList).toContain('resized');
 
+    // Never smaller than its minimum.
+    pointer('pointerdown', 400, 100);
+    pointer('pointermove', 2000, 2000);
+    pointer('pointerup', 2000, 2000);
+    expect(session.size()).toEqual({ width: 320, height: 360 });
+
+    grip()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    expect(session.size()!.height).toBeGreaterThanOrEqual(360);
+    grip()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    fixture.detectChanges();
+    expect(session.size()).toBeNull();
+    expect(panel().style.width).toBe('');
+
+    pointer('pointerdown', 900, 600);
+    pointer('pointermove', 700, 400);
+    pointer('pointerup', 700, 400);
+    grip()!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(session.size()).toBeNull();
+  });
+  it('keeps its compact size and no grip beside the order dialog', () => {
+    const { fixture, click } = setup();
+    click('Dua insights');
+    session.size.set({ width: 600, height: 600 });
     fixture.componentRef.setInput('raised', true);
     fixture.detectChanges();
-    expect(button()).toBeNull();
-    expect(panel().classList).not.toContain('expanded');
-
-    fixture.componentRef.setInput('raised', false);
-    fixture.detectChanges();
-    button()!.click();
-    fixture.detectChanges();
-    expect(panel().classList).not.toContain('expanded');
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.resize-grip')).toBeNull();
+    expect((el.querySelector('.dua-panel') as HTMLElement).style.width).toBe('');
+    expect(el.querySelector('.dua-panel')!.classList).not.toContain('resized');
   });
   it('rises over a dialog it accompanies and keeps Escape from also closing that dialog', () => {
     const { fixture } = setup();
