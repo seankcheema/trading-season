@@ -93,6 +93,7 @@ describe('MarketPageComponent', () => {
     orders: OrderResult[] = [],
     profile: { termsAccepted?: boolean } = {},
     tab = '',
+    query: Record<string, string> = {},
   ): Promise<ComponentFixture<MarketPageComponent>> {
     // The account this tab chose earlier, as AccountStore keeps it; never a URL parameter.
     if (accountId) {
@@ -113,7 +114,9 @@ describe('MarketPageComponent', () => {
           provide: ActivatedRoute,
           useValue: {
             paramMap: of(convertToParamMap({ symbol })),
-            queryParamMap: of(convertToParamMap(tab ? { compare, tab } : { compare })),
+            queryParamMap: of(
+              convertToParamMap({ ...(tab ? { compare, tab } : { compare }), ...query }),
+            ),
           },
         },
         { provide: MarketDataService, useValue: marketData },
@@ -615,6 +618,49 @@ describe('MarketPageComponent', () => {
     expect(fixture.componentInstance['insightTab']()).toBe('trading');
     expect(fixture.componentInstance['duaOutlook']()).toBe(true);
     expect(fixture.nativeElement.querySelector('[data-testid="market-outlook"]')).toBeNull();
+  });
+
+  it('opens the forecast drawer over the chart from its Forecast button and closes it', async () => {
+    vi.useFakeTimers();
+    try {
+      const fixture = await setup('aapl');
+      const el = fixture.nativeElement as HTMLElement;
+      const button = el.querySelector('.forecast-toggle') as HTMLButtonElement;
+      expect(button.getAttribute('aria-pressed')).toBe('false');
+      expect(el.querySelector('app-forecast-drawer')).toBeNull();
+
+      button.click();
+      fixture.detectChanges();
+      expect(button.getAttribute('aria-pressed')).toBe('true');
+      const drawer = el.querySelector('app-forecast-drawer')!;
+      expect(drawer.closest('.chart-stage')).not.toBeNull();
+      expect(drawer.closest('.tools-column')).toBeNull();
+
+      (el.querySelector('[aria-label="Close forecast"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      vi.runAllTimers();
+      expect(el.querySelector('app-forecast-drawer')).toBeNull();
+      expect(document.activeElement).toBe(button);
+      expect(navigate).not.toHaveBeenCalledWith(
+        [],
+        expect.objectContaining({ queryParams: { forecast: null } }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('opens the forecast drawer from a ?forecast=open link and drops the parameter on close', async () => {
+    const fixture = await setup('aapl', '', '', [], {}, '', { forecast: 'open' });
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('app-forecast-drawer')).not.toBeNull();
+    (el.querySelector('[aria-label="Close forecast"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('app-forecast-drawer')).toBeNull();
+    expect(navigate).toHaveBeenCalledWith(
+      [],
+      expect.objectContaining({ queryParams: { forecast: null }, replaceUrl: true }),
+    );
   });
 
   it('toggles live tailing for both comparison charts from the navigation bar', async () => {
