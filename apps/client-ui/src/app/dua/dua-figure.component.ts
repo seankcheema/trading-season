@@ -168,10 +168,10 @@ let nextFigureId = 0;
         opacity: 1;
         transform: translateY(4px) scale(1);
       }
-      80%,
+      85%,
       100% {
         opacity: 0;
-        transform: translateY(44px) scale(0.85);
+        transform: translateY(64px) scale(0.85);
       }
     }
 
