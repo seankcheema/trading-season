@@ -133,6 +133,9 @@
   --dua-purple: #d9cef25c;
   --dua-gain: #08783e;
   --dua-loss: #d1153a;
+  /* Price swings, which say nothing of direction: amber for more than usual, teal for less. */
+  --dua-swing-more: #b45309;
+  --dua-swing-less: #0f766e;
   /* Dua's own drawing keeps its light face and dark outline in both themes. */
   --dua-face: #eefaff;
   --dua-face-ink: #0e0e0e;
@@ -200,6 +203,8 @@
   --dua-purple: #6043a35c;
   --dua-gain: #a8efb5;
   --dua-loss: #ffadb5;
+  --dua-swing-more: #fcd34d;
+  --dua-swing-less: #5eead4;
   --dua-face: #eefaff;
   --dua-face-ink: #0e0e0e;
   --dua-face-accent: #8edce5;
