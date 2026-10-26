@@ -17,7 +17,7 @@ export function secretFieldOf(target: EventTarget | null): string | null {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DuaFigureComponent],
   host: { 'aria-hidden': 'true', 'data-testid': 'dua-peek', '[attr.data-mood]': 'mood()' },
-  template: `<app-dua-figure [framed]="false" [mood]="mood()" />`,
+  template: `<app-dua-figure [framed]="false" [mood]="mood()" [sweating]="sweating()" />`,
   styles: `
     :host {
       position: absolute;
@@ -51,4 +51,6 @@ export function secretFieldOf(target: EventTarget | null): string | null {
 })
 export class DuaPeekComponent {
   readonly mood = input<DuaMood>('happy');
+  // Passed to the figure: the worried drop runs and forms again while this is on.
+  readonly sweating = input(false);
 }
