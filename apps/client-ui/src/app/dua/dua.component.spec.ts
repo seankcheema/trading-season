@@ -206,6 +206,41 @@ describe('Dua panel', () => {
     );
     expect(fixture.nativeElement.querySelectorAll('.choices button.unread')).toHaveLength(3);
   });
+  it('opens by itself on the first stock page of a visit only, but for the order dialog every time', () => {
+    const { fixture, click } = setup();
+    fixture.componentRef.setInput('symbol', 'AAPL');
+    fixture.detectChanges();
+    expect(session.minimized()).toBe(false);
+    click('Minimize Dua');
+    expect(session.minimized()).toBe(true);
+
+    fixture.componentRef.setInput('symbol', 'MSFT');
+    fixture.detectChanges();
+    expect(session.minimized()).toBe(true);
+
+    fixture.componentRef.setInput('raised', true);
+    fixture.componentRef.setInput('symbol', 'AAPL');
+    fixture.detectChanges();
+    expect(session.minimized()).toBe(false);
+  });
+  it('labels the closed launcher Ask Dua on the dashboard, but not on a stock page or while open', () => {
+    const { fixture, click } = setup();
+    const pill = () => fixture.nativeElement.querySelector('.launcher-pill') as HTMLElement | null;
+    expect(session.minimized()).toBe(true);
+    expect(pill()?.textContent).toContain('Ask Dua');
+    expect(pill()?.getAttribute('aria-hidden')).toBe('true');
+    expect(fixture.nativeElement.querySelector('.dua-launcher').classList).toContain('has-pill');
+
+    click('Dua insights');
+    expect(pill()).toBeNull();
+    click('Minimize Dua');
+    expect(pill()).not.toBeNull();
+
+    fixture.componentRef.setInput('symbol', 'AAPL');
+    fixture.detectChanges();
+    click('Minimize Dua');
+    expect(pill()).toBeNull();
+  });
   it('rises over a dialog it accompanies and keeps Escape from also closing that dialog', () => {
     const { fixture } = setup();
     fixture.componentRef.setInput('symbol', 'AAPL');
