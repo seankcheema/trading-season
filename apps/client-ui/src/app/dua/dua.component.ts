@@ -625,10 +625,17 @@ export class DuaComponent {
     });
     effect(() => {
       const symbol = this.symbol();
+      const raised = this.raised();
       if (symbol)
         untracked(() => {
           this.legacyOpened = false;
-          this.session.minimized.set(false);
+          // The dashboard's order dialog, which Dua accompanies, opens it every time. A stock
+          // page opens it only the first time in a visit, so it does not keep covering the
+          // order ticket; the launcher is always there to open it again.
+          if (raised || !this.session.marketOpened) {
+            this.session.marketOpened ||= !raised;
+            this.session.minimized.set(false);
+          }
         });
     });
     effect(() => {
