@@ -261,6 +261,37 @@ describe('Dua panel', () => {
       'It does not say whether the price will go up or down.',
     );
   });
+  it('says there is no clear direction when the trend read makes no call', () => {
+    const forecasts = trend.trend();
+    const days = forecasts.symbols.AAPL.days;
+    trend.trend.set({
+      ...forecasts,
+      symbols: {
+        AAPL: {
+          ...forecasts.symbols.AAPL,
+          days: [...days.slice(0, -1), { ...days[days.length - 1], signal: null, strength: 0.3 }],
+        },
+      },
+    } as never);
+    try {
+      const { fixture, click, text } = setup();
+      fixture.componentRef.setInput('symbol', 'AAPL');
+      fixture.detectChanges();
+      click('This Stock');
+      expect(text()).toContain('No clear direction for AAPL.');
+      expect(text()).not.toMatch(/Consider (buying|selling) AAPL|Hold off on buying AAPL/);
+      const active = fixture.nativeElement.querySelector('.insight-card:not(.inactive)');
+      expect(active.textContent).toContain(
+        "AAPL's recent move is too small against its usual swings to call.",
+      );
+      click('View Details');
+      const details = fixture.nativeElement.querySelector('.insight-explanation').textContent;
+      expect(details).toContain('Right now it does not, so it makes no call.');
+      expect(details).not.toContain('chance the price will be');
+    } finally {
+      trend.trend.set(forecasts);
+    }
+  });
   it('does not reopen a dismissed menu when quotes change', () => {
     const { fixture, click } = setup();
     fixture.componentRef.setInput('symbol', 'AAPL');

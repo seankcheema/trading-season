@@ -471,14 +471,18 @@ export class DuaComponent {
       this.history().find((s) => s.symbol === symbol),
       this.clock.currentMarketTimestamp(),
     );
+    // The trend call is null on a week whose move is too small against the stock's usual
+    // swings to call; Dua says so instead of turning it into a buy, sell or hold.
     const action =
       trend?.kind !== 'ready'
         ? 'Not enough forecast history yet.'
-        : trend.call === 'up'
-          ? `Consider buying ${symbol}.`
-          : owned
-            ? `Consider selling ${symbol}.`
-            : `Hold off on buying ${symbol}.`;
+        : trend.call === null
+          ? `No clear direction for ${symbol}.`
+          : trend.call === 'up'
+            ? `Consider buying ${symbol}.`
+            : owned
+              ? `Consider selling ${symbol}.`
+              : `Hold off on buying ${symbol}.`;
     const swing =
       risk?.kind === 'ready'
         ? `Expect ${risk.call === 'stormier' ? 'bigger' : 'smaller'} price swings.`
@@ -490,7 +494,7 @@ export class DuaComponent {
     // The shown call can come from the recent pattern rather than the model, so a model
     // chance is quoted only when it agrees with the call.
     const trendChance =
-      trend?.kind === 'ready'
+      trend?.kind === 'ready' && trend.call !== null
         ? trend.call === 'up'
           ? trend.probability
           : 1 - trend.probability
@@ -507,17 +511,21 @@ export class DuaComponent {
         emphasizeText: true,
         takeaway: action,
         text:
-          trend?.kind === 'ready'
-            ? `The next ${horizon} trading days lean ${trend.call === 'up' ? 'upward' : 'downward'}.`
-            : 'Wait for more forecast history.',
+          trend?.kind !== 'ready'
+            ? 'Wait for more forecast history.'
+            : trend.call === null
+              ? `${symbol}'s recent move is too small against its usual swings to call.`
+              : `The next ${horizon} trading days lean ${trend.call === 'up' ? 'upward' : 'downward'}.`,
         detail:
-          trend?.kind === 'ready'
-            ? `This forecast estimates whether ${symbol}'s price will be higher or lower ${horizon} trading days from now, based on how it has been moving.${
-                trendChance >= 0.5
-                  ? ` It gives about a ${percent(trendChance)} chance the price will be ${trend.call === 'up' ? 'higher' : 'lower'}.`
-                  : ''
-              }`
-            : `There is not enough price history for ${symbol} to make a forecast yet.`,
+          trend?.kind === 'ready' && trend.call === null
+            ? `This forecast calls ${symbol}'s direction over the next ${horizon} trading days only when its recent move stands out from its usual swings. Right now it does not, so it makes no call.`
+            : trend?.kind === 'ready'
+              ? `This forecast estimates whether ${symbol}'s price will be higher or lower ${horizon} trading days from now, based on how it has been moving.${
+                  trendChance >= 0.5
+                    ? ` It gives about a ${percent(trendChance)} chance the price will be ${trend.call === 'up' ? 'higher' : 'lower'}.`
+                    : ''
+                }`
+              : `There is not enough price history for ${symbol} to make a forecast yet.`,
       },
       {
         title: 'Trending activity',
