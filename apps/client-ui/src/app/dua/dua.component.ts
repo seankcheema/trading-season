@@ -14,6 +14,7 @@ import {
 } from './dua-guidance';
 import { ReadContext } from './dua-session.service';
 import {
+  afterNextRender,
   afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
@@ -89,6 +90,9 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
 
 // The smallest size the panel can be dragged to.
 const DUA_MIN_SIZE = { width: 320, height: 360 };
+// A resized panel's text scales with its width against the default width, within these bounds.
+const DUA_DEFAULT_WIDTH = 420;
+const DUA_TEXT_SCALE = { min: 0.9, max: 1.4 };
 
 @Component({
   selector: 'app-dua',
@@ -716,6 +720,18 @@ export class DuaComponent {
         });
       }
     });
+    const destroyRef = inject(DestroyRef);
+    afterNextRender(() => {
+      const panel = this.panel()?.nativeElement;
+      if (!panel || typeof ResizeObserver === 'undefined') {
+        return;
+      }
+      const observer = new ResizeObserver((entries) =>
+        this.panelWidth.set(entries[0]?.contentRect.width ?? 0),
+      );
+      observer.observe(panel);
+      destroyRef.onDestroy(() => observer.disconnect());
+    });
     afterRenderEffect(() => {
       // Measure after Angular renders the destination view, then animate from the prior size.
       this.choice();
@@ -855,6 +871,21 @@ export class DuaComponent {
     }
     return { takeaway: `${symbol}'s swings are about usual: ${sizes}.` };
   }
+
+  // The panel's rendered width, watched so a resized panel's text follows it, including when the
+  // browser window caps the panel.
+  private readonly panelWidth = signal(0);
+  protected readonly textScale = computed(() => {
+    const width = this.panelWidth();
+    if (!this.session.size() || !width) {
+      return 1;
+    }
+    const scale = Math.min(
+      Math.max(width / DUA_DEFAULT_WIDTH, DUA_TEXT_SCALE.min),
+      DUA_TEXT_SCALE.max,
+    );
+    return Math.round(scale * 100) / 100;
+  });
 
   // Free resize from the panel's top-left corner. The panel is anchored bottom-right, so dragging
   // up and to the left makes it larger.

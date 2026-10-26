@@ -5,6 +5,7 @@
   [class.resized]="!!session.size() && !raised()"
   [style.width.px]="raised() ? null : session.size()?.width"
   [style.height.px]="raised() ? null : session.size()?.height"
+  [style.--dua-text-scale]="textScale()"
   [attr.inert]="session.minimized() ? '' : null"
   [attr.aria-hidden]="session.minimized()"
   role="region"

@@ -1245,6 +1245,18 @@ article h3 {
 .dua-panel.resized .insights .insight-card {
   max-height: none;
 }
+/*
+ * A resized panel's content scales with its width (--dua-text-scale, set from the panel's
+ * width), so text and spacing grow and shrink together. The body's children are zoomed, not the
+ * body, so the scrolling body keeps the panel's real height; the header, the page controls and
+ * the footnotes keep their size, which also keeps their margins out of the card's share of room.
+ */
+.dua-body > * {
+  zoom: var(--dua-text-scale, 1);
+}
+.dua-body > :is(.card-navigation, .timestamp, .simulation-notice) {
+  zoom: 1;
+}
 /* A taller panel gives its room to the card, so page controls and notes stay at the bottom. */
 .dua-panel.resized .dua-body {
   display: flex;
