@@ -176,6 +176,22 @@
                 @if (card.advice) {
                   <p class="guidance-advice">{{ card.advice }}</p>
                 }
+                @if (card.forecast?.record; as record) {
+                  <div class="forecast-record">
+                    @if (record.dots.length) {
+                      <span
+                        class="forecast-dots"
+                        role="img"
+                        [attr.aria-label]="forecastDotsLabel(record.dots)"
+                      >
+                        @for (hit of record.dots; track $index) {
+                          <span class="forecast-dot" [class.hit]="hit"></span>
+                        }
+                      </span>
+                    }
+                    <span>{{ record.label }}</span>
+                  </div>
+                }
               </ng-template>
 
               @if (card.metrics?.length) {

@@ -389,6 +389,11 @@ export class DuaComponent {
     const days = this.trend.trend()?.momentumDays ?? 10;
     return `${momentum > 0 ? 'up' : 'down'} ${Math.abs(Math.expm1(momentum) * 100).toFixed(1)}% over the last ${days} trading days`;
   }
+  /** The recent-calls dots in words, for screen readers. */
+  protected forecastDotsLabel(dots: readonly boolean[]): string {
+    return `${dots.filter(Boolean).length} of the last ${dots.length} calls were right`;
+  }
+
   private suggestion(period: 'week' | 'month' = 'week'): DuaCard {
     const at = this.clock.currentMarketTimestamp();
     const trend = this.trend.trend();
