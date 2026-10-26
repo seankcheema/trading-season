@@ -547,19 +547,16 @@ export class DuaComponent {
               : `There is not enough price history for ${symbol} to make a forecast yet.`,
       },
       {
-        title: 'Trending activity',
+        title: 'Recent activity',
         emphasizeText: true,
-        takeaway:
-          trend?.kind === 'ready'
-            ? `${symbol} is ${trend.momentum > 0 ? 'gaining' : 'losing'} momentum, ${this.momentumPhrase(trend.momentum)}.`
-            : 'Not enough trend history yet.',
+        takeaway: this.swingsPhrase(symbol, risk, swingHorizon),
         text:
           ratio === undefined
             ? `${volume.label}.`
             : Math.abs(ratio - 1) < 0.1
               ? 'Trading volume is about the same as usual.'
               : `Trading volume is ${Math.round(Math.abs(ratio - 1) * 100)}% ${ratio > 1 ? 'higher' : 'lower'} than usual.`,
-        detail: `Momentum is how much ${symbol}'s price has changed over the last ${this.trend.trend()?.momentumDays ?? 10} trading days. Volume compares the most recent full trading day with the average of the 20 days before it.`,
+        detail: `Swings compare ${symbol}'s typical daily move over the last ${swingHorizon} trading days with its usual size over the ${this.signals.signals()?.usualWindowDays ?? 40} trading days before. Volume compares the most recent full trading day with the average of the 20 days before it.`,
       },
       {
         title: 'Volatility outlook',
@@ -822,6 +819,26 @@ export class DuaComponent {
     if (!this.session.minimized()) {
       this.timers.push(setTimeout(() => this.panel()?.nativeElement.focus()));
     }
+  }
+
+  /**
+   * How much the stock has been swinging lately: its typical daily move over the last days
+   * beside its usual size, both from the volatility signal file. Measured, not forecast.
+   */
+  private swingsPhrase(symbol: string, risk: ReturnType<typeof readingFor> | null, days: number) {
+    if (risk?.kind !== 'ready' || !risk.usualVolatility) {
+      return 'Not enough price history to measure its swings yet.';
+    }
+    const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
+    const ratio = risk.recentVolatility / risk.usualVolatility;
+    const sizes = `a typical daily move of ${pct(risk.recentVolatility)} over the last ${days} trading days, against a usual ${pct(risk.usualVolatility)}`;
+    if (ratio > 1.1) {
+      return `${symbol} is swinging more than usual: ${sizes}.`;
+    }
+    if (ratio < 0.9) {
+      return `${symbol} is calmer than usual: ${sizes}.`;
+    }
+    return `${symbol}'s swings are about usual: ${sizes}.`;
   }
 
   protected toggleRecord(index: number): void {
