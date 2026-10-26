@@ -136,6 +136,11 @@
               @if (card.title) {
                 <h3>{{ card.title }}</h3>
               }
+              @if (card.forecast) {
+                <span class="forecast-chip"
+                  ><span class="forecast-mark" aria-hidden="true"></span>Model forecast</span
+                >
+              }
               <button
                 class="explain-action"
                 type="button"

@@ -1229,3 +1229,27 @@ article h3 {
   background: var(--dua-heading);
   transform: translate(-50%, -50%);
 }
+
+/* Model forecasts: a small badge beside the card title says where the call comes from. */
+.forecast-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: auto;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.forecast-mark {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: currentColor;
+  transform: rotate(45deg);
+}
