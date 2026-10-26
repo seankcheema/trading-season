@@ -212,34 +212,37 @@ const TOOLTIP_GAP_PX = 10;
               >{{ visiblePoints().length }} bars</span
             >
           }
-        </div>
-        @if (showLiveTailing()) {
-          <button
-            type="button"
-            class="chart-control live-tailing-control flex shrink-0 items-center gap-1 rounded-lg border px-2 backdrop-blur-sm"
-            [class.text-primary]="liveTailing()"
-            [class.bg-primary/15]="liveTailing()"
-            [attr.aria-pressed]="liveTailing()"
-            aria-label="Live tailing"
-            [title]="liveTailing() ? 'Stop following latest bars' : 'Follow latest bars'"
-            (click)="liveTailing.set(!liveTailing())"
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
+          @if (showLiveTailing()) {
+            <span class="bg-border mx-0.5 h-3.5 w-px"></span>
+            <button
+              type="button"
+              class="chart-control live-tailing-control"
+              [attr.aria-pressed]="liveTailing()"
+              aria-label="Live tailing"
+              [title]="
+                liveTailing()
+                  ? 'Live tailing: stop following latest bars'
+                  : 'Live tailing: follow latest bars'
+              "
+              (click)="liveTailing.set(!liveTailing())"
             >
-              <path d="m13 2-3 8H4l7 12 3-8h6L13 2Z" />
-            </svg>
-            Live tailing
-          </button>
-        }
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="m13 2-3 8H4l7 12 3-8h6L13 2Z" />
+              </svg>
+              <span class="sr-only">Live tailing</span>
+            </button>
+          }
+        </div>
       }
       <div class="chart-top-right">
         @if (showIndicatorLabels() && priceIndicatorsEnabled().length) {
@@ -581,17 +584,18 @@ const TOOLTIP_GAP_PX = 10;
     }
   `,
   styles: `
-    .chart-control-bar,
-    .chart-control.live-tailing-control {
+    .chart-control-bar {
       border: 1px solid color-mix(in srgb, var(--foreground) 28%, transparent);
       border-radius: 0.5rem;
       background: var(--raised);
     }
+    /* Live tailing sits in the navigation bar as a lightning toggle, lit while it follows. */
     .chart-control.live-tailing-control {
-      height: 1.875rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
     .chart-control.live-tailing-control[aria-pressed='true'] {
-      border-color: color-mix(in srgb, var(--primary) 45%, transparent);
       background: #57d7ff;
       color: #08131a;
     }

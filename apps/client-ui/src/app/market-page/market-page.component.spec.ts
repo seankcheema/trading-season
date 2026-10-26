@@ -622,8 +622,8 @@ describe('MarketPageComponent', () => {
     const button = fixture.nativeElement.querySelector(
       '[aria-label="Live tailing"]',
     ) as HTMLButtonElement;
-    expect(button.closest('.chart-control-bar')).toBeNull();
-    expect(button.previousElementSibling?.classList).toContain('chart-control-bar');
+    // A lightning toggle inside the navigation bar, still named for screen readers.
+    expect(button.closest('.chart-control-bar')).not.toBeNull();
     expect(button.textContent).toContain('Live tailing');
     expect(button.getAttribute('aria-pressed')).toBe('true');
     const charts = fixture.debugElement.queryAll(By.directive(PriceChartComponent));
