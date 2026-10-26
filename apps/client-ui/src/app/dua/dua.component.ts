@@ -40,6 +40,8 @@ import {
   lucideInfo,
   lucideNewspaper,
   lucideScanSearch,
+  lucideMaximize2,
+  lucideMinimize2,
   lucideX,
   lucideZap,
 } from '@ng-icons/lucide';
@@ -114,6 +116,8 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
       lucideChevronRight,
       lucideExternalLink,
       lucideInfo,
+      lucideMaximize2,
+      lucideMinimize2,
       lucideNewspaper,
       lucideScanSearch,
       lucideX,
@@ -718,6 +722,7 @@ export class DuaComponent {
       this.choice();
       this.activeCard();
       this.cards();
+      this.session.expanded();
       const minimized = this.session.minimized();
       const panel = this.panel()?.nativeElement;
       if (!panel) {
@@ -851,6 +856,10 @@ export class DuaComponent {
       };
     }
     return { takeaway: `${symbol}'s swings are about usual: ${sizes}.` };
+  }
+
+  protected toggleExpanded(): void {
+    this.session.expanded.set(!this.session.expanded());
   }
 
   protected toggleDetails(index: number): void {

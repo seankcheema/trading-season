@@ -2,6 +2,7 @@
   #panel
   class="dua-panel"
   [class.minimized]="session.minimized()"
+  [class.expanded]="session.expanded() && !raised()"
   [attr.inert]="session.minimized() ? '' : null"
   [attr.aria-hidden]="session.minimized()"
   role="region"
@@ -35,6 +36,21 @@
         <small class="header-account">Account: {{ snapshotContext() }}</small>
       }
     </div>
+    @if (!raised()) {
+      <button
+        class="icon-button expand-button"
+        type="button"
+        [attr.aria-label]="session.expanded() ? 'Shrink Dua' : 'Expand Dua'"
+        [title]="session.expanded() ? 'Shrink Dua' : 'Expand Dua'"
+        [attr.aria-pressed]="session.expanded()"
+        (click)="toggleExpanded()"
+      >
+        <ng-icon
+          [name]="session.expanded() ? 'lucideMinimize2' : 'lucideMaximize2'"
+          aria-hidden="true"
+        />
+      </button>
+    }
     <button class="icon-button" type="button" aria-label="Minimize Dua" (click)="minimize()">
       <ng-icon name="lucideX" aria-hidden="true" />
     </button>

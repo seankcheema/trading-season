@@ -1201,3 +1201,17 @@ article h3 {
 .swing-word.swing-less {
   color: var(--dua-swing-less);
 }
+
+/* Expanded, for reading at length; capped to the viewport. Phones already get the full width. */
+.dua-panel.expanded {
+  width: min(640px, calc(100vw - 32px));
+  max-height: min(820px, calc(100dvh - 116px - env(safe-area-inset-bottom)));
+}
+.dua-panel.expanded .insights .insight-card {
+  max-height: min(640px, calc(100dvh - 200px));
+}
+@media (max-width: 700px) {
+  .expand-button {
+    display: none;
+  }
+}

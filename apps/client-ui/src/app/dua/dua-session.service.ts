@@ -20,6 +20,8 @@ export class DuaSession {
   readonly minimized = signal(true);
   // Whether a stock page has already opened Dua by itself during this visit.
   marketOpened = false;
+  // Whether the user has expanded Dua's panel; kept for the visit, across pages.
+  readonly expanded = signal(false);
   readonly revision = signal(0);
   private readonly http = inject(HttpClient);
   private readonly api = inject(BACKEND_API_URL);

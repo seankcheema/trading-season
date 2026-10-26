@@ -125,6 +125,7 @@ describe('MarketPageComponent', () => {
           provide: DuaSession,
           useValue: {
             minimized: signal(true),
+            expanded: signal(false),
             unread: () => false,
             query: () => {},
             viewedSummary: () => {},
