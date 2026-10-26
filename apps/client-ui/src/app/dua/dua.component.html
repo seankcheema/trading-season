@@ -178,24 +178,50 @@
                   <p class="guidance-advice">{{ card.advice }}</p>
                 }
                 @if (card.forecast?.record; as record) {
-                  <div class="forecast-record">
-                    <app-forecast-track
-                      [hits]="record.hits"
-                      [total]="record.total"
-                      [unit]="record.unit"
-                    />
-                    <span
-                      >Right {{ record.hits }} of last {{ record.total }} {{ record.unit }}</span
+                  <div class="forecast-record-wrap" (keydown.escape)="closeRecord($event)">
+                    <button
+                      type="button"
+                      class="forecast-record"
+                      [attr.aria-expanded]="recordOpen() === cardIndex"
+                      [attr.aria-controls]="'forecast-pop-' + cardIndex"
+                      (click)="toggleRecord(cardIndex)"
                     >
+                      <app-forecast-track
+                        [hits]="record.hits"
+                        [total]="record.total"
+                        [unit]="record.unit"
+                      />
+                      <span
+                        >Right {{ record.hits }} of last {{ record.total }} {{ record.unit }}</span
+                      >
+                      <span class="forecast-record-more" aria-hidden="true"></span>
+                    </button>
+                    @if (recordOpen() === cardIndex) {
+                      <div
+                        class="forecast-pop"
+                        role="group"
+                        aria-label="Forecast record"
+                        [id]="'forecast-pop-' + cardIndex"
+                      >
+                        <p class="forecast-pop-title">
+                          Right {{ record.hits }} of the last {{ record.total }} {{ record.unit }}
+                        </p>
+                        @if (record.coverage) {
+                          <p>{{ record.coverage }}</p>
+                        }
+                        @if (record.baseline; as baseline) {
+                          <p>
+                            Simple pattern, "{{ baseline.label }}": right {{ baseline.hits }} of the
+                            last {{ baseline.total }} weeks.
+                          </p>
+                        }
+                        <p class="forecast-pop-note">
+                          Only weeks that had closed count. A model's read on a simulated market; it
+                          can be wrong.
+                        </p>
+                      </div>
+                    }
                   </div>
-                }
-                @if (card.forecast?.symbol; as forecastSymbol) {
-                  <a
-                    class="forecast-link"
-                    [routerLink]="['/dashboard/markets', forecastSymbol.toLowerCase()]"
-                    [queryParams]="{ forecast: 'open' }"
-                    >See the forecast</a
-                  >
                 }
               </ng-template>
 

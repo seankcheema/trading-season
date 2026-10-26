@@ -33,11 +33,8 @@ export interface DuaCard {
   advice?: string;
   /** A position on a two-ended scale, `value` from 0 (left) to 1 (right). */
   meter?: { value: number; left: string; right: string; label: string };
-  /**
-   * Marks a card whose call comes from a model forecast, with that forecast's record and the
-   * stock whose forecast drawer the card links to.
-   */
-  forecast?: { record?: ForecastRecord; symbol?: string };
+  /** Marks a card whose call comes from a model forecast, with that forecast's record. */
+  forecast?: { record?: ForecastRecord };
   /** Ranked gainers and losers, optionally one section per period. */
   movers?: {
     heading?: string;

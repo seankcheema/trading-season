@@ -226,6 +226,8 @@ export class DuaComponent {
     return choice ? CHOICE_TITLES[choice] : 'Dua';
   });
   protected readonly activeCard = signal(0);
+  // The forecast card whose record popover is open, by index, or null.
+  protected readonly recordOpen = signal<number | null>(null);
   protected readonly cards = signal<DuaCard[]>([]);
   protected readonly explainedCard = computed(() => this.cards()[this.activeCard()]);
   protected readonly choice = signal<DuaChoice | null>(null);
@@ -427,7 +429,7 @@ export class DuaComponent {
     if (review && worst)
       return {
         title: 'What to consider',
-        forecast: { record: trendForecastRecord(review.reading), symbol: review.symbol },
+        forecast: { record: trendForecastRecord(review.reading) },
         takeaway: `Consider selling ${review.symbol}.`,
         text: `Your largest loss ${when} (${dollars(-worst.gain!)}), and its forecast points down.`,
         advice: 'Selling some shares limits further losses; avoid buying more until it turns up.',
@@ -436,7 +438,7 @@ export class DuaComponent {
     if (buy)
       return {
         title: 'What to consider',
-        forecast: { record: trendForecastRecord(buy.reading), symbol: buy.symbol },
+        forecast: { record: trendForecastRecord(buy.reading) },
         takeaway: `Consider buying ${buy.symbol}.`,
         text: `Its forecast points up, with the strongest momentum of the stocks forecast to rise.`,
         advice: `Start small and check its stock page first.${stormier ? ' Expect bigger price swings.' : ''}`,
@@ -525,8 +527,7 @@ export class DuaComponent {
       {
         title: `${symbol} Analysis`,
         emphasizeText: true,
-        forecast:
-          trend?.kind === 'ready' ? { record: trendForecastRecord(trend), symbol } : undefined,
+        forecast: trend?.kind === 'ready' ? { record: trendForecastRecord(trend) } : undefined,
         takeaway: action,
         text:
           trend?.kind !== 'ready'
@@ -562,8 +563,7 @@ export class DuaComponent {
       },
       {
         title: 'Volatility outlook',
-        forecast:
-          risk?.kind === 'ready' ? { record: outlookForecastRecord(risk), symbol } : undefined,
+        forecast: risk?.kind === 'ready' ? { record: outlookForecastRecord(risk) } : undefined,
         takeaway: swing,
         text:
           swingChance >= 0.5
@@ -619,6 +619,11 @@ export class DuaComponent {
           this.showDetails();
           this.session.minimized.set(false);
         });
+    });
+    effect(() => {
+      this.activeCard();
+      this.cards();
+      untracked(() => this.recordOpen.set(null));
     });
     effect(() => {
       const symbol = this.symbol();
@@ -819,11 +824,33 @@ export class DuaComponent {
     }
   }
 
+  protected toggleRecord(index: number): void {
+    this.recordOpen.set(this.recordOpen() === index ? null : index);
+  }
+
+  /** Escape closes an open record popover first, and leaves Dua open. */
+  protected closeRecord(event: Event): void {
+    if (this.recordOpen() === null) {
+      return;
+    }
+    event.stopPropagation();
+    this.recordOpen.set(null);
+    (
+      (event.currentTarget as HTMLElement).querySelector('.forecast-record') as HTMLElement
+    )?.focus();
+  }
+
   protected closeOnOutsideClick(event: MouseEvent): void {
+    const path = event.composedPath();
+    if (
+      this.recordOpen() !== null &&
+      !path.some((el) => el instanceof Element && el.classList.contains('forecast-record-wrap'))
+    ) {
+      this.recordOpen.set(null);
+    }
     if (this.session.minimized()) {
       return;
     }
-    const path = event.composedPath();
     const panel = this.panel()?.nativeElement;
     const launcher = this.launcher()?.nativeElement;
     if ((panel && path.includes(panel)) || (launcher && path.includes(launcher))) {

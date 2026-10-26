@@ -24,14 +24,23 @@
   transform: rotate(45deg);
 }
 
-/* The forecast's record: its track strip, then the frequency in words. */
+/* The forecast's record: its track strip and the frequency, a button that opens the details. */
+.forecast-record-wrap {
+  position: relative;
+  margin-top: 14px;
+}
 .forecast-record {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 10px;
-  margin-top: 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  padding: 4px 6px;
+  margin-left: -6px;
   color: var(--dua-copy);
+  text-align: left;
   font-size: 12px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
@@ -96,17 +105,52 @@
     animation: none;
   }
 }
-
-/* The way from a card to the market page's forecast drawer, where the full record lives. */
-.forecast-link {
-  display: inline-block;
-  margin-top: 8px;
-  color: var(--primary);
-  font-size: 12px;
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+.forecast-record:hover,
+.forecast-record[aria-expanded='true'] {
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
 }
-.forecast-link:hover {
-  text-decoration-thickness: 2px;
+.forecast-record:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.forecast-record-more {
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+}
+.forecast-record[aria-expanded='true'] .forecast-record-more {
+  transform: rotate(-135deg) translateY(-2px);
+}
+
+/* The record's details, in a small popover under the button rather than another window. */
+.forecast-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: -6px;
+  z-index: 2;
+  display: grid;
+  gap: 6px;
+  width: min(300px, calc(100% + 6px));
+  border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 14px 32px -14px #000c;
+  padding: 10px 12px;
+  color: var(--dua-copy);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.forecast-pop p {
+  margin: 0;
+}
+.forecast-pop-title {
+  color: var(--foreground);
+  font-weight: 600;
+}
+.forecast-pop-note {
+  color: var(--muted-foreground);
+  font-size: 11px;
 }
