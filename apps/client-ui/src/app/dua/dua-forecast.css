@@ -125,15 +125,19 @@
   transform: rotate(-135deg) translateY(-2px);
 }
 
-/* The record's details, in a small popover under the button rather than another window. */
+/*
+ * The record's details, in a small popover under the button rather than another window. It opens
+ * in the flow, pointing up at the button: the card's content scrolls and clips anything floated
+ * past its edge.
+ */
 .forecast-pop {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: -6px;
-  z-index: 2;
+  position: relative;
+  margin-top: 8px;
+  margin-left: -6px;
   display: grid;
   gap: 6px;
   width: min(300px, calc(100% + 6px));
+  box-sizing: border-box;
   border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
   border-radius: 10px;
   background: var(--card);
@@ -142,6 +146,18 @@
   color: var(--dua-copy);
   font-size: 12px;
   line-height: 1.4;
+}
+.forecast-pop::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 18px;
+  width: 10px;
+  height: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
+  border-left: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
+  background: var(--card);
+  transform: rotate(45deg);
 }
 .forecast-pop p {
   margin: 0;
