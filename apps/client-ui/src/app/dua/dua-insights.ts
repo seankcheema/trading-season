@@ -35,6 +35,8 @@ export interface DuaCard {
   meter?: { value: number; left: string; right: string; label: string };
   /** Marks a card whose call comes from a model forecast, with that forecast's record. */
   forecast?: { record?: ForecastRecord };
+  /** A phrase of the takeaway to colour: price swings more or less than usual. */
+  highlight?: { text: string; tone: 'more' | 'less' };
   /** Ranked gainers and losers, optionally one section per period. */
   movers?: {
     heading?: string;
@@ -117,6 +119,16 @@ export function outlookForecastRecord(reading: {
     called: true,
     baseline: other.total ? other : undefined,
   };
+}
+
+/** The takeaway split around its highlighted phrase, or null when it has none to colour. */
+export function highlightParts(card: DuaCard): [string, string, string] | null {
+  const text = card.highlight?.text;
+  const at = text && card.takeaway ? card.takeaway.indexOf(text) : -1;
+  if (!text || at < 0) {
+    return null;
+  }
+  return [card.takeaway!.slice(0, at), text, card.takeaway!.slice(at + text.length)];
 }
 
 export function sparklinePoints(values: readonly number[]): string {

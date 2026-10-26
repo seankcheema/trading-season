@@ -1193,3 +1193,11 @@ article h3 {
   width: min(360px, calc(100vw - 32px));
   max-height: min(560px, calc(100dvh - 116px - env(safe-area-inset-bottom)));
 }
+
+/* Price-swing phrases: amber for more than usual, teal for less, never direction's red or green. */
+.swing-word.swing-more {
+  color: var(--dua-swing-more);
+}
+.swing-word.swing-less {
+  color: var(--dua-swing-less);
+}

@@ -170,7 +170,17 @@
                     [class.guidance-headline]="!card.metricsFirst"
                     [class.guidance-statement]="card.metricsFirst"
                   >
-                    {{ card.takeaway }}
+                    @if (highlightParts(card); as parts) {
+                      {{ parts[0]
+                      }}<span
+                        class="swing-word"
+                        [class.swing-more]="card.highlight?.tone === 'more'"
+                        [class.swing-less]="card.highlight?.tone === 'less'"
+                        >{{ parts[1] }}</span
+                      >{{ parts[2] }}
+                    } @else {
+                      {{ card.takeaway }}
+                    }
                   </p>
                 }
                 @if (card.text) {
