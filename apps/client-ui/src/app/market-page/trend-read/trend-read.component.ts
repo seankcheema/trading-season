@@ -116,8 +116,9 @@ import { TrendCall, TrendReading, trendReadingFor } from './platform-trend';
               </section>
 
               <p class="notice" role="note" data-testid="trend-notice">
-                This is a machine-learning read on a simulated market. It can be wrong. Do not take
-                it as true or as advice to buy or sell.
+                This is a machine-learning read on a simulated market, not a prediction of any real
+                market and not investment advice. It can be wrong. Do not take it as true or as
+                advice to buy or sell.
               </p>
 
               <button
@@ -281,10 +282,6 @@ import { TrendCall, TrendReading, trendReadingFor } from './platform-trend';
                   </section>
                 </div>
               }
-              <p class="text-muted-foreground mt-auto pt-3 text-xs">
-                Simulated market. A model's read on direction, not a prediction of any real market
-                and not investment advice.
-              </p>
             }
           }
         }

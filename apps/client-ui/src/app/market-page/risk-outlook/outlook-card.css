@@ -48,10 +48,10 @@
 }
 .notice {
   margin-top: 0.6rem;
-  border: 1px solid color-mix(in srgb, var(--color-loss) 40%, var(--border));
-  border-left-width: 4px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--muted-foreground);
   border-radius: 0.5rem;
-  background: color-mix(in srgb, var(--color-loss) 7%, transparent);
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
   padding: 0.45rem 0.6rem;
   color: var(--foreground);
   font-size: 0.75rem;
