@@ -1,0 +1,210 @@
+/* The forecast drawer slides in over the right of the chart stage, which positions it. */
+:host {
+  position: absolute;
+  inset: 0.5rem 0.5rem 0.5rem auto;
+  z-index: 20;
+  display: flex;
+  width: min(22rem, calc(100% - 1rem));
+  flex-direction: column;
+  gap: 0.9rem;
+  overflow-y: auto;
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
+  border-radius: 0.9rem;
+  background: var(--card);
+  box-shadow:
+    0 18px 40px -16px #000c,
+    0 0 24px -8px color-mix(in srgb, var(--primary) 50%, transparent);
+  padding: 1rem;
+  color: var(--card-foreground);
+  animation: forecast-drawer-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes forecast-drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(1.5rem);
+  }
+}
+
+.drawer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.drawer-title {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.drawer-title h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.drawer-meta {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+.drawer-close {
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.drawer-close:hover {
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  color: var(--foreground);
+}
+.drawer-close:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.forecast-chip {
+  display: inline-flex;
+  justify-self: start;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.forecast-mark {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: currentColor;
+  transform: rotate(45deg);
+}
+
+.drawer-section {
+  display: grid;
+  gap: 0.4rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.8rem;
+}
+.drawer-section h3 {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.drawer-call {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+.drawer-call.up {
+  color: var(--color-gain);
+}
+.drawer-call.down {
+  color: var(--color-loss);
+}
+.drawer-why,
+.drawer-message {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.drawer-record {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.drawer-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+.drawer-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--color-loss);
+}
+.drawer-dot.hit {
+  background: var(--color-gain);
+}
+
+.drawer-meter {
+  display: grid;
+  gap: 0.25rem;
+}
+.drawer-meter-labels {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+}
+.drawer-meter-track {
+  position: relative;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--muted-foreground) 25%, transparent),
+    color-mix(in srgb, var(--primary) 70%, transparent)
+  );
+}
+.drawer-meter-marker {
+  position: absolute;
+  top: 50%;
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid var(--card);
+  border-radius: 999px;
+  background: var(--foreground);
+  transform: translate(-50%, -50%);
+}
+
+.drawer-scores {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+.drawer-scores li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.drawer-scores strong {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.drawer-notice {
+  margin: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 0.8rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :host {
+    animation: none;
+  }
+}
