@@ -69,7 +69,9 @@ describe('LoginComponent', () => {
 
   it('should show an error message when the credentials are rejected', () => {
     authService.login.mockReturnValue(
-      throwError(() => new HttpErrorResponse({ status: 401, error: { message: 'Invalid credentials' } })),
+      throwError(
+        () => new HttpErrorResponse({ status: 401, error: { message: 'Invalid credentials' } }),
+      ),
     );
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl');
 
@@ -202,6 +204,23 @@ describe('LoginComponent', () => {
       ).toBe('worried');
       expect(submitButton(fixture).disabled).toBe(true);
       expect(submitButton(fixture).textContent).toContain('Try again in 10:00');
+    });
+
+    it('makes Dua sweat only while the lock lasts', () => {
+      const peekFigure = (fixture: ReturnType<typeof submitTimes>) =>
+        fixture.nativeElement.querySelector(
+          '[data-testid="dua-peek"] app-dua-figure',
+        ) as HTMLElement;
+
+      const twice = submitTimes(2);
+      expect(peekFigure(twice).classList).not.toContain('sweating');
+
+      const fixture = submitTimes(1);
+      expect(peekFigure(fixture).classList).toContain('sweating');
+
+      vi.advanceTimersByTime(600_000);
+      fixture.detectChanges();
+      expect(peekFigure(fixture).classList).not.toContain('sweating');
     });
 
     it('sends no further sign-in requests while locked', () => {
