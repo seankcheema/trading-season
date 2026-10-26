@@ -118,7 +118,7 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './dua.component.html',
-  styleUrls: ['./dua.component.css', './dua-motion.css'],
+  styleUrls: ['./dua.component.css', './dua-motion.css', './dua-forecast.css'],
 })
 export class DuaComponent {
   protected readonly responseParts = insightTextParts;
