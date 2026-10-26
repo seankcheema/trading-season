@@ -12,7 +12,9 @@ import {
   holdingsPreviewCards,
   DUA_EXPLANATIONS,
   insightTextParts,
+  outlookForecastRecord,
   sparklinePoints,
+  trendForecastRecord,
   watchlistPulse,
 } from './dua-insights';
 
@@ -293,5 +295,26 @@ describe('Dua insights', () => {
     expect(watchlistPulse(['UP'], quotes).takeaway).toBe('Most of your watchlist is rising.');
     expect(watchlistPulse([], quotes).takeaway).toBe('Your watchlist is empty.');
     expect(watchlistPulse(null, quotes).takeaway).toBe('Your watchlist is unavailable.');
+  });
+
+  it('turns a forecast record into one line and its hits, oldest first', () => {
+    const recent = [{ hit: false }, { hit: true }, { hit: true }];
+    expect(
+      trendForecastRecord({ signalHits: 12, signalCalls: 16, signalWeeks: 24, recent }),
+    ).toEqual({
+      label: 'Right 12 of last 16 calls · called 16 of 24 weeks',
+      dots: [true, true, false],
+    });
+    expect(
+      trendForecastRecord({ signalHits: 0, signalCalls: 0, signalWeeks: 3, recent: [] }),
+    ).toBeUndefined();
+    const outlook = { modelHits: 15, modelDays: 20, ruleHits: 12, ruleDays: 20, recent };
+    expect(outlookForecastRecord({ ...outlook, source: 'model' })?.label).toBe(
+      'Right 15 of last 20 weeks',
+    );
+    expect(outlookForecastRecord({ ...outlook, source: 'rule' })?.label).toBe(
+      'Right 12 of last 20 weeks',
+    );
+    expect(outlookForecastRecord({ ...outlook, modelDays: 0, source: 'model' })).toBeUndefined();
   });
 });
