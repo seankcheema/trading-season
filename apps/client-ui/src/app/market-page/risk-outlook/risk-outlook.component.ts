@@ -236,7 +236,7 @@ import { Call, MIN_RECORD_DAYS, RECORD_WINDOW, Reading, readingFor } from './pla
                   </section>
                 </div>
               }
-              <p class="text-muted-foreground mt-auto pt-3 text-xs">
+              <p class="text-muted-foreground pt-3 text-xs">
                 How much the price may move, not which way. Simulated market; never a recommendation
                 to buy or sell.
               </p>
