@@ -109,6 +109,9 @@ describe('ForecastDrawerComponent', () => {
     expect(text('forecast-direction')).toContain('84% confidence');
 
     expect(text('forecast-volatility')).toContain('Bigger price swings likely');
+    expect(el.querySelector('[data-testid=forecast-volatility] .drawer-call')!.classList).toContain(
+      'swing-more',
+    );
     expect(text('forecast-volatility')).toContain('75% confidence');
     expect(el.querySelector('.drawer-meter-track')!.getAttribute('aria-label')).toBe(
       'Model estimate: 62% chance of bigger swings',

@@ -11,6 +11,7 @@ import {
   stockPreviewCards,
   holdingsPreviewCards,
   DUA_EXPLANATIONS,
+  highlightParts,
   insightTextParts,
   outlookForecastRecord,
   sparklinePoints,
@@ -354,5 +355,23 @@ describe('Dua insights', () => {
         ruleDays: 14,
       })?.called,
     ).toBe(false);
+  });
+
+  it('splits a takeaway around its coloured phrase, and leaves one without it whole', () => {
+    expect(
+      highlightParts({
+        text: '',
+        takeaway: 'Expect bigger price swings.',
+        highlight: { text: 'bigger price swings', tone: 'more' },
+      }),
+    ).toEqual(['Expect ', 'bigger price swings', '.']);
+    expect(highlightParts({ text: '', takeaway: 'Hold your current positions.' })).toBeNull();
+    expect(
+      highlightParts({
+        text: '',
+        takeaway: 'Volatility forecast unavailable.',
+        highlight: { text: 'bigger price swings', tone: 'more' },
+      }),
+    ).toBeNull();
   });
 });

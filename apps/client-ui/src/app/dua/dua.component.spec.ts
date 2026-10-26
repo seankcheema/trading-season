@@ -307,12 +307,18 @@ describe('Dua panel', () => {
     expect(active().textContent).toContain(
       'AAPL is swinging more than usual: a typical daily move of 2.0% over the last 5 trading days, against a usual 1.1%.',
     );
+    expect(active().querySelector('.swing-word.swing-more')?.textContent).toBe(
+      'swinging more than usual',
+    );
     click('Next insight');
     expect(active().textContent).toContain(
       "About a 62% chance AAPL's price moves more than usual over the next 5 trading days",
     );
     expect(active().querySelector('.swing-meter-track').getAttribute('aria-label')).toBe(
       'Model estimate: 62% chance of bigger swings',
+    );
+    expect(active().querySelector('.swing-word.swing-more')?.textContent).toBe(
+      'bigger price swings',
     );
     expect(details()).toContain('It does not say whether the price will go up or down.');
     expect(fixture.nativeElement.querySelector('app-risk-outlook')).toBeNull();
@@ -452,6 +458,7 @@ describe('Dua panel', () => {
         'AAPL is calmer than usual: a typical daily move of 0.5% over the last 5 trading days, against a usual 1.1%.',
       );
       expect(card.textContent).not.toMatch(/momentum/i);
+      expect(card.querySelector('.swing-word.swing-less')?.textContent).toBe('calmer than usual');
     } finally {
       signals.signals.set(files);
     }
