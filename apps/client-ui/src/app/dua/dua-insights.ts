@@ -50,49 +50,65 @@ export interface DuaCard {
   }[];
 }
 
-/** A forecast's closed calls as a forecast card shows them: one line, and hits oldest first. */
+/**
+ * A forecast's record over closed weeks, as forecast cards and the forecast drawer show it: a
+ * frequency with one denominator ("right 15 of last 20 calls"), how often it made a call when it
+ * can decline to, and the simple pattern it is measured against over its own closed weeks.
+ */
 export interface ForecastRecord {
-  label: string;
-  dots: boolean[];
+  hits: number;
+  total: number;
+  unit: 'calls' | 'weeks';
+  coverage?: string;
+  baseline?: { label: string; hits: number; total: number };
 }
 
-/**
- * The strong-trend read's record on a stock: its last closed calls, and the closed weeks it
- * took to make them. Undefined before any call has closed.
- */
+/** The strong-trend read's record on a stock. Undefined before any call has closed. */
 export function trendForecastRecord(reading: {
   signalHits: number;
   signalCalls: number;
   signalWeeks: number;
-  recent: readonly { hit: boolean }[];
+  ruleHits: number;
+  ruleDays: number;
 }): ForecastRecord | undefined {
   if (!reading.signalCalls) {
     return undefined;
   }
   return {
-    label: `Right ${reading.signalHits} of last ${reading.signalCalls} calls · called ${reading.signalCalls} of ${reading.signalWeeks} weeks`,
-    dots: [...reading.recent].reverse().map((read) => read.hit),
+    hits: reading.signalHits,
+    total: reading.signalCalls,
+    unit: 'calls',
+    coverage: `Called ${reading.signalCalls} of the last ${reading.signalWeeks} weeks; it makes no call on weeks too weak to read.`,
+    baseline: reading.ruleDays
+      ? { label: 'Keeps going the same way', hits: reading.ruleHits, total: reading.ruleDays }
+      : undefined,
   };
 }
 
-/** The volatility outlook's record: the leading reader's hits over its last closed weeks. */
+/**
+ * The volatility outlook's record: the leading reader's hits over its last closed weeks, beside
+ * the other reader's. Undefined before any week has closed.
+ */
 export function outlookForecastRecord(reading: {
   source: 'model' | 'rule';
   modelHits: number;
   modelDays: number;
   ruleHits: number;
   ruleDays: number;
-  recent: readonly { hit: boolean }[];
 }): ForecastRecord | undefined {
   const model = reading.source === 'model';
-  const hits = model ? reading.modelHits : reading.ruleHits;
-  const days = model ? reading.modelDays : reading.ruleDays;
-  if (!days) {
+  const total = model ? reading.modelDays : reading.ruleDays;
+  if (!total) {
     return undefined;
   }
+  const other = model
+    ? { label: 'Like last week', hits: reading.ruleHits, total: reading.ruleDays }
+    : { label: 'The model alone', hits: reading.modelHits, total: reading.modelDays };
   return {
-    label: `Right ${hits} of last ${days} weeks`,
-    dots: [...reading.recent].reverse().map((read) => read.hit),
+    hits: model ? reading.modelHits : reading.ruleHits,
+    total,
+    unit: 'weeks',
+    baseline: other.total ? other : undefined,
   };
 }
 

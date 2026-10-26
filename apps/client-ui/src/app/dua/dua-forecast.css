@@ -24,7 +24,7 @@
   transform: rotate(45deg);
 }
 
-/* The forecast's record: one dot per recent closed call, oldest first, then the line. */
+/* The forecast's record: its track strip, then the frequency in words. */
 .forecast-record {
   display: flex;
   flex-wrap: wrap;
@@ -35,19 +35,6 @@
   font-size: 12px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-}
-.forecast-dots {
-  display: inline-flex;
-  gap: 4px;
-}
-.forecast-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--dua-loss);
-}
-.forecast-dot.hit {
-  background: var(--dua-gain);
 }
 
 /*

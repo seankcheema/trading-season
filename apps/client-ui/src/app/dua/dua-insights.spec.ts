@@ -297,24 +297,44 @@ describe('Dua insights', () => {
     expect(watchlistPulse(null, quotes).takeaway).toBe('Your watchlist is unavailable.');
   });
 
-  it('turns a forecast record into one line and its hits, oldest first', () => {
-    const recent = [{ hit: false }, { hit: true }, { hit: true }];
+  it('keeps a forecast record as one frequency, how often it called, and its baseline', () => {
     expect(
-      trendForecastRecord({ signalHits: 12, signalCalls: 16, signalWeeks: 24, recent }),
+      trendForecastRecord({
+        signalHits: 12,
+        signalCalls: 16,
+        signalWeeks: 24,
+        ruleHits: 11,
+        ruleDays: 20,
+      }),
     ).toEqual({
-      label: 'Right 12 of last 16 calls · called 16 of 24 weeks',
-      dots: [true, true, false],
+      hits: 12,
+      total: 16,
+      unit: 'calls',
+      coverage: 'Called 16 of the last 24 weeks; it makes no call on weeks too weak to read.',
+      baseline: { label: 'Keeps going the same way', hits: 11, total: 20 },
     });
     expect(
-      trendForecastRecord({ signalHits: 0, signalCalls: 0, signalWeeks: 3, recent: [] }),
+      trendForecastRecord({
+        signalHits: 0,
+        signalCalls: 0,
+        signalWeeks: 3,
+        ruleHits: 0,
+        ruleDays: 3,
+      }),
     ).toBeUndefined();
-    const outlook = { modelHits: 15, modelDays: 20, ruleHits: 12, ruleDays: 20, recent };
-    expect(outlookForecastRecord({ ...outlook, source: 'model' })?.label).toBe(
-      'Right 15 of last 20 weeks',
-    );
-    expect(outlookForecastRecord({ ...outlook, source: 'rule' })?.label).toBe(
-      'Right 12 of last 20 weeks',
-    );
+    const outlook = { modelHits: 15, modelDays: 20, ruleHits: 12, ruleDays: 20 };
+    expect(outlookForecastRecord({ ...outlook, source: 'model' })).toEqual({
+      hits: 15,
+      total: 20,
+      unit: 'weeks',
+      baseline: { label: 'Like last week', hits: 12, total: 20 },
+    });
+    expect(outlookForecastRecord({ ...outlook, source: 'rule' })).toEqual({
+      hits: 12,
+      total: 20,
+      unit: 'weeks',
+      baseline: { label: 'The model alone', hits: 15, total: 20 },
+    });
     expect(outlookForecastRecord({ ...outlook, modelDays: 0, source: 'model' })).toBeUndefined();
   });
 });

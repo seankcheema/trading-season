@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { ForecastRecord, outlookForecastRecord, trendForecastRecord } from '../../dua/dua-insights';
+import { ForecastTrackComponent } from '../../dua/forecast-track.component';
 import { PlatformSignalsService } from '../risk-outlook/platform-signals.service';
 import { readingFor } from '../risk-outlook/platform-signals';
 import { PlatformTrendService } from '../trend-read/platform-trend.service';
@@ -26,7 +27,7 @@ import { trendReadingFor } from '../trend-read/platform-trend';
 @Component({
   selector: 'app-forecast-drawer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, NgTemplateOutlet],
+  imports: [DatePipe, ForecastTrackComponent, NgTemplateOutlet],
   host: {
     role: 'complementary',
     '[attr.aria-label]': "symbol() + ' forecast'",
@@ -137,14 +138,8 @@ import { trendReadingFor } from '../trend-read/platform-trend';
     <ng-template #recordRow let-record>
       @if (record) {
         <div class="drawer-record">
-          @if (record.dots.length) {
-            <span class="drawer-dots" role="img" [attr.aria-label]="dotsLabel(record.dots)">
-              @for (hit of record.dots; track $index) {
-                <span class="drawer-dot" [class.hit]="hit"></span>
-              }
-            </span>
-          }
-          <span>{{ record.label }}</span>
+          <app-forecast-track [hits]="record.hits" [total]="record.total" [unit]="record.unit" />
+          <span>Right {{ record.hits }} of last {{ record.total }} {{ record.unit }}</span>
         </div>
       } @else {
         <p class="drawer-why">No closed weeks yet, so there is no record to show.</p>
@@ -272,10 +267,6 @@ export class ForecastDrawerComponent {
     });
     // Focus lands in the drawer when it opens, so Escape and the keyboard reach it.
     afterNextRender(() => this.closeButton()?.nativeElement.focus());
-  }
-
-  protected dotsLabel(dots: readonly boolean[]): string {
-    return `${dots.filter(Boolean).length} of the last ${dots.length} calls were right`;
   }
 }
 

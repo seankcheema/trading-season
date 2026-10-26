@@ -131,19 +131,6 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.drawer-dots {
-  display: inline-flex;
-  gap: 4px;
-}
-.drawer-dot {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 999px;
-  background: var(--color-loss);
-}
-.drawer-dot.hit {
-  background: var(--color-gain);
-}
 
 .drawer-meter {
   display: grid;

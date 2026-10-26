@@ -179,18 +179,14 @@
                 }
                 @if (card.forecast?.record; as record) {
                   <div class="forecast-record">
-                    @if (record.dots.length) {
-                      <span
-                        class="forecast-dots"
-                        role="img"
-                        [attr.aria-label]="forecastDotsLabel(record.dots)"
-                      >
-                        @for (hit of record.dots; track $index) {
-                          <span class="forecast-dot" [class.hit]="hit"></span>
-                        }
-                      </span>
-                    }
-                    <span>{{ record.label }}</span>
+                    <app-forecast-track
+                      [hits]="record.hits"
+                      [total]="record.total"
+                      [unit]="record.unit"
+                    />
+                    <span
+                      >Right {{ record.hits }} of last {{ record.total }} {{ record.unit }}</span
+                    >
                   </div>
                 }
                 @if (card.forecast?.symbol; as forecastSymbol) {

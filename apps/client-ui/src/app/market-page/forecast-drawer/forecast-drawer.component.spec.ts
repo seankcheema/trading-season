@@ -106,9 +106,7 @@ describe('ForecastDrawerComponent', () => {
     expect(text('forecast-drawer')).toContain('next 5 trading days');
 
     expect(text('forecast-direction')).toContain('Price likely higher');
-    expect(text('forecast-direction')).toContain(
-      'Right 16 of last 19 calls · called 19 of 25 weeks',
-    );
+    expect(text('forecast-direction')).toContain('Right 16 of last 19 calls');
 
     expect(text('forecast-volatility')).toContain('Bigger price swings likely');
     expect(text('forecast-volatility')).toContain('Right 15 of last 20 weeks');

@@ -67,6 +67,7 @@ import { DuaFigureComponent, DuaMood } from './dua-figure.component';
 import { duaGreeting, duaMarketNote } from './dua-greeting';
 import { DuaSpeech } from './dua-speech.service';
 import { DuaSpeechBubbleComponent } from './dua-speech-bubble.component';
+import { ForecastTrackComponent } from './forecast-track.component';
 import { SessionTimeoutService } from '../core/auth/session-timeout.service';
 
 // Clicks on the launcher within this long that set off Dua's barrel roll.
@@ -97,6 +98,7 @@ const CHOICE_TITLES: Record<DuaChoice, string> = {
     DuaCountUpDirective,
     DuaFigureComponent,
     DuaSpeechBubbleComponent,
+    ForecastTrackComponent,
     NgIcon,
     NgTemplateOutlet,
     RouterLink,
@@ -399,11 +401,6 @@ export class DuaComponent {
     const days = this.trend.trend()?.momentumDays ?? 10;
     return `${momentum > 0 ? 'up' : 'down'} ${Math.abs(Math.expm1(momentum) * 100).toFixed(1)}% over the last ${days} trading days`;
   }
-  /** The recent-calls dots in words, for screen readers. */
-  protected forecastDotsLabel(dots: readonly boolean[]): string {
-    return `${dots.filter(Boolean).length} of the last ${dots.length} calls were right`;
-  }
-
   private suggestion(period: 'week' | 'month' = 'week'): DuaCard {
     const at = this.clock.currentMarketTimestamp();
     const trend = this.trend.trend();

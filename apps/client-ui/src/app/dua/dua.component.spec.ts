@@ -307,10 +307,10 @@ describe('Dua panel', () => {
 
     expect(active().classList).toContain('forecast-card');
     expect(active().querySelector('.forecast-chip')?.textContent?.trim()).toBe('Model forecast');
-    expect(record()).toBe('Right 16 of last 19 calls · called 19 of 25 weeks');
-    const dots = active().querySelector('.forecast-dots')!;
-    expect(dots.getAttribute('aria-label')).toBe('5 of the last 6 calls were right');
-    expect(dots.querySelectorAll('.forecast-dot.hit')).toHaveLength(5);
+    expect(record()).toBe('Right 16 of last 19 calls');
+    const track = active().querySelector('app-forecast-track')!;
+    expect(track.getAttribute('aria-label')).toBe('Right on 16 of the last 19 calls');
+    expect(track.querySelectorAll('.cell')).toHaveLength(19);
 
     click('Next insight');
     // Momentum is measured, not forecast.
@@ -348,7 +348,7 @@ describe('Dua panel', () => {
     );
     expect(card.classList).toContain('forecast-card');
     expect(card.querySelector('.forecast-record')?.textContent?.trim()).toBe(
-      'Right 16 of last 19 calls · called 19 of 25 weeks',
+      'Right 16 of last 19 calls',
     );
   });
   it('says there is no clear direction when the trend read makes no call', () => {
