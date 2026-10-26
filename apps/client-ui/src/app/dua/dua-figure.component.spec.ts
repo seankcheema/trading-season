@@ -5,13 +5,14 @@ import { DuaFigureComponent, DuaMood } from './dua-figure.component';
 @Component({
   imports: [DuaFigureComponent],
   template: `
-    <app-dua-figure [mood]="mood()" [wiggle]="wiggle()" />
+    <app-dua-figure [mood]="mood()" [wiggle]="wiggle()" [sweating]="sweating()" />
     <app-dua-figure [framed]="false" />
   `,
 })
 class HostComponent {
   readonly mood = signal<DuaMood>('happy');
   readonly wiggle = signal(false);
+  readonly sweating = signal(false);
 }
 
 describe('DuaFigureComponent', () => {
@@ -50,5 +51,21 @@ describe('DuaFigureComponent', () => {
     expect(framed.querySelector('.drop')).not.toBeNull();
     // The flippers are always drawn so they can slide up over the eyes.
     expect(framed.querySelectorAll('.flipper')).toHaveLength(2);
+  });
+
+  it('sweats only on request, so a worried face keeps a still drop by default', () => {
+    const { fixture, framed } = render();
+    fixture.componentInstance.mood.set('worried');
+    fixture.detectChanges();
+    expect(framed.classList).not.toContain('sweating');
+
+    fixture.componentInstance.sweating.set(true);
+    fixture.detectChanges();
+    expect(framed.classList).toContain('sweating');
+    expect(framed.querySelector('.drop')).not.toBeNull();
+
+    fixture.componentInstance.sweating.set(false);
+    fixture.detectChanges();
+    expect(framed.classList).not.toContain('sweating');
   });
 });
