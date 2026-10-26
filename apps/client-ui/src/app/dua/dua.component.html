@@ -126,6 +126,7 @@
         @for (card of cards(); track $index; let cardIndex = $index) {
           <article
             class="insight-card"
+            [class.forecast-card]="!!card.forecast"
             [class.illustrative-card]="card.illustrative"
             [class.inactive]="activeCard() !== $index"
             [class.before]="$index < activeCard()"
