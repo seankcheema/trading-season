@@ -92,7 +92,13 @@ import { trendReadingFor } from '../trend-read/platform-trend';
           <h3 id="fd-vol">Price swings</h3>
           @switch (risk()?.kind) {
             @case ('ready') {
-              <p class="drawer-call">{{ swingCall() }}</p>
+              <p
+                class="drawer-call"
+                [class.swing-more]="risk()?.kind === 'ready' && swingCall().startsWith('Bigger')"
+                [class.swing-less]="risk()?.kind === 'ready' && swingCall().startsWith('Smaller')"
+              >
+                {{ swingCall() }}
+              </p>
               <ng-container *ngTemplateOutlet="recordRow; context: { $implicit: swingRecord() }" />
             }
             @case ('too-early') {

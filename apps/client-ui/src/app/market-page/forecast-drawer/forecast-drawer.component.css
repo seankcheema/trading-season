@@ -161,6 +161,13 @@
 .drawer-call.down {
   color: var(--color-loss);
 }
+/* Swings say nothing of direction, so they take amber (more) or teal (less), not red or green. */
+.drawer-call.swing-more {
+  color: var(--dua-swing-more);
+}
+.drawer-call.swing-less {
+  color: var(--dua-swing-less);
+}
 .drawer-why,
 .drawer-message {
   margin: 0;
